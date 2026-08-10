@@ -221,6 +221,9 @@ class must not simultaneously retain several independently testable concerns
 such as provider/event ingestion, lifecycle scheduling, persisted-state
 reconciliation, optimistic command policy, action routing, and complete view
 composition merely because those concerns belong to one widget or service.
+For a partial production type, measure and inventory the logical type across
+all declarations; splitting members between files does not reduce its
+responsibility or mutable knowledge.
 
 Before materially extending an already application-sized type, identify its
 current responsibilities and either:

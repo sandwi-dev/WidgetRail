@@ -33,6 +33,10 @@ authorize implementation.
 - Production types above roughly 1,000 physical lines, plus smaller types that
   own several independently testable concerns, are architecture-review
   hotspots. Line count triggers review; it is not a design target.
+- Measure partial production types across all declarations. A logical type is
+  not smaller merely because its members occupy several files; conversely, a
+  long file containing independent contracts or stateless facade methods is
+  reviewed by actual type ownership rather than file length alone.
 - Every hotspot must have one explicit disposition in the engineering-quality
   review: current DLV assignment, ordered Ready work, dependency-blocked work,
   or a cohesive exception with named retained responsibilities.
@@ -162,6 +166,9 @@ provider/lock/resource ownership in presentation. Spotify passed 36/36,
 documentation contracts covered 51 files, and the minimal installed-package
 conformance seam passed 6/6. The accepted package builds and validates, but the
 already-installed immutable `0.2.10` generation was not destructively replaced.
+This historical acceptance covers source organization and behavior preservation,
+not final encapsulation: the aggregate remains one roughly 2,040-line logical
+partial type, now explicitly reopened by DLV-043.
 
 ### DLV-005 — Hold Y to refresh the selected tray widget
 
@@ -382,10 +389,12 @@ the independent native/shared-scroll correction remains separately reviewable.
 Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
 concentration before dashboard controls add behavior. DLV-035 and
 DLV-041 then keep the Windows network backend and its native interop owner
-adjacent; DLV-036 and DLV-037 continue the platform-policy hotspot queue;
-DLV-039 and DLV-040 finish the residual bridge-server responsibility split
-before test-harness cleanup. DLV-006 must still land before Spotify continuous-
-list and launcher work.
+adjacent; DLV-036 and DLV-044 disposition the aggregate Settings partial type;
+DLV-037 continues the platform-policy hotspot queue; DLV-039 and DLV-040 finish
+the residual bridge-server responsibility split; and DLV-043 replaces
+Spotify's partial-file organization with real type boundaries before test-
+harness cleanup. DLV-006 must still land before Spotify continuous-list and
+launcher work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1116,8 +1125,10 @@ platform worktree.
 
 **Objective:** Keep one widget lifecycle and committed settings state while
 making one ordinary settings page, persistence rule, diagnostic projection, or
-authority-recovery workflow changeable without reading the complete roughly
-1,090-line widget.
+authority-recovery workflow changeable without reading the current roughly
+2,822-line logical partial type. This milestone owns the main page/orchestration
+surface; DLV-044 separately dispositions the installed-widget and permission
+partial sections rather than hiding their aggregate size.
 
 **In scope:** a before/after ownership map; pure snapshot-only page composition
 and navigation policy; appearance/overlay preference persistence policy;
@@ -1134,7 +1145,8 @@ page presentation does not perform I/O; privileged recovery actions cannot be
 reached through ordinary preference policy; one page or persistence/recovery
 rule changes through a named boundary; busy/error/focus/navigation behavior and
 exact-token fail-closed semantics remain deterministic; the completion report
-quantifies the before/after responsibility map.
+quantifies the before/after responsibility map and identifies every residual
+member owned by DLV-044 rather than declaring the partial type closed.
 
 **Verification:** Tier 1 Settings, exact-token recovery, smallest Widget SDK
 render/navigation, and affected documentation Release suites. No aggregate or
@@ -1143,11 +1155,58 @@ unrelated installed-widget hardening.
 **Stop/escalate when:** the split changes authority, persistence schema, public
 SDK/protocol behavior, or requires reopening frozen security work.
 
-### DLV-037 — Split managed worker-session transport from gesture authority
+### DLV-044 — Replace Settings partial sections with real policy boundaries
 
 **State:** Ready after DLV-036
 **Baseline:** closing commit of DLV-036
-**Dependencies:** DLV-032
+**Dependencies:** DLV-001 and DLV-036
+**Owner:** managed Settings installed-widget and permission/consent internals
+and direct credential-free fixtures; no catalog, broker, protocol, or native-
+host authority changes
+
+**Objective:** Finish dispositioning the aggregate Settings hotspot by making
+an installed-widget/catalog-version rule or permission/consent presentation
+rule changeable without reaching across one roughly 2,822-line partial widget,
+while preserving one Settings lifecycle and committed-state owner.
+
+**In scope:** a before/after aggregate logical-type, field, effect, and
+authority inventory; value-based installed-widget selection/version/status and
+permission/consent projection/action policies; snapshot-only section
+composition; narrow typed decisions applied through the existing root owner;
+removal of production `SettingsWidget` partial declarations and superseded
+cross-section mutable knowledge; deterministic stale catalog/revision,
+selection removal, busy/failure, consent change/revocation, repeated render,
+and lifecycle-cancellation fixtures.
+
+**Out of scope:** new Settings behavior, install/catalog/consent authority
+changes, security hardening, recovery-token redesign, public SDK/protocol
+changes, service locators, generic settings frameworks, arbitrary file
+splitting, or moving host effects into presenters/policies.
+
+**Acceptance criteria:** the remaining `SettingsWidget` is one non-partial
+lifecycle/committed-state/effect adapter rather than an aggregate multipurpose
+type; installed-widget and permission policies expose narrow value APIs and own
+no HostServices, committed model, lifecycle, lock, or invalidation authority;
+one section rule is directly testable without constructing the complete
+widget; exact install, consent, revocation, recovery, focus, and safe-copy
+behavior remains unchanged; the closing responsibility map gives every
+residual hotspot a cohesive exception or another bounded disposition.
+
+**Verification:** Tier 1 Settings, Widget Catalog/version-selection, affected
+Platform Broker consent/revocation, smallest Widget SDK render/lifecycle, and
+documentation Release suites. No aggregate or unrelated installed-widget
+security suite.
+
+**Stop/escalate when:** meaningful separation changes catalog, consent,
+recovery, or threat-model authority; requires public protocol behavior; or
+cannot eliminate shared partial-state access without a second lifecycle or
+committed-state owner.
+
+### DLV-037 — Split managed worker-session transport from gesture authority
+
+**State:** Ready after DLV-044
+**Baseline:** closing commit of DLV-044
+**Dependencies:** DLV-032 and DLV-044 only for queue order
 **Owner:** managed `WidgetProcessClient` internals and direct runtime fixtures;
 no native host files
 
@@ -1268,6 +1327,52 @@ unrelated security work.
 **Stop/escalate when:** separation changes recovery authority or threat model,
 requires Settings product changes, broadens installed-widget hardening, or
 duplicates catalog/client state from DLV-039.
+
+### DLV-043 — Replace Spotify partial-file organization with real boundaries
+
+**State:** Ready after DLV-040
+**Baseline:** closing commit of DLV-040
+**Dependencies:** DLV-007, DLV-008, DLV-023, and DLV-040 only for queue order
+**Owner:** Spotify managed widget internals and credential-free fixtures; no
+provider, broker, public SDK/protocol, or native-host files
+
+**Objective:** Replace the roughly 2,040-line logical `SpotifyWidget` partial
+type with actual encapsulated route/action, playback-reconciliation, and pure
+presentation boundaries so a normal Spotify behavior or screen change does not
+depend on unrestricted access to the whole widget's mutable state.
+
+**In scope:** a before/after aggregate logical-type, responsibility,
+coordination, and mutable-dependency inventory; one non-partial lifecycle and
+committed-presentation owner; closed value-based route/action policy;
+playback/device/command reconciliation policy where independently testable;
+snapshot-only presentation owners; deletion of production Spotify partial
+declarations and superseded cross-file field access; deterministic repeated
+presentation, route/Back, action admission, provider-event versus command,
+late-result, cancellation, and Active-lifetime drain fixtures.
+
+**Out of scope:** Spotify product behavior or visual changes, live OAuth/
+Premium proof, provider/backend work, DLV-006 collection semantics, DLV-022
+focus/list correction, public SDK abstractions, a universal widget controller,
+one class per action/view, or mechanical file movement.
+
+**Acceptance criteria:** `SpotifyWidget` is no longer a logical partial class;
+the remaining root is the sole lifecycle, committed-state, resource-lifetime,
+and invalidation owner and reaches extracted boundaries only through narrow
+values/results; presentation owns no provider, lock, task, resource, or action
+authority; one route, playback reconciliation rule, or view can be changed and
+tested without constructing or reading the complete widget; current keyed
+presentation, failure, paging, focus IDs, actions, authorization, polling, and
+drain behavior remain exact; the completion report quantifies aggregate type
+size, fields, tasks, locks/semaphores, and cross-boundary mutable dependencies
+before and after.
+
+**Verification:** Tier 1 Spotify, Widget SDK operation/resource/lifecycle,
+smallest generic installed-worker, source-boundary, and affected documentation
+Release suites. No aggregate, live account, provider, or native suite.
+
+**Stop/escalate when:** real separation requires public SDK/protocol or provider
+changes, duplicates lifecycle/committed-state/resource authority, exposes a
+DLV-022 list/focus defect, or changes authentication/product behavior.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
@@ -1401,9 +1506,10 @@ recorded under Recently completed.
 
 ### DLV-038 — Modularize the largest managed test harnesses by responsibility
 
-**State:** Ready after DLV-040
-**Baseline:** closing commit of DLV-040
-**Dependencies:** DLV-031, DLV-032, DLV-037, DLV-029, DLV-040, DLV-041, and DLV-042 so active
+**State:** Ready after DLV-043
+**Baseline:** closing commit of DLV-043
+**Dependencies:** DLV-031, DLV-032, DLV-037, DLV-029, DLV-040, DLV-041,
+DLV-042, DLV-043, and DLV-044 so active
 production architecture work has already stabilized the affected suites
 **Owner:** managed test-only source organization and narrow reusable fixture
 support; no production, public SDK, protocol, native-host, or product behavior

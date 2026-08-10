@@ -32,9 +32,12 @@ races, and credential-free fixtures are useful patterns. DLV-027 now separates
 pure presentation, bounded catalog policy, schema-v3 reconciliation, and CAS
 storage from one lifecycle/action/state owner; this is the first Games-specific
 advanced reference a maintainer can navigate by responsibility, but it does not
-yet simplify the public multi-page/remote-state authoring path. Spotify now has one coherent
-presentation revision, an explicitly keyed playlist-detail owner, and accepted
-named responsibility boundaries. DLV-009 makes YT Music the second lifecycle
+yet simplify the public multi-page/remote-state authoring path. Spotify now has
+one coherent presentation revision and an explicitly keyed playlist-detail
+owner. DLV-008 made route, playback, and presentation regions findable, but the
+current Roslyn audit shows they remain one roughly 2,040-line logical partial
+type rather than encapsulated owners; DLV-043 now dispositions that gap.
+DLV-009 makes YT Music the second lifecycle
 proof, and accepted DLV-030 separates its action, connection, companion-policy,
 and snapshot-only presentation seams without adding another coordinator.
 Accepted DLV-010 now gives an unrelated temporary project a matching
@@ -58,9 +61,10 @@ currently implement too much coordination infrastructure themselves:
 - responsive composition outside the new navigation-shell recipe; and
 - extensive manual invalidation.
 
-This is not unique to Spotify. Similar concentrations remain most strongly in
-Audio Mixer and the remaining Games & Apps/Network orchestration owners. Media
-Sessions now demonstrates that the
+This is not unique to Spotify. Similar concentrations remain in the conditional
+Audio Mixer, Games & Apps, and Network Controls orchestration owners, while the
+aggregate Settings partial type is separately dispositioned by DLV-036/DLV-044.
+Media Sessions now demonstrates that the
 model/command primitives can remove most handwritten synchronization from a
 real widget, but the larger samples show an adoption and composition gap: the
 helpers exist without one advanced reference architecture that teaches how to
@@ -253,11 +257,11 @@ between a minimal and an application-like widget:
 | SDK Gallery | About 400 lines | Public components, navigation, responsive shell, and local state |
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
-| Games & Apps | About 2,340 lines across five responsibility files; 1,274-line orchestration owner | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, launch commands, and pure presentation/policy seams |
+| Games & Apps | About 2,340 lines across five responsibility files; 1,246-line orchestration owner | Navigation, paging, schema/CAS reconciliation, non-authorizing warm projection, launch commands, and pure presentation/policy seams |
 | YT Music | About 1,560 lines across six responsibility files; 677-line orchestration owner | SDK-owned lifecycle lanes, one immutable presentation revision, closed action/connection policy, authored companion confirmation/rollback, and snapshot-only presentation |
-| Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
-| Network Controls | About 2,230 lines across seven responsibility files; 1,241-line orchestration owner | One committed provider state, SDK-owned Active observation, pure provider/command/action policies, and snapshot-only presentation |
-| Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
+| Spotify | About 2,040 lines in one logical class across four partial declarations, plus small policy/state types | Coherent keyed state and findable route/playback/presentation regions, but no encapsulated type boundary yet; DLV-043 owns it |
+| Network Controls | About 2,230 lines across seven responsibility files; 1,206-line orchestration owner | One committed provider state, SDK-owned Active observation, pure provider/command/action policies, and snapshot-only presentation |
+| Audio Mixer | About 2,870 lines across root, presentation, command-policy, and provider-session owners; 1,643-line orchestration root | Closed audio command transitions, one Active provider session, pure presentation, and a conditional committed-state/effect-adapter exception |
 
 The exact counts are less important than the shape of the code. A current
 textual coordination inventory makes the adoption result visible. Media
@@ -279,17 +283,23 @@ lanes. Closed action routing, connection transitions, optimistic confirmation/
 rollback plus progress reconciliation, and presentation are now value-based
 directly tested seams with no mutable owner references. Spotify
 has adopted paged resources, one immutable presentation projection, an explicit
-selection generation, and named route/playback/presentation boundaries, but its
-partial owner still contains four task fields, two semaphores, several lock
-domains, and separate command, authorization, refresh, and polling paths.
+selection generation, and named route/playback/presentation files, but those
+files are four declarations of the same roughly 2,040-line partial class. The
+owner still contains four task fields, two semaphores, several lock domains,
+and separate command, authorization, refresh, and polling paths; DLV-043 must
+turn the useful regions into real value boundaries rather than preserve open
+cross-file member access.
 Accepted DLV-028 moves Network Controls provider merge, command admission,
 closed action routing, element identity, and complete presentation behind named
-value-based boundaries. Its 1,241-line owner now retains one state lock, one
+value-based boundaries. Its roughly 1,206-line owner now retains one state lock, one
 command semaphore, one generation, and one SDK-owned Active latest-operation
-lane, with no field cancellation source or detached observer roots. Audio Mixer
-remains roughly 2,500 lines with about 61 textual lock sites and no adoption of
-the new model/resource/operation layer. These figures are navigation aids rather
-than code-quality scores: they show where safe coordination remains
+lane, with no field cancellation source or detached observer roots. Accepted
+DLV-029/DLV-042 move Audio Mixer presentation, closed output/input/session
+command transitions, and all four provider subscriptions/snapshot/retry/drain
+paths into directly tested owners. Its roughly 1,643-line root now has the
+explicit conditional exception of one committed model, action/effect adapter,
+selection, status, and invalidation owner. These figures are navigation aids
+rather than code-quality scores: they show where safe coordination remains
 concentrated.
 
 Spotify's presentation also includes about 500 lines of GBSS and its dedicated
@@ -299,7 +309,8 @@ provider action, or view state findable without reading the entire widget; it
 does not yet make the remaining lifecycle/authorization/refresh coordination a
 copyable public composition.
 
-The more important Spotify problem is not its exact 2,015-line count. `Render`
+The resolved pre-DLV-007 Spotify problem was not its exact then-2,015-line
+count. `Render`
 copies its manually locked authorization/playback/navigation/page state, then
 reads `_playlists.Snapshot` and `_playlistItems.Snapshot` from independent SDK
 owners. `OpenPlaylist` commits the selected playlist under the widget lock and
@@ -530,11 +541,12 @@ snapshot, host, bridge, cache, replacement snapshot, and focus memory. Treat the
 fix as Verifying until that composed test and the user's live retest pass. The committed shared
 action queue now enables a second concrete simplification: Spotify deletes its
 command task registry, action semaphore, start helper, and command lifecycle
-drain, and directly awaits ordinary provider commands. The roughly 1,914-line
-class still combines authorization task ownership, refresh serialization,
-polling/progress loops, state/cache ownership, action routing, and view
-composition, so this is useful migration evidence rather than a finished
-structural decomposition. Existing Spotify tests invoke `OnActionAsync`
+drain, and directly awaits ordinary provider commands. The current roughly
+2,040-line logical partial class still combines authorization task ownership,
+refresh serialization, polling/progress loops, state/cache ownership, action
+routing, and open cross-file view composition, so this is useful migration
+evidence rather than a finished structural decomposition. DLV-043 owns that
+correction. Existing Spotify tests invoke `OnActionAsync`
 directly; add worker/bridge-path conformance before treating the framework
 adoption as production-proven.
 Immutable state now also has a medium production migration, including
@@ -1698,11 +1710,14 @@ SpotifyWidget/
   styles/default.gbss
 ```
 
-Splitting files alone does not remove complexity, but DLV-008 now makes the
-remaining domain complexity reviewable and enforces the boundary in the focused
-suite. Framework helpers should remove repeated coordination only after the YT
-Music migration proves a second consumer; the accepted split already exposes
-the actual Spotify behavior without publishing a speculative abstraction.
+Splitting files alone does not remove complexity. DLV-008 made the remaining
+domain regions reviewable, but all four files still declare the same partial
+class and therefore do not enforce an ownership boundary. DLV-043 must preserve
+the useful organization while moving route/action, playback reconciliation, and
+snapshot-only presentation behind narrow value APIs. Framework helpers should
+remove repeated coordination only after another production consumer proves the
+same semantics; this correction must remain private to Spotify rather than
+publish a speculative abstraction.
 
 DLV-007 completed the prerequisite state boundary before the directory move.
 `SpotifyPresentationState` is now the immutable render-facing projection, and
@@ -1964,9 +1979,10 @@ private responsibility reduction. YT Music is a credible teachable reference
 for one-owner orchestration plus value-based policies and pure presentation;
 require another advanced widget to reproduce a proposed boundary before
 promoting it into public templates or a mandatory application framework.
-For Spotify, preserve the accepted coherent keyed presentation and named
-route/playback/presentation boundaries while DLV-006/DLV-022 replace the
-remaining page-window and focus composition. Network Controls
+For Spotify, preserve the accepted coherent keyed presentation while DLV-043
+turns the named route/playback/presentation regions into real encapsulated
+types; DLV-006/DLV-022 later replace the remaining page-window and focus
+composition. Network Controls
 now supplies the multi-provider comparison point: its provider and command
 policies remain domain-specific, value-based, and private. Give Audio Mixer its
 own absolute-value confirmation/coalescing design rather than forcing either

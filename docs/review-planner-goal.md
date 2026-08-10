@@ -99,6 +99,12 @@ Maintain:
   a documented cohesive exception. Treat the threshold as a review trigger,
   not a target or an automatic demand to split files.
 
+Measure a logical type across all of its partial declarations. A partial type
+does not become several smaller owners because its members were placed in
+different files. Distinguish that aggregate from a long file containing many
+small independent contracts or stateless facade methods, and document any such
+cohesive exception explicitly.
+
 Every assignment must contain a stable DLV ID, lane, baseline, dependencies,
 bounded objective, ownership boundary, in-scope and out-of-scope work,
 acceptance criteria, required verification tier, concurrency constraints, and
