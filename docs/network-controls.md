@@ -1,7 +1,7 @@
 # Network Controls reference
 
 Status: **implemented and packaged prototype, automated Release verification
-passed 2026-08-08**.
+passed 2026-08-10**.
 The typed SDK, authenticated capability transport, consent UI, lifecycle
 enforcement, real event-driven Windows provider, first-party widget/worker,
 trusted catalog entry, and Release packaging hooks exist. The focused network,
@@ -51,6 +51,43 @@ delete protected profiles, read profile XML or key material, expose BSSID/MAC/
   IP/DNS/gateway values, open captive portals, change airplane mode,
 disconnect, or silently reorder Windows profile preference. It does not shell
 out to `netsh`, edit the registry, install a service/driver, or elevate.
+
+## Managed responsibility boundaries
+
+The worker keeps one committed state and lifecycle owner. Before the current
+split, `NetworkControlsWidget` also contained provider normalization and merge
+rules, command admission/error mappings, string action routing, stable element
+identity, and all declarative view construction. Those responsibilities now
+have named internal boundaries:
+
+- `NetworkControlsProviderPolicy` normalizes provider snapshots and derives
+  authoritative selection, busy, status, and view-state outcomes.
+- `NetworkControlsCommandPolicy` admits commands and maps bounded Wi-Fi and
+  Bluetooth results without receiving host services or mutable widget state.
+- `NetworkControlsActionPolicy` maps the closed action vocabulary to typed
+  routes.
+- `NetworkControlsPresentation` builds a view only from one immutable
+  `NetworkControlsPresentationState` captured under the widget state lock.
+- `NetworkControlsWidget` alone owns lifecycle callbacks, host-service calls,
+  command execution, committed provider state, and invalidation.
+
+The coordination inventory remains deliberately small: one widget state lock,
+one command semaphore, and one active-run generation. The previous field-owned
+run cancellation source and two detached provider-observer task roots are gone;
+one SDK `Active` latest-operation lane now owns and drains the combined network
+and Bluetooth observation run. A linked cancellation source exists only inside
+the Wi-Fi observer to stop its sibling status, scan, and radio event loops when
+one closes. The extracted policies and presenter own no locks, semaphores,
+tasks, cancellation registries, host services, or persistent mutable
+collections.
+
+Cross-boundary dependencies are values rather than shared mutable state. The
+widget passes provider records into pure policies, applies returned value
+records while holding its existing lock, and gives the presenter cloned Wi-Fi
+and Bluetooth lists in a single state capture. Commands return typed admission
+or feedback values; stable element IDs are derived from opaque provider IDs and
+never authorize an operation. Exact current provider IDs are still resolved
+from the widget's committed snapshot before any host command is sent.
 
 ## Wi-Fi radio and Bluetooth slice
 

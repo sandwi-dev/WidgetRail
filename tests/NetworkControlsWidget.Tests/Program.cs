@@ -24,6 +24,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bluetooth radio control is optional typed and authoritatively reconciled", BluetoothRadioToggle),
     ("Bluetooth permission failure does not break Wi-Fi controls", BluetoothPermissionIsolation),
     ("Radio cancellation cannot overwrite a later widget lifecycle", RadioCancellationIsGenerationBound),
+    ("Provider events outrun command acknowledgements and refresh replaces one run", ProviderCommandAndRefreshInterleavings),
+    ("Provider and command policies are pure typed boundaries", PoliciesArePureAndTyped),
+    ("Action routing is an exact closed policy", ActionRoutingIsExact),
+    ("Pure presentation repeats the same semantic snapshot", PresentationIsDeterministic),
+    ("Responsibility split retains one lifecycle and committed-state owner", ResponsibilityBoundariesAreSingular),
     ("Manifest catalog and responsive GBSS ship the Wi-Fi capabilities", ShippedAssetsValidate),
 };
 
@@ -640,6 +645,227 @@ static async Task RadioCancellationIsGenerationBound()
     await Background(pairWidget);
 }
 
+static async Task ProviderCommandAndRefreshInterleavings()
+{
+    var fake = ReadyHost(WidgetWifiScanState.Ready,
+        [Network("event-network", "Event network", 68, WidgetWifiSecurityKind.Open)]);
+    fake.HoldScan = true;
+    fake.HoldConnect = true;
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready &&
+                          fake.StatusSubscriptionCount == 1 &&
+                          fake.BluetoothSubscriptionCount == 1);
+
+    var scan = widget.OnActionAsync(new("wifi.scan", "network.wifi.scan")).AsTask();
+    await fake.ScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    fake.EmitWifi(Wifi(WidgetWifiScanState.Ready,
+        Network("event-network", "Event network", 71, WidgetWifiSecurityKind.Open)));
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready &&
+                          !widget.ScanBusy && widget.Networks.Count == 1);
+    fake.ScanRelease.TrySetResult();
+    await scan;
+    Assert.True(!Text(Snapshot(widget, 1).Root, "network.status").Text!
+        .Contains("scanning", StringComparison.OrdinalIgnoreCase),
+        "A late scan acknowledgement replaced the authoritative Ready event.");
+
+    var row = NetworkButtons(Snapshot(widget, 2).Root).Single();
+    var connect = widget.OnActionAsync(new("wifi.connect.item", row.Id)).AsTask();
+    await fake.ConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    fake.EmitStatus(fake.Status with
+    {
+        Connectivity = WidgetNetworkConnectivity.Internet,
+        Transport = WidgetNetworkTransportKind.Wifi,
+        ConnectionAttemptState = WidgetNetworkConnectionAttemptState.None,
+        AttemptProfileId = null,
+        ActiveProfileId = "event-network",
+        ActiveProfileName = "Event network",
+        SignalPercent = 72,
+    });
+    fake.EmitWifi(Wifi(WidgetWifiScanState.Ready,
+        Network("event-network", "Event network", 72, WidgetWifiSecurityKind.Open,
+            connected: true)));
+    await WaitUntil(() => widget.Networks.Single().IsConnected && !widget.ControlBusy);
+    fake.ConnectRelease.TrySetResult();
+    await connect;
+    var connected = Snapshot(widget, 3);
+    Assert.Equal("CONNECTED", NetworkState(connected.Root, "Event network").Text);
+    Assert.True(!Text(connected.Root, "network.status").Text!
+        .Contains("waiting", StringComparison.OrdinalIgnoreCase),
+        "A late connect acknowledgement replaced the authoritative completion event.");
+
+    await widget.OnActionAsync(new("retry", "network.retry"));
+    await WaitUntil(() => fake.StatusCalls == 2 && fake.WifiCalls == 2 &&
+                          fake.CanceledStatusSubscriptions == 1 &&
+                          fake.CanceledWifiSubscriptions == 1 &&
+                          fake.CanceledRadioSubscriptions == 1 &&
+                          fake.CanceledBluetoothSubscriptions == 1 &&
+                          fake.StatusSubscriptionCount == 2 &&
+                          fake.BluetoothSubscriptionCount == 2);
+    Assert.Equal(NetworkControlsViewState.Ready, widget.ViewState);
+    Assert.Equal("event-network", widget.Networks.Single().NetworkId);
+    await Background(widget);
+    await WaitUntil(() => fake.CanceledStatusSubscriptions == 2 &&
+                          fake.CanceledWifiSubscriptions == 2 &&
+                          fake.CanceledRadioSubscriptions == 2 &&
+                          fake.CanceledBluetoothSubscriptions == 2);
+}
+
+static Task PoliciesArePureAndTyped()
+{
+    var status = NetworkControlsProviderPolicy.Normalize(new WidgetNetworkStatus(
+        WidgetNetworkConnectivity.Local,
+        WidgetNetworkTransportKind.Wifi,
+        WidgetNetworkWirelessAvailability.Available,
+        WidgetNetworkDetailsAccess.Available,
+        WidgetNetworkConnectionAttemptState.Connecting,
+        "  opaque-b  ", "  opaque-a  ", "  Studio  ", 180));
+    Assert.Equal("opaque-b", status.AttemptProfileId);
+    Assert.Equal("opaque-a", status.ActiveProfileId);
+    Assert.Equal("Studio", status.ActiveProfileName);
+    Assert.Equal(100, status.SignalPercent);
+
+    var wifi = NetworkControlsProviderPolicy.Normalize(Wifi(WidgetWifiScanState.Ready,
+        Network(" opaque-a ", " Alpha ", 130, WidgetWifiSecurityKind.Open),
+        Network("opaque-a", "Duplicate", 20, WidgetWifiSecurityKind.Open),
+        Network("opaque-b", "Beta", -4, WidgetWifiSecurityKind.Personal, saved: true)));
+    Assert.SequenceEqual(["opaque-a", "opaque-b"], wifi.Networks.Select(item => item.NetworkId));
+    Assert.SequenceEqual(["Alpha", "Beta"], wifi.Networks.Select(item => item.DisplayName));
+    Assert.SequenceEqual([100, 0], wifi.Networks.Select(item => item.SignalPercent));
+
+    var selection = NetworkControlsProviderPolicy.ReconcileWifiSelection(
+        wifi, status, "missing", 0);
+    Assert.Equal("opaque-b", selection.Id);
+    Assert.Equal(1, selection.Index);
+    var command = NetworkControlsProviderPolicy.ReconcileWifiCommand(status, wifi);
+    Assert.Equal("opaque-b", command.PendingNetworkId);
+    Assert.True(command.ControlBusy);
+    Assert.Contains("Beta", command.Status);
+
+    var connectedDevice = new WidgetBluetoothDevice(
+        " device-a ", " Controller ", false, true, true);
+    var bluetooth = NetworkControlsProviderPolicy.Normalize(new WidgetBluetoothSnapshot(
+        WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
+        [connectedDevice, connectedDevice with { DisplayName = "Duplicate" }]));
+    Assert.Equal(1, bluetooth.Devices.Count);
+    Assert.True(bluetooth.Devices[0].IsPaired);
+    Assert.Equal("device-a", bluetooth.Devices[0].DeviceId);
+
+    var unsupported = NetworkControlsCommandPolicy.AdmitConnection(
+        Network("secure", "Secure", 40, WidgetWifiSecurityKind.Enterprise), false, false);
+    Assert.Equal(NetworkConnectionAdmissionKind.Guidance, unsupported.Kind);
+    Assert.True(unsupported.IsError);
+    var eligible = NetworkControlsCommandPolicy.AdmitConnection(
+        Network("open", "Open", 60, WidgetWifiSecurityKind.Open), false, false);
+    Assert.Equal(NetworkConnectionAdmissionKind.Start, eligible.Kind);
+    Assert.Contains("Open", eligible.Message);
+    Assert.Equal("Another network connection is already in progress",
+        NetworkControlsCommandPolicy.MapConnectFailure("provider_busy"));
+    return Task.CompletedTask;
+}
+
+static Task ActionRoutingIsExact()
+{
+    var expected = new Dictionary<string, NetworkControlsAction>(StringComparer.Ordinal)
+    {
+        ["network.tab.select"] = NetworkControlsAction.SelectTab,
+        ["network.tab.previous"] = NetworkControlsAction.ToggleTab,
+        ["network.tab.next"] = NetworkControlsAction.ToggleTab,
+        ["wifi.scan"] = NetworkControlsAction.Scan,
+        ["wifi.connect.item"] = NetworkControlsAction.ConnectWifi,
+        ["wifi.radio.toggle"] = NetworkControlsAction.ToggleWifiRadio,
+        ["bluetooth.radio.toggle"] = NetworkControlsAction.ToggleBluetoothRadio,
+        ["bluetooth.device.details"] = NetworkControlsAction.ShowBluetoothDetails,
+        ["bluetooth.device.pair"] = NetworkControlsAction.PairBluetooth,
+        ["bluetooth.device.manage"] = NetworkControlsAction.ManageBluetooth,
+        ["retry"] = NetworkControlsAction.Retry,
+    };
+    foreach (var pair in expected)
+        Assert.Equal(pair.Value, NetworkControlsActionPolicy.Resolve(pair.Key));
+    Assert.Equal(NetworkControlsAction.None, NetworkControlsActionPolicy.Resolve("wifi.scan.extra"));
+    Assert.Equal(NetworkControlsAction.None, NetworkControlsActionPolicy.Resolve(""));
+    return Task.CompletedTask;
+}
+
+static Task PresentationIsDeterministic()
+{
+    var status = new WidgetNetworkStatus(
+        WidgetNetworkConnectivity.Internet,
+        WidgetNetworkTransportKind.Wifi,
+        WidgetNetworkWirelessAvailability.Available,
+        WidgetNetworkDetailsAccess.Available,
+        WidgetNetworkConnectionAttemptState.None,
+        null, "opaque-a", "Studio", 81);
+    var wifi = Wifi(WidgetWifiScanState.Ready,
+        Network("opaque-a", "Studio", 81, WidgetWifiSecurityKind.Personal,
+            saved: true, connected: true),
+        Network("opaque-b", "Guest", 52, WidgetWifiSecurityKind.Open));
+    var bluetooth = new WidgetBluetoothSnapshot(
+        WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
+        [new("device-a", "Controller", true, true, true)]);
+    var state = new NetworkControlsPresentationState(
+        NetworkControlsViewState.Ready,
+        "Internet access · 2 nearby · scan complete",
+        false,
+        status,
+        wifi,
+        new WidgetWifiRadio(WidgetWifiRadioState.On, true),
+        false,
+        false,
+        false,
+        bluetooth,
+        "1 Bluetooth device",
+        false,
+        false,
+        null,
+        "device-a",
+        null,
+        "opaque-b",
+        NetworkControlsTab.Wifi,
+        true);
+    var first = NetworkControlsPresentation.Render(state)
+        .CreateSnapshot("network.presentation", 17);
+    var second = NetworkControlsPresentation.Render(state)
+        .CreateSnapshot("network.presentation", 17);
+    Assert.SequenceEqual(SnapshotJson.Serialize(first), SnapshotJson.Serialize(second));
+    Assert.Valid(first);
+    Assert.Equal(NetworkControlsElementIds.Wifi("opaque-b"), first.InitialFocusId);
+    return Task.CompletedTask;
+}
+
+static async Task ResponsibilityBoundariesAreSingular()
+{
+    var project = ProjectDirectory();
+    var widget = await File.ReadAllTextAsync(Path.Combine(project, "NetworkControlsWidget.cs"));
+    var presentation = await File.ReadAllTextAsync(
+        Path.Combine(project, "NetworkControlsPresentation.cs"));
+    var provider = await File.ReadAllTextAsync(
+        Path.Combine(project, "NetworkControlsProviderPolicy.cs"));
+    var command = await File.ReadAllTextAsync(
+        Path.Combine(project, "NetworkControlsCommandPolicy.cs"));
+    var action = await File.ReadAllTextAsync(
+        Path.Combine(project, "NetworkControlsActionPolicy.cs"));
+
+    Assert.Equal(1, CountOccurrences(widget, "private readonly object _stateLock"));
+    Assert.Equal(1, CountOccurrences(widget, "private readonly SemaphoreSlim _commandGate"));
+    Assert.Equal(1, CountOccurrences(widget, "private long _runGeneration"));
+    Assert.Equal(1, CountOccurrences(widget, "Operations.RunLatest("));
+    Assert.Equal(0, CountOccurrences(widget, "_runLifetime"));
+    Assert.Equal(0, CountOccurrences(widget, "_ = Observe"));
+    Assert.Contains("NetworkControlsPresentation.Render(CapturePresentationState())", widget);
+    Assert.True(!presentation.Contains("HostServices", StringComparison.Ordinal) &&
+                !presentation.Contains("_stateLock", StringComparison.Ordinal) &&
+                !presentation.Contains("Operations.", StringComparison.Ordinal),
+        "Pure presentation acquired platform, state-lock, or operation ownership.");
+    foreach (var policy in new[] { provider, command, action })
+    {
+        Assert.True(!policy.Contains("HostServices", StringComparison.Ordinal) &&
+                    !policy.Contains("_stateLock", StringComparison.Ordinal) &&
+                    !policy.Contains("UI.", StringComparison.Ordinal),
+            "A policy boundary acquired platform, committed-state, or view ownership.");
+    }
+}
+
 static async Task ShippedAssetsValidate()
 {
     var project = ProjectDirectory();
@@ -867,6 +1093,18 @@ static async Task WaitUntil(Func<bool> condition, int timeoutMilliseconds = 2_00
     }
 }
 
+static int CountOccurrences(string value, string fragment)
+{
+    var count = 0;
+    var offset = 0;
+    while ((offset = value.IndexOf(fragment, offset, StringComparison.Ordinal)) >= 0)
+    {
+        count++;
+        offset += fragment.Length;
+    }
+    return count;
+}
+
 static string ProjectDirectory()
 {
     var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -916,12 +1154,22 @@ file sealed class FakeNetworkHost
     public Exception? ConnectException { get; set; }
     public Exception? RadioException { get; set; }
     public Exception? BluetoothException { get; set; }
+    public bool HoldScan { get; set; }
+    public bool HoldConnect { get; set; }
     public bool HoldWifiRadioSet { get; set; }
     public bool HoldBluetoothRadioSet { get; set; }
     public bool HoldBluetoothPair { get; set; }
     public WidgetBluetoothPairingOutcome BluetoothPairingOutcome { get; set; } =
         WidgetBluetoothPairingOutcome.Paired;
     public TaskCompletionSource WifiRadioSetStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ScanStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ScanRelease { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ConnectStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ConnectRelease { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource BluetoothRadioSetStarted { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1073,24 +1321,30 @@ file sealed class FakeNetworkHost
         return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
     }
 
-    private ValueTask<WidgetCapabilityAcknowledgement> ScanAsync(
+    private async ValueTask<WidgetCapabilityAcknowledgement> ScanAsync(
         WidgetCapabilityQuery request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _scanCalls);
+        ScanStarted.TrySetResult();
+        if (HoldScan)
+            await ScanRelease.Task.WaitAsync(cancellationToken);
         if (ScanException is not null) throw ScanException;
-        return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+        return new WidgetCapabilityAcknowledgement(true);
     }
 
-    private ValueTask<WidgetCapabilityAcknowledgement> ConnectAsync(
+    private async ValueTask<WidgetCapabilityAcknowledgement> ConnectAsync(
         ConnectWidgetAvailableWifiNetworkRequest request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _connectCalls);
         lock (_gate) ConnectRequests.Add(request);
+        ConnectStarted.TrySetResult();
+        if (HoldConnect)
+            await ConnectRelease.Task.WaitAsync(cancellationToken);
         if (ConnectException is not null) throw ConnectException;
-        return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+        return new WidgetCapabilityAcknowledgement(true);
     }
 
     private IAsyncEnumerable<WidgetNetworkStatusChanged> OpenStatusStream(

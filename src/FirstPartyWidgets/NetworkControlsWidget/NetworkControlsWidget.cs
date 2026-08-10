@@ -1,7 +1,5 @@
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace GameBarAlternative.FirstPartyWidgets.NetworkControls;
 
@@ -37,14 +35,7 @@ public enum NetworkControlsTab
 /// </summary>
 public sealed class NetworkControlsWidget : Widget
 {
-    private static readonly WidgetSurfaceHints CompactSurface = new()
-    {
-        Mode = WidgetSurfaceMode.Compact,
-        PreferredWidth = 560,
-        PreferredHeight = 700,
-        MinimumWidth = 320,
-        MinimumHeight = 420,
-    };
+    private const string ProviderObservationOperation = "network.providers";
 
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
@@ -72,7 +63,6 @@ public sealed class NetworkControlsWidget : Widget
     private bool _controlBusy;
     private bool _scanBusy;
     private bool _radioBusy;
-    private CancellationTokenSource? _runLifetime;
     private long _runGeneration;
     private int _activationCount;
     private int _statusFetchCount;
@@ -160,180 +150,40 @@ public sealed class NetworkControlsWidget : Widget
         }
     }
 
-    public override WidgetView Render()
+    public override WidgetView Render() =>
+        NetworkControlsPresentation.Render(CapturePresentationState());
+
+    private NetworkControlsPresentationState CapturePresentationState()
     {
-        WidgetNetworkStatus? status;
-        WidgetAvailableWifiNetworks? wifi;
-        WidgetWifiRadio? radio;
-        NetworkControlsViewState state;
-        string statusText;
-        bool statusIsError;
-        bool controlBusy;
-        bool scanBusy;
-        bool radioBusy;
-        WidgetBluetoothSnapshot? bluetooth;
-        string bluetoothMessage;
-        bool bluetoothIsError;
-        bool bluetoothBusy;
-        string? pendingBluetoothId;
-        string? selectedBluetoothId;
-        string? pendingId;
-        string? selectedId;
-        NetworkControlsTab activeTab;
         lock (_stateLock)
-        {
-            status = _networkStatus;
-            wifi = _wifiSnapshot;
-            radio = _wifiRadio;
-            state = _viewState;
-            statusText = _status;
-            statusIsError = _statusIsError;
-            controlBusy = _controlBusy;
-            scanBusy = _scanBusy;
-            radioBusy = _radioBusy;
-            bluetooth = _bluetooth;
-            bluetoothMessage = _bluetoothMessage;
-            bluetoothIsError = _bluetoothIsError;
-            bluetoothBusy = _bluetoothBusy;
-            pendingBluetoothId = _pendingBluetoothDeviceId;
-            selectedBluetoothId = _selectedBluetoothDeviceId;
-            pendingId = _pendingNetworkId;
-            selectedId = _selectedNetworkId;
-            activeTab = _activeTab;
-        }
-
-        var header = UI.Stack("network.header",
-                UI.Text("CONTROL CENTER", "network.eyebrow", "Control Center")
-                    .Classes("network-eyebrow"),
-                UI.Text("Network Controls", "network.title", "Network Controls")
-                    .Classes("network-title"),
-                UI.Text(statusText, "network.status", statusText).Classes(
-                    "network-status",
-                    statusIsError ? "is-error" : IsConnected(status) ? "is-live" : "is-neutral"))
-            .Classes("network-header");
-
-        if (status is null || wifi is null || radio is null)
-            return RenderProviderState(header, state);
-
-        var interactive = LifecycleState == WidgetLifecycleState.Interactive;
-        var networks = wifi.ScanState == WidgetWifiScanState.Ready ? wifi.Networks : [];
-        var selectedNetwork = networks.FirstOrDefault(network =>
-            string.Equals(network.NetworkId, selectedId, StringComparison.Ordinal)) ??
-            networks.FirstOrDefault();
-        var wifiInitialFocus = selectedNetwork is null
-            ? "network.wifi.scan"
-            : NetworkElementId(selectedNetwork.NetworkId);
-        var bluetoothDevices = bluetooth?.DiscoveryState == WidgetBluetoothDiscoveryState.Ready
-            ? bluetooth.Devices
-            : [];
-        var selectedBluetooth = bluetoothDevices.FirstOrDefault(device =>
-            string.Equals(device.DeviceId, selectedBluetoothId, StringComparison.Ordinal)) ??
-            bluetoothDevices.FirstOrDefault();
-        var bluetoothInitialFocus = selectedBluetooth is null
-            ? "network.bluetooth.radio"
-            : BluetoothElementId(selectedBluetooth.DeviceId);
-        var activeInitialFocus = activeTab == NetworkControlsTab.Wifi
-            ? wifiInitialFocus
-            : bluetoothInitialFocus;
-
-        var tabs = UI.SegmentedTabs("network.tabs",
-            activeTab == NetworkControlsTab.Wifi ? "network.tab.wifi" : "network.tab.bluetooth",
-            new SegmentedTab("network.tab.wifi", "Wi-Fi", "network.tab.select", "Wi-Fi controls"),
-            new SegmentedTab("network.tab.bluetooth", "Bluetooth", "network.tab.select", "Bluetooth controls"));
-        tabs = tabs with
-        {
-            Children = tabs.Children.Select(child => child is ButtonElement button
-                ? button.FocusUp(button.Id).FocusDown(activeInitialFocus)
-                : child).ToArray(),
-        };
-
-        var content = new List<WidgetElement>
-        {
-            header,
-            RenderConnectionCard(status),
-            tabs,
-        };
-
-        if (activeTab == NetworkControlsTab.Bluetooth)
-        {
-            content.Add(UI.VerticalScroll("network.bluetooth.body.scroll",
-                    RenderBluetoothSection(bluetooth, bluetoothMessage, bluetoothIsError,
-                        bluetoothBusy, pendingBluetoothId).ToArray())
-                .Classes("network-view-scroll", "network-bluetooth-view"));
-        }
-        else
-        {
-            var wifiContent = new List<WidgetElement>
-            {
-                RenderRadioControl(radio, radioBusy),
-            };
-            var note = WirelessNote(status, wifi.ScanState);
-            if (note is not null) wifiContent.Add(RenderNotice(note.Value));
-
-        var scanButton = UI.Button(
-                scanBusy ? "Scanning…" : wifi.ScanState == WidgetWifiScanState.NotScanned
-                    ? "Scan for networks" : "Scan again",
-                "wifi.scan", "network.wifi.scan")
-            .Icon(WidgetGlyph.Refresh, scanBusy ? "Scanning for nearby Wi-Fi networks" : "Scan for nearby Wi-Fi networks")
-            .Busy(scanBusy)
-            .Disabled(!interactive || scanBusy || controlBusy || !CanScan(status))
-            .FocusUp("network.wifi.radio")
-            .FocusLeft("network.wifi.scan")
-            .FocusRight("network.wifi.scan")
-            .Classes("network-scan-action");
-
-            var wifiHeadingIndex = wifiContent.Count;
-            wifiContent.Add(UI.Row("network.wifi.heading",
-                UI.Stack("network.wifi.heading.copy",
-                        UI.Text("AVAILABLE WI-FI", "network.wifi.label", "Available Wi-Fi networks")
-                            .Classes("network-section-label"),
-                        UI.Text(ScanSummary(wifi), "network.wifi.summary", ScanSummary(wifi))
-                            .Classes("network-section-summary"))
-                    .Classes("network-section-copy"),
-                scanButton)
-            .Classes("network-section-heading"));
-
-        if (networks.Count == 0)
-        {
-                wifiContent.Add(RenderWifiState(wifi.ScanState));
-        }
-        else
-        {
-                wifiContent.AddRange(RenderNetworkRows(
-                    networks, controlBusy, pendingId));
-        }
-
-        if (networks.Count > 0)
-            scanButton = scanButton.FocusDown(NetworkElementId(networks[0].NetworkId));
-        // Replace the heading's immutable button with its completed focus graph.
-            wifiContent[wifiHeadingIndex] = UI.Row("network.wifi.heading",
-                UI.Stack("network.wifi.heading.copy",
-                        UI.Text("AVAILABLE WI-FI", "network.wifi.label", "Available Wi-Fi networks")
-                            .Classes("network-section-label"),
-                        UI.Text(ScanSummary(wifi), "network.wifi.summary", ScanSummary(wifi))
-                            .Classes("network-section-summary"))
-                    .Classes("network-section-copy"),
-                scanButton)
-            .Classes("network-section-heading");
-
-            content.Add(UI.VerticalScroll("network.wifi.body.scroll", wifiContent.ToArray())
-                .Classes("network-view-scroll", "network-wifi-view"));
-        }
-
-        var root = UI.Stack("network.root", content.ToArray())
-            .InputScope("network-controls")
-            .Shortcut(ControllerButton.LeftBumper, "network.tab.previous")
-            .Shortcut(ControllerButton.RightBumper, "network.tab.next")
-            .Classes("network-controls-widget",
-                activeTab == NetworkControlsTab.Wifi ? "is-wifi" : "is-bluetooth",
-                networks.Count == 0 ? "has-state" : "has-networks");
-        return new WidgetView(root, InitialFocusId: activeInitialFocus, Surface: CompactSurface);
+            return new(
+                _viewState,
+                _status,
+                _statusIsError,
+                _networkStatus,
+                _wifiSnapshot is null
+                    ? null : _wifiSnapshot with { Networks = _wifiSnapshot.Networks.ToArray() },
+                _wifiRadio,
+                _controlBusy,
+                _scanBusy,
+                _radioBusy,
+                _bluetooth is null
+                    ? null : _bluetooth with { Devices = _bluetooth.Devices.ToArray() },
+                _bluetoothMessage,
+                _bluetoothIsError,
+                _bluetoothBusy,
+                _pendingBluetoothDeviceId,
+                _selectedBluetoothDeviceId,
+                _pendingNetworkId,
+                _selectedNetworkId,
+                _activeTab,
+                LifecycleState == WidgetLifecycleState.Interactive);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         Interlocked.Increment(ref _activationCount);
-        StartActiveRun(activeLifetime);
+        StartActiveRun();
         return ValueTask.CompletedTask;
     }
 
@@ -365,41 +215,40 @@ public sealed class NetworkControlsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
-        switch (action.ActionId)
+        switch (NetworkControlsActionPolicy.Resolve(action.ActionId))
         {
-            case "network.tab.select":
+            case NetworkControlsAction.SelectTab:
                 SelectTab(action.SourceElementId);
                 break;
-            case "network.tab.previous":
-            case "network.tab.next":
+            case NetworkControlsAction.ToggleTab:
                 ToggleTab();
                 break;
-            case "wifi.scan":
+            case NetworkControlsAction.Scan:
                 await RequestScanAsync(cancellationToken).ConfigureAwait(false);
                 break;
-            case "wifi.connect.item":
+            case NetworkControlsAction.ConnectWifi:
                 if (SelectNetworkFromElementId(action.SourceElementId))
                     await ConnectSelectedNetworkAsync(cancellationToken).ConfigureAwait(false);
                 break;
-            case "wifi.radio.toggle":
+            case NetworkControlsAction.ToggleWifiRadio:
                 await ToggleWifiRadioAsync(cancellationToken).ConfigureAwait(false);
                 break;
-            case "bluetooth.radio.toggle":
+            case NetworkControlsAction.ToggleBluetoothRadio:
                 await ToggleBluetoothRadioAsync(cancellationToken).ConfigureAwait(false);
                 break;
-            case "bluetooth.device.details":
+            case NetworkControlsAction.ShowBluetoothDetails:
                 ShowBluetoothDeviceGuidance(action.SourceElementId);
                 break;
-            case "bluetooth.device.pair":
+            case NetworkControlsAction.PairBluetooth:
                 await PairBluetoothDeviceAsync(action.SourceElementId, cancellationToken)
                     .ConfigureAwait(false);
                 break;
-            case "bluetooth.device.manage":
+            case NetworkControlsAction.ManageBluetooth:
                 await OpenBluetoothDeviceSettingsAsync(
                     action.SourceElementId, cancellationToken).ConfigureAwait(false);
                 break;
-            case "retry":
-                if (IsActive) StartActiveRun(ActiveCancellationToken);
+            case NetworkControlsAction.Retry:
+                if (IsActive) StartActiveRun();
                 break;
         }
     }
@@ -421,297 +270,6 @@ public sealed class NetworkControlsWidget : Widget
                 SelectBluetoothFromElementId(focusedId);
         }
         return base.OnControllerInputAsync(input, cancellationToken);
-    }
-
-    private RowElement RenderConnectionCard(WidgetNetworkStatus status)
-    {
-        var title = status.ActiveProfileName ?? status.Transport switch
-        {
-            WidgetNetworkTransportKind.Ethernet => "Wired connection",
-            WidgetNetworkTransportKind.Wifi => "Wi-Fi connection",
-            WidgetNetworkTransportKind.Other => "Network connection",
-            _ => "No active network",
-        };
-        var transport = status.Transport switch
-        {
-            WidgetNetworkTransportKind.Ethernet => "ETHERNET",
-            WidgetNetworkTransportKind.Wifi => "WI-FI",
-            WidgetNetworkTransportKind.Other => "NETWORK",
-            _ => "OFFLINE",
-        };
-        var connectivity = status.Connectivity switch
-        {
-            WidgetNetworkConnectivity.Internet => "Internet access",
-            WidgetNetworkConnectivity.Local => "Local network only",
-            _ => "Not connected",
-        };
-        var stateClass = status.Connectivity switch
-        {
-            WidgetNetworkConnectivity.Internet => "is-online",
-            WidgetNetworkConnectivity.Local => "is-warning",
-            _ => "is-error",
-        };
-        return UI.Row("network.connection.card",
-                UI.Icon(WidgetGlyph.Connection, "network.connection.icon", transport)
-                    .Classes("network-connection-icon"),
-                UI.Stack("network.connection.copy",
-                        UI.Text(title, "network.connection.title", title).Classes("network-card-title"),
-                        UI.Row("network.connection.meta",
-                                UI.Text(transport, "network.connection.transport", transport)
-                                    .Classes("network-card-state", stateClass),
-                                UI.Text(connectivity, "network.connection.detail", connectivity)
-                                    .Classes("network-card-detail"))
-                            .Classes("network-connection-meta"))
-                    .Classes("network-connection-copy"),
-                status.SignalPercent is { } signal
-                    ? UI.Text($"{signal}%", "network.signal.value", $"Signal {signal} percent")
-                        .Classes("network-signal-value")
-                    : UI.Text("", "network.signal.value", "Signal unavailable")
-                        .Classes("network-signal-value", "is-empty"))
-            .Classes("network-connection-card");
-    }
-
-    private RowElement RenderRadioControl(WidgetWifiRadio radio, bool busy)
-    {
-        var isOn = radio.State == WidgetWifiRadioState.On;
-        var label = radio.State switch
-        {
-            WidgetWifiRadioState.On => "Wi-Fi on",
-            WidgetWifiRadioState.Off => "Wi-Fi off",
-            WidgetWifiRadioState.HardwareDisabled => "Wi-Fi hardware disabled",
-            WidgetWifiRadioState.NoAdapter => "No Wi-Fi adapter",
-            _ => "Wi-Fi unavailable",
-        };
-        var detail = radio.State switch
-        {
-            WidgetWifiRadioState.HardwareDisabled => "Use the device's wireless switch to enable it",
-            WidgetWifiRadioState.NoAdapter => "No controllable wireless adapter was reported",
-            WidgetWifiRadioState.Unavailable => "Windows could not read the software radio",
-            _ => "Software radio",
-        };
-        var toggle = UI.ToggleButton(label, isOn, "wifi.radio.toggle", "network.wifi.radio")
-            .Icon(WidgetGlyph.Wifi, label)
-            .Busy(busy)
-            .Disabled(LifecycleState != WidgetLifecycleState.Interactive || busy || !radio.CanControl)
-            .FocusUp("network.tab.wifi")
-            .FocusDown("network.wifi.scan")
-            .FocusLeft("network.wifi.radio")
-            .FocusRight("network.wifi.radio")
-            .Classes("network-radio-toggle", isOn ? "is-on" : "is-off");
-        return UI.Row("network.wifi.radio.row",
-                UI.Stack("network.wifi.radio.copy",
-                        UI.Text("WI-FI", "network.wifi.radio.label", "Wi-Fi radio")
-                            .Classes("network-section-label"),
-                        UI.Text(detail, "network.wifi.radio.detail", detail)
-                            .Classes("network-section-summary"))
-                    .Classes("network-radio-copy"),
-                toggle)
-            .Classes("network-radio-row");
-    }
-
-    private static RowElement RenderNotice((string Title, string Detail, bool IsError) note) =>
-        UI.Row("network.wifi.note",
-                UI.Icon(WidgetGlyph.Warning, "network.wifi.note.icon", note.Title)
-                    .Classes("network-notice-icon", note.IsError ? "is-error" : "is-warning"),
-                UI.Stack("network.wifi.note.copy",
-                        UI.Text(note.Title, "network.wifi.note.title", note.Title)
-                            .Classes("network-card-state", note.IsError ? "is-error" : "is-warning"),
-                        UI.Text(note.Detail, "network.wifi.note.detail", note.Detail)
-                            .Classes("network-card-detail"))
-                    .Classes("network-notice-copy"))
-            .Classes("network-wifi-note");
-
-    private static StackElement RenderWifiState(WidgetWifiScanState scanState)
-    {
-        var (title, detail) = scanState switch
-        {
-            WidgetWifiScanState.NotScanned => (
-                "Ready to scan",
-                "Choose Scan for networks. Scanning only happens when you request it."),
-            WidgetWifiScanState.Scanning => (
-                "Looking nearby",
-                "Windows is completing one bounded Wi-Fi scan."),
-            WidgetWifiScanState.PreciseLocationDenied => (
-                "Location permission required",
-                "Windows requires precise-location access to list nearby Wi-Fi networks. Enable it in Windows Settings, then scan again."),
-            WidgetWifiScanState.Unavailable => (
-                "Wi-Fi scan unavailable",
-                "Windows could not complete this scan. Check the Wi-Fi radio and try again."),
-            _ => (
-                "No networks found",
-                "No nearby Wi-Fi networks were reported in this scan."),
-        };
-        return UI.Stack("network.wifi.state",
-                UI.Text(title, "network.wifi.state.title", title).Classes("network-state-title"),
-                UI.Text(detail, "network.wifi.state.help", detail).Classes("network-help"))
-            .Classes("network-state-card");
-    }
-
-    private IReadOnlyList<WidgetElement> RenderNetworkRows(
-        IReadOnlyList<WidgetAvailableWifiNetwork> networks,
-        bool controlBusy,
-        string? pendingId)
-    {
-        var interactive = LifecycleState == WidgetLifecycleState.Interactive;
-        var ids = networks.Select(network => NetworkElementId(network.NetworkId)).ToArray();
-        var rows = new WidgetElement[networks.Count];
-        for (var index = 0; index < networks.Count; index++)
-        {
-            var network = networks[index];
-            var id = ids[index];
-            var isPending = string.Equals(network.NetworkId, pendingId, StringComparison.Ordinal);
-            var (state, detail) = NetworkMetadata(network, isPending);
-            var actionLabel = NetworkActionLabel(network);
-            var button = UI.Button(network.DisplayName, "wifi.connect.item", id)
-                .Icon(network.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi,
-                    $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}")
-                .Disabled(!interactive || controlBusy || network.IsConnected)
-                .Shortcut(ControllerButton.X, actionId: "wifi.connect.item")
-                .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
-                .FocusLeft(id)
-                .FocusRight(id)
-                .Classes("network-profile-button",
-                    network.IsConnected ? "is-connected" : "is-available",
-                    isPending ? "is-pending" : "is-ready");
-            if (index < networks.Count - 1) button = button.FocusDown(ids[index + 1]);
-            rows[index] = UI.Stack($"{id}.row",
-                    button,
-                    UI.Row($"{id}.meta",
-                            UI.Text(state, $"{id}.state", state).Classes(
-                                "network-profile-state",
-                                isPending ? "is-connecting" : network.IsConnected ? "is-connected" : "is-available"),
-                            UI.Text(detail, $"{id}.detail", detail).Classes("network-profile-detail"))
-                        .Classes("network-profile-meta"))
-                .Classes("network-profile-row",
-                    "is-unselected",
-                    isPending ? "is-pending" : "is-ready");
-        }
-        return rows;
-    }
-
-    private IEnumerable<WidgetElement> RenderBluetoothSection(
-        WidgetBluetoothSnapshot? snapshot,
-        string message,
-        bool messageIsError,
-        bool busy,
-        string? pendingDeviceId)
-    {
-        var radioState = snapshot?.RadioState ?? WidgetBluetoothRadioState.Unavailable;
-        var isOn = radioState == WidgetBluetoothRadioState.On;
-        var radioLabel = radioState switch
-        {
-            WidgetBluetoothRadioState.On => "Bluetooth on",
-            WidgetBluetoothRadioState.Off => "Bluetooth off",
-            WidgetBluetoothRadioState.HardwareDisabled => "Bluetooth hardware disabled",
-            WidgetBluetoothRadioState.NoAdapter => "No Bluetooth adapter",
-            _ => "Bluetooth unavailable",
-        };
-        var devices = snapshot?.DiscoveryState == WidgetBluetoothDiscoveryState.Ready
-            ? snapshot.Devices
-            : [];
-        var firstDeviceId = devices.Count == 0
-            ? null
-            : BluetoothElementId(devices[0].DeviceId);
-        var toggle = UI.ToggleButton(
-                radioLabel, isOn, "bluetooth.radio.toggle", "network.bluetooth.radio")
-            .Icon(WidgetGlyph.Connection, radioLabel)
-            .Busy(busy)
-            .Disabled(LifecycleState != WidgetLifecycleState.Interactive || busy ||
-                snapshot?.CanControlRadio != true)
-            .FocusUp("network.tab.bluetooth")
-            .FocusLeft("network.bluetooth.radio")
-            .FocusRight("network.bluetooth.radio")
-            .Classes("network-radio-toggle", "network-bluetooth-toggle",
-                isOn ? "is-on" : "is-off");
-        if (firstDeviceId is not null) toggle = toggle.FocusDown(firstDeviceId);
-
-        yield return UI.Row("network.bluetooth.heading",
-                UI.Stack("network.bluetooth.heading.copy",
-                        UI.Text("BLUETOOTH", "network.bluetooth.label", "Bluetooth")
-                            .Classes("network-section-label"),
-                        UI.Text(message, "network.bluetooth.summary", message)
-                            .Classes("network-section-summary",
-                                messageIsError ? "is-error" : "is-neutral"))
-                    .Classes("network-section-copy"),
-                toggle)
-            .Classes("network-radio-row", "network-bluetooth-row");
-
-        if (snapshot is null || snapshot.DiscoveryState != WidgetBluetoothDiscoveryState.Ready)
-        {
-            var detail = snapshot?.DiscoveryState == WidgetBluetoothDiscoveryState.Enumerating
-                ? "Windows is discovering paired and nearby Bluetooth devices."
-                : message;
-            yield return UI.Stack("network.bluetooth.state",
-                    UI.Text(snapshot?.DiscoveryState == WidgetBluetoothDiscoveryState.Enumerating
-                            ? "Discovering devices" : "Bluetooth device list unavailable",
-                        "network.bluetooth.state.title", "Bluetooth device status")
-                        .Classes("network-state-title"),
-                    UI.Text(detail, "network.bluetooth.state.help", detail)
-                        .Classes("network-help", messageIsError ? "is-error" : "is-neutral"))
-                .Classes("network-state-card", "network-bluetooth-state");
-            yield break;
-        }
-
-        if (devices.Count == 0)
-        {
-            yield return UI.Stack("network.bluetooth.state",
-                    UI.Text(isOn ? "No Bluetooth devices found" : "Bluetooth is off",
-                        "network.bluetooth.state.title", "Bluetooth device status")
-                        .Classes("network-state-title"),
-                    UI.Text(isOn
-                            ? "Paired devices and nearby devices in pairing mode will appear here."
-                            : "Turn Bluetooth on to discover nearby devices.",
-                        "network.bluetooth.state.help", "Bluetooth device help")
-                        .Classes("network-help"))
-                .Classes("network-state-card", "network-bluetooth-state");
-            yield break;
-        }
-
-        var ids = devices.Select(device => BluetoothElementId(device.DeviceId)).ToArray();
-        var rows = new WidgetElement[devices.Count];
-        for (var index = 0; index < devices.Count; index++)
-        {
-            var device = devices[index];
-            var id = ids[index];
-            var state = device.IsConnected ? "CONNECTED" : device.IsPaired ? "PAIRED" : "NEARBY";
-            var detail = BluetoothDeviceDetail(device);
-            var isPending = string.Equals(
-                device.DeviceId, pendingDeviceId, StringComparison.Ordinal);
-            var actionId = device.IsPaired
-                ? "bluetooth.device.manage"
-                : "bluetooth.device.pair";
-            var actionLabel = device.IsPaired
-                ? "Press A to manage in Windows Bluetooth Settings"
-                : "Press A to pair. Press X if Windows interaction is required";
-            var button = UI.Button(device.DisplayName, actionId, id)
-                // Device rows are a sanitized, authoritative status view. A
-                // neutral device glyph prevents focus/activation from looking
-                // like a successful pair or connection. Only the textual state
-                // below reflects Windows' IsConnected/IsPaired properties.
-                .Icon(WidgetGlyph.Connection,
-                    $"{device.DisplayName}. {state}. {detail}. {actionLabel}")
-                .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage")
-                .Busy(isPending)
-                .FocusUp(index == 0 ? "network.bluetooth.radio" : ids[index - 1])
-                .FocusLeft(id)
-                .FocusRight(id)
-                .Classes("network-profile-button", "network-bluetooth-device",
-                    device.IsConnected ? "is-connected" : "is-available",
-                    isPending ? "is-pending" : "is-ready");
-            if (index < devices.Count - 1) button = button.FocusDown(ids[index + 1]);
-            rows[index] = UI.Stack($"{id}.row",
-                    button,
-                    UI.Row($"{id}.meta",
-                            UI.Text(state, $"{id}.state", state)
-                                .Classes("network-profile-state",
-                                    device.IsConnected ? "is-connected" : "is-available"),
-                            UI.Text(detail, $"{id}.detail", detail)
-                                .Classes("network-profile-detail"))
-                        .Classes("network-profile-meta"))
-                .Classes("network-profile-row", "network-bluetooth-device-row",
-                    "is-unselected", isPending ? "is-pending" : "is-ready");
-        }
-        foreach (var row in rows) yield return row;
     }
 
     private void SelectTab(string sourceElementId)
@@ -736,31 +294,20 @@ public sealed class NetworkControlsWidget : Widget
         Invalidate();
     }
 
-    private static (string State, string Detail) NetworkMetadata(
-        WidgetAvailableWifiNetwork network, bool pending)
+    private async Task ObserveProvidersAsync(
+        long generation,
+        WidgetOperationContext operation)
     {
-        if (pending) return ("CONNECTING", $"Signal {network.SignalPercent}%");
-        if (network.IsConnected) return ("CONNECTED", $"Signal {network.SignalPercent}%");
-        if (network.CredentialRequired) return ("PASSWORD REQUIRED", $"Signal {network.SignalPercent}%");
-        if (network.HasSavedProfile) return ("SAVED", $"Signal {network.SignalPercent}%");
-        return network.Security == WidgetWifiSecurityKind.Open
-            ? ("OPEN", $"Signal {network.SignalPercent}%")
-            : ("AVAILABLE", $"Signal {network.SignalPercent}%");
+        await Task.WhenAll(
+            ObserveNetworkAsync(generation, operation),
+            ObserveBluetoothAsync(generation, operation)).ConfigureAwait(false);
     }
 
-    private static string NetworkActionLabel(WidgetAvailableWifiNetwork network)
+    private async Task ObserveNetworkAsync(
+        long generation,
+        WidgetOperationContext operation)
     {
-        if (network.IsConnected) return "Connected";
-        if (network.CredentialRequired)
-            return "Use Windows Quick Settings to enter the password";
-        if ((network.Security is WidgetWifiSecurityKind.Enterprise or WidgetWifiSecurityKind.Unknown) &&
-            !network.HasSavedProfile)
-            return "Use Windows network settings for this authentication method";
-        return "Press A or X to connect";
-    }
-
-    private async Task ObserveNetworkAsync(long generation, CancellationToken cancellationToken)
-    {
+        var cancellationToken = operation.CancellationToken;
         try
         {
             await using var statusSubscription = await HostServices.Network
@@ -776,19 +323,22 @@ public sealed class NetworkControlsWidget : Widget
             var wifiTask = HostServices.Network.GetAvailableWifiAsync(cancellationToken).AsTask();
             var radioTask = HostServices.Network.GetWifiRadioAsync(cancellationToken).AsTask();
             await Task.WhenAll(statusTask, wifiTask, radioTask).ConfigureAwait(false);
-            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!IsCurrentRun(generation, operation)) return;
             ApplySnapshot(statusTask.Result, wifiTask.Result, radioTask.Result, generation);
 
             using var eventLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var statusLoop = ObserveStatusEventsAsync(statusSubscription, generation, eventLifetime.Token);
-            var wifiLoop = ObserveWifiEventsAsync(wifiSubscription, generation, eventLifetime.Token);
-            var radioLoop = ObserveRadioEventsAsync(radioSubscription, generation, eventLifetime.Token);
+            var statusLoop = ObserveStatusEventsAsync(
+                statusSubscription, generation, operation, eventLifetime.Token);
+            var wifiLoop = ObserveWifiEventsAsync(
+                wifiSubscription, generation, operation, eventLifetime.Token);
+            var radioLoop = ObserveRadioEventsAsync(
+                radioSubscription, generation, operation, eventLifetime.Token);
             await Task.WhenAny(statusLoop, wifiLoop, radioLoop).ConfigureAwait(false);
             eventLifetime.Cancel();
             try { await Task.WhenAll(statusLoop, wifiLoop, radioLoop).ConfigureAwait(false); }
             catch (OperationCanceledException) when (eventLifetime.IsCancellationRequested) { }
 
-            if (IsCurrentRun(generation, cancellationToken))
+            if (IsCurrentRun(generation, operation))
                 SetProviderError(NetworkControlsViewState.ChannelClosed,
                     "Network service channel closed", generation);
         }
@@ -800,7 +350,8 @@ public sealed class NetworkControlsWidget : Widget
         }
         catch (WidgetCapabilityException exception)
         {
-            var (state, message) = MapCapabilityFailure(exception.ErrorCode);
+            var (state, message) = NetworkControlsProviderPolicy.MapFailure(
+                exception.ErrorCode);
             SetProviderError(state, message, generation);
         }
         catch (Exception)
@@ -813,12 +364,13 @@ public sealed class NetworkControlsWidget : Widget
     private async Task ObserveStatusEventsAsync(
         IWidgetCapabilitySubscription<WidgetNetworkStatusChanged> subscription,
         long generation,
+        WidgetOperationContext operation,
         CancellationToken cancellationToken)
     {
         await foreach (var change in subscription.ReadAllAsync(cancellationToken)
                            .WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!IsCurrentRun(generation, operation)) return;
             ApplyStatus(change.Status, generation);
         }
     }
@@ -826,12 +378,13 @@ public sealed class NetworkControlsWidget : Widget
     private async Task ObserveWifiEventsAsync(
         IWidgetCapabilitySubscription<WidgetAvailableWifiNetworksChanged> subscription,
         long generation,
+        WidgetOperationContext operation,
         CancellationToken cancellationToken)
     {
         await foreach (var change in subscription.ReadAllAsync(cancellationToken)
                            .WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!IsCurrentRun(generation, operation)) return;
             ApplyWifi(change.Snapshot, generation);
         }
     }
@@ -839,18 +392,22 @@ public sealed class NetworkControlsWidget : Widget
     private async Task ObserveRadioEventsAsync(
         IWidgetCapabilitySubscription<WidgetWifiRadioChanged> subscription,
         long generation,
+        WidgetOperationContext operation,
         CancellationToken cancellationToken)
     {
         await foreach (var change in subscription.ReadAllAsync(cancellationToken)
                            .WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!IsCurrentRun(generation, operation)) return;
             ApplyRadio(change.Radio, generation);
         }
     }
 
-    private async Task ObserveBluetoothAsync(long generation, CancellationToken cancellationToken)
+    private async Task ObserveBluetoothAsync(
+        long generation,
+        WidgetOperationContext operation)
     {
+        var cancellationToken = operation.CancellationToken;
         try
         {
             await using var subscription = await HostServices.Network
@@ -858,15 +415,15 @@ public sealed class NetworkControlsWidget : Widget
             Interlocked.Increment(ref _bluetoothFetchCount);
             var snapshot = await HostServices.Network.GetBluetoothAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (!IsCurrentRun(generation, cancellationToken)) return;
+            if (!IsCurrentRun(generation, operation)) return;
             ApplyBluetooth(snapshot, generation);
             await foreach (var change in subscription.ReadAllAsync(cancellationToken)
                                .WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                if (!IsCurrentRun(generation, cancellationToken)) return;
+                if (!IsCurrentRun(generation, operation)) return;
                 ApplyBluetooth(change.Snapshot, generation);
             }
-            if (IsCurrentRun(generation, cancellationToken))
+            if (IsCurrentRun(generation, operation))
                 SetBluetoothUnavailable("Bluetooth service channel closed", true, generation);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -894,7 +451,7 @@ public sealed class NetworkControlsWidget : Widget
 
     private void ApplyBluetooth(WidgetBluetoothSnapshot incoming, long generation)
     {
-        var snapshot = NormalizeBluetooth(incoming);
+        var snapshot = NetworkControlsProviderPolicy.Normalize(incoming);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
@@ -950,9 +507,9 @@ public sealed class NetworkControlsWidget : Widget
         WidgetWifiRadio incomingRadio,
         long generation)
     {
-        var status = NormalizeStatus(incomingStatus);
-        var wifi = NormalizeWifi(incomingWifi);
-        var radio = NormalizeRadio(incomingRadio);
+        var status = NetworkControlsProviderPolicy.Normalize(incomingStatus);
+        var wifi = NetworkControlsProviderPolicy.Normalize(incomingWifi);
+        var radio = NetworkControlsProviderPolicy.Normalize(incomingRadio);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
@@ -970,7 +527,7 @@ public sealed class NetworkControlsWidget : Widget
 
     private void ApplyStatus(WidgetNetworkStatus incoming, long generation)
     {
-        var status = NormalizeStatus(incoming);
+        var status = NetworkControlsProviderPolicy.Normalize(incoming);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
@@ -983,7 +540,7 @@ public sealed class NetworkControlsWidget : Widget
 
     private void ApplyWifi(WidgetAvailableWifiNetworks incoming, long generation)
     {
-        var wifi = NormalizeWifi(incoming);
+        var wifi = NetworkControlsProviderPolicy.Normalize(incoming);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
@@ -998,7 +555,7 @@ public sealed class NetworkControlsWidget : Widget
 
     private void ApplyRadio(WidgetWifiRadio incoming, long generation)
     {
-        var radio = NormalizeRadio(incoming);
+        var radio = NetworkControlsProviderPolicy.Normalize(incoming);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
@@ -1012,49 +569,23 @@ public sealed class NetworkControlsWidget : Widget
 
     private void ReconcileSelectionLocked()
     {
-        var networks = _wifiSnapshot?.Networks ?? [];
-        var priorIndex = _selectedIndex;
-        var retained = _selectedNetworkId is null ? -1 : IndexOf(networks, network =>
-            string.Equals(network.NetworkId, _selectedNetworkId, StringComparison.Ordinal));
-        if (retained < 0 && _networkStatus?.AttemptProfileId is { } attemptId)
-            retained = IndexOf(networks, network =>
-                string.Equals(network.NetworkId, attemptId, StringComparison.Ordinal));
-        if (retained < 0)
-            retained = IndexOf(networks, network => network.IsConnected);
-        _selectedIndex = retained >= 0
-            ? retained
-            : Math.Clamp(priorIndex, 0, Math.Max(0, networks.Count - 1));
-        _selectedNetworkId = networks.Count == 0 ? null : networks[_selectedIndex].NetworkId;
+        var selection = NetworkControlsProviderPolicy.ReconcileWifiSelection(
+            _wifiSnapshot, _networkStatus, _selectedNetworkId, _selectedIndex);
+        _selectedNetworkId = selection.Id;
+        _selectedIndex = selection.Index;
     }
 
     private void ReconcileCommandStateLocked()
     {
         if (_networkStatus is null || _wifiSnapshot is null || _wifiRadio is null) return;
-        _scanBusy = _wifiSnapshot.ScanState == WidgetWifiScanState.Scanning;
-        switch (_networkStatus.ConnectionAttemptState)
-        {
-            case WidgetNetworkConnectionAttemptState.Connecting:
-                _pendingNetworkId = _networkStatus.AttemptProfileId;
-                _controlBusy = _pendingNetworkId is not null;
-                _status = _pendingNetworkId is { } pending
-                    ? $"Connecting to {NetworkNameLocked(pending)}…"
-                    : "Connecting to Wi-Fi…";
-                _statusIsError = false;
-                break;
-            case WidgetNetworkConnectionAttemptState.Failed:
-                _pendingNetworkId = null;
-                _controlBusy = false;
-                _status = "Could not connect · previous connection retained";
-                _statusIsError = true;
-                break;
-            default:
-                _pendingNetworkId = null;
-                _controlBusy = false;
-                _status = LiveStatus(_networkStatus, _wifiSnapshot);
-                _statusIsError = false;
-                break;
-        }
-        _viewState = DeriveViewState(_networkStatus, _wifiSnapshot);
+        var command = NetworkControlsProviderPolicy.ReconcileWifiCommand(
+            _networkStatus, _wifiSnapshot);
+        _pendingNetworkId = command.PendingNetworkId;
+        _controlBusy = command.ControlBusy;
+        _scanBusy = command.ScanBusy;
+        _status = command.Status;
+        _statusIsError = command.StatusIsError;
+        _viewState = command.ViewState;
     }
 
     private async ValueTask RequestScanAsync(CancellationToken cancellationToken)
@@ -1071,7 +602,8 @@ public sealed class NetworkControlsWidget : Widget
         {
             lock (_stateLock)
             {
-                if (_scanBusy || _controlBusy || _networkStatus is null || !CanScan(_networkStatus)) return;
+                if (_scanBusy || _controlBusy || _networkStatus is null ||
+                    !NetworkControlsProviderPolicy.CanScan(_networkStatus)) return;
                 _scanBusy = true;
                 _status = "Requesting one Wi-Fi scan…";
                 _statusIsError = false;
@@ -1103,7 +635,8 @@ public sealed class NetworkControlsWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                RestoreAuthoritative(MapScanFailure(exception.ErrorCode));
+                RestoreAuthoritative(NetworkControlsCommandPolicy.MapScanFailure(
+                    exception.ErrorCode));
             }
             catch (Exception)
             {
@@ -1157,7 +690,8 @@ public sealed class NetworkControlsWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                SetWifiRadioFailure(MapRadioFailure(exception.ErrorCode), generation);
+                SetWifiRadioFailure(NetworkControlsCommandPolicy.MapWifiRadioFailure(
+                    exception.ErrorCode), generation);
             }
             catch (Exception)
             {
@@ -1209,15 +743,8 @@ public sealed class NetworkControlsWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                var message = exception.ErrorCode switch
-                {
-                    "permission_denied" => "Bluetooth radio permission denied",
-                    "platform_denied" => "Windows policy blocked Bluetooth radio control",
-                    "hardware_disabled" => "Bluetooth is disabled by hardware or device policy",
-                    "no_adapter" => "No Bluetooth adapter is available",
-                    "partial_failure" => "Bluetooth changed partially · current Windows state refreshed",
-                    _ => "Bluetooth radio could not be changed",
-                };
+                var message = NetworkControlsCommandPolicy.MapBluetoothRadioFailure(
+                    exception.ErrorCode);
                 SetBluetoothFailure(message, generation);
             }
             catch (Exception)
@@ -1250,7 +777,7 @@ public sealed class NetworkControlsWidget : Widget
                 if (device is null || device.IsPaired || _bluetoothBusy) return;
                 generation = _runGeneration;
                 _selectedBluetoothDeviceId = device.DeviceId;
-                _selectedBluetoothIndex = IndexOf(
+                _selectedBluetoothIndex = NetworkControlsProviderPolicy.IndexOf(
                     _bluetooth?.Devices ?? [], candidate => string.Equals(
                         candidate.DeviceId, device.DeviceId, StringComparison.Ordinal));
                 _pendingBluetoothDeviceId = device.DeviceId;
@@ -1277,16 +804,8 @@ public sealed class NetworkControlsWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                SetBluetoothFailure(exception.ErrorCode switch
-                {
-                    "permission_denied" or "capability_not_declared" =>
-                        "Allow Bluetooth pairing in Settings → Permissions",
-                    "unknown_device" =>
-                        "That Bluetooth device is no longer available",
-                    "lifecycle_denied" =>
-                        "Bluetooth pairing stopped when this widget left the foreground",
-                    _ => "Windows could not start Bluetooth pairing",
-                }, generation);
+                SetBluetoothFailure(NetworkControlsCommandPolicy.MapBluetoothPairFailure(
+                    exception.ErrorCode), generation);
             }
             catch (Exception)
             {
@@ -1318,7 +837,7 @@ public sealed class NetworkControlsWidget : Widget
                 if (device is null || _bluetoothBusy) return;
                 generation = _runGeneration;
                 _selectedBluetoothDeviceId = device.DeviceId;
-                _selectedBluetoothIndex = IndexOf(
+                _selectedBluetoothIndex = NetworkControlsProviderPolicy.IndexOf(
                     _bluetooth?.Devices ?? [], candidate => string.Equals(
                         candidate.DeviceId, device.DeviceId, StringComparison.Ordinal));
                 _pendingBluetoothDeviceId = device.DeviceId;
@@ -1354,16 +873,8 @@ public sealed class NetworkControlsWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                SetBluetoothFailure(exception.ErrorCode switch
-                {
-                    "permission_denied" or "capability_not_declared" =>
-                        "Allow Bluetooth device management in Settings → Permissions",
-                    "unknown_device" =>
-                        "That Bluetooth device is no longer available",
-                    "lifecycle_denied" =>
-                        "Bluetooth management is available only while this widget is open",
-                    _ => "Windows Bluetooth Settings could not be opened",
-                }, generation);
+                SetBluetoothFailure(NetworkControlsCommandPolicy.MapBluetoothManageFailure(
+                    exception.ErrorCode), generation);
             }
             catch (Exception)
             {
@@ -1379,44 +890,15 @@ public sealed class NetworkControlsWidget : Widget
         WidgetBluetoothPairingOutcome outcome,
         long generation)
     {
-        var (message, error) = outcome switch
-        {
-            WidgetBluetoothPairingOutcome.Paired =>
-                ($"{requested.DisplayName} paired · waiting for Windows connection state", false),
-            WidgetBluetoothPairingOutcome.AlreadyPaired or
-                WidgetBluetoothPairingOutcome.RemoteAlreadyAssociated =>
-                ($"{requested.DisplayName} is already paired", false),
-            WidgetBluetoothPairingOutcome.UserInteractionRequired =>
-                ($"{requested.DisplayName} needs Windows confirmation · press X to open Bluetooth Settings", false),
-            WidgetBluetoothPairingOutcome.CanceledByUser =>
-                ($"Pairing {requested.DisplayName} was canceled", false),
-            WidgetBluetoothPairingOutcome.OperationInProgress =>
-                ($"Windows is already pairing {requested.DisplayName}", false),
-            WidgetBluetoothPairingOutcome.NotReady =>
-                ($"{requested.DisplayName} is not ready to pair", true),
-            WidgetBluetoothPairingOutcome.AccessDenied or
-                WidgetBluetoothPairingOutcome.AuthenticationNotAllowed =>
-                ("Windows denied this Bluetooth pairing request", true),
-            WidgetBluetoothPairingOutcome.AuthenticationTimedOut =>
-                ($"Pairing {requested.DisplayName} timed out", true),
-            WidgetBluetoothPairingOutcome.AuthenticationFailed or
-                WidgetBluetoothPairingOutcome.InvalidCeremonyData =>
-                ($"{requested.DisplayName} could not be authenticated", true),
-            WidgetBluetoothPairingOutcome.NoSupportedProfiles or
-                WidgetBluetoothPairingOutcome.ProtectionLevelNotMet =>
-                ($"{requested.DisplayName} needs Windows Bluetooth Settings to finish setup", true),
-            WidgetBluetoothPairingOutcome.DeviceUnavailable =>
-                ($"{requested.DisplayName} is no longer available", true),
-            _ => ($"Windows could not pair {requested.DisplayName}", true),
-        };
+        var feedback = NetworkControlsCommandPolicy.PairingFeedback(requested, outcome);
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
             _pendingBluetoothDeviceId = null;
             _bluetoothBusy = false;
             _bluetoothGuidanceDevice = CurrentBluetoothDeviceLocked(requested.DeviceId);
-            _bluetoothMessage = message;
-            _bluetoothIsError = error;
+            _bluetoothMessage = feedback.Message;
+            _bluetoothIsError = feedback.IsError;
         }
         Invalidate();
     }
@@ -1430,7 +912,8 @@ public sealed class NetworkControlsWidget : Widget
             _radioBusy = false;
             if (_networkStatus is not null && _wifiSnapshot is not null)
             {
-                _status = LiveStatus(_networkStatus, _wifiSnapshot);
+                _status = NetworkControlsProviderPolicy.LiveStatus(
+                    _networkStatus, _wifiSnapshot);
                 _statusIsError = false;
             }
         }
@@ -1494,26 +977,17 @@ public sealed class NetworkControlsWidget : Widget
             lock (_stateLock)
             {
                 selected = SelectedNetworkLocked();
-                if (selected is null || selected.IsConnected || _controlBusy || _scanBusy) return;
-                if (selected.CredentialRequired)
-                {
-                    _status = $"{selected.DisplayName} needs a password · use Windows Quick Settings to connect";
-                    _statusIsError = false;
+                var admission = NetworkControlsCommandPolicy.AdmitConnection(
+                    selected, _controlBusy, _scanBusy);
+                if (admission.Kind == NetworkConnectionAdmissionKind.Rejected) return;
+                _status = admission.Message;
+                _statusIsError = admission.IsError;
+                if (admission.Kind == NetworkConnectionAdmissionKind.Guidance)
                     selected = null;
-                }
-                else if ((selected.Security is WidgetWifiSecurityKind.Enterprise or WidgetWifiSecurityKind.Unknown) &&
-                         !selected.HasSavedProfile)
-                {
-                    _status = "This Wi-Fi authentication method needs Windows network settings";
-                    _statusIsError = true;
-                    selected = null;
-                }
                 else
                 {
-                    _pendingNetworkId = selected.NetworkId;
+                    _pendingNetworkId = selected!.NetworkId;
                     _controlBusy = true;
-                    _status = $"Requesting {selected.DisplayName}…";
-                    _statusIsError = false;
                 }
             }
             Invalidate();
@@ -1542,7 +1016,8 @@ public sealed class NetworkControlsWidget : Widget
             }
             catch (WidgetCapabilityException exception)
             {
-                RestoreAuthoritative(MapConnectFailure(exception.ErrorCode));
+                RestoreAuthoritative(NetworkControlsCommandPolicy.MapConnectFailure(
+                    exception.ErrorCode));
             }
             catch (Exception)
             {
@@ -1560,8 +1035,9 @@ public sealed class NetworkControlsWidget : Widget
         lock (_stateLock)
         {
             var networks = _wifiSnapshot?.Networks ?? [];
-            var index = IndexOf(networks, network =>
-                string.Equals(NetworkElementId(network.NetworkId), elementId, StringComparison.Ordinal));
+            var index = NetworkControlsProviderPolicy.IndexOf(networks, network =>
+                string.Equals(NetworkControlsElementIds.Wifi(network.NetworkId), elementId,
+                    StringComparison.Ordinal));
             if (index < 0) return false;
             _selectedIndex = index;
             _selectedNetworkId = networks[index].NetworkId;
@@ -1574,8 +1050,9 @@ public sealed class NetworkControlsWidget : Widget
         lock (_stateLock)
         {
             var devices = _bluetooth?.Devices ?? [];
-            var index = IndexOf(devices, device => string.Equals(
-                BluetoothElementId(device.DeviceId), elementId, StringComparison.Ordinal));
+            var index = NetworkControlsProviderPolicy.IndexOf(devices, device => string.Equals(
+                NetworkControlsElementIds.Bluetooth(device.DeviceId), elementId,
+                StringComparison.Ordinal));
             if (index < 0) return false;
             _selectedBluetoothIndex = index;
             _selectedBluetoothDeviceId = devices[index].DeviceId;
@@ -1587,7 +1064,8 @@ public sealed class NetworkControlsWidget : Widget
     {
         var devices = _bluetooth?.Devices ?? [];
         return devices.FirstOrDefault(device => string.Equals(
-            BluetoothElementId(device.DeviceId), elementId, StringComparison.Ordinal));
+            NetworkControlsElementIds.Bluetooth(device.DeviceId), elementId,
+            StringComparison.Ordinal));
     }
 
     private WidgetBluetoothDevice? CurrentBluetoothDeviceLocked(string deviceId) =>
@@ -1609,8 +1087,9 @@ public sealed class NetworkControlsWidget : Widget
         lock (_stateLock)
         {
             var devices = _bluetooth?.Devices ?? [];
-            var index = IndexOf(devices, device => string.Equals(
-                BluetoothElementId(device.DeviceId), elementId, StringComparison.Ordinal));
+            var index = NetworkControlsProviderPolicy.IndexOf(devices, device => string.Equals(
+                NetworkControlsElementIds.Bluetooth(device.DeviceId), elementId,
+                StringComparison.Ordinal));
             if (index < 0) return;
 
             _selectedBluetoothIndex = index;
@@ -1644,57 +1123,31 @@ public sealed class NetworkControlsWidget : Widget
                     : "Paired · not currently nearby · press A to manage"
                 : "Nearby · press A to pair";
 
-    private string NetworkNameLocked(string id) =>
-        (_wifiSnapshot?.Networks ?? []).FirstOrDefault(network =>
-            string.Equals(network.NetworkId, id, StringComparison.Ordinal))?.DisplayName ?? "Wi-Fi network";
-
-    private static string NetworkElementId(string opaqueId)
+    private void StartActiveRun()
     {
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(opaqueId));
-        return $"network.wifi.item.{Convert.ToHexString(digest).ToLowerInvariant()}";
-    }
-
-    private static string BluetoothElementId(string opaqueId)
-    {
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(opaqueId));
-        return $"network.bluetooth.item.{Convert.ToHexString(digest).ToLowerInvariant()}";
-    }
-
-    private void StartActiveRun(CancellationToken activeLifetime)
-    {
-        CancellationTokenSource? previous;
-        CancellationTokenSource current;
         long generation;
         lock (_stateLock)
         {
-            previous = _runLifetime;
-            current = CancellationTokenSource.CreateLinkedTokenSource(activeLifetime);
-            _runLifetime = current;
             generation = ++_runGeneration;
             RestoreAuthoritativeLocked();
             _viewState = NetworkControlsViewState.Loading;
             _status = "Loading network status…";
             _statusIsError = false;
         }
-        previous?.Cancel();
-        previous?.Dispose();
         Invalidate();
-        _ = ObserveNetworkAsync(generation, current.Token);
-        _ = ObserveBluetoothAsync(generation, current.Token);
+        Operations.RunLatest(
+            ProviderObservationOperation,
+            operation => new ValueTask(ObserveProvidersAsync(generation, operation)),
+            WidgetOperationLifetime.Active);
     }
 
     private void StopActiveRun()
     {
-        CancellationTokenSource? lifetime;
         lock (_stateLock)
         {
             ++_runGeneration;
-            lifetime = _runLifetime;
-            _runLifetime = null;
             RestoreAuthoritativeLocked();
         }
-        lifetime?.Cancel();
-        lifetime?.Dispose();
     }
 
     private void RestoreAuthoritative(string? message = null)
@@ -1727,7 +1180,8 @@ public sealed class NetworkControlsWidget : Widget
         if (_networkStatus is not null && _wifiSnapshot is not null && _wifiRadio is not null)
         {
             ReconcileSelectionLocked();
-            _viewState = DeriveViewState(_networkStatus, _wifiSnapshot);
+            _viewState = NetworkControlsProviderPolicy.DeriveViewState(
+                _networkStatus, _wifiSnapshot);
         }
     }
 
@@ -1746,46 +1200,10 @@ public sealed class NetworkControlsWidget : Widget
         Invalidate();
     }
 
-    private WidgetView RenderProviderState(StackElement header, NetworkControlsViewState state)
-    {
-        var (title, help, buttonLabel, error) = state switch
-        {
-            NetworkControlsViewState.Initial => ("Ready when you are",
-                "Open the widget to load Windows network status.", "Load network status", false),
-            NetworkControlsViewState.Loading => ("Checking network status",
-                "The host network provider is loading one current snapshot.", "Loading…", false),
-            NetworkControlsViewState.PermissionDenied => ("Network permission required",
-                "Grant nearby Wi-Fi read access in Settings → Permissions, then try again.", "Try again", true),
-            NetworkControlsViewState.LifecycleDenied => ("Network status paused",
-                "Return this widget to the foreground before requesting network status.", "Try again", true),
-            NetworkControlsViewState.ChannelClosed => ("Network service disconnected",
-                "The protected host channel closed. Reopen or retry the widget.", "Reconnect", true),
-            NetworkControlsViewState.ServiceUnavailable => ("Wi-Fi service unavailable",
-                "The host could not provide protected Wi-Fi services to this worker.", "Try again", true),
-            _ => ("Network status could not be loaded",
-                "The provider returned an unexpected error. No system details were exposed.", "Try again", true),
-        };
-        var retry = UI.Button(buttonLabel, "retry", "network.retry")
-            .Icon(WidgetGlyph.Refresh, buttonLabel)
-            .Busy(state == NetworkControlsViewState.Loading)
-            .Disabled(state == NetworkControlsViewState.Loading)
-            .Classes("network-retry-action");
-        var root = UI.Stack("network.root", header,
-                UI.Stack("network.state.card",
-                        UI.Text(title, "network.state.title", title).Classes("network-state-title"),
-                        UI.Text(help, "network.state.help", help)
-                            .Classes("network-help", error ? "is-error" : "is-neutral"),
-                        retry)
-                    .Classes("network-state-card"))
-            .InputScope("network-controls")
-            .Classes("network-controls-widget", error ? "has-error" : "has-state");
-        return new WidgetView(root, InitialFocusId: "network.retry", Surface: CompactSurface);
-    }
-
-    private bool IsCurrentRun(long generation, CancellationToken cancellationToken)
+    private bool IsCurrentRun(long generation, WidgetOperationContext operation)
     {
         lock (_stateLock)
-            return _runGeneration == generation && !cancellationToken.IsCancellationRequested;
+            return _runGeneration == generation && operation.IsCurrent;
     }
 
     private void SetProviderError(NetworkControlsViewState state, string message, long generation)
@@ -1812,209 +1230,12 @@ public sealed class NetworkControlsWidget : Widget
         Invalidate();
     }
 
-    private static WidgetNetworkStatus NormalizeStatus(WidgetNetworkStatus status) => status with
-    {
-        ActiveProfileId = TrimOrNull(status.ActiveProfileId),
-        ActiveProfileName = TrimOrNull(status.ActiveProfileName),
-        AttemptProfileId = TrimOrNull(status.AttemptProfileId),
-        SignalPercent = status.SignalPercent is { } signal ? Math.Clamp(signal, 0, 100) : null,
-    };
-
-    private static WidgetAvailableWifiNetworks NormalizeWifi(WidgetAvailableWifiNetworks snapshot)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        var result = new List<WidgetAvailableWifiNetwork>();
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var network in snapshot.Networks ?? [])
-        {
-            if (network is null || string.IsNullOrWhiteSpace(network.NetworkId)) continue;
-            var id = network.NetworkId.Trim();
-            if (!ids.Add(id)) continue;
-            result.Add(network with
-            {
-                NetworkId = id,
-                DisplayName = string.IsNullOrWhiteSpace(network.DisplayName)
-                    ? "Hidden network" : network.DisplayName.Trim(),
-                SignalPercent = Math.Clamp(network.SignalPercent, 0, 100),
-            });
-        }
-        if (snapshot.ScanState != WidgetWifiScanState.Ready) result.Clear();
-        return snapshot with { Networks = result };
-    }
-
-    private static WidgetWifiRadio NormalizeRadio(WidgetWifiRadio radio)
-    {
-        ArgumentNullException.ThrowIfNull(radio);
-        var canControl = radio.CanControl &&
-            radio.State is WidgetWifiRadioState.On or WidgetWifiRadioState.Off;
-        return radio with { CanControl = canControl };
-    }
-
-    private static WidgetBluetoothSnapshot NormalizeBluetooth(WidgetBluetoothSnapshot snapshot)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        var devices = new List<WidgetBluetoothDevice>();
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var device in snapshot.Devices ?? [])
-        {
-            if (device is null || string.IsNullOrWhiteSpace(device.DeviceId) ||
-                string.IsNullOrWhiteSpace(device.DisplayName)) continue;
-            var id = device.DeviceId.Trim();
-            if (!ids.Add(id)) continue;
-            devices.Add(device with
-            {
-                DeviceId = id,
-                DisplayName = device.DisplayName.Trim(),
-                IsPaired = device.IsPaired || device.IsConnected,
-            });
-        }
-        if (snapshot.DiscoveryState != WidgetBluetoothDiscoveryState.Ready) devices.Clear();
-        var canControl = snapshot.CanControlRadio &&
-            snapshot.RadioState is WidgetBluetoothRadioState.On or WidgetBluetoothRadioState.Off;
-        return snapshot with { CanControlRadio = canControl, Devices = devices };
-    }
-
     private void ReconcileBluetoothSelectionLocked()
     {
-        var devices = _bluetooth?.Devices ?? [];
-        var priorIndex = _selectedBluetoothIndex;
-        var retained = _selectedBluetoothDeviceId is null ? -1 : IndexOf(devices, device =>
-            string.Equals(device.DeviceId, _selectedBluetoothDeviceId, StringComparison.Ordinal));
-        _selectedBluetoothIndex = retained >= 0
-            ? retained
-            : Math.Clamp(priorIndex, 0, Math.Max(0, devices.Count - 1));
-        _selectedBluetoothDeviceId = devices.Count == 0
-            ? null
-            : devices[_selectedBluetoothIndex].DeviceId;
+        var selection = NetworkControlsProviderPolicy.ReconcileBluetoothSelection(
+            _bluetooth, _selectedBluetoothDeviceId, _selectedBluetoothIndex);
+        _selectedBluetoothDeviceId = selection.Id;
+        _selectedBluetoothIndex = selection.Index;
     }
 
-    private static string? TrimOrNull(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static int IndexOf<T>(IReadOnlyList<T> items, Func<T, bool> predicate)
-    {
-        for (var index = 0; index < items.Count; index++)
-            if (predicate(items[index])) return index;
-        return -1;
-    }
-
-    private static NetworkControlsViewState DeriveViewState(
-        WidgetNetworkStatus status, WidgetAvailableWifiNetworks wifi)
-    {
-        if (status.WirelessAvailability == WidgetNetworkWirelessAvailability.RadioOff)
-            return NetworkControlsViewState.RadioOff;
-        if (status.WirelessAvailability is WidgetNetworkWirelessAvailability.NoAdapter or
-            WidgetNetworkWirelessAvailability.ServiceUnavailable)
-            return NetworkControlsViewState.WirelessUnavailable;
-        return wifi.ScanState switch
-        {
-            WidgetWifiScanState.NotScanned => NetworkControlsViewState.NotScanned,
-            WidgetWifiScanState.Scanning => NetworkControlsViewState.Scanning,
-            WidgetWifiScanState.PreciseLocationDenied => NetworkControlsViewState.PreciseLocationDenied,
-            WidgetWifiScanState.Unavailable => NetworkControlsViewState.WirelessUnavailable,
-            _ when wifi.Networks.Count == 0 => NetworkControlsViewState.EmptyNetworks,
-            _ => NetworkControlsViewState.Ready,
-        };
-    }
-
-    private static string LiveStatus(
-        WidgetNetworkStatus status, WidgetAvailableWifiNetworks wifi)
-    {
-        var live = status.Connectivity switch
-        {
-            WidgetNetworkConnectivity.Internet => "Internet access",
-            WidgetNetworkConnectivity.Local => "Local network only",
-            _ => "Offline",
-        };
-        return wifi.ScanState switch
-        {
-            WidgetWifiScanState.NotScanned => $"{live} · scan when ready",
-            WidgetWifiScanState.Scanning => $"{live} · scanning nearby",
-            WidgetWifiScanState.PreciseLocationDenied => $"{live} · location permission required",
-            WidgetWifiScanState.Ready => $"{live} · {wifi.Networks.Count} nearby · scan complete",
-            _ => $"{live} · Wi-Fi scan unavailable",
-        };
-    }
-
-    private static string ScanSummary(WidgetAvailableWifiNetworks wifi) => wifi.ScanState switch
-    {
-        WidgetWifiScanState.NotScanned => "Not scanned",
-        WidgetWifiScanState.Scanning => "Scanning",
-        WidgetWifiScanState.PreciseLocationDenied => "Permission required",
-        WidgetWifiScanState.Unavailable => "Unavailable",
-        _ => wifi.Networks.Count == 1 ? "1 nearby" : $"{wifi.Networks.Count} nearby",
-    };
-
-    private static bool CanScan(WidgetNetworkStatus status) =>
-        status.WirelessAvailability == WidgetNetworkWirelessAvailability.Available;
-
-    private static bool IsConnected(WidgetNetworkStatus? status) =>
-        status?.Connectivity is WidgetNetworkConnectivity.Internet or WidgetNetworkConnectivity.Local;
-
-    private static (string Title, string Detail, bool IsError)? WirelessNote(
-        WidgetNetworkStatus status, WidgetWifiScanState scanState)
-    {
-        if (scanState == WidgetWifiScanState.PreciseLocationDenied ||
-            status.DetailsAccess == WidgetNetworkDetailsAccess.PrivacyRestricted)
-            return ("PRECISE LOCATION REQUIRED",
-                "Windows requires precise-location access to show nearby Wi-Fi networks. The widget never receives location coordinates.", false);
-        if (status.WirelessAvailability == WidgetNetworkWirelessAvailability.RadioOff)
-            return ("WI-FI RADIO OFF", "Turn Wi-Fi on in Windows, then scan again.", false);
-        if (status.WirelessAvailability == WidgetNetworkWirelessAvailability.NoAdapter)
-            return ("NO WI-FI ADAPTER", "No wireless adapter is currently available.", false);
-        if (status.WirelessAvailability == WidgetNetworkWirelessAvailability.ServiceUnavailable)
-            return ("WI-FI SERVICE UNAVAILABLE", "Windows wireless service is unavailable.", true);
-        return null;
-    }
-
-    private static (NetworkControlsViewState State, string Message) MapCapabilityFailure(
-        string errorCode) => errorCode switch
-        {
-            "permission_denied" or "capability_revoked" or "capability_not_declared" =>
-                (NetworkControlsViewState.PermissionDenied, "Nearby Wi-Fi permission denied"),
-            "lifecycle_denied" =>
-                (NetworkControlsViewState.LifecycleDenied, "Network request denied by widget lifecycle"),
-            "channel_closed" =>
-                (NetworkControlsViewState.ChannelClosed, "Network service channel closed"),
-            "platform_unavailable" or "provider_unavailable" =>
-                (NetworkControlsViewState.ServiceUnavailable, "Windows Wi-Fi provider unavailable"),
-            _ => (NetworkControlsViewState.Error, "Network provider request failed"),
-        };
-
-    private static string MapScanFailure(string errorCode) => errorCode switch
-    {
-        "permission_denied" or "capability_revoked" or "capability_not_declared" =>
-            "Nearby Wi-Fi permission denied",
-        "lifecycle_denied" => "Wi-Fi scan paused by lifecycle",
-        "provider_busy" => "A Wi-Fi scan is already in progress",
-        "platform_unavailable" => "Windows Wi-Fi scan is unavailable",
-        _ => "Wi-Fi scan could not be started",
-    };
-
-    private static string MapConnectFailure(string errorCode) => errorCode switch
-    {
-        "credential_required" => "This network needs a password · use Windows Quick Settings to connect",
-        "unsupported_authentication" => "This Wi-Fi authentication method needs Windows network settings",
-        "resource_not_found" => "That scan result expired · scan again",
-        "provider_busy" => "Another network connection is already in progress",
-        "permission_denied" or "capability_revoked" or "capability_not_declared" =>
-            "Wi-Fi connection permission denied",
-        "lifecycle_denied" => "Network control paused by lifecycle",
-        "platform_unavailable" => "Windows Wi-Fi connection control is unavailable",
-        _ => "Connection request failed · previous connection retained",
-    };
-
-    private static string MapRadioFailure(string errorCode) => errorCode switch
-    {
-        "permission_denied" or "capability_revoked" or "capability_not_declared" =>
-            "Wi-Fi radio control permission denied",
-        "lifecycle_denied" => "Wi-Fi radio control paused by lifecycle",
-        "wifi_hardware_disabled" => "Wi-Fi is disabled by a hardware switch",
-        "wifi_radio_policy_denied" => "Windows policy denied Wi-Fi radio control",
-        "wifi_radio_partial_failure" =>
-            "Wi-Fi changed only partially · showing the current Windows state",
-        "wifi_no_adapter" => "No Wi-Fi adapter is available",
-        "platform_unavailable" => "Windows Wi-Fi radio control is unavailable",
-        _ => "Wi-Fi radio could not be changed",
-    };
 }

@@ -1478,6 +1478,18 @@ with C++ installed:
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls
   reference](network-controls.md).
+- The DLV-028 managed split keeps `NetworkControlsWidget` as the only
+  lifecycle, host-command, committed-state, and invalidation owner. Provider
+  normalization/merge, command admission/feedback, closed action routing, and
+  snapshot-only presentation now have named internal boundaries. Coordination
+  is one state lock, one command semaphore, one active-run generation, and one
+  SDK-owned `Active` latest-operation lane; the former field cancellation
+  source and two detached provider-observer roots were removed. Policies and
+  presentation share no mutable state with the widget. Bounded dirty-worktree
+  Release run `20260810T113815Z-8a7cd592` passed the SDK build with zero
+  warnings/errors, Widget SDK contracts 84/84, Network Controls 22/22, and the
+  generic first-party AppContainer/worker seam 6/6 in 74.8 seconds. This is
+  focused implementation evidence, not a canonical clean-worktree aggregate.
 
 ## Diagnostics
 
