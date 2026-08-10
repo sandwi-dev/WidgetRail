@@ -367,6 +367,31 @@ SDK 84/84. The residual root receives the cohesive exception recorded in the
 engineering-quality review; material growth or a returning provider,
 presentation, persistence, or independent coordination concern reopens it.
 
+### DLV-035 — Split the Windows network backend by stable responsibility
+
+**State:** Done
+**Closing commits:** `51a6ec4` (`[DLV-035] Split Windows network backend
+responsibilities`), corrected by `f9df9b9` (`[DLV-035] Preserve bounded
+network deadline delivery`)
+**Integrated on `main`:** `d151173`
+
+**Reviewer disposition:** Accepted after three bounded concurrency corrections.
+The provider remains the only MTA thread, native-adapter lifetime, committed
+snapshot, state-lock, channel, and publication owner while closed command,
+operation/deadline, reconciliation, event-projection, and bounded queue-
+admission policies have focused seams. The final 836-line backend delegates
+one fixed 128-entry queue to a 275-line internal owner: ordinary work is capped
+at 124; four physical deadline positions plus one highest-generation overflow
+value per operation prevent arbitrary delayed stale timer callbacks from
+displacing the current connection or scan deadline. Overflow promotion retains
+its original cross-type arrival sequence and receives a new FIFO tail position;
+the owner thread still rejects stale generations. A packed closed/count state
+balances producers even after the bounded close wait without a disposable-
+signal race. Retained correction run `20260810T175643Z-9adefc14` passes Windows
+Network Provider 42/42 and all 52 documentation contracts; the original stable
+run also passed PlatformBroker 51/51. Both are correctly dirty-worktree focused
+evidence, and no aggregate, native adapter, widget, or OverlayHost suite ran.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -387,8 +412,8 @@ remains the largest first-party monolith and DLV-037 was only a queue-order
 dependency. DLV-029 must preserve current focus IDs and navigation behavior so
 the independent native/shared-scroll correction remains separately reviewable.
 Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
-concentration before dashboard controls add behavior. DLV-035 and
-DLV-041 then keep the Windows network backend and its native interop owner
+concentration before dashboard controls add behavior. Accepted DLV-035 and
+assigned DLV-041 keep the Windows network backend and its native interop owner
 adjacent; DLV-036 and DLV-044 disposition the aggregate Settings partial type;
 DLV-037 continues the platform-policy hotspot queue; DLV-039 and DLV-040 finish
 the residual bridge-server responsibility split; and DLV-043 replaces
@@ -1029,9 +1054,10 @@ Spotify widget rather than the platform backend.
 
 ### DLV-035 — Split the Windows network backend by stable responsibility
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `d151173`
 **Baseline:** accepted DLV-042 integration `f64c35a` plus the reviewer
 control-plane commit assigning this milestone
+**Closing commits:** `51a6ec4`, corrected by `f9df9b9`
 **Dependencies:** DLV-028 and DLV-031
 **Owner:** managed Windows network provider internals and deterministic native-
 adapter fixtures; no widget presentation or native overlay-host files
@@ -1067,8 +1093,9 @@ owner, or overlaps the preserved native platform worktree.
 
 ### DLV-041 — Split Windows network native interop by stable responsibility
 
-**State:** Ready after DLV-035
-**Baseline:** closing commit of DLV-035
+**State:** Assigned
+**Baseline:** accepted DLV-035 integration `d151173` plus the reviewer
+control-plane commit assigning this milestone
 **Dependencies:** DLV-035
 **Owner:** managed Windows network native-adapter internals and deterministic
 interop fixtures; no widget, broker, public capability/protocol, or native
