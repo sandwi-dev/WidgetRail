@@ -211,8 +211,12 @@ remains off until the publisher-trust gates in Phase 4.
   140 ms. Its focused Release run and 44 reviewed production-HWND frames cover
   delayed Spotify/Games admission, rapid reversal, and same-identity reload
   without the startup dialog, black clear, square edge, stale extent, or tray
-  loss. Physical packaged display/controller verification remains; do not add
-  widget-specific animation.
+  loss in that harness. A 2026-08-10 real-product user run invalidated product
+  closure: Games & Apps resize is visibly laggy, flickers the surrounding
+  interface, and exposes large gray/black regions. DLV-025 now measures the
+  UI-thread resize/redraw/bridge cadence and must deliver an atomic smooth path
+  or replace live extent animation with an immediate/composition-only switch.
+  Do not add widget-specific animation.
   Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
   macOS defaults, or decorative animation into the controller shell.

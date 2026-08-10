@@ -216,7 +216,8 @@ by DLV-024; the accepted authority and whole-state-reset design remains intact.
 **Closing commit:** `b0c95ca` (`[DLV-020] make widget switching visually continuous`)
 **Integrated on `main`:** `7cda335`
 
-**Reviewer disposition:** Accepted. The host now retains one previously
+**Reviewer disposition:** Accepted at focused automated-evidence level, then
+reopened at product level by DLV-025. The host now retains one previously
 admitted snapshot and its surface as visual-only presentation while the
 destination worker has no admitted snapshot; input, lifecycle, focus, and UI
 Automation authority already belong to the destination. Snapshot admission
@@ -228,7 +229,10 @@ plus both production-host fixtures. Forty-four reviewed HWND captures retain
 Network through delayed Spotify startup, Spotify through delayed Games startup,
 and Games through same-identity reload without the `Starting isolated ...`
 surface, black clear, square edge, stale extent, or tray loss. Physical display,
-controller, and assistive-technology sign-off remains verification debt.
+controller, and assistive-technology sign-off was still verification debt. The
+2026-08-10 user run subsequently showed severe cadence loss, interface flicker,
+and exposed gray/black bands during the real Games & Apps resize. That temporal
+product evidence invalidates closure of GBA-004; DLV-025 owns the correction.
 
 ## Widgets lane
 
@@ -625,7 +629,8 @@ by the widgets lane or a public protocol change not already represented.
 
 ### DLV-020 — Make widget switching visually continuous
 
-**State:** Done; accepted and integrated as `7cda335`
+**State:** Done; integrated as `7cda335`; product acceptance reopened by
+DLV-025 after user evidence
 **Baseline:** `2a160b4`, the accepted platform-lane DLV-014 closing commit
 **Owner:** OverlayHost presentation, invalidation, rounded clipping, render
 target lifecycle, and transition tests
@@ -658,10 +663,62 @@ host Release tests plus a bounded frame-sequence capture. No aggregate.
 substantial theme redesign, or interactive game/display evidence unavailable to
 automation.
 
-### DLV-021 — Correct shared text and component geometry end to end
+### DLV-025 — Eliminate transition tearing and UI-thread stutter
 
 **State:** Assigned
-**Baseline:** `7cda335`, the accepted DLV-020 integration baseline
+**Baseline:** `17e4388`, the clean reviewer control-plane commit containing the
+accepted DLV-020 integration
+**Owner:** OverlayHost transition scheduling, Win32/DWM window composition,
+Direct2D resize/invalidation, native bridge/UI-thread interaction, and temporal
+product evidence
+
+**Objective:** Correct the live regression that makes widget-size transitions
+miss frames, flicker the interface, and expose large gray/black/stale regions
+around Games & Apps. Preserve visual continuity only when it can be delivered
+within a measured frame budget; an immediate stable switch is preferable to a
+laggy or tearing animation.
+
+**In scope:** reproduce the exact real Games & Apps and Spotify switch paths;
+instrument timer cadence and per-frame duration across `SetWindowPos`, `WM_SIZE`,
+Direct2D target resize/resource recreation, invalidation, synchronous redraw,
+bridge calls, and committed presentation; identify exposed/uncommitted regions
+and UI-thread blocking; select one host-owned atomic presentation design;
+retarget/reversal, same-identity refresh, reduced motion, compact/standard/wide,
+100-150% scale, and continuously painted tray/backdrop behavior. If a blocking
+bridge operation is measured on the transition-critical UI path, move or bound
+only the necessary request ownership without changing widget APIs or authority.
+
+**Out of scope:** per-widget backgrounds or timing branches, hiding artifacts
+with a longer delay, decorative motion, a general bridge rewrite without
+measured relevance, changing Games & Apps composition, new public widget
+protocol, or claiming smoothness from static synthetic captures alone.
+
+**Acceptance criteria:** real first-party Games & Apps, Spotify, Audio Mixer,
+and Network switch sequences show no black, gray, transparent, stale, or
+unpainted bands and no whole-interface flicker; temporal evidence reports
+transition frame/cadence distribution and identifies any missed-frame budget;
+the selected path performs no synchronous per-frame operation whose measured
+cost violates that budget; rapid reversal and same-identity refresh remain
+continuous; reduced motion is immediate; focus/input/UIA authority remains
+correct; settled and hidden cost are unchanged. If smooth live HWND extent
+animation cannot satisfy these criteria on the current compositor, replace it
+with an immediate or composition-only transition and document the decision.
+
+**Verification:** Tier 1 transition, placement/targeting, renderer, resize, and
+host Release suites; production OverlayHost build; a bounded timestamped frame
+sequence or video-derived capture using the real first-party product surfaces,
+including the user-reported Games & Apps size change. Record frame times and
+review every transition interval, not only endpoints. No aggregate.
+
+**Stop/escalate when:** the only credible correction requires a new compositor
+or window technology, materially changes the public protocol/threat model, or
+cannot be evaluated without a user-only physical display. Exhaust automated
+real-product temporal evidence before escalating.
+
+### DLV-021 — Correct shared text and component geometry end to end
+
+**State:** Ready after DLV-025
+**Baseline:** closing commit of DLV-025
 **Owner:** native declarative measurement/paint, shared Button/ActionSurface/
 SectionHeader styles, and component-level semantic/capture tests
 

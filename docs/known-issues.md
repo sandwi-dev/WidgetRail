@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
-| GBA-004 | P1 | Verifying | OverlayHost presentation / invalidation | DLV-020 retains the prior admitted surface until the destination snapshot arrives, then performs one bounded in-place resize; 44 reviewed production-HWND frames show no startup dialog, black clear, square edge, stale extent, or tray loss. Physical packaged display/controller verification remains. |
+| GBA-004 | P1 | Implementing | OverlayHost UI thread / presentation / composition | DLV-020 removed the startup surface in focused captures, but 2026-08-10 user evidence shows the real Games & Apps extent animation misses frames, flickers the whole interface, and exposes large gray/black bands. DLV-025 is assigned. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -203,18 +203,32 @@ the existing HWND render target in place. The focused Release run passed the
 placement, targeting, transition, chrome, renderer, and two production-host
 fixtures. Forty-four reviewed HWND frames cover Audio, Network, delayed Spotify,
 delayed Games & Apps, rapid reversal, and same-identity Games reload without a
-startup dialog, black clear, square edge, stale extent, or tray loss. Physical
-packaged display/controller verification remains.
+startup dialog, black clear, square edge, stale extent, or tray loss. That
+evidence was static and synthetic enough to miss temporal product behavior. A
+2026-08-10 user capture of the real Games & Apps path shows a pronounced laggy
+resize with whole-interface flicker, light-gray exposed areas, black side/lower
+bands, and partially committed geometry. Code inspection also confirms that
+the 16 ms transition timer, per-frame `SetWindowPos`, synchronous `WM_SIZE` and
+Direct2D target resize, and `RedrawWindow(...RDW_UPDATENOW...)` share the Win32
+UI thread. Widget code is isolated in worker processes, but several host bridge
+requests still perform blocking pipe reads on their caller; DLV-025 must measure
+rather than assume whether those requests overlap the failing interval.
 
 **Acceptance:**
 
-1. A deterministic host test or instrumented local trace identifies whether
-   placement, render-target recreation, snapshot refresh, full-window clear, or
-   tray invalidation causes the flash.
+1. A timestamped real-product trace identifies the cost and committed-frame
+   ordering across timer dispatch, placement, `WM_SIZE`, target resize,
+   invalidation/redraw, bridge work, and presentation; static endpoint captures
+   are insufficient.
 2. Switching widgets keeps the host-owned tray continuously painted; widget
-   snapshot/style changes invalidate only the required regions.
-3. Repeated dashboard and open-widget switching shows no flash at supported
-   DPI/interface scales, and does not add idle presentation work.
+   snapshot/style changes expose no gray, black, transparent, stale, or
+   unpainted regions.
+3. Repeated real Games & Apps, Spotify, Audio Mixer, and Network switching shows
+   no flicker and meets a documented cadence/frame-time budget at supported
+   DPI/interface scales. If live HWND resizing cannot meet it, the host uses an
+   immediate or composition-only fallback rather than shipping laggy motion.
+4. Reduced motion is immediate, reversal is stable, and no idle presentation
+   work is added.
 
 ## GBA-005 — B must behave as hierarchical Back
 
