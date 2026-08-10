@@ -487,8 +487,8 @@ Accepted DLV-042 separates the residual Audio Mixer provider-lifecycle
 concentration before dashboard controls add behavior. Accepted DLV-035 and
 DLV-041 separate the Windows network backend and its native interop owner while
 retaining singular lifetime authority; accepted DLV-036 and DLV-044 now
-disposition the aggregate Settings partial type; assigned DLV-037 continues the
-platform-policy hotspot queue; DLV-039 and DLV-040 finish
+disposition the aggregate Settings partial type; DLV-037 is in bounded
+correction after review of candidate `b6a4de3`; DLV-039 and DLV-040 finish
 the residual bridge-server responsibility split; and DLV-043 replaces
 Spotify's partial-file organization with real type boundaries before test-
 harness cleanup. DLV-006 must still land before Spotify continuous-list and
@@ -1308,11 +1308,29 @@ committed-state owner.
 
 ### DLV-037 — Split managed worker-session transport from gesture authority
 
-**State:** Assigned
+**State:** Correction requested; candidate `b6a4de3` is not accepted or
+integrated
 **Baseline:** accepted DLV-044 closing commit `8599694`
 **Dependencies:** DLV-032 and DLV-044 only for queue order
 **Owner:** managed `WidgetProcessClient` internals and direct runtime fixtures;
 no native host files
+
+**Reviewer evidence:** Candidate `b6a4de3` gives pending requests, gesture
+reservations, and terminal session resources named owners and retained stable
+dirty evidence passes Widget Runtime 69/69, Bridge 52/52, generic worker 9/9,
+and documentation 52. It does not yet satisfy the terminal/replacement gate.
+`StopCoreAsync` can retire and finish a session while `EnsureConnectedAsync`
+still constructs it under the lifecycle gate, and the extracted session permits
+transport, process/job, companion, lease, and task attachment after terminal
+cleanup. A worker or resource can therefore enter after the sole cleanup path
+has completed. Session identity is also checked before global invalidation,
+action-failure, process-failure, and companion-gesture effects rather than at a
+linearized publication boundary, so replacement can win between the check and
+the old-session effect. The new direct fixtures prove isolated dictionaries but
+do not force these actual client interleavings. The implementation task has
+been told to preserve its uncommitted DLV-039 files, add a separate DLV-037
+correction commit, and prove construction-versus-Stop plus stale publication/
+gesture orderings with manually controlled no-sleep fixtures.
 
 **Objective:** Preserve one worker-session/lifecycle authority while making
 process startup/transport, request correlation and drain, content/companion
