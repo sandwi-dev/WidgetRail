@@ -291,6 +291,13 @@ Preserve the product direction already recorded in the roadmap:
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
 - Lightweight idle/hidden operation suitable for use while gaming.
+- While the product remains an explicitly single-user pre-release development
+  build, prefer a clean current overlay-owned persistence schema over retaining
+  obsolete compatibility code. A breaking schema change may reset only the
+  affected local overlay state when the reset is atomic, deterministic,
+  documented, and followed by authoritative reconciliation. Never partially
+  reinterpret or silently truncate incompatible state, and never extend this
+  policy to external provider data, credentials, accounts, or user files.
 
 Do not approve local hacks, per-widget renderer offsets, unbounded snapshots,
 title-derived launch identity, raw paths/commands in widgets, undocumented

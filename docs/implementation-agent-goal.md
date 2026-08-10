@@ -213,6 +213,22 @@ Avoid:
 - Tests dominated by sleeps, setup duplication, or implementation mirroring.
 - Features described as complete without evidence proportional to the claim.
 
+### Pre-release local-state compatibility
+
+This product currently has one development user and no public persistence-
+compatibility promise. Do not retain obsolete overlay-owned schema branches,
+duplicated encodings, or architectural compromises solely to preserve local
+pre-release state.
+
+When an assigned breaking change makes an older local overlay schema
+incompatible, prefer one clean current schema and reset only the affected
+overlay-owned state. The reset must be atomic, deterministic, bounded,
+documented, and followed by current authoritative reconciliation. Tests must
+prove that incompatible state is reset as a whole: never partially migrate,
+silently truncate, reinterpret, or allow it to authorize an action. Do not
+delete or reset external provider data, credentials, accounts, user files, or
+state outside the explicitly assigned overlay-owned store.
+
 ## Subagent use
 
 Use subagents when they can perform concrete independent work in parallel, such

@@ -315,23 +315,30 @@ Library, order, selection, explicit additions, and exclusions immediately while
 fresh opaque launch authority and automatic trusted-Game changes reconcile in
 the background.
 
-**In scope:** a bounded schema migration that persists sanitized display
-projection separately from short-lived AppIds; disabled/checking launch state
-until exact resolution; last-good-first rendering; lifecycle-owned background
-resolve plus catalog reconciliation; atomic replacement, missing/reappearing
-identity, authoritative reclassification, exclusions, CAS conflicts, and
-failure/retry behavior; accurate stale/checking/accessibility copy.
+**In scope:** one bounded current schema that persists sanitized display
+projection separately from short-lived AppIds; an atomic documented reset of
+unsupported older local overlay state rather than partial migration or silent
+truncation; disabled/checking launch state until exact resolution; last-good-
+first rendering; lifecycle-owned background resolve plus catalog
+reconciliation; atomic replacement, missing/reappearing identity,
+authoritative reclassification, exclusions, CAS conflicts, and failure/retry
+behavior; accurate stale/checking/accessibility copy.
 
-**Out of scope:** persisting AppIds, raw paths, AUMIDs, Steam IDs, commands, or
-unbounded icon pixels; launching stale entries; changing provider discovery;
-new store adapters; or hiding a failed authority refresh.
+**Out of scope:** retaining obsolete pre-release schema compatibility solely to
+preserve this development user's local state; partially reinterpreting legacy
+state; persisting AppIds, raw paths, AUMIDs, Steam IDs, commands, or unbounded
+icon pixels; launching stale entries; changing provider discovery; new store
+adapters; or hiding a failed authority refresh.
 
-**Acceptance criteria:** a fresh widget instance renders the bounded persisted
-Library before a delayed provider completes; stale rows cannot launch; exact
-resolved rows become actionable without focus/order churn; additions,
-removals, exclusions, recent-first ordering, and selection survive overlay and
-worker restart; failed refresh retains last-good display with actionable safe
-status; background exit cancels and rejects late completion.
+**Acceptance criteria:** unsupported older state resets atomically as a whole
+and cannot partially preserve membership, exclusions, projection, selection,
+or launch authority; a fresh widget instance renders the bounded current-
+schema Library before a delayed provider completes; stale rows cannot launch;
+exact resolved rows become actionable without focus/order churn; current-
+schema additions, removals, exclusions, recent-first ordering, and selection
+survive overlay and worker restart; failed refresh retains last-good display
+with actionable safe status; background exit cancels and rejects late
+completion.
 
 **Verification:** Tier 1 Games & Apps, private-state, lifecycle, and generic
 worker Release suites plus one bounded fresh-worker delayed-provider fixture.
