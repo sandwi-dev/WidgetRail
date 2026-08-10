@@ -836,11 +836,27 @@ platform worktree.
 
 ### DLV-032 — Extract the bridge request dispatcher
 
-**State:** Assigned
+**State:** Correction required after the already-started DLV-034 preservation
+boundary; candidate `8c11a27` is not accepted or integrated
 **Baseline:** accepted DLV-031 closing commit `ffa1edc`
 **Dependencies:** DLV-031 when shared broker/bridge test infrastructure changes
 **Owner:** managed `WidgetBridgeServer` request scheduling and direct bridge
 fixtures; framing and session ownership remain in the server
+
+**Reviewer correction:** Candidate `8c11a27` creates a cohesive internal
+dispatcher and removes the server's scheduling registries, but it does not meet
+the bounded-drain acceptance boundary. Production `CancelAndDrainAsync` awaits
+`Task.WhenAll` without a deadline, while the direct forced-drain test covers only
+handlers that honor cancellation. It also retains raw `JsonElement` `widgetId`
+extraction as an implicit scheduling convention rather than one closed typed
+request-classification/key seam. After DLV-034 reaches its already-started clean
+commit, a separate DLV-032 correction must add a production-enforced drain
+deadline, safely observe/quarantine cancellation-ignoring late completions with
+no late reply/fatal publication into a closed or replacement session, clear all
+dispatcher IDs/slots/tails at the deadline, and add deterministic manually
+controlled deadline plus malformed/unknown classification tests. Stop if this
+requires a wider lifecycle/protocol change; do not fake closure by dropping
+references to harmful continuing work.
 
 **Objective:** Give global/per-widget request admission, duplicate IDs, FIFO
 tails, completion cleanup, fatal-session cancellation, and bounded drain one
@@ -872,8 +888,10 @@ duplicates client/session authority, or touches native platform work.
 
 ### DLV-034 — Split the Spotify platform backend by stable responsibility
 
-**State:** Ready after DLV-032
-**Baseline:** closing commit of DLV-032
+**State:** Assigned under the preserve-in-progress rule; finish one coherent
+commit, then stop for the separate DLV-032 correction before DLV-035
+**Baseline:** unaccepted DLV-032 candidate `8c11a27`; this commit and DLV-034
+cannot be integrated until the DLV-032 correction is accepted
 **Dependencies:** DLV-023 and DLV-031
 **Owner:** managed Windows Spotify provider internals and injected-transport
 fixtures

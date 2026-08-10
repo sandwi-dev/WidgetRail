@@ -3083,9 +3083,11 @@ that disposition independently.
 
 ### EQ-022 — P2 — Bridge scheduling policy is embedded in the transport session
 
-**Status: Open at current implementation HEAD `0be052b`; no related bridge-
-scheduler ownership changes landed. The policy is bounded and documented, but
-its ownership and deterministic verification surface are not yet cohesive.**
+**Status: Candidate DLV-032 commit `8c11a27` is not accepted. It creates the
+cohesive dispatcher seam, but production drain remains unbounded for
+cancellation-ignoring work and request classification remains an implicit raw-
+JSON convention. A correction is required after the already-started DLV-034
+preservation boundary.**
 
 **Evidence.** `WidgetBridgeServer.RunAsync` now owns a 16-slot
 `SemaphoreSlim`, `activeRequestIds`, `requestTasks`, a lock-protected
@@ -3109,6 +3111,20 @@ is no direct deterministic seam for different-widget parallelism, failure before
 and after handler admission, cancellation while waiting on a predecessor,
 capacity release on every outcome, fairness, or forced drain when work ignores
 cancellation.
+
+Candidate `8c11a27` removes the server-owned semaphore, active-ID/task
+registries, ordering lock, widget tails, fatal slot, and scheduling continuation
+into one 214-line internal `BridgeRequestDispatcher`. Its manually controlled
+tests cover success, ordinary failure, cooperative cancellation, same-widget
+FIFO, different-widget progress, predecessor failure, duplicates, capacity, and
+cooperative forced drain without sleeps. The candidate is not closure: its
+production `CancelAndDrainAsync` still awaits `Task.WhenAll` with no deadline,
+the forced-drain handler honors the dispatcher token, and `RequestWidgetId`
+still reads the raw unvalidated `JsonElement` convention before request-specific
+strict decoding. The retained focused run `20260810T133940Z-18b2982e` passes
+Bridge 51/51, worker 9/9, and documentation 52, but those green cases do not
+exercise the missing cancellation-ignoring deadline or typed malformed/unknown
+classification boundary.
 
 **Why it matters.** This is the bridge's concurrency kernel. A missed cleanup
 can leak one of only 16 slots, a missed request classification can reorder state,
