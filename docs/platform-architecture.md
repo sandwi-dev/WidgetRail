@@ -27,7 +27,7 @@ flowchart LR
 | Component | Implemented responsibility |
 | --- | --- |
 | `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus plus explicit protocol-v13 cross-presentation focus persistence, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar, current-user-only host pipe, last-good no-poll catalog monitoring with semantic revisions, trusted host selection of mandatory community AppContainer policy, per-session verified-content lease handoff, worker preservation/retirement, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/WidgetBridge` | Disposable managed sidecar with a current-user-only host pipe. `WidgetBridgeServer` owns the pipe session, framing, request routing, reserved Stop lane, replies, and serialized writes; one internal client registry owns catalog revisions, worker generations, residency admission, idle unload, restart, replacement/removal, and terminal client disposal. The bridge also owns trusted mandatory community AppContainer selection, per-session verified-content lease handoff, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
 | `src/WidgetRuntime` | Lazy worker process client/server, host-derived content-generation AppContainer profiles for installed/community packages, exact non-inheriting verified-file grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch content/residency leases plus Job Object memory/process/UI/cleanup policy. |
 | `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies inside the mandatory AppContainer, connects an authenticated broker client when declared, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
@@ -79,8 +79,8 @@ third-party managed assemblies.
 
 ### Bridge request scheduling
 
-The bridge server owns session framing, request decoding, the reserved Stop
-lane, catalog/client lifetime, replies, and the serialized write path. An
+The bridge server owns session framing, request decoding and routing, the
+reserved Stop lane, replies, and the serialized write path. An
 internal request dispatcher owns the independent scheduling policy: unique
 request IDs, the global admitted-request bound, per-widget FIFO tails,
 session-fatal cancellation, and bounded drain. One closed typed classifier maps
@@ -97,11 +97,51 @@ prevents a late reply, and a quarantined late failure cannot become a fatal for
 the closed or replacement session. This is bounded session teardown, not a
 claim that cancellation can terminate arbitrary managed code.
 
-The per-client operation gate remains a worker-lifecycle and residency mutex.
-It coordinates an admitted operation with idle unload and catalog retirement,
-which do not enter the request dispatcher; it is not a second FIFO or request-
-admission mechanism. This keeps request ordering in one owner while preserving
-one bridge owner for worker and lease mutation.
+One internal client registry owns the current catalog revision, configured
+descriptors, worker generations, residency leases/budget, cached snapshots,
+restart, replacement/removal, idle-unload tasks, and terminal client disposal.
+Request handlers exchange typed commands and immutable status/snapshot values
+with that registry; the server has no registration dictionary or catalog/
+residency mutation lock. The per-client operation gate remains inside the
+registry as a worker-lifecycle and residency mutex. It coordinates an admitted
+operation with idle unload and catalog retirement, which do not enter the
+request dispatcher; it is not a second FIFO or request-admission mechanism.
+Canceled idle-unload work is retained, boundedly drained, and observed through
+terminal retirement so a stale generation cannot unload or publish into its
+replacement.
+
+Generation replacement is one registry transition. A retiring registration
+remains the widget's reserved slot until its admitted publications, idle work,
+client, residency lease, and operation gate reach terminal cleanup; concurrent
+requests wait for that slot instead of creating another generation. Snapshot,
+action, lifecycle, controller, restart, host-effect, invalidation, and failure
+results carry an internal exact-generation publication lease through the
+server's actual serialized reply/event send. Replacement can mark the old
+generation closed to new admission, but cannot install or expose its successor
+until those admitted sends release. Worker notifications enter one bounded
+per-generation lane: the latest queued invalidation replaces an older queued
+invalidation, while at most 32 non-coalescible action/runtime failures retain
+FIFO order. Full, closed, and coalesced results create no new publication
+lease; an accepted item owns exactly one lease until send, cancellation, or
+retirement drain. Lane cancellation can withdraw a queued event before writer
+admission. One internal event-write boundary owns that admission, the unchanged
+four-second in-flight deadline, and session abort through one server adapter to
+the real frame channel. After frame writing begins, publication cancellation no
+longer interrupts the frame; timeout ends that pipe session before any
+subsequent frame can follow a possibly partial write. Framing bytes and the
+public protocol are unchanged.
+
+Catalog identity mutation only reserves retirement under the registry gate;
+notification cancellation, operation drain, and external client disposal start
+after that gate is released. Cancellation or the internal restart deadline
+abandons fresh-worker publication but leaves the old reserved generation in
+the same tracked exact-once retirement path. Once that path finishes, waiters
+may create one successor. Terminal disposal waits those resource paths and
+active retirement tasks, while per-registration resource/terminal completion
+outcomes carry the result to every waiter. Terminal disposal attempts every
+captured client and retains a bounded
+saturating failure count plus the first terminal failure for its shared
+outcome.
 
 ## Capability flow
 

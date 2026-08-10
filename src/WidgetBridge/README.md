@@ -98,6 +98,43 @@ widget, and `background` before hiding or switching it. Requesting Background
 for an unstarted worker remains lazy and does not launch it. Duplicate stable
 transitions are idempotent.
 
+`WidgetBridgeServer` owns only the pipe session, framing, request routing,
+reserved Stop handling, replies, and serialized writes. One internal client
+registry owns the current catalog revision and every worker generation,
+including operation serialization, residency admission, cached snapshots,
+idle unload, restart, catalog replacement/removal, and terminal disposal.
+Request handlers consume typed registry operations and immutable results; they
+never retain mutable registration objects. Each generation has one bounded
+notification lane: it retains only the latest queued invalidation and at most
+32 ordered, non-coalescible action/runtime failures. Overflow is counted with a
+saturating counter, never converted into an unbounded task or exception list.
+Only an accepted lane item receives a publication lease; coalesced, full, and
+closed admissions do not create one.
+
+A retiring generation remains the reserved widget slot, closed to new
+admission, until its exact-generation publication leases, tracked idle work,
+client, and residency lease drain. Retirement closes and cancels its
+notification lane before waiting for admitted sends. Lane cancellation may
+withdraw an event while it waits for the server's serialized writer. One
+internal event-write boundary owns writer admission, the fixed four-second
+in-flight deadline, and session abort through one adapter to the real frame
+channel. Once a frame starts, publication cancellation no longer interrupts
+it; a stalled frame terminates the session before another frame can use the
+possibly partial stream. This changes only internal pipe-session behavior, not
+the framing format or public protocol. Registry identity changes
+happen under the catalog gate, while external client cancellation and disposal
+start only after leaving that gate. A cancelled or timed-out restart transfers
+the reserved generation to the same tracked exact-once retirement path, so
+concurrent requests cannot create a competing worker. Replies and admitted
+events retain their internal generation lease through the server's serialized
+send. Restart prepares and lifecycle-restores one fresh client before
+publication; every unpublished client is disposed on failure. Terminal
+disposal owns active retirement tasks in one registry set, with each
+registration's resource and terminal completion outcomes shared by waiters. It
+attempts every client and retains only a saturating failure count plus the first
+failure before completing its one shared outcome; registrations do not retain
+an unconsumed duplicate retirement task.
+
 A launched Background worker remains resident under the default `keep-alive`
 policy. Entering Background cancels the shared Visible/Interactive lifetime
 used by presentation work, but explicitly permitted widget-lifetime background

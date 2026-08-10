@@ -64,6 +64,89 @@ contracts across 52 Markdown files in 54.7 seconds. Final correction run
 host 9/9, Bridge 52/52, and 52-file documentation contract in 49.6 seconds.
 These are scoped implementation runs, not canonical aggregates.
 
+DLV-039 keeps `WidgetBridgeServer` as the only pipe-session, framing, request-
+routing, reserved-Stop, reply, and serialized-write owner while moving catalog
+and client generations into one internal `BridgeClientRegistry`. The corrected
+server is 891 lines/40,021 bytes, down from 1,312 lines/59,775 bytes, and replaces its
+catalog, revision, registration dictionary, catalog lock, residency budget,
+nested registration state, idle-unload scheduling, restart, reconciliation,
+and disposal policy with one registry reference. The 1,261-line cohesive
+registry owns configured descriptors, current-generation identity, one catalog
+lock, the existing per-registration operation and idle-state locks, residency
+leases/budget, cached snapshots, dashboard sequence authority, restart,
+replacement/removal, and terminal disposal. A separate 199-line internal
+`BridgeClientNotificationLane` is the registration-owned bounded event policy,
+not a second lifecycle or write owner. A 66-line internal
+`BridgeEventWriteBoundary` owns event writer admission, the fixed in-flight
+deadline, and session abort after a partial-frame timeout through one
+production adapter; it does not change framing bytes or the public protocol.
+Per-registration idle work is now
+retained in an owned task set, canceled at replacement/terminal admission,
+boundedly drained to the existing deadline, and explicitly observed if cancellation is
+ignored. A shared terminal completion makes concurrent registry disposal wait
+for the same exact cleanup boundary. There are no request-dispatcher, public
+protocol/framing-format, capability, authority, sandbox, or native-host contract
+changes. The limited internal pipe-session behavior change withdraws a canceled
+event that is still waiting for the writer; once its frame starts, the unchanged
+four-second deadline either finishes it or terminates the session before a later
+frame can follow a potentially partial stream. Direct value-
+based fixtures exercise compatible descriptor refresh, replacement/removal,
+stale generation events, idle-unload cancellation and drain, restart lifecycle
+restoration, residency refusal/release, failed start, concurrent operation, and
+terminal disposal without constructing the server transport. Focused Release
+run `20260810T212025Z-194406ce` completed in 47.4 seconds and passed Widget
+Runtime 74/74 plus WidgetBridge 57/57; it is scoped dirty-worktree evidence, not
+a canonical aggregate. After the final restart-retirement task-observation
+correction, focused run `20260810T212257Z-08e1d8b0` completed in 16.9 seconds
+and passed WidgetBridge 57/57; the unchanged Runtime result was not repeated.
+The residual registry remains one cohesive worker-generation store and
+transition owner rather than a new application coordinator: it contains the
+closed typed operations for every bridge request plus the nested registration
+resource state, while pipe/session, dispatcher, diagnostics projection, and
+serialized writes remain outside it. The correction keeps a retiring
+registration as the reserved slot, carries exact-generation publication leases
+through actual server sends, prepares and restores restart clients before
+publication, disposes failed unpublished clients, and drains every captured
+retirement before one shared bounded terminal outcome. Each generation now
+owns one notification pump with one latest-invalidation slot and a 32-entry
+FIFO for non-coalescible action/runtime failures. Only `Accepted` items acquire
+a generation publication lease; `Coalesced`, `RejectedFull`, and
+`RejectedClosed` items acquire none. Retirement cancels the lane and releases
+all accepted items before client disposal. Catalog/current-generation mutation
+only reserves retirement under the registry gate; external cancellation and
+client disposal begin after that gate is released. Cancelled or deadline-bound
+restart transfers its reserved old generation into the same tracked exact-once
+retirement path. `_activeRetirements` plus each registration's resource and
+terminal completion outcomes are the sole retirement-task owners; the former
+stored-but-unconsumed registration task property has been removed. Event
+cancellation is admitted only while waiting for the
+serialized writer; once a frame starts, a bounded session deadline either
+finishes it or ends the pipe before any subsequent frame. Terminal failures are
+represented by a saturating count plus the first failure rather than an
+unbounded exception list. Manually
+controlled fixtures force restart/concurrent-request, lifecycle-restore
+failure, old event/result replacement, admission coalesce/full/close, a
+stalled 200-event burst, cancelled restart, outside-gate disposal, fatal
+disposal, and multi-client terminal interleavings without sleeps. A direct
+event-write-boundary fixture uses the production frame channel to prove that
+queued cancellation writes no bytes and a body-stalled partial frame ends the
+session at the fixed deadline without admitting the queued successor frame.
+Correction run `20260810T215121Z-611ae0ac` completed in 47.2 seconds and
+passed Widget Runtime 74/74 plus WidgetBridge 60/60; it is scoped dirty-
+worktree evidence, not a canonical aggregate.
+Final bounded correction run `20260810T223739Z-dc97cf71` completed in 44.859
+seconds and passed Widget Runtime 74/74 plus WidgetBridge 64/64. It is stable
+scoped dirty-worktree evidence, not a canonical aggregate or release-eligible
+run.
+The first event-boundary verification
+`20260810T225953Z-4b1e10bd` passed the new deterministic boundary case but
+finished 64/65 after the existing pipelined-request harness observed an invalid
+frame prefix during teardown. The unchanged bounded repeat
+`20260810T230321Z-920a6f9b` completed in 16.009 seconds and passed WidgetBridge
+65/65, including both that pipelined case and the boundary case. Both artifacts
+are retained as focused dirty-worktree provenance; Runtime was intentionally
+not repeated.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic
