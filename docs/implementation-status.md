@@ -221,8 +221,8 @@ Up/Down navigation.
   and limited restart. Installed/community workers
   require stable host-derived capability-free Low-integrity AppContainers,
   stripped environments, transactionally applied exact non-inheriting
-  verified-file grants, reverse-order DACL rollback with digest-profile
-  quarantine after an incomplete restore, PID-bound isolated
+  verified-file grants, host-owned write-ahead DACL recovery with a global
+  cross-process authority lock, PID-bound isolated
   pipes, and pre-launch Job Object memory/process/UI/cleanup
   containment. Public custom workers use
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
@@ -780,12 +780,18 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 52/52. The authority fixtures prove reverse restoration of every
+harness passes 55/55. The authority fixtures prove reverse restoration of every
 attempted root/directory/file DACL including the failing target, retry without
-quarantine after a complete rollback, and restart-visible digest-generation
-quarantine after an incomplete rollback; all failure paths reject before
-process launch and release the content lease. The bounded 512-file exact-grant
-fixture completes in 373.211 ms on the current machine;
+quarantine after a complete rollback, pre-mutation refusal when journal
+publication fails, cross-profile lock ownership, corrupt/hostile-entry refusal,
+and recovery after an incomplete rollback. A bounded child process terminates
+immediately after the second real DACL mutation; the next host restores and
+exactly verifies all original DACLs from the pending record before clearing it.
+The production AppContainer probe also proves the sandbox cannot read or write
+the protected host journal. All failure paths reject before process launch and
+release the content lease. The bounded 512-file exact-grant fixture completes
+in 485.499 ms in retained all-lane run `20260810T002639Z-3dcb61c2` on the
+current machine;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
@@ -910,6 +916,18 @@ digests, and `repositoryStateStable: true`. It is integration evidence rather
 than a release-eligible bundle because the milestone and reviewer-owned ledgers
 were dirty at both boundaries; the retained result reports exactly
 `starting_worktree_dirty` and `finished_worktree_dirty`.
+
+Host-journal all-lane run `20260810T002639Z-3dcb61c2` passes 41/41 steps in
+348.503 seconds, including WidgetRuntime 55/55, Bridge 46/46, First-Party
+Conformance 6/6, the full native build, hidden-host smoke, and documentation
+contract. Schema-v2 provenance records identical start/end commit `0be052b`,
+an unchanged dirty-status fingerprint, 29 final package digests, and
+`repositoryStateStable: true`; it is correctly ineligible because the milestone
+and reviewer-owned ledgers were dirty at both boundaries. The first bounded
+attempt `20260810T001859Z-b601e2d3` reached Conformance 6/6 but failed native
+linking because an existing workspace `OverlayHost.exe --show` held the exact
+output file. That PID was identity-checked and exited through `WM_CLOSE`; the
+successful rerun left no OverlayHost process behind.
 
 PlatformBroker focused coverage passes
 48/48 and includes closed isolated-
@@ -1060,13 +1078,13 @@ with C++ installed:
   pre-admission insertions fail before launch; later insertions do not receive
   worker authority. Each verified content generation receives a distinct
   AppContainer identity, so a later version cannot inherit an older root grant.
-  Content DACL updates snapshot every attempted target and roll back in reverse
-  before process creation. Complete rollback remains retryable; incomplete
-  rollback durably quarantines that digest-specific profile before rejecting
-  subsequent starts. This does not yet bind ACL mutation to the verified file
-  object identity, audit alternate inherited/group authority, make quarantine
-  publication crash-atomic, or place ACL application and handshake under one
-  aggregate start deadline.
+  Content DACL updates use one host-only, cross-process write-ahead journal:
+  bounded original DACLs are flushed before mutation, every apply/restore is
+  verified, and a pending transaction is recovered before any later community
+  start. Journal corruption or persistence failure rejects before launch. This
+  does not yet bind ACL mutation/recovery to the verified file object identity,
+  audit alternate inherited/group authority, provide a privileged repair UI,
+  or place ACL application and handshake under one aggregate start deadline.
   Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The

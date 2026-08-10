@@ -260,16 +260,22 @@ inserted after verification receives no worker authority. The profile identity
 includes the verified content digest, so a later content generation cannot
 inherit direct grants left on an older root. The runtime applies the content
 DACLs transactionally before any worker pipe or process is
-created: it snapshots every attempted root, directory, and file DACL and, on an
-update failure, restores them in reverse order including the failing target. A
-complete restore reports a stable retryable admission failure. If a restore is
-incomplete, a fixed marker in that digest-specific profile quarantines the
-content generation across later starts and bridge restarts; no worker launches
-on either failure path. Marker persistence is synchronous after the rollback
-failure, but cannot make a host crash during that narrow publication window
-atomic. ACL application is still pathname-based rather than bound to the
-verified object identity, and alternate inherited or group ACE auditing remains
-open.
+created. Under one cross-process authority lock with a five-second acquisition
+limit, it captures every attempted root, directory, and file DACL, publishes and flushes a bounded pending
+record in a protected host-only control-plane directory, and only then begins
+mutation. Each applied DACL is verified. A reported failure restores and
+verifies targets in reverse order including the failing target; a complete
+restore clears the record and reports a stable retryable admission failure.
+
+If the host terminates during mutation or a restore remains incomplete, the
+write-ahead record survives. Before any later community worker starts, the next
+host recovers and verifies that transaction or refuses launch with the record
+still pending. Invalid, reparse-shaped, unwritable, or unflushable journal state
+fails before mutation. A production AppContainer-token fixture proves the
+sandboxed profile cannot read or overwrite this host journal. ACL application
+is still pathname-based rather than bound to the verified object identity;
+alternate inherited/group authority auditing and a user-facing privileged
+repair surface remain open.
 
 The runtime separately
 grants the generic worker executable, supplies a stripped environment, and
@@ -293,6 +299,10 @@ focused tests reject content acquisition above five seconds and the maximum-
 grant fixture above ten seconds, but those separate ceilings are not one
 production start-admission budget. These are one-machine regression
 measurements, not cross-hardware startup targets.
+Journal-enabled dirty all-lane run `20260810T002639Z-3dcb61c2` records 485.499
+ms for the same 512-file exact-grant path and passes Runtime 55/55; the earlier
+clean number remains the release-eligible baseline until an exact clean commit
+is retained.
 
 A focused exact-shape fixture uses the public `gbar pack`, `install`, and
 `enable` workflow for 258 verified files reached through exactly 1,024 authority

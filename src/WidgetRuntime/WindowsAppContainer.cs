@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Collections.Concurrent;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -17,10 +16,7 @@ namespace GameBarAlternative.WidgetRuntime;
 internal sealed class WindowsAppContainer : IDisposable
 {
     private const string ProfilePrefix = "GameBarAlternative.Widget.";
-    private const string AuthorityQuarantineFile = ".gbar-content-authority-quarantined";
     private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
-    private static readonly ConcurrentDictionary<string, byte> QuarantinedProfiles =
-        new(StringComparer.Ordinal);
     private readonly SafeSidHandle _sid;
     private readonly SecurityIdentifier _identity;
     private readonly string _profileName;
@@ -51,9 +47,6 @@ internal sealed class WindowsAppContainer : IDisposable
             throw new PlatformNotSupportedException("AppContainer worker isolation requires Windows.");
         ArgumentException.ThrowIfNullOrWhiteSpace(isolationKey);
         var profileName = ProfileNameFor(isolationKey);
-        if (QuarantinedProfiles.ContainsKey(profileName))
-            throw new WidgetProcessAdmissionException(
-                "Worker content authority is quarantined after rollback failure.");
 
         var result = NativeMethods.CreateAppContainerProfile(
             profileName,
@@ -82,14 +75,6 @@ internal sealed class WindowsAppContainer : IDisposable
             var profilePath = Marshal.PtrToStringUni(folder)
                 ?? throw new WidgetProcessException("The AppContainer profile path is unavailable.");
             var temporaryPath = Path.Combine(profilePath, "Temp");
-            var quarantinePath = Path.Combine(profilePath, AuthorityQuarantineFile);
-            if (File.Exists(quarantinePath))
-            {
-                QuarantinedProfiles.TryAdd(profileName, 0);
-                container.Dispose();
-                throw new WidgetProcessAdmissionException(
-                    "Worker content authority is quarantined after rollback failure.");
-            }
             Directory.CreateDirectory(temporaryPath);
             container.ProfilePath = profilePath;
             return container;
@@ -143,7 +128,8 @@ internal sealed class WindowsAppContainer : IDisposable
         IEnumerable<string> authorityRoots,
         IEnumerable<string> directories,
         IEnumerable<string> files,
-        IAppContainerAuthorityOperations? operations = null)
+        IAppContainerAuthorityOperations? operations = null,
+        IAppContainerAuthorityJournal? journal = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var targets = authorityRoots
@@ -162,36 +148,67 @@ internal sealed class WindowsAppContainer : IDisposable
                 .Select(path => new AppContainerAuthorityTarget(
                     path, AppContainerAuthorityTargetKind.VerifiedFile)))
             .ToArray();
+        var authorityOperations = operations ?? new WindowsAuthorityOperations(_identity);
         try
         {
-            AppContainerAuthorityTransaction.Apply(
-                targets, operations ?? new WindowsAuthorityOperations(_identity));
-        }
-        catch (AppContainerAuthorityRollbackException exception)
-        {
-            QuarantinedProfiles.TryAdd(_profileName, 0);
+            using var journalLease = (journal ?? FileAppContainerAuthorityJournal.Default)
+                .Acquire(_profileName);
+            var pending = journalLease.ReadPending();
+            if (pending is not null)
+            {
+                try
+                {
+                    AppContainerAuthorityTransaction.Recover(
+                        pending, authorityOperations);
+                    journalLease.ClearPending();
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    throw new WidgetProcessAdmissionException(
+                        "Worker content authority is quarantined pending host recovery.",
+                        exception);
+                }
+            }
+
+            var snapshots = AppContainerAuthorityTransaction.Capture(
+                targets, authorityOperations);
+            journalLease.WritePending(snapshots);
             try
             {
-                var markerPath = Path.Combine(ProfilePath, AuthorityQuarantineFile);
-                using var marker = new FileStream(
-                    markerPath,
-                    FileMode.Create,
-                    FileAccess.Write,
-                    FileShare.Read,
-                    bufferSize: 256,
-                    FileOptions.WriteThrough);
-                marker.Write("quarantined"u8);
-                marker.Flush(flushToDisk: true);
+                AppContainerAuthorityTransaction.Apply(
+                    snapshots, authorityOperations);
+                journalLease.ClearPending();
             }
-            catch (Exception markerException) when (markerException is not OutOfMemoryException)
+            catch (AppContainerAuthorityRollbackException exception)
             {
                 throw new WidgetProcessAdmissionException(
-                    "Worker content authority rollback failed and quarantine could not be persisted.",
-                    new AggregateException(exception, markerException));
+                    "Worker content authority is quarantined pending host recovery.",
+                    exception);
             }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                try
+                {
+                    journalLease.ClearPending();
+                }
+                catch (Exception clearFailure) when (clearFailure is not OutOfMemoryException)
+                {
+                    throw new WidgetProcessAdmissionException(
+                        "Worker content authority is quarantined pending host recovery.",
+                        new AggregateException(exception, clearFailure));
+                }
+                throw new WidgetProcessAdmissionException(
+                    "Worker content authority could not be established.", exception);
+            }
+        }
+        catch (WidgetProcessAdmissionException)
+        {
+            throw;
+        }
+        catch (AppContainerAuthorityJournalException exception)
+        {
             throw new WidgetProcessAdmissionException(
-                "Worker content authority is quarantined after rollback failure.",
-                exception);
+                "Worker content authority journal is unavailable.", exception);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -258,12 +275,15 @@ internal sealed class WindowsAppContainer : IDisposable
         _sid.Dispose();
     }
 
-    internal static void ForgetInMemoryQuarantineForTesting(string isolationKey) =>
-        QuarantinedProfiles.TryRemove(ProfileNameFor(isolationKey), out _);
-
     private static string ProfileNameFor(string isolationKey) =>
         ProfilePrefix + Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(isolationKey)).AsSpan(0, 16));
+
+    internal IAppContainerAuthorityOperations CreateAuthorityOperationsForTesting()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new WindowsAuthorityOperations(_identity);
+    }
 
     internal sealed class EnvironmentBlock : IDisposable
     {
@@ -306,28 +326,40 @@ internal sealed class WindowsAppContainer : IDisposable
         {
             if (snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile)
             {
-                var security = CreateFileSecurity(snapshot.AccessDescriptor);
-                security.PurgeAccessRules(identity);
-                security.AddAccessRule(new FileSystemAccessRule(
-                    identity,
-                    FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
-                    AccessControlType.Allow));
+                var security = CreateAppliedFileSecurity(snapshot);
                 new FileInfo(snapshot.Target.Path).SetAccessControl(security);
                 return;
             }
 
-            var directorySecurity = CreateDirectorySecurity(snapshot.AccessDescriptor);
-            directorySecurity.PurgeAccessRules(identity);
-            if (snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedDirectory)
-            {
-                directorySecurity.AddAccessRule(new FileSystemAccessRule(
-                    identity,
-                    FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
-                    InheritanceFlags.None,
-                    PropagationFlags.None,
-                    AccessControlType.Allow));
-            }
+            var directorySecurity = CreateAppliedDirectorySecurity(snapshot);
             new DirectoryInfo(snapshot.Target.Path).SetAccessControl(directorySecurity);
+        }
+
+        public void VerifyApplied(AppContainerAuthoritySnapshot snapshot)
+        {
+            var actual = Capture(snapshot.Target).AccessDescriptor;
+            var security = snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile
+                ? (FileSystemSecurity)CreateFileSecurity(actual)
+                : CreateDirectorySecurity(actual);
+            var rules = security.GetAccessRules(
+                    includeExplicit: true,
+                    includeInherited: true,
+                    targetType: typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>()
+                .Where(rule => identity.Equals(rule.IdentityReference))
+                .ToArray();
+            var valid = snapshot.Target.Kind == AppContainerAuthorityTargetKind.AuthorityRoot
+                ? rules.Length == 0
+                : rules.Length == 1 &&
+                  !rules[0].IsInherited &&
+                  rules[0].AccessControlType == AccessControlType.Allow &&
+                  rules[0].InheritanceFlags == InheritanceFlags.None &&
+                  (rules[0].FileSystemRights &
+                      (FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize)) ==
+                  (FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize);
+            if (!valid)
+                throw new IOException(
+                    "An AppContainer content-authority DACL did not verify after apply.");
         }
 
         public void Restore(AppContainerAuthoritySnapshot snapshot)
@@ -340,6 +372,17 @@ internal sealed class WindowsAppContainer : IDisposable
             }
             new DirectoryInfo(snapshot.Target.Path).SetAccessControl(
                 CreateDirectorySecurity(snapshot.AccessDescriptor));
+        }
+
+        public void VerifyRestored(AppContainerAuthoritySnapshot snapshot)
+        {
+            var actual = Capture(snapshot.Target).AccessDescriptor;
+            if (!string.Equals(
+                    snapshot.AccessDescriptor, actual, StringComparison.Ordinal))
+            {
+                throw new IOException(
+                    "An AppContainer content-authority DACL did not verify after restore.");
+            }
         }
 
         private static FileSystemSecurity GetDirectorySecurity(string path)
@@ -371,6 +414,35 @@ internal sealed class WindowsAppContainer : IDisposable
             var security = new FileSecurity();
             security.SetSecurityDescriptorSddlForm(
                 descriptor, AccessControlSections.Access);
+            return security;
+        }
+
+        private FileSecurity CreateAppliedFileSecurity(
+            AppContainerAuthoritySnapshot snapshot)
+        {
+            var security = CreateFileSecurity(snapshot.AccessDescriptor);
+            security.PurgeAccessRules(identity);
+            security.AddAccessRule(new FileSystemAccessRule(
+                identity,
+                FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+                AccessControlType.Allow));
+            return security;
+        }
+
+        private DirectorySecurity CreateAppliedDirectorySecurity(
+            AppContainerAuthoritySnapshot snapshot)
+        {
+            var security = CreateDirectorySecurity(snapshot.AccessDescriptor);
+            security.PurgeAccessRules(identity);
+            if (snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedDirectory)
+            {
+                security.AddAccessRule(new FileSystemAccessRule(
+                    identity,
+                    FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+                    InheritanceFlags.None,
+                    PropagationFlags.None,
+                    AccessControlType.Allow));
+            }
             return security;
         }
     }

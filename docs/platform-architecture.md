@@ -144,19 +144,29 @@ admission fail before process creation; entries inserted later inherit no worker
 authority. The AppContainer identity includes the verified content digest, so a
 new content generation cannot inherit direct grants left on an older root. The
 runtime applies these content DACL changes as a transaction before creating a
-pipe or process. It captures the access DACL for every attempted root,
-traversal directory, and file, including the target whose update fails, then
-restores all attempted targets in reverse order. A complete rollback returns a
-stable retryable admission failure. If any restore fails, the runtime writes a
-fixed quarantine marker inside the digest-specific AppContainer profile and
-refuses that content generation on later starts, including after a bridge
-restart; no worker is launched on either failure path. The marker is persisted
-synchronously after a detected rollback failure, but does not make a
-host-process crash during that narrow publication window atomic.
+pipe or process. One cross-process authority lock, with a five-second acquisition
+limit, serializes whole-DACL snapshots because different generations can touch the same root. Beneath a
+protected host-only Local Application Data directory, a bounded schema-1 record
+stores at most 2,049 normalized targets and 16 MiB. The host captures every
+root, traversal-directory, and file DACL, writes and flushes that pending record,
+and only then performs the first mutation. Each apply is verified. A reported
+failure restores and verifies all attempted targets in reverse, including the
+target whose write failed; complete rollback clears the record and returns a
+stable retryable admission failure.
+
+Process termination between any two mutations leaves the write-ahead record.
+Before any later community start, regardless of profile, the next lock owner
+restores and verifies every recorded DACL or fails closed with the record still
+pending. Corrupt, unknown-version, reparse-shaped, unwritable, or unflushable
+journal state fails before mutation. The profile being controlled cannot read
+or write the journal root; this is verified with a real AppContainer token. No
+pipe or worker process is created on any journal, apply, rollback, or recovery
+failure.
 
 Content authority is still applied by pathname rather than by a verified
 file-ID/handle-bound ACL operation. Auditing alternate inherited or group ACEs
-as additional authority also remains open. The lease is released only after
+as additional authority and a user-facing privileged recovery/repair surface
+also remain open. The lease is released only after
 the pipe, process, and Job are detached, and every
 crash, restart, intentional unload, disable, or shutdown must reacquire it. Exact
 ACL application and the subsequent handshake do not yet share that five-second

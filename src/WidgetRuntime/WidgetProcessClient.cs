@@ -402,7 +402,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         _contentLease.AuthorityRoots,
                         _contentLease.ReadOnlyDirectories,
                         _contentLease.ReadOnlyFiles,
-                        _options.ContentAuthorityOperations);
+                        _options.ContentAuthorityOperations,
+                        _options.ContentAuthorityJournal);
             }
             var pipeSuffix = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
             var pipeName = pipeSuffix;

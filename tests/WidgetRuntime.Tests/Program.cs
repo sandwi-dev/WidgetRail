@@ -16,6 +16,12 @@ if (args.Contains("--containment-sleeper", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--authority-crash-probe", StringComparer.Ordinal))
+{
+    RunAuthorityCrashProbe(args);
+    return 92;
+}
+
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 
@@ -30,8 +36,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Caller cancellation remains cancellation during content admission", ContentAdmissionHonorsCallerCancellation),
     ("Verified content cannot overlap the trusted runtime grant", ContentAuthorityCannotOverlapRuntime),
     ("Content authority transactions restore every attempted DACL", ContentAuthorityTransactionRollsBack),
-    ("Complete content authority rollback fails before launch without quarantine", ContentAuthorityRollbackIsRecoverable),
-    ("Incomplete content authority rollback quarantines the generation before launch", ContentAuthorityRollbackQuarantinesGeneration),
+    ("Complete content authority rollback clears its write-ahead record", ContentAuthorityRollbackIsRecoverable),
+    ("Incomplete content authority rollback recovers before the next launch", ContentAuthorityRollbackRecoversGeneration),
+    ("Content authority journal failures happen before ACL mutation", ContentAuthorityJournalFailsBeforeMutation),
+    ("Host authority journal rejects corrupt and hostile entries", ContentAuthorityJournalRejectsUnsafeState),
+    ("Host authority journal recovers real DACLs after process termination", AuthorityJournalRecoversAfterHostTermination),
     ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
     ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
@@ -393,6 +402,8 @@ static async Task ContentAuthorityRollbackIsRecoverable()
     await File.WriteAllTextAsync(verified, "verified");
     var isolationKey = $"runtime-content-recoverable-{Guid.NewGuid():N}";
     var released = 0;
+    var journal = new TestAuthorityJournal();
+    var operations = new TestAuthorityOperations(failApplyAt: 1);
     await using (var client = CreateClient(
         contentLeaseFactory: _ => new TestContentLease(
             temp.Path,
@@ -400,7 +411,8 @@ static async Task ContentAuthorityRollbackIsRecoverable()
             [verified],
             () => Interlocked.Increment(ref released)),
         contentIsolationKey: isolationKey,
-        contentAuthorityOperations: new TestAuthorityOperations(failApplyAt: 1)))
+        contentAuthorityOperations: operations,
+        contentAuthorityJournal: journal))
     {
         var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
             () => client.GetSnapshotAsync());
@@ -410,14 +422,12 @@ static async Task ContentAuthorityRollbackIsRecoverable()
         Assert.Equal(0, client.Starts);
     }
     Assert.Equal(1, released);
-
-    WindowsAppContainer.ForgetInMemoryQuarantineForTesting(isolationKey);
-    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
-    Assert.True(!string.IsNullOrWhiteSpace(container.Sid),
-        "Complete rollback incorrectly persisted a generation quarantine.");
+    Assert.Equal(2, operations.ApplyCount);
+    Assert.True(journal.Pending is null,
+        "Complete rollback retained a pending authority record.");
 }
 
-static async Task ContentAuthorityRollbackQuarantinesGeneration()
+static async Task ContentAuthorityRollbackRecoversGeneration()
 {
     if (!OperatingSystem.IsWindows()) return;
     using var temp = new TemporaryDirectory();
@@ -425,9 +435,12 @@ static async Task ContentAuthorityRollbackQuarantinesGeneration()
     await File.WriteAllTextAsync(verified, "verified");
     var isolationKey = $"runtime-content-quarantine-{Guid.NewGuid():N}";
     var released = 0;
+    var states = new Dictionary<AppContainerAuthorityTarget, string>();
+    var journal = new TestAuthorityJournal();
     var operations = new TestAuthorityOperations(
         failApplyAt: 1,
-        failRestoreKinds: [AppContainerAuthorityTargetKind.AuthorityRoot]);
+        failRestoreKinds: [AppContainerAuthorityTargetKind.AuthorityRoot],
+        states: states);
     await using (var client = CreateClient(
         contentLeaseFactory: _ => new TestContentLease(
             temp.Path,
@@ -435,18 +448,21 @@ static async Task ContentAuthorityRollbackQuarantinesGeneration()
             [verified],
             () => Interlocked.Increment(ref released)),
         contentIsolationKey: isolationKey,
-        contentAuthorityOperations: operations))
+        contentAuthorityOperations: operations,
+        contentAuthorityJournal: journal))
     {
         var exception = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
             () => client.GetSnapshotAsync());
         Assert.Equal(
-            "Worker content authority is quarantined after rollback failure.",
+            "Worker content authority is quarantined pending host recovery.",
             exception.Message);
         Assert.True(exception.InnerException is AppContainerAuthorityRollbackException,
             "Quarantine admission did not retain the host diagnostic cause.");
         Assert.Equal(0, client.Starts);
     }
     Assert.Equal(1, released);
+    Assert.True(journal.Pending is not null,
+        "Incomplete rollback did not retain its write-ahead record.");
     Assert.SequenceEqual(
         new[]
         {
@@ -457,23 +473,226 @@ static async Task ContentAuthorityRollbackQuarantinesGeneration()
         },
         operations.RestoreOrder);
 
-    WindowsAppContainer.ForgetInMemoryQuarantineForTesting(isolationKey);
     var secondRelease = 0;
-    await using var quarantinedClient = CreateClient(
+    var recoveryOperations = new TestAuthorityOperations(states: states);
+    await using var recoveredClient = CreateClient(
         contentLeaseFactory: _ => new TestContentLease(
             temp.Path,
             [temp.Path],
             [verified],
             () => Interlocked.Increment(ref secondRelease)),
         contentIsolationKey: isolationKey,
-        contentAuthorityOperations: new TestAuthorityOperations());
-    var quarantined = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
-        () => quarantinedClient.GetSnapshotAsync());
-    Assert.Equal(
-        "Worker content authority is quarantined after rollback failure.",
-        quarantined.Message);
-    Assert.Equal(0, quarantinedClient.Starts);
+        contentAuthorityOperations: recoveryOperations,
+        contentAuthorityJournal: journal);
+    _ = await recoveredClient.GetSnapshotAsync();
+    Assert.Equal(1, recoveredClient.Starts);
+    Assert.True(journal.Pending is null,
+        "Successful recovery and reapply left a pending authority record.");
+    Assert.True(recoveryOperations.RestoreOrder.Count >= 2,
+        "A later admission did not recover the pending transaction first.");
+    await recoveredClient.StopAsync();
     Assert.Equal(1, secondRelease);
+}
+
+static async Task ContentAuthorityJournalFailsBeforeMutation()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var temp = new TemporaryDirectory();
+    var verified = Path.Combine(temp.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var released = 0;
+    var operations = new TestAuthorityOperations();
+    await using var client = CreateClient(
+        contentLeaseFactory: _ => new TestContentLease(
+            temp.Path,
+            [temp.Path],
+            [verified],
+            () => Interlocked.Increment(ref released)),
+        contentIsolationKey: $"runtime-content-journal-failure-{Guid.NewGuid():N}",
+        contentAuthorityOperations: operations,
+        contentAuthorityJournal: new TestAuthorityJournal(failWrite: true));
+    var failure = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+        () => client.GetSnapshotAsync());
+    Assert.Equal("Worker content authority journal is unavailable.", failure.Message);
+    Assert.Equal(0, operations.ApplyCount);
+    Assert.Equal(0, client.Starts);
+    Assert.Equal(1, released);
+}
+
+static Task ContentAuthorityJournalRejectsUnsafeState()
+{
+    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+    using var temp = new TemporaryDirectory();
+    var profile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var target = Path.Combine(temp.Path, "target.txt");
+    File.WriteAllText(target, "target");
+    var snapshot = new AppContainerAuthoritySnapshot(
+        new AppContainerAuthorityTarget(
+            target, AppContainerAuthorityTargetKind.VerifiedFile),
+        "D:");
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(temp.Path, "journal"), TimeSpan.FromMilliseconds(100));
+    using (var lease = journal.Acquire(profile))
+    {
+        _ = Assert.Throws<AppContainerAuthorityJournalException>(
+            () => journal.Acquire(
+                $"GameBarAlternative.Widget.{Guid.NewGuid():N}"));
+        lease.WritePending([snapshot]);
+    }
+    using (var lease = journal.Acquire(
+               $"GameBarAlternative.Widget.{Guid.NewGuid():N}"))
+        Assert.SequenceEqual(new[] { snapshot }, lease.ReadPending()!);
+
+    var pendingPath = Path.Combine(journal.RootPath, ".authority.pending.json");
+    var validDocument = File.ReadAllText(pendingPath);
+    File.WriteAllText(
+        pendingPath,
+        validDocument[..^1] + ",\"Unexpected\":true}");
+    using (var lease = journal.Acquire(profile))
+        _ = Assert.Throws<AppContainerAuthorityJournalException>(
+            () => lease.ReadPending());
+
+    File.WriteAllText(pendingPath, "{");
+    using (var lease = journal.Acquire(profile))
+        _ = Assert.Throws<AppContainerAuthorityJournalException>(
+            () => lease.ReadPending());
+
+    File.WriteAllText(
+        pendingPath,
+        "{\"Version\":2,\"ProfileName\":\"invalid\",\"Snapshots\":[]}");
+    using (var lease = journal.Acquire(profile))
+        _ = Assert.Throws<AppContainerAuthorityJournalException>(
+            () => lease.ReadPending());
+
+    File.Delete(pendingPath);
+    Directory.CreateDirectory(pendingPath);
+    _ = Assert.Throws<AppContainerAuthorityJournalException>(
+        () => journal.Acquire(profile));
+
+    var reparseTarget = Path.Combine(temp.Path, "reparse-target");
+    var reparseRoot = Path.Combine(temp.Path, "reparse-root");
+    Directory.CreateDirectory(reparseTarget);
+    try
+    {
+        Directory.CreateSymbolicLink(reparseRoot, reparseTarget);
+        var reparseJournal = new FileAppContainerAuthorityJournal(reparseRoot);
+        _ = Assert.Throws<AppContainerAuthorityJournalException>(
+            () => reparseJournal.Acquire(profile));
+        Directory.Delete(reparseRoot);
+    }
+    catch (UnauthorizedAccessException)
+    {
+        // Windows developer-mode policy can prohibit creating the adversarial fixture.
+    }
+
+    var oversizedJournal = new FileAppContainerAuthorityJournal(
+        Path.Combine(temp.Path, "oversized-journal"));
+    var oversizedDescriptor = new string('A', 65_536);
+    var oversized = Enumerable.Range(0, 43)
+        .Select(index => new AppContainerAuthoritySnapshot(
+            new AppContainerAuthorityTarget(
+                Path.Combine(temp.Path, $"oversized-{index}.txt"),
+                AppContainerAuthorityTargetKind.VerifiedFile),
+            oversizedDescriptor))
+        .ToArray();
+    using (var lease = oversizedJournal.Acquire(profile))
+        _ = Assert.Throws<AppContainerAuthorityJournalException>(
+            () => lease.WritePending(oversized));
+    return Task.CompletedTask;
+}
+
+static async Task AuthorityJournalRecoversAfterHostTermination()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var package = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var verified = Path.Combine(package.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var isolationKey = $"runtime-content-crash-{Guid.NewGuid():N}";
+    var profile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var journalRoot = Path.Combine(controlPlane.Path, "journal");
+    var journal = new FileAppContainerAuthorityJournal(journalRoot);
+    using (journal.Acquire(profile)) { }
+
+    var targets = new[]
+    {
+        new AppContainerAuthorityTarget(
+            package.Path, AppContainerAuthorityTargetKind.AuthorityRoot),
+        new AppContainerAuthorityTarget(
+            package.Path, AppContainerAuthorityTargetKind.VerifiedDirectory),
+        new AppContainerAuthorityTarget(
+            verified, AppContainerAuthorityTargetKind.VerifiedFile),
+    };
+    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
+    var operations = container.CreateAuthorityOperationsForTesting();
+    var originals = AppContainerAuthorityTransaction.Capture(targets, operations);
+
+    var executable = Environment.ProcessPath
+        ?? throw new InvalidOperationException("Test process path is unavailable.");
+    var startInfo = new System.Diagnostics.ProcessStartInfo(executable)
+    {
+        UseShellExecute = false,
+        CreateNoWindow = true,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        WorkingDirectory = AppContext.BaseDirectory,
+    };
+    foreach (var argument in new[]
+    {
+        "--authority-crash-probe",
+        "--authority-isolation-key", isolationKey,
+        "--authority-journal-root", journalRoot,
+        "--authority-package-root", package.Path,
+        "--authority-verified-file", verified,
+    }) startInfo.ArgumentList.Add(argument);
+
+    using var child = System.Diagnostics.Process.Start(startInfo)
+        ?? throw new InvalidOperationException("Authority crash probe did not start.");
+    try
+    {
+        await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8));
+    }
+    catch
+    {
+        if (!child.HasExited) child.Kill(entireProcessTree: true);
+        throw;
+    }
+    Assert.Equal(91, child.ExitCode);
+
+    using (var lease = journal.Acquire(profile))
+    {
+        var pending = lease.ReadPending();
+        Assert.True(pending is not null,
+            "Process termination left no durable pending authority record.");
+        AppContainerAuthorityTransaction.Recover(pending!, operations);
+        lease.ClearPending();
+    }
+    foreach (var original in originals)
+        Assert.Equal(
+            original.AccessDescriptor,
+            operations.Capture(original.Target).AccessDescriptor);
+    using (var lease = journal.Acquire(profile))
+        Assert.True(lease.ReadPending() is null,
+            "Verified crash recovery did not clear the pending record.");
+}
+
+static void RunAuthorityCrashProbe(string[] arguments)
+{
+    var isolationKey = RequiredValue(arguments, "--authority-isolation-key");
+    var journalRoot = RequiredValue(arguments, "--authority-journal-root");
+    var packageRoot = RequiredValue(arguments, "--authority-package-root");
+    var verifiedFile = RequiredValue(arguments, "--authority-verified-file");
+    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
+    var operations = new TerminatingAuthorityOperations(
+        container.CreateAuthorityOperationsForTesting(), terminateAfterApply: 2);
+    container.ReplaceReadAndExecuteGrant(
+        [packageRoot],
+        [packageRoot],
+        [verifiedFile],
+        operations,
+        new FileAppContainerAuthorityJournal(journalRoot));
+    throw new InvalidOperationException(
+        "Authority crash probe completed without terminating.");
 }
 
 static async Task ContentAdmissionHonorsCallerCancellation()
@@ -607,7 +826,11 @@ static async Task AppContainerIsolation()
     Directory.CreateDirectory(packageB);
     var readableA = Path.Combine(packageA, "payload.txt");
     var readableB = Path.Combine(packageB, "payload.txt");
-    var privateUserFile = Path.Combine(temp.Path, "host-private.txt");
+    var authorityJournal = FileAppContainerAuthorityJournal.Default;
+    var journalProbeProfile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    using (authorityJournal.Acquire(journalProbeProfile)) { }
+    var privateUserFile = Path.Combine(
+        authorityJournal.RootPath, $".isolation-probe-{Guid.NewGuid():N}.txt");
     await File.WriteAllTextAsync(readableA, "package-a");
     await File.WriteAllTextAsync(readableB, "package-b");
     await File.WriteAllTextAsync(privateUserFile, "host-private");
@@ -665,6 +888,7 @@ static async Task AppContainerIsolation()
     {
         listener.Stop();
         Environment.SetEnvironmentVariable(secretName, priorSecret);
+        if (File.Exists(privateUserFile)) File.Delete(privateUserFile);
     }
 }
 
@@ -786,6 +1010,7 @@ static void AssertIsolationProbe(ViewSnapshot snapshot, string expectedContent)
     Assert.Equal(expectedContent, Find(snapshot.Root, "probe-readable").Text);
     Assert.Equal("denied", Find(snapshot.Root, "probe-package-write").Text);
     Assert.Equal("denied", Find(snapshot.Root, "probe-denied-read").Text);
+    Assert.Equal("denied", Find(snapshot.Root, "probe-denied-write").Text);
     Assert.Equal("denied", Find(snapshot.Root, "probe-network").Text);
     Assert.Equal("absent", Find(snapshot.Root, "probe-secret").Text);
     Assert.True(!string.IsNullOrWhiteSpace(Find(snapshot.Root, "probe-sid").Text),
@@ -1788,6 +2013,7 @@ static WidgetProcessClient CreateClient(
     string? contentIsolationKey = null,
     TimeSpan? contentLeaseTimeout = null,
     IAppContainerAuthorityOperations? contentAuthorityOperations = null,
+    IAppContainerAuthorityJournal? contentAuthorityJournal = null,
     TimeProvider? timeProvider = null)
 {
     var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Test process path is unavailable.");
@@ -1806,6 +2032,7 @@ static WidgetProcessClient CreateClient(
         ContentLeaseFactory = contentLeaseFactory,
         ContentLeaseTimeout = contentLeaseTimeout ?? TimeSpan.FromSeconds(5),
         ContentAuthorityOperations = contentAuthorityOperations,
+        ContentAuthorityJournal = contentAuthorityJournal,
         IsolationPolicy = contentLeaseFactory is null
             ? WidgetWorkerIsolationPolicy.HostTrustedJobOnly
             : WidgetWorkerIsolationPolicy.RequireAppContainer,
@@ -2141,6 +2368,7 @@ file sealed class IsolationProbeWidget(
     private string _readable = "unprobed";
     private string _packageWrite = "unprobed";
     private string _deniedRead = "unprobed";
+    private string _deniedWrite = "unprobed";
     private string _otherProfileRead = "not-requested";
     private string _network = "unprobed";
     private string _secret = "unprobed";
@@ -2155,6 +2383,7 @@ file sealed class IsolationProbeWidget(
             UI.Text(_readable, "probe-readable"),
             UI.Text(_packageWrite, "probe-package-write"),
             UI.Text(_deniedRead, "probe-denied-read"),
+            UI.Text(_deniedWrite, "probe-denied-write"),
             UI.Text(_otherProfileRead, "probe-other-profile-read"),
             UI.Text(_network, "probe-network"),
             UI.Text(_secret, "probe-secret"),
@@ -2168,6 +2397,7 @@ file sealed class IsolationProbeWidget(
             Path.Combine(Path.GetDirectoryName(readablePath)!, "unauthorized-write.tmp"),
             widgetLifetime);
         _deniedRead = await TryReadAsync(deniedPath, widgetLifetime);
+        _deniedWrite = await TryWriteAsync(deniedPath, widgetLifetime);
         if (otherProfilePath is not null)
             _otherProfileRead = await TryReadAsync(otherProfilePath, widgetLifetime);
         _secret = Environment.GetEnvironmentVariable(secretName) is null ? "absent" : "present";
@@ -2624,13 +2854,15 @@ file sealed class TestContentLease(
 
 file sealed class TestAuthorityOperations(
     int? failApplyAt = null,
-    AppContainerAuthorityTargetKind[]? failRestoreKinds = null)
+    AppContainerAuthorityTargetKind[]? failRestoreKinds = null,
+    Dictionary<AppContainerAuthorityTarget, string>? states = null)
     : IAppContainerAuthorityOperations
 {
-    private readonly Dictionary<AppContainerAuthorityTarget, string> _states = [];
+    private readonly Dictionary<AppContainerAuthorityTarget, string> _states = states ?? [];
     private int _applyIndex;
 
     public List<AppContainerAuthorityTarget> RestoreOrder { get; } = [];
+    public int ApplyCount => _applyIndex;
 
     public AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target)
     {
@@ -2649,12 +2881,24 @@ file sealed class TestAuthorityOperations(
         if (index == failApplyAt) throw new IOException($"apply {index} failed");
     }
 
+    public void VerifyApplied(AppContainerAuthoritySnapshot snapshot)
+    {
+        if (_states[snapshot.Target] != Granted(snapshot.Target))
+            throw new IOException($"apply verification {snapshot.Target.Kind} failed");
+    }
+
     public void Restore(AppContainerAuthoritySnapshot snapshot)
     {
         RestoreOrder.Add(snapshot.Target);
         if (failRestoreKinds?.Contains(snapshot.Target.Kind) == true)
             throw new IOException($"restore {snapshot.Target.Kind} failed");
         _states[snapshot.Target] = snapshot.AccessDescriptor;
+    }
+
+    public void VerifyRestored(AppContainerAuthoritySnapshot snapshot)
+    {
+        if (_states[snapshot.Target] != snapshot.AccessDescriptor)
+            throw new IOException($"restore verification {snapshot.Target.Kind} failed");
     }
 
     public string StateFor(AppContainerAuthorityTarget target) => _states[target];
@@ -2664,4 +2908,80 @@ file sealed class TestAuthorityOperations(
 
     public static string Granted(AppContainerAuthorityTarget target) =>
         $"granted:{target.Kind}:{target.Path}";
+}
+
+file sealed class TestAuthorityJournal(bool failWrite = false)
+    : IAppContainerAuthorityJournal
+{
+    private readonly bool _failWrite = failWrite;
+    private int _held;
+
+    public IReadOnlyList<AppContainerAuthoritySnapshot>? Pending { get; private set; }
+
+    public IAppContainerAuthorityJournalLease Acquire(string profileName)
+    {
+        if (Interlocked.Exchange(ref _held, 1) != 0)
+            throw new AppContainerAuthorityJournalException(
+                "The test authority journal is already held.");
+        return new Lease(this);
+    }
+
+    private sealed class Lease(TestAuthorityJournal owner)
+        : IAppContainerAuthorityJournalLease
+    {
+        private TestAuthorityJournal? _owner = owner;
+
+        public IReadOnlyList<AppContainerAuthoritySnapshot>? ReadPending() =>
+            _owner?.Pending?.ToArray()
+            ?? (_owner is null
+                ? throw new ObjectDisposedException(nameof(Lease))
+                : null);
+
+        public void WritePending(IReadOnlyList<AppContainerAuthoritySnapshot> snapshots)
+        {
+            var current = _owner ?? throw new ObjectDisposedException(nameof(Lease));
+            if (current._failWrite)
+                throw new AppContainerAuthorityJournalException(
+                    "The test journal rejected its pending record.");
+            current.Pending = snapshots.ToArray();
+        }
+
+        public void ClearPending()
+        {
+            var current = _owner ?? throw new ObjectDisposedException(nameof(Lease));
+            current.Pending = null;
+        }
+
+        public void Dispose()
+        {
+            var current = Interlocked.Exchange(ref _owner, null);
+            if (current is not null) Interlocked.Exchange(ref current._held, 0);
+        }
+    }
+}
+
+file sealed class TerminatingAuthorityOperations(
+    IAppContainerAuthorityOperations inner,
+    int terminateAfterApply) : IAppContainerAuthorityOperations
+{
+    private int _applies;
+
+    public AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target) =>
+        inner.Capture(target);
+
+    public void Apply(AppContainerAuthoritySnapshot snapshot)
+    {
+        inner.Apply(snapshot);
+        if (Interlocked.Increment(ref _applies) == terminateAfterApply)
+            Environment.Exit(91);
+    }
+
+    public void VerifyApplied(AppContainerAuthoritySnapshot snapshot) =>
+        inner.VerifyApplied(snapshot);
+
+    public void Restore(AppContainerAuthoritySnapshot snapshot) =>
+        inner.Restore(snapshot);
+
+    public void VerifyRestored(AppContainerAuthoritySnapshot snapshot) =>
+        inner.VerifyRestored(snapshot);
 }

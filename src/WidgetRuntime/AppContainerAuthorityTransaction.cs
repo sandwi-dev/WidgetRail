@@ -21,7 +21,9 @@ internal interface IAppContainerAuthorityOperations
 {
     AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target);
     void Apply(AppContainerAuthoritySnapshot snapshot);
+    void VerifyApplied(AppContainerAuthoritySnapshot snapshot);
     void Restore(AppContainerAuthoritySnapshot snapshot);
+    void VerifyRestored(AppContainerAuthoritySnapshot snapshot);
 }
 
 internal sealed class AppContainerAuthorityRollbackException(
@@ -41,21 +43,38 @@ internal sealed class AppContainerAuthorityRollbackException(
 /// </summary>
 internal static class AppContainerAuthorityTransaction
 {
-    internal static void Apply(
+    internal static IReadOnlyList<AppContainerAuthoritySnapshot> Capture(
         IReadOnlyList<AppContainerAuthorityTarget> targets,
         IAppContainerAuthorityOperations operations)
     {
         ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(operations);
 
-        var attempted = new List<AppContainerAuthoritySnapshot>(targets.Count);
+        var snapshots = new List<AppContainerAuthoritySnapshot>(targets.Count);
+        foreach (var target in targets) snapshots.Add(operations.Capture(target));
+        return snapshots.AsReadOnly();
+    }
+
+    internal static void Apply(
+        IReadOnlyList<AppContainerAuthorityTarget> targets,
+        IAppContainerAuthorityOperations operations) =>
+        Apply(Capture(targets, operations), operations);
+
+    internal static void Apply(
+        IReadOnlyList<AppContainerAuthoritySnapshot> snapshots,
+        IAppContainerAuthorityOperations operations)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(operations);
+
+        var attempted = new List<AppContainerAuthoritySnapshot>(snapshots.Count);
         try
         {
-            foreach (var target in targets)
+            foreach (var snapshot in snapshots)
             {
-                var snapshot = operations.Capture(target);
                 attempted.Add(snapshot);
                 operations.Apply(snapshot);
+                operations.VerifyApplied(snapshot);
             }
         }
         catch (Exception applyFailure) when (applyFailure is not OutOfMemoryException)
@@ -66,6 +85,7 @@ internal static class AppContainerAuthorityTransaction
                 try
                 {
                     operations.Restore(attempted[index]);
+                    operations.VerifyRestored(attempted[index]);
                 }
                 catch (Exception rollbackFailure) when (
                     rollbackFailure is not OutOfMemoryException)
@@ -79,5 +99,31 @@ internal static class AppContainerAuthorityTransaction
             ExceptionDispatchInfo.Capture(applyFailure).Throw();
             throw;
         }
+    }
+
+    internal static void Recover(
+        IReadOnlyList<AppContainerAuthoritySnapshot> snapshots,
+        IAppContainerAuthorityOperations operations)
+    {
+        ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(operations);
+
+        List<Exception>? failures = null;
+        for (var index = snapshots.Count - 1; index >= 0; index--)
+        {
+            try
+            {
+                operations.Restore(snapshots[index]);
+                operations.VerifyRestored(snapshots[index]);
+            }
+            catch (Exception failure) when (failure is not OutOfMemoryException)
+            {
+                (failures ??= []).Add(failure);
+            }
+        }
+        if (failures is not null)
+            throw new AggregateException(
+                "Pending AppContainer content authority could not be recovered.",
+                failures);
     }
 }

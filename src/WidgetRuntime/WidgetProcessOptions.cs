@@ -109,6 +109,7 @@ public sealed record WidgetProcessOptions
         ContentLeaseFactory { get; init; }
     internal TimeSpan ContentLeaseTimeout { get; init; } = TimeSpan.FromSeconds(5);
     internal IAppContainerAuthorityOperations? ContentAuthorityOperations { get; init; }
+    internal IAppContainerAuthorityJournal? ContentAuthorityJournal { get; init; }
     /// <summary>
     /// Host-owned isolation decision. Package manifests and worker arguments
     /// never control this value.
@@ -183,10 +184,11 @@ public sealed record WidgetProcessOptions
             throw new ArgumentException(
                 "Content leases require an AppContainer with no broad read-only roots.",
                 nameof(ContentLeaseFactory));
-        if (ContentAuthorityOperations is not null && ContentLeaseFactory is null)
+        if ((ContentAuthorityOperations is not null || ContentAuthorityJournal is not null) &&
+            ContentLeaseFactory is null)
             throw new ArgumentException(
-                "Content authority operations require a content lease.",
-                nameof(ContentAuthorityOperations));
+                "Content authority overrides require a content lease.",
+                nameof(ContentLeaseFactory));
     }
 }
 
