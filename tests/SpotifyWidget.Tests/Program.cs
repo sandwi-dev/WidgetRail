@@ -28,6 +28,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Playlist detail is a B-dismissible navigation entry", PlaylistDetailBack),
     ("Failed playlist detail keeps valid focus and retries the detail", PlaylistDetailFailureRetry),
     ("Slow playlist detail acknowledges and cannot reopen after B", SlowPlaylistDetailBack),
+    ("Superseded playlist detail cannot publish into a newer selection", SupersededPlaylistDetail),
+    ("A slow refresh cannot replace a newer playlist route", RefreshPreservesNewerPlaylist),
+    ("Playlist detail cancellation reloads the retained selection on reactivation", PlaylistDetailLifecycle),
     ("Active polling reuses configuration and authorization state", PollingRequestBudget),
     ("Devices expose trusted local playback and safe transfer actions", DeviceActions),
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
@@ -540,13 +543,192 @@ static async Task SlowPlaylistDetailBack()
     await WaitUntil(() => harness.PlaylistDetailCalls == 1);
     await widget.OnActionAsync(new("spotify.playlist.back", "spotify.playlist.item.wide.0"));
     completion.SetResult(harness.PlaylistDetail);
-    await Task.Delay(50);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
 
     var list = widget.RenderSnapshot("spotify.playlist.cancelled", 1);
     Assert.NotNull(Find(list.Root, "spotify.playlist.item.wide.0"));
     Assert.Equal("spotify.playlist.item.wide.0", list.InitialFocusId);
+    await WidgetTestHost.DestroyAsync(widget);
+}
+
+static async Task SupersededPlaylistDetail()
+{
+    foreach (var failLateRequest in new[] { false, true })
+    {
+        var playlistA = Playlist("playlist-a", "Playlist A");
+        var playlistB = Playlist("playlist-b", "Playlist B");
+        var detailA = PlaylistDetail(playlistA, "Track A", "spotify:track:a");
+        var detailB = PlaylistDetail(playlistB, "Track B", "spotify:track:b");
+        var aStarted = NewSignal();
+        var aCompletion = new TaskCompletionSource<WidgetSpotifyPlaylistItemsSummary>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var harness = SpotifyHarness.Ready();
+        harness.Playlists = new([playlistA, playlistB], 0, 50, 2);
+        harness.PlaylistDetailHandler = async (request, _) =>
+        {
+            if (request.PlaylistId == playlistA.PlaylistId)
+            {
+                aStarted.TrySetResult();
+                return await aCompletion.Task.ConfigureAwait(false);
+            }
+            Assert.Equal(playlistB.PlaylistId, request.PlaylistId);
+            return detailB;
+        };
+        var widget = await StartAsync(harness);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+        await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
+        await aStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        await widget.OnActionAsync(new("spotify.playlist.open.1", "spotify.playlist.item.compact.1"));
+        var selectingB = widget.RenderSnapshot("spotify.playlist-b-loading", 1);
+        Assert.True(ContainsText(selectingB.Root, "Loading Playlist B"),
+            "The replacement selection did not publish its own loading state.");
+        Assert.True(!ContainsText(selectingB.Root, "Track A"),
+            "Playlist A remained visible after selecting Playlist B.");
+
+        if (failLateRequest)
+            aCompletion.SetException(new WidgetCapabilityException(
+                "spotify_unavailable", "Late A failure"));
+        else
+            aCompletion.SetResult(detailA);
+        await WaitUntil(() => harness.PlaylistDetailRequests.Count == 2);
+        await WaitForNode(widget, "spotify.playlist.track.wide.0.title");
+        var selectedB = widget.RenderSnapshot("spotify.playlist-b", 1);
+        Assert.Equal("Playlist B", Find(selectedB.Root,
+            "spotify.playlist.detail.header.wide.title").Text);
+        Assert.Equal("Track B", Find(selectedB.Root,
+            "spotify.playlist.track.wide.0.title").Text);
+        Assert.Equal("spotify.playlist.play.compact", selectedB.InitialFocusId);
+
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+
+        var afterLateA = widget.RenderSnapshot("spotify.playlist-b-after-a", 2);
+        Assert.Equal("Playlist B", Find(afterLateA.Root,
+            "spotify.playlist.detail.header.wide.title").Text);
+        Assert.Equal("Track B", Find(afterLateA.Root,
+            "spotify.playlist.track.wide.0.title").Text);
+        Assert.True(!ContainsText(afterLateA.Root, "Track A"),
+            "A superseded playlist result was rendered under Playlist B.");
+        Assert.Equal(2, harness.PlaylistDetailRequests.Count);
+        await StopAsync(widget);
+    }
+}
+
+static async Task PlaylistDetailLifecycle()
+{
+    var playlist = Playlist("playlist-a", "Playlist A");
+    var stale = PlaylistDetail(playlist, "Stale Track", "spotify:track:stale");
+    var fresh = PlaylistDetail(playlist, "Fresh Track", "spotify:track:fresh");
+    var firstStarted = NewSignal();
+    var firstCancelled = NewSignal();
+    var firstCompletion = new TaskCompletionSource<WidgetSpotifyPlaylistItemsSummary>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var harness = SpotifyHarness.Ready();
+    harness.Playlists = new([playlist], 0, 50, 1);
+    harness.PlaylistDetailHandler = async (request, cancellationToken) =>
+    {
+        Assert.Equal(playlist.PlaylistId, request.PlaylistId);
+        if (harness.PlaylistDetailRequests.Count == 1)
+        {
+            using var registration = cancellationToken.Register(
+                () => firstCancelled.TrySetResult());
+            firstStarted.TrySetResult();
+            return await firstCompletion.Task.ConfigureAwait(false);
+        }
+        return fresh;
+    };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
+    await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+    var background = WidgetTestHost.SetLifecycleStateAsync(
+        widget, WidgetLifecycleState.Background).AsTask();
+    await firstCancelled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    firstCompletion.SetResult(stale);
+    await background.WaitAsync(TimeSpan.FromSeconds(1));
+    Assert.True(!ContainsText(widget.RenderSnapshot(
+            "spotify.playlist-background", 1).Root, "Stale Track"),
+        "A cancellation-ignoring detail result published after deactivation.");
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    await WaitUntil(() => harness.PlaylistDetailRequests.Count == 2);
+    await WaitForNode(widget, "spotify.playlist.track.wide.0.title");
+    var reactivated = widget.RenderSnapshot("spotify.playlist-reactivated", 1);
+    Assert.Equal("Playlist A", Find(reactivated.Root,
+        "spotify.playlist.detail.header.wide.title").Text);
+    Assert.Equal("Fresh Track", Find(reactivated.Root,
+        "spotify.playlist.track.wide.0.title").Text);
+    Assert.True(!ContainsText(reactivated.Root, "Stale Track"),
+        "The stale detail result survived reactivation.");
     await StopAsync(widget);
 }
+
+static async Task RefreshPreservesNewerPlaylist()
+{
+    var playlistA = Playlist("playlist-a", "Playlist A");
+    var playlistB = Playlist("playlist-b", "Playlist B");
+    var detailA = PlaylistDetail(playlistA, "Track A", "spotify:track:a");
+    var detailB = PlaylistDetail(playlistB, "Track B", "spotify:track:b");
+    var harness = SpotifyHarness.Ready();
+    harness.Playlists = new([playlistA, playlistB], 0, 50, 2);
+    harness.PlaylistDetailHandler = (request, _) => ValueTask.FromResult(
+        request.PlaylistId == playlistA.PlaylistId ? detailA : detailB);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new("spotify.playlist.open.0", "spotify.playlist.item.wide.0"));
+    await WaitUntil(() => harness.PlaylistDetailRequests.Count == 1);
+
+    var refreshStarted = NewSignal();
+    var refreshCompletion = new TaskCompletionSource<WidgetSpotifyPlaybackSummary>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    harness.PlaybackHandler = async cancellationToken =>
+    {
+        refreshStarted.TrySetResult();
+        return await refreshCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+    };
+    var refresh = widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide")).AsTask();
+    await refreshStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    await widget.OnActionAsync(new("spotify.playlist.open.1", "spotify.playlist.item.compact.1"));
+    await WaitUntil(() => harness.PlaylistDetailRequests.Count == 2);
+    await WaitForNode(widget, "spotify.playlist.track.wide.0.title");
+
+    harness.PlaybackHandler = null;
+    refreshCompletion.SetResult(harness.Playback);
+    await refresh.WaitAsync(TimeSpan.FromSeconds(1));
+    var current = widget.RenderSnapshot("spotify.refresh-newer-playlist", 1);
+    Assert.Equal("Playlist B", Find(current.Root,
+        "spotify.playlist.detail.header.wide.title").Text);
+    Assert.Equal("Track B", Find(current.Root,
+        "spotify.playlist.track.wide.0.title").Text);
+    Assert.Equal("spotify.playlist.play.compact", current.InitialFocusId);
+    Assert.True(!ContainsText(current.Root, "Track A"),
+        "The refresh restored an older playlist-detail revision.");
+    await StopAsync(widget);
+}
+
+static TaskCompletionSource NewSignal() =>
+    new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+static WidgetSpotifyPlaylistSummary Playlist(string id, string name) => new(
+    id, name, $"{name} description", null,
+    $"https://open.spotify.com/playlist/{id}", $"spotify:playlist:{id}",
+    "Listener", false, true, 1);
+
+static WidgetSpotifyPlaylistItemsSummary PlaylistDetail(
+    WidgetSpotifyPlaylistSummary playlist,
+    string trackName,
+    string uri) => new(
+    playlist,
+    [new WidgetSpotifyMediaItemSummary(WidgetSpotifyPlaybackItemType.Track,
+        trackName, "Artist", 180_000, null, uri,
+        $"https://open.spotify.com/track/{trackName.Replace(' ', '-').ToLowerInvariant()}",
+        true)],
+    0, 50, 1);
 
 static async Task PollingRequestBudget()
 {
@@ -1110,6 +1292,19 @@ static async Task WaitUntil(Func<bool> predicate)
     while (!predicate()) await Task.Delay(10, timeout.Token);
 }
 
+static Task WaitForNode(SpotifyWidget widget, string id) => WaitUntil(() =>
+{
+    try
+    {
+        Find(widget.RenderSnapshot("spotify.wait", 1).Root, id);
+        return true;
+    }
+    catch (InvalidOperationException)
+    {
+        return false;
+    }
+});
+
 static ViewNode Find(ViewNode node, string id)
 {
     if (node.Id == id) return node;
@@ -1135,6 +1330,10 @@ static ViewNode FindPrefix(ViewNode node, string prefix)
 static bool ContainsId(ViewNode node, string id) =>
     node.Id == id || node.Children.Any(child => ContainsId(child, id));
 
+static bool ContainsText(ViewNode node, string text) =>
+    string.Equals(node.Text, text, StringComparison.Ordinal) ||
+    node.Children.Any(child => ContainsText(child, text));
+
 static void AssertShortcut(ViewNode root, ControllerButton button, string action)
 {
     var shortcut = root.Shortcuts.Single(item => item.Button == button);
@@ -1158,6 +1357,8 @@ file sealed class SpotifyHarness
     public int PlaylistCalls { get; private set; }
     public int PlaylistDetailCalls { get; private set; }
     public int DeviceCalls { get; private set; }
+    public Func<CancellationToken, ValueTask<WidgetSpotifyPlaybackSummary>>?
+        PlaybackHandler { get; set; }
     public IReadOnlyList<WidgetSpotifyAuthorizationScope>? LastScopes { get; private set; }
     public List<WidgetSpotifyPlaybackCommand> Commands { get; } = [];
     public List<WidgetSpotifyLocalPlaybackCommand> LocalCommands { get; } = [];
@@ -1192,6 +1393,9 @@ file sealed class SpotifyHarness
     public TaskCompletionSource<WidgetSpotifyPlaylistItemsSummary>?
         PlaylistDetailCompletion { get; set; }
     public bool IgnorePlaylistDetailCancellation { get; set; }
+    public Func<WidgetSpotifyPlaylistItemsRequest, CancellationToken,
+        ValueTask<WidgetSpotifyPlaylistItemsSummary>>? PlaylistDetailHandler { get; set; }
+    public List<WidgetSpotifyPlaylistItemsRequest> PlaylistDetailRequests { get; } = [];
     public WidgetSpotifyDevicesSummary Devices { get; set; } = new(
         [new WidgetSpotifyDeviceSummary("local-placeholder", "Game Bar Alternative",
             "Computer", false, false, true, 60, true),
@@ -1237,11 +1441,13 @@ file sealed class SpotifyHarness
                         WidgetSpotifyAuthorizationState.Disconnected, [], [], null));
                 })
             .WithHandler(WidgetSpotifyCapabilities.GetPlayback,
-                (request, cancellationToken) =>
+                async (request, cancellationToken) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     PlaybackCalls++;
-                    return ValueTask.FromResult(Playback);
+                    if (PlaybackHandler is not null)
+                        return await PlaybackHandler(cancellationToken).ConfigureAwait(false);
+                    return Playback;
                 })
             .WithHandler(WidgetSpotifyCapabilities.ControlPlayback, ControlAsync)
             .WithHandler(WidgetSpotifyCapabilities.GetQueue,
@@ -1275,13 +1481,17 @@ file sealed class SpotifyHarness
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     PlaylistDetailCalls++;
+                    PlaylistDetailRequests.Add(request);
                     if (PlaylistDetailError is not null) throw PlaylistDetailError;
-                    var detail = PlaylistDetailCompletion is not null
-                        ? IgnorePlaylistDetailCancellation
-                            ? await PlaylistDetailCompletion.Task.ConfigureAwait(false)
-                            : await PlaylistDetailCompletion.Task.WaitAsync(cancellationToken)
-                                .ConfigureAwait(false)
-                        : PlaylistDetail;
+                    var detail = PlaylistDetailHandler is not null
+                        ? await PlaylistDetailHandler(request, cancellationToken)
+                            .ConfigureAwait(false)
+                        : PlaylistDetailCompletion is not null
+                            ? IgnorePlaylistDetailCancellation
+                                ? await PlaylistDetailCompletion.Task.ConfigureAwait(false)
+                                : await PlaylistDetailCompletion.Task.WaitAsync(cancellationToken)
+                                    .ConfigureAwait(false)
+                            : PlaylistDetail;
                     return detail with
                     {
                         Items = detail.Items.Skip(request.Offset).Take(request.Limit).ToArray(),
