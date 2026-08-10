@@ -93,6 +93,30 @@ pass 107 and 108,547 checks respectively, and the production OverlayHost Release
 target builds. Physical-controller threshold proof remains in the verification
 queue.
 
+DLV-004 repairs the Games & Apps product surface without changing catalog
+authority, protocol, or native geometry. Library, Add applications, loading,
+healthy-empty, and failure states now share the same bounded responsive
+hierarchy and the public SectionHeader, StatusBadge, Card, EmptyState, Alert,
+AppTile, and Toast components retain their shared style classes. Catalog
+navigation keeps only one 32-row page in a semantic snapshot while preserving
+bounded Next/Previous offsets through the 512-entry provider envelope. Render
+no longer publishes a mutable element-to-app lookup; actions revalidate the
+current route and stable SavedId-derived element before using the current
+short-lived AppId. Back preserves a curated selection, and removal chooses the
+nearest surviving row. Focused Release coverage includes shared loading/empty/
+error surfaces, a 64-entry long-name Library, maximum Catalog traversal,
+bidirectional focus, mutation, lifecycle, and GBSS flex contracts. Retained
+standalone captures cover automatic, Catalog, and mixed Library surfaces across
+compact, standard, 150%-accessible, and wide/high-contrast profiles. Exact
+focused integration evidence at
+`artifacts/verification/20260810T053135Z-3f63fdf8` passes the 6/6 installed
+generic-worker/AppContainer conformance group; final Tier-1 evidence at
+`artifacts/verification/20260810T053438Z-64812600` passes Games & Apps 42/42
+and the 52-file documentation contract. The clean-commit
+capture bundle is published under
+`artifacts/evidence/dlv004/dlv004-product-surface/manifest.json`; packaged
+physical-controller/display evidence remains a separate release gate.
+
 ## Implemented
 
 ### Native overlay and input

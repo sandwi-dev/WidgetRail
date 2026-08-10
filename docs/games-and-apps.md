@@ -27,6 +27,8 @@ explicit game-library source, not a guess based on process or executable names.
   refresh explicitly.
 - **Add applications** opens a nested Catalog backed by a vertical controller
   Scroll; A toggles the focused entry in/out of the Library and B returns.
+  Next/Previous page controls retain at most 32 application rows in any one
+  semantic snapshot while the trusted catalog walk remains bounded to 512.
   Library X removes the focused entry. Removing a Game records its exact
   authority-scoped SavedId as an exclusion, so the same identity stays absent
   after restart, disappearance, and reappearance. Adding it explicitly clears
@@ -42,7 +44,8 @@ explicit game-library source, not a guess based on process or executable names.
   lands on an inner text fragment. A launches that exact row only while the
   widget is Interactive. After confirmed provider success, that item moves to
   the front and the new order is persisted; failure preserves order and
-  actionable focus.
+  actionable focus. Removing a focused item selects the next surviving row, or
+  the previous row when the removed item was last.
 - Curation, automatic-membership provenance, exclusions, recent-first order,
   and selected SavedId are stored in a schema-v2 document through
   `HostServices.PrivateState`. Version-1 membership migrates as explicit user
@@ -59,8 +62,10 @@ explicit game-library source, not a guess based on process or executable names.
   native host accepts it only for the current widget and runtime generation.
   Enqueueing, timeout, stale generation, denial, or failure leaves the overlay
   visible with focus and an actionable status.
-- Catalog `Load more` requests another bounded page and moves selection to the
-  first newly appended item. Discovery retains at most 512 catalog items. The
+- Catalog `Next page` requests another bounded page and moves selection to its
+  first item; `Previous page` returns through the exact visited offsets. The
+  widget renders only the current 32-row page, so even a 512-entry provider
+  catalog cannot overflow the 2,048-node snapshot budget. The
   curated order remains capped at the public 64-SavedId resolver limit, with
   existing user order taking precedence over newly discovered Games.
 - Newly committed automatic additions produce one count-only, non-focusable,
@@ -69,11 +74,30 @@ explicit game-library source, not a guess based on process or executable names.
   document remains below the 64 KiB private-state limit; at that bound a new
   removal is refused without changing visible or durable membership.
 - Permission denied, lifecycle denied, provider unavailable, healthy empty,
-  and generic failure states remain controller reachable and provide an
-  explicit retry action.
+  and generic failure states use the shared Card, EmptyState, and Alert
+  hierarchy. Recovery remains controller reachable through one explicit retry
+  action, while loading is non-focusable and cannot strand controller focus.
 - Moving to Background cancels the active load lifetime. The manifest uses
   `unload-after-idle` with a 120-second idle interval; the bridge can recreate
   the worker from its last validated snapshot when it is needed again.
+
+## Responsive and accessibility envelope
+
+The surface is a single bounded vertical controller hierarchy. The header and
+section hierarchy stay fixed while the Library or Catalog Scroll owns the
+remaining height; focused rows are revealed by the host's shared Scroll
+geometry. The package has no monitor-resolution branch or widget-local focus
+offset.
+
+Deterministic coverage uses compact 560×420, standard 880×520, and wide
+1120×620 logical surfaces. The compact accessibility profile combines 150%
+text scaling with a 144-DPI pixel-scale render, while standard/default coverage
+starts at 100%. Root/content/Scroll minimum heights are zero, so short surfaces
+yield space to the focus-follow Scroll instead of clipping the header or an
+essential action. Names are sanitized to 120 characters and remain a two-line,
+ellipsis-bounded part of the one focusable AppTile. High-contrast captures and
+semantic labels provide non-color state evidence; physical display,
+controller, and assistive-technology sign-off remains manual release evidence.
 
 ## Public SDK contract
 
@@ -211,8 +235,10 @@ schema-v1 migration, automatic-versus-explicit provenance, bounded exclusions,
 concurrent compare-and-swap exclusion, disappearance/reappearance, same-title
 identity replacement, stable order/focus across AppId rotation, stale action
 rejection, healthy empty and sanitized failure states, Catalog add/remove,
-confirmed recent-first ordering, opaque selected launch, bounded paging, and
-manifest/GBSS validation. Provider tests cover
+confirmed recent-first ordering, nearest-row removal focus, opaque selected
+launch, bidirectional 32-row Catalog paging through the 512-item bound,
+64-entry long-name Library snapshots, shared component classes, and responsive
+GBSS contracts. Provider tests cover
 lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,
 on-demand icon caching and bounds, exact shortcut/AUMID revalidation,
 constrained Shell/packaged/Steam activation, STA queue cancellation,
@@ -222,6 +248,10 @@ cover separate read/launch consent, lifecycle denial, invalid payload/backend
 data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.
 
-This is local automated evidence, not a public-release claim. A packaged
-controller/visual playtest, broader Windows catalog matrix, and
+The retained auth-free capture path renders automatic Library, Catalog, and
+mixed Library snapshots from the real installed package and generic worker
+through production shared styles and native renderer sources at compact,
+standard, accessible, and wide/high-contrast profiles. This is local automated
+evidence, not a public-release claim. A packaged controller/visual playtest,
+broader Windows catalog matrix, and
 authoritative game sources remain required.

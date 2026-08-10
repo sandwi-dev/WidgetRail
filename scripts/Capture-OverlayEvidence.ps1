@@ -229,8 +229,8 @@ $profiles = @(
     [ordered]@{ id = 'wide-high-contrast'; logicalWidth = 1120; logicalHeight = 620; dpi = 144; textScale = 1.5; reducedTransparency = $false; highContrast = $true }
 )
 $cases = @(
-    [ordered]@{ id = 'games-empty-compact'; packageId = 'org.gbar.firstparty.games-apps'; state = 'initial'; profile = 'compact-default' },
-    [ordered]@{ id = 'games-empty-accessible'; packageId = 'org.gbar.firstparty.games-apps'; state = 'initial'; profile = 'compact-accessible' },
+    [ordered]@{ id = 'games-auto-library-compact'; packageId = 'org.gbar.firstparty.games-apps'; state = 'initial'; profile = 'compact-default' },
+    [ordered]@{ id = 'games-auto-library-accessible'; packageId = 'org.gbar.firstparty.games-apps'; state = 'initial'; profile = 'compact-accessible' },
     [ordered]@{ id = 'games-catalog-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'catalog'; profile = 'standard-default' },
     [ordered]@{ id = 'games-catalog-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'catalog'; profile = 'wide-high-contrast' },
     [ordered]@{ id = 'games-populated-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'populated'; profile = 'standard-default' },
@@ -452,7 +452,8 @@ try {
         semanticInvariants = $manifestInvariants
         gaps = $index.gaps
         limitations = @($index.limitations) + @(
-            'The current 12-capture matrix covers Games & Apps and Spotify; Settings permission-detail capture remains an explicit gap.',
+            'The current 12-capture matrix covers automatic, catalog, and mixed Games & Apps surfaces plus Spotify setup surfaces; managed suites retain the full loading, empty, failure, mutation, and bounded-page semantic matrix.',
+            'Settings permission-detail capture remains an explicit gap.',
             'Hardware/window evidence for controller suppression and overlay z-order is outside this standalone auth-free artifact set.')
         retainedFiles = $null
     }
