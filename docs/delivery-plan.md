@@ -430,10 +430,23 @@ the repeated pattern and consumer evidence before changing the public API.
 
 ### DLV-024 — Stabilize Games & Apps library continuity and density
 
-**State:** Assigned
+**State:** Done
 **Baseline:** `b844fd8`, the accepted widgets-lane DLV-017 closing commit
+**Closing commit:** `d80d9ec` (`[DLV-024] stabilize Games library continuity`)
+**Integrated on `main`:** `6f401ea`
 **Owner:** Games & Apps managed presentation/state mutation, surface hints,
 credential-free fixtures, and directly affected feature documentation
+
+**Reviewer disposition:** Accepted. Mutation is now commit-before-publish;
+write failure retains the whole prior projection, one forced CAS conflict
+preserves unrelated membership/order/exclusions, and delayed, failed, and
+fresh-worker cases keep one last-good Library with exactly one Add applications
+action. The 600-DIP preferred height adds more than two normal row pitches when
+safe area permits. Focused Release evidence passed Games 52/52, SDK 84/84,
+private state 10/10, and generic-worker 6/6; 16 retained body captures and seven
+semantic snapshots have zero renderer diagnostics. The 1,861-line orchestration
+type remains architectural debt and is intentionally the next assignment,
+DLV-027, rather than being accepted as the maintainable end state.
 
 **Objective:** Correct the reproduced post-DLV-017 product regressions: removing
 one saved entry from Add applications must not make the other Library rows
@@ -477,8 +490,9 @@ or a correct fix requires public collection/protocol behavior owned by DLV-006.
 
 ### DLV-027 — Split Games & Apps by stable responsibility
 
-**State:** Ready after DLV-024
-**Baseline:** closing commit of DLV-024
+**State:** Assigned
+**Baseline:** accepted `main` integration `6f401ea` plus the reviewer
+control-plane commit assigning this milestone
 **Owner:** Games & Apps managed internals and focused credential-free tests
 
 **Objective:** Turn the stabilized Games & Apps implementation into a
@@ -745,7 +759,8 @@ automation.
 
 ### DLV-025 — Eliminate transition tearing and UI-thread stutter
 
-**State:** Assigned
+**State:** Blocked at the documented compositor/window-technology stop condition;
+user architecture authority required before implementation resumes
 **Baseline:** `17e4388`, the clean reviewer control-plane commit containing the
 accepted DLV-020 integration
 **Owner:** OverlayHost transition scheduling, Win32/DWM window composition,
@@ -757,6 +772,17 @@ miss frames, flicker the interface, and expose large gray/black/stale regions
 around Games & Apps. Preserve visual continuity only when it can be delivered
 within a measured frame budget; an immediate stable switch is preferable to a
 laggy or tearing animation.
+
+**Preserved blocker evidence:** The platform worktree remains uncommitted at
+`57aa2d5`. Real populated Spotify Queue and Games & Apps first paints measured
+about 31 ms; 14 Spotify inputs produced six successful paints over 674 ms; and
+five corrected consecutive captures exposed the dark interior band at final
+geometry before list paint completed. Removing repeated extent interpolation
+did not satisfy acceptance. Resizing the current Direct2D HWND render target
+exposes an undefined resized back buffer before a successful draw; a later
+`DwmFlush` cannot retract frames already composed. A credible atomic fix now
+requires offscreen precomposition with a proven atomic present boundary or
+DirectComposition/swap-chain ownership. No known-bad product commit was made.
 
 **In scope:** reproduce the exact real Games & Apps and Spotify switch paths;
 instrument timer cadence and per-frame duration across `SetWindowPos`, `WM_SIZE`,
@@ -1040,6 +1066,7 @@ claim compatibility without measured evidence.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
+| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. | User chooses and authorizes a bounded compositor architecture milestone; planner updates DLV-025 scope and acceptance around that design before the preserved platform worktree resumes. |
 | Audio Mixer default input/output endpoint selection | The roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence for a supported setter plus a bounded provider design and reversible hardware plan. |
 | Live Spotify account and Web Playback completion | Account, Premium eligibility, development allowlist, OAuth, and EME interaction. | User-authorized live account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth consent/verification and a user account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth design, verification plan, and user-authorized account. |
