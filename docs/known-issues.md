@@ -68,12 +68,12 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-047 | P1 | Verifying | Widget SDK operations/resources / Spotify Community addon | Public bounded SingleFlight, Latest, and Serial lanes bind explicitly to Active, State, or Widget lifetimes and drain before lifecycle callbacks; `Completed` records synchronous no-work success and busy edges still auto-invalidate. Spotify 0.2.10 migrated playlist paging to SDK-owned Active resources, including synchronous cache/reset invalidation, removing its page tasks, generations, dictionaries, eviction loops, and manual page-state invalidation; packaged lifecycle/controller evidence and broader widget migrations remain. |
 | GBA-048 | P1 | Verifying | Widget SDK state coordination / authoring experience | Public `WidgetModel<TState>` supplies serialized immutable updates and equality-based one-shot invalidation; Media Sessions now provides the medium production migration and repeat-suppression regression. Packaged evidence remains. |
 | GBA-049 | P1 | Verifying | YT Music / loopback performance / semantic icons | Stable playback now reads state first and reuses complete same-track metadata for five bounded minutes, halving ordinary loopback traffic and avoiding cross-transition pairing; protocol-v12 `RepeatOne` supplies distinct non-color feedback. Packaged companion/controller evidence remains. |
-| GBA-050 | P0 | Verifying | YT Music / asynchronous playback reconciliation | Accepted play/pause reconciliation now outlives the transient action request, rejects stale companion state as confirmation, and lets repeated toggles supersede an earlier refresh burst. Packaged real-companion evidence remains. |
+| GBA-050 | P0 | Verifying | YT Music / asynchronous playback reconciliation | DLV-009 moves bounded transport reconciliation into an SDK Active Latest lane, rejects cancellation-ignoring stale success/failure/authorization outcomes, and lets repeated toggles supersede earlier refresh work; packaged real-companion evidence remains. |
 | GBA-051 | P1 | Verifying | Widget SDK optimistic command coordination / Media Sessions | Public SingleFlight/Latest/Serial optimistic commands now derive projection and provider input from one model revision, preserve provider events through authored merge/rollback, own bounded lifecycle work, and never retry mutations; Media Sessions is the production migration. Packaged evidence and broader migrations remain. |
 | GBA-052 | P0 | Verifying | Games & Apps / worker lifecycle | Initial and retry library loads now use runtime-owned Active operations, while toast expiry has one cancellation-source disposer and clears the shared reference before disposal. Focused coverage and three consecutive generic-worker/AppContainer conformance runs pass; packaged churn evidence remains. |
 | GBA-053 | P1 | Verifying | Widget SDK resource coordination | Public `WidgetResource<TValue>` now owns bounded non-paged load/cache/retry/last-good/subscription state with lifecycle cancellation and stale-result rejection; broader production migrations and packaged evidence remain. |
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
-| GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | YT Music 0.2.6 now exposes typed status-only service failures and bounded safe UI copy without retaining response bodies or unknown exception messages; real-companion failure evidence remains. |
+| GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | Typed status-only service failures and bounded safe UI copy remain intact through DLV-009's immutable presentation/current-attempt migration; focused YT Music coverage passes 51/51 and real-companion failure evidence remains. |
 | GBA-056 | P1 | Confirmed | Spotify widget focus composition | Left from the inactive seek Slider moves to Previous track instead of the navigation menu to its left; DLV-022 owns explicit responsive focus edges. |
 | GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | Auto-loading list transitions visibly jump focus from bottom to top or top to bottom when replacing pages; DLV-006 owns continuous cursor/append and keyed viewport anchoring. |
 | GBA-058 | P1 | Confirmed | SectionHeader / native text geometry / Spotify | The `LIBRARY` header in Spotify Playlists is vertically clipped in the packaged overlay; DLV-021 owns shared header measurement and DLV-022 verifies Spotify composition. |
@@ -1519,6 +1519,11 @@ Focused regressions cover repeated toggles, action-request cancellation, and a
 stale snapshot followed by confirmation. YT Music still owns this specialized
 confirmation-burst logic and has not migrated it to the general coordinator;
 GBA-051 does not by itself replace companion-specific confirmation policy.
+DLV-009 `08d44db` moves that domain-specific burst into the SDK-owned Active
+Latest lane, so supersession and deactivation cancel and drain it without a
+widget task/CTS registry. Current-attempt checks under the presentation-state
+lock reject cancellation-ignoring stale ordinary and authorization failures;
+the companion-specific confirmation/rollback policy correctly remains authored.
 
 **Acceptance:**
 
@@ -1680,9 +1685,10 @@ local data into UI, logs, screenshots, or issue reports.
 loopback bodies are not retained. The widget maps known capability codes and
 status classes to bounded authored copy and maps every unknown exception to one
 generic message; it never appends `Exception.Message` or response JSON. The
-focused YT Music suite passes 48/48, including safe typed error regressions,
-lifecycle-owned transport-reconciliation cancellation/draining, and stale
-ordinary/authorization failure rejection after supersession or lifecycle exit.
+focused YT Music suite passes 51/51, including safe typed error regressions,
+lifecycle-owned transport-reconciliation cancellation/draining, stale
+ordinary/authorization failure rejection after supersession or lifecycle exit,
+and cancellation-ignoring pairing and polling completion after deactivation.
 
 **Acceptance:**
 

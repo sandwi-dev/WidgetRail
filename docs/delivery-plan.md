@@ -177,6 +177,21 @@ The bounded fixture proves exact generation/action/source diagnostics, sanitized
 copy/logging, focus retention, replacement/expiry, Hide non-resurrection, Stop
 cleanup, and no worker restart. Physical GameInput remains manual evidence.
 
+### DLV-009 — Consolidate YT Music lifecycle and render ownership
+
+**State:** Done
+**Closing commit:** `08d44db` (`[DLV-009] consolidate YT Music lifecycle ownership`)
+**Integrated on `main`:** `304102a`
+
+**Reviewer disposition:** Accepted. SDK Active operation lanes now own and
+drain auto-connect, progress, polling, and latest transport reconciliation;
+one immutable presentation record supplies render state; and current-attempt
+checks reject cancellation-ignoring late pairing, polling, authorization, and
+transport outcomes. Reflection coverage confirms zero widget-owned Task/CTS
+registry fields, while the remaining state lock and connection/client gates
+retain narrow domain serialization roles. YT Music passes 51/51; real companion,
+physical controller, and packaged visual evidence remain manual gates.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -290,8 +305,8 @@ different Games & Apps information architecture.
 
 ### DLV-017 — Show a durable Games & Apps warm start
 
-**State:** Ready after DLV-009
-**Baseline:** closing commit of DLV-009
+**State:** Assigned
+**Baseline:** `08d44db`, the accepted widgets-lane DLV-009 closing commit
 **Owner:** Games & Apps private-state projection, lifecycle reconciliation, and
 credential-free fixtures
 
@@ -328,7 +343,7 @@ a public protocol change.
 
 ### DLV-009 — Consolidate YT Music lifecycle and render ownership
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `304102a`
 **Baseline:** `7e0b83e`, the accepted widgets-lane DLV-004 closing commit
 **Owner:** YT Music managed widget and existing public SDK primitives
 

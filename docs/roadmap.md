@@ -135,6 +135,12 @@ remains off until the publisher-trust gates in Phase 4.
   force reload, content-bound update consent, rollback, disable, and uninstall
   without touching the real catalog. A real YTMDesktop2 pairing plus packaged
   physical-controller/shell playtest remains before closing GBA-030.
+  DLV-009 (`08d44db`, integrated as `304102a`) additionally removes three
+  widget-owned lifecycle task fields and the hidden auto-connect flag: SDK
+  Active operation lanes now own auto-connect, progress, polling, and latest
+  transport reconciliation, while one immutable presentation record rejects
+  cancellation-ignoring stale pairing/poll/transport outcomes. Focused YT Music
+  coverage passes 51/51; real companion and physical evidence remain.
 - Finish Settings controller reachability, diagnostics/recovery, local package
   and theme workflows, and permission/version consistency
 - Finish the evidence matrix for the implemented packaged-regression fixes:
@@ -230,7 +236,12 @@ remains off until the publisher-trust gates in Phase 4.
   support. Protocol-v13 explicit focus persistence, `UI.NavigationShell`, and
   assembly-free bounded `gbar preview` scenario-manifest listing are now also
   implemented and exercised by SDK Gallery; selected scenario execution fails
-  closed until an AppContainer preview worker exists. Next migrate suitable
+  closed until an AppContainer preview worker exists. DLV-009 now supplies the
+  second advanced lifecycle/state adoption proof: YT Music uses SDK-owned Active
+  lanes and one immutable render-facing revision without a task/CTS registry.
+  Its companion-specific confirmation policy stays authored, and its still-large
+  controller/view owner remains application-composition evidence rather than a
+  reason to create a universal base class. Next migrate suitable
   command/resource/navigation families, add focused provider-event/
   confirmation/coalescing recipes, design cursor/append resources, and add an
   analyzer for duplicate/unstable IDs and unhandled actions. The SDK must not

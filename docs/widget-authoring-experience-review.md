@@ -30,7 +30,7 @@ provenance/exclusions, deterministic lifecycle races, and credential-free
 real-package fixture are useful patterns, but they do not yet simplify the
 public multi-page/remote-state authoring path. Spotify now has one coherent
 presentation revision, an explicitly keyed playlist-detail owner, and accepted
-named responsibility boundaries. YT Music becomes the second lifecycle
+named responsibility boundaries. DLV-009 makes YT Music the second lifecycle
 proof, and the external scaffold/package journey receives its own bounded
 milestone while native geometry, feedback, accessibility, and performance work
 continues independently.
@@ -83,8 +83,9 @@ an expanded rail around one shared content subtree, with optional expanded-only
 content. Protocol v13 now separates an explicit bounded focus-persistence
 identity from element and action IDs; the shell emits one shared key only for a
 destination's compact and rail presentations. SDK Gallery is the production-
-style reference for the composition, and YT Music now replaces one more hand-written
-cancellation/generation family with an Active Latest operation lane.
+style reference for the composition, and accepted DLV-009 moves YT Music
+auto-connect, progress, polling, and transport reconciliation into SDK Active
+operation lanes around one immutable presentation revision.
 Cursor/append resources, additional page recipes, an ID/action analyzer, and
 broader migrations remain open.
 
@@ -248,7 +249,7 @@ between a minimal and an application-like widget:
 | Recent Apps | 340 lines | One event-driven provider surface |
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | 1,150 lines | Navigation, paging, private state, and launch commands |
-| YT Music | About 1,180 lines | Connection lifecycle and optimistic media state |
+| YT Music | About 1,365 lines | SDK-owned lifecycle lanes, one immutable presentation revision, and authored companion confirmation policy |
 | Spotify | About 1,950 lines across four responsibility files | Lifecycle/action wiring and singular state/resource ownership; route data; playback behavior; snapshot-only presentation over four destinations |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
@@ -257,9 +258,11 @@ The exact counts are less important than the shape of the code. A current
 textual coordination inventory makes the adoption result visible. Media
 Sessions has no `lock` or `SemaphoreSlim` use and owns only its lifecycle
 progress loop after adopting `WidgetModel<State>` and
-`WidgetOptimisticCommand`. YT Music has moved one transport-refresh family to
-`WidgetOperations.RunLatest`, but still owns three activation tasks, two
-semaphores, one state lock, and a manual optimistic confirmation list. Spotify
+`WidgetOptimisticCommand`. DLV-009 gives YT Music SDK-owned Active lanes for
+auto-connect, progress, polling, and Latest transport reconciliation plus one
+immutable presentation record and zero Task/CTS registry fields. It still owns
+two narrow semaphores, one state lock, and a manual optimistic confirmation
+policy in the same controller/view class. Spotify
 has adopted paged resources, one immutable presentation projection, an explicit
 selection generation, and named route/playback/presentation boundaries, but its
 partial owner still contains four task fields, two semaphores, several lock
@@ -357,10 +360,11 @@ It is now a coherent source-level author contract, but not yet verified end to
 end. The capacity test uses an explicit action-start signal,
 protocol-v1 empty acknowledgements and the legacy failure reason are preserved,
 and public docs explicitly define catalog QuickAction as a non-authorizing
-compatibility ingress. YT Music has narrowed its former action semaphore to
-connection work
-that may also begin during activation; ordinary refresh and transport commands
-now rely on the shared queue. Spotify has begun the intended migration by
+compatibility ingress. DLV-009 now binds YT Music's auto-connect, progress,
+polling, and transport reconciliation to SDK-owned Active lanes; its remaining
+connection/client semaphores serialize domain access rather than detached
+lifecycle tasks. Ordinary refresh and transport commands rely on the shared
+queue. Spotify has begun the intended migration by
 deleting its command
 task registry, action semaphore, start helper, and command-drain plumbing and
 awaiting ordinary commands directly. First-Party Conformance exercises both
@@ -425,7 +429,7 @@ host/platform work, not a reason to add author-owned Windows automation code or
 duplicate host navigation.
 
 Implementation status records focused Release results including
-Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 48/48, Focus
+Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 51/51, Focus
 Navigation 41 checks, and Declarative Renderer 4,632 checks. Static inspection
 confirms the relevant managed programs register those case totals, and focused
 YT source coverage includes cancellation-ignoring stale ordinary and
@@ -580,11 +584,12 @@ and persistent media panels, collection/detail pages, error pages, and action
 footers still need comparable recipes.
 
 YT Music independently demonstrates that the coordination helpers continue to
-pay off outside Spotify. Its transport reconciliation burst now uses one Active
-Latest `WidgetOperations` lane instead of its own lock, task set, linked
-cancellation source, generation counter, continuation cleanup, and deactivation
-drain. Much of YT Music remains manually coordinated, but this is evidence that
-the helper can replace real lifecycle plumbing incrementally.
+pay off outside Spotify. DLV-009 expands the earlier transport-only migration:
+auto-connect, progress, polling, and transport reconciliation now use bounded
+Active operation lanes, one immutable presentation record supplies rendering,
+and cancellation-ignoring lifecycle races cannot commit. Companion confirmation
+and rollback remain intentionally authored domain policy; provider/controller/
+view composition remains the open human-authorability boundary.
 
 The migration now applies the Latest currency contract to every attempt-local
 outcome. Successful snapshots, retry status, and authorization failure all
@@ -1752,9 +1757,9 @@ Next work:
    native controller, selected painted/UIA status, expiry, and no restart.
    Keep pagination/value coalescing and gesture authority explicit rather than
    creating widget-owned command registries.
-3. Generalize the cancellation-ignoring stale-success, stale-failure, and
-   lifecycle-exit fixtures from YT Music into a reusable operation-migration
-   test recipe.
+3. Accepted DLV-009 supplies cancellation-ignoring stale-success, stale-failure,
+   and lifecycle-exit fixtures from YT Music. Generalize these into a reusable
+   operation-migration test recipe without hiding domain confirmation policy.
 4. Define credential/session generation semantics before any flow allows
    credentials to be replaced while requests are in flight.
 5. Deliver cursor/append resource state in DLV-006 separately from current-value
@@ -1961,11 +1966,12 @@ scenario execution, cursor/append resources, additional page recipes,
 an ID/action analyzer, interactive/native preview and capture, publication, and
 broader migrations remain.
 
-The immediate need is adoption proof, not another broad abstraction. Use Media
-Sessions as the behavioral baseline, make YT Music the first complete
-state/controller/lifecycle/command/view reference, and require Spotify or
-another advanced widget to reproduce the ownership reduction before promoting
-that structure into templates. For Spotify, coherence comes before extraction:
+The immediate need is composition proof, not another broad abstraction. Media
+Sessions and DLV-009 YT Music now prove lifecycle/state ownership reduction;
+YT Music still needs provider/controller, authored command-policy, and pure-view
+boundaries before it is a complete teachable reference. Require another advanced
+widget to reproduce any proposed boundary before promoting it into templates.
+For Spotify, coherence comes before extraction:
 one immutable presentation state and an explicitly keyed playlist-detail
 snapshot must replace the current cross-owner render assembly. Give Audio Mixer
 and Network Controls their own
