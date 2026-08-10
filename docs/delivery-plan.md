@@ -1390,72 +1390,41 @@ second lifecycle/session owner.
 
 ### DLV-039 — Extract bridge client and residency ownership
 
-**State:** Narrow correction requested; candidate `57befdd` and corrections
-`57f3e951` and `e1df09c` are not accepted or integrated
+**State:** Done; accepted and integrated as `2daae2a`
 **Baseline:** accepted DLV-037 closing commit `d339030`
+**Closing commits:** `57befdd` (`[DLV-039] extract bridge client registry
+ownership`), corrected by `57f3e951`, `e1df09c`, and `a43efc7`
 **Dependencies:** DLV-032 and DLV-037
 **Owner:** managed `WidgetBridgeServer` client/catalog/residency internals and
 direct bridge lifecycle fixtures; no native host or public protocol files
 
-**Reviewer evidence:** Candidate `57befdd` materially reduces the server from
+**Reviewer disposition:** Accepted after three bounded lifecycle/publication
+corrections. Candidate `57befdd` materially reduces the server from
 1,312 to 825 lines and moves catalog, client-generation, residency, idle-unload,
 restart, and disposal state behind one 863-line internal registry. Retained
 stable dirty-worktree evidence passes Widget Runtime 74/74, WidgetBridge 57/57,
-and documentation contracts over 52 Markdown files. The candidate is not yet
-linearizable at generation replacement. `RestartAsync` removes the old current
-registration before retirement and publishes its fresh registration only
-afterward, so a concurrent `GetOrCreate` can install a competing generation;
-the restart then throws from `TryAdd` without disposing the client it just
-created. Client event handlers also check `IsCurrent` before invoking their
-external publication callbacks, and snapshot/request results leave their final
-current check before the server writes them, leaving replacement-versus-
-publication TOCTOU windows. The direct stale-event fixture raises only after
-removal and does not force either window. Detached catalog/replacement
-retirements are also unobserved, while terminal registry disposal stops after
-the first unexpected client-disposal exception. A bounded correction must keep
-one generation reserved through restart preparation, clean every unpublished
-client, carry exact-generation admission through event/result publication,
-observe detached retirement, and attempt every captured terminal cleanup with
-manually controlled no-sleep interleavings.
+and documentation contracts over 52 Markdown files. Corrections `57f3e951` and
+`e1df09c` linearize restart generation replacement and exact-generation
+publication, bound each generation to 34 publication leases with coalesced
+invalidation and bounded failure retention, transfer canceled restart into
+tracked exact-once retirement, perform external cleanup outside the registry
+gate, and preserve terminal failures through one bounded outcome. Final
+correction `a43efc7` moves event-write admission/deadline/session-abort behavior
+behind one 66-line production boundary and directly proves both sides: queued
+cancellation writes zero bytes, while cancellation after a header cannot leave
+a partial frame followed by another frame because the fixed four-second
+deadline aborts the session. It also removes the unused stored retirement task.
+The final server is 891 lines; the 1,261-line registry remains the singular
+worker-generation/catalog/residency/restart/retirement transition owner and
+receives the conditional cohesive exception in the engineering-quality review.
 
-Correction `57f3e951` closes those original interleavings and retained scoped
-evidence passes Widget Runtime 74/74, WidgetBridge 60/60, and documentation
-contracts over 52 Markdown files. It is not yet accepted because the new
-publication-observation mechanism is unbounded: every synchronous worker event
-can retain another pipe-send task and generation lease while the serialized
-writer is stalled, `_detachedFailures` grows for the entire registry lifetime,
-and retirement/restart waits the resulting publication drain without a
-deadline. `RestartAsync` also ignores request cancellation after reserving the
-old generation, while simply canceling that wait would remove the slot before
-its client is terminally disposed. Finally, detached retirement is started
-from inside `_gate`, so completed awaits can synchronously enter external
-client disposal while holding the catalog/current-generation lock; the
-detached observer can also remove an `OutOfMemoryException`-faulted source task
-without carrying that fatal fault into the shared terminal outcome. The next
-correction must use one bounded per-generation publication owner with explicit
-coalescing/overflow semantics, transfer canceled restart into tracked exact-
-once retirement, start external cleanup outside `_gate`, and preserve every
-terminal fault through one bounded shared outcome with deterministic stalled-
-writer/burst/cancellation/reentrant-disposer proof.
-
-Correction `e1df09c` supplies the bounded per-generation notification owner,
-explicit 34-publication maximum, saturating failure-overflow count, canceled-
-restart retirement transfer, outside-gate external cleanup, and bounded shared
-terminal failure outcome. Stable scoped evidence passes Widget Runtime 74/74,
-WidgetBridge 64/64, and documentation contracts over 52 Markdown files. Review
-accepts those lifecycle corrections but not the commit yet. Its verifier also
-exposed a real partial-frame risk when event cancellation lands after the frame
-header but before its body; the correction keeps serialized-write ownership in
-the server and changes internal session behavior so cancellation can withdraw a
-queued event, while an in-flight write completes under a four-second deadline
-or terminates the pipe before another frame. That necessary safety dependency
-needs a named deterministic production-bridge regression fixture and accurate
-documentation; the current status text incorrectly says pipe behavior did not
-change. The correction also stores a `RetirementTask` that is never read,
-awaited, or used for terminal ownership. One final narrow correction must prove
-the two cancellation sides of the writer boundary directly, describe the
-limited internal pipe-session change without implying a protocol change, and
-remove the unused task property or make it the actual consumed terminal owner.
+The final Bridge run first retained a 64/65 failure in the pre-existing
+`Pipelined requests preserve per-widget receive order` teardown, where the Stop
+read observed an invalid length whose bytes resemble JSON-body data; unchanged
+rerun `20260810T230321Z-920a6f9b` passed 65/65 and documentation run
+`20260810T230603Z-49815699` passed 52 files. The rerun does not explain or close
+the framing evidence. DLV-045 owns the bounded diagnosis before DLV-040 changes
+the same server again.
 
 **Objective:** Keep `WidgetBridgeServer` as the pipe-session, framing,
 handshake, reserved-Stop, request-routing, and serialized-write owner while
@@ -1496,11 +1465,63 @@ suite.
 requires a public protocol or threat-model change, duplicates worker lifecycle
 ownership, or overlaps native platform work.
 
+### DLV-045 — Diagnose bridge frame ownership under timeout and teardown
+
+**State:** Assigned
+**Baseline:** accepted DLV-039 integration commit `2daae2a`
+**Dependencies:** DLV-032 and DLV-039
+**Owner:** managed WidgetBridge server framing/session internals and direct
+WidgetBridge fixtures; no native host, public protocol, or capability files
+
+**Objective:** Explain and eliminate the retained one-run frame misalignment in
+the existing pipelined-request teardown without assuming whether the production
+reply writer or the test client's timed-out read owns the defect.
+
+**Evidence to reproduce:** In retained run `20260810T225953Z-4b1e10bd`, the new
+event-write-boundary scenario passed, but `Pipelined requests preserve
+per-widget receive order` failed during `BridgeHarness.DisposeAsync()` Stop with
+`Peer announced invalid bridge message length 1919951483`. The value corresponds
+to bytes at the start of JSON body data. The unchanged 65/65 rerun passed, so
+retry success is not closure.
+
+**In scope:** manually controlled instrumentation around ordinary reply/event
+header and body writes, the shared serialized writer, Stop teardown, test-client
+read ownership, and timeout/cancellation; a deterministic no-sleep fixture that
+forces the responsible interleaving; cancellation/drain of a test read that
+times out if the harness currently leaves it active; one exact session-terminal
+write policy for ordinary replies as well as events only if production partial-
+write exposure is proven; deletion of any superseded hook or duplicated writer
+state.
+
+**Out of scope:** changing the public protocol or frame format, native client
+work, DLV-040 diagnostics/recovery extraction, dispatcher redesign, retrying or
+sleeping until green, broad pipe refactoring, or unrelated reliability/security
+work.
+
+**Acceptance criteria:** the retained byte pattern has a named owner and a
+deterministic reproduction or a deterministic proof that the production path
+cannot create it while the harness can; one read operation and one write frame
+have unambiguous lifetime/terminal ownership; a timed-out read cannot remain
+active and consume a successor response; cancellation after any admitted frame
+header either completes that exact frame under the fixed deadline or aborts the
+session before another frame; pipelined Actions/GetSnapshot/Stop teardown passes
+without retry-as-policy; the completion report distinguishes the original
+failure, forced proof, correction, and final evidence.
+
+**Verification:** Tier 1 WidgetBridge only, including the direct DLV-039 event
+boundary and exact pipelined teardown cases. Run one bounded unchanged repeat
+after the deterministic case passes. Do not rerun Widget Runtime, documentation,
+native, or aggregate suites unless production scope actually expands into them.
+
+**Stop/escalate when:** evidence requires a frame-format/public-protocol change,
+native-host edits, a second session/write owner, or cannot distinguish the
+production and harness hypotheses without materially broadening scope.
+
 ### DLV-040 — Extract bridge diagnostics and recovery projection
 
-**State:** Ready after DLV-039
-**Baseline:** closing commit of DLV-039
-**Dependencies:** DLV-001, DLV-031, and DLV-039
+**State:** Ready after DLV-045
+**Baseline:** closing commit of DLV-045
+**Dependencies:** DLV-001, DLV-031, DLV-039, and DLV-045
 **Owner:** managed bridge diagnostics/recovery internals and direct typed
 diagnostic fixtures; no Settings presentation or installed-widget policy work
 

@@ -85,6 +85,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement; DLV-006 and DLV-022 own continuous keyed focus and composed verification. |
 | GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
 | GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
+| GBA-067 | P1 | Investigating | WidgetBridge frame read/write ownership | One retained final DLV-039 run interpreted JSON-body bytes as a Stop-response frame length during pipelined-test teardown; an unchanged rerun passed. DLV-045 must deterministically distinguish production reply partial-write cancellation from an overlapping timed-out harness read before correcting the proven owner. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
