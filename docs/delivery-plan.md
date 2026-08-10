@@ -1390,8 +1390,8 @@ second lifecycle/session owner.
 
 ### DLV-039 — Extract bridge client and residency ownership
 
-**State:** Correction requested; candidate `57befdd` is not accepted or
-integrated
+**State:** Further correction requested; candidate `57befdd` and correction
+`57f3e951` are not accepted or integrated
 **Baseline:** accepted DLV-037 closing commit `d339030`
 **Dependencies:** DLV-032 and DLV-037
 **Owner:** managed `WidgetBridgeServer` client/catalog/residency internals and
@@ -1417,6 +1417,26 @@ one generation reserved through restart preparation, clean every unpublished
 client, carry exact-generation admission through event/result publication,
 observe detached retirement, and attempt every captured terminal cleanup with
 manually controlled no-sleep interleavings.
+
+Correction `57f3e951` closes those original interleavings and retained scoped
+evidence passes Widget Runtime 74/74, WidgetBridge 60/60, and documentation
+contracts over 52 Markdown files. It is not yet accepted because the new
+publication-observation mechanism is unbounded: every synchronous worker event
+can retain another pipe-send task and generation lease while the serialized
+writer is stalled, `_detachedFailures` grows for the entire registry lifetime,
+and retirement/restart waits the resulting publication drain without a
+deadline. `RestartAsync` also ignores request cancellation after reserving the
+old generation, while simply canceling that wait would remove the slot before
+its client is terminally disposed. Finally, detached retirement is started
+from inside `_gate`, so completed awaits can synchronously enter external
+client disposal while holding the catalog/current-generation lock; the
+detached observer can also remove an `OutOfMemoryException`-faulted source task
+without carrying that fatal fault into the shared terminal outcome. The next
+correction must use one bounded per-generation publication owner with explicit
+coalescing/overflow semantics, transfer canceled restart into tracked exact-
+once retirement, start external cleanup outside `_gate`, and preserve every
+terminal fault through one bounded shared outcome with deterministic stalled-
+writer/burst/cancellation/reentrant-disposer proof.
 
 **Objective:** Keep `WidgetBridgeServer` as the pipe-session, framing,
 handshake, reserved-Stop, request-routing, and serialized-write owner while

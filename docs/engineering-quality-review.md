@@ -1870,7 +1870,7 @@ file containing many small records/services with one giant class.
 | `SpotifyWidget` | 2,040 across four partial declarations | DLV-043 reopens the incomplete DLV-008 architecture disposition and requires real encapsulated boundaries. |
 | `AudioMixerWidget` | 1,643 | Conditional cohesive exception after DLV-029/DLV-042: one committed model, action/effect adapter, selection, status, and invalidation owner; material growth or another coordination domain reopens it. |
 | `UI` SDK facade | 1,471 across seven partial declarations | Cohesive exception: stateless public component-builder facade grouped by component family; it owns no lifecycle, tasks, locks, resources, or mutable model. Reopen if a component family starts sharing hidden state or cannot be tested independently. |
-| `WidgetBridgeServer` | 1,297 on accepted `main`; candidate `57befdd` is 825 over an 863-line registry | DLV-039 correction requested for restart-generation reservation, exact current-result/event publication, and complete observed retirement. DLV-040 follows only after acceptance. |
+| `WidgetBridgeServer` | 1,297 on accepted `main`; `57befdd` plus correction `57f3e951` is 850 over a 1,116-line multi-type registry file | DLV-039 further correction requested. Original generation/publication/disposal races are closed, but notification publication tasks/failures and publication-held retirement are unbounded, restart ignores cancellation while draining publications, external client disposal can start under the registry gate, and a fatal detached fault can escape the shared terminal outcome. DLV-040 follows only after acceptance. |
 | `GamesAppsWidget` | 1,246 | Conditional cohesive exception after DLV-027: one lifecycle, provider-effect, action-admission, and committed-state adapter over separate presentation, catalog, persistence, and reconciliation policies. Reopen for store/collection/domain growth. |
 | `NetworkControlsWidget` | 1,206 | Conditional cohesive exception after DLV-028: one lifecycle, host-command, committed-state, and invalidation adapter over separate provider, command, action, identity, and presentation policies. Reopen for another provider or coordination domain. |
 | `WindowsNetworkNativeAdapter` | 404 | Conditional cohesive exception after DLV-041: the singular three-handle/three-callback/generation/publication/disposal adapter over value-based connectivity, WLAN, radio, and injected native-call policies. Reopen if another native lifetime, gate, callback-registration owner, or independent operation policy returns. |
@@ -4001,13 +4001,19 @@ below.
 2. **Widgets DLV-039 — extract bridge client and residency ownership.**
    DLV-037 is accepted through correction `d339030` and integrated by
    `8ea0fd5`; its root and session now have explicit cohesive dispositions.
-   Candidate `57befdd` achieves the intended ownership reduction and focused
-   green evidence, but is not accepted: restart can race a concurrent request
-   into two fresh registrations and leak one, event/result publication has a
-   pre-publication identity TOCTOU window, and detached/terminal retirement is
-   not complete under an unexpected disposer failure. Accept only after one
-   bounded correction proves those exact interleavings while retaining the
-   server's pipe-session, framing, Stop, dispatcher, and write authority.
+   Candidate `57befdd` achieves the intended ownership reduction. Correction
+   `57f3e951` closes its original restart-generation, publication TOCTOU, and
+   multi-client disposal gaps, with scoped Runtime 74/74, Bridge 60/60, and
+   docs 52 evidence. It is still not accepted: every worker event can retain
+   another serialized pipe-send task and generation publication lease without
+   a cap, failure retention is unbounded, restart can ignore cancellation
+   indefinitely while draining those publications, detached retirement can
+   synchronously enter external disposal under the registry gate, and a fatal
+   observer fault is not guaranteed to reach the shared terminal result.
+   Accept only after one bounded per-generation publication/retirement owner
+   proves burst, stalled writer, cancellation, external-disposal lock
+   isolation, and complete terminal outcome while retaining the server's pipe-
+   session, framing, Stop, dispatcher, and write authority.
 3. **Platform DLV-021 — close shared component geometry after DLV-025.** Correct shared
    Button/ActionSurface/SectionHeader measurement and paint after DLV-025,
    including the reported clipped Spotify header and cross-widget alignment
