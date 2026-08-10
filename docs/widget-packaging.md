@@ -261,21 +261,28 @@ includes the verified content digest, so a later content generation cannot
 inherit direct grants left on an older root. The runtime applies the content
 DACLs transactionally before any worker pipe or process is
 created. Under one cross-process authority lock with a five-second acquisition
-limit, it captures every attempted root, directory, and file DACL, publishes and flushes a bounded pending
+limit, it captures every attempted root, directory, and file DACL plus its
+Windows volume/file identity, publishes and flushes a bounded schema-2 pending
 record in a protected host-only control-plane directory, and only then begins
-mutation. Each applied DACL is verified. A reported failure restores and
+mutation. Each target is opened once without following a final reparse point;
+capture, apply, verification, and rollback use that same handle. Each applied
+DACL is verified. A reported failure restores and
 verifies targets in reverse order including the failing target; a complete
 restore clears the record and reports a stable retryable admission failure.
 
 If the host terminates during mutation or a restore remains incomplete, the
 write-ahead record survives. Before any later community worker starts, the next
-host recovers and verifies that transaction or refuses launch with the record
-still pending. Invalid, reparse-shaped, unwritable, or unflushable journal state
+host reopens every path without following the final reparse point, requires the
+recorded volume/file identity, and recovers and verifies that transaction or
+refuses launch with the record still pending. Invalid, reparse-shaped,
+unwritable, or unflushable journal state
 fails before mutation. A production AppContainer-token fixture proves the
-sandboxed profile cannot read or overwrite this host journal. ACL application
-is still pathname-based rather than bound to the verified object identity;
-alternate inherited/group authority auditing and a user-facing privileged
-repair surface remain open.
+sandboxed profile cannot read or overwrite this host journal. Pre-existing
+read/execute grants for `ALL APPLICATION PACKAGES` or `ALL RESTRICTED
+APPLICATION PACKAGES` also fail before journal publication. The catalog's
+pinned file identities are not yet handed to runtime authority capture, so a
+namespace replacement before those handles open remains unproven. A user-facing
+privileged repair surface remains open.
 
 The runtime separately
 grants the generic worker executable, supplies a stripped environment, and

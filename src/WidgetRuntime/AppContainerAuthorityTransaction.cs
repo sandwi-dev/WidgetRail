@@ -13,11 +13,16 @@ internal readonly record struct AppContainerAuthorityTarget(
     string Path,
     AppContainerAuthorityTargetKind Kind);
 
+internal readonly record struct AppContainerAuthorityObjectIdentity(
+    ulong VolumeSerialNumber,
+    string FileId);
+
 internal readonly record struct AppContainerAuthoritySnapshot(
     AppContainerAuthorityTarget Target,
-    string AccessDescriptor);
+    string AccessDescriptor,
+    AppContainerAuthorityObjectIdentity ObjectIdentity);
 
-internal interface IAppContainerAuthorityOperations
+internal interface IAppContainerAuthorityOperations : IDisposable
 {
     AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target);
     void Apply(AppContainerAuthoritySnapshot snapshot);

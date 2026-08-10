@@ -221,8 +221,9 @@ Up/Down navigation.
   and limited restart. Installed/community workers
   require stable host-derived capability-free Low-integrity AppContainers,
   stripped environments, transactionally applied exact non-inheriting
-  verified-file grants, host-owned write-ahead DACL recovery with a global
-  cross-process authority lock, PID-bound isolated
+  verified-file grants, host-owned schema-2 write-ahead DACL recovery with a
+  global cross-process authority lock and persisted volume/file identities,
+  PID-bound isolated
   pipes, and pre-launch Job Object memory/process/UI/cleanup
   containment. Public custom workers use
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
@@ -780,7 +781,7 @@ community AppContainer authority, exact grant replacement, content-generation
 isolation, trusted-runtime/content-root overlap refusal, caller-preserving
 content-admission cancellation, timeouts and session release, bounded intentional
 unload, and private two-clock dashboard-gesture propagation. Its focused Release
-harness passes 55/55. The authority fixtures prove reverse restoration of every
+harness passes 58/58. The authority fixtures prove reverse restoration of every
 attempted root/directory/file DACL including the failing target, retry without
 quarantine after a complete rollback, pre-mutation refusal when journal
 publication fails, cross-profile lock ownership, corrupt/hostile-entry refusal,
@@ -788,14 +789,23 @@ and recovery after an incomplete rollback. A bounded child process terminates
 immediately after the second real DACL mutation; the next host restores and
 exactly verifies all original DACLs from the pending record before clearing it.
 The production AppContainer probe also proves the sandbox cannot read or write
-the protected host journal. All failure paths reject before process launch and
+the protected host journal. Additional fixtures rename and replace a captured
+file, prove handle-bound apply changes only the original object, reject a
+different volume/file identity during fresh-host recovery without touching the
+replacement or clearing the journal, and refuse broad AppContainer-group
+authority before mutation. All failure paths reject before process launch and
 release the content lease. The bounded 512-file exact-grant fixture completes
-in 485.499 ms in retained all-lane run `20260810T002639Z-3dcb61c2` on the
-current machine;
+in 371.101 ms in the current focused Release run;
 the isolation probe verifies distinct stable SIDs, Low integrity, zero
 capability SIDs, allowed package reads, denied package writes/host and other-
 profile reads/network, stripped secrets, private-profile write/isolation, and
-bounded cleanup. The current SDK, SDK Gallery, and YT Music focused suites pass
+bounded cleanup. Canonical all-lane Release verification
+`20260810T005210Z-c46e6881` passed 41/41 steps in 599.821 seconds at stable
+start/finish commit `dc30be9`, including 58/58 runtime tests, the native build
+and tests, documentation contracts, and the hidden-overlay smoke test. The run
+recorded 29 artifact digests; it is intentionally not clean-tree release
+evidence because the milestone and unrelated review work were present at both
+endpoints. The current SDK, SDK Gallery, and YT Music focused suites pass
 84/84, 6/6, and 48/48 respectively, including navigation/resource contracts,
 safe typed companion errors, serialization, and widget recovery for host-side
 rejected-Bearer invalidation without a second widget delete. The current
@@ -1078,13 +1088,15 @@ with C++ installed:
   pre-admission insertions fail before launch; later insertions do not receive
   worker authority. Each verified content generation receives a distinct
   AppContainer identity, so a later version cannot inherit an older root grant.
-  Content DACL updates use one host-only, cross-process write-ahead journal:
-  bounded original DACLs are flushed before mutation, every apply/restore is
-  verified, and a pending transaction is recovered before any later community
-  start. Journal corruption or persistence failure rejects before launch. This
-  does not yet bind ACL mutation/recovery to the verified file object identity,
-  audit alternate inherited/group authority, provide a privileged repair UI,
-  or place ACL application and handshake under one aggregate start deadline.
+  Content DACL updates use one host-only, cross-process schema-2 write-ahead
+  journal: bounded original DACLs and Windows volume/file identities are flushed
+  before mutation, every apply/restore uses one bound non-reparse handle, and a
+  pending transaction must reopen the same identity before any later community
+  start. Broad application-package group grants, journal corruption, identity
+  mismatch, or persistence failure reject before launch. This does not yet pass
+  the catalog's pinned identities into runtime capture, provide a privileged
+  repair UI, or place ACL application and handshake under one aggregate start
+  deadline.
   Publisher
   signing/revocation, CPU quotas, disk/profile quotas and cleanup, provider
   hardening, and the security audit/history UI are not production-ready. The

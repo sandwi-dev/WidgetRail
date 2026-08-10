@@ -3,12 +3,16 @@ using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+
+#pragma warning disable CA1416 // Windows ACL fixtures return early on other platforms.
 
 if (args.Contains("--containment-sleeper", StringComparer.Ordinal))
 {
@@ -41,6 +45,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Content authority journal failures happen before ACL mutation", ContentAuthorityJournalFailsBeforeMutation),
     ("Host authority journal rejects corrupt and hostile entries", ContentAuthorityJournalRejectsUnsafeState),
     ("Host authority journal recovers real DACLs after process termination", AuthorityJournalRecoversAfterHostTermination),
+    ("Handle-bound authority cannot be redirected by path replacement", AuthorityHandlesResistPathReplacement),
+    ("Pending authority recovery rejects changed object identity", AuthorityRecoveryRejectsIdentityChange),
+    ("Broad AppContainer group authority fails before mutation", AlternateAppContainerAuthorityFailsClosed),
     ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
     ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
     ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
@@ -529,7 +536,9 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
     var snapshot = new AppContainerAuthoritySnapshot(
         new AppContainerAuthorityTarget(
             target, AppContainerAuthorityTargetKind.VerifiedFile),
-        "D:");
+        "D:",
+        new AppContainerAuthorityObjectIdentity(
+            1, "00000000000000000000000000000001"));
     var journal = new FileAppContainerAuthorityJournal(
         Path.Combine(temp.Path, "journal"), TimeSpan.FromMilliseconds(100));
     using (var lease = journal.Acquire(profile))
@@ -559,7 +568,7 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
 
     File.WriteAllText(
         pendingPath,
-        "{\"Version\":2,\"ProfileName\":\"invalid\",\"Snapshots\":[]}");
+        "{\"Version\":3,\"ProfileName\":\"invalid\",\"Snapshots\":[]}");
     using (var lease = journal.Acquire(profile))
         _ = Assert.Throws<AppContainerAuthorityJournalException>(
             () => lease.ReadPending());
@@ -593,7 +602,9 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
             new AppContainerAuthorityTarget(
                 Path.Combine(temp.Path, $"oversized-{index}.txt"),
                 AppContainerAuthorityTargetKind.VerifiedFile),
-            oversizedDescriptor))
+            oversizedDescriptor,
+            new AppContainerAuthorityObjectIdentity(
+                1, $"{index + 1:X32}")))
         .ToArray();
     using (var lease = oversizedJournal.Acquire(profile))
         _ = Assert.Throws<AppContainerAuthorityJournalException>(
@@ -624,8 +635,9 @@ static async Task AuthorityJournalRecoversAfterHostTermination()
             verified, AppContainerAuthorityTargetKind.VerifiedFile),
     };
     using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
-    var operations = container.CreateAuthorityOperationsForTesting();
-    var originals = AppContainerAuthorityTransaction.Capture(targets, operations);
+    IReadOnlyList<AppContainerAuthoritySnapshot> originals;
+    using (var captureOperations = container.CreateAuthorityOperationsForTesting())
+        originals = AppContainerAuthorityTransaction.Capture(targets, captureOperations);
 
     var executable = Environment.ProcessPath
         ?? throw new InvalidOperationException("Test process path is unavailable.");
@@ -659,18 +671,19 @@ static async Task AuthorityJournalRecoversAfterHostTermination()
     }
     Assert.Equal(91, child.ExitCode);
 
+    using var recoveryOperations = container.CreateAuthorityOperationsForTesting();
     using (var lease = journal.Acquire(profile))
     {
         var pending = lease.ReadPending();
         Assert.True(pending is not null,
             "Process termination left no durable pending authority record.");
-        AppContainerAuthorityTransaction.Recover(pending!, operations);
+        AppContainerAuthorityTransaction.Recover(pending!, recoveryOperations);
         lease.ClearPending();
     }
     foreach (var original in originals)
         Assert.Equal(
             original.AccessDescriptor,
-            operations.Capture(original.Target).AccessDescriptor);
+            recoveryOperations.Capture(original.Target).AccessDescriptor);
     using (var lease = journal.Acquire(profile))
         Assert.True(lease.ReadPending() is null,
             "Verified crash recovery did not clear the pending record.");
@@ -683,7 +696,7 @@ static void RunAuthorityCrashProbe(string[] arguments)
     var packageRoot = RequiredValue(arguments, "--authority-package-root");
     var verifiedFile = RequiredValue(arguments, "--authority-verified-file");
     using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
-    var operations = new TerminatingAuthorityOperations(
+    using var operations = new TerminatingAuthorityOperations(
         container.CreateAuthorityOperationsForTesting(), terminateAfterApply: 2);
     container.ReplaceReadAndExecuteGrant(
         [packageRoot],
@@ -693,6 +706,142 @@ static void RunAuthorityCrashProbe(string[] arguments)
         new FileAppContainerAuthorityJournal(journalRoot));
     throw new InvalidOperationException(
         "Authority crash probe completed without terminating.");
+}
+
+static Task AuthorityHandlesResistPathReplacement()
+{
+    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+    using var temp = new TemporaryDirectory();
+    var originalPath = Path.Combine(temp.Path, "verified.txt");
+    var movedPath = Path.Combine(temp.Path, "moved.txt");
+    File.WriteAllText(originalPath, "original");
+    var isolationKey = $"runtime-content-handle-{Guid.NewGuid():N}";
+    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
+    using var operations = container.CreateAuthorityOperationsForTesting();
+    var target = new AppContainerAuthorityTarget(
+        originalPath, AppContainerAuthorityTargetKind.VerifiedFile);
+    var snapshot = operations.Capture(target);
+
+    File.Move(originalPath, movedPath);
+    File.WriteAllText(originalPath, "replacement");
+    using var replacementOperations = container.CreateAuthorityOperationsForTesting();
+    var replacementBefore = replacementOperations.Capture(target);
+
+    operations.Apply(snapshot);
+    operations.VerifyApplied(snapshot);
+    var boundApplied = operations.Capture(target);
+    Assert.Equal(snapshot.ObjectIdentity, boundApplied.ObjectIdentity);
+    Assert.True(
+        !string.Equals(
+            snapshot.AccessDescriptor,
+            boundApplied.AccessDescriptor,
+            StringComparison.Ordinal),
+        "Handle-bound apply did not change the originally captured object.");
+    var replacementAfter = replacementOperations.Capture(target);
+    Assert.Equal(replacementBefore.ObjectIdentity, replacementAfter.ObjectIdentity);
+    Assert.Equal(replacementBefore.AccessDescriptor, replacementAfter.AccessDescriptor);
+
+    operations.Restore(snapshot);
+    operations.VerifyRestored(snapshot);
+    return Task.CompletedTask;
+}
+
+static Task AuthorityRecoveryRejectsIdentityChange()
+{
+    if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+    using var package = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var originalPath = Path.Combine(package.Path, "verified.txt");
+    var movedPath = Path.Combine(package.Path, "moved.txt");
+    File.WriteAllText(originalPath, "original");
+    var isolationKey = $"runtime-content-recovery-identity-{Guid.NewGuid():N}";
+    using var container = WindowsAppContainer.OpenOrCreate(isolationKey);
+    var target = new AppContainerAuthorityTarget(
+        originalPath, AppContainerAuthorityTargetKind.VerifiedFile);
+    AppContainerAuthoritySnapshot snapshot;
+    using (var operations = container.CreateAuthorityOperationsForTesting())
+        snapshot = operations.Capture(target);
+
+    var profile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    using (var lease = journal.Acquire(profile)) lease.WritePending([snapshot]);
+    File.Move(originalPath, movedPath);
+    File.WriteAllText(originalPath, "replacement");
+    using var replacementOperations = container.CreateAuthorityOperationsForTesting();
+    var replacementBefore = replacementOperations.Capture(target);
+
+    var failure = Assert.Throws<WidgetProcessAdmissionException>(() =>
+        container.ReplaceReadAndExecuteGrant(
+            [package.Path], [package.Path], [originalPath], journal: journal));
+    Assert.Equal(
+        "Worker content authority is quarantined pending host recovery.",
+        failure.Message);
+    Assert.True(failure.InnerException is AggregateException,
+        "Identity mismatch did not remain a recovery failure.");
+    var replacementAfter = replacementOperations.Capture(target);
+    Assert.Equal(replacementBefore.ObjectIdentity, replacementAfter.ObjectIdentity);
+    Assert.Equal(replacementBefore.AccessDescriptor, replacementAfter.AccessDescriptor);
+    using (var lease = journal.Acquire(profile))
+    {
+        Assert.True(lease.ReadPending() is not null,
+            "Identity mismatch cleared the pending recovery record.");
+        lease.ClearPending();
+    }
+    return Task.CompletedTask;
+}
+
+static async Task AlternateAppContainerAuthorityFailsClosed()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var package = new TemporaryDirectory();
+    using var controlPlane = new TemporaryDirectory();
+    var verified = Path.Combine(package.Path, "verified.txt");
+    await File.WriteAllTextAsync(verified, "verified");
+    var directory = new DirectoryInfo(package.Path);
+    var original = directory.GetAccessControl(AccessControlSections.Access)
+        .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+    var modified = new DirectorySecurity();
+    modified.SetSecurityDescriptorSddlForm(original, AccessControlSections.Access);
+    modified.AddAccessRule(new FileSystemAccessRule(
+        new SecurityIdentifier("S-1-15-2-1"),
+        FileSystemRights.ReadAndExecute | FileSystemRights.Synchronize,
+        InheritanceFlags.None,
+        PropagationFlags.None,
+        AccessControlType.Allow));
+    directory.SetAccessControl(modified);
+    var released = 0;
+    var journal = new FileAppContainerAuthorityJournal(
+        Path.Combine(controlPlane.Path, "journal"));
+    try
+    {
+        await using var client = CreateClient(
+            contentLeaseFactory: _ => new TestContentLease(
+                package.Path,
+                [package.Path],
+                [verified],
+                () => Interlocked.Increment(ref released)),
+            contentIsolationKey:
+                $"runtime-content-alternate-authority-{Guid.NewGuid():N}",
+            contentAuthorityJournal: journal);
+        var failure = await Assert.ThrowsAsync<WidgetProcessAdmissionException>(
+            () => client.GetSnapshotAsync());
+        Assert.Equal("Worker content authority could not be established.", failure.Message);
+        Assert.True(failure.InnerException is IOException,
+            "Alternate AppContainer authority lost its host diagnostic cause.");
+        Assert.Equal(0, client.Starts);
+        Assert.Equal(1, released);
+        using var lease = journal.Acquire(
+            $"GameBarAlternative.Widget.{Guid.NewGuid():N}");
+        Assert.True(lease.ReadPending() is null,
+            "Alternate authority failure wrote a pending mutation record.");
+    }
+    finally
+    {
+        var restore = new DirectorySecurity();
+        restore.SetSecurityDescriptorSddlForm(original, AccessControlSections.Access);
+        directory.SetAccessControl(restore);
+    }
 }
 
 static async Task ContentAdmissionHonorsCallerCancellation()
@@ -2871,7 +3020,7 @@ file sealed class TestAuthorityOperations(
             descriptor = Original(target);
             _states.Add(target, descriptor);
         }
-        return new AppContainerAuthoritySnapshot(target, descriptor);
+        return new AppContainerAuthoritySnapshot(target, descriptor, Identity(target));
     }
 
     public void Apply(AppContainerAuthoritySnapshot snapshot)
@@ -2908,6 +3057,14 @@ file sealed class TestAuthorityOperations(
 
     public static string Granted(AppContainerAuthorityTarget target) =>
         $"granted:{target.Kind}:{target.Path}";
+
+    public static AppContainerAuthorityObjectIdentity Identity(
+        AppContainerAuthorityTarget target) =>
+        new(
+            1,
+            $"{((int)target.Kind + 1):X32}");
+
+    public void Dispose() { }
 }
 
 file sealed class TestAuthorityJournal(bool failWrite = false)
@@ -2984,4 +3141,6 @@ file sealed class TerminatingAuthorityOperations(
 
     public void VerifyRestored(AppContainerAuthoritySnapshot snapshot) =>
         inner.VerifyRestored(snapshot);
+
+    public void Dispose() => inner.Dispose();
 }

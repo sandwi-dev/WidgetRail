@@ -146,27 +146,33 @@ new content generation cannot inherit direct grants left on an older root. The
 runtime applies these content DACL changes as a transaction before creating a
 pipe or process. One cross-process authority lock, with a five-second acquisition
 limit, serializes whole-DACL snapshots because different generations can touch the same root. Beneath a
-protected host-only Local Application Data directory, a bounded schema-1 record
+protected host-only Local Application Data directory, a bounded schema-2 record
 stores at most 2,049 normalized targets and 16 MiB. The host captures every
-root, traversal-directory, and file DACL, writes and flushes that pending record,
-and only then performs the first mutation. Each apply is verified. A reported
-failure restores and verifies all attempted targets in reverse, including the
-target whose write failed; complete rollback clears the record and returns a
-stable retryable admission failure.
+root, traversal-directory, and file DACL plus its Windows volume/file identity,
+writes and flushes that pending record, and only then performs the first
+mutation. Each target is opened once without following a final reparse point;
+DACL capture, apply, verification, and rollback use that same handle. Each apply
+is verified. A reported failure restores and verifies all attempted targets in
+reverse, including the target whose write failed; complete rollback clears the
+record and returns a stable retryable admission failure.
 
 Process termination between any two mutations leaves the write-ahead record.
 Before any later community start, regardless of profile, the next lock owner
-restores and verifies every recorded DACL or fails closed with the record still
-pending. Corrupt, unknown-version, reparse-shaped, unwritable, or unflushable
+reopens each target without following its final reparse point, requires the
+recorded volume/file identity, and restores and verifies every recorded DACL or
+fails closed with the record still pending. Corrupt, unknown-version,
+reparse-shaped, unwritable, or unflushable
 journal state fails before mutation. The profile being controlled cannot read
 or write the journal root; this is verified with a real AppContainer token. No
 pipe or worker process is created on any journal, apply, rollback, or recovery
 failure.
 
-Content authority is still applied by pathname rather than by a verified
-file-ID/handle-bound ACL operation. Auditing alternate inherited or group ACEs
-as additional authority and a user-facing privileged recovery/repair surface
-also remain open. The lease is released only after
+The runtime also rejects pre-existing read/execute grants for `ALL APPLICATION
+PACKAGES` or `ALL RESTRICTED APPLICATION PACKAGES` before journal publication.
+The catalog's already-pinned file identities are not yet carried through the
+bridge lease into this runtime capture, so namespace replacement before the
+runtime opens its authority handles remains an explicit gap. A user-facing
+privileged recovery/repair surface also remains open. The lease is released only after
 the pipe, process, and Job are detached, and every
 crash, restart, intentional unload, disable, or shutdown must reacquire it. Exact
 ACL application and the subsequent handshake do not yet share that five-second

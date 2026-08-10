@@ -148,7 +148,10 @@ internal sealed class WindowsAppContainer : IDisposable
                 .Select(path => new AppContainerAuthorityTarget(
                     path, AppContainerAuthorityTargetKind.VerifiedFile)))
             .ToArray();
-        var authorityOperations = operations ?? new WindowsAuthorityOperations(_identity);
+        using var ownedAuthorityOperations = operations is null
+            ? new WindowsAuthorityOperations(_identity)
+            : null;
+        var authorityOperations = operations ?? ownedAuthorityOperations!;
         try
         {
             using var journalLease = (journal ?? FileAppContainerAuthorityJournal.Default)
@@ -312,32 +315,37 @@ internal sealed class WindowsAppContainer : IDisposable
     private sealed class WindowsAuthorityOperations(SecurityIdentifier identity)
         : IAppContainerAuthorityOperations
     {
+        private static readonly SecurityIdentifier AllApplicationPackages =
+            new("S-1-15-2-1");
+        private static readonly SecurityIdentifier AllRestrictedApplicationPackages =
+            new("S-1-15-2-2");
+        private readonly Dictionary<AppContainerAuthorityTarget, SafeFileHandle> _handles = [];
+        private bool _disposed;
+
         public AppContainerAuthoritySnapshot Capture(AppContainerAuthorityTarget target)
         {
-            var security = target.Kind == AppContainerAuthorityTargetKind.VerifiedFile
-                ? GetFileSecurity(target.Path)
-                : GetDirectorySecurity(target.Path);
+            var handle = GetOrOpen(target);
+            var descriptor = GetAccessDescriptor(handle);
+            RejectAlternateAppContainerAuthority(target, descriptor);
             return new AppContainerAuthoritySnapshot(
-                target,
-                security.GetSecurityDescriptorSddlForm(AccessControlSections.Access));
+                target, descriptor, GetObjectIdentity(handle));
         }
 
         public void Apply(AppContainerAuthoritySnapshot snapshot)
         {
-            if (snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile)
-            {
-                var security = CreateAppliedFileSecurity(snapshot);
-                new FileInfo(snapshot.Target.Path).SetAccessControl(security);
-                return;
-            }
-
-            var directorySecurity = CreateAppliedDirectorySecurity(snapshot);
-            new DirectoryInfo(snapshot.Target.Path).SetAccessControl(directorySecurity);
+            var handle = GetBoundHandle(snapshot);
+            var descriptor = snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile
+                ? CreateAppliedFileSecurity(snapshot)
+                    .GetSecurityDescriptorSddlForm(AccessControlSections.Access)
+                : CreateAppliedDirectorySecurity(snapshot)
+                    .GetSecurityDescriptorSddlForm(AccessControlSections.Access);
+            SetAccessDescriptor(handle, descriptor);
         }
 
         public void VerifyApplied(AppContainerAuthoritySnapshot snapshot)
         {
-            var actual = Capture(snapshot.Target).AccessDescriptor;
+            var actual = GetAccessDescriptor(GetBoundHandle(snapshot));
+            RejectAlternateAppContainerAuthority(snapshot.Target, actual);
             var security = snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile
                 ? (FileSystemSecurity)CreateFileSecurity(actual)
                 : CreateDirectorySecurity(actual);
@@ -362,21 +370,13 @@ internal sealed class WindowsAppContainer : IDisposable
                     "An AppContainer content-authority DACL did not verify after apply.");
         }
 
-        public void Restore(AppContainerAuthoritySnapshot snapshot)
-        {
-            if (snapshot.Target.Kind == AppContainerAuthorityTargetKind.VerifiedFile)
-            {
-                new FileInfo(snapshot.Target.Path).SetAccessControl(
-                    CreateFileSecurity(snapshot.AccessDescriptor));
-                return;
-            }
-            new DirectoryInfo(snapshot.Target.Path).SetAccessControl(
-                CreateDirectorySecurity(snapshot.AccessDescriptor));
-        }
+        public void Restore(AppContainerAuthoritySnapshot snapshot) =>
+            SetAccessDescriptor(GetBoundHandle(snapshot), snapshot.AccessDescriptor);
 
         public void VerifyRestored(AppContainerAuthoritySnapshot snapshot)
         {
-            var actual = Capture(snapshot.Target).AccessDescriptor;
+            var actual = GetAccessDescriptor(GetBoundHandle(snapshot));
+            RejectAlternateAppContainerAuthority(snapshot.Target, actual);
             if (!string.Equals(
                     snapshot.AccessDescriptor, actual, StringComparison.Ordinal))
             {
@@ -385,20 +385,218 @@ internal sealed class WindowsAppContainer : IDisposable
             }
         }
 
-        private static FileSystemSecurity GetDirectorySecurity(string path)
+        public void Dispose()
         {
-            if (!Directory.Exists(path))
-                throw new DirectoryNotFoundException(
-                    "An AppContainer verified directory was not found.");
-            return new DirectoryInfo(path).GetAccessControl(AccessControlSections.Access);
+            if (_disposed) return;
+            _disposed = true;
+            foreach (var handle in _handles.Values) handle.Dispose();
+            _handles.Clear();
         }
 
-        private static FileSystemSecurity GetFileSecurity(string path)
+        private SafeFileHandle GetBoundHandle(AppContainerAuthoritySnapshot snapshot)
         {
-            if (!File.Exists(path))
-                throw new FileNotFoundException(
-                    "An AppContainer verified file was not found.", path);
-            return new FileInfo(path).GetAccessControl(AccessControlSections.Access);
+            var handle = GetOrOpen(snapshot.Target);
+            if (GetObjectIdentity(handle) != snapshot.ObjectIdentity)
+                throw new IOException(
+                    "An AppContainer content-authority target changed identity.");
+            return handle;
+        }
+
+        private SafeFileHandle GetOrOpen(AppContainerAuthorityTarget target)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_handles.TryGetValue(target, out var existing)) return existing;
+
+            var handle = NativeMethods.CreateFile(
+                target.Path,
+                NativeMethods.ReadControl | NativeMethods.WriteDac,
+                NativeMethods.FileShareRead |
+                    NativeMethods.FileShareWrite |
+                    NativeMethods.FileShareDelete,
+                IntPtr.Zero,
+                NativeMethods.OpenExisting,
+                NativeMethods.FileFlagBackupSemantics |
+                    NativeMethods.FileFlagOpenReparsePoint,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                var error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw new Win32Exception(
+                    error, "An AppContainer content-authority target could not be opened.");
+            }
+            try
+            {
+                if (!NativeMethods.GetFileAttributeTagInfo(
+                        handle,
+                        NativeMethods.FileAttributeTagInfoClass,
+                        out var tagInfo,
+                        Marshal.SizeOf<NativeMethods.FileAttributeTagInfo>()))
+                {
+                    throw new Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "An AppContainer content-authority target shape could not be verified.");
+                }
+                var isDirectory =
+                    (tagInfo.FileAttributes & FileAttributes.Directory) != 0;
+                if ((tagInfo.FileAttributes & FileAttributes.ReparsePoint) != 0 ||
+                    (target.Kind == AppContainerAuthorityTargetKind.VerifiedFile
+                        ? isDirectory
+                        : !isDirectory))
+                {
+                    throw new IOException(
+                        "An AppContainer content-authority target has an invalid shape.");
+                }
+                _handles.Add(target, handle);
+                return handle;
+            }
+            catch
+            {
+                handle.Dispose();
+                throw;
+            }
+        }
+
+        private static AppContainerAuthorityObjectIdentity GetObjectIdentity(
+            SafeFileHandle handle)
+        {
+            if (!NativeMethods.GetFileIdInfo(
+                    handle,
+                    NativeMethods.FileIdInfoClass,
+                    out var info,
+                    Marshal.SizeOf<NativeMethods.FileIdInfo>()))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "An AppContainer content-authority target identity could not be read.");
+            }
+            return new AppContainerAuthorityObjectIdentity(
+                info.VolumeSerialNumber,
+                $"{info.FileId.Low:X16}{info.FileId.High:X16}");
+        }
+
+        private static string GetAccessDescriptor(SafeFileHandle handle)
+        {
+            var result = NativeMethods.GetSecurityInfo(
+                handle,
+                NativeMethods.SeFileObject,
+                NativeMethods.DaclSecurityInformation,
+                out _,
+                out _,
+                out var dacl,
+                out _,
+                out var securityDescriptor);
+            if (result != 0)
+                throw new Win32Exception(
+                    checked((int)result),
+                    "An AppContainer content-authority DACL could not be read.");
+            try
+            {
+                if (dacl == IntPtr.Zero)
+                    throw new IOException(
+                        "An AppContainer content-authority target has no bounded DACL.");
+                if (!NativeMethods.ConvertSecurityDescriptorToStringSecurityDescriptor(
+                        securityDescriptor,
+                        NativeMethods.SddlRevision1,
+                        NativeMethods.DaclSecurityInformation,
+                        out var text,
+                        out _))
+                {
+                    throw new Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "An AppContainer content-authority DACL could not be serialized.");
+                }
+                try
+                {
+                    return Marshal.PtrToStringUni(text)
+                        ?? throw new IOException(
+                            "An AppContainer content-authority DACL is unavailable.");
+                }
+                finally
+                {
+                    _ = NativeMethods.LocalFree(text);
+                }
+            }
+            finally
+            {
+                _ = NativeMethods.LocalFree(securityDescriptor);
+            }
+        }
+
+        private static void SetAccessDescriptor(
+            SafeFileHandle handle,
+            string descriptor)
+        {
+            if (!NativeMethods.ConvertStringSecurityDescriptorToSecurityDescriptor(
+                    descriptor,
+                    NativeMethods.SddlRevision1,
+                    out var securityDescriptor,
+                    out _))
+            {
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(),
+                    "An AppContainer content-authority DACL could not be parsed.");
+            }
+            try
+            {
+                if (!NativeMethods.GetSecurityDescriptorDacl(
+                        securityDescriptor,
+                        out var present,
+                        out var dacl,
+                        out _))
+                {
+                    throw new Win32Exception(
+                        Marshal.GetLastWin32Error(),
+                        "An AppContainer content-authority DACL is unavailable.");
+                }
+                if (!present || dacl == IntPtr.Zero)
+                    throw new IOException(
+                        "An AppContainer content-authority target has no bounded DACL.");
+                var raw = new RawSecurityDescriptor(descriptor);
+                var protection =
+                    (raw.ControlFlags & ControlFlags.DiscretionaryAclProtected) != 0
+                        ? NativeMethods.ProtectedDaclSecurityInformation
+                        : NativeMethods.UnprotectedDaclSecurityInformation;
+                var result = NativeMethods.SetSecurityInfo(
+                    handle,
+                    NativeMethods.SeFileObject,
+                    NativeMethods.DaclSecurityInformation | protection,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    dacl,
+                    IntPtr.Zero);
+                if (result != 0)
+                    throw new Win32Exception(
+                        checked((int)result),
+                        "An AppContainer content-authority DACL could not be written.");
+            }
+            finally
+            {
+                _ = NativeMethods.LocalFree(securityDescriptor);
+            }
+        }
+
+        private static void RejectAlternateAppContainerAuthority(
+            AppContainerAuthorityTarget target,
+            string descriptor)
+        {
+            var security = target.Kind == AppContainerAuthorityTargetKind.VerifiedFile
+                ? (FileSystemSecurity)CreateFileSecurity(descriptor)
+                : CreateDirectorySecurity(descriptor);
+            var grants = security.GetAccessRules(
+                    includeExplicit: true,
+                    includeInherited: true,
+                    targetType: typeof(SecurityIdentifier))
+                .Cast<FileSystemAccessRule>();
+            if (grants.Any(rule =>
+                    rule.AccessControlType == AccessControlType.Allow &&
+                    (AllApplicationPackages.Equals(rule.IdentityReference) ||
+                     AllRestrictedApplicationPackages.Equals(rule.IdentityReference)) &&
+                    (rule.FileSystemRights & FileSystemRights.ReadAndExecute) != 0))
+            {
+                throw new IOException(
+                    "An AppContainer content-authority target grants broad application-package access.");
+            }
         }
 
         private static DirectorySecurity CreateDirectorySecurity(string descriptor)
@@ -449,6 +647,121 @@ internal sealed class WindowsAppContainer : IDisposable
 
     private static class NativeMethods
     {
+        internal const uint ReadControl = 0x00020000;
+        internal const uint WriteDac = 0x00040000;
+        internal const uint FileShareRead = 0x00000001;
+        internal const uint FileShareWrite = 0x00000002;
+        internal const uint FileShareDelete = 0x00000004;
+        internal const uint OpenExisting = 3;
+        internal const uint FileFlagBackupSemantics = 0x02000000;
+        internal const uint FileFlagOpenReparsePoint = 0x00200000;
+        internal const int FileAttributeTagInfoClass = 9;
+        internal const int FileIdInfoClass = 18;
+        internal const int SeFileObject = 1;
+        internal const uint DaclSecurityInformation = 0x00000004;
+        internal const uint ProtectedDaclSecurityInformation = 0x80000000;
+        internal const uint UnprotectedDaclSecurityInformation = 0x20000000;
+        internal const uint SddlRevision1 = 1;
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct FileAttributeTagInfo
+        {
+            internal FileAttributes FileAttributes;
+            internal uint ReparseTag;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct FileId128
+        {
+            internal ulong Low;
+            internal ulong High;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct FileIdInfo
+        {
+            internal ulong VolumeSerialNumber;
+            internal FileId128 FileId;
+        }
+
+        [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode,
+            SetLastError = true)]
+        internal static extern SafeFileHandle CreateFile(
+            string fileName,
+            uint desiredAccess,
+            uint shareMode,
+            IntPtr securityAttributes,
+            uint creationDisposition,
+            uint flagsAndAttributes,
+            IntPtr templateFile);
+
+        [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx",
+            SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetFileAttributeTagInfo(
+            SafeFileHandle file,
+            int informationClass,
+            out FileAttributeTagInfo information,
+            int bufferSize);
+
+        [DllImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx",
+            SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetFileIdInfo(
+            SafeFileHandle file,
+            int informationClass,
+            out FileIdInfo information,
+            int bufferSize);
+
+        [DllImport("advapi32.dll")]
+        internal static extern uint GetSecurityInfo(
+            SafeFileHandle handle,
+            int objectType,
+            uint securityInformation,
+            out IntPtr owner,
+            out IntPtr group,
+            out IntPtr dacl,
+            out IntPtr sacl,
+            out IntPtr securityDescriptor);
+
+        [DllImport("advapi32.dll")]
+        internal static extern uint SetSecurityInfo(
+            SafeFileHandle handle,
+            int objectType,
+            uint securityInformation,
+            IntPtr owner,
+            IntPtr group,
+            IntPtr dacl,
+            IntPtr sacl);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ConvertSecurityDescriptorToStringSecurityDescriptor(
+            IntPtr securityDescriptor,
+            uint requestedStringSdRevision,
+            uint securityInformation,
+            out IntPtr stringSecurityDescriptor,
+            out uint stringSecurityDescriptorLength);
+
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(
+            string stringSecurityDescriptor,
+            uint stringSdRevision,
+            out IntPtr securityDescriptor,
+            out uint securityDescriptorSize);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetSecurityDescriptorDacl(
+            IntPtr securityDescriptor,
+            [MarshalAs(UnmanagedType.Bool)] out bool daclPresent,
+            out IntPtr dacl,
+            [MarshalAs(UnmanagedType.Bool)] out bool daclDefaulted);
+
+        [DllImport("kernel32.dll")]
+        internal static extern IntPtr LocalFree(IntPtr memory);
+
         [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
         internal static extern int CreateAppContainerProfile(
             string appContainerName,

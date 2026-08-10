@@ -160,14 +160,16 @@ planned. A structurally valid package is not necessarily trustworthy.
   The assembly is loaded inside its already-contained worker, never into the
   native host or bridge.
 - Exact package DACL changes use one host-owned cross-process write-ahead
-  journal. The protected journal is flushed before the first mutation and is
-  unreadable and unwritable from a production AppContainer token. A later
-  community start must recover and verify any pending whole-DACL transaction
-  before beginning new authority work. Corrupt, unknown, reparse-shaped, or
-  unavailable journal state fails closed before process launch. Current ACL
-  mutation still identifies recovery targets by normalized pathname rather
-  than a persisted volume/file identity, and there is not yet a controller-
-  accessible privileged repair surface.
+  journal. Schema 2 persists the Windows volume/file identity beside every
+  original DACL. The protected journal is flushed before the first mutation and
+  is unreadable and unwritable from a production AppContainer token. DACL work
+  uses one non-reparse handle per captured target; later recovery must reopen
+  the same identity before restoring it. Broad `ALL APPLICATION PACKAGES` and
+  `ALL RESTRICTED APPLICATION PACKAGES` read/execute grants fail before
+  mutation. Corrupt, unknown, reparse-shaped, unavailable, or identity-mismatched
+  journal state fails closed before process launch. The catalog does not yet
+  transport its pinned identities into runtime capture, and there is not yet a
+  controller-accessible privileged repair surface.
 
 ## Not yet a production guarantee
 
@@ -187,7 +189,7 @@ The following are **not implemented as a complete public security boundary**:
 - a general OAuth/account broker, readable credential API, or internet/LAN
   authority beyond the narrow implemented local-companion services;
 - automatic update discovery/review, version removal, or crash-quarantine UI;
-- file-identity-bound content ACL recovery and a privileged authority-journal
+- catalog-to-runtime object-identity handoff and a privileged authority-journal
   inspection/repair UI;
 - a graphical/file-picker installer and safe automatic updates;
 - universal anti-cheat or controller-containment compatibility.
