@@ -334,6 +334,315 @@ not irreversible API priority:
    evidence for GBA-044's new device-gated Guide compatibility path, and add
    ETW/PresentMon/private-working-set evidence.
 
+### Near-term interaction and UI corrections
+
+1. **Automatically curate known games in Games & Apps.** When a trusted catalog
+   source classifies an entry as `Game`, reconcile it into the Library without
+   requiring the user to add it manually. This applies to the first catalog
+   reconciliation as well as newly discovered games. Persist an explicit
+   exclusion when the user removes an auto-added game so refreshes do not add it
+   back; ordinary `Application` and `Unknown` entries remain opt-in. The merge
+   must be idempotent, preserve the user's explicit ordering and current focus,
+   handle registrations that disappear or change identity, and explain newly
+   added games without interrupting controller navigation.
+   **Implemented in DLV-002 (`1738618`) and pending packaged visual/controller
+   evidence:** schema-v2 state records automatic provenance and explicit
+   exclusions; bounded multi-page reconciliation, disappearance/reappearance,
+   replacement identity, authoritative reclassification, order/focus, failure,
+   and lifecycle races have deterministic focused and real-package coverage.
+2. **Repair the Games & Apps presentation.** Treat the Library, empty state, and
+   Add applications catalog as one responsive product surface. No row, focus
+   outline, label, or call-to-action may be clipped at compact, standard, wide,
+   100-150% text/interface-scale, or long-name profiles. Normalize card height,
+   icon/text alignment, section spacing, metadata hierarchy, safe-area padding,
+   and scroll reachability; preserve stable focus while the catalog or curated
+   Library changes. Close this item with semantic layout assertions plus
+   packaged screenshots and controller traversal for empty, short, long,
+   maximum-page, loading, and error states.
+3. **Select input and output devices from Audio Mixer.** Add controller-first
+   pickers that show the current defaults and change the intended Windows audio
+   endpoint and role with explicit pending, success, denial, disappearance, and
+   rollback feedback. Revalidate opaque device identities at invocation, react
+   to hot-plug/default changes without polling, and keep master/session controls
+   usable when one picker is unavailable. Completion requires an actual switch
+   through a supported documented Windows API, separate least-privilege control
+   grants, and reversible hardware tests; opening Windows Settings, using an
+   undocumented `PolicyConfig` interface, writing the registry, or automating a
+   Shell surface does not satisfy the milestone.
+4. **Correct shared button-content alignment.** Fix icon, label, checkmark, and
+   busy-content centering in the native declarative renderer and shared
+   component styles so ordinary Buttons, icon-and-label actions, selection
+   rows, and first-party navigation tiles inherit the same geometry. Do not add
+   per-widget pixel offsets. Verify optical and measured alignment with and
+   without icons at every supported scale, including wrapped labels, and retain
+   renderer assertions plus packaged Games & Apps, Spotify, and component-
+   gallery captures.
+5. **Hold Y to refresh the selected widget from the icon tray.** Keep tap Y as
+   the existing enter/exit-reorder command, but defer that tap decision long
+   enough for a clearly hinted hold gesture. Crossing the bounded hold threshold
+   refreshes the selected visible widget exactly once through the same host-
+   owned reload path as F5, without entering reorder or forwarding Y to widget
+   code. Release before the threshold performs the normal tap; focus changes,
+   overlay close, controller loss, and cancellation clear pending progress.
+   Show hold progress and a bounded success/failure result, retain F5 as the
+   desktop fallback, and cover threshold boundaries, repeat suppression,
+   reorder preservation, stale generations, and failed worker restart.
+
+### Flagship widget investigations and platform prerequisites
+
+These are product families, not single widget tickets. They should start only
+after the near-term interaction corrections above are coherent. Each one must
+leave behind reusable platform capabilities and a smaller first-party widget,
+not another application-sized class that privately owns discovery, caching,
+windowing, input, and recovery.
+
+#### Unified multi-store Game Launcher
+
+[One Game Launcher](https://ogl.app/) demonstrates the target experience: one
+controller-first library spanning Steam, Epic, EA/Origin, GOG, Ubisoft,
+Battle.net, Xbox PC, and manually added entries, with compact/desktop modes and
+RB/LB paging. Its public MYUI API exposes a normalized game list and a launch
+operation rather than requiring each UI to understand every store. Playnite's
+documented extension model independently separates
+[library importers, metadata providers, and game actions](https://api.playnite.link/docs/tutorials/extensions/intro.html),
+and its launch model accounts for multiple play actions, intermediary launchers,
+and delayed process tracking. GOG likewise describes cross-store aggregation as
+a mix of official and community integrations and notes that official adapters
+require platform-holder support and policy agreements. The design implication
+is that store breadth must be an adapter platform behind a normalized service,
+not switch statements accumulated inside one widget.
+
+The product should add a dedicated **Game Launcher** widget for the full-library
+experience while retaining **Games & Apps** as the lightweight curated quick
+launcher. Both must consume one trusted host-owned library model and the same
+opaque launch authority. They must not maintain competing discovery caches,
+store identities, artwork, or launch rules.
+
+Initial scope is deliberately **installed local games that can be revalidated
+and launched through documented local registrations**. Account-wide ownership,
+uninstalled/cloud libraries, installs and updates, achievements, play-time sync,
+remote launch, account switching, mouse macros, and emulator scripting are later
+stages. Those features introduce third-party authentication, partner policy,
+credential storage, arbitrary execution, or background tracking and must not be
+smuggled into the first slice.
+
+Framework prerequisites:
+
+1. **One trusted adapter contract.** Add an internal `IGameLibrarySource`
+   boundary with independently bounded discovery, exact resolve, launch,
+   optional change observation, health, and source-version diagnostics. A
+   failed or changed adapter must degrade only that source. Adapters return a
+   normalized host record; they never publish raw paths, registry keys, command
+   lines, AUMIDs, store tokens, account identifiers, PIDs, or HWNDs to widget
+   code. Current Start Menu/AppsFolder and Steam implementations should prove
+   this boundary before another store is added.
+2. **A versioned game-library capability, not more fields on an unbounded app
+   page.** The public model needs opaque short-lived launch IDs, durable
+   authority-scoped saved IDs, sanitized source attribution, installed/
+   unavailable state, explicit supported actions, optional running state, and
+   an on-demand artwork reference. Results must be tied to a library revision
+   and opaque cursor so insertions cannot corrupt offset paging. Same-title
+   entries from different stores remain separate variants until the user or a
+   reviewed canonical-ID source merges them; title heuristics must never choose
+   launch authority.
+3. **A virtualized controller collection.** Add reusable `VirtualizedGrid` and
+   `VirtualizedList` presentation over a cursor/append resource contract with
+   stable item/focus IDs, bounded prefetch, deterministic eviction, page-jump
+   actions, focus restoration, and loading/partial-source/error rows. A library
+   of thousands of games must not be serialized into one widget snapshot or
+   represented by thousands of retained native nodes. This is the principal
+   framework proof that makes the widget more complex than Spotify in product
+   breadth without making its presentation code more fragile.
+4. **Host-owned query and text entry.** Provide a controller-accessible search
+   field/onscreen-keyboard contract plus typed sort, source, installed, favorite,
+   and recent filters. Execute bounded queries against one immutable library
+   revision; do not transfer the complete catalog to the worker for filtering.
+   Filter changes, refreshes, and source failures must preserve a valid focus
+   anchor or choose a deterministic nearby result.
+5. **On-demand artwork and metadata.** Replace per-item base64 cover transfer
+   with opaque image-resource handles resolved lazily at requested dimensions.
+   The trusted cache must enforce origin/license metadata, dimensions, decoded-
+   pixel, file, total-byte, concurrency, expiry, and disk-cleanup limits. Use
+   store-provided local artwork first. Remote IGDB/store metadata is a separate
+   consent, API-key, quota, attribution, and cache-policy milestone.
+6. **Honest launch lifecycle.** Separate “the store accepted the request” from
+   “the game is running.” Preserve the existing exact revalidation and host-
+   owned overlay-close signal, then add sanitized states such as Pending,
+   LauncherStarted, Running, Failed, and Ended only where an adapter can prove
+   them without leaking process identity. Multiple play actions require a typed
+   host-owned picker. Timeouts, cancellation, launcher updates, stale entries,
+   already-running games, and games that spawn through another launcher need
+   explicit behavior.
+7. **Durable user state above replaceable source records.** Favorites, manual
+   grouping, explicit duplicate merges, preferred launch variants, exclusions,
+   and recent order must reference durable opaque identities and migrate across
+   adapter revisions. A missing source or game is retained as unavailable long
+   enough for recovery rather than silently deleting user organization.
+8. **A separate trust tier for future store plugins.** First-party signed
+   adapters may inspect narrowly documented local store state. A normal widget
+   package must not gain filesystem/registry/credential authority to implement
+   a store adapter. If external adapters are later supported, define a signed,
+   separately permissioned provider-plugin process with per-adapter roots,
+   network destinations, secrets, quotas, review, and revocation; do not load
+   adapter DLLs into the shell or broker.
+
+Staged rollout:
+
+1. Normalize the existing Start Menu/AppsFolder and Steam sources behind the
+   adapter contract and render a 2,000/10,000-entry deterministic fake library
+   through the virtualized grid.
+2. Ship installed-only Steam plus one independently implemented local adapter
+   such as Epic or GOG. Prove source isolation, refresh, stale launch refusal,
+   artwork bounds, duplicate names, offline store clients, and controller-only
+   search/filter/launch.
+3. Add EA, Ubisoft, Battle.net, and Xbox PC only where stable local registration
+   and documented launch behavior can be maintained. Every adapter receives an
+   opt-in live-client compatibility fixture and can be disabled remotely or by
+   version without breaking the rest of the library.
+4. Consider account-owned/uninstalled libraries only after official APIs,
+   platform terms, OAuth/credential handling, privacy deletion, rate limits,
+   and partner requirements are documented. This is not a prerequisite for a
+   strong installed-game launcher.
+
+Completion evidence includes deterministic adapter contract suites; 2,000 and
+10,000 item cold/refresh/search/scroll measurements; bounded memory, decoded
+artwork, disk, CPU, and hidden-idle cost; compact/standard/wide and 100-150%
+scale captures; rapid source churn and cancellation; keyboard, controller,
+touch, and accessibility traversal; store-client installed/missing/updating
+matrices; and exact proof that no widget snapshot, log, persisted state, or
+failure message contains raw launch authority or account data.
+
+#### YouTube video widget, picture-in-picture, placement, and pinning
+
+This feature must use the official
+[YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference)
+inside a trusted WebView2 media process. It must not download streams, extract
+audio/video URLs, suppress advertisements, obscure or replace standard player
+features, or attempt to reproduce the player in Direct2D. YouTube requires an
+identified embed/referrer, a player viewport of at least 200x200 pixels, and a
+standard playback experience. Its policy also prohibits background playback
+when the API-client window is closed or minimized. Therefore closing the main
+overlay may leave playback running only when a pinned player surface remains
+visibly restored on-screen; hiding, minimizing, unpinning-and-closing, or losing
+that visible surface must pause or stop playback.
+
+Picture-in-picture here means a **host-owned compact overlay window**, not the
+browser's nested Picture-in-Picture API. Windows App SDK's
+[`CompactOverlayPresenter`](https://learn.microsoft.com/en-us/windows/apps/develop/ui/manage-app-windows)
+provides an always-on-top picture-in-picture-like presenter, while the existing
+shell already owns topmost Win32/DWM placement. Begin with a spike comparing a
+plain host-owned tool window and `AppWindow` compact overlay for focus, taskbar,
+click-through, DPI, monitor migration, protected media, borderless games, and
+resource cost. Keep the public pin/presentation contract independent of the
+chosen Windows backend.
+
+Framework prerequisites:
+
+1. **A real per-widget surface/session model.** Introduce a native
+   `WidgetSurfaceCoordinator` that owns stable surface identity, HWND/AppWindow,
+   monitor/work-area placement, z-order, focus, input mode, visibility, pin
+   state, opacity, close, and teardown. The current single panel/backdrop
+   orchestration cannot model an independently surviving player safely. Surface
+   state must be bounded and generation-owned so a restarted or removed widget
+   cannot control a stale pinned window.
+2. **General pinning with conservative defaults.** Add manifest-declared
+   `pinningSupported` (default false) and host-owned Pin, Unpin, Close, and
+   click-through chrome. Follow the interaction lessons in Microsoft's
+   [pinned-widget click-through guidance](https://learn.microsoft.com/en-us/xbox/game-bar/guide/click-through):
+   when the overlay is closed, pinned surfaces stay
+   topmost and visible but do not receive controller navigation; click-through
+   mode must send pointer activity to the game and hide/disable controls that
+   appear interactive. Reopening the overlay can make the selected pinned
+   surface Interactive again. Cap simultaneous pinned surfaces and retain a
+   global emergency hide/unpin action.
+3. **Controller-first placement and persistence.** Add an explicit move/resize
+   mode with clear focus isolation: D-pad/stick moves, a separate bounded resize
+   gesture, A commits, and B cancels. Persist logical size plus normalized
+   work-area anchor and monitor affinity, then clamp safely after DPI, work-area,
+   orientation, topology, or monitor changes. Never restore an offscreen or
+   below-minimum YouTube viewport. Pointer drag/resize and accessibility actions
+   must invoke the same state machine.
+4. **Presentation context separate from business lifecycle.** Publish bounded
+   `WidgetPresentationState` such as Overlay, PinnedInteractive,
+   PinnedClickThrough, Hidden, requested opacity, and size class without giving
+   widgets raw HWND or z-order authority. Existing Created/Visible/Interactive/
+   Background work lifetime remains authoritative: a pinned but non-interactive
+   declarative widget is Visible, and only explicit active media receives a
+   host-owned activity lease. Capability gesture authority must not persist
+   merely because a widget is pinned.
+5. **A trusted rich-media host, not a generic community WebView.** Reuse the
+   lessons and process containment from `SpotifyPlaybackHost`, but define a
+   narrow `MediaSurfaceSession` protocol for load/cue/play/pause/seek/volume,
+   player state/errors, title, and surface ownership. Host WebView2 at standard
+   user integrity in a dedicated Job/process boundary; allowlist top-level and
+   frame navigation, popups, downloads, permissions, certificates, and external
+   browser handoff; follow Microsoft's
+   [secure WebView2 guidance](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security)
+   by disabling host objects and generic script/native proxies and validating
+   every origin and typed message. Remote page content never receives
+   widget broker or shell authority.
+6. **One bounded WebView2 environment and explicit cost model.** WebView2 uses a
+   [browser process plus renderer, GPU, audio, and helper processes](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/process-model).
+   Start with
+   one active rich-media surface, one managed user-data-folder lifecycle, and a
+   shared environment where isolation policy permits. Close controllers on
+   teardown, recover `ProcessFailed`, feature-detect Evergreen runtime APIs,
+   clean private data on uninstall/reset, and publish measured process, working-
+   set, private-byte, CPU, GPU, decode, network, startup, and hidden-idle costs.
+   Do not create one browser process group per ordinary widget.
+7. **Input and accessibility composition.** WebView2 can participate in the
+   Win32 accessibility tree and can transfer focus through its controller APIs.
+   Define deterministic controller entry/exit, browser accelerator suppression,
+   B/Close semantics, captions/settings access, pointer capture, click-through,
+   and UIA composition with host Pin/Move/Close chrome. The player must never
+   trap focus or forward hidden-overlay controller input away from the game.
+8. **YouTube compliance and configuration as versioned platform policy.** Use
+   the documented embed `origin` plus required Referer/client identity, preserve
+   controls, captions, metadata, links, ads, and playback-context signals, and
+   handle autoplay-blocked plus embed errors 5/100/101/150/153 honestly. Keep a
+   reviewed policy checklist and a kill switch because YouTube requirements can
+   change independently from the application.
+
+Staged rollout:
+
+1. **Feasibility gate:** play one fixed embeddable public video in the trusted
+   process; prove compliant referrer/origin, user-initiated audio, pause on
+   hidden/minimized, crash recovery, standard controls/captions, and measured
+   CPU/GPU/memory while a representative game runs. Fail the feature if EME,
+   composition, anti-cheat, or frame-time cost is unacceptable.
+2. **Generic pinning gate:** pin a declarative test widget before YouTube owns
+   the path. Prove move/resize, click-through, opacity, overlay close/reopen,
+   monitor/DPI/hot-plug clamping, focus restoration, emergency hide, restart,
+   removal, and no game input theft.
+3. **YouTube v1:** accept a validated YouTube URL/video ID, show recent items in
+   declarative UI, open exactly one player surface, and support typed play/pause/
+   seek/volume plus Pin/Unpin/Move/Close. No Google login or Data API is required
+   for this slice.
+4. **Discovery v2:** add controller search, thumbnails, and result paging through
+   a trusted [YouTube Data API](https://developers.google.com/youtube/v3/getting-started)
+   provider with an application API key, quota/rate
+   handling, cache attribution, embeddable/region/error states, and privacy
+   documentation. Search is quota-limited and must never poll while hidden.
+5. **Authenticated library v3:** subscriptions, user playlists, and other
+   account-specific state exposed by the supported API require
+   [system-browser OAuth/PKCE](https://developers.google.com/youtube/v3/guides/auth/installed-apps),
+   the minimum
+   `youtube.readonly` scope, vault storage, revoke/delete UX, Google verification,
+   and live account evidence. This authentication-gated stage must not block
+   pinning or URL playback. Do not promise Watch Later: the YouTube Data API
+   explicitly rejects attempts to retrieve its items with
+   `watchLaterNotAccessible`.
+
+Completion requires a retained YouTube-policy checklist; fixed-video and
+non-embeddable/removed/region/error fixtures; offline/slow/crashed WebView2
+recovery; autoplay and audio-device changes; standard/compact/PiP visual and UIA
+evidence; pointer/controller/click-through testing; overlay close while pinned
+and unpinned; hidden/minimized pause proof; multi-monitor DPI/hot-plug and
+foreground restoration; DX11/DX12/Vulkan/OpenGL borderless compatibility; and
+long-running CPU/GPU/memory/network measurements. True Fullscreen Exclusive,
+secure desktop, elevated games, and universal anti-cheat compatibility remain
+outside the current platform guarantee.
+
 Spotify's provider/configuration tests can proceed offline; its live login,
 playback, and Community-addon evidence require a registered Development Mode
 app and allowlisted test account. Discord remains fully gated.
@@ -373,12 +682,11 @@ permission policy.
 
 Later Audio Control phases add, in evidence-gated increments:
 
-- controller-first output-device selection where a supported documented
-  Windows setter is available;
+- controller-first default output- and input-device selection, with explicit
+  Windows role scope, where supported documented Windows setters are available;
 - broader device, communications, and application-churn coverage for the
   implemented master and per-session volume/mute surface;
-- broader capture-device/role visibility and, only where a supported setter
-  exists, controlled selection; and
+- broader capture-device/role visibility and controlled selection; and
 - live device/session/default-role updates without a background polling loop.
 
 Audio phase dependencies are: declarative list/slider/toggle states and stable
@@ -441,13 +749,23 @@ guessing games from filenames or paths. The host now
 issues an authority-scoped SavedId, stores curation/recent-first order through
 package-private compare-and-swap state, and resolves it to a fresh provider-
 lifetime launch token. The full Catalog now loads only when requested. Next
-increments should add reviewed launcher-specific adapters, then richer source
-artwork and evidence-backed game classification. Search,
+auto-curate entries already classified as `Game`, with a persisted user
+exclusion so removal remains durable, before adding reviewed launcher-specific
+adapters, richer source artwork, and further evidence-backed game
+classification. Search,
 grouping, history, source attribution, running-
 program capture, file-picker additions, and refresh observation must remain
 bounded and privacy reviewed. None may become arbitrary path/process launch
 authority. Recent Apps remains a separate read-only activity API/test reference,
 not a bundled dashboard widget.
+
+The planned full **Game Launcher** is a second presentation over this same
+trusted catalog and opaque launch authority, not a fork of the provider. Games
+& Apps remains the small curated/recent quick surface; Game Launcher owns the
+virtualized all-games grid, source/filter/search views, artwork, and variant
+selection. Favorites, exclusions, preferred variants, and duplicate decisions
+must live in one versioned user-library model so the two widgets cannot disagree
+about what a saved game means.
 
 On a successful launch result, the shell closes the overlay through the
 implemented host-owned, correlation-safe completion signal. The widget does
@@ -635,7 +953,10 @@ packages are the canonical templates for event-driven system-control widgets.
 - Theme gallery
 - Public API stability policy and migration tooling
 - Optional WASM logic tier evaluation
-- Optional shared WebView2 tier only if demanded and clearly resource-labeled
+- A shared WebView2 tier is now demanded by YouTube playback, but it begins as
+  one trusted, typed, resource-labeled media-surface process. Do not expose a
+  generic community WebView/native-window tier until a second compliant use
+  case proves the same bounded lifecycle and authority model.
 
 ## Risk register
 
@@ -649,6 +970,9 @@ packages are the canonical templates for event-driven system-control widgets.
 | Worker model feels slow or heavy | High | Cold-start and working-set measurements | Lazy first launch, resident-Background measurement, explicit user lifecycle choices, resource labels |
 | GBSS updates break themes | Medium | Theme compatibility fixtures | Stable semantic selectors, typed allowlist, versioned tokens |
 | Discord rejects overlay use case | High for social only | Written eligibility/production access | Keep Discord as optional first-party integration, not a core dependency |
+| Store adapter drift launches the wrong game or breaks the whole library | High | Per-adapter exact-registration fixtures, opt-in live-client matrix, stale-launch refusal, and independent health/disable tests | Trusted adapter boundary, opaque launch authority, source isolation, installed-only first slice, no title-based launch merging |
+| Pinned rich media steals game input or remains active invisibly | Critical | Click-through/controller/focus matrix, hidden/minimized pause proof, emergency hide, foreground restoration, and representative games | Host-owned pin/surface coordinator; pinned playback is allowed only while a visible restored surface exists; hidden/minimized closes or pauses media |
+| WebView2/YouTube adds unacceptable game-time cost or policy exposure | High | Official-policy checklist, WebView process/GPU/network measurements, runtime-update tests, origin/navigation abuse tests, and compliance kill switch | One trusted typed media process, one active surface initially, no generic widget browser, official IFrame player only, no downloads/background play |
 | Anti-cheat reacts to overlay | High | Representative signed/unsigned game tests | No injection, no game-memory access, compatibility matrix |
 | Feature creep recreates bloatware | High | Continuous resource regression tests | Budgets in CI; every background capability justified |
 
@@ -674,15 +998,18 @@ The current product order is:
    quarantine, local performance/resource evidence, and lifecycle-policy
    enforcement;
 4. complete locally testable Audio/Network hardware, churn, privacy, and denial
-   paths; then Performance, general media, Games & Apps catalog depth, and capture
-   feasibility;
-5. harden local developer mode and public references: exact-generation
+   paths; then Performance, Games & Apps catalog depth, and capture feasibility;
+5. prove the reusable foundations for the two flagship widgets before filling
+   out their integrations: trusted game-source adapters plus a virtualized fake
+   2,000/10,000-game library, then generic pinned-surface/click-through/placement
+   behavior and one fixed-video trusted WebView2 feasibility gate;
+6. harden local developer mode and public references: exact-generation
    `gbar dev` readiness, real first-party community-package conformance,
    graphical/native theme preview, known-local package/theme import,
    remove/rollback, and clean-profile end-to-end samples;
-6. finish controller/game/presentation/anti-cheat matrices plus CPU and
+7. finish controller/game/presentation/anti-cheat matrices plus CPU and
    disk/profile quotas/cleanup; and
-7. only then implement publisher signing/revocation, signed update metadata,
+8. only then implement publisher signing/revocation, signed update metadata,
    moderation/gallery policy, and public distribution. Signing remains a hard
    pre-public gate, not a blocker for isolated unsigned local development.
 

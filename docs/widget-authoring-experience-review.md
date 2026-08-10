@@ -1,13 +1,19 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded navigation, responsive focus persistence, one navigation recipe, unified action admission, data-only inspection, a truthful local-SDK scaffold, and manual GitHub package lifecycle are implemented; end-to-end Windows accessibility, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a truthful local-SDK scaffold, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, and inner physical-only gesture enforcement are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, coherent advanced-widget presentation state, verified publisher trust, automated update discovery, a published standalone SDK/test scaffold, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-09<br>
-Reassessed: 2026-08-09 against implementation commits `6c5f932`, `7d33ce1`, and `7d92dcd` plus the current documentation worktree, after unified action admission and generation-owned native failure handling, bounded bridge dispatch, exact-directory-boundary evidence, manual GitHub package lifecycle, verified-package launch authority and package-directory admission, digest-bound GBSS, typed source diagnostics, aggregate catalog scaling, native host widget-session ownership, advanced-widget lifecycle/polling adoption, the clean bounded all-lane gate, standalone SDK/API compatibility, and retained visual/performance evidence audits<br>
+Reassessed: 2026-08-09 against implementation HEAD `1738618`, accepted DLV-001 authority recovery, accepted DLV-002 Games & Apps schema-v2 reconciliation, DLV-002 focused provider/broker/widget/docs and minimal real-package evidence, stable dirty full run `20260810T030727Z-449cac31`, the retained clean full-gate result for `0598e5a`, and the two-lane delivery plan for Spotify coherence, YT Music lifecycle ownership, external package tooling, shared geometry, native failure composition, accessibility, and performance<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
 cross-cutting architecture, security, verification, and product-readiness
 findings that qualify this authoring assessment.
+
+Review ownership: finding status in this document is maintained by the
+independent reviewer. Documentation commit `689a933` was produced by the
+implementation stream and self-declared the action contract complete; this
+reassessment restores the evidence-based partial status. EQ-024 requires future
+implementation commits to leave both review documents untouched and unstaged.
 
 ## Executive conclusion
 
@@ -15,6 +21,19 @@ The framework has a sound foundation: a native host owns rendering, focus,
 accessibility, permissions, and lifecycle, while isolated C# workers contribute
 renderer-neutral UI and react to typed actions. Simple widgets are already easy
 to express.
+
+The current cycle is **flat for external widget authors but stronger as a
+product proof**. DLV-001 adds no community authority, and DLV-002 deliberately
+implements Games & Apps curation as widget-owned versioned private state over a
+bounded trusted capability. Its pure reconciliation type, explicit automatic
+provenance/exclusions, deterministic lifecycle races, and credential-free
+real-package fixture are useful patterns, but they do not yet simplify the
+public multi-page/remote-state authoring path. The two implementation lanes now
+schedule that missing work directly: Spotify receives one coherent presentation
+revision before responsibility splitting, YT Music becomes the second lifecycle
+proof, and the external scaffold/package journey receives its own bounded
+milestone while native geometry, feedback, accessibility, and performance work
+continues independently.
 
 The framework becomes difficult when a widget has multiple pages, remote state,
 commands, caching, optimistic updates, and lifecycle-sensitive work. Authors
@@ -42,9 +61,11 @@ declarative protocol, GBSS, AppContainer isolation, and typed capabilities.
 Add optional high-level SDK primitives that encode the safe patterns already
 implemented repeatedly by first-party widgets.
 
-The Spotify and SDK Gallery work support this direction. Protocol-v11 host-owned
-focus-edge pagination and `ScrollElement.Paginate` move a generic controller
-interaction out of Spotify and into the platform. The public
+The Spotify and SDK Gallery work support this direction, but a live Spotify run
+now exposes a missing integration contract. Protocol-v11 host-owned focus-edge
+pagination and `ScrollElement.Paginate` move generic page metadata out of
+Spotify and into the platform; the native host does not yet compose boundary
+routing and page-entry focus atomically. The public
 `WidgetOperations` coordinator now also owns bounded SingleFlight, Latest, and
 Serial execution plus lifecycle cancellation/draining. The public
 `WidgetPagedResource<TItem>` builds on both contracts with offset-page state,
@@ -153,21 +174,29 @@ eligible run `20260809T152831Z-67b77c73` retains the selected Release path for
 documentation-only HEAD `6bd60d3` over implementation baseline `6fc9e01`. The first-party
 conformance harness now routes five real installed packages through the exact
 lease, including YT Music suspend, restart, force reload, update, and removal.
-The latest runtime follow-up also rejects content authority overlapping the
-trusted generic-worker directory and preserves caller cancellation during
-content acquisition. Those are useful host-side refinements.
-It should next prove adversarial late/replaced managed dependencies, native
-libraries, and assets rather than only positive widget startup. The existing
-digest-bound identity and new production-token case already prevent a later
-content generation from reading the prior root. Persistent ACLs still need an
-alternate-group-ACE policy and explicit partial-application handling.
-The lease currently checks, opens, inventories, and ACLs directory paths in
-separate pathname operations without recording file IDs or opening descendants
-relative to authenticated directory handles. A concurrent directory rename or
-junction swap therefore remains an unproven path-to-object boundary. Authors
-must not receive new path/handle APIs to solve it; the host needs protected
-generations or handle-identity enforcement behind the existing lease.
-These are host obligations, not new SDK concepts or manifest fields.
+The runtime now rejects content authority overlapping the trusted generic-worker
+directory and preserves caller cancellation during content acquisition. Commit
+`dc30be9` also replaces the AppContainer-writable quarantine marker with a host-
+private, reparse-rejecting, globally locked write-ahead journal established and
+flushed before DACL mutation. A real terminated child proves the next host
+restores pending authority. Commit `0ff403a` binds snapshots and ACL work to
+volume/file identity, retains target handles through apply/verify/rollback, and
+rejects a replacement object during recovery. Dirty full run
+`20260810T005210Z-c46e6881` passes 41/41 steps and 793 cases, including Runtime
+58/58, but is correctly release-ineligible.
+
+This remains the right authoring boundary: package authors still supply ordinary
+dependencies/assets and never manage hashes, ACLs, object IDs, or quarantine.
+The remaining product-workflow defect is blast radius and recovery. One global
+pending record that cannot recover currently prevents every community widget
+from starting, while Settings, diagnostics, and CLI provide no supported inspect
+or verified repair operation. An author must not be asked to tell users to
+delete an internal journal or edit ACLs. Keep the global mutation lock, isolate
+quarantine to the affected profile/generation where safe, surface a sanitized
+host-owned recovery state, and clear it only after exact-object or intended-SID
+authority is verified. The alternate-authority audit must also cover specific
+other AppContainer SIDs, not only the two broad well-known groups. These are host
+obligations, not new SDK concepts or manifest fields.
 
 The launch path is not yet performance-complete. The documented five-second
 admission deadline covers content revalidation, but exact AppContainer ACL
@@ -220,7 +249,7 @@ between a minimal and an application-like widget:
 | Media Sessions | About 770 lines | Selection, commands, progress, and provider lifecycle |
 | Games & Apps | 1,150 lines | Navigation, paging, private state, and launch commands |
 | YT Music | About 1,180 lines | Connection lifecycle and optimistic media state |
-| Spotify | About 2,020 lines | OAuth, playback, four destinations, bounded paging, caching, and local playback |
+| Spotify | About 2,020 lines | OAuth, playback, four destinations, bounded page/cache state with a reverse-navigation fix still awaiting composed/live proof, and local playback |
 | Network Controls | About 2,000 lines | Multiple providers, discovery, commands, and failure states |
 | Audio Mixer | About 2,500 lines | Dense state reconciliation and optimistic controls |
 
@@ -244,6 +273,26 @@ test program is about 1,200 lines. Those tests are valuable, but their size
 reinforces that this is an application-scale reference. A developer can copy
 individual helpers today; they cannot yet copy one senior-quality composition
 that makes ownership boundaries obvious.
+
+The more important Spotify problem is not its exact 2,015-line count. `Render`
+copies its manually locked authorization/playback/navigation/page state, then
+reads `_playlists.Snapshot` and `_playlistItems.Snapshot` from independent SDK
+owners. `OpenPlaylist` commits the selected playlist under the widget lock and
+only afterward resets and starts the detail resource; the resource loader closes
+over that mutable selection, while its snapshot has no playlist key. A render
+can therefore combine a new playlist heading/route with detail state from the
+previous selection. The resource epoch eventually rejects late work, but it
+does not make the composed screen atomic. This is exactly the sort of subtle
+coordination seam an advanced reference should eliminate before authors copy
+it.
+
+The existing Spotify tests cover paging, cache reuse, Back/focus restoration,
+retry, sparse pages, and a cancellation-ignoring detail completion after Back.
+They do not force rendering between selection commit and resource reset, and
+cannot assert a selected-playlist/detail-source key because the public paged
+resource is unkeyed. The next migration should first establish one immutable
+presentation snapshot and a Spotify-local keyed detail owner; it should not
+start with file splitting or a speculative public generic.
 
 The SDK already provides important low-level safety mechanisms:
 
@@ -302,7 +351,8 @@ acknowledgement means completion. That is the right framework ownership model
 and removes the reason a normal author should invent detached work merely to
 avoid the two-second request timeout.
 
-It is now a verified author contract. The capacity test uses an explicit action-start signal,
+It is now a coherent source-level author contract, but not yet verified end to
+end. The capacity test uses an explicit action-start signal,
 protocol-v1 empty acknowledgements and the legacy failure reason are preserved,
 and public docs explicitly define catalog QuickAction as a non-authorizing
 compatibility ingress. YT Music has narrowed its former action semaphore to
@@ -313,24 +363,64 @@ deleting its command
 task registry, action semaphore, start helper, and command-drain plumbing and
 awaiting ordinary commands directly. First-Party Conformance exercises both
 community packages through the generic isolated worker path, while their
-typed-fake suites prove credential-free provider behavior.
+typed-fake suites prove credential-free provider behavior; the widget-specific
+tests still call `OnActionAsync` directly for provider commands rather than
+enter through the production worker/bridge queue.
 
-Commits `7d33ce1` and `7d92dcd` complete the host-side failure path. It
-adds a strict bounded action-failure parser/queue, retains widget runtime
-generation plus action/source IDs, rejects control-bearing messages and false
-restartability, drops stale generations, and binds generic copy to the affected
+Commits `7d33ce1` and `7d92dcd` substantially improve the host-side failure path.
+They add a strict bounded action-failure parser/queue, retain widget runtime
+generation plus action/source IDs, reject control-bearing messages and false
+restartability, drop stale generations, and bind generic copy to the affected
 widget in both dashboard and open-widget footers. Cross-process failure text is
 the stable generic `Action failed.`; provider-aware widgets render their own
-safe domain errors. Focused Release results are Runtime 48/48, Bridge 46/46,
-Widget SDK 84/84, Spotify 31/31, YT Music 48/48, First-Party Conformance 6/6,
-the native bridge parser pass plus OverlayHost build, and Documentation 1/1.
+safe domain errors.
 
-Accessibility is also incomplete end to end. Authors are required to provide
-accessible names and slider values, and the host preserves those fields while
-applying visual text/contrast/motion policy. The custom native window exposes no
-UI Automation or MSAA provider, however, so Narrator cannot discover or operate
-the semantic tree. This is host/platform work, not a reason to add author-owned
-Windows automation code or abandon the declarative model.
+The committed baseline through `7d92dcd` was lossy. Commits `7733a73` and
+`707f850` replace it with a 256-widget/runtime-generation store, transparent
+allocation-free lookup, a deterministic visibility/deadline controller, a
+dedicated one-shot timer, and an idempotent controller-timer fallback.
+
+Commit `ddb66c2` now supplies the missing production composition seam.
+`WidgetActionFeedbackHost` owns the bounded catalog projection and controller;
+`OverlayApp` injects the clock, Win32 scheduling, and invalidation callbacks,
+publishes each complete bridge drain, selects exact dashboard/open identities,
+and routes catalog replacement, Hide, Stop, and both expiry paths through the
+same type. Its deterministic test feeds two widgets through one adapter and
+proves offscreen isolation, one invalidation/schedule per batch, one-shot
+expiry, fallback, stale-generation/catalog retirement, and no resurrection.
+Dirty schema-v2 full run `20260809T232451Z-15d2e7b6` retains the 305-check
+target, OverlayHost link, 41/41 steps, and 784 JUnit cases for `ddb66c2` plus the
+then-dirty runner patch now committed as `7c8a5b8`. It is correctly
+release-ineligible; clean full-gate
+evidence still stops at `0598e5a`.
+
+For authors, the intended contract is now coherent: await ordinary provider
+commands and let the platform acknowledge admission and present a later generic
+failure. Do not call the full product route proven yet. The adapter test does
+not originate a failing installed Spotify/YT Music action through the real
+worker/bridge/native controller or inspect painted/UIA status. The older global
+transient status path also still expires only during drawing.
+
+Commit `5804eaa` closes one important Spotify evidence gap. The normal
+first-party conformance deployment now includes Spotify as both bundled and
+installed content, configures a simulated connected backend, renders real
+playback through the generic AppContainer worker, sends `spotify.next` through
+`WidgetProcessClient.SendActionAsync`, waits for the broker call, and verifies
+the exact Next operation. This proves the packaged worker/runtime/broker command
+route rather than only direct typed-fake `OnActionAsync`. It does not yet prove
+bridge/native controller ingress, asynchronous failure presentation, or a live
+Spotify account.
+
+Accessibility is also incomplete end to end, although the provider and shell
+are now substantial. Authors supply accessible names and slider values; the
+host projects exact final geometry, closed patterns/events, safe provider
+lifetime, coherent slider values, quiet help/status, direct tray selection, and
+one composite widget/footer/tray tree. Explicit origin, collision-proof
+ownership, and nested-scope Back are now committed. Their remaining author-
+facing gaps are exact route equivalence, inner-layer origin enforcement,
+typed choice semantics, and packaged assistive-technology evidence. This is
+host/platform work, not a reason to add author-owned Windows automation code or
+duplicate host navigation.
 
 Implementation status records focused Release results including
 Widget SDK 84/84, Gbar CLI 49/49, SDK Gallery 6/6, YT Music 48/48, Focus
@@ -369,7 +459,7 @@ compose them into an application architecture. Spotify is evidence that the
 remaining gap is mostly reusable coordination, application composition, and
 proof rather than basic rendering capability.
 
-## Reassessment after the Spotify 0.2.10 changes
+## Reassessment after Spotify 0.2.10 and the live paging failure
 
 The latest Spotify changes improve both the widget and the framework:
 
@@ -378,10 +468,10 @@ The latest Spotify changes improve both the widget and the framework:
 - the worker keeps at most six cached pages for each collection;
 - controller focus approaching a Scroll boundary emits a host-owned near-start
   or near-end action through protocol v11;
-- previous and next pages restore focus to an appropriate item in the new
-  window;
-- tests cover pagination metadata, bounded snapshot size, cached reverse
-  navigation, and focus placement; and
+- the resource computes an appropriate entering-edge focus for previous and
+  next pages;
+- helper/widget tests cover pagination metadata, bounded snapshot size, cached
+  reverse navigation, and requested focus, but bypass the full native host; and
 - playback-host bootstrap reports SDK download failure explicitly and serves
   its trusted page from a stable internal HTTPS origin.
 
@@ -396,8 +486,22 @@ provide those generic behaviors with 12-row windows and a six-page/72-item LRU;
 Spotify supplies provider loading, safe error copy, viewport IDs, item rendering,
 and selected-playlist domain state. Queue remains a separate non-paged path.
 
-The latest changes are a successful example of moving proven generic behavior
-into the SDK/host without changing the protocol boundary. The committed shared
+The resource extraction is a successful example of moving bounded cache and
+request behavior into the SDK. Commit `5c3ce72` now checks the original focused
+Scroll for pagination before geometric focus can escape to a tab/rail control,
+and a changed replacement-page `InitialFocusId` outranks stale exact/ordinal
+memory. This directly addresses both source seams consistent with the user's
+12/12/final-five-row reverse failure: earlier playlist rows disappeared as the
+window advanced, scrolling back did not restore them, and only the final five
+playlists remained accessible. Commit `023ea46` now drives real 29-item
+wide/compact playlist and detail resources through 12/12/5 transitions, joined
+slow input, cached reverse pages, exact IDs/focus requests, and provider counts;
+native cases use matching Spotify scroll/rail IDs and prove one-shot focus
+consumption. This is strong author-contract evidence, but the widget helper
+manually selects and invokes the Scroll action while native tests use separate
+trees. It still does not prove controller input through one real Spotify
+snapshot, host, bridge, cache, replacement snapshot, and focus memory. Treat the
+fix as Verifying until that composed test and the user's live retest pass. The committed shared
 action queue now enables a second concrete simplification: Spotify deletes its
 command task registry, action semaphore, start helper, and command lifecycle
 drain, and directly awaits ordinary provider commands. The roughly 1,914-line
@@ -648,7 +752,12 @@ the catalog does not retain a host-owned acquisition receipt.
 
 The exact-byte contract is rechecked at meaningful boundaries: catalog
 discovery recomputes the sealed content tree before enablement, and the bridge
-does so again before publishing runtime authority. Current HEAD addresses the
+does so again before publishing runtime authority. Commit `d171dc8` now carries
+the catalog lease's handle-derived volume/file identities into runtime ACL
+capture and rejects a changed object before journal publication or mutation.
+That is the correct author contract: package authors continue declaring content
+normally and do not manage ACLs, handles, file IDs, or recovery records. Current
+HEAD addresses the
 resource-bound half with a narrow `BoundedFileReader`: manifest
 and integrity metadata use one restrictively shared maximum-plus-one read, and
 tree hashing rejects early EOF or bytes beyond the encoded length. The
@@ -720,15 +829,53 @@ Accepted versions are also still eagerly hashed and temporarily retain up to 512
 complete file path/length/hash entries each during discovery; bridge runtime
 closures retain only enabled active generations.
 
-The author/user recovery path remains incomplete. Settings collapses any limit
-failure to an empty “catalog unavailable” surface, while `gbar uninstall`
-begins with the same full discovery that just failed. An older catalog that
-exceeds new defaults, a configured-limit reduction, or an unexpected external
-entry can therefore require manual directory deletion. Before calling
-installation effortless, expose the breached quota and a bounded path-safe
-cleanup projection, keep publication/launch inventories scoped to enabled
-active versions, and measure discovery with several rollback versions per
-package.
+At the prior committed baseline the author/user recovery path was incomplete:
+Settings collapsed any limit failure to an empty “catalog unavailable” surface,
+while `gbar uninstall` began with the same full discovery that had failed. An
+older catalog exceeding new defaults therefore required manual directory
+knowledge. Commit `8a46d5f` now exposes the breached quota and a bounded,
+path-safe cleanup projection through both Settings and `gbar repair`.
+
+That failure has now occurred in the default local catalog. Spotify had 19
+installed versions (0.1.0–0.1.7 and 0.2.0–0.2.10) against the default maximum of
+eight, while YT Music had six. Settings rendered
+`installed_widget_version_limit`; the active Spotify version remained 0.2.10,
+but the normal uninstall/version-list path could not repair the tree because it
+also requires successful discovery first. A community author or user cannot be
+expected to know which AppData directories are safe to move. Catalog limits are
+therefore not a complete authoring/distribution workflow until the host exposes
+a bounded repair inventory that works specifically when normal discovery is
+unavailable.
+
+The committed design now has the right authority boundary: directory-name-only
+bounded health inspection, exact-version retirement under the catalog operation
+lock, `gbar repair`, and a confirmed Settings flow never open the candidate
+manifest. Only the selected generation is protected; inactive history can be
+retired while that selected version remains enabled. Catalog, Settings, and CLI
+tests use enabled over-limit fixtures, protect the selected version, tolerate a
+corrupt inactive manifest, recover normal discovery, and preserve enabled
+selection. Direct current-state inspection finds Spotify still enabled and
+selected at 0.2.10 with three versions instead of the former 19, so the reported
+product failure is materially repaired.
+
+Do not overstate the evidence. Newer full runs pass 41/41 steps and the latest
+records 783 zero-failure cases, but both manifests are dirty and ineligible;
+final commit `8a46d5f` has no clean retained gate. The 512-version recovery
+projection measured 276.295 and 278.620 ms with 1,711,440 allocated bytes in
+those bundles, while implementation status cites 326.382 ms without a retained
+result found by this review. Keep full-discovery cost, sequential/restart/stale-
+confirmation recovery, and a clean exact-HEAD run as the remaining workflow
+evidence rather than reopening the implemented API design.
+
+The recovery route is not yet easy to discover from the error that prompted it.
+The quickstart, authoring guide, and CLI README teach the generic workflow, but
+the exact quota codes do not appear in `troubleshooting.md` or
+`diagnostics-and-recovery.md`. The compact Settings diagnostic shows
+`installed_widget_version_limit` without telling the user to open **Installed
+widgets -> Catalog recovery**. Add that mapping for every quota code, include
+copyable `gbar repair` commands, and give controller users a recovery hint or
+action from the compact failure state. Authors and users should never need to
+search AppData or understand catalog internals to interpret this failure.
 
 ## Reassessment of residency defaults and ecosystem cost
 
@@ -1040,7 +1187,7 @@ still chooses when to read, how to render each state, and how to merge provider
 events. It never starts work from `Render`. Cursor pages and append/infinite
 feeds remain separate open designs.
 
-### 4. Bounded offset-paged resource state — implemented
+### 4. Bounded offset-paged resource state — SDK and host repair implemented; composed proof open
 
 The public resource is constructed once through `CreatePagedResource<TItem>`:
 
@@ -1080,6 +1227,26 @@ resource's `Paginate(scroll)` publishes only currently valid boundary actions;
 Viewport delegates receive absolute collection indexes and produce stable
 entering-edge focus IDs for compact/wide surfaces. No worker focus geometry or
 visible Load-more row is required.
+
+Commit `5c3ce72` repairs the two inspected host seams: `MoveWidgetFocus`
+resolves pagination against the current node before explicit/geometric movement,
+and a changed valid replacement-page `InitialFocusId` takes priority over stale
+focus memory. Commit `023ea46` adds real Spotify compact/expanded 29-item
+playlist/detail resources, exact 12/12/5 IDs and call counts, slow joined input,
+cached reverse pages, matching native topology, and a consumed-focus unrelated-
+refresh case. Authors should not add custom focus geometry or duplicate visible
+paging buttons.
+
+Do not yet describe this as a proven complete controller workflow. The Spotify
+test helper performs visible-index movement itself and directly calls
+`OnActionAsync` with the Scroll action; native tests use separately constructed
+trees. No fixture carries one real serialized Spotify snapshot through native
+direction resolution, bridge/worker admission, resource/cache replacement, and
+presented focus memory. Detail reverse also stops on the middle page, and the
+original live failure has not been retested. Compose those existing pieces
+instead of adding another helper layer. The one-shot refresh case now supports
+the changed-ID design; introduce a new protocol token only if a composed test
+finds a real ambiguity.
 
 The resource owns its state-change invalidation and runtime-owned Latest lane,
 including synchronous cache-hit/reset changes that have no operation busy
@@ -1143,7 +1310,7 @@ or a correct merge/rollback for the widget. Authors must implement those
 callbacks over immutable state. It builds on `WidgetOperations`; it does not
 create a second controller-input queue.
 
-### 5a. One action-admission contract — implemented
+### 5a. One action-admission contract — substantially implemented; native feedback proof open
 
 Commit `6c5f932` implements the core shape: direct and
 controller-resolved actions enter one runtime-owned bounded active-lifetime FIFO
@@ -1151,62 +1318,132 @@ before the host is acknowledged. Admission is typed, compatible slider tails
 are latest-wins, action failures arrive later, and capability gesture context for
 controller-resolved dashboard work begins inside queued execution.
 
-Commits `7d33ce1` and `7d92dcd` complete asynchronous failure ownership with a
+Commits `7d33ce1` and `7d92dcd` add asynchronous failure ownership with a
 bounded generation-owned native queue, strict payload validation, generic
 cross-process diagnostics, and affected-widget feedback in dashboard and open
 surfaces. The legacy catalog QuickAction path remains explicitly
 non-authorizing; exact capability authority belongs only to snapshot-correlated
 controller input and begins when its matching action dequeues.
 
-Runtime 48/48 proves slow/hung prompt admission, deterministic saturation,
-mixed-ingress order, slider-tail replacement, deactivation drain, late failure,
-no restart, and exact gesture-authority timing. Bridge 46/46 proves typed direct
-and legacy quick admission, failure/process separation, and runtime-generation
-transport. Native parser tests and the OverlayHost Release build cover the
-bounded consumer. YT Music and Spotify retain only coordination whose lifetime
-differs from ordinary actions—activation auto-connect and browser OAuth.
+Commit `ddb66c2` composes the platform-owned presentation half behind one
+bounded `WidgetActionFeedbackHost`: complete failure batches, catalog/runtime
+identity, dashboard/open selection, expiry scheduling/fallback, invalidation,
+Hide, and Stop now share one production seam with deterministic 305-check
+coverage. Authors should not add their own global toast registry for ordinary
+command exceptions.
+
+The source harnesses register Runtime 48/48 and Bridge 46/46 cases for slow/hung
+prompt admission, deterministic saturation, mixed-ingress order, slider-tail
+replacement, deactivation drain, late failure, no restart, exact gesture-
+authority timing, typed direct/legacy quick admission, failure/process
+separation, and runtime-generation transport. Native parser source covers the
+bounded bridge consumer. This review did not execute those cases. Clean full
+bundle `20260809T201448Z-0249ae81` passes 41/41 steps and 778 JUnit cases for
+exact clean commit `0598e5a`. It covers these action changes, packaged Spotify
+conformance, the paging repair, and accessibility through the actual-destroy
+real-client test; it predates `b3558f9`, `59aae1a`, `6162937`, `8a46d5f`, and
+`9ec0374`.
+The newer 41-step runs are dirty and cannot replace that provenance.
+
+The native presentation architecture is now implemented; finish the real route
+before calling it end to end. Preserve the bounded per-widget/runtime-generation
+store, allocation-free lookup, host adapter, one-shot scheduling,
+controller-timer fallback, two-widget isolation, generation/catalog retirement,
+and Hide/Stop cases. Exercise YT Music and Spotify failures through the actual
+worker/bridge/native controller path and inspect the selected painted/UIA status
+and expiry; `5804eaa` already proves Spotify's packaged worker/runtime/broker
+success route. Their activation auto-connect and browser OAuth coordination has
+a legitimately different lifetime from ordinary actions.
 
 Authors should await ordinary provider commands in `OnActionAsync`; they should
 not recreate a task registry or semaphore just for responsive acknowledgement.
 Future ingress types must reuse this contract and declare their authority model.
 
-### 5b. End-to-end accessibility provider — open
+### 5b. End-to-end accessibility provider — provider preview implemented; ship contract open
 
 Widget authors should continue supplying stable IDs, visible text, accessible
 names, values, and explicit selected/disabled/busy state through the closed SDK
-model. That is necessary semantic input, but it is not currently a complete
-accessibility workflow. The native host validates and renders the data without
-publishing a Windows UI Automation tree, focus events, control patterns, or
-property changes.
+model. Commits through `59aae1a` now turn that input into real widget, tray, and
+dashboard UI Automation fragments with exact screen bounds, closed patterns,
+events, bounded generation-checked UI-thread dispatch, one composite open-widget
+root, and an explicit automation-versus-physical origin. Authors no longer need
+to invent a parallel native accessibility tree or duplicate root host controls.
 
-The framework should own one accessibility projection over the exact presented
-snapshot and final clipped renderer geometry. Existing node kinds should map to
-closed Windows roles and patterns: buttons/action surfaces to Invoke, sliders to
-RangeValue, progress to read-only RangeValue, choices to SelectionItem or Toggle
-only when their typed state supports it, and text/images/icons/loading indicators
-to read-only semantic elements. Hidden responsive branches must be absent;
-offscreen scroll descendants, disabled versus focusable state, route changes,
-worker failure, and stale widget generations need explicit behavior.
+The previous low-level lifecycle and presentation defects are materially fixed.
+`ProviderHost::Detach` disconnects UIA, clears host authority, and increments a
+binding generation so retained roots/fragments become unavailable. Window focus
+and visibility come from UI-thread-published state, clearing the tree does not
+announce focus on a custom root, and root geometry changes emit bounds events.
+The renderer, projection key, accessibility tree, and event diff now consume one
+presented slider-value revision, so an optimistic scrub or volume change no
+longer exposes a stale RangeValue by design. `02cc40a` separates routine non-live
+help from transient polite feedback, `943d67b` selects tray items directly by
+stable ID, and `0598e5a` proves real client roots become unavailable after
+actual window destruction. These are host guarantees; authors should not
+imitate them with custom labels, fake values, or duplicate controls.
 
-Provider actions should post generation-checked host commands rather than call
-the worker synchronously. The host must also define whether an Invoke or
-RangeValue request from UI Automation receives the same exact user-gesture
-authority as controller/keyboard activation. Authors must not receive an escape
-hatch for arbitrary automation properties.
+Commit `6162937` directionally fixes the two prior composition bugs. Widget,
+HostShell, and Tray domains now participate in AutomationId,
+runtime identity, lookup, events, and queued authority, so authors do not reserve
+shell prefixes. A typed nested Back is published for an active scope-root
+pressed-B shortcut and revalidated before automation-origin dispatch. The
+provider tests prove two domains can reuse `host.open.back` safely.
 
-After a minimal provider exists, use real first-party screens to identify the
-few missing typed semantics. Heading level, description/help text, and live-
-region notification intent are plausible gaps; styling classes such as
-`page-heading` must not become hidden semantic metadata. Add them only with
-host mappings, validation, examples, and UIA-client conformance tests.
+Do not call that author contract complete yet. Commit `6a079b6` now mirrors
+the inspected SDK rules for focusless scope-root disabled/busy state, focused
+shortcut precedence, focused-owner disabled/busy suppression, ancestor
+fallback, stale focus, and nested-scope exclusion. It passes current focus into
+both publication and invocation revalidation, which is the right behavior.
+It replaces the reviewed throwing vector path with allocation-free bounded
+recursion, so the `noexcept` publication path is now truthful. However, it
+still duplicates the managed algorithm and no real UIA client
+traverses `OverlayApp` into and out of SDK Gallery Picker, ActionSheet, or
+Navigator. Drive both resolvers from one conformance corpus or publish one
+closed result; authors should not add fake duplicate Back buttons to compensate.
 
-The acceptance fixture should discover the real overlay HWND through UIA,
-inspect a basic widget plus SDK Gallery, YT Music, and Spotify states, verify
-names/roles/values/bounds/focus, invoke a button and slider, observe route and
-state-change events, and prove hidden or stale content disappears. Retain a
-manual Narrator pass in addition to automation. Until that exists, documentation
-should describe accessible semantic authoring and visual accessibility policy,
-not claim complete assistive-technology support.
+Existing node kinds should keep closed Windows mappings: buttons and
+ActionSurfaces to Invoke, sliders to RangeValue, progress to read-only
+RangeValue, and choices to SelectionItem or Toggle only when the SDK declares a
+matching choice/toggle contract. The current generic `selected` flag is not a
+complete typed choice model. Styling classes such as `page-heading` must not
+become hidden semantic metadata.
+
+Commit `59aae1a` gives provider actions an explicit
+`AccessibilityAutomation` origin. The bridge and runtime reservation refuse to
+pair that origin with dashboard capability authority, and the base SDK action
+queue omits its gesture context. This is the right author contract: an override
+may inspect origin but must not decide security policy.
+
+Commit `9ec0374` resolves the inspected inner contradiction.
+The worker validates origin and creates ambient dashboard gesture context only
+for `PhysicalController`; the broker adapter attaches sequence/snapshot fields
+only after exact activation returns true while the context remains active. A
+hostile custom override synchronously invokes a capability on an automation-
+origin event and records no context, activation, provider call, grant, or
+revoke. A separate adapter case pre-grants valid authority, denies activation,
+and observes no provider call, making it sensitive to leaked gesture metadata.
+This is the correct author contract—custom overrides cannot mint authority.
+Dirty broad run `20260809T220617Z-bc1dd7a3` records Runtime 49/49 and all
+41 steps/783 cases green, but it is based on a dirty `8a46d5f` tree and is not
+exact release evidence for committed `9ec0374`; this review did not execute it.
+
+Public accessibility documentation is internally consistent and correctly calls
+the surface a preview. Identity and nested Back are now committed, but not
+covered by retained clean evidence. Document the new `widget:`, `host:`, and
+`tray:` AutomationId compatibility change for external preview clients.
+
+The acceptance fixture should retain the adversarial raw-ID provider case and
+add real client traversal: dashboard -> SDK Gallery -> Picker/ActionSheet/
+Navigator -> nested Back -> root Back/Close -> tray. Include focusless,
+disabled/busy, stale scope/snapshot, worker failure, resize/DPI, quiet
+announcements, optimistic sliders, and the hostile synchronous capability
+override. Retain that new case on clean exact-commit evidence, deliberate OS
+HWND reuse, AppContainer self-automation denial,
+a clean gate, and packaged Narrator/MSAA evidence. Current clean retained
+evidence passes 41/41 steps and 778 cases for `0598e5a`; it predates `b3558f9`,
+`59aae1a`, `6162937`, `8a46d5f`, `9ec0374`, `6a079b6`, and `023ea46`.
+Newer full evidence is dirty and release-ineligible; the latest passing run also
+overlapped another full run in the same checkout.
 
 ### 6. Navigation and focus model — implemented
 
@@ -1456,6 +1693,25 @@ Splitting files alone does not remove complexity, but it makes the remaining
 domain complexity reviewable. Framework helpers should remove coordination
 code first; file splitting should then expose the actual Spotify behavior.
 
+The first step is a state boundary, not this directory move. Introduce an
+immutable `SpotifyPresentationState` owned by `WidgetModel<TState>` or a narrow
+Spotify controller. Represent playlist detail with a
+`PlaylistSelectionKey(playlistId, generation)` and require the detail snapshot
+to carry the same key before the renderer can display it. Selection, detail
+reset, and load admission should be one controller operation; a mismatched
+resource snapshot renders loading/empty rather than prior items. Implement this
+as a local composition first. Only publish a generic keyed-resource API after a
+second production widget proves the same key, cache, cancellation, and retry
+semantics.
+
+Use deterministic phase barriers to prove the boundary: pause between selection
+commit and detail reset, complete a cancellation-ignoring old load after a new
+selection, and exercise rapid Back/open plus compact/expanded focus. Every
+rendered playlist detail should assert that its heading and item snapshot share
+one selection key. Once that is true, `SpotifyController` and the pure view
+files above become meaningful responsibility boundaries rather than cosmetic
+extractions.
+
 An ambitious but useful target is for the widget-specific C# layer to fall
 below roughly 600–900 readable lines, excluding capability DTOs and generic SDK
 helpers. The goal is not minimum line count. The goal is that most remaining
@@ -1465,27 +1721,37 @@ code describes Spotify behavior or presentation rather than task plumbing.
 
 ### Phase 1: remove unsafe repetition
 
-Completed foundation: protocol-v11 focus-edge Scroll pagination, the public
+Implemented foundation: protocol-v11 focus-edge Scroll metadata, the public
 `ScrollElement.Paginate` authoring API, runtime-owned operation scopes,
 immutable widget models, bounded optimistic commands, non-paged resources, and
 bounded offset-paged resources. Spotify playlists are the first paged-resource
-migration; Media Sessions is the first medium model and command migration.
+migration; the native boundary/focus repair is implemented but needs composed
+and live verification;
+Media Sessions is the first medium model and command migration.
 
 Next work:
 
-1. Unify direct, quick, pagination/value, and controller action ingress behind
-   the runtime-owned bounded admission contract; prove slow/hung provider work,
-   saturation, deactivation, failure reporting, and exact gesture authority.
-2. Generalize the cancellation-ignoring stale-success, stale-failure, and
+1. Preserve pre-move page admission and prove Spotify compact/expanded 12/12/5
+   forward and reverse controller flows through the real renderer, host, bridge,
+   cache, and snapshot refresh. Include unrelated refresh and live retest; make
+   page-entry focus explicitly one-shot if the changed-ID rule cannot prove it.
+2. Preserve the unified bounded action admission and new native feedback host;
+   prove an installed Spotify/YT Music late failure through worker, bridge,
+   native controller, selected painted/UIA status, expiry, and no restart.
+   Keep pagination/value coalescing and gesture authority explicit rather than
+   creating widget-owned command registries.
+3. Generalize the cancellation-ignoring stale-success, stale-failure, and
    lifecycle-exit fixtures from YT Music into a reusable operation-migration
    test recipe.
-3. Define credential/session generation semantics before any flow allows
+4. Define credential/session generation semantics before any flow allows
    credentials to be replaced while requests are in flight.
-4. Design cursor/append resource state separately from current-value and
+5. Design cursor/append resource state separately from current-value and
    offset-page semantics.
-5. Migrate the remaining suitable widgets and Spotify operation families while
-   preserving their explicit lifetime, ordering, and reconciliation policies.
-6. Add focused recipes for provider-event merge, confirmation deadlines, and
+6. Give Spotify one immutable render-facing model and an explicitly keyed
+   playlist-detail owner before migrating more operation families. Prove the
+   selection/reset/load interleavings locally; generalize keyed resources only
+   after another widget demonstrates the same contract.
+7. Add focused recipes for provider-event merge, confirmation deadlines, and
    absolute-value command coalescing without making them implicit.
 
 This phase should deliver the largest reduction in semaphores, cancellation
@@ -1542,6 +1808,11 @@ and fail-closed scenario selection with contract and safety tests.
    under the production AppContainer token; bind ACL targets to the objects
    authenticated by the lease; preserve the committed focused 1,024-directory
    accepted edge and atomic 1,025-directory refusal, then retain them cleanly;
+   preserve the committed host-private write-ahead journal and `0ff403a`'s handle/
+   object-identity enforcement, then isolate unrecoverable records to the
+   affected authority where safe and prove crash/restart recovery, moved/deleted/
+   offline targets, arbitrary AppContainer ACEs, unrelated-package behavior,
+   durable quarantine, and a host-owned verified repair workflow;
    put revalidation, authority application, process creation, and hello under
    one enforced user-visible start budget without blocking unrelated bridge
    work; clean up persistent ACL grants on every failure/teardown path. Then add an
@@ -1576,6 +1847,11 @@ The improvements should be evaluated against measurable author outcomes:
 - A multipage widget uses one route model and destination set for compact and
   expanded layouts. SDK Gallery now demonstrates this; a larger production
   migration remains the next proof.
+- An offset-paged collection can traverse a partial final page and every cached
+  or reloaded previous page using only controller directions. The host consumes
+  boundary input before geometric escape, applies entering-edge focus once, and
+  preserves that focus across unrelated snapshot refreshes in compact and
+  expanded layouts.
 - Disabled and busy navigation destinations remain reachable and retain stable
   responsive focus, while pointer/controller activation is consistently
   suppressed and the unavailable state is exposed clearly.
@@ -1614,6 +1890,10 @@ The improvements should be evaluated against measurable author outcomes:
   widget with controller-reachable retry or resource-management actions.
 - Advanced samples contain substantially more domain/rendering code than
   lifecycle and concurrency plumbing.
+- Every advanced screen is rendered from one coherent presentation revision;
+  a resource whose meaning depends on a route or selection carries that key,
+  and deterministic interleaving tests prove a prior key cannot appear or act
+  under the current heading.
 - Deactivation, stale responses, command rollback, focus restoration, and task
   cleanup receive standard reusable tests.
 - The SDK preserves current message, update-rate, memory, and lifecycle bounds.
@@ -1671,7 +1951,10 @@ The immediate need is adoption proof, not another broad abstraction. Use Media
 Sessions as the behavioral baseline, make YT Music the first complete
 state/controller/lifecycle/command/view reference, and require Spotify or
 another advanced widget to reproduce the ownership reduction before promoting
-that structure into templates. Give Audio Mixer and Network Controls their own
+that structure into templates. For Spotify, coherence comes before extraction:
+one immutable presentation state and an explicitly keyed playlist-detail
+snapshot must replace the current cross-owner render assembly. Give Audio Mixer
+and Network Controls their own
 explicit command-confirmation and multi-provider-merge designs rather than
 forcing their domain rules into a universal helper.
 

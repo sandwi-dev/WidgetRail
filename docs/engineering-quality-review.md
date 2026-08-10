@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-09<br>
-Last reassessed: 2026-08-09 against implementation commits `6c5f932` and `7d33ce1` plus the current documentation worktree, after unified action admission and generation-owned native failure handling, bounded bridge dispatch, exact-directory-boundary evidence, GitHub package lifecycle, digest-bound GBSS and typed source diagnostics, aggregate catalog scaling, the verified-package launch handoff and directory-shape admission, native host widget-session/failure ownership, the bounded verification gate, advanced-widget SDK adoption, hidden Guide-compatibility polling, retained visual/performance evidence, and documentation drift were audited<br>
+Last reassessed: 2026-08-09 against implementation HEAD `1738618`, accepted DLV-001 authority recovery, accepted DLV-002 trusted-game curation, DLV-002 focused results (provider 31/31, broker 49/49, widget 39/39, docs 51), its minimal real-package AppContainer group 6/6, stable dirty full-gate run `20260810T030727Z-449cac31`, and the retained clean full-gate result for `0598e5a`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -10,6 +10,22 @@ verification credibility, UI/UX foundations, and product readiness
 
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
+
+This cycle closes the bounded security-stabilization implementation gate and
+then returns to product work. DLV-001 (`d0c0420`) completes the exact-token,
+host-owned authority-recovery operator surface; its later exact-commit aggregate
+was interrupted and remains checkpoint debt rather than a reason to reopen the
+subsystem. Installed-widget security is frozen unless a reproducible P0,
+demonstrated threat-model violation, or planned-release blocker is assigned.
+
+Product trajectory is now **improving**. DLV-002 (`1738618`) adds schema-v2
+Games & Apps state with explicit automatic provenance and durable exclusions,
+walks the bounded trusted catalog, preserves user order and focus, retains
+missing identities for stable reappearance, treats replacement identities as
+new games, and keeps Application/Unknown entries opt-in. Its focused and
+minimal real-package evidence is green without paying the repository-wide test
+cost. The presentation repair, shared button geometry, Audio endpoint blocker,
+and hold-Y tray refresh remain open.
 
 There is substantial good engineering here: the installed-widget runtime uses
 an explicit AppContainer and broker boundary; protocol and package inputs are
@@ -38,6 +54,16 @@ the evidence root, rejects a root reparse point, and has per-file, total-byte,
 entry, root-junction, reduced-budget, and exhaustion fixtures. Immutable hosted
 execution remains to prove the checked-in workflow rather than only the local
 runner.
+
+Committed runner repair `7c8a5b8` materially improves that
+foundation: it serializes verifier processes with a live handle, captures both
+repository endpoints, rehashes final packages, and truthfully rejects two
+41-step/784-case dirty `ddb66c2` runs that exercised the then-uncommitted patch.
+It fixes the reproduced concurrent-run collision. It does not make the actively
+edited checkout immutable: non-verifier
+writers ignore the lease and equal endpoints cannot exclude a transient edit.
+EQ-027 therefore moves from Open to Partially implemented, with an owned
+exact-commit worktree and scope-aware complete-gate result still required.
 A separate strong committed improvement is `b2d6f95`'s aggregate installed-
 catalog policy. It caps IDs, versions, entries,
 accounted bytes, and detected elapsed discovery work and prospectively rejects
@@ -48,8 +74,15 @@ clean all-lane bundle now retains those passing steps. Follow-up commit
 each at-most-64-KiB read. Commit `d2e49a9`'s bridge closures retain only enabled
 active
 versions, but discovery temporarily allocates full inventories for all accepted
-history. Control-plane recovery and maximum-scale time/memory evidence remain
-incomplete, so EQ-016 is only partially implemented.
+history. Commit `8a46d5f` closes the reproduced control-plane failure with a
+separately bounded, manifest-free repair inventory and exact-version retirement
+through Settings and CLI. It protects the selected generation while allowing
+inactive history to be retired even when Spotify remains enabled. Direct
+current-state inspection now finds Spotify enabled and selected at 0.2.10 with
+three installed versions, down from the reproduced 19-versus-eight failure.
+Maximum-scale full discovery and clean final-HEAD evidence remain incomplete,
+so EQ-016 stays partially implemented for performance/provenance rather than
+for product recovery.
 
 The earlier verified package-evidence contract remains a strong foundation.
 Committed work bounds manifest/metadata consumption, rejects short/extra/changed
@@ -72,13 +105,34 @@ digest-bound AppContainer identities, and a production-token test proves a new
 identity cannot read a root granted to the prior generation. EQ-014 is therefore
 materially partially implemented rather than resolved.
 
-The newest runtime follow-up usefully rejects content roots that overlap the
-trusted generic-worker directory and preserves caller cancellation during
-content acquisition. The security boundary still operates across separate
-pathname checks, directory/file opens, final inventory, and pathname ACL writes
-without a recorded object identity or handle-relative traversal. Concurrent
-directory replacement is therefore unproven even though ordinary file
-replacement and late insertion are covered.
+Commit `dc30be9` materially repairs the authority-transaction defect found by
+this audit. The pending record now lives under the desktop host's Local AppData,
+outside the AppContainer-writable profile; the root receives a protected host/
+SYSTEM/Administrators DACL, ancestor and entry reparse points fail closed, a
+global exclusive file lease serializes transactions, and a flushed pending
+record is created before the first DACL mutation. A real child process exits
+after a partial apply and the next host restores the recorded descriptors before
+clearing the journal. This closes the prior writable-marker and ordinary
+process-termination gaps rather than merely renaming quarantine state.
+
+Commit `0ff403a` further binds every snapshot to volume serial plus
+128-bit file ID, keeps handle-bound DACL operations alive across capture/apply/
+verify/rollback, verifies the post-apply and post-restore descriptors, and
+refuses path replacement during recovery. This composes with the production
+content lease, which already pins verified directories and files without
+delete sharing. Dirty full run `20260810T005210Z-c46e6881` passes 41/41 steps and
+793 JUnit cases in 599.821 seconds, including Runtime 58/58, with identical dirty
+`dc30be9` endpoints and correct release ineligibility.
+
+EQ-028 remains P1 for recovery isolation and operability. There is one global
+pending file for all community packages. The new identity-mismatch case
+deliberately retains that record, but every later community start reads and
+tries to recover the same record before its own transaction; one moved or
+replaced target can therefore quarantine all community widgets indefinitely.
+There is no host-owned repair/inspect/clear workflow, and the new alternate-
+authority check rejects only the two broad application-package groups rather
+than arbitrary other AppContainer SID ACEs. Fail-closed behavior is correct,
+but product-wide denial without a verified repair path is not release-ready.
 
 Follow-up `6fc9e01` closes the deterministic package-shape mismatch found by
 this audit. Package inspection and installed-tree verification now reject more
@@ -122,7 +176,7 @@ eligible for clean documentation commit `b2956ab` over implementation
 `4f903b0`, with zero stderr or output truncation. Its three explicitly selected
 steps do not update unrelated verification lanes.
 
-Commits `6c5f932` and `7d33ce1` resolve the action-ingress ownership mismatch.
+Commits `6c5f932` and `7d33ce1` structurally resolve the action-ingress ownership mismatch.
 Direct, legacy quick, and controller-resolved actions now enter one bounded
 active-lifetime FIFO and acknowledge typed admission instead of provider
 completion. Capacity proof waits on a deterministic execution barrier. Public
@@ -131,9 +185,38 @@ retain protocol-v1 empty acknowledgements and failure names, and reserve exact
 capability gesture authority for snapshot-correlated controller input. YT Music
 and Spotify removed redundant ordinary-action coordination. Late failures now
 enter a bounded native queue with runtime-generation identity; the shell rejects
-stale/malformed payloads and never renders or logs exception text. EQ-021 is
-resolved with focused Release evidence; the clean aggregate gate remains a
-separate verification task.
+stale/malformed payloads and never renders or logs exception text. Commit
+`7d92dcd` additionally binds generic feedback to the affected widget on both
+dashboard and open-widget surfaces and replaces the worker's cross-process
+exception text with a fixed diagnostic. Commits `7733a73` and `707f850` replace
+the earlier lossy global slot with a catalog-bounded, generation-owned store,
+allocation-free lookup, deterministic visibility/deadline transitions, one-shot
+expiry scheduling, and a controller-timer fallback.
+
+Commit `ddb66c2` now composes those pieces behind
+`WidgetActionFeedbackHost`. Production `OverlayApp` supplies the monotonic
+clock, Win32 timer scheduling, and invalidation callbacks; reconciles the
+bounded descriptor projection; publishes a complete bridge drain; selects the
+dashboard or open-widget identity; and reuses the same Hide/Stop/expiry seam.
+Its deterministic 305-check target feeds two widgets through one host adapter
+and proves offscreen isolation, one invalidation/schedule per batch, deadline
+and controller-timer expiry, generation/catalog retirement, and no resurrection
+after Hide or Stop. Dirty schema-v2 full run
+`20260809T232451Z-15d2e7b6` retains that target plus 41/41 steps and 784 JUnit
+cases. This closes the missing native presentation composition architecture;
+EQ-021 remains Verifying only for a real bridge/native controller failure flow,
+advanced-widget adoption evidence, and a clean exact-commit bundle.
+
+Commit `689a933` exposes an assurance-process regression. The implementation
+stream staged both independent review documents, titled the commit “close
+unified action admission review,” and changed EQ-021 to Resolved with focused-
+Release claims while the latest retained evidence still predates the action
+commits and the native presentation defects above remain. This mixes
+implementation, evidence reporting, and independent disposition in one actor
+and can also sweep a reviewer's unrelated dirty work into a product commit.
+EQ-024 makes the review documents reviewer-owned inputs: implementation may
+report evidence and proposed dispositions elsewhere, but must not edit, stage,
+or commit these two files.
 
 The bridge-concurrency code also needs one ownership pass before more request
 types or an asynchronous native client are added. `WidgetBridgeServer.RunAsync`
@@ -144,14 +227,49 @@ serializes widget work. EQ-022 recommends a narrow internal request dispatcher
 with deterministic tests; this is not a request for a generic framework or a
 line-count refactor.
 
-The accessibility rotation finds a more fundamental product gap. The SDK and
-protocol validate accessible names and values, and the native host applies
-visual accessibility policy, but the custom Direct2D window exposes no Windows
-UI Automation or MSAA provider. There is no `WM_GETOBJECT` handling, provider
-interface, or focus/property/structure event publication. Assistive technology
-therefore cannot discover, navigate, invoke, or read the widget tree. EQ-023
-separates visual accessibility from end-to-end platform accessibility and treats
-the missing host-owned provider as a P1 release boundary.
+The accessibility rotation is now a substantial improvement rather than a
+provider-absence finding. Commits `b166a01`, `e1a42bd`, and `15e0f77` activate
+`WM_GETOBJECT`, publish immutable widget and tray fragment trees, expose Invoke,
+RangeValue, SelectionItem, and Selection patterns, convert exact clipped
+geometry to screen coordinates, and post bounded generation-checked actions to
+the UI thread. A real `IUIAutomation` client test discovers the HWND and reads
+both widget and tray elements. Commit `b3acd47` also publishes focus,
+structure, name, help, enabled, selection, range, and bounds events. Commits
+`f1274a7` and `4c591ed` then close the inspected provider-lifetime, hidden-focus,
+root-bounds-event, and optimistic-slider coherence defects with explicit detach,
+binding generations, UI-thread-published window state, and one presented-slider
+revision shared by pixels, UIA values, and events. Commits `02cc40a`, `943d67b`,
+and `0598e5a` separate static help from live status, select tray widgets by
+stable ID instead of replaying navigation, and retain real UIA clients through
+actual window destruction. Commit `b3558f9` then publishes widget content,
+host Back/Close/help/status, and the visible tray in one open-widget tree.
+Commit `59aae1a` distinguishes accessibility automation from physical input
+through native, bridge, runtime reservation, and base SDK routing. Commit
+`6162937` adds collision-proof owner domains and typed nested Back. Commit
+`9ec0374` makes worker ambient context physical-only, validates the origin again,
+and forwards broker gesture metadata only after exact activation succeeds. Its
+adversarial tests target synchronous custom-override use and denied activation
+with a pre-existing broker grant. Commit `6a079b6` mirrors the current managed
+focused/no-focus, disabled/busy, ancestor, stale-focus, and nested-scope Back
+rules. It replaces the reviewed throwing vector path with allocation-free
+bounded recursion, and focused native/managed cases cover the same branch set.
+EQ-023 remains P1 because the algorithms are still independently owned,
+exact-commit clean evidence and real route traversal are absent, and packaged
+Narrator/AppContainer proof does not exist.
+
+The live Spotify reverse-pagination failure is now materially addressed by
+`5c3ce72` and strengthened by `023ea46`. `MoveWidgetFocus` asks the current Scroll for a page action before
+explicit/geometric movement can escape it, and replacement-page
+`InitialFocusId` now outranks stale exact/ordinal memory when that value changes.
+The new Spotify test drives real compact/expanded 29-item playlist and detail
+resources through forward/reverse cache transitions, repeated slow input, IDs,
+focus requests, and provider counts; matching native tests use Spotify's exact
+scroll/rail IDs and 12/12/5 topology and prove focus consumption on unrelated
+refresh. This is valuable cross-layer contract coverage, but it is not composed:
+the widget helper manually selects the Scroll action and calls
+`OnActionAsync`, while native host tests consume separate synthetic trees.
+EQ-026 therefore remains Verifying pending a serialized real-snapshot host/
+bridge round trip and the user's live controller retest.
 
 The public authoring entry point is not yet a coherent shipped product. The
 current HEAD removes its misleading external success path: `gbar new widget`
@@ -263,6 +381,220 @@ hosted execution proof remains open.
 
 ## Changes since the previous audit
 
+Commit `d171dc8` closes the remaining catalog/runtime pathname handoff inspected
+in the prior cycle. `InstalledPackageLaunchLease` now opens each directory and
+file without following the final reparse point, retains the handle, records its
+volume serial and 128-bit file ID, and hands a typed target/identity sequence to
+the runtime. `WindowsAppContainer` captures the live ACL targets and compares
+every identity with that catalog evidence before it publishes the journal or
+changes a DACL. Focused tests cover replacement between the two layers,
+malformed/duplicate evidence, handle cleanup, and first-party conformance.
+Full run `20260810T014706Z-852d0250` passes 41/41 steps and 796 cases in
+367.882 seconds, but its stable endpoints are dirty `0ff403a`; the patch was
+committed only afterward as `d171dc8`, so `releaseEvidenceEligible` correctly
+remains false.
+
+No corresponding user-facing or author-facing milestone landed. Games & Apps
+still reads schema-v1 `SavedIds`, resolves only that allowlist on activation,
+and enumerates the catalog only after **Add applications**; removal persists no
+exclusion that could distinguish “removed by the user” from “newly discovered
+game.” Tray Y still routes immediately to `HostToggleReorder`, while F5 and the
+Back+Start recovery chord call a restart routine that accepts only an open
+widget. Audio provider commands still cover default input/output volume and
+mute, not endpoint selection. The native renderer now has a shared icon-label
+placement function and synthetic start/center/end pixel coverage, but no
+current packaged visual evidence closes the clipping and optical-alignment
+problems visible in the supplied Games & Apps and Spotify captures.
+
+Commit `8a46d5f` closes EQ-016's reproduced recovery-policy defect. A bounded
+directory-name/state projection remains available when full catalog discovery
+fails a quota, and exact inactive non-selected versions can now be atomically
+retired while the selected Spotify generation remains enabled. Catalog,
+Settings, and CLI cases use enabled fixtures, protect the selected version,
+ignore corrupt candidate manifest bytes, reject cancellation and over-budget
+trees before the move, recover normal discovery, and retain the active enabled
+generation. Direct inspection of the same local product catalog now finds
+Spotify enabled at selected version 0.2.10 with only 0.2.8, 0.2.9, and 0.2.10
+installed, rather than the prior 19-version failing tree.
+
+Two subsequent broad Release runs each pass all 41 steps. The newer
+`20260809T215159Z-b62d551b` bundle records 783 JUnit cases with zero failures,
+errors, or skips, including Catalog 34/34, Settings 42/42, and CLI 51/51. It is
+not release evidence: provenance identifies base commit `b15075b`, records a
+dirty tree, and sets `releaseEvidenceEligible: false`; final HEAD is `8a46d5f`.
+The run's catalog output measures the 512-version repair projection at 278.620
+ms and 1,711,440 allocated bytes. `docs/implementation-status.md` instead cites
+326.382 ms without a retained result that this review could locate. Treat that
+number as an unproven local observation until it is tied to an exact manifest.
+
+Commit `9ec0374` directly addresses EQ-023's remaining inner gesture-origin
+mismatch. `WidgetWorkerServer` validates the closed origin and
+enters ambient gesture context only for physical dashboard input.
+`BrokerWidgetCapabilityClient` attaches sequence/snapshot metadata only after
+the exact activation callback returns true and the context remains active. The
+new adversarial custom widget synchronously invokes a capability from an
+automation-origin override and records no context, activation, provider call,
+grant, or revoke. A broker-adapter case starts with a valid pre-granted
+authority, denies activation, and expects zero provider calls; that makes the
+test sensitive to accidentally forwarding the gesture fields. This is the
+right defense-in-depth shape. Dirty broad run
+`20260809T220617Z-bc1dd7a3` passes 41/41 steps and 783 cases, including Runtime
+49/49, but its manifest is based on dirty `8a46d5f` and is release-ineligible;
+it is not exact immutable proof for final commit `9ec0374`.
+
+Commit `6a079b6` substantially improves nested-Back equivalence. It supplies
+current focus to publication and invocation
+revalidation, rejects focus outside the active scope, lets a focused shortcut
+override ancestor behavior, suppresses fallback when that focused owner is
+disabled/busy, preserves ancestor fallback when focus has no shortcut, and
+handles focusless scope-root disabled/busy state. These cases match the current
+managed resolver inspected in `Widget.cs`, and native plus managed tests cover
+each branch. The final commit replaces the reviewed `std::vector` path with an
+allocation-free `FocusedBackResolution` recursion, preserving the `noexcept`
+contract within the protocol's bounded tree depth. A native mirror still needs
+a shared conformance corpus or protocol-owned resolution result to prevent
+future SDK drift, and no real UIA route traversal exists. Dirty broad run
+`20260809T221800Z-2c278bf3` passes 41/41 steps and 783 cases from a dirty
+`9ec0374` base containing this work, but is not exact clean evidence for
+`6a079b6`.
+
+Commit `023ea46` adds the first Spotify-specific 29-item compact/expanded
+12/12/5 regression. It covers playlist and detail resources, absolute IDs,
+forward paging, cached reverse paging, joined slow cancellation-ignoring input,
+and provider call counts. Native tests add exact Spotify scroll/rail IDs, the
+five-row final topology, and one-shot focus consumption across unrelated
+refresh. The evidence remains deliberately component-composed rather than
+host-composed: `PressPagedDirectionAsync` calculates the adjacent target,
+extracts the Scroll action, and directly calls `SpotifyWidget.OnActionAsync`;
+the native tests use independently constructed nodes. Detail-track reverse
+coverage also stops at final page -> middle page rather than returning to the
+first page. Preserve the test, but do not call it the shipped controller route.
+
+The original EQ-027 reproduction remains useful context. Full runs
+`20260809T223902Z-17e88fe6` and `20260809T223920Z-37fcdf1a` started 18 seconds
+apart in the same checkout. The first failed when CSC could not write
+`NetworkControlsWidget.dll` because another process held the shared
+`obj/Release` output; the overlapping run passed. Both were dirty and
+release-ineligible, but this demonstrated that unique result directories did
+not isolate shared build outputs.
+
+Commit `7c8a5b8` materially addresses that defect. A live
+file-handle lease is acquired before provenance and held through result
+publication; owner metadata is diagnostic only and process death releases
+authority. Schema v2 recaptures commit/full status, recomputes package digests,
+and requires passing, untruncated, clean, identical endpoints for eligibility.
+Its process fixture proves contention before a marker is written, normal
+release, and forced-process-death release; pure eligibility cases cover a dirty
+finish and changed commit. Full runs `20260809T231747Z-d9e41dcc` and
+`20260809T232451Z-15d2e7b6` each pass 41/41 steps and 784 cases without overlap;
+the latter takes 326.534 seconds and truthfully reports identical dirty
+`ddb66c2` endpoints, `repositoryStateStable: true`, and release ineligibility.
+Those runs exercised the then-dirty patch now committed as `7c8a5b8`; no clean
+exact-commit bundle exists. More importantly, the lease serializes verifier
+processes, not editors, agents, or ordinary build commands; identical endpoints
+cannot prove source was never changed transiently during the interval. Treat it
+as a shared-output guard, not yet an immutable-source release boundary.
+
+Commits `dc30be9` and `0ff403a` are the strongest improvement in this cycle. The first replaces
+`0be052b`'s AppContainer-writable marker with a host-private, reparse-rejecting,
+write-ahead journal and cross-process lock, then proves recovery after real host
+termination during partial DACL application; the second uses
+handle-bound volume/file identity and post-operation verification so a path
+replacement cannot redirect apply or recovery. Fresh full run
+`20260810T005210Z-c46e6881` passes 41/41 steps and 793 cases, including Runtime
+58/58, in 599.821 seconds. It began and ended on the same dirty `dc30be9` status
+and is correctly release-ineligible.
+
+The same review exposes the remaining recovery blast radius. The journal uses
+one global pending record, and `ReplaceReadAndExecuteGrant` attempts to recover
+it before every package's own transaction. The dirty identity-mismatch test
+correctly leaves an unrecoverable record in place, but clears it directly in
+test cleanup; production has no bounded inspect/repair operation. One moved
+target can therefore block every community widget indefinitely. The broad-
+authority test also covers only `S-1-15-2-1`/`S-1-15-2-2`, not another specific
+AppContainer SID. EQ-028 stays partially implemented rather than resolved.
+
+Commit `7733a73` adds `WidgetActionFeedbackStore`, wires it into `OverlayApp`,
+adds a dedicated expiry timer, and registers a pure native test in both CMake
+and `build.ps1`. This is a strong response to EQ-021: independent widget
+failures no longer share one
+slot, exact runtime generation gates presentation, catalog changes forget old
+entries, expiry can schedule a repaint with a visible controller-timer fallback,
+and transparent string-view lookup keeps the render query allocation-free and
+truthfully `noexcept`.
+
+Commit `707f850` adds a pure `WidgetActionFeedbackController`
+whose caller supplies monotonic time and receives `shouldInvalidate` plus the
+next deadline. `OverlayApp` now uses it for Show/Hide, publish, expiry, catalog
+cleanup, and surface lookup; the deterministic test expands to hidden publish,
+show without resurrection, deadline transition, and cleanup. This is the narrow
+seam the prior review requested. Commit `ddb66c2` adds the production
+`WidgetActionFeedbackHost` adapter above it and a 305-check deterministic target
+covering the catalog, complete drained batch, dashboard/open selection, timer
+callbacks, fallback, Hide, and Stop. The latest dirty full bundles retain that
+target and the OverlayHost link. A real bridge-originated advanced-widget
+failure still has not traversed the native controller and painted surface.
+
+Commit `5804eaa` adds Spotify to the ordinary bundled and installed first-party
+conformance set. A simulated connected Spotify backend now renders a real
+playback snapshot inside the generic AppContainer worker, and the fixture sends
+`spotify.next` through `WidgetProcessClient.SendActionAsync`, waits for the
+broker command, and verifies `SpotifyPlaybackOperation.Next`. This closes the
+previous absence of any packaged Spotify provider-command path. It proves the
+generic worker/runtime admission and broker authority path, not bridge/native
+controller ingress or late native failure presentation. The implementation
+agent reports First-Party Conformance 6/6 green; current retained evidence still
+predates the commit.
+
+Commits `7733a73`, `5804eaa`, `707f850`, `57bc4c9`, `b3acd47`, `f1274a7`,
+`4c591ed`, `79308bf`, `02cc40a`, `943d67b`, `5c3ce72`, `0598e5a`,
+`b3558f9`, `59aae1a`, `6162937`, `8a46d5f`, `9ec0374`, `6a079b6`,
+`023ea46`, `ddb66c2`, `7c8a5b8`, and `0be052b` update
+`docs/implementation-status.md` while leaving both reviewer-owned documents
+untouched, so EQ-024 did not regress across these milestones.
+
+Clean release-eligible bundle `20260809T201448Z-0249ae81` is a complete
+41-step run for exact clean commit `0598e5a`: 41/41 steps and 778 JUnit cases
+passed with zero failures, errors, or skips. It covers the action queue and
+feedback controller, Spotify packaged action, paging repair, quiet dashboard,
+direct tray selection, actual-destroy UIA client case, native build, and broad
+repository baseline. It predates composite-shell commit `b3558f9`, explicit-
+origin commit `59aae1a`, identity/Back commit `6162937`, and catalog-recovery
+commit `8a46d5f`, gesture-origin commit `9ec0374`, Back-equivalence commit
+`6a079b6`, Spotify-proof commit `023ea46`, and feedback-host commit `ddb66c2`.
+It also predates runner commit `7c8a5b8` and authority-transaction commit
+`0be052b`.
+The newest schema-v2 broad runs are non-overlapping but dirty/ineligible; the
+last clean full-gate evidence remains `0598e5a`.
+
+The rotated advanced-widget audit adds EQ-025. Spotify's paged-resource
+migration rejects stale completions within each resource, but `Render` combines
+manual state and two resource snapshots from unrelated revisions. The selected
+playlist is also the mutable, implicit input to an unkeyed detail resource.
+Existing tests cover slow completion after Back but not the exact
+selection-commit/resource-reset interleaving or a source-key invariant.
+
+A user-observed Spotify run added EQ-026 after the final partial playlist page
+left only five rows and Up did not restore the preceding page. Commit `5c3ce72`
+now checks the original focused Scroll before ordinary movement and prioritizes
+a changed replacement-page focus request over stale memory. This directly
+addresses both inspected seams. Commit `023ea46` now exercises the real widget's
+29-item resources and matching native topology, but manually bridges those
+pieces rather than driving the shipped controller/bridge route, so the finding
+is still Verifying rather than resolved.
+
+Commit `57bc4c9` begins EQ-023's projection layer. Subsequent commits through
+`0598e5a` activate widget/tray/dashboard providers and events, share tray
+geometry, detach retained providers with binding generations, align optimistic
+slider pixels with UIA, make ordinary help non-live, select tray items directly,
+and prove retained real-client roots become unavailable after `DestroyWindow`.
+Commit `b3558f9` adds one composite open-widget shell. Commit `59aae1a` makes
+automation origin explicit and physically sourced dashboard authority narrower.
+Commit `6162937` adds owner-domain identity and nested Back for the two prior
+composition defects. Source review now finds the remaining gap one layer deeper:
+the worker enters ambient gesture context without checking origin, and nested
+Back publication does not yet share or fully mirror managed action resolution.
+
 Commit `d4291be` moves ordinary request execution off the sole pipe-read loop,
 admits at most 16 requests, preserves framed writes, explicitly chains same-
 widget requests in receive order, rejects excess work with `bridge_busy`, fails
@@ -302,15 +634,15 @@ integration-style cases are valuable, but they do not give the scheduler a
 deterministic, cross-platform test surface for every completion and cleanup
 path.
 
-The accessibility rotation adds EQ-023. Searches across native source and tests
-find no `WM_GETOBJECT`, `UiaReturnRawElementProvider`, UIA provider interfaces,
-MSAA bridge, or accessibility-event publication. `accessibilityLabel` is parsed
-and validated, but the only direct use in `OverlayApp` is as fallback text for
-the visible controller shortcut prompt. Renderer “accessibility” tests exercise
-text scale, contrast, reduced transparency/motion, focus geometry, and semantic
-field retention—not an operating-system accessibility tree. No product document
-acknowledges this distinction despite repeatedly saying the host owns or provides
-accessibility.
+The accessibility rotation originally added EQ-023 after finding no operating-
+system provider. Commits through `0598e5a` provide widget/tray/dashboard UIA,
+shared geometry, closed patterns, generation-checked dispatch, events, explicit
+provider lifetime, coherent slider values, quiet help/status, direct tray
+selection, and actual-destroy real-client coverage. Commit `b3558f9` adds the
+composite shell, `59aae1a` adds explicit origin, and `6162937` commits collision-
+proof identity plus nested-scope Back. The finding has moved to inner-layer
+origin enforcement, route equivalence, typed choices, and packaged proof; the
+latest retained clean aggregate stops at `0598e5a`.
 
 Commit `e7b4e6b` is documentation-only. It correctly carries retained run
 `20260809T152831Z-67b77c73`'s 325.283 ms launch-lease and 360.426 ms exact-grant
@@ -1806,6 +2138,19 @@ Until that binding is proven, documentation should say the implementation pins
 verified file objects and denies ordinary late insertion—not that the entire
 namespace is conclusively pinned.
 
+The `7d92dcd` rotation confirms this boundary is unchanged. The lease still
+returns string lists plus opaque handles, while
+`WindowsAppContainer.ReplaceReadAndExecuteGrant` reopens every root, directory,
+and file through `DirectoryInfo`/`FileInfo` and mutates its ACL by pathname. It
+purges rules only for the digest-specific SID, applies directories and then
+files sequentially, and returns no object-identity or rollback receipt. If a
+later ACL write fails, earlier writes persist even though process creation is
+aborted. The five-second content timeout has already ended before this method,
+AppContainer setup, pipe creation, process creation, and hello begin. Existing
+positive-token, late-file, stale-generation, and 512-file timing cases do not
+exercise object replacement, alternate token-group ACEs, partial grant failure,
+or the full start deadline.
+
 The launch handoff now has the right distinct responsibilities.
 `ProcessLeaseFactory` accounts residency; `ContentLeaseFactory` owns exact
 verified content. `WidgetProcessClient` acquires them in that order, applies
@@ -1943,11 +2288,12 @@ host-side factory test is not closure.
 
 ### EQ-020 — P1 — Exact-content startup can block the native UI outside every request deadline
 
-**Status: Open against implementation HEAD `6c5f932`; the file inventory and
-managed request dispatcher are bounded, and clean retained focused cases prove
-cooperative managed head-of-line behavior. Production-client adoption,
-security-authority application, shutdown drain,
-native pipe I/O, and one user-visible start deadline remain open.**
+**Status: Open at current implementation HEAD `0ff403a`; the security transaction
+is now crash-journaled but remains synchronous and outside the content/connect
+deadlines. The file inventory and managed request dispatcher are bounded, and
+clean retained focused cases prove cooperative managed head-of-line behavior.
+Production-client adoption, security-authority application/recovery, shutdown
+drain, native pipe I/O, and one user-visible start deadline remain open.**
 
 **Evidence.** `WidgetProcessClient.EnsureConnectedAsync` creates
 `ContentLeaseTimeout` only around `ContentLeaseFactory` and
@@ -1960,6 +2306,18 @@ deadline, rollback object, or aggregate operation timeout. The worker pipe's
 connect timeout is created later, after ACL work, pipe creation, companion
 creation, and process start. A stalled security-descriptor call is therefore
 outside both advertised deadlines.
+
+`dc30be9` necessarily adds durable work to that unowned interval. Journal
+admission can synchronously retry one global lock for five seconds using
+`Thread.Sleep`, read or flush a document bounded at 16 MiB, recover up to 2,049
+DACLs, capture the next full descriptor set, and flush it before apply. The dirty
+`0ff403a` replaces pathname ACL helpers with safer handle-bound `GetSecurityInfo`
+and `SetSecurityInfo`, but those calls, identity reads, verification reads, lock
+wait, disk flushes, and crash recovery still receive no remaining deadline or
+cancellation token. Security correctness improved; the user-visible liveness
+boundary did not. Dirty run `20260810T005210Z-c46e6881` proves the ordinary
+fixtures complete on this machine, not that blocked filesystem/security calls
+or the maximum journal shape obey an enforced startup budget.
 
 The default catalog permits 512 package entries. Runtime accepts up to 1,024
 directory and 1,024 file grants. The new
@@ -2121,12 +2479,14 @@ must close/cancel the blocked pipe without leaking its I/O owner. Repeat with a
 slow reply arriving just before and just after the deadline and with an unrelated
 catalog event/request while one widget start is pending.
 
-### EQ-021 — P1 — Unified action admission is platform-owned end to end
+### EQ-021 — P1 — Unified action admission is implemented; real failure-route proof remains
 
-**Status: Resolved in commits `6c5f932`, `7d33ce1`, and `7d92dcd`.
-Admission, lifecycle, compatibility, failure transport, native presentation,
-and advanced-widget adoption have one explicit owner and focused Release
-evidence. A clean aggregate gate remains separate release evidence.**
+**Status: Native host composition implemented by `ddb66c2`; Verifying, not
+resolved. Admission, lifecycle, compatibility, sanitized failure transport,
+bounded per-widget presentation, timer/catalog/visibility ownership, and
+advanced-widget managed adoption now have explicit owners. A real
+bridge-originated Spotify/YT Music failure has not traversed native controller
+ingress and the painted surface, and exact clean evidence is absent.**
 
 **Evidence.** `WidgetControllerQueue.cs` now owns a shared 16-item
 `ActionQueueState`. Internal `AdmitAction` accepts both direct and resolved
@@ -2138,187 +2498,451 @@ protocol `Action` after admission rather than after `OnActionAsync` completes;
 `WidgetProcessClient.AdmitActionAsync` exposes that distinction while
 `SendActionAsync` remains a compatibility admission wrapper.
 
-`WidgetBridgeServer` routes both bridge `Action` and the separate catalog
+`WidgetBridgeServer` routes bridge `Action` and the separate catalog
 `QuickAction` command through `AdmitResidentActionAsync`, returns explicit
 `action_inactive`/`action_saturated` failures, and emits asynchronous failure
-events while preserving protocol-v1 reason `controllerActionFailed`. Updated
-bridge cases assert admission, await invalidation
-before reading completed state, observe a later crash event, and prove restart
-can drain an admitted never-completing action. Runtime cases cover mixed direct
-and controller order, bounded admission, late failure, and prompt acknowledgement
-of a hung action. `DirectActionAdmissionIsBounded` now waits for a deterministic
-invalidation emitted as the blocking action starts, proves slider-tail
-replacement, then fills the exact remaining capacity. A compatibility case maps
-an old empty acknowledgement to `Enqueued` and rejects an invalid `Completed`
-value. Public `controller-input.md` and `declarative-ui.md` describe admission
-versus completion, queue capacity, cancellation/drain, late failure, and the
-legacy catalog QuickAction as explicitly non-authorizing. Focused Release
-execution passed Widget Runtime 48/48, Widget Bridge 46/46, Widget SDK 84/84,
-Spotify 31/31, YT Music 48/48, First-Party Conformance 6/6, and the 49-file
-documentation contract.
+events while preserving protocol-v1 reason `controllerActionFailed`. Runtime
+source covers mixed direct/controller order, bounded admission, late failure,
+and prompt acknowledgement of a hung action. The capacity case waits for an
+explicit execution barrier, proves slider-tail replacement, and fills the exact
+remaining capacity without a timing sleep. Public `controller-input.md` and
+`declarative-ui.md` describe admission versus completion, queue capacity,
+cancellation/drain, late failure, and legacy catalog QuickAction as explicitly
+non-authorizing.
 
-Commits `7d33ce1` and `7d92dcd` complete the native and diagnostic boundary.
-`WidgetBridgeServer` adds the exact runtime generation to action-failure events.
-`WidgetBridgeClient` strictly distinguishes the legacy action-failure reason,
-requires the closed payload and `canRestart = false`, rejects control-bearing or
-over-512-character messages, and stores only validated widget/generation/action/
-source identifiers in a bounded 16-item FIFO. `OverlayApp` discards mismatched
-runtime generations and binds generic “action failed; try again” copy to the
-affected widget in both dashboard and open-widget footers. It never renders or
-logs the untrusted message. Native source tests parse a valid
-event, reject control characters and false restartability, and prove oldest-
-entry eviction; the bridge test asserts generation and legacy reason, and the
-Release native parser target passes while the Release OverlayHost target builds.
-`WidgetWorkerServer` now publishes only the stable generic `Action failed.`
-message across process boundaries. Domain-aware widgets continue mapping
-provider failures to safe state before they escape `OnActionAsync`.
+Commits `7d33ce1` and `7d92dcd` materially improve the native and diagnostic
+boundary. `WidgetBridgeServer` includes the exact runtime generation in action-
+failure events. `WidgetBridgeClient` requires a closed payload and
+`canRestart = false`, rejects control-bearing or over-512-character messages,
+and stores only validated widget/generation/action/source identifiers in a
+bounded 16-item FIFO. `OverlayApp` discards mismatched runtime generations and
+binds generic “action failed; try again” copy to the affected widget in both
+dashboard and open-widget footers. `WidgetWorkerServer` publishes only the
+stable generic `Action failed.` message across process boundaries. Native source
+tests validate the client parser and oldest-entry eviction; runtime source
+asserts the stable message.
 
-Both advanced widgets complete the intended migration in `6c5f932`. YT
-Music removes its broad action semaphore from ordinary
-refresh/transport commands and retains a narrowly named `_connectionGate` only
-because activation auto-connect can overlap explicit connect/pair. Spotify awaits
-ordinary commands directly and removes `_actionGate`,
-`_backgroundOperationGate`, `_commandOperationTask`, `StartCommandOperation`,
-and their lifecycle drain. First-Party Conformance runs both community packages
-through the generic isolated worker path; the credential-free Spotify route
-proves setup/navigation admission, while provider-command behavior remains
-covered by its typed-fake suite. Live account evidence remains a separate gate.
+Commits `7733a73` and `707f850` replace the lossy completion state with a
+256-widget/runtime-generation store plus a deterministic visibility/deadline
+controller. Transparent lookup keeps `MessageFor` and `Forget` allocation-free
+inside `noexcept`; a dedicated one-shot deadline removes painted copy, and the
+existing visible controller timer is an idempotent fallback.
+
+Commit `ddb66c2` supplies the missing production composition boundary.
+`WidgetActionFeedbackHost` owns only the bounded descriptor identity projection
+and controller. `OverlayApp` injects monotonic time, Win32 scheduling, and
+invalidation; passes every complete `TakeActionFailures` drain; reconciles
+catalog generations; selects exact dashboard/open identities; and calls the same
+seam from dedicated/controller timers, Hide, and Stop. The deterministic target
+feeds two widgets through one adapter, proves offscreen isolation, exactly one
+invalidation and timer schedule for a batch, one-shot expiry, fallback, stale
+generation rejection, catalog replacement/removal, and no resurrection after
+Hide or Stop. This is the thin host seam the prior review requested rather than
+a second message framework.
+
+Dirty full run `20260809T232451Z-15d2e7b6` retains
+`WidgetActionFeedbackTests passed (305 checks)`, the complete native target/link,
+41/41 manifest steps, and 784 JUnit cases. It is based on `ddb66c2` with
+identical dirty start/end fingerprints and is correctly release-ineligible. The
+test calls the adapter directly: it does not originate a real failed action in
+an installed advanced widget, parse/drain it through `WidgetBridgeClient`, run
+the actual WndProc timer, or inspect painted/UIA status. The older global
+transient status slot also remains for synchronous input, reload, and snapshot
+messages and still has render-time-only expiry; that is separate shell-status
+ownership debt.
+
+Both advanced widgets adopt the intended managed contract. YT Music removes its
+broad action semaphore from ordinary refresh/transport commands and retains a
+narrow `_connectionGate` for activation/connect overlap. Spotify awaits
+ordinary commands directly and removes its action gate, command task registry,
+start helper, and lifecycle drain. Their existing typed-fake tests remain useful,
+and still call `OnActionAsync` directly. Commit `5804eaa` now additionally runs
+Spotify as a real bundled and installed package in the generic AppContainer
+worker, sends `spotify.next` through runtime admission, and proves the simulated
+broker receives the exact Next command. It does not traverse the bridge/native
+controller ingress or its asynchronous failure-presentation path.
+
+The source harnesses register the associated Runtime, Bridge, SDK, Spotify, YT
+Music, conformance, native-parser, and documentation cases, but this review did
+not execute them. Clean full bundle `20260809T201448Z-0249ae81` passes 41/41
+steps and 778 JUnit cases for exact clean commit `0598e5a`, covering the store,
+timer/controller targets, packaged Spotify conformance, and broad baseline.
+The real installed-widget failure from bridge parsing through the production
+adapter into painted/UIA status remains absent rather than merely unretained.
 
 **Why it matters.** The original transport-dependent worker-termination hazard
-is structurally removed in `6c5f932`, and `7d33ce1`/`7d92dcd` give users safe
-affected-widget feedback when accepted work fails. Ordinary provider failures
-are no longer described as worker crashes or silently overwritten by an
-unrelated widget.
+is structurally removed, and raw exceptions or stale generations no longer
+reach the user. But accepted work is asynchronous: if its only completion
+failure can be overwritten by another widget or remain visibly stale past its
+declared lifetime, the product still cannot promise truthful action feedback.
 
-**Underlying problem.** The former implementation conflated admission,
-execution, completion, domain error presentation, runtime diagnostics, and
-worker crash/restart. These are now separate typed contracts with explicit
-lifetime and compatibility ownership.
+**Underlying problem.** Ownership is now coherent from managed admission through
+native presentation. The remaining risk is evidence composition: parser,
+bridge queue, production adapter, timers, surface selection, and advanced-widget
+failure behavior are proven in adjacent fixtures rather than one observable
+production route.
 
-**Disposition.** Keep the one queue and compatibility rules stable. Explicitly
-widget-lifetime work such as browser authorization remains separate; ordinary
-actions must not outlive deactivation. Future ingress types must reuse typed
-admission and must declare whether they can carry exact gesture authority.
+**Recommended direction.** Keep the queue, allocation-free store, controller,
+new host adapter, and compatibility rules stable. Add one production-path
+fixture instead of another state abstraction: make an installed Spotify or YT
+Music action fail after admission, carry its fixed event through the real
+worker/bridge client into the host adapter, advance injected time, and inspect
+the selected dashboard/open status (plus UIA live-region semantics where
+applicable). Do not broaden the store into a generic message framework until
+the older global status path is migrated deliberately.
+Explicit widget-lifetime work such as browser authorization remains separate;
+future ingress types must reuse typed admission and declare gesture authority.
 
 **Tradeoff.** Unifying ingress changes when direct callers observe completion
-and requires a bounded failure channel rather than synchronous exceptions.
-Queueing pagination may require Latest/coalesced policy rather than strict FIFO.
-Those policies should be explicit action metadata or SDK-owned adapters, not
-separate widget task registries.
+and requires a bounded failure channel rather than synchronous exceptions. A
+per-widget status map adds small state, but the descriptor catalog already gives
+it a strict bound and cleanup key. Queueing pagination may require explicit
+Latest/coalesced metadata rather than a separate widget task registry.
 
-**Resolution evidence.** Runtime 48/48 proves prompt slow/hung admission,
-mixed-ingress FIFO order, deterministic saturation, slider replacement,
-deactivation drain, late generic failure, no restart, exact queued gesture
-authority, and protocol-v1 empty-ack compatibility. Bridge 46/46 proves typed
-Action/QuickAction responses, per-widget ordering, generation-owned late
-failure, process-failure separation, and restart/drain. Native parser tests
-prove closed payload validation and bounded eviction; the Release OverlayHost
-build consumes failures only for the current runtime generation and presents
-safe affected-widget feedback in either surface. Widget SDK 84/84, Spotify
-31/31, YT Music 48/48, First-Party Conformance 6/6, and Documentation 1/1 pass.
-The clean aggregate retained bundle is the remaining evidence step, not an open
-action-ownership defect.
+**Resolution evidence.** Retain a clean bundle proving the registered Runtime
+and Bridge cases for prompt slow/hung admission, mixed-ingress FIFO order,
+deterministic saturation, slider replacement, deactivation drain, late generic
+failure, no restart, exact queued gesture authority, protocol-v1 compatibility,
+typed Action/QuickAction responses, generation ownership, and restart/drain.
+Preserve the new deterministic native host seam, including its two-widget
+surface isolation, single invalidation/schedule, expiry/fallback,
+generation/catalog, Hide, and Stop cases. Run both advanced widgets through the
+real worker/bridge/native failure route and assert fixed copy, exact identity,
+paint/UIA presentation, expiry, stale-generation refusal, and no worker restart.
+Retain a clean exact-commit bundle containing the native store/parser/host
+results, OverlayHost build, SDK, Spotify, YT Music, First-Party Conformance, and
+documentation results. Until then, the architecture is implemented but the
+product claim remains Verifying.
 
-### EQ-023 — P1 — The custom renderer has no Windows accessibility provider
+### EQ-025 — P2 — Spotify composes one screen from independently versioned state owners
 
-**Status: Open in implementation HEAD `7d92dcd`; semantic fields and visual
-accessibility policy exist, but assistive technology has no host accessibility
-tree or interaction surface.**
+**Status: Open at current implementation HEAD `0be052b`; Spotify pagination
+tests changed, but this independently revised presentation-state ownership did
+not. This review inspected source and retained evidence but did not execute it.**
 
-**Evidence.** The public SDK and `ViewSnapshotValidator` require accessible
-names for icon-only actions, images, loading indicators, action surfaces, and
-sliders, and require an accessible slider value. `WidgetBridgeClient` preserves
-`accessibilityLabel` and `accessibilityValue`. The renderer then owns final
-responsive visibility, clipping, scroll offsets, focus rectangles, navigation
-geometry, high contrast, text scale, reduced transparency, and reduced motion.
+**Evidence.** `samples/SpotifyWidget/SpotifyWidget.cs` is 2,015 lines and one
+class owns authorization, playback, destinations, queue/devices/local playback,
+cache ages, selection, focus, page status, polling, progress, commands, every
+action route, capability calls, and rendering. Its `Render` method copies about
+a dozen scalar/reference fields under `_gate`, releases that lock, then reads
+`_playlists.Snapshot` and `_playlistItems.Snapshot` from two independently
+synchronized SDK resources. The resulting `WidgetView` therefore has no single
+committed revision.
 
-That semantic pipeline stops before Windows accessibility. Repository-wide
-native searches find no `WM_GETOBJECT`, `UiaReturnRawElementProvider`,
-`IRawElementProvider*`, `IInvokeProvider`, `IRangeValueProvider`, MSAA
-`IAccessible`/`LresultFromObject`, or `NotifyWinEvent`. `OverlayApp::WindowProc`
-falls through to `DefWindowProcW` for unhandled messages. The only direct use of
-a node's accessible label in `main.cpp` is `CollectShortcutPrompts`, which uses
-it as visible controller-hint fallback text.
+The selected-playlist path makes the consistency gap concrete. `OpenPlaylist`
+commits `_selectedPlaylist`, mode, return focus, and initial focus under
+`_gate`, then resets and starts `_playlistItems` after releasing the lock.
+`Navigate`, `NavigateAndLoadAsync`, Back, and `ClearPageCaches` similarly update
+manual state and reset the resource in separate critical sections.
+`LoadSelectedPlaylistPageAsync` closes over the mutable `_selectedPlaylist`,
+while `WidgetPagedResource<TItem>` accepts only `(offset, limit, token)` and its
+snapshot carries page/status/error/focus/revision but no source key. A render
+between the two commits can therefore pair playlist B's heading/route with the
+previous playlist resource revision, or pair a route transition with a resource
+snapshot from the prior route.
 
-`RenderResult` retains interactive hit/focus/navigation rectangles, but exact
-geometry for all nodes is compiled only under
-`GBA_DECLARATIVE_RENDERER_TESTING`. Native tests described as accessibility
-coverage prove visual policy and internal geometry; none acts as a UI Automation
-client, inspects control types/patterns, observes focus/property/structure
-events, or invokes an element through an assistive-technology interface.
-Keyboard arrow/Enter/Escape support exists through `WM_KEYDOWN`, but keyboard
-input is not a screen-reader tree and does not expose names, roles, values, or
-state.
+The Spotify suite has useful paging, cached-page, retry, Back/focus, sparse-page,
+and cancellation-ignoring slow-detail tests. `SlowPlaylistDetailBack` proves a
+late result cannot reopen the list after Back. None pauses immediately after a
+new selection commits but before resource reset, renders concurrently, or
+asserts that every playlist-detail snapshot's source key matches the selected
+playlist. The fake detail provider returns one mutable `PlaylistDetail` and the
+resource loader receives no explicit selection key, so the harness cannot state
+that invariant directly.
 
-The documentation currently blurs those levels. `plugin-platform.md` promises
-consistent accessibility, `architecture-plan.md` says the host owns
-accessibility, and authoring docs describe labels as accessibility exposure.
-The only screen-reader reference is PS5 research; no status or known-issue text
-states that the Windows host lacks UIA/MSAA support.
+**Why it matters.** This can transiently render tracks from one logical
+selection under another heading and makes stale-snapshot action reasoning much
+harder. Even if the resource epoch eventually rejects an old completion, the
+screen assembled before that completion is not atomic. More broadly, Spotify
+is supposed to be the advanced reference widget; copying this shape teaches
+authors to combine several individually safe stores into an unsafe presentation
+snapshot and to rely on narrow timing windows being harmless.
 
-**Why it matters.** Narrator and other Windows assistive technologies cannot
-discover the dashboard, focused widget control, selected/disabled/busy state,
-slider value, progress, error text, or route changes. Users who cannot rely on
-the custom pixels receive no equivalent product. Authors are required to supply
-semantic data that the shipping host does not deliver, so the framework's
-accessibility promise is currently misleading.
+**Underlying problem.** State ownership was reduced locally but not composed.
+The SDK resource owns its own epoch and cache, while Spotify owns the input that
+defines what that resource means. No controller/model owns the invariant
+“selected playlist key and playlist-item snapshot belong to the same revision.”
+Splitting render methods into files would not fix that ownership boundary.
 
-**Underlying problem.** The project treats accessibility as validated strings
-plus visual adaptation. A custom-drawn HWND needs a separate, host-owned semantic
-surface whose lifetime follows the presented shell/widget generation and whose
-bounds come from final clipped presentation geometry. That ownership boundary
-was never implemented.
+**Recommended direction.** First introduce an immutable internal
+`SpotifyPresentationState` in `WidgetModel<TState>` (or an equally narrow
+Spotify controller/model) for all render-facing scalar state. Bind playlist
+detail to an explicit immutable `PlaylistSelectionKey` containing the playlist
+ID and a selection generation. Every detail snapshot should carry that key;
+render must ignore or show loading for a mismatched key. Commit selection,
+resource reset, and load admission through one controller operation, then give
+the renderer one immutable presentation snapshot. Start with a Spotify-local
+keyed wrapper; promote a generic keyed resource API only after a second real
+widget demonstrates identical semantics. Extract pure view files after the
+state boundary is coherent.
 
-**Recommended direction.** Add one native `OverlayAccessibilityProvider` owned
-by the host window. Handle `WM_GETOBJECT` with
-`UiaReturnRawElementProvider`; expose an immutable fragment tree for the shell,
-tray, footer/status, active route, and responsive-visible widget nodes. Build it
-from the exact presented snapshot generation and final renderer geometry—never
-by re-running layout or querying a worker from a COM callback. Use stable
-runtime IDs derived from host surface plus widget instance/node ID, convert
-clipped DIPs to screen pixels, mark hidden/offscreen nodes correctly, and retire
-stale providers when the surface or widget generation changes.
+**Tradeoff.** One immutable presentation state can become large, and copying
+provider summaries has a cost; use immutable references and narrow domain
+records rather than one universal reducer. A generic `WidgetKeyedResource`
+could make the contract reusable, but publishing it from one sample risks an
+unproven abstraction. A local keyed composition is the safer first step.
 
-Map closed node semantics to closed UIA patterns: Button/ActionSurface to
-Invoke, Slider to RangeValue, read-only Progress to RangeValue, selected choices
-to SelectionItem or Toggle only where the SDK state actually expresses that
-contract, and text/image/icon/loading nodes to appropriate read-only control
-types and names. Keep focusable and enabled separate because the platform
-deliberately lets disabled/busy nodes remain controller-focusable. Provider
-actions must post a generation-checked command to the UI thread rather than call
-the bridge synchronously from UIA. Define explicitly whether a UIA Invoke or
-RangeValue change is a trusted user gesture for capability authority.
+**Resolution evidence.** Add deterministic phase barriers rather than sleeps.
+Pause after selection B commits but before the old detail resource is reset and
+prove render cannot show A items under B. Pause an A load before completion,
+select B, then prove A cannot publish into B even when cancellation is ignored.
+Cover rapid Back/open, cached return, deactivation/reactivation, and both compact
+and expanded focus restoration. Assert every rendered detail model carries the
+same selection key as its heading and that an action from a stale snapshot is
+rejected or maps only to the exact keyed item. Then execute and retain the
+Spotify suite plus production worker/bridge conformance.
 
-Do not expose arbitrary automation-property bags to widgets. First implement
-the provider using current closed node kinds and fields, then add only proven
-typed SDK semantics that are missing—likely heading level, description/help
-text, and live-region/notification intent. CSS/GBSS classes such as
-`page-heading` must not become hidden semantic transport.
+### EQ-026 — P1 — Focus-edge pagination needs composed and live verification
 
-**Tradeoff.** UIA fragment providers, COM lifetime, event coalescing, and stale
-generation handling are substantial native work. A hidden HWND child-control
-tree could reuse built-in accessibility but would duplicate layout/state and
-undermine the custom renderer. A single semantic provider over the existing
-tree is the cleaner architecture, provided it never blocks on widget I/O and
-does not retain stale snapshot objects indefinitely.
+**Status: Materially implemented by `5c3ce72` and strengthened by `023ea46`;
+Verifying, not resolved. Real Spotify resources and exact native topology now
+have deterministic 12/12/5 coverage, but no one fixture or live retest proves
+the shipped controller/bridge round trip.**
 
-**Resolution evidence.** Add pure projection tests for responsive exclusion,
-clipping/offscreen state, stable runtime IDs, names/values, selected/disabled/
-busy mappings, route replacement, and stale-generation rejection. Add a native
-UIA-client integration test against the real HWND that discovers dashboard and
-widget elements, verifies control types/patterns/bounding rectangles and one
-focus event, invokes a button, changes a slider, observes property/structure
-events after a snapshot/route change, and proves hidden content disappears.
-Exercise long/sanitized labels and a worker crash without blocking the provider.
-Finally retain a manual Narrator smoke for dashboard, a multipage Settings
-route, YT Music failure/setup state, and Spotify playback/slider state. Only
-then describe the host as providing end-to-end accessibility.
+**Evidence.** The reported run advanced through Spotify playlists until the
+final provider page replaced the visible window with five rows; navigating Up
+did not restore the cached preceding page. From the user's perspective, every
+earlier playlist disappeared from the presented list, scrolling back up did not
+load it again, and only the final five playlists remained accessible. Spotify
+correctly uses 12-item
+`WidgetPagedResource` windows, a six-page LRU, and previous/next actions on the
+Scroll, so the data was not necessarily deleted—the host failed to admit or
+present the reverse transition.
+
+Commit `5c3ce72` changes `MoveWidgetFocus` to call
+`DispatchScrollPagination` against the original focused node before explicit or
+geometric movement. Only when no page action is admitted may focus leave the
+Scroll. It also records the prior snapshot's `InitialFocusId` and lets a changed,
+valid replacement value outrank exact/ordinal focus memory. Focused tests prove
+the pre-move call order and a representative replacement from `page.14` to
+`page.2`; public status documentation correctly leaves packaged reverse paging
+open.
+
+Commit `023ea46` materially closes the generic-fixture gap. The Spotify suite
+now builds 29 real playlist and detail items for wide and compact views, walks
+12/12/5 pages in both directions, joins repeated input to a slow cancellation-
+ignoring load, checks absolute IDs/provider counts/cache hits, and rejects a
+nonexistent final forward page. Native tests use the exact Spotify scroll/rail
+IDs, prove Down/Up edge actions for 12-row and five-row trees, restore the
+entering edge, and show that remembering it prevents an unrelated refresh from
+stealing focus. Dirty run `20260809T223920Z-37fcdf1a` records Spotify 32/32,
+Focus Navigation 47 checks, Widget Surface Focus 24 checks, and 41/41 aggregate
+steps/784 cases green.
+
+The remaining evidence gap is still composition. `PressPagedDirectionAsync`
+implements its own visible-index move, reads the Scroll action, directly calls
+`widget.OnActionAsync`, and then polls replacement snapshots. It never enters
+native `MoveWidgetFocus`/`DispatchScrollPagination`, bridge admission, or
+presented focus memory. Conversely, native tests construct independent node
+trees and never consume a real Spotify snapshot or provider transition. Detail
+tracks reverse only final -> middle, not middle -> first. The passing broad run
+also overlapped another run in the same checkout and is dirty/ineligible.
+
+**Why it matters.** This was a user-visible loss-of-navigation defect in the
+most demanding sample and in a public SDK workflow. Helper-level confidence is
+not enough: authors should not need visible paging controls or private host
+focus knowledge to make `WidgetPagedResource` reliable.
+
+**Underlying problem.** The ownership order is now substantially corrected,
+but the cross-process contract is still inferred from independently tested
+helpers. Page admission, replacement identity, and presented focus need one
+observable invariant.
+
+**Recommended direction.** Preserve pre-move pagination and the new exact
+Spotify resource tests. Compose rather than add more parallel helper cases:
+feed an actual compact/expanded Spotify snapshot into the production native
+edge resolver, carry its admitted action through the bridge/worker, then apply
+the returned snapshot through the production focus-memory transition. Keep the
+old page/focus through slow or failed loads, coalesce repeated edge input, and
+let ordinary movement resume only when no valid page action exists. The new
+one-shot consumption check makes another protocol token unnecessary unless the
+composed fixture finds a real ambiguity.
+
+**Resolution evidence.** Turn the new three-part proof into one host-level
+fixture with the real serialized Spotify compact and expanded focus graph and a
+29-item 12/12/5 sequence. Drive directions rather than directly invoking the
+Scroll action; assert admitted bridge action, absolute visible/focused IDs,
+provider counts, reverse cache hits, and no rail/tab escape. Complete detail
+reverse to page one and include slow/failing load, rapid input, unrelated
+playback refresh, responsive reflow, and cache eviction. Then have the user
+repeat the originally failing live controller flow and retain a current
+packaged smoke result.
+
+### EQ-023 — P1 — UIA shell authority and route equivalence are not yet proven end to end
+
+**Status: Materially advanced through commits `9ec0374` and `6a079b6`; the
+inspected origin and nested-Back semantic mismatches are implemented.
+Cross-language ownership, real route proof, and clean release evidence keep
+this a P1 ship gate.**
+
+**Evidence.** Commits through `b3558f9` provide real widget/tray/dashboard UIA,
+closed patterns/events, safe provider lifetime, coherent presented slider
+values, quiet help/status, direct tray selection, and one composite open-widget
+tree. Clean retained result `20260809T201448Z-0249ae81` passes 41/41 steps and
+778 cases for exact clean commit `0598e5a`; it predates `b3558f9`, `59aae1a`,
+`6162937`, `8a46d5f`, `9ec0374`, and `6a079b6`. Newer broad evidence is dirty
+and does not close this accessibility finding.
+
+Commit `59aae1a` adds a closed `PhysicalController` versus
+`AccessibilityAutomation` origin to `ControllerInputEvent`. Native UIA dispatch
+marks automation explicitly. The bridge validates the enum and refuses to mint
+dashboard authority unless origin is physical. `WidgetProcessClient` rejects an
+authority/origin mismatch, and the base SDK queue supplies no
+`WidgetCapabilityGestureContext` for automation. Bridge, runtime, and SDK tests
+exercise ordinary automation action admission, unknown-origin rejection, legacy
+physical omission, and refusal of an explicitly paired automation authority.
+This is a strong correction and public documentation now states the policy.
+
+Commit `9ec0374` makes that defense independent at the two missing layers.
+`WidgetWorkerServer.HandleRequestAsync` validates `ControllerInputOrigin` and
+enters `WidgetCapabilityInvocationContext` only for a physical dashboard event.
+`BrokerWidgetCapabilityClient.InvokeAsync` retains gesture metadata only after
+the exact activation callback returns true and the context is still active;
+denied activation falls back to an ordinary non-authorizing request. The new
+custom-widget fixture invokes a capability synchronously from an automation-
+origin override and observes no ambient context, activation, provider call, or
+companion grant. The broker fixture pre-grants a valid authority, returns false
+from activation, and asserts the provider is not called, so it would fail if
+the denied gesture metadata were forwarded. This source shape resolves the
+inspected mismatch. Dirty broad run `20260809T220617Z-bc1dd7a3` records Runtime
+49/49 and all 41 steps/783 cases green, but its provenance is dirty base commit
+`8a46d5f`, not exact clean `9ec0374`; this review did not execute it.
+
+Commit `6162937` addresses both prior composite defects directionally.
+`ElementDomain` now participates in AutomationId, runtime identity, lookup,
+event diffing, and queued actions; duplicate same-domain identities fail closed,
+and a provider test gives widget and host nodes the same raw ID. A typed
+`BackWithinWidget` binds to the current scope, revalidates widget/runtime/
+snapshot/scope, and sends automation-origin B rather than an arbitrary action
+string. Focused helper/provider tests cover collision isolation and stale scope.
+
+Commit `6a079b6` closes the specific known semantic mismatch. It
+passes `focusedElementId_` into publication and invocation revalidation and
+mirrors the managed resolver for focusless root disabled/busy state, focused
+shortcut precedence, focused-owner disabled/busy suppression, ancestor
+fallback, stale focus, and exclusion of nested input scopes. Native cases cover
+those branches. It does not yet provide full route proof: no real
+UIA/`OverlayApp` test invokes Picker, ActionSheet, or `WidgetNavigator` and
+observes the worker route return, and the two languages still own separate
+algorithms that can drift. The reviewed vector allocation is fixed: final
+`ResolveFocusedBackInScope` carries a closed result through allocation-free
+recursion under the protocol's bounded tree depth, so the `noexcept` path is
+truthful. Dirty run `20260809T221800Z-2c278bf3` records Host Accessibility 32
+checks, SDK coverage, and all 41 steps/783 cases green from a dirty worktree;
+it is not clean exact-commit proof. The `widget:`, `host:`, and `tray:`
+AutomationId change remains sensible for the preview but should be an explicit
+compatibility contract for external automation clients.
+
+Typed choice/toggle semantics, deliberate OS HWND reuse, legacy MSAA, packaged
+AppContainer/UIA proof, and a Narrator pass also remain open.
+
+**Why it matters.** Accessibility actions must not acquire capability authority
+through a weaker origin or expose navigation that becomes inert at the worker.
+Composite identity and Back behavior are public platform contracts: authors
+should neither reserve hidden prefixes nor duplicate host navigation, and UIA
+clients need stable IDs and one route equivalent to controller behavior.
+
+**Underlying problem.** Origin is now explicit and `9ec0374` makes each
+security layer locally fail closed. `6a079b6` mirrors nested Back semantics, but
+availability is still independently reconstructed in C++ instead of
+derived from the same semantic resolution contract used by the SDK. Current
+tests prove components, not the real host-to-worker route.
+
+**Recommended direction.** Preserve `9ec0374`'s physical-only worker
+context, enum validation, activation-gated metadata, ordinary denied fallback,
+and adversarial custom-widget test. Add explicit unknown-origin worker coverage
+if the existing runtime case does not traverse this validation method, then
+retain focused plus clean aggregate evidence. Keep the runtime
+reservation and companion checks as separate defenses.
+
+Preserve the domain-aware identity work and make AutomationId versioning/release
+notes explicit. For nested Back, either share a closed resolver result across
+the native/managed seam or
+drive both implementations from one exhaustive conformance corpus, including
+focusless, disabled, busy, missing, stale, changed-scope, and nested-scope
+states. Keep the typed scope target and automation origin; never carry an author
+action string as host authority.
+
+**Tradeoff.** Waiting for successful activation before attaching metadata adds
+one branch but makes the least-privilege claim locally true. Sharing a resolver
+result may require a protocol field; mirroring it avoids a protocol revision but
+creates permanent cross-language conformance work. Namespaced AutomationIds can
+break preview automation scripts, while leaving raw collisions visible breaks
+identity correctness; document the intentional change.
+
+**Resolution evidence.** Retain the new adversarial origin cases on a clean
+exact commit and close any worker unknown-enum gap. For resolver equivalence,
+use a real `IUIAutomation` client
+through `OverlayApp` to open and exit SDK Gallery Picker, ActionSheet, and a
+Navigator route, including no-focus, disabled/busy, stale snapshot/scope, resize,
+and worker-failure cases. Prove colliding raw IDs retain distinct traversal,
+events, patterns, and exact action authority. Then retain a clean aggregate,
+AppContainer self-automation denial, deliberate HWND reuse, and packaged
+Narrator/MSAA evidence over Settings, YT Music, and Spotify.
+
+### EQ-024 — P2 — Implementation commits can overwrite independent review disposition
+
+**Status: Open after documentation commit `689a933`; all implementation commits
+through current HEAD `0be052b` correctly left both
+reviewer-owned documents untouched and reported their milestones in
+`docs/implementation-status.md`, so this cycle shows no regression. The
+repository workflow still does not prevent recurrence.**
+
+**Evidence.** Commit `689a933` is titled `docs: close unified action admission
+review` and stages `docs/engineering-quality-review.md` plus
+`docs/widget-authoring-experience-review.md` from the implementation stream. It
+changes EQ-021 to Resolved, says focused Release suites pass, and reduces the
+remaining action task to retaining an aggregate bundle. At that commit, source
+still showed multi-widget feedback collapse and unscheduled expiry invalidation,
+and `artifacts/verification` had no result for `6c5f932`, `7d33ce1`, `7d92dcd`,
+or `689a933`. Later commits through `ddb66c2` now address that product defect
+without self-editing the reviewer disposition; runner commit `7c8a5b8`
+preserves the same path ownership. The 445-line engineering-review
+delta also includes independent
+review work that was already dirty, so implementation and reviewer authorship
+cannot be recovered cleanly from the commit boundary.
+
+**Why it matters.** An implementation agent cannot independently adjudicate its
+own finding and still provide the assurance model requested by the user. A
+green self-edited review can hide missing evidence, and staging shared dirty
+files can accidentally attribute, overwrite, or ship reviewer work with an
+unrelated product milestone. That makes both the audit trail and future diff-
+based reassessment unreliable.
+
+**Underlying problem.** The repository has two logical authors operating in one
+worktree but no path-ownership or staging rule. Review documents are being used
+simultaneously as implementation input, implementation status output, and the
+independent reviewer's disposition ledger.
+
+**Recommended direction.** Reserve the two review documents to the independent
+review stream. The implementation agent may read them, report a proposed
+finding disposition in its milestone summary, and record exact commit/result
+identifiers in `docs/implementation-status.md`; it must not edit, stage, or
+commit either review file. Use path-specific staging and inspect the staged name
+list before every implementation commit. Do not use `git add -A` in a shared
+dirty worktree. The reviewer alone updates finding status after inspecting the
+implementation and evidence, and continues not to commit so the user retains
+explicit control of the review artifact.
+
+**Tradeoff.** Review changes may remain dirty across several implementation
+commits and require careful path-specific staging. That inconvenience is the
+cost of genuine independent disposition. Creating a separate worktree could
+give stronger isolation, but it would delay visibility of live implementation
+changes and is unnecessary if both agents honor narrow file ownership.
+
+**Resolution evidence.** Add the ownership rule to the implementation goal or
+repository agent instructions. During a later cycle, leave a deliberate review-
+document edit dirty, make an implementation milestone, and prove the commit's
+staged paths exclude both review files while their working-tree bytes remain
+unchanged. The implementation report should cite evidence without declaring the
+review finding closed; the subsequent reviewer cycle should perform and record
+that disposition independently.
 
 ### EQ-022 — P2 — Bridge scheduling policy is embedded in the transport session
 
-**Status: Open in implementation HEAD `6c5f932`; the policy is bounded and
-documented, but its ownership and deterministic verification surface are not yet
-cohesive.**
+**Status: Open at current implementation HEAD `0be052b`; no related bridge-
+scheduler ownership changes landed. The policy is bounded and documented, but
+its ownership and deterministic verification surface are not yet cohesive.**
 
 **Evidence.** `WidgetBridgeServer.RunAsync` now owns a 16-slot
 `SemaphoreSlim`, `activeRequestIds`, `requestTasks`, a lock-protected
@@ -2386,12 +3010,165 @@ case assert zero active IDs, slots, tails, and tasks. Retain the named-pipe test
 as framing/integration proof, then add the production asynchronous native-client
 test required by EQ-020.
 
-### EQ-016 — P2 — Aggregate catalog bounds lack a recoverable control-plane contract
+### EQ-027 — P1 — Verification overlap is guarded, but release input remains mutable
 
-**Status: Partially implemented in commits `b2d6f95` and `1c1f8bb`.
-Cardinality/byte budgets, prospective install rejection, and fine-grained
-cancellation/deadline checkpoints are present; bridge lifetime is active-only,
-but cleanup UX and maximum-scale transient inventory evidence remain open.**
+**Status: Partially implemented by committed runner repair `7c8a5b8`. A live
+lease now prevents concurrent `Verify.ps1` runs and schema-v2 endpoint
+provenance prevents persistent worktree/commit changes from remaining eligible.
+No clean exact-commit bundle exists, and the leased checkout is still mutable
+by non-verifier writers during execution.**
+
+**Evidence.** Full runs `20260809T223902Z-17e88fe6` and
+`20260809T223920Z-37fcdf1a` started at 15:39:02 and 15:39:20 in the same
+checkout. The first failed `network-controls-tests` with compiler error CS2012:
+`NetworkControlsWidget.dll` in shared `obj/Release/net8.0` was locked by another
+process. The overlapping run passed 41/41 steps and 784 cases. This is a runner
+ownership failure, not a Network Controls regression.
+
+Commit `7c8a5b8` changes `VerificationRunner.psm1` and `Verify.ps1` to acquire
+`artifacts/verification/.repository-run.lock` with a live read/write handle and
+read-only sharing before provenance, and release it only after final result
+publication. Owner PID/run/configuration/start metadata is informational; file
+bytes never confer authority. A bounded optional wait shares the overall
+deadline. `Test-VerificationRunner.ps1` starts separate PowerShell processes and
+proves refusal before the contender writes its marker, acquisition after normal
+release, and acquisition after forced holder death.
+
+Schema-v2 results capture start and finish commit/full porcelain fingerprints,
+final package hashes, stability, and explicit ineligibility reasons. Pure helper
+cases reject start-clean/end-dirty and changed-commit endpoints. Focused run
+`20260809T231421Z-73303441` passes the runner self-test. Full runs
+`20260809T231747Z-d9e41dcc` and `20260809T232451Z-15d2e7b6` pass 41/41 steps and
+784 cases in 351.009 and 326.534 seconds. The latter records exact commit
+`ddb66c2`, identical dirty fingerprints, 29 final package digests,
+`repositoryStateStable: true`, and only `starting_worktree_dirty` plus
+`finished_worktree_dirty`; `releaseEvidenceEligible` is correctly false. The
+implementation-status claim that a second real wrapper invocation was refused
+has no separate retained artifact this review could locate, although the
+checked-in process fixture proves the same lock mechanism.
+Newer full run `20260809T234957Z-6afea078` also completes without overlap: 41/41
+steps and 787 cases in 367.615 seconds for commit `7c8a5b8` plus dirty authority
+WIP, with identical dirty endpoints and correct release ineligibility. It still
+does not supply a clean immutable runner-commit bundle.
+
+Two boundaries remain. First, the lease is cooperative only among verifier
+invocations. An editor, implementation agent, `dotnet build`, or native build
+does not acquire it. Start/end equality detects persistent changes but cannot
+prove that a tracked source file was not edited and restored while a step read
+it, or that an ordinary build did not touch the same output tree. Second,
+`Get-VerificationEvidenceEligibility` evaluates pass/clean/endpoint stability
+without configuration, lane, or selected-step scope. The result does retain
+those fields, so a careful consumer can distinguish a focused result, but the
+single `releaseEvidenceEligible` name is not a full-gate assertion by itself.
+
+**Why it matters.** A release gate must own the code and artifacts it tests.
+The commit removes the reproduced verifier-versus-verifier file-lock failure and
+substantially improves honesty for ordinary persistent edits. A clean endpoint
+pair still does not make a mutable development checkout an immutable execution
+input, and a scope-agnostic eligibility bit can be over-read as a complete
+release gate.
+
+**Underlying problem.** The runner now owns result logs and serializes its own
+shared-output users, but it still verifies in the actively edited checkout.
+Endpoint provenance describes two observations, not immutable source custody.
+Evidence cleanliness and release-gate scope are also represented by one field.
+
+**Recommended direction.** Retain the live lease, final provenance, package
+rehash, and explicit reason model. Describe the lease precisely as a
+verifier shared-output guard. For evidence intended to bind a complete release,
+run the manifest in an owned detached worktree or equivalent immutable checkout
+created at one clean commit, with outputs rooted inside that execution directory
+and results copied out only after finalization. This also allows the reviewer
+ledgers to remain intentionally dirty in the development checkout without
+blocking an exact product-commit bundle.
+
+Either rename the current bit to `provenanceEligible` or add a separate
+`completeReleaseGateEligible` calculation that requires Release configuration,
+no selected-step filter, all required manifest steps, and any declared manual/
+hosted evidence policy. Keep lane/subset evidence useful without letting its
+field name imply repository-wide completion.
+
+**Tradeoff.** The live lease is cheap and fixes accidental local overlap, while
+an owned worktree costs checkout/setup time and disk. Per-run build roots retain
+parallelism but require every script/tool to honor them. Use the lease for normal
+developer feedback and pay the isolated-checkout cost only for authoritative
+release evidence; hosted CI already supplies that shape if its artifact is
+retained immutably.
+
+**Resolution evidence.** Preserve the new cross-process contention, normal
+release, process-death release, and eligibility helper cases. Add wrapper-level
+temporary-repository cases for final-provenance failure and scope eligibility.
+Prove an authoritative run executes from an owned exact-commit worktree while
+the primary checkout changes, and that its source/build/package inventory stays
+bound to the owned revision. Then retain one clean complete Release run for the
+exact product HEAD with every JUnit/build/package digest and immutable hosted or
+archived evidence reference.
+
+### EQ-028 — P1 — Host-owned crash recovery failure isolation and repair
+
+**Status: Implemented at the code and automated-integration level by commits
+`dc30be9`, `0ff403a`, `d171dc8`, `15dbeb0`, and DLV-001 commit `d0c0420`.
+Packaged/manual recovery and a future scheduled clean integration checkpoint
+remain verification evidence only. Installed-widget security is frozen under
+the stabilization exit rule.**
+
+**Evidence.** The first three commits establish a bounded host-private
+write-ahead journal, bind every DACL snapshot to the opened volume/file identity,
+and carry the catalog lease's retained object identities into runtime before
+mutation. Recovery refuses pathname replacement and unintended broad or
+alternate AppContainer authority rather than redirecting a stored descriptor to
+a new object.
+
+Commit `15dbeb0` replaces the global recovery slot with crash-atomic schema-3
+records keyed by AppContainer profile while preserving legacy schema-2 recovery.
+One global lock still serializes mutation and detects overlapping path/object
+authority, but an unrecoverable record quarantines only its profile; disjoint
+generations remain admissible. Focused Runtime cases cover distinct-profile
+progress, overlap refusal, stale tokens, legacy ownership, arbitrary alternate
+package SID refusal, and verified-clear behavior.
+
+DLV-001 commit `d0c0420` supplies the missing operator path. Only the exact
+trusted Settings worker receives the PID/nonce-authenticated private diagnostics
+companion; the local CLI calls the same host-owned recovery service. Listing is
+bounded to sanitized recovery ID/display/status plus an opaque exact token. The
+Settings confirmation page never renders or speaks that token. There is no
+force-clear, caller-selected path, SID, ACL, descriptor, or replacement-authority
+input. Commit-versus-cancellation ownership retains the record when cancellation
+wins and reports success when verified commit wins; stale, malformed, unavailable,
+unverified, and unauthorized paths fail closed.
+
+Focused grouped runs `20260810T030450Z-e56569f7` and
+`20260810T030552Z-7e53affb` pass the final CLI/Settings/docs and
+Runtime/diagnostics/Bridge boundaries. Stable dirty-worktree aggregate
+`20260810T030727Z-449cac31` passes 41/41 with identical start/finish commit and
+dirty fingerprint. It is correctly ineligible as clean release evidence. The
+subsequent exact-commit attempt was interrupted before producing a retained
+result and is not counted as pass or failure; the corrected verification cadence
+moves clean product-wide proof to the next named integration checkpoint rather
+than running the same six-minute aggregate twice for DLV-001.
+
+**Why it matters.** A failed exact-object recovery no longer turns one package
+anomaly into a machine-wide community-widget outage or asks a user to edit ACLs
+or delete an internal journal. The product retains fail-closed authority while
+providing one bounded, explainable remediation path.
+
+**Tradeoff.** Profile-scoped records and an authenticated operator surface add
+schema, transport, UI, and CLI machinery. They deliberately do not offer a
+force-clear escape hatch: unrecoverable exact-object state remains quarantined
+until verified restoration succeeds.
+
+**Remaining evidence.** Exercise the packaged Settings flow against a real
+interrupted AppContainer mutation and inspect residual ACE state; retain one
+clean exact-commit product aggregate at the next scheduled integration
+checkpoint. These are verification-queue items, not authorization to reopen the
+subsystem or delay DLV-002.
+
+### EQ-016 — P2 — Catalog recovery is implemented; aggregate discovery evidence remains incomplete
+
+**Status: Control-plane recovery implemented in commit `8a46d5f`; partially
+open for clean final-HEAD provenance, hard-wall-clock behavior, and
+maximum-scale full-discovery cost. The reproduced enabled Spotify catalog has
+been repaired without changing its selected generation.**
 
 **Implementation evidence.** `WidgetCatalogOptions` now supplies defaults of
 256 IDs, eight versions per ID, 512 total versions, 32,768 installed entries,
@@ -2406,12 +3183,13 @@ metadata length. Installation runs under the existing operation lock and uses
 the verified installed totals plus archive inspection to reject a prospective
 ID, version, entry, or byte overflow before package publication.
 
-One new custom test case covers invalid option relationships, direct ID N+1,
+The aggregate test family covers invalid option relationships, direct ID N+1,
 prospective ID/per-ID-version/total-version/entry/byte refusal, an unexpected
 root file, and a deterministic elapsed-time failure. It also asserts selected
 install rejections do not create the incoming package directory. The
-implementation agent reports the expanded Catalog suite at 29/29; this review
-did not rerun it or inspect a retained result. Its exact tree case
+clean retained bundle `20260809T201448Z-0249ae81` executes the later expanded
+Catalog suite at 32/32 with no failures for exact commit `0598e5a`. This review
+did not rerun it. Its exact tree case
 configures `MaximumInstalledEntries = 4`; the installed version already has
 four filesystem entries (`manifest.json`, `.gbar-integrity.json`, the payload
 directory, and the entrypoint), so adding one empty directory is the fifth and
@@ -2429,15 +3207,48 @@ filesystem read already blocked in the kernel. A future outer process watchdog
 is still required for a hard wall-clock guarantee, but ordinary multi-file work
 no longer waits for a complete 64 MiB version before observing the budget.
 
-Recovery is the larger product gap. `SettingsWidget.ReloadInstalledWidgetsAsync`
-catches the new codes, clears its projection, and shows only “Installed widget
-catalog unavailable (<code>)”. `WidgetCatalog.UninstallAsync` itself begins
-with full `DiscoverAsync`, and `gbar uninstall` has no independent repair path.
-An existing catalog that exceeds new defaults after upgrade/configuration
-change, or gains an unexpected entry outside the normal installer, therefore
-blocks both the Settings version list and the supported removal command. The
-only available recovery is manual filesystem surgery—the outcome this finding
-was intended to avoid.
+Commit `8a46d5f` implements the missing control plane. `InspectHealthAsync`
+enumerates a separately bounded canonical ID/version directory projection
+without opening candidate manifests. `RemoveInactiveVersionAsync` reacquires
+and revalidates that projection under the catalog operation lock, protects the
+selected generation, rejects reparse/path ambiguity and over-budget version
+trees, checks cancellation before the atomic staging move, and does not expose
+a recursive caller path or force mode. Settings provides a paged candidate list
+and exact confirmation; `gbar repair list|remove` provides the same route when
+normal discovery is unavailable. If one removal still leaves the catalog over
+quota, Settings reloads the bounded recovery projection so cleanup can continue.
+
+The exact policy defect from the prior worktree is fixed. `CanRemove` now means
+`!Selected`, not `!WidgetEnabled && !Selected`, so inactive history remains
+actionable while the selected version is enabled. Catalog, Settings, and CLI
+tests start from enabled over-limit fixtures, corrupt an inactive candidate's
+manifest to prove it is not trusted, protect the selected version, remove old
+history, recover full discovery, and assert the enabled selected generation is
+unchanged. Direct inspection of the product state after implementation finds
+Spotify still enabled and pinned to 0.2.10 with only versions 0.2.8, 0.2.9, and
+0.2.10 present; the former 19-version product-blocking state is gone.
+
+Verification is strong but not release-complete. Dirty broad run
+`20260809T215159Z-b62d551b` passes all 41 steps and 783 cases, including Catalog
+34/34, Settings 42/42, and CLI 51/51 with the enabled-recovery test names and a
+512-version repair measurement of 278.620 ms/1,711,440 allocated bytes. Its
+manifest records base commit `b15075b`, a dirty worktree, and
+`releaseEvidenceEligible: false`; the final enabling-policy edits were committed
+afterward as `8a46d5f`. A second dirty broad run is not independent clean proof.
+The implementation-status value of 326.382 ms is also not present in either
+retained bundle inspected here. Run the final clean commit before calling the
+evidence retained.
+
+Recovery discoverability is weaker than the implementation. The quickstart,
+authoring guide, and CLI README describe `gbar repair`, but neither
+`docs/troubleshooting.md` nor `docs/diagnostics-and-recovery.md` contains
+`installed_widget_version_limit`, `installed_version_limit`, or
+`installed_widget_id_limit`. The compact Settings diagnostic shows only the
+code; users must infer that opening Installed Widgets reveals the recovery
+surface. Map each quota code to **Settings -> Installed widgets -> Catalog
+recovery** and the exact CLI commands, and make the compact diagnostic expose a
+controller-reachable recovery hint or action when that can be done without
+duplicating catalog authority.
 
 Commit `d2e49a9` discovery verifies and materializes every accepted version with a
 complete relative-path/length/SHA-256 dictionary, not only the smaller GBSS map.
@@ -2468,13 +3279,21 @@ preemptible local filesystem limitation honestly, and retain an overall
 watchdog in the future bounded command/process runner rather than promising
 that a cancellation token can interrupt every Windows filesystem stall.
 
-Add a separately bounded catalog-health/repair projection that can identify
-safe package ID/version directory candidates and their coarse counts without
-publishing or trusting their manifests. Settings and CLI should use it to name
-the breached limit and remove a specifically selected disabled package/version
-under the existing operation lock and path/reparse safeguards, even when full
-discovery fails. Do not add a broad `--force` recursive delete or treat
-unverified manifest identity as deletion authority.
+Preserve the new separately bounded health projection, selected-generation
+protection, enabled-history policy, exact operation-lock revalidation, and
+manifest-free deletion authority. Extend recovery tests to multiple sequential
+removals while discovery remains over quota, process restart between removals,
+locked staging cleanup, maximum repair-ceiling refusal, and a stale Settings
+confirmation after another catalog client changes the inventory. Keep the
+current revalidation as the authority; do not cache a UI candidate as deletion
+permission or add a broad `--force` recursive path.
+
+Add an exact diagnostic-to-remediation contract. Documentation tests should
+assert that all three public quota codes appear in troubleshooting/recovery
+guidance beside the Settings route and `gbar repair list|remove`. A Settings
+snapshot test should start from the compact failure presentation and prove a
+controller user can reach the recovery list without knowing filesystem or CLI
+details.
 
 Separate lightweight version listing from publication evidence. Retain the
 manifest/digest needed for review, but acquire and hold the full path/hash
@@ -2496,8 +3315,10 @@ versions, aggregate files, and aggregate bytes, and add direct-discovery entry/
 byte overflow plus a discovery-level deadline test across multiple files.
 Preserve the deterministic per-buffer cancellation case. Prove
 an over-limit legacy/external tree leaves Settings and CLI able to identify and
-remove a chosen safe package/version without manual deletion, after which full
-discovery recovers. Prove the bridge does not retain disabled inactive GBSS
+remove chosen safe package versions without manual deletion, after which full
+discovery recovers. The enabled Spotify-style active-version case now exists;
+retain it on exact clean HEAD and add sequential/restart/stale-confirmation
+coverage. Prove the bridge does not retain disabled inactive GBSS
 inventories merely to enforce its widget cap. Record cold and reload time plus
 peak memory at the supported maximum, with several rollback versions per ID,
 and retain the result as a release budget tied to the exact quota values.
@@ -2774,54 +3595,108 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 | Area | Current assessment | Principal remaining evidence |
 | --- | --- | --- |
-| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority; commit `d2e49a9` adds a complete file inventory, per-start revalidation, pinned file handles, exact non-inheriting AppContainer grants, trusted-runtime overlap refusal, production-token late-file and stale-generation-root denial, and positive execution paths for five installed packages; `6fc9e01` rejects unlaunchable directory shapes before extraction; clean selected evidence is retained | Add installed-worker managed/native/asset abuse and directory replacement cases, bind ACL-applied objects to lease-authenticated identities, and prove the catalog ACL policy excludes alternate group grants and handles partial grant failure; then add acquisition receipts, capability deltas, signing, update, and revocation |
-| Installed catalog scale | Commits `b2d6f95` and `1c1f8bb` add aggregate quotas, prospective refusal, and per-entry/per-read checkpoints; current discovery temporarily materializes a full file inventory for every accepted version before only active enabled versions are retained by bridge closures | Outer watchdog for kernel-blocked I/O, bounded Settings/CLI repair path, and maximum-catalog cold/reload time plus peak/transient memory measurements for full inventories |
+| Installed-widget isolation | Strong execution containment and digest-specific unsigned authority are retained. Commits through `d171dc8` bind verified catalog objects and DACL operations/recovery to opened file identities. `15dbeb0` isolates schema-3 recovery records by profile while keeping one conflict-checking mutation lock, refuses unintended alternate AppContainer authority, and lets disjoint generations proceed. DLV-001 `d0c0420` adds bounded exact-token Settings/CLI remediation with no force-clear or caller-selected authority. The final dirty patch passes both focused boundary groups and stable 41/41 aggregate `20260810T030727Z-449cac31` | **Verification evidence only:** packaged interrupted-mutation recovery with residual-ACE inspection and one clean exact-commit product aggregate at the next scheduled integration checkpoint; installed-widget implementation is frozen absent a reproducible P0 or threat-model violation |
+| Installed catalog scale | Commit `8a46d5f` adds bounded manifest-free health plus exact-version Settings/CLI retirement, protects only the selected generation, and repairs inactive history while Spotify remains enabled; the real catalog is now down from 19 versions to three with 0.2.10 still enabled/selected. Dirty 41-step evidence exercises enabled recovery and a 512-version projection, but final HEAD lacks clean provenance and full discovery still eagerly verifies every accepted version | Retain a clean final-HEAD gate, add sequential/restart/stale-confirmation repair cases, measure cold/reload time and peak memory for full discovery at supported limits, and retain an outer watchdog |
 | GBSS author diagnostics | Closed typed statuses remove false `missing_import` results, contain provider faults, and route CLI validation through the bounded reader | Add real file/import coverage for all statuses and surface installed integrity failures distinctly |
 | SDK lifecycle/coordination | Media Sessions proves substantial lock/task reduction; YT Music and Spotify have adopted only selected operation/resource families | One advanced reference architecture, a second repeatable migration, and packaged churn evidence |
-| Action dispatch | Commits `6c5f932`, `7d33ce1`, and `7d92dcd` unify every ingress behind typed bounded active-lifetime admission, preserve protocol-v1 compatibility, retain exact controller gesture authority, simplify YT Music/Spotify, and deliver generation-owned generic late-failure feedback in dashboard and open-widget surfaces; focused Release suites pass | Retain the clean aggregate bundle and add physical-controller/live-provider evidence; new ingress types must reuse this contract |
+| Action dispatch | Commits through `ddb66c2` unify admission and generation-bound failure handling, add allocation-free per-widget feedback, and compose bounded catalog/pump/surface/timer/Hide/Stop ownership behind one production host adapter; its 305-check target is retained in dirty 41-step/784-case evidence. `5804eaa` proves a packaged Spotify Next command, but no advanced-widget failure has traversed bridge/native controller ingress into painted/UIA status and clean evidence stops at `0598e5a` | Exercise Spotify and YT Music late failure through the real worker/bridge/native host route, assert exact surface/expiry/UIA behavior and no restart, then retain clean exact-commit evidence |
 | Bridge scheduling | `d4291be` adds bounded correlated dispatch, same-widget receive-order chaining, saturation and duplicate-ID policy with clean retained 45/45 focused proof, but the concurrency kernel remains embedded in `RunAsync` and the shipping native client cannot pipeline | One narrow typed dispatcher with deterministic no-sleep invariant tests, a bounded forced drain, and one asynchronous native read owner/correlation table |
-| Responsive/controller UI | Explicit focus identity and transition-owned reconciliation are implemented and focused tests pass | Scheduling-seam proof, real controller, and viewport matrix |
-| Windows accessibility | The SDK carries validated names/values and the host applies visual text/contrast/motion policy, but the custom HWND exposes no UIA/MSAA provider or accessibility events | Host-owned immutable UIA fragment tree over final renderer geometry, closed Invoke/RangeValue/selection mappings, nonblocking generation-checked dispatch, automated UIA-client coverage, and Narrator smoke |
+| Responsive/controller UI | `5c3ce72` repairs host edge admission/focus precedence; `023ea46` adds real Spotify 29-item resource traversal plus exact native 12/12/5 IDs/topology and one-shot refresh coverage. The new product requests remain absent: tray Y is an immediate reorder action with no tap/hold recognizer, and F5/recovery restart accepts only the open-widget surface. Supplied Games & Apps and Spotify captures still show clipping or optically misaligned icon/label content despite shared native placement code and synthetic alignment tests | Implement the tray-only tap-Y/reorder versus hold-Y/restart contract with visible progress/cancel semantics and exact one-shot tests; repair shared button/layout behavior at the renderer/recipe boundary and retain current packaged screenshots plus controller traversal at the reported profiles |
+| Games & Apps | DLV-002 (`1738618`) implements schema-v2 automatic provenance plus explicit exclusions, bounded multi-page trusted-game reconciliation, v1 migration, stable order/focus, disappearance/reappearance, identity replacement, authoritative reclassification, failure fallback, and exact opaque launch revalidation. Focused provider 31/31, broker 49/49, widget 39/39, docs 51, and real-package AppContainer 6/6 evidence pass. The supplied layout defects and packaged controller/scale proof remain open | Integrate DLV-003 shared geometry, then execute DLV-004 over empty, short, long, maximum-page, loading, error, compact/standard/wide, and 100-150% scale states with retained captures and controller traversal |
+| Audio Mixer | The broker/provider exposes read-only device/default markers and commands for per-session plus current default input/output volume and mute. There is no supported endpoint-selection command or native setter, and the platform architecture explicitly says default-device switching is unsupported | Treat endpoint selection as a later API spike: choose a documented/supported Windows mechanism and role policy, define consent/error/event semantics, then add the typed capability and widget UI. Do not base a public contract on undocumented `PolicyConfig` COM behavior |
+| Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion; separate algorithm ownership and real route proof remain open, typed choices remain open, and exact clean evidence stops at `0598e5a` | Bind native/managed Back through shared conformance or one protocol result, retain clean evidence, then prove full real-client Picker/ActionSheet/Navigator traversal plus packaged Narrator/MSAA/AppContainer evidence |
 | YT Music | Active Latest transport refresh rejects stale success/failure, but one class still owns connection, loops, optimistic reconciliation, and rendering | Model/controller/view extraction plus real companion, packaged lifecycle/controller, and visual evidence |
-| Spotify | Paging/resource adoption is successful, and commit `6c5f932` removes the command task registry/action semaphore through shared action admission; authorization, refresh, polling, state, routing, and view ownership remain concentrated | Credential-free full-state visuals, live auth/playback gates, and structural migration by responsibility |
+| Spotify | `023ea46` now proves real compact/expanded 29-item playlist resources, exact IDs/counts, joined slow input, cached reverse, and matching native topology; it manually bridges widget/native pieces and detail reverse stops at the middle page. No live retest exists, and the roughly 2,015-line class still assembles independently revised state | Compose the shipped host/bridge round trip and complete detail reverse/live retest, then introduce one immutable presentation model plus a Spotify-local keyed detail owner; add forced interleavings, credential-free full-state visuals, and live auth/playback gates |
 | CLI author workflow | Data inspection is non-executable; source scaffolding fails honestly without an SDK and builds externally with explicit `--sdk-project`, but the template directory is not parsed/versioned/bounded or transactionally published; there is also no cloneable dependency, generated snapshot exporter, source-to-package staging operation, package metadata, or API-compatibility baseline for its roughly 200-declaration public SDK surface | Transactional manifest-driven template generation, versioned public SDK/template release with package/API validation, one bounded source-build/stage/pack path, packaged clean-directory execution of every generated README command, isolated scenario execution, native preview, provenance/signing, and automated CI |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and `d4291be` bounds managed dispatch to 16 with clean retained 45/45 proof for cooperative list/Stop responsiveness, FIFO/correlation, saturation, duplicate-ID refusal, and cleanup; exact ACL application and dispatcher drain remain unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget with cancellation-ignoring drain proof and cancellable correlation-safe off-UI-thread bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
-| Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness | Clean current package/state/profile matrix, semantic layout assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
+| Visual evidence | Provenance-aware offscreen widget-body capture exists, but its dirty old Spotify 0.1.6 setup matrix neither covers current advanced states nor judges layout/visual correctness. User-supplied Games & Apps and Spotify captures show concrete clipping/alignment concerns that current synthetic renderer checks do not settle | Clean current package/state/profile matrix covering the reported surfaces, semantic icon-label and clipping assertions, reviewed tolerant baselines, and physical full-shell/controller/DPI smoke |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | Extract/test one `WidgetSessionCoordinator`; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp`; typed persistent session failures |
-| Verification gate | Commit `4450cfa` adds the bounded 41-step gate; clean release-eligible run `20260809T141527Z-8946c731` passes 41/41 steps and 755 cases for `dc6b092`; clean seven-step run `20260809T152831Z-67b77c73` covers `6fc9e01`; clean three-step run `20260809T155221Z-ae6e5d8d` covers the exact edge in `4f903b0`; clean release-eligible three-step run `20260809T161934Z-5d0bee6a` covers Bridge 45/45, Documentation 1/1, and First-Party Conformance 6/6 for `fdcf253` | Run the complete checked-in Windows workflow for the current implementation commit and retain an immutable hosted artifact/link |
-| Documentation | Extensive, but its green contract checks links/headings while 70 C# fences have no designated executable consumer; `plugin-platform.md` claims the starter scaffolds a test/replay workflow although it generates no test or snapshot exporter | Compile-test canonical snippets, make overview claims derive from generated-template end-to-end tests, bind status claims to exact result manifests, and reduce ledger/status duplication |
+| Verification gate | Clean release-eligible run `20260809T201448Z-0249ae81` remains the last exact full proof: 41/41 and 778 cases for `0598e5a`. Commit `7c8a5b8` adds a live verifier lease, final commit/status, final package hashes, and typed reasons. DLV-001's final stable dirty run `20260810T030727Z-449cac31` passes 41/41 with identical endpoints/fingerprint but is correctly ineligible; its later clean attempt was interrupted before producing a result. The delivery plan now prohibits repeating the same aggregate dirty and clean and names DLV-004/DLV-006 as the next exact-commit checkpoints | **Verification evidence only:** retain one authoritative bundle at the next named checkpoint; do not let provenance cleanup displace DLV-002/003 or cause duplicate six-minute runs |
+| Independent review ownership | Documentation commit `689a933` stages both review ledgers from the implementation stream and self-closes EQ-021 without retained evidence, mixing implementation, reviewer authorship, and disposition | Reserve both review files to the reviewer; require path-specific implementation staging and evidence proposals through implementation status rather than self-edited closure |
+| Documentation | Extensive, and current accessibility pages now consistently distinguish implemented preview from the ship gate; green contract checks still link-check rather than compile roughly 70 C# fences, and `plugin-platform.md` overstates generated test/replay support | Compile-test canonical snippets, derive overview claims from generated-template end-to-end tests, add semantic cross-document assertions for product-status claims, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
-## Recommended next three actions
+## Security stabilization exit rule
 
-1. **Finish and prove the package launch authority.** Preserve the new
-   supervisor-owned content lease, then execute a real installed worker through
-   managed/native/asset lazy loads. Retain the new stale-generation-root denial,
-   then prove directory replacement, late insertion, replacement, and alternate
-   AppContainer-group ACEs cannot execute under the old digest; bind each ACL
-   target to the object authenticated by the lease. Retain the aligned package-
-   shape bound and the committed exact accepted/refused cases in a clean bundle.
-   Put revalidation, ACL authority,
-   process creation, and hello under one enforced start budget; keep unrelated
-   bridge requests responsive, extract the bounded request scheduler behind a
-   typed deterministic seam, move one-owner cancellable correlated pipe I/O off
-   the native UI thread, and make grant cleanup/rollback explicit on every
-   failure and teardown path.
-2. **Retain action-admission release evidence.** Preserve the shared queue,
-   protocol-v1 compatibility, non-authorizing legacy QuickAction rule,
-   generation-owned native feedback, and generic cross-process diagnostic.
-   Add a physical-controller smoke and live-provider YT Music/Spotify action
-   evidence without folding connection/OAuth work into the active lifetime.
-3. **Implement the host accessibility surface before more visual polish.** Add
-   one nonblocking generation-owned UIA fragment provider over the shell and
-   final presented widget geometry, with closed Invoke/RangeValue/selection
-   mappings and precise focus/property/structure events. Prove it with a real
-   HWND UIA-client suite and Narrator smoke across basic, multipage, failure,
-   YT Music, and Spotify states. Keep the current verification runner and clean
-   focused bundles, then run the complete hosted gate for the resulting commit.
+Security work must now converge on a bounded release gate rather than expand
+indefinitely through speculative defense in depth. The relevant threat boundary
+is an untrusted community package and its capability-free AppContainer worker
+attempting to influence host/broker authority, package bytes, another package,
+or the desktop user through supported product entrypoints. A compromised
+desktop account, administrator/kernel control, or arbitrary same-user software
+already able to rewrite the installed application is not a reason to keep the
+widget framework's current product milestones blocked unless it produces a
+concrete cross-boundary exploit under the documented model.
 
-The next review should first reassess these three items, then rotate into the
-installed-package launch/session boundary or native session ownership if
-implementation changes land. Revisit visual or performance proof when a new
-fixture or retained baseline appears; specifically reassess EQ-019 when the
-Guide fallback gains an injected policy seam or hardware trace, and EQ-023 when
-the host gains `WM_GETOBJECT` or a semantic-provider prototype.
+Treat installed-widget security stabilization as complete for the current
+product phase when all of the following are proven together:
+
+1. Broker calls remain authenticated, declaration/consent/lifecycle bounded,
+   typed, and inaccessible through raw handles or ambient worker authority.
+2. The worker launches only from the verified package generation; content bytes,
+   namespace, and DACL targets remain bound through process creation and reject
+   replacement or unintended broad/alternate AppContainer read authority.
+3. Partial ACL mutation and host termination recover through host-owned durable
+   state; one unrecoverable package is diagnosed and repaired or quarantined
+   without silently disabling unrelated packages.
+4. Corrupt/missing recovery state fails closed with an explicit user-facing
+   remediation path rather than asking users or authors to edit ACLs or internal
+   journal files.
+5. Focused boundary suites and one stable product aggregate exercise these
+   invariants; the next scheduled exact-commit integration checkpoint plus the
+   real AppContainer/package probe retains release-quality evidence without
+   repeating the same full gate before and after every commit.
+
+Commits through DLV-001 `d0c0420` satisfy the code-level stabilization gate.
+The interrupted exact-commit attempt produced no result; clean product-wide and
+real packaged recovery evidence therefore remain in the verification queue.
+That evidence debt does not reopen implementation or delay DLV-002.
+
+After this gate passes, freeze the subsystem. New security work should displace
+product, SDK, UX, or performance milestones only for a reproducible P0, a
+concrete violation of this threat boundary, or an explicit requirement for the
+next public-distribution stage. Other same-user hardening, unusual filesystem
+permutations, additional cryptographic provenance, and defense-in-depth ideas
+belong in the later security backlog with P2/P3 priority. This rule does not
+claim that security is permanently complete; it prevents the absence of such a
+claim from becoming an unlimited implementation program.
+
+## Recommended next actions
+
+Continue enforcing EQ-024's path-ownership rule: `ddb66c2`, `7c8a5b8`,
+`0be052b`, `dc30be9`, `0ff403a`, and `d171dc8` correctly left both review
+documents untouched, and the implementation stream must continue to leave them
+unstaged. This workflow boundary does not replace the three product actions
+below.
+
+1. **Platform DLV-003 — repair shared button-content geometry.** Correct icon,
+   label, checkmark, busy, wrapped, disabled, and focused alignment once in the
+   native renderer/shared component boundary, not with widget-local offsets.
+2. **Widgets DLV-007 — make Spotify presentation state coherent.** Bind route,
+   selection, detail resource, busy/error state, and rendering to one immutable
+   revision before splitting the application-sized class.
+3. **Integration DLV-004 — repair the Games & Apps product surface.** After
+   DLV-003 is accepted and integrated, close empty/library/catalog/loading/error,
+   clipping, scale, long-name, mutation, and controller-reachability defects and
+   retain representative captures. DLV-004 is the next scheduled exact-commit
+   integration checkpoint.
+4. **Keep both independent lane queues moving.** Platform continues with DLV-005
+   hold-Y refresh while widgets proceeds through Spotify/YT Music responsibility
+   work; shared protocol foundations remain serialized.
+
+**Later backlog.** Audio endpoint switching should begin with a supported
+Windows API/role-policy spike rather than undocumented `PolicyConfig` behavior.
+Spotify's composed live paging proof, the advanced-widget reference
+architecture, native session extraction, accessibility completion, and
+performance baselines remain valuable, but they should be scheduled as named
+milestones rather than allowed to interrupt the two user-facing actions above.
+
+**Verification evidence only.** The next planned clean aggregate belongs to the
+exact DLV-004 integration commit. Do not rerun the full gate solely to improve
+DLV-001 or DLV-002 provenance; their bounded evidence and remaining manual debt
+are recorded.
+
+The next review should rotate through UI/UX and widget authoring first. Revisit
+installed-widget security only for a reproducible threat-boundary regression,
+P0, or planned-release blocker. If no product milestone lands
+after the minimum interval, report no material change rather than manufacturing
+another finding.
