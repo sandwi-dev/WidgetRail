@@ -247,6 +247,7 @@ internal static class SettingsInstalledWidgetPresentation
                                 : "No host permissions requested",
                             "installed.permissions.open", "installed.details.permissions")
                         .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
+                    LocalDataButton(state, busy),
                     UI.Button("Back", "back", "installed.details.back").Classes("secondary-button")),
                 builtInHasPermissions ? "installed.details.permissions" : "installed.details.back",
                 "installed.details");
@@ -299,11 +300,14 @@ internal static class SettingsInstalledWidgetPresentation
             .Disabled(!hasPermissions).Busy(busy).Classes("setting-row");
         var actionButton = UI.Button(action, "installed.toggle", "installed.details.toggle")
             .FocusUp("installed.details.permissions")
-            .FocusDown("installed.details.back").Busy(busy).Disabled(!canToggle)
+            .FocusDown("installed.details.local-data").Busy(busy).Disabled(!canToggle)
             .Classes(package.Enabled ? "danger-button" : "primary-button");
+        var localDataButton = LocalDataButton(state, busy)
+            .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.permissions")
+            .FocusDown("installed.details.back");
         versionsButton = versionsButton.FocusDown("installed.details.permissions");
         var back = UI.Button("Back", "back", "installed.details.back")
-            .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.permissions")
+            .FocusUp("installed.details.local-data")
             .Classes("secondary-button");
         return SettingsPresentation.View(header,
             SettingsPresentation.PageScope("installed.details",
@@ -347,8 +351,61 @@ internal static class SettingsInstalledWidgetPresentation
                 versionsButton,
                 permissionsButton,
                 actionButton,
+                localDataButton,
                 back),
             canToggle ? "installed.details.toggle" : "installed.details.back", "installed.details");
+    }
+
+    public static WidgetView RenderInstalledWidgetLocalData(
+        StackElement header,
+        bool busy,
+        SettingsInstalledWidgetState state)
+    {
+        var name = state.SelectedInstalled?.Name ?? state.SelectedBuiltIn?.Name;
+        var data = state.LocalData;
+        if (name is null || data is not { Exists: true, ConfirmationToken: not null })
+            return SettingsPresentation.View(header,
+                SettingsPresentation.PageScope("installed.local-data.confirm",
+                    UI.Text("Local data changed", "installed.local-data.heading",
+                        "Local data changed").Classes("page-heading"),
+                    UI.Text("Return to details and inspect the current widget state again.",
+                        "installed.local-data.help", "Local data changed help")
+                        .Classes("diagnostic-error"),
+                    UI.Button("Back", "back", "installed.local-data.back")
+                        .Classes("secondary-button")),
+                "installed.local-data.back", "installed.local-data.confirm");
+        return SettingsPresentation.View(header,
+            SettingsPresentation.PageScope("installed.local-data.confirm",
+                UI.Text("Clear local data?", "installed.local-data.heading",
+                    "Confirm local data clear").Classes("page-heading"),
+                UI.Text(name, "installed.local-data.widget", "Selected widget")
+                    .Classes("diagnostic-line"),
+                UI.Text(
+                    "This stops the selected widget, clears only its overlay-owned private state, then starts a fresh worker generation. It does not remove packages, credentials, provider data, themes, settings, or user files.",
+                    "installed.local-data.help", "Local data clear scope")
+                    .Classes("page-help"),
+                UI.Button("Clear local data", "installed.local-data.clear",
+                    "installed.local-data.clear").Busy(busy).Classes("danger-button"),
+                UI.Button("Cancel", "back", "installed.local-data.back")
+                    .Classes("secondary-button")),
+            "installed.local-data.back", "installed.local-data.confirm");
+    }
+
+    private static ButtonElement LocalDataButton(
+        SettingsInstalledWidgetState state,
+        bool busy)
+    {
+        var data = state.LocalData;
+        var label = data switch
+        {
+            { Exists: true, ConfirmationToken: not null } => "Clear local data",
+            { StatusCode: "no_local_data" } => "No local data stored",
+            null => "Checking local data…",
+            _ => $"Local data unavailable ({data.StatusCode})",
+        };
+        return UI.Button(label, "installed.local-data.open", "installed.details.local-data")
+            .Disabled(data is not { Exists: true, ConfirmationToken: not null })
+            .Busy(busy).Classes(data is { Exists: true } ? "danger-button" : "setting-row");
     }
 
     public static WidgetView RenderInstalledWidgetVersions(

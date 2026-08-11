@@ -10,6 +10,7 @@ using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WindowsCommunityProvider;
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
@@ -44,6 +45,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
+    ("Installed worker local data clears after exact retirement and preserves its neighbor", InstalledWorkerLocalDataClearIsExact),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
@@ -54,6 +56,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry owns idle unload cancellation and replacement drain", BridgeClientRegistryScenarios.IdleUnloadCancellationAndReplacementAreOwned),
     ("Client registry restart restores lifecycle and resets generation", BridgeClientRegistryScenarios.RestartRestoresLifecycleAndResetsGeneration),
     ("Client registry restart reserves one generation and cleans failed restore", BridgeClientRegistryScenarios.RestartReservationAndRestoreFailureAreClosed),
+    ("Client registry replacement retires before exact host mutation", BridgeClientRegistryScenarios.ManagedReplacementRetiresBeforeMutation),
+    ("Trusted local-data management clears one exact retired generation", BridgeClientRegistryScenarios.LocalDataManagementIsExactAndDocumentBlind),
     ("Client registry commits lifecycle and first snapshot as one generation", BridgeClientRegistryScenarios.LifecycleAndFirstSnapshotAreAtomic),
     ("Client registry publication admission serializes replacement", BridgeClientRegistryScenarios.PublicationAdmissionSerializesReplacement),
     ("Client registry notification lane bounds and balances admission", BridgeClientRegistryScenarios.NotificationLaneBoundsAndBalancesAdmission),
@@ -1233,6 +1237,71 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
         [PlatformCapabilities.PrivateStateV1],
         new ConsentStore(Path.Combine(temporary.Path, "forged")),
         new SimulatedPlatformBrokerBackend(), context));
+}
+
+static async Task InstalledWorkerLocalDataClearIsExact()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-local-data");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    var selected = await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.local-selected", enabled: true);
+    var neighbor = await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.local-neighbor", enabled: true);
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    var privateRoot = Path.Combine(temporary.Path, "private-state");
+    var backend = new WindowsCommunityPlatformBackend(privateRoot);
+    var simulator = new SimulatedPlatformBrokerBackend();
+    await using var composite = new CompositePlatformBrokerBackend(
+        simulator, simulator, privateState: backend);
+    var selectedIdentity = new BrokerWidgetIdentity(
+        selected.Manifest.Id, InstalledWidgetAuthority.PublisherId(selected), "selected.test");
+    var neighborIdentity = new BrokerWidgetIdentity(
+        neighbor.Manifest.Id, InstalledWidgetAuthority.PublisherId(neighbor), "neighbor.test");
+    var encoded = Convert.ToBase64String("{\"schemaVersion\":1}"u8);
+    await backend.WritePrivateStateAsync(
+        selectedIdentity, new WritePrivateStateRequest(encoded, null), CancellationToken.None);
+    await backend.WritePrivateStateAsync(
+        neighborIdentity, new WritePrivateStateRequest(encoded, null), CancellationToken.None);
+
+    var pipeName = $"gba-bridge-local-data-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName, load.Catalog, 64 * 1024, platformBackend: composite);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var started = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest(
+                selected.Manifest.Id, WidgetLifecycleState.Visible));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, started.Type);
+        Assert.Equal(1, server.RunningWorkerCount);
+        var inspection = await server.InspectWidgetLocalDataAsync(selected.Manifest.Id);
+        Assert.True(inspection.Exists && inspection.ConfirmationToken is not null,
+            "Installed state did not produce an exact confirmation token.");
+        var result = await server.ClearWidgetLocalDataAsync(
+            selected.Manifest.Id, inspection.ConfirmationToken!);
+        Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, result.Status);
+        Assert.Equal(1, server.RunningWorkerCount);
+        Assert.False((await backend.ReadPrivateStateAsync(
+            selectedIdentity, CancellationToken.None)).Exists,
+            "Selected installed state survived clear.");
+        Assert.True((await backend.ReadPrivateStateAsync(
+            neighborIdentity, CancellationToken.None)).Exists,
+            "Neighbor installed state changed during clear.");
+    }
+    finally
+    {
+        await client.DisposeAsync();
+        await server.DisposeAsync();
+        try { await serverTask.WaitAsync(TimeSpan.FromSeconds(3)); }
+        catch (Exception exception) when (exception is EndOfStreamException or
+                                               OperationCanceledException or
+                                               ObjectDisposedException) { }
+    }
 }
 
 static async Task TamperedInstalledCatalogFailsSoft()

@@ -23,6 +23,7 @@ public enum SettingsPage
     InstalledWidgetDetails,
     InstalledWidgetVersions,
     InstalledWidgetRecovery,
+    InstalledWidgetLocalData,
     Permissions,
     PermissionDiagnostics,
     PackageCapabilities,
@@ -145,6 +146,9 @@ public sealed class SettingsWidget : Widget
             SettingsPage.InstalledWidgetRecovery =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetRecovery(
                     header, busy, installedState),
+            SettingsPage.InstalledWidgetLocalData =>
+                SettingsInstalledWidgetPresentation.RenderInstalledWidgetLocalData(
+                    header, busy, installedState),
             SettingsPage.Permissions =>
                 SettingsPermissionPresentation.RenderPermissionPackages(
                     header, busy, permissionState),
@@ -210,6 +214,9 @@ public sealed class SettingsWidget : Widget
                 case "installed.versions.next-page": ChangeInstalledVersionPage(1); break;
                 case "installed.repair.remove": await RemoveSelectedRepairCandidateAsync(
                     cancellationToken).ConfigureAwait(false); break;
+                case "installed.local-data.open": OpenInstalledWidgetLocalData(); break;
+                case "installed.local-data.clear": await ClearSelectedWidgetLocalDataAsync(
+                    cancellationToken).ConfigureAwait(false); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
                 case "capability.grant": await ChangeConsentAsync(
@@ -221,9 +228,11 @@ public sealed class SettingsWidget : Widget
                     if (TryThemeIndex(action.ActionId, out var index))
                         await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
-                        SelectInstalledWidget(index);
+                        await SelectInstalledWidgetAsync(index, cancellationToken)
+                            .ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.builtin.select.", out index))
-                        SelectBuiltInWidget(index);
+                        await SelectBuiltInWidgetAsync(index, cancellationToken)
+                            .ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
                         await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.repair.select.", out index))
@@ -945,7 +954,7 @@ public sealed class SettingsWidget : Widget
         Invalidate();
     }
 
-    private void SelectInstalledWidget(int index)
+    private async Task SelectInstalledWidgetAsync(int index, CancellationToken cancellationToken)
     {
         lock (_stateLock)
         {
@@ -955,9 +964,10 @@ public sealed class SettingsWidget : Widget
             _page = transition.Page;
         }
         Invalidate();
+        await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private void SelectBuiltInWidget(int index)
+    private async Task SelectBuiltInWidgetAsync(int index, CancellationToken cancellationToken)
     {
         lock (_stateLock)
         {
@@ -965,6 +975,125 @@ public sealed class SettingsWidget : Widget
                     _installedState, index, out var transition)) return;
             _installedState = transition.State;
             _page = transition.Page;
+        }
+        Invalidate();
+        await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task InspectSelectedWidgetLocalDataAsync(CancellationToken cancellationToken)
+    {
+        string? widgetId;
+        lock (_stateLock)
+            widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
+                       _installedState.SelectedBuiltIn?.Id;
+        if (widgetId is null) return;
+        PlatformWidgetLocalDataInspection inspection;
+        try
+        {
+            inspection = await _diagnosticsService.InspectWidgetLocalDataAsync(
+                widgetId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (PlatformDiagnosticsException exception)
+        {
+            inspection = new(widgetId, widgetId, false, exception.Code, null);
+        }
+        lock (_stateLock)
+        {
+            var currentId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
+                            _installedState.SelectedBuiltIn?.Id;
+            if (!string.Equals(currentId, inspection.WidgetId, StringComparison.Ordinal)) return;
+            _installedState = _installedState with { LocalData = inspection };
+        }
+        Invalidate();
+    }
+
+    private void OpenInstalledWidgetLocalData()
+    {
+        lock (_stateLock)
+        {
+            var widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
+                           _installedState.SelectedBuiltIn?.Id;
+            if (_page != SettingsPage.InstalledWidgetDetails ||
+                _installedState.LocalData is not { Exists: true, ConfirmationToken: not null } data ||
+                !string.Equals(data.WidgetId, widgetId, StringComparison.Ordinal)) return;
+            _page = SettingsPage.InstalledWidgetLocalData;
+        }
+        Invalidate();
+    }
+
+    private async Task ClearSelectedWidgetLocalDataAsync(CancellationToken cancellationToken)
+    {
+        string? widgetId;
+        string? displayedToken;
+        lock (_stateLock)
+        {
+            widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
+                       _installedState.SelectedBuiltIn?.Id;
+            displayedToken = _page == SettingsPage.InstalledWidgetLocalData
+                ? _installedState.LocalData?.ConfirmationToken
+                : null;
+        }
+        if (widgetId is null || displayedToken is null) return;
+        SetOperation("Checking current local data…", busy: true, error: false);
+        PlatformWidgetLocalDataInspection current;
+        try
+        {
+            current = await _diagnosticsService.InspectWidgetLocalDataAsync(
+                widgetId, cancellationToken).ConfigureAwait(false);
+            if (!string.Equals(current.ConfirmationToken, displayedToken, StringComparison.Ordinal))
+            {
+                lock (_stateLock)
+                {
+                    _installedState = _installedState with { LocalData = current };
+                    _page = SettingsPage.InstalledWidgetDetails;
+                    _busy = false;
+                    _error = true;
+                    _status = "Local data changed; review and confirm again";
+                }
+                Invalidate();
+                return;
+            }
+            SetOperation("Clearing local data and restarting widget…", busy: true, error: false);
+            var result = await _diagnosticsService.ClearWidgetLocalDataAsync(
+                widgetId, displayedToken, cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _page = SettingsPage.InstalledWidgetDetails;
+                _installedState = _installedState with
+                {
+                    LocalData = result.Status is PlatformWidgetLocalDataClearStatus.Cleared or
+                        PlatformWidgetLocalDataClearStatus.NoState
+                        ? new(widgetId, current.DisplayName, false, "no_local_data", null)
+                        : current,
+                };
+                _busy = false;
+                _error = result.Status is not (
+                    PlatformWidgetLocalDataClearStatus.Cleared or
+                    PlatformWidgetLocalDataClearStatus.NoState);
+                _status = result.Status switch
+                {
+                    PlatformWidgetLocalDataClearStatus.Cleared => "Local data cleared; widget restarted",
+                    PlatformWidgetLocalDataClearStatus.NoState => "No local data remained to clear",
+                    PlatformWidgetLocalDataClearStatus.Stale => "Local data changed; confirm again",
+                    PlatformWidgetLocalDataClearStatus.RestartFailed =>
+                        "Widget restart failed; inspect current local data before retrying",
+                    _ => $"Local data clear failed ({result.Code})",
+                };
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SetOperation("Local data clear cancelled", busy: false, error: true);
+            return;
+        }
+        catch (PlatformDiagnosticsException exception)
+        {
+            SetOperation($"Local data clear failed ({exception.Code})", busy: false, error: true);
+            return;
         }
         Invalidate();
     }

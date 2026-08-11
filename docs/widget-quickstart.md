@@ -413,9 +413,16 @@ established, the widget does not start; there is no desktop-token fallback.
 Author against the SDK boundary: do not depend on arbitrary user-profile paths,
 ambient environment secrets, direct sockets, raw Core Audio/WLAN calls, child
 processes, or desktop UI. Request only published `HostServices` capabilities
-and handle unavailable/denied states. The AppContainer profile may retain
-private OS-managed data, but it is not yet a portable storage API and currently
-has no platform disk quota or user-facing cleanup control.
+and handle unavailable/denied states. Overlay-owned
+`HostServices.PrivateState` remains package-scoped. To discard it, open
+**Settings → Installed widgets**, select the exact built-in or Community widget,
+choose **Clear local data**, and confirm the nested destructive action. The host
+retires that widget's current worker before clearing its exact private state and
+then starts a fresh generation. Settings receives only an exists/no-state
+indication and an opaque confirmation token—never the stored document. This
+action does not remove packages, credentials, provider data, themes, overlay
+preferences, geometry, artwork caches, logs, or user files. The store still has
+no platform disk quota.
 For a local desktop companion, use only the implemented [exact-port JSON and
 write-only private-secret services](community-companion-services.md); those
 narrow broker grants do not make direct sockets or Credential Manager available

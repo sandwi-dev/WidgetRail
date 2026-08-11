@@ -564,6 +564,7 @@ internal static class SettingsNavigationPolicy
             SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
             SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
             SettingsPage.InstalledWidgetRecovery => SettingsPage.InstalledWidgets,
+            SettingsPage.InstalledWidgetLocalData => SettingsPage.InstalledWidgetDetails,
             SettingsPage.PermissionDiagnostics => SettingsPage.Permissions,
             SettingsPage.PackageCapabilities => packageCapabilitiesReturnPage,
             SettingsPage.CapabilityDecision => SettingsPage.PackageCapabilities,

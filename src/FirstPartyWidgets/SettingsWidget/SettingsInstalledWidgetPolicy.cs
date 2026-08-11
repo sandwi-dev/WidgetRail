@@ -1,6 +1,7 @@
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.PlatformDiagnostics;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
 
@@ -16,6 +17,7 @@ internal sealed record SettingsInstalledWidgetState(
     string? SelectedBuiltInId,
     WidgetCatalogRepairCandidate? SelectedRepair)
 {
+    public PlatformWidgetLocalDataInspection? LocalData { get; init; }
     public static SettingsInstalledWidgetState Empty { get; } = new(
         new WidgetCatalogSnapshot([]),
         new WidgetCatalogHealthSnapshot(null, []),
@@ -103,7 +105,8 @@ internal static class SettingsInstalledWidgetPolicy
         ArgumentNullException.ThrowIfNull(health);
         if (page is SettingsPage.InstalledWidgetDetails or
             SettingsPage.InstalledWidgetVersions or
-            SettingsPage.InstalledWidgetRecovery)
+            SettingsPage.InstalledWidgetRecovery or
+            SettingsPage.InstalledWidgetLocalData)
             page = SettingsPage.InstalledWidgets;
         return new(
             SettingsInstalledWidgetState.Empty with
@@ -141,6 +144,7 @@ internal static class SettingsInstalledWidgetPolicy
             {
                 SelectedInstalledId = state.Catalog.Widgets[index].Id,
                 SelectedBuiltInId = null,
+                LocalData = null,
                 VersionPage = 0,
             },
             SettingsPage.InstalledWidgetDetails);
@@ -162,6 +166,7 @@ internal static class SettingsInstalledWidgetPolicy
             {
                 SelectedBuiltInId = state.BuiltIns[index].Id,
                 SelectedInstalledId = null,
+                LocalData = null,
                 VersionPage = 0,
             },
             SettingsPage.InstalledWidgetDetails);

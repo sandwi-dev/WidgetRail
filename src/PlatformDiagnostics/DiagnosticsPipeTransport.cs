@@ -13,11 +13,17 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private const int MaximumFrameBytes = 64 * 1024;
     private const string SnapshotOperation = "snapshot";
     private const string RetryAuthorityRecoveryOperation = "retry-authority-recovery";
+    private const string InspectWidgetLocalDataOperation = "inspect-widget-local-data";
+    private const string ClearWidgetLocalDataOperation = "clear-widget-local-data";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
     private readonly Func<string, CancellationToken,
         ValueTask<PlatformAuthorityRecoveryRetryResult>>? _authorityRecoveryRetry;
+    private readonly Func<string, CancellationToken,
+        ValueTask<PlatformWidgetLocalDataInspection>>? _localDataInspection;
+    private readonly Func<string, string, CancellationToken,
+        ValueTask<PlatformWidgetLocalDataClearResult>>? _localDataClear;
     private readonly TimeSpan _requestTimeout;
     private readonly NamedPipeServerStream _pipe;
     private readonly CancellationTokenSource _lifetime = new();
@@ -29,13 +35,19 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> snapshotProvider,
         TimeSpan? requestTimeout = null,
         Func<string, CancellationToken,
-            ValueTask<PlatformAuthorityRecoveryRetryResult>>? authorityRecoveryRetry = null)
+            ValueTask<PlatformAuthorityRecoveryRetryResult>>? authorityRecoveryRetry = null,
+        Func<string, CancellationToken,
+            ValueTask<PlatformWidgetLocalDataInspection>>? localDataInspection = null,
+        Func<string, string, CancellationToken,
+            ValueTask<PlatformWidgetLocalDataClearResult>>? localDataClear = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
         _pipeName = pipeName;
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
         _authorityRecoveryRetry = authorityRecoveryRetry;
+        _localDataInspection = localDataInspection;
+        _localDataClear = localDataClear;
         _requestTimeout = ValidateTimeout(
             requestTimeout ?? TimeSpan.FromSeconds(2), nameof(requestTimeout));
         ChannelNonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -128,7 +140,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         string receiptOperation;
         switch (request.Operation)
         {
-            case SnapshotOperation when request.ConfirmationToken is null:
+            case SnapshotOperation when request.ConfirmationToken is null &&
+                request.WidgetId is null:
             {
                 var snapshot = await _snapshotProvider(cancellationToken).AsTask()
                     .WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -142,6 +155,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             case RetryAuthorityRecoveryOperation:
             {
                 ValidateConfirmationToken(request.ConfirmationToken);
+                if (request.WidgetId is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
                 var result = _authorityRecoveryRetry is null
                     ? PlatformAuthorityRecoveryRetryResult.Refused("retry_unsupported")
                     : await _authorityRecoveryRetry(request.ConfirmationToken!, cancellationToken)
@@ -149,6 +164,37 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 ValidateRetryResult(result);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
                 receiptOperation = RetryAuthorityRecoveryOperation;
+                break;
+            }
+            case InspectWidgetLocalDataOperation:
+            {
+                ValidateWidgetId(request.WidgetId);
+                if (request.ConfirmationToken is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _localDataInspection is null
+                    ? new PlatformWidgetLocalDataInspection(
+                        request.WidgetId!, request.WidgetId!, false,
+                        "inspection_unsupported", null)
+                    : await _localDataInspection(request.WidgetId!, cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidateLocalDataInspection(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = InspectWidgetLocalDataOperation;
+                break;
+            }
+            case ClearWidgetLocalDataOperation:
+            {
+                ValidateConfirmationToken(request.ConfirmationToken);
+                ValidateWidgetId(request.WidgetId);
+                var result = _localDataClear is null
+                    ? new PlatformWidgetLocalDataClearResult(
+                        PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported")
+                    : await _localDataClear(
+                            request.WidgetId!, request.ConfirmationToken!, cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidateLocalDataClearResult(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = ClearWidgetLocalDataOperation;
                 break;
             }
             default:
@@ -251,6 +297,28 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     {
         if (result is null || !Enum.IsDefined(result.Status) || !IsToken(result.Code, 64))
             throw new PlatformDiagnosticsException("invalid_retry_result");
+    }
+
+    internal static void ValidateLocalDataInspection(PlatformWidgetLocalDataInspection result)
+    {
+        if (result is null || !IsToken(result.WidgetId, 128) ||
+            !IsSafeRecoveryLabel(result.DisplayName) ||
+            !IsToken(result.StatusCode, 64) ||
+            result.ConfirmationToken is { } token && !IsConfirmationToken(token) ||
+            result.Exists != (result.ConfirmationToken is not null))
+            throw new PlatformDiagnosticsException("invalid_local_data_inspection");
+    }
+
+    internal static void ValidateLocalDataClearResult(PlatformWidgetLocalDataClearResult result)
+    {
+        if (result is null || !Enum.IsDefined(result.Status) || !IsToken(result.Code, 64))
+            throw new PlatformDiagnosticsException("invalid_local_data_result");
+    }
+
+    internal static void ValidateWidgetId(string? value)
+    {
+        if (!IsToken(value, 128))
+            throw new PlatformDiagnosticsException("invalid_widget_id");
     }
 
     internal static void ValidateConfirmationToken(string? value)
@@ -375,7 +443,10 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
 
     private sealed record DiagnosticsHello(string Nonce);
-    private sealed record DiagnosticsRequest(string Operation, string? ConfirmationToken = null);
+    private sealed record DiagnosticsRequest(
+        string Operation,
+        string? ConfirmationToken = null,
+        string? WidgetId = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 }
@@ -415,6 +486,35 @@ public sealed class PlatformDiagnosticsPipeClient(
             new DiagnosticsRequest("retry-authority-recovery", confirmationToken),
             "retry-authority-recovery",
             PlatformDiagnosticsPipeServer.ValidateRetryResult,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default)
+    {
+        PlatformDiagnosticsPipeServer.ValidateWidgetId(widgetId);
+        return await ExecuteAsync<PlatformWidgetLocalDataInspection>(
+            new DiagnosticsRequest("inspect-widget-local-data", WidgetId: widgetId),
+            "inspect-widget-local-data",
+            PlatformDiagnosticsPipeServer.ValidateLocalDataInspection,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<PlatformWidgetLocalDataClearResult> ClearWidgetLocalDataAsync(
+        string widgetId,
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        PlatformDiagnosticsPipeServer.ValidateWidgetId(widgetId);
+        if (!IsConfirmationToken(confirmationToken))
+            throw new ArgumentException("Local-data confirmation token is invalid.",
+                nameof(confirmationToken));
+        return await ExecuteAsync<PlatformWidgetLocalDataClearResult>(
+            new DiagnosticsRequest(
+                "clear-widget-local-data", confirmationToken, widgetId),
+            "clear-widget-local-data",
+            PlatformDiagnosticsPipeServer.ValidateLocalDataClearResult,
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -468,7 +568,10 @@ public sealed class PlatformDiagnosticsPipeClient(
     }
 
     private sealed record DiagnosticsHello(string Nonce);
-    private sealed record DiagnosticsRequest(string Operation, string? ConfirmationToken = null);
+    private sealed record DiagnosticsRequest(
+        string Operation,
+        string? ConfirmationToken = null,
+        string? WidgetId = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 

@@ -3,6 +3,8 @@ using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
@@ -132,6 +134,81 @@ internal static class BridgeClientRegistryScenarios
             "Restart reused the retired generation's cached snapshot.");
         old.RaiseInvalidated(90);
         RegistryAssert.Equal(0, fixture.Invalidations.Count);
+    }
+
+    internal static async Task ManagedReplacementRetiresBeforeMutation()
+    {
+        var selected = Widget("selected", worker: 'a', catalog: 'a');
+        var neighbor = Widget("neighbor", worker: 'b', catalog: 'b');
+        await using var fixture = new RegistryFixture(Catalog(selected, neighbor));
+        await fixture.SetLifecycleAsync(selected.Id, WidgetLifecycleState.Visible);
+        await fixture.SetLifecycleAsync(neighbor.Id, WidgetLifecycleState.Visible);
+        var oldSelected = fixture.Clients[0];
+        var neighborClient = fixture.Clients[1];
+        var operationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var operationRelease = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var callerCancellation = new CancellationTokenSource();
+        var replace = fixture.Registry.ReplaceAsync(
+            selected.Id,
+            async (configured, cancellationToken) =>
+            {
+                RegistryAssert.Equal(selected.Id, configured.Id);
+                RegistryAssert.True(oldSelected.Disposed.IsCompleted,
+                    "Host mutation began before the old generation retired.");
+                operationEntered.TrySetResult();
+                await operationRelease.Task.WaitAsync(cancellationToken);
+                return "mutated";
+            },
+            callerCancellation.Token);
+        await operationEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        callerCancellation.Cancel();
+        operationRelease.TrySetResult();
+        var replacement = await replace.WaitAsync(TimeSpan.FromSeconds(2));
+        using (replacement.Publication)
+        {
+            RegistryAssert.Equal("mutated", replacement.Result);
+            RegistryAssert.Equal(WidgetLifecycleState.Visible, replacement.Publication.Value);
+        }
+        RegistryAssert.Equal(3, fixture.Clients.Count);
+        RegistryAssert.Equal(1, oldSelected.DisposeCount);
+        RegistryAssert.Equal(0, neighborClient.DisposeCount);
+        RegistryAssert.SequenceEqual(
+            [WidgetLifecycleState.Visible], fixture.Clients[2].LifecycleStates);
+    }
+
+    internal static async Task LocalDataManagementIsExactAndDocumentBlind()
+    {
+        var selected = Widget("local-selected", worker: 'c', catalog: 'c');
+        var neighbor = Widget("local-neighbor", worker: 'd', catalog: 'd');
+        await using var fixture = new RegistryFixture(Catalog(selected, neighbor));
+        await fixture.SetLifecycleAsync(selected.Id, WidgetLifecycleState.Visible);
+        await fixture.SetLifecycleAsync(neighbor.Id, WidgetLifecycleState.Visible);
+        var backend = new RegistryPrivateStateBackend(selected, neighbor);
+        var service = new BridgeWidgetLocalDataService(fixture.Registry, backend);
+
+        var inspection = await service.InspectAsync(selected.Id, CancellationToken.None);
+        RegistryAssert.True(inspection.Exists && inspection.ConfirmationToken is not null,
+            "Exact selected state was not projected as a document-blind token.");
+        var result = await service.ClearAsync(
+            selected.Id, inspection.ConfirmationToken!, CancellationToken.None);
+        RegistryAssert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, result.Status);
+        RegistryAssert.True(!backend.Exists(selected.PackageId),
+            "Selected state survived a successful exact clear.");
+        RegistryAssert.True(backend.Exists(neighbor.PackageId),
+            "Neighbor state changed during selected clear.");
+        RegistryAssert.Equal(1, fixture.Clients[0].DisposeCount);
+        RegistryAssert.Equal(0, fixture.Clients[1].DisposeCount);
+        RegistryAssert.Equal(3, fixture.Clients.Count);
+
+        var staleInspection = await service.InspectAsync(neighbor.Id, CancellationToken.None);
+        backend.Advance(neighbor.PackageId);
+        var stale = await service.ClearAsync(
+            neighbor.Id, staleInspection.ConfirmationToken!, CancellationToken.None);
+        RegistryAssert.Equal(PlatformWidgetLocalDataClearStatus.Stale, stale.Status);
+        RegistryAssert.True(backend.Exists(neighbor.PackageId),
+            "A stale confirmation cleared current neighbor state.");
     }
 
     internal static async Task RestartReservationAndRestoreFailureAreClosed()
@@ -653,6 +730,49 @@ internal static class BridgeClientRegistryScenarios
     };
 
     private static string Fingerprint(char value) => new(value, 64);
+}
+
+internal sealed class RegistryPrivateStateBackend(
+    ConfiguredWidget first,
+    ConfiguredWidget second) : IPrivateStatePlatformBrokerBackend
+{
+    private readonly Dictionary<string, (bool Exists, long Revision)> _state = new()
+    {
+        [first.PackageId] = (true, 3),
+        [second.PackageId] = (true, 7),
+    };
+
+    internal bool Exists(string packageId) => _state[packageId].Exists;
+    internal void Advance(string packageId)
+    {
+        var current = _state[packageId];
+        _state[packageId] = (current.Exists, current.Revision + 1);
+    }
+
+    public Task<PrivateStateSnapshotSummary> ReadPrivateStateAsync(
+        BrokerWidgetIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = _state[identity.PackageId];
+        return Task.FromResult(new PrivateStateSnapshotSummary(
+            current.Exists,
+            current.Exists ? Convert.ToBase64String("{}"u8) : null,
+            current.Revision));
+    }
+
+    public Task<PrivateStateMutationSummary> ClearPrivateStateAsync(
+        BrokerWidgetIdentity identity,
+        ClearPrivateStateRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = _state[identity.PackageId];
+        if (request.ExpectedRevision != current.Revision)
+            throw new BrokerException("private_state_conflict", "Synthetic conflict.");
+        _state[identity.PackageId] = (false, current.Revision + 1);
+        return Task.FromResult(new PrivateStateMutationSummary(current.Revision + 1));
+    }
 }
 
 internal sealed class RegistryFixture : IAsyncDisposable

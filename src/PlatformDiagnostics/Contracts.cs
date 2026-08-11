@@ -62,6 +62,28 @@ public sealed record PlatformAuthorityRecoveryRetryResult(
         new(PlatformAuthorityRecoveryRetryStatus.Refused, code);
 }
 
+public sealed record PlatformWidgetLocalDataInspection(
+    string WidgetId,
+    string DisplayName,
+    bool Exists,
+    string StatusCode,
+    string? ConfirmationToken);
+
+public enum PlatformWidgetLocalDataClearStatus
+{
+    Cleared,
+    NoState,
+    Stale,
+    ClearFailed,
+    RestartFailed,
+    Unavailable,
+    Refused,
+}
+
+public sealed record PlatformWidgetLocalDataClearResult(
+    PlatformWidgetLocalDataClearStatus Status,
+    string Code);
+
 public sealed record PlatformDiagnosticsSnapshot(
     int SchemaVersion,
     long Revision,
@@ -132,6 +154,19 @@ public interface IPlatformDiagnosticsService
         return ValueTask.FromResult(
             PlatformAuthorityRecoveryRetryResult.Refused("retry_unsupported"));
     }
+
+    ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new PlatformWidgetLocalDataInspection(
+            widgetId, widgetId, false, "inspection_unsupported", null));
+
+    ValueTask<PlatformWidgetLocalDataClearResult> ClearWidgetLocalDataAsync(
+        string widgetId,
+        string confirmationToken,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
+            PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported"));
 }
 
 public sealed class UnavailablePlatformDiagnosticsService : IPlatformDiagnosticsService

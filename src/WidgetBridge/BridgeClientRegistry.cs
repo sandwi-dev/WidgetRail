@@ -35,6 +35,10 @@ internal sealed record BridgeClientNotificationStatus(
     int ActivePublications,
     bool IsRetiring);
 
+internal sealed record BridgeClientReplacement<T>(
+    BridgeClientPublication<WidgetLifecycleState> Publication,
+    T Result);
+
 internal sealed class BridgeClientPublication<TValue>(
     TValue value,
     Action release) : IDisposable
@@ -406,7 +410,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         AdmitRestart();
         try
         {
-            return await RestartCoreAsync(widgetId, cancellationToken).ConfigureAwait(false);
+            var replacement = await ReplaceCoreAsync(
+                widgetId,
+                static (_, _) => Task.FromResult<object?>(null),
+                honorCallerCancellationAfterReservation: true,
+                cancellationToken).ConfigureAwait(false);
+            return replacement.Publication;
         }
         finally
         {
@@ -414,8 +423,31 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
-    private async Task<BridgeClientPublication<WidgetLifecycleState>> RestartCoreAsync(
+    internal async Task<BridgeClientReplacement<T>> ReplaceAsync<T>(
         string widgetId,
+        Func<ConfiguredWidget, CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        AdmitRestart();
+        try
+        {
+            return await ReplaceCoreAsync(
+                    widgetId, operation,
+                    honorCallerCancellationAfterReservation: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseRestart();
+        }
+    }
+
+    private async Task<BridgeClientReplacement<T>> ReplaceCoreAsync<T>(
+        string widgetId,
+        Func<ConfiguredWidget, CancellationToken, Task<T>> operation,
+        bool honorCallerCancellationAfterReservation,
         CancellationToken cancellationToken)
     {
         while (true)
@@ -429,9 +461,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 var configured = _catalog.GetConfigured(widgetId);
                 if (!_clients.TryGetValue(widgetId, out oldRegistration!))
                 {
-                    var fresh = CreateRegistration(configured);
-                    _clients.Add(widgetId, fresh);
-                    return AdmitPublicationLocked(fresh, WidgetLifecycleState.Background);
+                    oldRegistration = CreateRegistration(configured);
+                    _clients.Add(widgetId, oldRegistration);
                 }
                 if (oldRegistration.IsRetiring)
                     priorRetirement = oldRegistration.RetirementCompletion;
@@ -461,6 +492,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             var startRetirement = false;
             ClientRegistration? freshRegistration = null;
             WidgetLifecycleState previousState;
+            T operationResult = default!;
+            Exception? operationFailure = null;
             try
             {
                 lock (_gate)
@@ -485,15 +518,17 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (startRetirement) StartRetirement(oldRegistration);
             try
             {
-                using var restartDeadline = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken);
+                using var restartDeadline = honorCallerCancellationAfterReservation
+                    ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+                    : new CancellationTokenSource();
                 restartDeadline.CancelAfter(RestartDeadline);
                 try
                 {
                     await oldRegistration.ResourceRetired.WaitAsync(restartDeadline.Token)
                         .ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested ||
+                    !honorCallerCancellationAfterReservation)
                 {
                     throw new BridgeProtocolException(
                         $"Widget '{widgetId}' did not retire within the restart deadline.");
@@ -508,11 +543,20 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     DemandNotDisposed();
                     configured = _catalog.GetConfigured(widgetId);
                 }
+                try
+                {
+                    operationResult = await operation(configured, restartDeadline.Token)
+                        .WaitAsync(restartDeadline.Token).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    operationFailure = exception;
+                }
                 freshRegistration = CreateRegistration(configured);
                 if (previousState != WidgetLifecycleState.Background)
                 {
                     await freshRegistration.Client.SetLifecycleStateAsync(
-                        previousState, cancellationToken).ConfigureAwait(false);
+                        previousState, restartDeadline.Token).ConfigureAwait(false);
                     freshRegistration.HostLifecycle = previousState;
                 }
 
@@ -536,10 +580,17 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     oldRegistration.CompleteRetirementLocked();
                     published = true;
                 }
-                return result;
+                if (operationFailure is not null)
+                {
+                    result.Dispose();
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo
+                        .Capture(operationFailure).Throw();
+                }
+                return new BridgeClientReplacement<T>(result, operationResult);
             }
             catch (Exception exception)
             {
+                if (published) throw;
                 if (freshRegistration is not null)
                 {
                     try

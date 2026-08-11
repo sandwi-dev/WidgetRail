@@ -37,6 +37,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
+    ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Built-in widgets remain visible and read-only without community packages", BuiltInWidgetInventory),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
@@ -770,6 +771,40 @@ static async Task InstalledWidgetReview()
     Assert.Valid(second);
     Assert.Valid(details);
     Assert.Valid(permissions);
+}
+
+static async Task InstalledWidgetLocalDataClear()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.test.local-a", "dev.publisher",
+        "Local A", [], []);
+    WriteInstalledWidget(catalogRoot, "dev.test.local-b", "dev.publisher",
+        "Local B", [], []);
+    var service = new LocalDataDiagnosticsService("dev.test.local-a");
+    var widget = CreateWithPermissions(
+        temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")),
+        diagnostics: service);
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.select.0");
+    var details = Snapshot(widget);
+    Assert.Equal("Clear local data", Button(details.Root, "installed.details.local-data").Text);
+    Assert.True(!JsonSerializer.Serialize(details).Contains(service.Token, StringComparison.Ordinal),
+        "Opaque local-data token escaped through the semantic snapshot.");
+    await Action(widget, "installed.local-data.open");
+    Assert.Equal(SettingsPage.InstalledWidgetLocalData, widget.CurrentPage);
+    var confirm = Snapshot(widget);
+    Assert.Contains("does not remove packages", Text(confirm.Root, "installed.local-data.help").Text!);
+    Assert.Equal("installed.local-data.back", confirm.InitialFocusId);
+    await Action(widget, "installed.local-data.clear");
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    var cleared = Snapshot(widget);
+    Assert.Equal("No local data stored", Button(cleared.Root, "installed.details.local-data").Text);
+    Assert.Equal(2, service.InspectCount);
+    Assert.Equal(1, service.ClearCount);
+    Assert.Equal("dev.test.local-a", service.ClearedWidgetId);
+    Assert.True(service.NeighborExists, "Clearing the selected widget changed its neighbor.");
 }
 
 static async Task BuiltInWidgetInventory()
@@ -1823,7 +1858,8 @@ static SettingsWidget CreateWithPermissions(
     string catalogRoot,
     ConsentStore consentStore,
     string? bundledWidgetRoot = null,
-    WidgetCatalogOptions? catalogOptions = null)
+    WidgetCatalogOptions? catalogOptions = null,
+    IPlatformDiagnosticsService? diagnostics = null)
 {
     var paths = new PlatformSettingsPaths(settingsRoot);
     return new SettingsWidget(
@@ -1831,6 +1867,7 @@ static SettingsWidget CreateWithPermissions(
         new ThemeCatalog(paths),
         new WidgetCatalog(catalogRoot, catalogOptions),
         consentStore,
+        diagnostics,
         bundledWidgetRoot: bundledWidgetRoot);
 }
 
@@ -1985,6 +2022,52 @@ file sealed class SequenceDiagnosticsService(params PlatformDiagnosticsSnapshot[
         cancellationToken.ThrowIfCancellationRequested();
         var request = Interlocked.Increment(ref _requests);
         return ValueTask.FromResult(_snapshots[Math.Min(request - 1, _snapshots.Length - 1)]);
+    }
+}
+
+file sealed class LocalDataDiagnosticsService(string selectedId) : IPlatformDiagnosticsService
+{
+    private bool _selectedExists = true;
+    public string Token { get; } = new('A', 64);
+    public int InspectCount { get; private set; }
+    public int ClearCount { get; private set; }
+    public string? ClearedWidgetId { get; private set; }
+    public bool NeighborExists { get; private set; } = true;
+
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
+
+    public ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        InspectCount++;
+        var exists = string.Equals(widgetId, selectedId, StringComparison.Ordinal)
+            ? _selectedExists
+            : NeighborExists;
+        return ValueTask.FromResult(new PlatformWidgetLocalDataInspection(
+            widgetId, widgetId, exists,
+            exists ? "local_data_present" : "no_local_data",
+            exists ? Token : null));
+    }
+
+    public ValueTask<PlatformWidgetLocalDataClearResult> ClearWidgetLocalDataAsync(
+        string widgetId,
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ClearCount++;
+        ClearedWidgetId = widgetId;
+        if (!string.Equals(widgetId, selectedId, StringComparison.Ordinal) ||
+            !string.Equals(confirmationToken, Token, StringComparison.Ordinal))
+            return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
+                PlatformWidgetLocalDataClearStatus.Stale, "confirmation_stale"));
+        _selectedExists = false;
+        return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
+            PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
     }
 }
 

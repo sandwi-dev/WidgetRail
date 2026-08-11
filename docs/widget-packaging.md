@@ -172,6 +172,16 @@ confirmation token, and refreshes the bounded host-owned list after each typed
 result. This is a private PID- and nonce-authenticated control channel, not a
 manifest capability or community-widget API.
 
+The same trusted companion provides per-widget **Clear local data** under
+**Settings → Installed widgets**. Inspection returns only the exact current
+widget ID, a safe label, whether overlay-owned private state exists, a bounded
+status code, and—only when state exists—an opaque revision-bound confirmation
+token. After explicit confirmation the bridge retires the selected worker,
+revalidates its current catalog identity and private-state revision, clears only
+`HostServices.PrivateState`, and publishes a fresh worker generation. It never
+projects the document to Settings, accepts a path, or affects a neighboring
+package identity.
+
 A pin is authoritative. If its exact immutable version directory is absent,
 discovery reports `active_version_missing`; malformed installed content fails
 with its structural catalog diagnostic. Neither case falls forward or backward

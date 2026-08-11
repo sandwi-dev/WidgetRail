@@ -22,6 +22,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
+    private readonly BridgeWidgetLocalDataService _localData;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
     private long _hostEffectSequence;
@@ -59,6 +60,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             PublishClientFailure);
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
+        _localData = new BridgeWidgetLocalDataService(
+            _registry, _platformBackend, _catalogMonitor);
         _diagnostics = new BridgeDiagnosticsProjection(
             new WidgetBridgeDiagnosticsSource(
                 _registry,
@@ -74,6 +77,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     public int RunningWorkerCount => _registry.RunningWorkerCount;
     public WorkerResidencyBudgetSnapshot ResidencyBudget => _registry.ResidencyBudget;
     internal int ArtworkRegistrationCount => _appLibraryArtwork?.RegistrationCount ?? 0;
+    internal ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default) =>
+        _localData.InspectAsync(widgetId, cancellationToken);
+    internal ValueTask<PlatformWidgetLocalDataClearResult> ClearWidgetLocalDataAsync(
+        string widgetId,
+        string confirmationToken,
+        CancellationToken cancellationToken = default) =>
+        _localData.ClearAsync(widgetId, confirmationToken, cancellationToken);
 
     public async Task RunAsync(TimeSpan acceptTimeout, CancellationToken cancellationToken = default)
     {
@@ -453,6 +465,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 ? context => new DiagnosticsWidgetProcessCompanion(
                     _diagnostics.CreateAsync,
                     _authorityRecovery.RetryAsync,
+                    _localData.InspectAsync,
+                    _localData.ClearAsync,
                     context)
                 : _consentStore is null || _platformBackend is null
                     ? null

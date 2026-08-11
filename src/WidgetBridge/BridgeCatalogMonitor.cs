@@ -98,6 +98,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             return new(_revision, _lastDiagnostics.Count, _retainedLastGood);
     }
 
+    internal string InstalledCatalogRoot => _installedCatalogRoot;
+
     public void Start()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

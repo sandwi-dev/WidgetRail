@@ -8,6 +8,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
     ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
+    ("Trusted worker inspects and clears only exact widget local data", WidgetLocalDataRoundTrip),
     ("Recovery retry reports stale and refused outcomes without mutation ambiguity", RecoveryRetryStaleAndRefused),
     ("Recovery retry timeout and caller cancellation fail closed", RecoveryRetryCancellationIsBounded),
     ("Recovery retry results enforce closed bounded diagnostics", RecoveryRetryResultIsBounded),
@@ -87,6 +88,46 @@ static async Task AuthenticatedRecoveryRetry()
     await Assert.ThrowsAsync<ArgumentException>(() =>
         harness.Client.RetryAuthorityRecoveryAsync(token.ToLowerInvariant()).AsTask());
     Assert.Equal(1, calls);
+}
+
+static async Task WidgetLocalDataRoundTrip()
+{
+    var token = ConfirmationToken('7', legacy: true);
+    var inspected = 0;
+    var cleared = 0;
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(51)),
+        inspect: (widgetId, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("game-launcher", widgetId);
+            Interlocked.Increment(ref inspected);
+            return ValueTask.FromResult(new PlatformWidgetLocalDataInspection(
+                widgetId, "Game Launcher", true, "local_data_present", token));
+        },
+        clear: (widgetId, observed, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("game-launcher", widgetId);
+            Assert.Equal(token, observed);
+            Interlocked.Increment(ref cleared);
+            return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
+                PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
+        });
+
+    var result = await harness.Client.InspectWidgetLocalDataAsync("game-launcher");
+    Assert.True(result.Exists);
+    Assert.Equal(token, result.ConfirmationToken);
+    var clear = await harness.Client.ClearWidgetLocalDataAsync("game-launcher", token);
+    Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, clear.Status);
+    Assert.Equal(1, inspected);
+    Assert.Equal(1, cleared);
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() =>
+        harness.Client.InspectWidgetLocalDataAsync("missing/widget").AsTask());
+    await Assert.ThrowsAsync<ArgumentException>(() =>
+        harness.Client.ClearWidgetLocalDataAsync("game-launcher", "bad").AsTask());
+    Assert.Equal(1, inspected);
+    Assert.Equal(1, cleared);
 }
 
 static async Task RecoveryRetryStaleAndRefused()
@@ -588,11 +629,15 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         TimeSpan? serverTimeout = null,
         TimeSpan? clientTimeout = null,
         Func<string, CancellationToken,
-            ValueTask<PlatformAuthorityRecoveryRetryResult>>? retry = null)
+            ValueTask<PlatformAuthorityRecoveryRetryResult>>? retry = null,
+        Func<string, CancellationToken,
+            ValueTask<PlatformWidgetLocalDataInspection>>? inspect = null,
+        Func<string, string, CancellationToken,
+            ValueTask<PlatformWidgetLocalDataClearResult>>? clear = null)
     {
         PipeName = $"gba-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
-            PipeName, provider, serverTimeout, retry);
+            PipeName, provider, serverTimeout, retry, inspect, clear);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

@@ -2612,6 +2612,26 @@ with C++ installed:
 
 ## Diagnostics
 
+- DLV-085 adds a document-blind per-widget local-data reset to trusted Settings.
+  The authenticated Settings companion carries only sanitized inspection/result
+  values and an opaque revision-bound confirmation token. The existing owners
+  remain singular: Settings owns catalog selection and presentation,
+  `BridgeClientRegistry` retires and replaces the exact worker generation, and
+  the private-state backend alone reads or clears documents. The new adapter
+  operates only while the registry slot is reserved, restores the prior
+  lifecycle with a fresh generation, and leaves neighboring widget state
+  untouched. No ordinary widget capability, public Widget SDK/protocol field,
+  filesystem deletion, or second lifecycle coordinator was added.
+  Focused Release evidence passes Runtime 74/74, Windows Community private
+  state 10/10, Widget Catalog 35/35, Settings 54/54, the authenticated
+  diagnostics transport 16/16, WidgetBridge 73/73 (including the composed
+  installed generic-worker clear/restart and neighbor-isolation path), and 55
+  documentation files. The retained runs are
+  `20260811T171804Z-8a4d3c74`, `20260811T172739Z-a6d4760b`, and
+  `20260811T173042Z-5a23c43d`; the first Bridge attempt timed out after a
+  replacement-cancellation regression, which was corrected before the final
+  green Bridge run.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:
