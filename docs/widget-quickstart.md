@@ -40,6 +40,15 @@ caller-selected journal path.
 
 ## Create and build a widget
 
+The blocks marked as the **canonical offline author journey** in this guide are
+kept in lockstep with one external temporary-directory fixture. That fixture
+generates the project from the checked-in release unit, compiles and executes
+the source shown below, and runs every marked CLI phase through removal. The
+`gbar dev`, scenario-preview, capability, AppContainer, and authority-recovery
+sections are advanced or host-integration guidance, not part of that
+credential-free offline proof.
+
+<!-- canonical-author-journey:create-build-test -->
 ```powershell
 & $gbar new widget VolumeControl `
   --output .\scratch\VolumeControl `
@@ -158,6 +167,87 @@ Interactive-only exact launch. The retained
 [Recent Apps reference](recent-apps.md) shows a read-only event stream with
 opaque OS identity and no foreground/process authority.
 
+### Canonical generated widget source
+
+This is the exact `src\VolumeControl.cs` emitted and compiled by the canonical
+journey, not a parallel illustrative snippet:
+
+<!-- canonical-author-journey:widget-source -->
+```csharp
+using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetSdk;
+
+namespace dev.example.VolumeControl;
+
+public sealed class VolumeControl : Widget
+{
+    private int _level = 2;
+    private bool _active;
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Text("VolumeControl", "title", "VolumeControl heading")
+                .Classes("title"),
+            UI.Text($"{(_active ? "Active" : "Paused")} · Level {_level}",
+                    "status", "Current lifecycle and level")
+                .Classes("status"),
+            UI.Row("actions",
+                UI.Button("Lower", "lower", "lower")
+                    .Disabled(_level == 0)
+                    .FocusRight("apply")
+                    .Shortcut(ControllerButton.LeftBumper),
+                UI.Button("Apply", "apply", "apply")
+                    .FocusLeft("lower")
+                    .FocusRight("raise")
+                    .Shortcut(ControllerButton.X),
+                UI.Button("Raise", "raise", "raise")
+                    .Disabled(_level == 4)
+                    .FocusLeft("apply")
+                    .Shortcut(ControllerButton.RightBumper)),
+            UI.Text("LB/RB adjust • X applies • Home returns to the game", "controller-help")
+                .Classes("controller-help")),
+        InitialFocusId: "apply");
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        switch (action.ActionId)
+        {
+            case "lower":
+                _level = Math.Max(0, _level - 1);
+                Invalidate();
+                break;
+            case "raise":
+                _level = Math.Min(4, _level + 1);
+                Invalidate();
+                break;
+            case "apply":
+                // Call a brokered capability here, then invalidate if visible state changes.
+                break;
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    {
+        _active = true;
+        Invalidate();
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        _active = false;
+        Invalidate();
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+### Advanced custom workers and capability tests
+
 Custom worker executables should delegate host startup to the public runtime
 bootstrap instead of parsing pipe or broker arguments:
 
@@ -175,6 +265,7 @@ private runtime APIs. See the SDK and runtime READMEs for complete examples.
 
 ## Validate
 
+<!-- canonical-author-journey:validate -->
 ```powershell
 & $gbar validate .\scratch\VolumeControl
 ```
@@ -188,6 +279,7 @@ safe numeric clamping do not fail validation; malformed or unsafe input does.
 The generated test above persists the same validated protocol tree it asserts.
 Inspect or canonicalize only that data file:
 
+<!-- canonical-author-journey:render -->
 ```powershell
 & $gbar render `
   .\scratch\VolumeControl\fixtures\ready.snapshot.json `
@@ -239,6 +331,7 @@ for the complete contract.
 
 ## Replay controller input
 
+<!-- canonical-author-journey:replay -->
 ```powershell
 & $gbar replay `
   .\scratch\VolumeControl\fixtures\ready.snapshot.json `
@@ -274,6 +367,7 @@ runs a bounded Release build with private intermediates, omits compiler symbols
 and machine-specific PDB paths, stages the declared entrypoint and dependencies,
 and then applies the deterministic package contract:
 
+<!-- canonical-author-journey:pack-install -->
 ```powershell
 & $gbar pack .\scratch\VolumeControl `
   --configuration Release `
@@ -338,12 +432,16 @@ widget** as a separate action; an incompatible selection remains reviewable
 but cannot be enabled. LB/RB page the five-row version list and B returns one
 scope. The equivalent CLI flow is:
 
+<!-- canonical-author-journey:version-lifecycle -->
 ```powershell
 & $gbar disable dev.example.volume-control
 & $gbar version list dev.example.volume-control
-& $gbar version select dev.example.volume-control 1.1.0
+& $gbar version select dev.example.volume-control 0.2.0
 # Review Settings → Installed widgets, then:
 & $gbar enable dev.example.volume-control
+& $gbar disable dev.example.volume-control
+& $gbar version rollback dev.example.volume-control
+& $gbar version select dev.example.volume-control 0.2.0
 ```
 
 `version rollback` without `--to` chooses the greatest installed version older
@@ -362,6 +460,15 @@ directory names and catalog state only; it never executes or trusts candidate
 package contents, never removes the selected generation, and can retire inactive
 history while that selected version remains enabled. It has no force or
 caller-supplied recursive path.
+
+After local review, remove the disabled widget and all of its immutable
+versions:
+
+<!-- canonical-author-journey:remove -->
+```powershell
+& $gbar disable dev.example.volume-control
+& $gbar uninstall dev.example.volume-control
+```
 
 If worker admission reports that AppContainer content authority is quarantined,
 inspect the local host journal and retry one exact transaction:

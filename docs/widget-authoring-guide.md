@@ -103,22 +103,13 @@ matching `GameBarAlternative.WidgetSdk` package into `.gbar/packages` and a
 builds offline after scaffolding, without a platform checkout or an absolute
 machine-specific project reference.
 
-Build the CLI and scaffold a widget:
-
-```powershell
-dotnet build .\tools\GbarCli\GbarCli.csproj -c Release
-$gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
-
-& $gbar new widget Clock `
-  --output .\scratch\Clock `
-  --id dev.example.clock `
-  --publisher dev.example
-
-dotnet build .\scratch\Clock\Clock.csproj -c Release
-dotnet run --project .\scratch\Clock\tests\Clock.Tests.csproj `
-  -c Release -- .\scratch\Clock\fixtures\ready.snapshot.json
-& $gbar validate .\scratch\Clock
-```
+Run the [canonical offline author journey](widget-quickstart.md#create-and-build-a-widget)
+to build the CLI, scaffold `VolumeControl`, compile and execute its generated
+test, validate/render/replay, package two versions, install/select/roll back,
+and remove them. Those marked blocks and the complete generated source are
+checked against one external temporary-directory fixture. This longer guide
+starts from that proven project and adds patterns; it does not maintain a
+second getting-started command sequence.
 
 The local package is a deterministic offline scaffold dependency bundled by
 that `gbar` version; it is not an externally published feed or proof of
@@ -142,51 +133,23 @@ Contributors changing public SDK signatures must use the checked-in
 removals, and signature changes all require an intentional baseline diff, and
 breaking pre-release resets do not require retaining obsolete APIs.
 
-The smallest useful widget is a public `Widget` subclass with a public
-parameterless constructor (or one whose parameters are all optional):
-
-```csharp
-using GameBarAlternative.WidgetSdk;
-
-namespace Dev.Example.Clock;
-
-public sealed class ClockWidget : Widget
-{
-    public override WidgetView Render() => new(
-        UI.Stack("clock.root",
-            UI.Text(DateTimeOffset.Now.ToString("t"), "clock.time"),
-            UI.Button("Refresh", "refresh", "clock.refresh")),
-        InitialFocusId: "clock.refresh");
-
-    public override ValueTask OnActionAsync(
-        WidgetActionEvent action,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (action.ActionId == "refresh")
-            Invalidate();
-        return ValueTask.CompletedTask;
-    }
-}
-```
+The complete compile-tested starter source is shown once in the
+[quickstart](widget-quickstart.md#canonical-generated-widget-source). The
+smallest useful widget remains a public `Widget` subclass with a public
+parameterless constructor (or one whose parameters are all optional).
 
 `Render()` returns current state; it must not perform network, device, blocking
 file, or long-running work. `Invalidate()` tells the host that visible state
 changed. It does not mutate focus or force an immediate paint.
 
 The checked-in [Clock sample](../samples/ClockWidget/ClockWidget.cs) is the
-minimal compileable reference. A custom executable worker should delegate
-startup rather than parse host arguments:
+minimal compiled hand-built reference.
 
-```csharp
-using GameBarAlternative.WidgetRuntime;
-
-return await WidgetWorkerBootstrap.RunAsync(args, () => new ClockWidget());
-```
-
-Installed packages normally use the platform's generic worker host and name
-the widget assembly/type in their manifest; they do not need to ship a custom
-worker executable.
+Advanced custom executable workers are outside the canonical starter: they
+should delegate startup to `WidgetWorkerBootstrap.RunAsync(args, () => new
+ClockWidget())` rather than parse host arguments. Installed packages normally
+use the platform's generic worker host and name the widget assembly/type in
+their manifest; they do not need to ship a custom worker executable.
 
 ## Tutorial 2: make the controller model intentional
 
