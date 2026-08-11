@@ -1720,6 +1720,34 @@ static async Task ExerciseNetworkControlsUnpairAsync(
     ViewSnapshot snapshot,
     SimulatedPlatformBrokerBackend backend)
 {
+    var details = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "network.details.open");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "network.details.open", details.Id));
+    snapshot = await WaitForSnapshotAsync(client, "192.0.2.10");
+    Assert.Equal(1, backend.NetworkConnectionDetailsReadCalls);
+    backend.NetworkConnectionDetails = backend.NetworkConnectionDetails with
+    {
+        Revision = 2,
+        Connectivity = NetworkConnectionDetailsConnectivity.Constrained,
+        IpAddresses = ["198.51.100.20"],
+    };
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.NetworkDetailsReadV1,
+        PlatformCapabilities.NetworkDetailsChanged,
+        new NetworkConnectionDetailsChangedEvent(2)));
+    snapshot = await WaitForSnapshotAsync(client, "198.51.100.20");
+    Assert.Equal(2, backend.NetworkConnectionDetailsReadCalls);
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+        node.Text?.Contains("interface", StringComparison.OrdinalIgnoreCase) == true ||
+        node.Text?.Contains("guid", StringComparison.OrdinalIgnoreCase) == true),
+        "Connection details exposed native adapter identity.");
+    var back = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "network.details.close");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "network.details.close", back.Id));
+    snapshot = await WaitForSnapshotAsync(client, "Conformance Wi-Fi");
+
     var bluetoothTab = Nodes(snapshot.Root).Single(node =>
         node.Id == "network.tab.bluetooth");
     await client.SendActionAsync(new WidgetActionEvent(
@@ -1890,6 +1918,11 @@ static SimulatedPlatformBrokerBackend CreateBackend(
             "wifi-current",
             "Conformance Wi-Fi",
             87),
+        NetworkConnectionDetails = new NetworkConnectionDetailsSummary(
+            1, NetworkConnectionDetailsState.Available,
+            NetworkConnectionDetailsConnectivity.Internet,
+            NetworkTransportKind.Wifi,
+            ["192.0.2.10"], ["192.0.2.1"], ["9.9.9.9"]),
         WifiRadio = new WifiRadioSummary(WifiRadioState.On, true),
         BluetoothRadioState = BluetoothRadioState.On,
     };

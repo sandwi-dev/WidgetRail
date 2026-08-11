@@ -1317,6 +1317,32 @@ not create a visible HWND in time. Retained result:
 That later fixture limitation is not represented as protected-Wi-Fi acceptance
 evidence and is not rerun here.
 
+DLV-092 adds a separately consented `system.network.details.read.v1` read
+capability and a controller-first Connection details route. The trusted Windows
+provider selects the documented best IPv4 interface when it can do so exactly,
+filters loopback/link-local/temporary addresses, bounds IP/gateway/DNS display
+values to 8/4/8, and reports offline, constrained, ambiguous, privacy-denied,
+and unavailable states without exposing interface GUIDs, MAC addresses, route
+tables, traffic, or Wi-Fi identity. Existing IP Helper/connectivity callbacks
+feed one bounded revision-only invalidation lane; Network Controls re-queries
+through an Active latest-wins operation, so event bursts coalesce, stale
+cancellation-ignoring results cannot publish, and Background owns no polling
+loop. Denial or failure remains isolated from Wi-Fi and Bluetooth controls.
+Focused Release evidence passes Windows Network 57/57, PlatformBroker 53/53,
+WidgetSdk 87/87, SDK compatibility 12/12, Network Controls 24/24, Settings
+54/54, and documentation validation across 55 Markdown files. The grouped
+results are retained at
+`artifacts/verification/20260811T203708Z-7c7c9917/verification-result.json`
+and the final provider/widget/docs delta at
+`artifacts/verification/20260811T204118Z-957d5854/verification-result.json`.
+The installed generic-AppContainer route passed 6/6 with exact consented
+details projection and one revision-driven refresh at
+`artifacts/verification/20260811T203857Z-1e230efe/verification-result.json`.
+A later repetition after removing an unused internal test counter stopped on
+the inherited Game Launcher fixture's all-Unavailable catalog rows; Network
+Controls was unchanged by that removal and the unrelated failure is retained at
+`artifacts/verification/20260811T204150Z-2e2e8009/verification-result.json`.
+
 DLV-035 keeps `WindowsNetworkPlatformBackend` as the only native-adapter
 lifetime, MTA owner-thread, command-queue, committed provider-state, event-
 channel, subscriber-publication, and disposal owner. Before the split, its

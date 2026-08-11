@@ -132,6 +132,16 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             restricted);
     }
 
+    public NativeNetworkConnectionDetails ReadConnectionDetails()
+    {
+        ThrowIfDisposed();
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            return WindowsNetworkConnectionDetailsPolicy.Read(_calls);
+        }
+    }
+
     public bool TryConnectSavedProfile(string nativeProfileKey)
     {
         ThrowIfDisposed();

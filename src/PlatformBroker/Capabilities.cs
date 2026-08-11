@@ -55,6 +55,7 @@ public static class PlatformCapabilities
     public const string AudioInputReadV1 = "system.audio.input.read.v1";
     public const string AudioInputControlV1 = "system.audio.input.control.v1";
     public const string NetworkReadV1 = "system.network.read.v1";
+    public const string NetworkDetailsReadV1 = "system.network.details.read.v1";
     public const string NetworkSavedProfileSwitchV1 = "system.network.saved-profile.switch.v1";
     public const string NetworkWifiReadV1 = "system.network.wifi.read.v1";
     public const string NetworkWifiConnectV1 = "system.network.wifi.connect.v1";
@@ -94,6 +95,7 @@ public static class PlatformCapabilities
     public const string AudioInputSetVolume = "audio.input.set-volume";
     public const string AudioInputSetMuted = "audio.input.set-muted";
     public const string NetworkStatusGet = "network.status.get";
+    public const string NetworkDetailsGet = "network.details.get";
     public const string NetworkSavedProfilesList = "network.saved-profiles.list";
     public const string NetworkSavedProfileSwitch = "network.saved-profile.switch";
     public const string NetworkAvailableWifiGet = "network.wifi.available.get";
@@ -145,6 +147,7 @@ public static class PlatformCapabilities
     public const string AudioDevicesChanged = "audio.devices.changed";
     public const string AudioInputChanged = "audio.input.changed";
     public const string NetworkStatusChanged = "network.status.changed";
+    public const string NetworkDetailsChanged = "network.details.changed";
     public const string NetworkAvailableWifiChanged = "network.wifi.available.changed";
     public const string NetworkWifiRadioChanged = "network.wifi.radio.changed";
     public const string NetworkBluetoothChanged = "network.bluetooth.changed";
@@ -172,6 +175,8 @@ public static class PlatformCapabilities
                 Set(AudioInputSetVolume, AudioInputSetMuted), Set()),
             [NetworkReadV1] = new(NetworkReadV1, 1, BrokerCapabilityKind.Read,
                 Set(NetworkStatusGet, NetworkSavedProfilesList), Set(NetworkStatusChanged)),
+            [NetworkDetailsReadV1] = new(NetworkDetailsReadV1, 1, BrokerCapabilityKind.Read,
+                Set(NetworkDetailsGet), Set(NetworkDetailsChanged)),
             [NetworkSavedProfileSwitchV1] = new(NetworkSavedProfileSwitchV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkSavedProfileSwitch), Set()),
             [NetworkWifiReadV1] = new(NetworkWifiReadV1, 1, BrokerCapabilityKind.Read,

@@ -37,6 +37,7 @@ The current closed capability set is:
 | `system.audio.input.read.v1` | `GetInputAsync`, `OpenInputSubscriptionAsync`, and `WatchInputAsync` for current default microphone volume/mute | Visible or Interactive |
 | `system.audio.input.control.v1` | `SetInputVolumeAsync` and `SetInputMutedAsync` for the current default microphone | Interactive only |
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, and `WatchStatusAsync` | Visible or Interactive |
+| `system.network.details.read.v1` | `GetConnectionDetailsAsync`, `OpenConnectionDetailsSubscriptionAsync`, and `WatchConnectionDetailsAsync`; bounded display-ready IP, default-gateway, and DNS values for one preferred connection only | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `SwitchSavedProfileAsync` | Interactive only |
 | `system.network.wifi.read.v1` | `GetAvailableWifiAsync`, `RequestWifiScanAsync`, `OpenAvailableWifiSubscriptionAsync`, and `WatchAvailableWifiAsync` | Read/events while Visible or Interactive; scan Interactive only |
 | `system.network.wifi.connect.v1` | `ConnectAvailableWifiAsync` for a current saved/open scan result | Interactive only |

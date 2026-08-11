@@ -80,6 +80,8 @@ ctor GameBarAlternative.WidgetSdk.WidgetModelSnapshot<TState>(TState Value, long
 ctor GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult Result, long Revision, bool Changed)
 ctor GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState>(TState Previous, TState Current, long Revision, bool Changed)
 ctor GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>(TRoute Route, TRoute RootRoute, int Depth, string InputScopeId, string? InitialFocusId, string? BackActionId, long Revision, System.Threading.CancellationToken RouteCancellationToken)
+ctor GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails(long Revision, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState State, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, GameBarAlternative.WidgetSdk.WidgetNetworkTransportKind Transport, System.Collections.Generic.IReadOnlyList<string> IpAddresses, System.Collections.Generic.IReadOnlyList<string> DefaultGateways, System.Collections.Generic.IReadOnlyList<string> DnsServers)
+ctor GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged(long Revision)
 ctor GameBarAlternative.WidgetSdk.WidgetNetworkStatus(GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity Connectivity, GameBarAlternative.WidgetSdk.WidgetNetworkTransportKind Transport, GameBarAlternative.WidgetSdk.WidgetNetworkWirelessAvailability WirelessAvailability, GameBarAlternative.WidgetSdk.WidgetNetworkDetailsAccess DetailsAccess, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState ConnectionAttemptState, string? AttemptProfileId, string? ActiveProfileId, string? ActiveProfileName, int? SignalPercent)
 ctor GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged(GameBarAlternative.WidgetSdk.WidgetNetworkStatus Status)
 ctor GameBarAlternative.WidgetSdk.WidgetOperationBusyChangedEventArgs(string key, bool isBusy)
@@ -231,6 +233,15 @@ enum GameBarAlternative.WidgetSdk.WidgetNavigationResult.Unchanged = GameBarAlte
 enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState.Connecting = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState.Connecting
 enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState.Failed = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState.Failed
 enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState.None = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState.None
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.Constrained = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.Constrained
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.Internet = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.Internet
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.Local = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.Local
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.None = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity.None
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Ambiguous = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Ambiguous
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Available = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Available
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Offline = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Offline
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.PrivacyDenied = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.PrivacyDenied
+enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Unavailable = GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState.Unavailable
 enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity.Internet = GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity.Internet
 enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity.Local = GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity.Local
 enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity.None = GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity.None
@@ -975,15 +986,27 @@ method GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.Scope(GameBarAlterna
 method GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.Scope(GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, GameBarAlternative.WidgetSdk.ScrollElement root) -> GameBarAlternative.WidgetSdk.ScrollElement
 method GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.Scope(GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute> snapshot, GameBarAlternative.WidgetSdk.StackElement root) -> GameBarAlternative.WidgetSdk.StackElement
 method GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.TryHandleBack(GameBarAlternative.WidgetSdk.WidgetActionEvent action, string? sourceFocusId = null) -> bool
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.Deconstruct(out long Revision, out GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState State, out GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, out GameBarAlternative.WidgetSdk.WidgetNetworkTransportKind Transport, out System.Collections.Generic.IReadOnlyList<string> IpAddresses, out System.Collections.Generic.IReadOnlyList<string> DefaultGateways, out System.Collections.Generic.IReadOnlyList<string> DnsServers) -> void
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.Deconstruct(out long Revision) -> void
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.ConnectAvailableWifiAsync(string networkId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.GetAvailableWifiAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworks>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.GetBluetoothAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot>
+method GameBarAlternative.WidgetSdk.WidgetNetworkService.GetConnectionDetailsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.GetSavedProfilesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile>>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.GetStatusAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetNetworkStatus>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.GetWifiRadioAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetWifiRadio>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.OpenAvailableWifiSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.IWidgetCapabilitySubscription<GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworksChanged>>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.OpenBluetoothDeviceSettingsAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.OpenBluetoothSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.IWidgetCapabilitySubscription<GameBarAlternative.WidgetSdk.WidgetBluetoothChanged>>
+method GameBarAlternative.WidgetSdk.WidgetNetworkService.OpenConnectionDetailsSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.IWidgetCapabilitySubscription<GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged>>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.OpenStatusSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.IWidgetCapabilitySubscription<GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged>>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.OpenWifiRadioSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.IWidgetCapabilitySubscription<GameBarAlternative.WidgetSdk.WidgetWifiRadioChanged>>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.PairBluetoothDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult>
@@ -994,6 +1017,7 @@ method GameBarAlternative.WidgetSdk.WidgetNetworkService.SwitchSavedProfileAsync
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.UnpairBluetoothDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchAvailableWifiAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworksChanged>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchBluetoothAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetBluetoothChanged>
+method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchConnectionDetailsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchStatusAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchWifiRadioAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetWifiRadioChanged>
 method GameBarAlternative.WidgetSdk.WidgetNetworkStatus.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetNetworkStatus
@@ -1524,6 +1548,10 @@ method static GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState>.op_Equality
 method static GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState>.op_Inequality(GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState> left, GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState> right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>.op_Equality(GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>? left, GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>.op_Inequality(GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>? left, GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.op_Equality(GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails? left, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.op_Inequality(GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails? left, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.op_Equality(GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged? left, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.op_Inequality(GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged? left, GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetNetworkStatus.op_Equality(GameBarAlternative.WidgetSdk.WidgetNetworkStatus? left, GameBarAlternative.WidgetSdk.WidgetNetworkStatus? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetNetworkStatus.op_Inequality(GameBarAlternative.WidgetSdk.WidgetNetworkStatus? left, GameBarAlternative.WidgetSdk.WidgetNetworkStatus? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged.op_Equality(GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged? left, GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged? right) -> bool
@@ -1733,6 +1761,8 @@ method virtual GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState,TResult>.Eq
 method virtual GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState>.Equals(GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState> other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>.Equals(GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.Dispose() -> void
+method virtual GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.Equals(GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.Equals(GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetNetworkStatus.Equals(GameBarAlternative.WidgetSdk.WidgetNetworkStatus? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged.Equals(GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetOperationHandle.Equals(GameBarAlternative.WidgetSdk.WidgetOperationHandle other) -> bool
@@ -1843,10 +1873,13 @@ property GameBarAlternative.WidgetSdk.WidgetModelSnapshot<TState> GameBarAlterna
 property GameBarAlternative.WidgetSdk.WidgetModelSnapshot<TState> GameBarAlternative.WidgetSdk.WidgetModelChangedEventArgs<TState>.Previous { get; }
 property GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute> GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.Value { get; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState GameBarAlternative.WidgetSdk.WidgetNetworkStatus.ConnectionAttemptState { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.Connectivity { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.State { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity GameBarAlternative.WidgetSdk.WidgetNetworkStatus.Connectivity { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkDetailsAccess GameBarAlternative.WidgetSdk.WidgetNetworkStatus.DetailsAccess { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkService GameBarAlternative.WidgetSdk.WidgetHostServices.Network { get; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkStatus GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged.Status { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetNetworkTransportKind GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.Transport { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkTransportKind GameBarAlternative.WidgetSdk.WidgetNetworkStatus.Transport { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetNetworkWirelessAvailability GameBarAlternative.WidgetSdk.WidgetNetworkStatus.WirelessAvailability { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetOperationAdmission GameBarAlternative.WidgetSdk.WidgetOperationHandle.Admission { get; set; }
@@ -1926,6 +1959,9 @@ property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.Widg
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.SavedIds { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.FavoriteSavedIds { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetElement.StyleClasses { get; set; }
+property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.DefaultGateways { get; set; }
+property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.DnsServers { get; set; }
+property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.IpAddresses { get; set; }
 property System.Collections.Generic.IReadOnlyList<string>? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.ItemUris { get; set; }
 property System.Exception GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Exception { get; set; }
 property System.Exception GameBarAlternative.WidgetSdk.WidgetOperationFailedEventArgs.Exception { get; }
@@ -2145,6 +2181,8 @@ property long GameBarAlternative.WidgetSdk.WidgetModelSnapshot<TState>.Revision 
 property long GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState,TResult>.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetModelUpdate<TState>.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>.Revision { get; set; }
+property long GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.Revision { get; set; }
+property long GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetOperationContext.Generation { get; }
 property long GameBarAlternative.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetPrivateStateMutation.Revision { get; set; }
@@ -2165,6 +2203,7 @@ property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAltern
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworksChanged> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.AvailableWifiChanged { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetBluetoothChanged> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.BluetoothChanged { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetMediaSessionsChanged> GameBarAlternative.WidgetSdk.WidgetMediaCapabilities.Changed { get; }
+property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.ConnectionDetailsChanged { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.StatusChanged { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetRecentActivitiesChanged> GameBarAlternative.WidgetSdk.WidgetRecentActivityCapabilities.Changed { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetSpotifyPlaybackChanged> GameBarAlternative.WidgetSdk.WidgetSpotifyCapabilities.PlaybackChanged { get; }
@@ -2197,6 +2236,7 @@ property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAl
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworks> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.GetAvailableWifi { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.GetBluetooth { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.RequestWifiScan { get; }
+property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.GetConnectionDetails { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetNetworkStatus> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.GetStatus { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary> GameBarAlternative.WidgetSdk.WidgetSpotifyCapabilities.Disconnect { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary> GameBarAlternative.WidgetSdk.WidgetSpotifyCapabilities.GetAuthorization { get; }
@@ -2433,6 +2473,8 @@ type enum GameBarAlternative.WidgetSdk.WidgetMediaPlaybackStatus : System.ICompa
 type enum GameBarAlternative.WidgetSdk.WidgetMediaSessionCommand : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetNavigationResult : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionAttemptState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetNetworkConnectivity : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetNetworkDetailsAccess : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetNetworkTransportKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2554,6 +2596,8 @@ type sealed class GameBarAlternative.WidgetSdk.WidgetModel<TState>
 type sealed class GameBarAlternative.WidgetSdk.WidgetModelChangedEventArgs<TState> : System.EventArgs
 type sealed class GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute> : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetNavigationSnapshot<TRoute>>
 type sealed class GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute> : System.IDisposable
+type sealed class GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails>
+type sealed class GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetailsChanged>
 type sealed class GameBarAlternative.WidgetSdk.WidgetNetworkService
 type sealed class GameBarAlternative.WidgetSdk.WidgetNetworkStatus : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetNetworkStatus>
 type sealed class GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged>

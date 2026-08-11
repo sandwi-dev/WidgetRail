@@ -12,6 +12,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Reentrant native publication disposal remains terminal", WindowsNetworkNativeAdapterScenarios.ReentrantPublicationDisposalIsTerminal),
     ("Failed WLAN open recovers without a duplicate handle", WindowsNetworkNativeAdapterScenarios.FailedOpenRecoversWithoutDuplicateHandle),
     ("Connectivity and native buffers remain bounded", WindowsNetworkNativeAdapterScenarios.ConnectivityAndNativeBuffersAreBounded),
+    ("Preferred connection details are bounded and ambiguity is explicit", WindowsNetworkNativeAdapterScenarios.ConnectionDetailsArePrivacyBounded),
     ("Scan and connect callbacks retain the adapter generation", WindowsNetworkNativeAdapterScenarios.ScanAndConnectCallbacksAreGenerationBound),
     ("Protected native profile creation rolls back only its failed generation", WindowsNetworkNativeAdapterScenarios.ProtectedProfileRollbackIsExact),
     ("Radio rollback uses one injected native transaction", WindowsNetworkNativeAdapterScenarios.RadioRollbackUsesOneInjectedTransaction),
@@ -29,6 +30,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Snapshots expose bounded sanitized labels and stable opaque IDs", SnapshotsAreSafeAndStable),
     ("Privacy restriction suppresses active Wi-Fi identity and signal", PrivacyRestrictionSuppressesDetails),
     ("Transport, radio, service, and access states remain explicit", NetworkStatesAreExplicit),
+    ("Connection details select one preferred route and invalidate by revision", ConnectionDetailsAreBoundedAndEventDriven),
     ("Disconnected enabled Wi-Fi remains available while explicit radio-off is distinct", RadioAvailabilityIsExplicit),
     ("Native Wi-Fi connection callbacks require the exact requested target", NativeConnectionCallbacksAreCorrelated),
     ("Missing native change registrations remain degraded", RegistrationHealthIsExplicit),
@@ -131,6 +133,52 @@ static async Task SnapshotsAreSafeAndStable()
     _ = await events.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
     var updated = Assert.Single(await backend.GetSavedNetworkProfilesAsync(CancellationToken.None));
     Assert.Equal(stableId, updated.ProfileId);
+}
+
+static async Task ConnectionDetailsAreBoundedAndEventDriven()
+{
+    var adapter = new FakeNativeAdapter(Snapshot());
+    adapter.SetConnectionDetails(new(
+        NetworkConnectionDetailsState.Available,
+        NetworkConnectionDetailsConnectivity.Internet,
+        NativeNetworkMedium.Ethernet,
+        ["192.0.2.4", "2001:db8::4"], ["192.0.2.1"], ["9.9.9.9"]));
+    await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter));
+    var changes = Channel.CreateUnbounded<long>();
+    backend.EventPublished += (_, value) =>
+    {
+        if (value.Payload is NetworkConnectionDetailsChangedEvent change)
+            changes.Writer.TryWrite(change.Revision);
+    };
+    var first = await backend.GetNetworkConnectionDetailsAsync(CancellationToken.None);
+    Assert.Equal(NetworkConnectionDetailsState.Available, first.State);
+    Assert.Equal(NetworkConnectionDetailsConnectivity.Internet, first.Connectivity);
+    Assert.Equal(NetworkTransportKind.Ethernet, first.Transport);
+    Assert.SequenceEqual(new[] { "192.0.2.4", "2001:db8::4" }, first.IpAddresses);
+    Assert.SequenceEqual(new[] { "192.0.2.1" }, first.DefaultGateways);
+    Assert.SequenceEqual(new[] { "9.9.9.9" }, first.DnsServers);
+
+    adapter.SetConnectionDetails(new(
+        NetworkConnectionDetailsState.Ambiguous,
+        NetworkConnectionDetailsConnectivity.Constrained,
+        NativeNetworkMedium.None, [], [], []));
+    for (var index = 0; index < 8; index++) adapter.RaiseChanged();
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    var revision = await changes.Reader.ReadAsync(timeout.Token);
+    var second = await backend.GetNetworkConnectionDetailsAsync(timeout.Token);
+    Assert.True(revision > first.Revision);
+    Assert.Equal(revision, second.Revision);
+    Assert.Equal(NetworkConnectionDetailsState.Ambiguous, second.State);
+    Assert.Equal(NetworkConnectionDetailsConnectivity.Constrained, second.Connectivity);
+    Assert.Equal(0, second.IpAddresses.Count);
+
+    adapter.FailConnectionDetails = true;
+    adapter.RaiseChanged();
+    _ = await changes.Reader.ReadAsync(timeout.Token);
+    var unavailable = await backend.GetNetworkConnectionDetailsAsync(timeout.Token);
+    Assert.Equal(NetworkConnectionDetailsState.Unavailable, unavailable.State);
+    var status = await backend.GetNetworkStatusAsync(timeout.Token);
+    Assert.Equal(NetworkConnectivity.None, status.Connectivity);
 }
 
 static async Task PrivacyRestrictionSuppressesDetails()
@@ -1149,6 +1197,10 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
     private NativeProtectedWifiConnectStartResult _protectedWifiConnectStartResult =
         NativeProtectedWifiConnectStartResult.Started;
     private NativeWifiRadioSnapshot _wifiRadio = new(NativeWifiRadioState.On, true);
+    private NativeNetworkConnectionDetails _connectionDetails = new(
+        NetworkConnectionDetailsState.Unavailable,
+        NetworkConnectionDetailsConnectivity.None,
+        NativeNetworkMedium.None, [], [], []);
     private NativeWifiRadioSetResult _wifiRadioSetResult = NativeWifiRadioSetResult.Succeeded;
     private NativeWifiRadioSnapshot? _wifiRadioMutation;
     private int _blockRadioSet;
@@ -1172,6 +1224,7 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
     public ManualResetEventSlim RadioSetEntered { get; } = new(false);
     public ManualResetEventSlim AllowRadioSet { get; } = new(false);
     public bool IsDisposed { get; private set; }
+    public bool FailConnectionDetails { get; set; }
     public int DisposeThreadId { get; private set; }
 
     public void SetGeneration(long generation) => Generation = generation;
@@ -1180,6 +1233,8 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
     public void SetWifiScanStartResult(NativeWifiScanStartResult result) => _scanStartResult = result;
     public void SetWifiConnectStartResult(NativeWifiConnectStartResult result) => _wifiConnectStartResult = result;
     public void SetWifiRadio(NativeWifiRadioSnapshot radio) => _wifiRadio = radio;
+    public void SetConnectionDetails(NativeNetworkConnectionDetails details) =>
+        _connectionDetails = details;
     public void SetWifiRadioSetResult(NativeWifiRadioSetResult result) => _wifiRadioSetResult = result;
     public void SetWifiRadioMutation(NativeWifiRadioSnapshot? radio) => _wifiRadioMutation = radio;
     public void BlockNextRadioSet()
@@ -1224,6 +1279,13 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
             AllowRead.Wait(TimeSpan.FromSeconds(5));
         }
         lock (_gate) return _snapshot;
+    }
+
+    public NativeNetworkConnectionDetails ReadConnectionDetails()
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        if (FailConnectionDetails) throw new InvalidOperationException("Details unavailable.");
+        lock (_gate) return _connectionDetails;
     }
 
     public bool TryConnectSavedProfile(string nativeProfileKey)

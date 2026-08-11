@@ -204,6 +204,35 @@ public sealed record WidgetNetworkStatus(
     [property: JsonRequired] string? ActiveProfileName,
     [property: JsonRequired] int? SignalPercent);
 
+public enum WidgetNetworkConnectionDetailsState
+{
+    Available,
+    Offline,
+    Ambiguous,
+    PrivacyDenied,
+    Unavailable,
+}
+
+public enum WidgetNetworkConnectionDetailsConnectivity
+{
+    None,
+    Local,
+    Constrained,
+    Internet,
+}
+
+public sealed record WidgetNetworkConnectionDetails(
+    [property: JsonRequired] long Revision,
+    [property: JsonRequired] WidgetNetworkConnectionDetailsState State,
+    [property: JsonRequired] WidgetNetworkConnectionDetailsConnectivity Connectivity,
+    [property: JsonRequired] WidgetNetworkTransportKind Transport,
+    [property: JsonRequired] IReadOnlyList<string> IpAddresses,
+    [property: JsonRequired] IReadOnlyList<string> DefaultGateways,
+    [property: JsonRequired] IReadOnlyList<string> DnsServers);
+
+public sealed record WidgetNetworkConnectionDetailsChanged(
+    [property: JsonRequired] long Revision);
+
 public sealed record WidgetSavedNetworkProfile(
     [property: JsonRequired] string ProfileId,
     [property: JsonRequired] string DisplayName,
@@ -577,6 +606,14 @@ public static class WidgetNetworkCapabilities
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetNetworkStatus>
         GetStatus { get; } = new("system.network.read.v1", "network.status.get");
 
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetNetworkConnectionDetails>
+        GetConnectionDetails { get; } =
+            new("system.network.details.read.v1", "network.details.get");
+
+    public static WidgetCapabilityEvent<WidgetNetworkConnectionDetailsChanged>
+        ConnectionDetailsChanged { get; } =
+            new("system.network.details.read.v1", "network.details.changed");
+
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, IReadOnlyList<WidgetSavedNetworkProfile>>
         GetSavedProfiles { get; } = new("system.network.read.v1", "network.saved-profiles.list");
 
@@ -866,6 +903,23 @@ public sealed class WidgetNetworkService
     public ValueTask<WidgetNetworkStatus> GetStatusAsync(
         CancellationToken cancellationToken = default) =>
         _client.InvokeAsync(WidgetNetworkCapabilities.GetStatus, new WidgetCapabilityQuery(), cancellationToken);
+
+    public ValueTask<WidgetNetworkConnectionDetails> GetConnectionDetailsAsync(
+        CancellationToken cancellationToken = default) =>
+        _client.InvokeAsync(
+            WidgetNetworkCapabilities.GetConnectionDetails,
+            new WidgetCapabilityQuery(), cancellationToken);
+
+    public IAsyncEnumerable<WidgetNetworkConnectionDetailsChanged>
+        WatchConnectionDetailsAsync(CancellationToken cancellationToken = default) =>
+        _client.SubscribeAsync(
+            WidgetNetworkCapabilities.ConnectionDetailsChanged, cancellationToken);
+
+    public ValueTask<IWidgetCapabilitySubscription<WidgetNetworkConnectionDetailsChanged>>
+        OpenConnectionDetailsSubscriptionAsync(
+            CancellationToken cancellationToken = default) =>
+        _client.OpenSubscriptionAsync(
+            WidgetNetworkCapabilities.ConnectionDetailsChanged, cancellationToken);
 
     public ValueTask<IReadOnlyList<WidgetSavedNetworkProfile>> GetSavedProfilesAsync(
         CancellationToken cancellationToken = default) =>

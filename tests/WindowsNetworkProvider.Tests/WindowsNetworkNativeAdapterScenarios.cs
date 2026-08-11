@@ -289,6 +289,36 @@ internal static class WindowsNetworkNativeAdapterScenarios
         return Task.CompletedTask;
     }
 
+    public static Task ConnectionDetailsArePrivacyBounded()
+    {
+        using var calls = ControlledNetworkNativeCalls.CreateDefault();
+        calls.ConnectivityHint = NetworkConnectivityLevelHint.InternetAccess;
+        calls.BestInterfaceIndex = 7;
+        calls.ConnectionInterfaces =
+        [
+            new(NetworkInterfaceType.Ethernet, OperationalStatus.Up, 4,
+                ["192.0.2.9"], ["192.0.2.1"], ["1.1.1.1"]),
+            new(NetworkInterfaceType.Wireless80211, OperationalStatus.Up, 7,
+                ["2001:db8::7"], ["2001:db8::1"], ["2606:4700:4700::1111"]),
+        ];
+        var selected = WindowsNetworkConnectionDetailsPolicy.Read(calls);
+        Assert.Equal(NetworkConnectionDetailsState.Available, selected.State);
+        Assert.Equal(NetworkConnectionDetailsConnectivity.Internet, selected.Connectivity);
+        Assert.Equal(NativeNetworkMedium.WiFi, selected.Transport);
+        Assert.SequenceEqual(new[] { "2001:db8::7" }, selected.IpAddresses);
+
+        calls.BestInterfaceResult = 1;
+        var ambiguous = WindowsNetworkConnectionDetailsPolicy.Read(calls);
+        Assert.Equal(NetworkConnectionDetailsState.Ambiguous, ambiguous.State);
+        Assert.Equal(0, ambiguous.IpAddresses.Count);
+
+        calls.ConnectivityHint = NetworkConnectivityLevelHint.None;
+        var offline = WindowsNetworkConnectionDetailsPolicy.Read(calls);
+        Assert.Equal(NetworkConnectionDetailsState.Offline, offline.State);
+        Assert.Equal(NetworkConnectionDetailsConnectivity.None, offline.Connectivity);
+        return Task.CompletedTask;
+    }
+
     public static Task ScanAndConnectCallbacksAreGenerationBound()
     {
         using var calls = ControlledNetworkNativeCalls.CreateDefault();
@@ -570,10 +600,12 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     public int? InterfaceDeclaredCount { get; set; }
     public int? RadioDeclaredCount { get; set; }
     public int BestInterfaceIndex { get; set; } = 7;
+    public uint BestInterfaceResult { get; set; }
     public bool ManagedNetworkAvailable { get; set; } = true;
     public NetworkConnectivityLevelHint ConnectivityHint { get; set; } =
         NetworkConnectivityLevelHint.InternetAccess;
     public IReadOnlyList<ManagedNetworkInterfaceData> ManagedInterfaces { get; set; } = [];
+    public IReadOnlyList<ManagedNetworkConnectionInterfaceData> ConnectionInterfaces { get; set; } = [];
     public IReadOnlyList<WlanInterfaceInfo> Interfaces { get; set; } = [];
     public IReadOnlyList<WlanProfileInfo> Profiles { get; set; } = [];
     public IReadOnlyList<WlanAvailableNetwork> AvailableNetworks { get; set; } = [];
@@ -877,13 +909,16 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     public uint ReadBestInterface(uint destinationAddress, out uint interfaceIndex)
     {
         interfaceIndex = checked((uint)BestInterfaceIndex);
-        return ErrorSuccess;
+        return BestInterfaceResult;
     }
 
     public bool IsNetworkAvailable() => ManagedNetworkAvailable;
 
     public IReadOnlyList<ManagedNetworkInterfaceData> ReadManagedInterfaces() =>
         ManagedInterfaces;
+
+    public IReadOnlyList<ManagedNetworkConnectionInterfaceData> ReadConnectionInterfaces() =>
+        ConnectionInterfaces;
 
     public void FireIpChange() => IpCallback?.Invoke(IntPtr.Zero, IntPtr.Zero, 0);
 

@@ -46,6 +46,7 @@ eventual widgets:
 | `system.audio.input.read.v1` | Read/watch volume and mute for the current default capture endpoint; no sample capture. |
 | `system.audio.input.control.v1` | Set volume/mute for the current default capture endpoint while Interactive. |
 | `system.network.read.v1` | Read sanitized connectivity/saved-profile state and subscribe to bounded network-change events. |
+| `system.network.details.read.v1` | Read bounded display-ready IP, default-gateway, and DNS values for one preferred connection; subscribe to revision-only invalidation and re-query current truth. No raw interface or route identity. |
 | `system.network.saved-profile.switch.v1` | Connect one opaque already-saved profile while Interactive; no profile creation or secrets. |
 | `system.network.wifi.read.v1` | Read the cached available-network snapshot, explicitly request one scan while Interactive, and subscribe to bounded scan snapshots. |
 | `system.network.wifi.connect.v1` | Connect one current generation-bound saved/open scan result while Interactive. Bundled Network Controls may additionally use its trusted masked host prompt for one supported WPA2/WPA3 Personal result; the secret and profile XML bypass the worker/public SDK. |

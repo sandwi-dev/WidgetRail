@@ -402,6 +402,7 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AudioInputReadV1 => "Read microphone level",
         PlatformCapabilities.AudioInputControlV1 => "Control microphone level",
         PlatformCapabilities.NetworkReadV1 => "Read network status",
+        PlatformCapabilities.NetworkDetailsReadV1 => "Read current connection details",
         PlatformCapabilities.NetworkSavedProfileSwitchV1 => "Switch saved network profile",
         PlatformCapabilities.NetworkWifiReadV1 => "Find nearby Wi-Fi networks",
         PlatformCapabilities.NetworkWifiConnectV1 => "Connect to visible Wi-Fi",
@@ -453,6 +454,10 @@ internal static class SettingsPermissionPresentation
             "Change volume or mute for the current default multimedia microphone while the widget is interactive. It cannot record audio or switch devices.",
         PlatformCapabilities.NetworkReadV1 =>
             "See sanitized connectivity and saved-profile summaries without credentials.",
+        PlatformCapabilities.NetworkDetailsReadV1 =>
+            "See bounded current IP, default-gateway, and DNS display values for one preferred " +
+            "connection. It does not expose adapter IDs, MAC addresses, routes, traffic, Wi-Fi " +
+            "identity, or public location.",
         PlatformCapabilities.NetworkSavedProfileSwitchV1 =>
             "Switch to an existing saved profile by opaque ID. It cannot create profiles or read passwords.",
         PlatformCapabilities.NetworkWifiReadV1 =>

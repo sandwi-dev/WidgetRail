@@ -16,6 +16,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Master output capability validates payload lifecycle and events", MasterOutputContracts),
     ("Audio device and input permissions are granular opaque and lifecycle-gated", AudioDeviceInputContracts),
     ("Network operations switch only opaque saved profiles", NetworkOperationsAreSanitized),
+    ("Connection details are separately consented bounded and invalidation-only", NetworkConnectionDetailsContracts),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
@@ -334,7 +335,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(31, PlatformCapabilities.All.Count);
+    Assert.Equal(32, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -2533,6 +2534,49 @@ static async Task NetworkOperationsAreSanitized()
     var publicProperties = typeof(SwitchSavedNetworkProfileRequest).GetProperties()
         .Select(property => property.Name).ToArray();
     Assert.SequenceEqual(["ProfileId"], publicProperties);
+}
+
+static async Task NetworkConnectionDetailsContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend
+    {
+        NetworkConnectionDetails = new(
+            7, NetworkConnectionDetailsState.Available,
+            NetworkConnectionDetailsConnectivity.Constrained,
+            NetworkTransportKind.Ethernet,
+            ["192.0.2.20"], ["192.0.2.1"], ["9.9.9.9"]),
+    };
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.NetworkDetailsReadV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var denied = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkDetailsReadV1,
+        PlatformCapabilities.NetworkDetailsGet, new { }));
+    Assert.Equal("permission_denied", denied.ErrorCode);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkDetailsReadV1,
+        ConsentDecision.Grant);
+    await broker.RefreshConsentAsync();
+    var response = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkDetailsReadV1,
+        PlatformCapabilities.NetworkDetailsGet, new { }));
+    Assert.True(response.Succeeded && response.Payload is not null);
+    var json = response.Payload.GetValueOrDefault().GetRawText();
+    Assert.Contains("192.0.2.20", json);
+    Assert.DoesNotContain("interface", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("guid", json, StringComparison.OrdinalIgnoreCase);
+    Assert.DoesNotContain("mac", json, StringComparison.OrdinalIgnoreCase);
+    var projected = NetworkCapabilityDomain.ProjectEvent(
+        PlatformCapabilities.NetworkDetailsChanged,
+        new NetworkConnectionDetailsChangedEvent(8));
+    Assert.Contains("8", projected.GetRawText());
+    Assert.Throws<BrokerException>(() => NetworkCapabilityDomain.ValidateConnectionDetails(
+        backend.NetworkConnectionDetails with
+        {
+            IpAddresses = Enumerable.Repeat("192.0.2.1", 9).ToArray(),
+        }), "invalid_backend_data");
 }
 
 static async Task AvailableWifiContracts()
