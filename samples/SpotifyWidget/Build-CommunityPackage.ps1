@@ -35,8 +35,9 @@ if (-not [string]::IsNullOrWhiteSpace($Version)) {
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
 $cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
 $widgetProject = Join-Path $sampleRoot 'SpotifyWidget.csproj'
+$buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
 $publishRoot = Join-Path $artifactsRoot 'publish'
-$deterministicPathMap = "$repositoryRoot=/_/"
+$deterministicPathMap = "$buildGraphRoot=/_/build%2C$repositoryRoot=/_/"
 
 function Assert-ChildPath {
     param(
@@ -79,8 +80,9 @@ function Assert-NoReparsePoint {
 New-Item -ItemType Directory -Force -Path $artifactsRoot | Out-Null
 Assert-NoReparsePoint -Path $artifactsRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $stagingRoot
+Assert-ChildPath -Parent $artifactsRoot -Child $buildGraphRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $publishRoot
-foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
+foreach ($generatedDirectory in @($stagingRoot, $buildGraphRoot, $publishRoot)) {
     Assert-NoReparsePoint -Path $generatedDirectory
     if (Test-Path -LiteralPath $generatedDirectory) {
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
@@ -88,6 +90,7 @@ foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
 }
 New-Item -ItemType Directory -Force -Path $payloadRoot, (Join-Path $stagingRoot 'styles') | Out-Null
 Assert-NoReparsePoint -Path $stagingRoot
+Assert-NoReparsePoint -Path $buildGraphRoot
 Assert-NoReparsePoint -Path $publishRoot
 
 & dotnet publish $widgetProject `
@@ -98,6 +101,7 @@ Assert-NoReparsePoint -Path $publishRoot
     --property:PathMap=$deterministicPathMap `
     --property:UseSharedCompilation=false `
     --property:BuildInParallel=false `
+    --artifacts-path $buildGraphRoot `
     --output $publishRoot
 if ($LASTEXITCODE -ne 0) {
     throw "Spotify addon publish failed with exit code $LASTEXITCODE."

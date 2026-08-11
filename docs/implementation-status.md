@@ -474,8 +474,18 @@ map as a global publish-graph property, so the Widget SDK and protocol reference
 assemblies have identical MVIDs and reference fingerprints in every checkout.
 This removes the absolute checkout path previously embedded in
 `SpotifyWidget.dll` without changing public debugging, SDK, protocol, provider,
-or widget behavior. Spotify 0.2.13 is the post-DLV-043 immutable package; the
-supported workflow retains 0.2.11 and 0.2.12 as inactive rollback generations.
+or widget behavior. DLV-056's clean-root proof did not cover an ordinary warm
+main checkout: its package command could reuse the default incremental
+`bin`/`obj` graph and produce a different same-length managed payload after
+integration.
+
+DLV-057 makes the supported package command own the complete generated build
+graph under its selected artifact root. Every run removes only that bounded
+script-owned graph, then passes it to `dotnet publish` through
+`--artifacts-path`; ordinary developer `bin`/`obj` outputs are neither consumed
+nor deleted. Checkout path mapping and bounded NuGet cache reuse remain intact.
+Spotify 0.2.14 is the resulting immutable Community package; the supported
+workflow retains 0.2.11, 0.2.12, and 0.2.13 as inactive rollback generations.
 
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
