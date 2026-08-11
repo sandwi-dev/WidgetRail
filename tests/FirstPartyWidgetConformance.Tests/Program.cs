@@ -894,8 +894,8 @@ static async Task SpotifyInstalledPackageRunsIsolated(
     string acceptanceOutput)
 {
     const string packageId = "org.gbar.samples.spotify";
-    const string currentVersion = "0.2.12";
-    const string rollbackVersion = "0.2.11";
+    const string currentVersion = "0.2.13";
+    string[] rollbackVersions = ["0.2.11", "0.2.12"];
     Assert.True(File.Exists(packagePath), "The exact Spotify archive is missing.");
 
     using var validationRoot = new TemporaryDirectory("gba-spotify-dlv055-validation");
@@ -907,13 +907,14 @@ static async Task SpotifyInstalledPackageRunsIsolated(
     var catalog = new WidgetCatalog(catalogRoot);
     var snapshot = await catalog.DiscoverAsync();
     var selected = snapshot.Widgets.Single(widget => widget.Id == packageId);
-    Assert.True(selected.Enabled, "Spotify 0.2.12 is not enabled.");
+    Assert.True(selected.Enabled, "Spotify 0.2.13 is not enabled.");
     Assert.Equal(currentVersion, selected.ActiveVersion.Version.ToString());
-    var rollback = selected.Versions.Single(version =>
-        version.Version.ToString() == rollbackVersion);
-    Assert.True(
-        rollback.Version != selected.ActiveVersion.Version,
-        "Spotify 0.2.11 was not retained as a distinct inactive version.");
+    var rollbacks = rollbackVersions.Select(rollbackVersion =>
+        selected.Versions.Single(version =>
+            version.Version.ToString() == rollbackVersion)).ToArray();
+    Assert.True(rollbacks.All(rollback =>
+            rollback.Version != selected.ActiveVersion.Version),
+        "Spotify rollback versions were not retained as distinct inactive versions.");
 
     using var digestRoot = new TemporaryDirectory("gba-spotify-dlv055-digest");
     var independentlyInstalled = await new WidgetCatalog(digestRoot.Path)
@@ -921,12 +922,12 @@ static async Task SpotifyInstalledPackageRunsIsolated(
     Assert.Equal(
         independentlyInstalled.ContentDigest,
         selected.ActiveVersion.ContentDigest);
-    Assert.True(
-        !string.Equals(
-            rollback.ContentDigest,
-            selected.ActiveVersion.ContentDigest,
-            StringComparison.Ordinal),
-        "Spotify 0.2.12 must have a distinct content digest from 0.2.11.");
+    Assert.True(rollbacks.All(rollback =>
+            !string.Equals(
+                rollback.ContentDigest,
+                selected.ActiveVersion.ContentDigest,
+                StringComparison.Ordinal)),
+        "Spotify 0.2.13 must have a distinct digest from every retained rollback.");
 
     var installedManifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(
         Path.Combine(selected.ActiveVersion.InstallPath, "manifest.json")));
@@ -999,7 +1000,7 @@ static async Task SpotifyInstalledPackageRunsIsolated(
     {
         packageId,
         sourceVersion = currentVersion,
-        archive = Path.GetFullPath(packagePath),
+        archiveFileName = Path.GetFileName(packagePath),
         archiveSha256 = Convert.ToHexString(SHA256.HashData(
             await File.ReadAllBytesAsync(packagePath))).ToLowerInvariant(),
         installedRoot = selected.ActiveVersion.InstallPath,
@@ -1007,9 +1008,12 @@ static async Task SpotifyInstalledPackageRunsIsolated(
         selectedVersion = selected.ActiveVersion.Version.ToString(),
         selectedContentDigest = selected.ActiveVersion.ContentDigest,
         independentlyInstalledContentDigest = independentlyInstalled.ContentDigest,
-        rollbackVersion = rollback.Version.ToString(),
-        rollbackContentDigest = rollback.ContentDigest,
-        rollbackRetainedInactive = true,
+        rollbacks = rollbacks.Select(rollback => new
+        {
+            version = rollback.Version.ToString(),
+            contentDigest = rollback.ContentDigest,
+            retainedInactive = true,
+        }).ToArray(),
         enabled = selected.Enabled,
         requiresAppContainer = configured.RequiresAppContainer,
         firstSnapshotSequence = first.Sequence,
