@@ -1,6 +1,6 @@
 # Widget SDK compatibility and release unit
 
-Status: checked-in pre-release API baseline and local release-unit validation
+Status: checked-in pre-release API baseline and discoverable local release-unit validation
 
 `eng/WidgetSdkRelease.props` is the canonical local release-unit contract. It
 sets the pre-release SDK version, package ID, and supported ControllerWidget
@@ -33,6 +33,13 @@ to 5,000 symbols and a 1-MiB baseline. It prints every missing symbol as
 `COMPATIBLE_ADDITION_OR_CHANGED`. Either category fails verification so the
 reviewed baseline cannot drift implicitly.
 
+The compatibility project is the repository's first discoverable
+`MSTest.Sdk` 4.3.2 suite. Ordinary `dotnet test` and verifier execution are
+read-only: the named tests compare the current surface with the reviewed
+baseline and exercise malformed, missing, oversized, path-bearing, and exact
+diff-classification cases. Existing executable scenario suites retain their
+current `dotnet run` contracts.
+
 ## Accept an intentional pre-release change
 
 First inspect the exact reported symbols and classify the change:
@@ -52,11 +59,12 @@ First inspect the exact reported symbols and classify the change:
 After that decision, regenerate only the API baseline:
 
 ```powershell
-dotnet run --project .\tests\WidgetSdk.Compatibility.Tests\WidgetSdk.Compatibility.Tests.csproj `
-  --configuration Release -- --update
+dotnet run --project .\tools\WidgetSdkApiBaseline\WidgetSdkApiBaseline.csproj `
+  --configuration Release -- update
 ```
 
 Review `src/WidgetSdk/PublicApi.txt` as a normal source change, then rerun the
 compatibility, WidgetSdk, and GbarCli scaffold checks. The update command does
 not edit the release-unit properties, template, package, docs, or protocol; it
-only makes the reviewed public-surface decision explicit.
+only makes the reviewed public-surface decision explicit. Tests never invoke
+this command against the checked-in baseline.
