@@ -841,10 +841,12 @@ route/action, playback, and presentation boundaries while retaining one
   and Settings clears one exact running or disabled widget's private state
   through the singular host owners. DLV-086 `abbf54b` is accepted and integrated
   through `14f7451`, closing the narrow YT Music source/handshake version drift.
-  DLV-087 is the
-  next visible cross-lane milestone: protected Personal Wi-Fi connection through
-  a host-owned credential prompt. DLV-038 remains deferred test-architecture
-  debt rather than filler work.
+  DLV-087 is the active visible cross-lane milestone: protected Personal Wi-Fi
+  connection through a host-owned credential prompt. DLV-091 and DLV-092 are
+  ordered Ready successors for Bluetooth removal and privacy-safe connection
+  details, so the widgets lane can continue immediately from a clean DLV-087
+  boundary. DLV-038 remains deferred test-architecture debt rather than filler
+  work.
 
 ### DLV-082 — Surface isolated game-library source health
 
@@ -1464,6 +1466,146 @@ delete pre-existing Windows profile state, a documented API cannot support the
 selected Personal mode, or a material threat-model/native architecture choice
 is required. Preserve the bounded evidence rather than falling back to Shell,
 netsh, registry, or undocumented APIs.
+
+### DLV-091 — Remove a paired Bluetooth device with explicit confirmation
+
+**State:** Ready; take automatically after DLV-087 reaches a clean committed
+boundary and the planner control-plane commit containing this assignment is
+merged
+**Lane:** widgets, acting as the serialized Bluetooth capability lead
+**Baseline:** clean closing commit of DLV-087 plus the accepted current `main`
+**Dependencies:** DLV-028, DLV-031, DLV-037, and accepted DLV-087 only for
+contiguous lane order
+**Owner:** Network Controls paired-device presentation, one exact host-brokered
+unpair operation, trusted Windows Bluetooth provider policy, focused fixtures,
+and directly affected public documentation; no generic Bluetooth profile,
+driver, compositor, or media ownership
+**Concurrency:** Do not begin until DLV-087 commits and releases the shared
+Network Controls, broker, bridge, and native-input boundary. Once active, the
+platform lane must not change those files or Bluetooth provider contracts.
+
+**Visible outcome:** A controller user can select a currently paired Bluetooth
+device, choose Remove device, review an explicit confirmation, and see Removing,
+Removed, Denied, Failed, or No longer available feedback without opening Windows
+Settings. Cancel returns to the same device and makes no system change.
+
+**Objective:** Extend the existing read/pair/manage slice with the documented
+`DeviceInformation.Pairing.UnpairAsync` operation while preserving exact opaque
+identity, authoritative post-operation refresh, and a separate least-privilege
+grant for destructive device removal.
+
+**In scope:** a distinct closed `bluetooth.unpair`-style capability; exact
+current generation-bound paired-device token; existing bounded `ActionSheet`
+or confirmation scope with non-color destructive copy; Interactive-only
+admission; one in-flight operation; WinRT unpair result mapping; device
+disappearance, provider refresh, denial, busy, timeout, cancellation-ignoring
+completion, widget hide/restart, stale generation, repeated confirmation, and
+unaffected-neighbor behavior; authoritative event/query reconciliation; stable
+nearest-survivor focus; package consent and public capability documentation.
+
+**Out of scope:** deleting drivers, services, registry state, cached secrets, or
+arbitrary device nodes; Shell/Settings automation; automatic removal; generic
+Bluetooth Connect/Disconnect; profile-specific GATT/RFCOMM operations; pairing
+ceremonies beyond the accepted slice; background control; screenshots; or
+physical-device acceptance in the automated gate.
+
+**Acceptance criteria:** only a current paired device exposed by the trusted
+provider can produce one confirmation-bound unpair request. The widget receives
+no raw device instance path, Bluetooth address, association endpoint, handle,
+or provider exception. Cancel, stale identity, replacement, hide, removal, or
+lost Interactive authority invokes nothing. Commit invokes at most one current
+`UnpairAsync`; UI success appears only after an accepted result and
+authoritative refresh no longer reports the pairing. Failure retains the device
+and offers bounded retry or Windows-managed details. Another device and all
+Wi-Fi/radio behavior remain unchanged, and no new polling, background command,
+or retained authority is introduced.
+
+**Verification:** Tier 1 Network Controls, Windows Bluetooth provider,
+PlatformBroker, WidgetBridge/Runtime, capability/API compatibility, and
+documentation Release suites with deterministic fake WinRT completion. Tier 2
+smallest installed generic-AppContainer route proving confirm, cancel, exact
+unpair, stale rejection, authoritative removal, and unaffected neighbor. This
+adds a destructive public capability, so run the canonical Tier-3 verifier
+exactly once from the clean closing commit. After accepted integration, fully
+package and visibly relaunch. Real hardware unpair/re-pair remains manual and
+must preserve a known recovery path.
+
+**Stop/escalate when:** the current provider cannot map a sanitized row back to
+one exact `DeviceInformation` pairing owner, Windows requires driver/device-node
+authority beyond `UnpairAsync`, correctness would remove more than the selected
+pairing, or a material public threat-model choice is required. Do not substitute
+Settings, PowerShell, registry, SetupAPI deletion, or another broad management
+grant.
+
+### DLV-092 — Show privacy-safe active connection details
+
+**State:** Ready; execute automatically after DLV-091 commits
+**Lane:** widgets, acting as the serialized Network Controls read-capability lead
+**Baseline:** clean closing commit of DLV-091
+**Dependencies:** DLV-028, DLV-031, DLV-037, DLV-087, and DLV-091 only for
+ordered same-lane delivery
+**Owner:** trusted Windows network-details provider, bounded read-only broker/SDK
+contract, Network Controls details route, focused fixtures, and directly
+affected public documentation; no diagnostic repair, traffic capture, or
+connection-control ownership
+**Concurrency:** May begin only after DLV-091 commits. Platform remains idle
+unless the planner assigns work proven disjoint from Network Controls,
+PlatformBroker, WidgetBridge, and the public capability surface.
+
+**Visible outcome:** Network Controls offers a controller-first Connection
+details view showing the active transport, Windows connectivity level, and
+bounded current IP, gateway, and DNS summaries with explicit unavailable,
+privacy-denied, changed, and offline states. It updates after a real network
+change without a polling loop and never blocks Wi-Fi or Bluetooth controls.
+
+**Objective:** Add the roadmap's first read-only connection-detail slice through
+one explicit privacy-reviewed capability, using documented Windows connectivity
+and IP Helper observations rather than Shell commands or broad adapter access.
+
+**In scope:** a separate read grant and consent copy; current preferred
+connection plus Ethernet/Wi-Fi/other transport classification; closed
+`None`/`Local`/`Constrained`/`Internet` connectivity values; bounded normalized
+IPv4/IPv6, default-gateway, and DNS display values only where documented local
+APIs provide current truth; link-local/loopback/temporary-address policy;
+event-driven NetworkStatus/IP Helper invalidation followed by re-query; one
+immutable revision; compact/standard/wide layout; copy-free semantic text;
+adapter loss/replacement, VPN/multiple-route ambiguity, sleep/resume, privacy
+denial/revocation, malformed/over-bound provider data, cancellation-ignoring
+refresh, and lifecycle drain.
+
+**Out of scope:** SSID/BSSID or signal without the existing explicit Windows
+location flow; interface GUID, MAC address, route table, DHCP lease, domain,
+proxy, public-IP lookup, geolocation, packet contents, traffic history, saved
+credentials, continuous throughput sampling, latency/packet-loss tests,
+DNS edits, renew/repair actions, Shell/PowerShell/netsh output, clipboard copy,
+or remote network requests.
+
+**Acceptance criteria:** the widget receives only the bounded display contract
+authorized by the new read grant and no raw adapter/route/provider identity.
+One event burst coalesces to one current re-query; a stale result cannot replace
+the current revision, and Hidden/Background state owns no timer or sampling
+loop. Ambiguous or unavailable gateway/DNS truth is labeled honestly rather
+than guessed. Denial or optional-section failure leaves existing Wi-Fi,
+Bluetooth, radio, scan, pair, connect, and unpair surfaces usable and focusable.
+Snapshot, log, persisted state, and diagnostics bounds are explicit and contain
+no unapproved network identity.
+
+**Verification:** Tier 1 Windows network provider, PlatformBroker, WidgetSdk/API
+compatibility, Network Controls presentation/navigation, lifecycle, and
+documentation Release suites with deterministic multi-adapter, VPN, offline,
+denial, churn, and stale-completion fixtures. Tier 2 smallest installed generic-
+AppContainer route proving consent, bounded projection, one event-driven
+refresh, optional failure isolation, and no worker polling. Run the canonical
+Tier-3 verifier exactly once only if the closing diff changes the public cross-
+process schema or verifier manifest; otherwise retain focused and grouped
+evidence. After accepted integration, fully package and visibly relaunch.
+
+**Stop/escalate when:** documented APIs cannot provide a stable bounded value,
+accurate display requires raw route/interface authority or a remote probe, the
+privacy model would expose location-sensitive Wi-Fi identity outside its
+existing explicit flow, or the assignment starts becoming a throughput/
+latency/repair framework. Preserve the exact gap for a later diagnostic
+milestone.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
