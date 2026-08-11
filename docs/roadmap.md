@@ -264,8 +264,10 @@ remains off until the publisher-trust gates in Phase 4.
   coherent Release is visibly running. Accepted DLV-043 `6c619e9`, integrated
   through `d534410`, now establishes real Spotify route/action, playback, and
   snapshot-only presentation boundaries over one retained orchestration owner.
-  Active DLV-056 must remove the demonstrated checkout-path-sensitive package
-  output and publish a two-root-reproducible main artifact as `0.2.13`. Continue suitable
+  DLV-056 candidate `2737852` removes checkout paths and matches clean roots, but
+  its ordinary warm-main integration refresh rebuilt a different managed DLL.
+  Active DLV-057 must make the supported package command independent of prior
+  build state and publish exact selected `0.2.14`. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -326,9 +328,11 @@ remains off until the publisher-trust gates in Phase 4.
   Accepted DLV-055 now runs the integrated DLV-022/053 Queue/Playlist traversal,
   bounded duplicate-occurrence identity, and non-self-linking singleton header
   graph from unique selected Spotify `0.2.12`. DLV-043's real private ownership
-  boundaries are accepted and integrated; active DLV-056 now makes the managed
-  package checkout-independent and publishes the exact main artifact as
-  `0.2.13`; immutable `0.2.11`/`0.2.12` remain rollback generations.
+  boundaries are accepted and integrated. DLV-056's clean-root proof is not
+  sufficient because ordinary warm main produced a different DLL; active
+  DLV-057 now owns an isolated script-generated artifact graph and exact
+  main-built `0.2.14`. Immutable `0.2.11`/`0.2.12`/`0.2.13` remain rollback
+  generations.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,

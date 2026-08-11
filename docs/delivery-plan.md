@@ -699,9 +699,13 @@ commit produced a different sealed digest and immutable `0.2.12` correctly
 refused replacement. Accepted DLV-043 source commit `6c619e9`, integrated
 through `d534410`, replaces the logical partial widget with real value-based
 route/action, playback, and presentation boundaries while retaining one
-orchestration owner. Active DLV-056 now makes Community output checkout-
-independent and publishes the corrected artifact as `0.2.13`. DLV-038 remains
-deferred test-architecture debt rather than filler work.
+  orchestration owner. DLV-056 candidate `2737852`, integrated through
+  `e694316`, proved identical clean-root output but failed the required ordinary
+  warm-main refresh: main rebuilt a different DLL/archive from the same commit.
+  DLV-057 is therefore the active visible release correction and must make the
+  supported Community package command independent of prior `bin`/`obj` state,
+  publish immutable `0.2.14`, and relaunch that exact selected payload. DLV-038
+  remains deferred test-architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2702,7 +2706,9 @@ immutable `0.2.12` cannot carry the newly integrated source.
 
 ### DLV-056 — Make Community packages reproducible across worktrees
 
-**State:** Assigned and in progress after accepted DLV-043
+**State:** Integrated candidate `2737852` through `e694316`; acceptance withdrawn
+after the required ordinary warm-main refresh produced a different payload;
+corrected by active DLV-057
 **Baseline:** accepted DLV-043 integration `d534410` plus reviewer control-plane
 commit `509d915`
 **Dependencies:** DLV-055 and DLV-043 only for source/integration order
@@ -2752,6 +2758,81 @@ semantics or repository-wide release policy beyond a narrow documented setting,
 either older immutable version would need deletion/overwrite, hashes still vary
 after the identified path input is removed, or startup fails outside packaging.
 Preserve all installed generations and report exact differing archive entries.
+
+**Reviewer disposition:** The closing commit correctly removes absolute checkout
+paths and three retained clean proof builds match byte-for-byte: archive SHA-256
+`9c4de014d9d8fb2847c3f75b32778a492e8c602cabbf731497366c06419e83da`
+and payload-DLL SHA-256
+`1752c8203fb9c1161419f8d433761e611b0081551b13f331805c5b77cab65c74`.
+The required post-integration build from ordinary warm main did not match:
+archive SHA-256
+`e0000c3ba6979600461caf775f57fef009d588fbf88a8f869e4b2ce1d8dde25f`
+and payload-DLL SHA-256
+`540d33093f2829c3b8f978af528df434d9467e9bc358a6312718c13b62398c26`.
+Manifest and theme entries are identical; the same-length managed DLL alone
+differs. The package command can therefore reuse path-map-sensitive stale
+intermediates and does not yet meet its normal main-worktree acceptance gate.
+No latest-payload launch is claimed from DLV-056.
+
+### DLV-057 — Make Community packaging independent of prior build state
+
+**State:** Assigned
+**Baseline:** integrated DLV-056 candidate `e694316` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-056; no platform-lane dependency
+**Owner:** widgets lane over the supported Community package script, narrow
+deterministic build inputs/intermediate-output ownership, Spotify immutable
+version/docs, and the existing installed-package acceptance entry point
+**Concurrency:** Platform work may proceed only when it does not edit Community
+packaging, generic installed-worker acceptance, or Spotify version documentation.
+
+**Visible outcome:** An ordinary warm main checkout builds the exact Spotify
+payload that is installed, selected, enabled, and visibly opened after the
+milestone; prior local build state cannot silently change what the user tests.
+
+**Objective:** Reproduce DLV-056's warm-main mismatch, identify the exact reused
+intermediate/reference input, and make the supported Community package command
+publish from an owned isolated/rebuilt artifact graph so output depends only on
+the closing source commit and declared build inputs.
+
+**In scope:** retain a bounded deliberately preseeded warm-state reproduction;
+give the package command an owned generated intermediate/output graph under its
+artifact root (or an equivalently narrow deterministic mechanism); clean only
+that script-owned generated root before use; retain checkout path mapping and
+bounded restore/cache behavior; bump Spotify to unique immutable `0.2.14`; build
+from warm main, repeat main, and a clean detached root; compare archive and DLL
+SHA-256 plus sealed content-tree digest; scan payload metadata for checkout
+roots; install/select/enable `0.2.14` through the supported flow; retain
+`0.2.11`, `0.2.12`, and `0.2.13` inactive; run the existing exact package/digest/
+required-AppContainer first-snapshot acceptance.
+
+**Out of scope:** deleting arbitrary repository `bin`/`obj`, deleting or
+overwriting installed generations, repo-wide clean/build policy, Spotify
+behavior or ownership changes, public SDK/protocol/provider/native changes,
+aggregate verification, screenshots, credentials, or live playback.
+
+**Acceptance criteria:** the deliberately warm main build, repeated main build,
+and clean detached-root build of the exact closing commit have identical archive
+SHA-256, payload-DLL SHA-256, and sealed content-tree digest. No payload metadata
+contains an absolute checkout root. The exact main archive is installed as
+selected/enabled `0.2.14`, its installed digest matches independently, all three
+older immutable generations remain distinct and inactive, and the production
+generic worker requires AppContainer and returns one valid credential-free first
+snapshot. The package script does not mutate or delete ordinary developer build
+outputs outside its owned generated artifact root.
+
+**Verification:** one bounded warm-state reproduction followed by the three
+named package/hash comparisons, documentation contracts, and only the existing
+exact installed Spotify first-snapshot acceptance. Do not run Spotify's 48-case
+behavior suite, product aggregate, provider/native suites, screenshots, or live
+account checks. After planner integration, repeat the supported package command
+from ordinary warm main, compare it to the accepted proof, and visibly relaunch
+the exact selected payload for immediate user testing.
+
+**Stop/escalate when:** correction requires deleting developer-owned `bin`/`obj`,
+changing repository-wide debug semantics, weakening immutable catalog or
+AppContainer rules, or the exact package starts failing for a reason outside
+build-state ownership. Preserve all evidence and installed generations.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
