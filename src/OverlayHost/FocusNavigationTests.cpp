@@ -213,6 +213,44 @@ int main() {
               pagedScroll, L"library.first", NavigationDirection::Down),
           "A non-boundary direction preserves ordinary focus navigation");
 
+    gba::WidgetNode cursorGrid{
+        .id = L"library.cursor",
+        .kind = L"scroll",
+        .scrollAxis = L"vertical",
+        .scrollNearStartActionId = L"library.cursor.before",
+        .scrollNearEndActionId = L"library.cursor.after",
+        .scrollPaginationThreshold = 1,
+        .collectionAnchorKey = L"game.41",
+        .children = {
+            gba::WidgetNode{
+                .id = L"library.grid",
+                .kind = L"grid",
+                .children = {
+                    gba::WidgetNode{.id = L"game.40.button", .kind = L"button",
+                                    .collectionItemKey = L"game.40"},
+                    gba::WidgetNode{.id = L"game.41.button", .kind = L"button",
+                                    .collectionItemKey = L"game.41"},
+                },
+            },
+        },
+    };
+    gba::WidgetNode cursorRoot{
+        .id = L"library.root",
+        .kind = L"stack",
+        .children = {
+            gba::WidgetNode{.id = L"library.header.play", .kind = L"button"},
+            cursorGrid,
+        },
+    };
+    const auto cursorEnd = gba::input::FindScrollPaginationAction(
+        cursorRoot, L"game.41.button", NavigationDirection::Down);
+    Check(cursorEnd && cursorEnd->actionId == L"library.cursor.after",
+          "a keyed Grid descendant paginates at the collection edge");
+    const auto cursorStart = gba::input::FindScrollPaginationAction(
+        cursorRoot, L"game.40.button", NavigationDirection::Up);
+    Check(cursorStart && cursorStart->actionId == L"library.cursor.before",
+          "a keyed List/Grid reverse edge paginates before a fixed header can oscillate");
+
     gba::WidgetNode singleItemScroll = pagedScroll;
     singleItemScroll.children.resize(1);
     singleItemScroll.children[0].id = L"library.only";

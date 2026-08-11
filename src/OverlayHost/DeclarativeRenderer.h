@@ -190,6 +190,9 @@ private:
     struct ScrollStateEntry final {
         float offset{};
         std::uint64_t lastAccess{};
+        std::wstring anchorKey;
+        float anchorPosition{};
+        bool hasAnchorPosition{};
     };
 
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetImageBitmap(

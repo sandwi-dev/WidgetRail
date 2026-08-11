@@ -95,6 +95,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Render rejects assembly execution and unbounded snapshot inputs", RenderFailsClosed),
     ("Scenario manifests are bounded and execution fails closed", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
+    ("Snapshot preview exposes cursor anchors without artwork authority", CursorPreviewIsOpaque),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
     ("Source pack failures identify the required author action", SourcePackFailureIsActionable),
     ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
@@ -1160,6 +1161,46 @@ static async Task RenderSnapshot()
     Assert.Contains("a11y=\"Apply\"", result.Output);
     Assert.Contains("focus=[left:lower,right:raise]", result.Output);
     Assert.Contains("RightBumper:raise", result.Output);
+}
+
+static Task CursorPreviewIsOpaque()
+{
+    var snapshot = new ViewSnapshot
+    {
+        ProtocolVersion = ProtocolConstants.CursorCollectionVersion,
+        Sequence = 1,
+        WidgetInstanceId = "cursor.preview",
+        ActiveInputScopeId = "root",
+        Root = new ViewNode
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Scroll,
+            ScrollAxis = ScrollAxis.Vertical,
+            CollectionAnchorKey = "game.42",
+            Children =
+            [
+                new ViewNode
+                {
+                    Id = "game.42",
+                    Kind = ViewNodeKind.Button,
+                    Text = "Game",
+                    ActionId = "launch",
+                    CollectionItemKey = "game.42",
+                    ArtworkHandle = "library.art.42",
+                    ImageFit = ImageFit.Contain,
+                },
+            ],
+        },
+    };
+    var preview = SnapshotPreview.Format(snapshot);
+    Assert.Contains("collectionAnchor=game.42", preview);
+    Assert.Contains("collectionItem=game.42", preview);
+    Assert.Contains("artworkHandle=library.art.42", preview);
+    Assert.True(!preview.Contains("https://", StringComparison.Ordinal),
+        "An opaque artwork preview exposed URL authority.");
+    Assert.True(!preview.Contains("\\", StringComparison.Ordinal),
+        "An opaque artwork preview exposed a filesystem path.");
+    return Task.CompletedTask;
 }
 
 static async Task RenderFailsClosed()

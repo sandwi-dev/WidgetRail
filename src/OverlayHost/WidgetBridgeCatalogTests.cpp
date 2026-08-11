@@ -110,6 +110,14 @@ int main() {
                             {"id":"grid-one","kind":"button","text":"One","actionId":"one"},
                             {"id":"grid-two","kind":"button","text":"Two","actionId":"two"}
                         ]
+                    },
+                    {
+                        "id":"cursor-list","kind":"scroll","scrollAxis":"vertical",
+                        "collectionAnchorKey":"game.2",
+                        "children":[
+                            {"id":"game-two","kind":"button","text":"Game","actionId":"launch",
+                             "collectionItemKey":"game.2","artworkHandle":"library.art.2","imageFit":"contain"}
+                        ]
                     }
                 ]
             }
@@ -123,7 +131,7 @@ int main() {
         }
     })json", error);
     assert(styledSnapshot && error.empty());
-    assert(styledSnapshot->root.children.size() == 4);
+    assert(styledSnapshot->root.children.size() == 5);
     const auto& styledButton = styledSnapshot->root.children.front();
     (void)styledButton;
     assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
@@ -148,6 +156,12 @@ int main() {
     assert(actionSurface.children[1].kind == L"stack");
     assert(actionSurface.children[1].children.size() == 2);
     assert(actionSurface.children[1].children[0].text == L"Album title");
+    const auto& cursorList = styledSnapshot->root.children[4];
+    (void)cursorList;
+    assert(cursorList.collectionAnchorKey == L"game.2");
+    assert(cursorList.children[0].collectionItemKey == L"game.2");
+    assert(cursorList.children[0].artworkHandle == L"library.art.2");
+    assert(cursorList.children[0].imageSource.empty());
     const auto& grid = styledSnapshot->root.children[3];
     (void)grid;
     assert(grid.kind == L"grid");

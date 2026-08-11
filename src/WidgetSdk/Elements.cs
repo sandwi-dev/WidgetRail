@@ -26,6 +26,32 @@ public abstract record WidgetElement(string Id)
             ? branch with { Visibility = visibility }
             : new ResponsiveBranchElement(this, visibility);
     }
+
+    /// <summary>Marks one stable item in a protocol-v14 cursor collection.</summary>
+    public WidgetElement CollectionItem(WidgetCollectionItemKey key) =>
+        new CollectionItemElement(this, key);
+}
+
+/// <summary>A serialization-only keyed collection-item modifier.</summary>
+public sealed record CollectionItemElement : WidgetElement
+{
+    internal CollectionItemElement(WidgetElement child, WidgetCollectionItemKey key)
+        : base((child ?? throw new ArgumentNullException(nameof(child))).Id)
+    {
+        StableIdentifier.Validate(key.Value, nameof(key));
+        Child = child;
+        Key = key;
+        StyleClasses = child.StyleClasses;
+    }
+
+    public WidgetElement Child { get; init; }
+    public WidgetCollectionItemKey Key { get; init; }
+
+    internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
+    {
+        CollectionItemKey = Key.Value,
+        StyleClasses = StyleClasses,
+    };
 }
 
 /// <summary>
@@ -127,6 +153,7 @@ public sealed record ScrollElement : WidgetElement
     public string? NearStartActionId { get; init; }
     public string? NearEndActionId { get; init; }
     public int? PaginationThreshold { get; init; }
+    public string? CollectionAnchorKey { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
     public ScrollElement Shortcut(
@@ -169,6 +196,7 @@ public sealed record ScrollElement : WidgetElement
         ScrollNearStartActionId = NearStartActionId,
         ScrollNearEndActionId = NearEndActionId,
         ScrollPaginationThreshold = PaginationThreshold,
+        CollectionAnchorKey = CollectionAnchorKey,
         StyleClasses = StyleClasses,
         InputScopeId = InputScopeId,
         Shortcuts = Shortcuts,
@@ -210,6 +238,7 @@ public sealed record ButtonElement : WidgetElement
     public string? AccessibilityLabel { get; init; }
     public WidgetGlyph? Glyph { get; init; }
     public string? LeadingImageSource { get; init; }
+    public string? LeadingArtworkHandle { get; init; }
     public ImageFit? LeadingImageFit { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
@@ -242,9 +271,27 @@ public sealed record ButtonElement : WidgetElement
     {
         Glyph = glyph,
         LeadingImageSource = null,
+        LeadingArtworkHandle = null,
         LeadingImageFit = null,
         AccessibilityLabel = accessibilityLabel ?? AccessibilityLabel,
     };
+
+    /// <summary>Uses a lazy host-resolved artwork handle without fetch authority.</summary>
+    public ButtonElement LeadingArtwork(
+        WidgetArtworkHandle handle,
+        ImageFit fit = ImageFit.Contain,
+        string? accessibilityLabel = null)
+    {
+        StableIdentifier.Validate(handle.Value, nameof(handle));
+        return this with
+        {
+            Glyph = null,
+            LeadingImageSource = null,
+            LeadingArtworkHandle = handle.Value,
+            LeadingImageFit = fit,
+            AccessibilityLabel = accessibilityLabel ?? AccessibilityLabel,
+        };
+    }
 
     /// <summary>
     /// Uses a bounded trusted PNG as leading artwork inside this complete
@@ -257,6 +304,7 @@ public sealed record ButtonElement : WidgetElement
         {
             Glyph = null,
             LeadingImageSource = UI.CanonicalInlinePngSource(pngBase64, nameof(pngBase64)),
+            LeadingArtworkHandle = null,
             LeadingImageFit = fit,
             AccessibilityLabel = accessibilityLabel ?? AccessibilityLabel,
         };
@@ -277,6 +325,7 @@ public sealed record ButtonElement : WidgetElement
         AccessibilityLabel = AccessibilityLabel,
         Glyph = Glyph,
         ImageSource = LeadingImageSource,
+        ArtworkHandle = LeadingArtworkHandle,
         ImageFit = LeadingImageFit,
         ActionId = ActionId,
         IsDisabled = IsDisabled,
@@ -448,12 +497,14 @@ public sealed record ImageElement : WidgetElement
     public string Source { get; init; }
     public string AccessibilityLabel { get; init; }
     public ImageFit Fit { get; init; }
+    public string? ArtworkHandle { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
         Kind = ViewNodeKind.Image,
-        ImageSource = Source,
+        ImageSource = Source.Length == 0 ? null : Source,
+        ArtworkHandle = ArtworkHandle,
         ImageFit = Fit,
         AccessibilityLabel = AccessibilityLabel,
         StyleClasses = StyleClasses,
