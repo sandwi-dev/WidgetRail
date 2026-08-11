@@ -2,9 +2,8 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `af37786` and unintegrated
-widgets candidate `c7c354d`; prior retained evidence remains scoped to the
-commits named in each finding<br>
+Last reassessed: 2026-08-11 against integrated `main` `0b21384`; prior retained
+evidence remains scoped to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -15,21 +14,22 @@ standard of a cohesive senior platform team**.
 
 ### Current review delta — normalized game-library ownership
 
-DLV-059 candidate `c7c354d` is a meaningful architecture improvement but is
-not accepted. The provider's central Start Menu/AppsFolder/Steam discovery,
-resolve, launch, and artwork switches become two private normalized source
-owners, and raw launch identity remains inside those owners. The candidate's
-36/36 focused provider cases and 54 documentation contracts are proportional
-for that boundary.
+DLV-059 `c7c354d`, corrected by DLV-071 `355a858`, is accepted and integrated
+through `6f4c642`. The provider's central Start Menu/AppsFolder/Steam discovery,
+resolve, launch, and artwork switches become private normalized source owners,
+raw launch identity remains inside those owners, and the production provider is
+now their single exact-once terminal owner. Composite shutdown reaches bounded
+provider cancellation/drain, late completion cannot republish state or
+authority, one source failure does not skip the others, and post-terminal calls
+fail before Shell/source work. Focused provider evidence passes 41/41 and 54
+documentation contracts pass.
 
-The new source base also owns a lifetime CTS, active-operation count, drain
-event, generation, and bounded `Dispose`, but the production
-`WindowsAppLibraryProvider` does not implement `IDisposable`. The composite
-broker already calls an app-library backend's terminal interface when present,
-so this omission leaves the source drain contract unreachable in production
-and makes the direct disposal test insufficient acceptance evidence. DLV-071
-is the bounded correction; the unintegrated candidate must not be extended into
-the Game Launcher until that terminal owner exists.
+DLV-070 `c61a49d`, integrated through `0b21384`, also closes the duplicate-host
+ownership defect before later pinning work adds more persistent windows. One
+per-user/profile owner is elected before platform initialization; authenticated
+bounded Show clients exit without creating a second bridge, catalog, controller
+lease, or HWND. Exact visible integration retained one production PID across
+two launches.
 
 DLV-060 also stopped correctly before edits after proving a framework gap: the
 public app-library service and broker materialize and cap one snapshot at 512
@@ -4038,7 +4038,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Accepted DLV-046 (`84ef91b`, integrated by `06f6cc6`) adds a strict versioned text/binary manifest plus all-or-nothing validated staging/publish. Accepted DLV-047 (`7e33f45`, integrated by `7da7eaa`) adds the checked-in package/API release unit; DLV-050 (`263536f`, integrated by `7563471`) gives its new compatibility surface 12 named MSTest.Sdk 4.3.2 cases and a separate bounded updater while legacy suites remain unchanged. Accepted DLV-048 (`829e9fd`, integrated by `18d461e`) compile-tests the exact starter and eight marked external author phases. Final mixed focused evidence passes compatibility 12/12, WidgetSdk 84/84, GbarCli 55/55, and docs 53 | Externally published/versioned SDK/template release, isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence remain. Do not schedule a repo-wide test migration. |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and accepted DLV-032 bounds managed dispatch to 16 plus session drain to two seconds with manually controlled cancellation-ignoring quarantine proof; exact ACL application remains unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget and cancellable correlation-safe off-UI-thread native bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists. DLV-024 retains 16 current widget-body captures and seven semantic snapshots for Games continuity, including compact, 150%, and wide removal states, with zero renderer diagnostics. DLV-021 retains 16 current Games/Spotify body renders and exact five-product production-renderer bounds while disclosing the Settings worker-start capture gap. DLV-020's 44 real-HWND frames removed startup blanking in its bounded harness, but DLV-025 real temporal evidence now proves the current HWND resize path still exposes repeated dark-band frames on list-heavy product surfaces. Historical user captures show the Library/alignment defects that DLV-021 now places in Verifying; Games & Apps artwork remains missing | Choose an atomic compositor architecture for DLV-025, then repeat timestamped first-party intervals. Run the fresh packaged DLV-021 visual check; retain clean current package/state/profile plus physical full-shell/controller/DPI evidence. Offscreen body captures cannot close compositor behavior. |
-| Native host ownership | Proven low-level input, focus, lifecycle, bridge, renderer, and pinned-surface helpers. Accepted DLV-058 (`e160690`, integrated through `ae34f9a`) gives the 653-line `WidgetSurfaceCoordinator` aggregate sole admitted-generation/HWND/render/mode/cap/teardown ownership, but `OverlayApp` still owns their mutable cross-subsystem orchestration in 5,175 lines | **Dependency-blocked hotspot:** DLV-033 owns one tested `WidgetSessionCoordinator` after DLV-025/DLV-032; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp` and retain typed persistent session failures. Do not displace active visible DLV-070/068/069 work merely to reduce line count; reopen immediately if those milestones add another independent session/lifecycle owner instead of using the existing boundaries. |
+| Native host ownership | Proven low-level input, focus, lifecycle, bridge, renderer, singleton-process, and pinned-surface helpers. Accepted DLV-058 (`e160690`, integrated through `ae34f9a`) gives the 653-line `WidgetSurfaceCoordinator` aggregate sole admitted-generation/HWND/render/mode/cap/teardown ownership, and accepted DLV-070 (`c61a49d`, integrated through `0b21384`) isolates process election/activation before platform initialization, but `OverlayApp` still owns its mutable cross-subsystem orchestration in 5,175 lines | **Dependency-blocked hotspot:** DLV-033 owns one tested `WidgetSessionCoordinator` after DLV-025/DLV-032; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp` and retain typed persistent session failures. Do not displace active visible DLV-068/069 work merely to reduce line count; reopen immediately if those milestones add another independent session/lifecycle owner instead of using the existing boundaries. |
 | Verification gate | Clean release-eligible run `20260809T201448Z-0249ae81` remains the last exact full proof: 41/41 and 778 cases for `0598e5a`. Commit `7c8a5b8` adds a live verifier lease, final commit/status, final package hashes, and typed reasons. DLV-001's final stable dirty run `20260810T030727Z-449cac31` passes 41/41 with identical endpoints/fingerprint but is correctly ineligible; its later clean attempt was interrupted before producing a result. The delivery plan now prohibits repeating the same aggregate dirty and clean and names DLV-004/DLV-006 as the next exact-commit checkpoints | **Verification evidence only:** retain one authoritative bundle at the next named checkpoint; do not let provenance cleanup displace DLV-002/003 or cause duplicate six-minute runs |
 | Independent review ownership | Documentation commit `689a933` stages both review ledgers from the implementation stream and self-closes EQ-021 without retained evidence, mixing implementation, reviewer authorship, and disposition | Reserve both review files to the reviewer; require path-specific implementation staging and evidence proposals through implementation status rather than self-edited closure |
 | Documentation | Extensive, and current accessibility pages now consistently distinguish implemented preview from the ship gate; green contract checks still link-check rather than compile roughly 70 C# fences, and `plugin-platform.md` overstates generated test/replay support | Compile-test canonical snippets, derive overview claims from generated-template end-to-end tests, add semantic cross-document assertions for product-status claims, bind status claims to exact result manifests, and reduce ledger/status duplication |

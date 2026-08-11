@@ -725,13 +725,14 @@ route/action, playback, and presentation boundaries while retaining one
   warm-main refresh: main rebuilt a different DLL/archive from the same commit.
   DLV-057 commit `90cadf4` is accepted and integrated: warm main, repeated
   main, detached-root, installed content, and the planner's post-integration
-  main refresh now match exactly at immutable `0.2.14`. DLV-059 candidate
-  `c7c354d` established the normalized source split but omitted production
-  ownership of its new disposable source lifetimes; DLV-071 is the active
-  bounded correction. DLV-072 then replaces the 512-item snapshot capability
-  that correctly blocked DLV-060, followed by visible DLV-060, DLV-066, and
-  DLV-067. DLV-038 remains deferred test-architecture debt rather than filler
-  work.
+  main refresh now match exactly at immutable `0.2.14`. DLV-059 `c7c354d`,
+  corrected by DLV-071 `355a858`, is accepted and integrated through
+  `6f4c642`: the normalized sources now have one production provider terminal
+  owner with bounded cancellation, drain, exact-once disposal, and stale-
+  publication rejection. DLV-072 is active and replaces the 512-item snapshot
+  capability that correctly blocked DLV-060, followed by visible DLV-060,
+  DLV-066, and DLV-067. DLV-038 remains deferred test-architecture debt rather
+  than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2883,7 +2884,7 @@ rewritten, and future failed evidence must append a correction commit.
 
 ### DLV-059 — Normalize trusted installed-game source ownership
 
-**State:** Correction required; source commit `c7c354d` is unintegrated
+**State:** Done; accepted with DLV-071 correction and integrated through `6f4c642`
 **Closing candidate:** `c7c354d` (`[DLV-059] normalize installed game sources`)
 **Lane:** widgets
 **Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
@@ -2940,7 +2941,7 @@ identity private, or overlaps platform pinning files. Preserve the current
 provider behavior and report rather than adding a facade over the existing
 switches.
 
-**Reviewer disposition:** Rejected pending DLV-071. Candidate `c7c354d`
+**Reviewer disposition:** Initially rejected pending DLV-071. Candidate `c7c354d`
 materially replaces the provider's source-specific discovery/resolve/launch
 switches with private Windows-installed and Steam owners, retains raw path,
 AUMID, and Steam identity inside those owners, and passes 36/36 provider cases
@@ -2950,12 +2951,14 @@ production `WindowsAppLibraryProvider` is not disposable. The composite broker
 already disposes an app-library backend when it implements `IDisposable`, but
 this candidate never reaches that path. Source cancellation/drain is therefore
 proved only by a direct test and is absent from the production terminal path.
-Do not integrate the candidate until DLV-071 closes ownership and exact-once
-drain without changing its accepted source contract.
+DLV-071 `355a858` closes that production ownership gap without changing the
+private source contract. The corrected contiguous prefix is accepted and
+integrated through `6f4c642`.
 
 ### DLV-071 — Close normalized game-source lifetime ownership
 
-**State:** Assigned
+**State:** Done; accepted as `355a858`, integrated through `6f4c642`
+**Closing commit:** `355a858` (`[DLV-071] close game source lifetime ownership`)
 **Lane:** widgets
 **Baseline:** unintegrated DLV-059 candidate `c7c354d` plus the reviewer
 control-plane commit containing this correction
@@ -3009,11 +3012,22 @@ broker behavior matrix, widget, native, aggregate, screenshot, or live launch.
 disposing the process-wide shared STA lane, changing a public capability, or
 cannot preserve the candidate's exact source authority and last-good behavior.
 
+**Reviewer disposition:** Accepted. The provider now implements one idempotent
+terminal transition reached by production composite disposal, links admitted
+scan/resolve/launch/artwork work to provider cancellation, prevents late
+publication, disposes every normalized source exactly once even when another
+reports failure, and rejects post-terminal entry before Shell/source work.
+Focused provider evidence passes 41/41, including composite, concurrent,
+cooperative, cancellation-ignoring, bounded-timeout, and post-terminal cases;
+54 documentation contracts pass. The planner integrated the corrected prefix,
+fully repackaged main, and visibly launched the coherent Release.
+
 ### DLV-072 — Replace the 512-item app-library snapshot with cursor queries
 
-**State:** Ready
+**State:** Assigned
 **Lane:** widgets, acting as serialized managed capability lead
-**Baseline:** closing correction commit of DLV-071
+**Baseline:** closing correction commit `355a858`; merge accepted main
+`0b21384` at the next clean boundary before DLV-060
 **Dependencies:** DLV-006, DLV-059, and DLV-071
 **Owner:** normalized app-library backend query contract, PlatformBroker app-
 library domain and artwork registration, public WidgetSdk app-library service,
@@ -3416,11 +3430,12 @@ accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
 DLV-025 remains user-decision blocked. DLV-058 is accepted as source `e160690`
 and integrated on main through `ae34f9a`, providing the first visible generic
-Pin/Unpin lifecycle. DLV-070 now restores one authoritative host across ordinary
-and `--show` launches before DLV-068 and DLV-069 complete placement and
-accessibility/input composition, then DLV-062 runs the fixed-video trusted-rich-
+Pin/Unpin lifecycle. DLV-070 `c61a49d` is accepted and integrated through
+`0b21384`; one production owner now receives authenticated bounded Show
+activation from later launches. DLV-068 is active, followed by DLV-069 for
+accessibility/input composition and DLV-062 for the fixed-video trusted-rich-
 media feasibility gate. This visible sequence is independent of the blocked
-animated-resize compositor and may run beside widgets DLV-059 under the explicit
+animated-resize compositor and may run beside widgets DLV-072 under the explicit
 file boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
@@ -3496,7 +3511,8 @@ and DLV-069 retain geometry and final controller/accessibility composition.
 
 ### DLV-070 — Enforce one OverlayHost owner and forward `--show`
 
-**State:** Assigned
+**State:** Done; accepted as `c61a49d`, integrated through `0b21384`
+**Closing commit:** `c61a49d` (`[DLV-070] enforce single OverlayHost ownership`)
 **Lane:** platform
 **Baseline:** accepted DLV-058 source `e160690`, integrated on main as `ae34f9a`
 **Dependencies:** accepted main through DLV-057; ordered after DLV-058 so the
@@ -3554,11 +3570,20 @@ weakens per-user process/transport isolation, conflicts substantially with the
 active pinned-surface lifecycle, or needs destructive cleanup of the current
 resident processes.
 
+**Reviewer disposition:** Accepted. Owner election precedes every `OverlayApp`
+initialization; the per-user/profile mutex and user-only remote-rejecting pipe
+admit one closed Show frame after connected-token SID validation. Hidden-owner,
+simultaneous-client, malformed, squatted-endpoint, timeout, abandoned-owner,
+and exact-executable fixtures pass. After integration the planner rebuilt the
+native Release, invoked the exact `--show` command twice, and retained one
+resident production PID 27520; client PID 3236 exited after the resident logged
+one authenticated Show activation. No process was force-terminated.
+
 ### DLV-068 — Add controller placement and durable pin geometry
 
-**State:** Ready
+**State:** Assigned
 **Lane:** platform
-**Baseline:** closing commit of DLV-070
+**Baseline:** closing commit `c61a49d` with accepted-main merge `5183e47`
 **Dependencies:** DLV-011, DLV-016, DLV-058, and DLV-070
 **Owner:** pinned-surface placement/resize state machine, monitor/DPI persistence,
 host chrome/actions, focused native/UIA fixtures, and public pinning docs
