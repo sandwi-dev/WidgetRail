@@ -6012,6 +6012,11 @@ materially above DLV-016's 128 MiB product gate, and user-gesture playback is no
 yet proven. Preserve the branch as a non-integrable feasibility checkpoint; do
 not spend an open-ended implementation cycle tuning WebView2 or authorize a
 YouTube widget unless the planner receives a product decision on this cost.
+Official WebView2 guidance confirms that `TrySuspend` is best-effort and requires
+an invisible controller, while the low-memory target is intended for inactive
+views; neither is evidence that the visible pinned-player cost can meet the
+current limit. Environment sharing chiefly amortizes multiple controls, but this
+gate already measures one surface.
 
 **In scope:** reuse the SpotifyPlaybackHost process-containment lessons; one
 typed `MediaSurfaceSession` prototype for load/cue/play/pause/seek/volume and
@@ -6662,7 +6667,7 @@ compatibility remain separate future assignments.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
-| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. Its former dirty Codex worktree has disappeared, leaving only branch `57aa2d5` and the recorded evidence. | User chooses and authorizes a bounded compositor architecture milestone and any needed reconstruction; planner updates DLV-025 scope and acceptance before a new isolated implementation surface is created. |
+| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. Its former dirty Codex worktree has disappeared, leaving only branch `57aa2d5` and the recorded evidence. Official API review recommends a Windows-10-compatible DirectComposition-surface gate before the Windows-11-only composition-swapchain API. | User authorizes one bounded DirectComposition offscreen-content/commit prototype and any needed clean reconstruction; planner then updates DLV-025 scope and acceptance before creating a new isolated implementation surface. |
 | Audio Mixer default input/output endpoint selection | The roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence for a supported setter plus a bounded provider design and reversible hardware plan. |
 | Live Spotify account and Web Playback completion | Account, Premium eligibility, development allowlist, OAuth, and EME interaction. | User-authorized live account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth consent/verification and a user account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth design, verification plan, and user-authorized account. |

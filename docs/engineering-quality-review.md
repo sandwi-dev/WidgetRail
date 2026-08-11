@@ -110,6 +110,37 @@ Release host build. Live packaged cycling remains the acceptance boundary; the
 real HWND resize/dark-band issue is still blocked at DLV-025's atomic-compositor
 decision.
 
+### Planner decision evidence — atomic presentation and trusted video
+
+Official Windows composition contracts narrow DLV-025's credible next step.
+`IDCompositionSurface` is available to desktop apps from Windows 8 and applies
+new pixels only after `BeginDraw`, complete coverage of the update rectangle,
+`EndDraw`, and a device `Commit`; this supplies a bounded offscreen-content
+prototype compatible with the product's current Windows 10 floor. The newer
+[composition swapchain](https://learn.microsoft.com/en-us/windows/win32/comp_swapchain/comp-swapchain)
+does provide atomic buffer/property presents and documented atomic resize, but
+requires Windows 11 build 22000.194 plus WDDM 2.0 and explicitly requires a
+separate older-system path. It would therefore create two presentation owners
+or raise the product floor before it proves this defect. The recommended user-
+authorized DLV-025 gate is one DirectComposition-surface prototype that renders
+the complete destination offscreen, retains the prior committed surface until
+the destination is ready, and measures whether visual-content commit plus the
+existing HWND geometry can avoid every exposed dark interval. Do not authorize
+the Windows-11-only composition-swapchain path unless that smaller gate proves
+the HWND boundary itself still requires it.
+
+Official WebView2 guidance does not invalidate DLV-062's measured resource
+stop. WebView2 intentionally uses a multi-process Edge architecture. Its
+supported `TrySuspend` path requires the controller to be invisible and is best
+effort; `MemoryUsageTargetLevel.Low` is likewise recommended for inactive
+views. Those controls can improve hidden/unpinned cleanup, but cannot reduce the
+348.7 MiB visible pinned-player cost while preserving visible playback. Sharing
+one environment mainly benefits multiple controls, while DLV-062 already gates
+one surface. Under the current 128 MiB product limit, another generic suspension
+pass is not a credible visible-player optimization milestone. Keep YouTube v1
+blocked unless the user explicitly raises the budget or authorizes a bounded
+content/process-specific experiment with a hard stop and no account work.
+
 DLV-060 `8ca0859`, DLV-066 `8a5ec7f`, public-contract correction DLV-074
 `d0a1014`, and launch-lifecycle milestone DLV-067 `ddf7626` are accepted and
 integrated through `3d8f486`. The product now has a
