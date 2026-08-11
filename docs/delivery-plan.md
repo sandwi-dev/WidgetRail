@@ -3000,7 +3000,14 @@ versions and proves the new digest is selected. Focused evidence passes worker
 host 10/10, runtime 74/74, bridge 69/69, the production host failure/Retry case,
 and the exact-package recovery fixture. The local profile now reports enabled
 Spotify `0.2.11` and YT Music `0.2.7`; accepted main `56f6908` was rebuilt and
-visibly relaunched for live confirmation.
+visibly relaunched for live confirmation. The first planner relaunch used the
+native-only `-SkipPackaging` path and therefore paired the new native
+`admitSnapshot` request with an older packaged bridge, producing a live
+`set-widget-lifecycle` invalid-payload failure. A full documented Release
+packaging build from accepted main republished WidgetBridge, WidgetRuntime,
+worker hosts, and bundled widgets together; the 23:23 launch no longer records
+that failure. Future bridge/runtime integrations must treat the Release output
+as one coherent artifact graph rather than a native executable alone.
 
 ### DLV-016 — Establish native idle and semantic-churn baselines
 

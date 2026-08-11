@@ -48,6 +48,15 @@ enabled version. The local profile selects enabled Spotify `0.2.11` and YT
 Music `0.2.7`; live open confirmation remains without weakening immutable
 package integrity.
 
+The first DLV-052 planner relaunch also exposed a Release-artifact coherence
+gap: `OverlayHost.exe` was rebuilt with `-SkipPackaging`, but the changed
+WidgetBridge/Runtime outputs beside it were stale, so the old bridge rejected
+the native client's new `admitSnapshot` field. A full documented packaging
+build from accepted main removes the mismatch and the fresh startup log is
+clean. The planner launch contract now forbids `-SkipPackaging` whenever an
+accepted milestone changes a managed runtime, bridge, worker, bundled widget,
+or packaged metadata output.
+
 DLV-006 is accepted through `9c7438f`. Its final existing-host fixture composes
 bounded managed-format List/Grid cursor states through bridge parsing,
 Direct2D, focus pagination, HWND/UIA projection, refresh churn, error states,

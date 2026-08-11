@@ -2034,6 +2034,17 @@ unchanged. The local profile reports both corrected versions enabled and the
 fresh main Release is visibly running; keep this issue Verifying until the user
 opens both widgets successfully.
 
+The first post-integration relaunch rebuilt only the native executable and left
+the older packaged bridge in `out\Release\runtime`, so the new
+`admitSnapshot` field was rejected as an unmapped lifecycle payload. This was a
+planner artifact-composition failure, not a provider or widget defect. The
+subsequent full Release packaging build republished the managed/native graph
+from accepted main; its 2026-08-10 23:23 startup has no lifecycle-payload
+failure. The user-supplied screenshots showing the hidden-cache and worker-
+connection messages were created at 21:54 and therefore document the earlier
+failing process, not the fully packaged 23:23 process. Live Spotify and YT
+Music opening in that current process remains the final product check.
+
 ## Closed issues
 
 None yet. Closed entries remain here with their acceptance evidence and commit

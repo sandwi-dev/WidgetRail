@@ -250,9 +250,17 @@ After every accepted implementation milestone is integrated into local `main`:
 2. Refresh the main worktree's Release artifacts with the smallest documented
    build/package commands needed for that milestone. Do not assume binaries
    produced in an implementation worktree updated the main checkout.
+   Treat the launched output as one coherent artifact graph: when an accepted
+   milestone changes WidgetBridge, WidgetRuntime, a worker host, a managed
+   first-party widget, bundled package metadata, or another file published
+   beneath `out\Release\runtime`, run the documented packaging stage and do
+   not use `-SkipPackaging`. Reserve `-SkipPackaging` for a verified native-
+   only milestone whose launched managed/runtime inputs are unchanged.
 3. Confirm that
    `src\OverlayHost\out\Release\OverlayHost.exe` exists and was produced from
-   the accepted main state.
+   the accepted main state. Also confirm every changed managed/runtime output
+   required by the milestone was republished from that same main state; a new
+   native executable beside stale managed binaries is not an accepted Release.
 4. Launch the overlay visibly and interactively with exactly:
 
    `.\src\OverlayHost\out\Release\OverlayHost.exe --show`
