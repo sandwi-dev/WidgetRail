@@ -794,11 +794,14 @@ route/action, playback, and presentation boundaries while retaining one
   Launcher without exposing adapter control or suppressing usable games.
   DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084
   candidate `6511dc9` is committed but not accepted: its installed-worker
-  Restore/Back path can remain on disabled warm rows. DLV-085 is already
-  executing from that coherent branch boundary; DLV-088 is its next ordered
-  Ready item and owns the narrow DLV-084 correction without interrupting
-  DLV-085. DLV-086 follows as the bounded correction for the unrelated YT Music
-  package-version drift exposed by DLV-082's one aggregate. DLV-087 is the
+  Restore/Back path can remain on disabled warm rows. DLV-085 candidate
+  `e0edfb8` is also committed but not accepted: its disabled-package fallback
+  derives a synthetic private-state instance instead of the exact production
+  installed-version identity. DLV-088 is actively correcting DLV-084 without
+  interruption; DLV-089 is its next ordered Ready item and owns the narrow
+  DLV-085 identity correction. DLV-086 follows as the bounded correction for
+  the unrelated YT Music package-version drift exposed by the retained
+  aggregate. DLV-087 is the
   next visible cross-lane milestone: protected Personal Wi-Fi connection through
   a host-owned credential prompt. DLV-038 remains deferred test-architecture
   debt rather than filler work.
@@ -1003,8 +1006,8 @@ installed-route rerun. Do not repeat the unchanged fixture or broaden the work.
 
 ### DLV-085 — Clear selected widget private state from Settings
 
-**State:** Assigned; implementation started automatically after candidate
-DLV-084 commit `6511dc9` and clean merge of current `main`
+**State:** Candidate `e0edfb8` rejected pending DLV-089 correction; DLV-088 was
+already in progress when review completed and must not be interrupted
 **Lane:** widgets, acting as serialized managed widget-management lead
 **Baseline:** clean closing commit of DLV-084
 **Dependencies:** DLV-001, DLV-017, DLV-044, DLV-058, and DLV-084 only for
@@ -1069,13 +1072,30 @@ widget's document, deleting unowned files, broadening ordinary widget
 authority, changing the threat model materially, or requiring a global profile
 reset. Preserve the current state and return the design decision instead.
 
+**Reviewer disposition:** Not accepted. The focused evidence is otherwise
+strong: Runtime 74/74, private state 10/10, Settings 54/54, diagnostics 16/16,
+catalog 35/35, Bridge 73/73, documentation 55 files, and the production-shaped
+generic-worker case prove retire-before-clear, a fresh running generation, and
+an unaffected neighbor. The single exact-commit Tier-3 attempt
+`20260811T173216Z-1dc979a3` passed SDK 87/87 and compatibility 12/12 before
+stopping on the already-assigned YT Music `0.2.6`/`0.2.7` mismatch. Review then
+found that the disabled installed-widget path constructs
+`<widget-id>.disabled`, while `BridgeCatalog` stores the same package/version
+under its canonical `installed.<version-hash>` instance. State written while
+enabled is therefore not inspected or cleared after disable, contrary to the
+assignment's exact-identity and disable acceptance. DLV-089 owns only that
+identity correction and one retained enabled-to-disabled fixture; do not rerun
+the aggregate or reopen the accepted worker-replacement design.
+
 ### DLV-088 — Complete Game Launcher Restore-to-library readiness
 
-**State:** Ready; execute automatically after committing DLV-085
+**State:** Assigned; implementation started automatically after candidate
+DLV-085 commit `e0edfb8` and clean merge of current `main`
 **Lane:** widgets
-**Baseline:** clean closing commit of DLV-085, retaining candidate DLV-084
-`6511dc9`
-**Dependencies:** candidate DLV-084 and DLV-085 only for contiguous lane order
+**Baseline:** candidate DLV-085 commit `e0edfb8`, retaining candidate DLV-084
+`6511dc9`, plus reviewer control-plane merge `dc46f87`
+**Dependencies:** candidate DLV-084 and candidate DLV-085 only for contiguous
+lane order
 **Owner:** Game Launcher Hidden-route transition/readiness policy and its exact
 focused/installed fixtures; no provider, broker, SDK, native, or management
 boundary changes
@@ -1122,12 +1142,70 @@ aggregate, screenshot, external store, or physical-game run.
 contract, public action serialization, provider authority, or accepting manual
 Refresh as intended product behavior.
 
-### DLV-086 — Reconcile YT Music package version ownership
+### DLV-089 — Preserve exact private-state identity after widget disable
 
 **State:** Ready; execute automatically after committing DLV-088
 **Lane:** widgets
-**Baseline:** clean closing commit of DLV-088
-**Dependencies:** accepted package reproducibility through DLV-057 and DLV-088
+**Baseline:** clean closing commit of DLV-088, retaining candidate DLV-085
+`e0edfb8`
+**Dependencies:** candidate DLV-085 and DLV-088 only for contiguous lane order
+**Owner:** canonical installed widget/version instance-identity derivation,
+disabled-package local-data inspection/clear, focused Bridge/Settings fixtures,
+and directly affected implementation-status documentation
+**Concurrency:** Managed catalog/bridge/private-state correction only. Do not
+change Game Launcher, public SDK/protocol behavior, native host code, package
+enablement semantics, or reviewer-owned files.
+
+**Visible outcome:** Settings continues to show and clear the selected widget's
+actual overlay-owned local data after that Community widget is disabled. It no
+longer reports an empty synthetic namespace or leaves the real prior state to
+return when the widget is re-enabled.
+
+**Objective:** Make the disabled installed-widget management path reuse the
+same canonical package/version instance identity that production
+`BridgeCatalog` used while the widget was enabled, rather than independently
+inventing `<widget-id>.disabled`.
+
+**In scope:** one shared host-internal installed-instance identity derivation;
+the current installed active version and publisher authority; inspect and clear
+after enabled-to-disabled transition; exact confirmation-token revalidation;
+disable, re-enable, active-version replacement, remove, stale catalog
+reconciliation, no-state, clear failure, and unaffected-neighbor behavior; no
+worker startup solely to clear an already-disabled widget.
+
+**Out of scope:** changing the private-state schema/store, migrating or deleting
+obsolete version namespaces, package removal, global reset, credentials or
+provider data, ordinary widget authority, public API/protocol changes, native
+work, broad identity refactoring, screenshots, or aggregate verification.
+
+**Acceptance criteria:** a package/version writes state through the production
+configured identity while enabled, is disabled through the real catalog, and
+Settings then inspects and clears that exact same state identity. The operation
+cannot address a removed package, a superseded active version, or a neighboring
+widget; stale confirmation fails closed. Re-enabling the unchanged version
+observes clean state, and the disabled operation does not create or retire a
+worker generation. Production and management code have one derivation owner;
+no `.disabled` surrogate remains.
+
+**Verification:** Tier 1 canonical identity, WidgetCatalog transition,
+Bridge local-data service, and Settings status/confirmation Release cases. Add
+one production-shaped installed fixture that writes while enabled, disables,
+inspects, clears, re-enables, and proves the exact state is absent while a
+neighbor remains present. Run only those affected groups once; retain the
+result. Do not rerun DLV-085's canonical Tier-3 attempt, unchanged runtime/
+diagnostics suites, native tests, screenshots, external providers, or package
+removal.
+
+**Stop/escalate when:** the real installed identity cannot be derived without
+exposing private-state contents, changing a public contract, migrating unrelated
+state, or altering package enablement/removal semantics.
+
+### DLV-086 — Reconcile YT Music package version ownership
+
+**State:** Ready; execute automatically after committing DLV-089
+**Lane:** widgets
+**Baseline:** clean closing commit of DLV-089
+**Dependencies:** accepted package reproducibility through DLV-057 and DLV-089
 only for contiguous lane order
 **Owner:** YT Music package-version value ownership, its directly affected
 credential-free test, and implementation-status documentation; no runtime,
