@@ -32,6 +32,24 @@ var tests = new (string Name, Func<Task> Run)[]
     ("AppsFolder cancellation cannot publish a partial merged catalog", AppsFolderCancellationIsAtomic),
     ("AppsFolder collection failures preserve last-good packaged state", AppsFolderFailurePreservesLastGood),
     ("Steam collection failures preserve last-good game state", SteamFailurePreservesLastGood),
+    ("Installed sources share one normalized exact-authority contract",
+        GameLibrarySourceScenarios.NormalizedAdaptersOwnExactAuthority),
+    ("Source failure preserves another source and its own last-good records",
+        GameLibrarySourceScenarios.FailureIsolationPreservesLastGood),
+    ("Late source generations cannot replace a newer snapshot",
+        GameLibrarySourceScenarios.LateGenerationCannotReplaceCurrent),
+    ("Source disposal cancels and drains admitted work",
+        GameLibrarySourceScenarios.DisposeCancelsAndDrains),
+    ("Composite shutdown disposes provider-owned normalized sources",
+        ProviderLifetimeScenarios.CompositeDisposesOwnedSources),
+    ("Concurrent provider disposal cleans every source exactly once",
+        ProviderLifetimeScenarios.ConcurrentDisposalCleansEverySource),
+    ("Provider disposal cancels admitted source work before cleanup",
+        ProviderLifetimeScenarios.ActiveWorkCancelsBeforeTerminalCleanup),
+    ("Cancellation-ignoring source completion cannot publish after disposal",
+        ProviderLifetimeScenarios.CancellationIgnoringCompletionCannotPublish),
+    ("Uncooperative source work reaches the bounded terminal outcome",
+        ProviderLifetimeScenarios.UncooperativeWorkTimesOutSafely),
     ("Shell sources execute on the bounded STA lane", SourcesUseStaLane),
     ("Real AppsFolder scan is read-only bounded and sanitized", NativeAppsFolderSmoke),
     ("Real Start Menu scan is read-only bounded and sanitized", NativeReadOnlySmoke),
@@ -75,11 +93,12 @@ static async Task DeduplicatesByInternalIdentity()
     var source = new FakeSource(
         Reg("same", "Common Name", StartMenuScope.AllUsers, @"C:\Common\Same.lnk"),
         Reg("same", "My Name", StartMenuScope.CurrentUser, @"C:\User\Same.lnk"));
-    var provider = new WindowsAppLibraryProvider(source);
+    var launcher = new FakeShellLauncher();
+    var provider = new WindowsAppLibraryProvider(source, launcher);
     var item = (await provider.GetAppsAsync()).Single();
     Assert.Equal("My Name", item.DisplayName);
-    Assert.True(provider.TryResolveForLaunch(item.AppId, out var registration));
-    Assert.Equal(@"C:\User\Same.lnk", registration!.ShortcutPath);
+    await provider.LaunchAppLibraryItemAsync(item.AppId, CancellationToken.None);
+    Assert.Equal(@"C:\User\Same.lnk", launcher.Paths.Single());
 }
 
 static async Task PreservesNameCollisions()
@@ -523,8 +542,6 @@ static async Task PackagedLaunchRevalidatesExactAumid()
     var launcher = new FakePackagedAppLauncher();
     var provider = CreateMerged(new FakeSource(), apps, packagedLauncher: launcher);
     var appId = (await provider.GetAppsAsync()).Single().AppId;
-    Assert.True(provider.TryResolvePackagedForLaunch(appId, out var registration));
-    Assert.Equal(aumid, registration!.Aumid);
 
     await provider.LaunchAppLibraryItemAsync(appId, CancellationToken.None);
     Assert.Equal(1, apps.ExactReadCalls);
@@ -562,14 +579,20 @@ static async Task ShellFailureIsSanitized()
 static async Task ResolvesOnlyCurrentIds()
 {
     var source = new FakeSource(Reg("one", "One", StartMenuScope.CurrentUser, @"C:\One.lnk"));
-    var provider = new WindowsAppLibraryProvider(source);
+    var launcher = new FakeShellLauncher();
+    var provider = new WindowsAppLibraryProvider(source, launcher);
     var id = (await provider.GetAppsAsync()).Single().AppId;
-    Assert.True(provider.TryResolveForLaunch(id, out var registration));
-    Assert.Equal(@"C:\One.lnk", registration!.ShortcutPath);
-    Assert.False(provider.TryResolveForLaunch("app-00000000000000000000000000000000", out _));
+    await provider.LaunchAppLibraryItemAsync(id, CancellationToken.None);
+    Assert.Equal(@"C:\One.lnk", launcher.Paths.Single());
+    var unknown = await Assert.ThrowsAsync<BrokerException>(() =>
+        provider.LaunchAppLibraryItemAsync(
+            "app-00000000000000000000000000000000", CancellationToken.None));
+    Assert.Equal("app_not_found", unknown.Code);
     source.Items = [];
     await provider.RefreshAsync();
-    Assert.False(provider.TryResolveForLaunch(id, out _));
+    var stale = await Assert.ThrowsAsync<BrokerException>(() =>
+        provider.LaunchAppLibraryItemAsync(id, CancellationToken.None));
+    Assert.Equal("app_not_found", stale.Code);
 }
 
 static async Task CancellationIsAtomic()
@@ -581,7 +604,9 @@ static async Task CancellationIsAtomic()
     await source.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
     cancellation.Cancel();
     await Assert.ThrowsAsync<OperationCanceledException>(() => scan);
-    Assert.False(provider.TryResolveForLaunch("app-anything", out _));
+    var missing = await Assert.ThrowsAsync<BrokerException>(() =>
+        provider.LaunchAppLibraryItemAsync("app-anything", CancellationToken.None));
+    Assert.Equal("app_not_found", missing.Code);
 }
 
 static async Task AppsFolderCancellationIsAtomic()
@@ -1049,7 +1074,7 @@ file sealed class FakeIconSource(byte[]? png) : IWindowsAppIconSource
     }
 }
 
-file static class Assert
+internal static class Assert
 {
     public static void True(bool condition)
     {
