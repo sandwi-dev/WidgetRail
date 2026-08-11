@@ -242,7 +242,10 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         }
         TrimLaunchWindow();
         return new AppLibraryCursorPageSummary(
-            projected, page.Before, page.After, page.Revision);
+            projected, page.Before, page.After, page.Revision)
+        {
+            Sources = page.Sources.ToArray(),
+        };
     }
 
     private void EnsureRevision(string revision)
@@ -320,6 +323,7 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         int limit)
     {
         if (page is null || page.Items is null || page.Items.Count > limit ||
+            page.Sources is null || page.Sources.Count > 16 ||
             page.Revision is not { Length: > 0 and <= 128 } ||
             page.Before is { Length: > 128 } || page.After is { Length: > 128 })
             throw new BrokerException(
@@ -337,7 +341,25 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             if (!providerIds.Add(item.ProviderAppId) ||
                 !stableIds.Add(item.StableProviderIdentity)) throw InvalidItem();
         }
-        return page with { Items = page.Items.ToArray() };
+        var sourceIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var source in page.Sources)
+        {
+            if (source is null || !Enum.IsDefined(source.Health) ||
+                source.Revision < 0 ||
+                source.StatusCode is not { Length: > 0 and <= 48 } ||
+                source.StatusCode.Any(character =>
+                    !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-' and not '.') ||
+                !sourceIds.Add(source.SourceId))
+                throw new BrokerException(
+                    "invalid_backend_data", "App-library source status is invalid.");
+            ContractValidation.OpaqueId(source.SourceId, "invalid_backend_data");
+            ContractValidation.DisplayName(source.DisplayName);
+        }
+        return page with
+        {
+            Items = page.Items.ToArray(),
+            Sources = page.Sources.ToArray(),
+        };
     }
 
     private static BrokerException InvalidItem() =>

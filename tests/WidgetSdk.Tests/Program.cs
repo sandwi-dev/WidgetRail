@@ -260,7 +260,17 @@ static async Task AppLibraryPlatformService()
                         SavedId = "saved-durable",
                         SourceAttribution = "Windows",
                     }],
-                    "cursor-32", null, "revision-2"));
+                    "cursor-32", null, "revision-2")
+                {
+                    Sources =
+                    [
+                        new("source-windows", "Windows",
+                            WidgetAppLibrarySourceHealth.Healthy, 4, "healthy"),
+                        new("source-steam", "Steam",
+                            WidgetAppLibrarySourceHealth.Degraded, 7,
+                            "source_degraded"),
+                    ],
+                });
             })
         .WithHandler(
             WidgetAppLibraryCapabilities.ResolveSaved,
@@ -303,6 +313,9 @@ static async Task AppLibraryPlatformService()
     Assert.Equal("cursor-32", page.Before);
     Assert.Equal<string?>(null, page.After);
     Assert.Equal("revision-2", page.Revision);
+    Assert.Equal(2, page.Sources.Count);
+    Assert.Equal(WidgetAppLibrarySourceHealth.Degraded, page.Sources[1].Health);
+    Assert.Equal("source_degraded", page.Sources[1].StatusCode);
     Assert.Equal(0, (await widget.AppLibrary.ResolveSavedAsync([])).Count);
     var resolved = await widget.AppLibrary.ResolveSavedAsync(
         ["saved-missing", "saved-durable"]);
@@ -352,6 +365,21 @@ static async Task AppLibraryPlatformService()
             .Build());
     Assert.Throws<WidgetCapabilityException>(() =>
         malformed.AppLibrary.ResolveSavedAsync(["saved-requested"])
+            .GetAwaiter().GetResult());
+
+    var malformedSources = WidgetTestHost.Attach(
+        new CapabilityWidget(),
+        new WidgetTestHostServicesBuilder()
+            .WithResponse(
+                WidgetAppLibraryCapabilities.GetPage,
+                new WidgetAppLibraryPage([], null, null, "revision")
+                {
+                    Sources = [new("source-one", "Source",
+                        WidgetAppLibrarySourceHealth.Healthy, 1, "unsafe status")],
+                })
+            .Build());
+    Assert.Throws<WidgetCapabilityException>(() =>
+        malformedSources.AppLibrary.QueryAsync(new WidgetAppLibraryQuery())
             .GetAwaiter().GetResult());
 }
 

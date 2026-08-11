@@ -366,7 +366,29 @@ public sealed record AppLibraryBackendCursorPage(
     IReadOnlyList<AppLibraryBackendItemSummary> Items,
     string? Before,
     string? After,
-    string Revision);
+    string Revision)
+{
+    public IReadOnlyList<AppLibrarySourceSummary> Sources { get; init; } = [];
+}
+
+public enum AppLibrarySourceHealth
+{
+    Healthy,
+    Degraded,
+    Unavailable,
+    Refreshing,
+}
+
+/// <summary>
+/// Bounded value-only health for one normalized local app-library source.
+/// SourceId is observation-only and cannot address or control an adapter.
+/// </summary>
+public sealed record AppLibrarySourceSummary(
+    string SourceId,
+    string DisplayName,
+    AppLibrarySourceHealth Health,
+    long Revision,
+    string StatusCode);
 
 /// <summary>
 /// Sanitized host-only evidence from one exact app-library launch adapter.
@@ -415,7 +437,11 @@ public sealed record AppLibraryCursorPageSummary(
     [property: JsonRequired] IReadOnlyList<AppLibraryItemSummary> Items,
     string? Before,
     string? After,
-    [property: JsonRequired] string Revision);
+    [property: JsonRequired] string Revision)
+{
+    [JsonRequired]
+    public IReadOnlyList<AppLibrarySourceSummary> Sources { get; init; } = [];
+}
 
 public sealed record ResolveSavedAppLibraryItemsRequest(
     [property: JsonRequired] IReadOnlyList<string> SavedIds);

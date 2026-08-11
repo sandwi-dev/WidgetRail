@@ -15,7 +15,8 @@ internal sealed record GameLauncherPresentationState(
     GameLauncherRecentMode RecentMode,
     bool FavoriteFilter,
     GameLauncherRoute Route,
-    GameLauncherFixedRows FixedRows);
+    GameLauncherFixedRows FixedRows,
+    IReadOnlyList<WidgetAppLibrarySource> Sources);
 
 internal enum GameLauncherRecentMode
 {
@@ -50,6 +51,7 @@ internal static class GameLauncherPresentation
                 UI.Text(state.Status, "game-launcher.status", state.Status)
                     .Classes("game-launcher-status"))
             .Classes("game-launcher-header");
+        var sourceStatus = SourceStatus(state.Sources, snapshot.Status);
 
         var filterControls = new List<WidgetElement>();
         if (state.Route == GameLauncherRoute.AddGames)
@@ -331,10 +333,49 @@ internal static class GameLauncherPresentation
             initialFocus = "game-launcher.empty.action";
         }
 
-        var root = UI.Stack("game-launcher.root", header, queryControls, content)
+        var root = UI.Stack("game-launcher.root", header, sourceStatus, queryControls, content)
             .Classes("game-launcher-widget");
         return new WidgetView(root, initialFocus,
             Surface: Surface);
+    }
+
+    private static WidgetElement SourceStatus(
+        IReadOnlyList<WidgetAppLibrarySource> sources,
+        WidgetPagedResourceStatus collectionStatus)
+    {
+        if (sources.Count == 0)
+            return UI.Text("Library source status will appear after the first load.",
+                    "game-launcher.sources.pending",
+                    "Library source status is pending")
+                .Classes("game-launcher-source-summary");
+        var refreshing = collectionStatus == WidgetPagedResourceStatus.Refreshing;
+        var rows = sources.Select(source =>
+        {
+            var health = refreshing ? "Refreshing" : source.Health switch
+            {
+                WidgetAppLibrarySourceHealth.Healthy => "Healthy",
+                WidgetAppLibrarySourceHealth.Degraded => "Degraded",
+                WidgetAppLibrarySourceHealth.Unavailable => "Unavailable",
+                WidgetAppLibrarySourceHealth.Refreshing => "Refreshing",
+                _ => "Unavailable",
+            };
+            var detail = refreshing ? "Refreshing installed games" : source.StatusCode switch
+            {
+                "healthy" => "Current installed games are available",
+                "source_degraded" => "Some installed games may be missing",
+                "source_unavailable" => "This source could not be refreshed",
+                _ => "Source status is limited",
+            };
+            var text = $"{source.DisplayName}: {health} · {detail}";
+            return UI.Text(text, "game-launcher.source." + source.SourceId, text)
+                .Classes("game-launcher-source-row");
+        }).ToArray();
+        return UI.Stack("game-launcher.sources",
+                UI.SectionHeader("Library sources", "game-launcher.sources.header",
+                    description: $"{sources.Count} active {(sources.Count == 1 ? "source" : "sources")}"),
+                UI.Stack("game-launcher.sources.rows", rows)
+                    .Classes("game-launcher-source-rows"))
+            .Classes("game-launcher-source-status");
     }
 
     private sealed record PresentedRow(

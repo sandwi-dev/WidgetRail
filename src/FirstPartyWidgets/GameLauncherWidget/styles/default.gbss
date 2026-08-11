@@ -3,6 +3,10 @@
 .game-launcher-eyebrow { color: #75b9ff; font-size: 12px; }
 .game-launcher-title { font-size: 26px; font-weight: 700; }
 .game-launcher-status { color: #aeb9c6; }
+.game-launcher-source-status { gap: 6px; }
+.game-launcher-source-rows { gap: 3px; }
+.game-launcher-source-row { color: #d6dee8; font-size: 13px; }
+.game-launcher-source-summary { color: #aeb9c6; font-size: 13px; }
 .game-launcher-content { gap: 12px; }
 .game-launcher-scroll { gap: 12px; }
 .game-launcher-grid { gap: 12px; }
