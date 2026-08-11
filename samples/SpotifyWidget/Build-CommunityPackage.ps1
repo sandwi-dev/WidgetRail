@@ -105,8 +105,15 @@ $expectedFiles = @(
     'payload\SpotifyWidget.dll',
     'styles\default.gbss'
 )
+$stagingPrefix = $stagingRoot.TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
-    [System.IO.Path]::GetRelativePath($stagingRoot, $_.FullName)
+    $fullName = [System.IO.Path]::GetFullPath($_.FullName)
+    if (-not $fullName.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Staged package file escaped the package root: $fullName"
+    }
+    $fullName.Substring($stagingPrefix.Length)
 })
 $unexpectedFiles = @($stagedFiles | Where-Object { $_ -notin $expectedFiles })
 $missingFiles = @($expectedFiles | Where-Object { $_ -notin $stagedFiles })

@@ -112,6 +112,29 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
     -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
 
+# Keep the public archive closed over the reviewed runtime payload. Host-owned
+# companion state and secrets must never become package inputs.
+$expectedFiles = @(
+    'manifest.json',
+    'payload\YtMusicWidget.dll',
+    'styles\default.gbss'
+)
+$stagingPrefix = $stagingRoot.TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+$stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
+    $fullName = [System.IO.Path]::GetFullPath($_.FullName)
+    if (-not $fullName.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Staged package file escaped the package root: $fullName"
+    }
+    $fullName.Substring($stagingPrefix.Length)
+})
+$unexpectedFiles = @($stagedFiles | Where-Object { $_ -notin $expectedFiles })
+$missingFiles = @($expectedFiles | Where-Object { $_ -notin $stagedFiles })
+if ($unexpectedFiles.Count -ne 0 -or $missingFiles.Count -ne 0) {
+    throw "Staged package allowlist mismatch. Unexpected: [$($unexpectedFiles -join ', ')]; missing: [$($missingFiles -join ', ')]."
+}
+
 if (Test-Path -LiteralPath $packagePath) {
     Assert-NoReparsePoint -Path $packagePath
     Remove-Item -LiteralPath $packagePath -Force

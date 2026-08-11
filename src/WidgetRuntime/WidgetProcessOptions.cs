@@ -182,6 +182,12 @@ public sealed record WidgetProcessOptions
     public int MaximumMessageBytes { get; init; } = WidgetRuntimeProtocol.DefaultMaximumMessageBytes;
     public int MaximumRestartAttempts { get; init; } = 2;
     /// <summary>
+    /// Trusted, closed mapping for a known worker executable's safe startup
+    /// exit diagnostics. Packages and worker messages cannot provide it.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> StartupExitDiagnostics { get; init; } =
+        new Dictionary<int, string>();
+    /// <summary>
     /// Trusted host factory invoked once for every worker start or restart.
     /// Widget packages and worker protocol messages cannot provide this value.
     /// </summary>
@@ -244,6 +250,16 @@ public sealed record WidgetProcessOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumMessageBytes));
         if (MaximumRestartAttempts is < 0 or > 10)
             throw new ArgumentOutOfRangeException(nameof(MaximumRestartAttempts));
+        if (StartupExitDiagnostics is null || StartupExitDiagnostics.Count > 16 ||
+            StartupExitDiagnostics.Any(pair =>
+                pair.Key is < 1 or > 255 ||
+                string.IsNullOrWhiteSpace(pair.Value) ||
+                pair.Value.Length > 64 ||
+                pair.Value.Any(character =>
+                    !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-')))
+            throw new ArgumentException(
+                "Worker startup diagnostics must be a closed bounded safe-code map.",
+                nameof(StartupExitDiagnostics));
         if (ContentLeaseTimeout <= TimeSpan.Zero || ContentLeaseTimeout > TimeSpan.FromMinutes(1))
             throw new ArgumentOutOfRangeException(nameof(ContentLeaseTimeout));
         if (MemoryLimitBytes is < 16L * 1024 * 1024 or > 512L * 1024 * 1024)
@@ -308,7 +324,8 @@ public sealed record WidgetFailure(
     int? ExitCode,
     Exception? Exception,
     int RestartsUsed,
-    bool CanRestart);
+    bool CanRestart,
+    string? DiagnosticCode = null);
 
 /// <summary>
 /// An action was admitted by the runtime queue, then failed asynchronously.

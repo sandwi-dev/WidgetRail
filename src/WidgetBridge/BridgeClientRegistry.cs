@@ -282,6 +282,59 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
+    internal async Task<BridgeClientPublication<BridgeClientSnapshot>>
+        EstablishPresentationAsync(
+            string widgetId,
+            WidgetLifecycleState state,
+            CancellationToken sessionCancellation,
+            CancellationToken cancellationToken)
+    {
+        if (state == WidgetLifecycleState.Background)
+            throw new BridgeProtocolException(
+                "A background widget cannot establish a visible presentation.");
+        var registration = await GetOrCreateAsync(widgetId, cancellationToken)
+            .ConfigureAwait(false);
+        await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var startRetirement = false;
+        try
+        {
+            DemandCurrent(registration);
+            registration.CancelIdleUnload();
+            await registration.Client.SetLifecycleStateAsync(state, cancellationToken)
+                .ConfigureAwait(false);
+            DemandCurrent(registration);
+            var snapshot = await registration.Client.GetSnapshotAsync(cancellationToken)
+                .ConfigureAwait(false);
+            DemandCurrent(registration);
+
+            // Lifecycle and its first render-facing revision commit together.
+            // No other operation can observe a Visible/Interactive registration
+            // whose first snapshot failed admission.
+            registration.CachedSnapshot = snapshot;
+            registration.HostLifecycle = state;
+            ScheduleIdleUnload(registration, sessionCancellation);
+            return AdmitPublication(
+                registration,
+                new BridgeClientSnapshot(registration.Configured, snapshot));
+        }
+        catch
+        {
+            lock (_gate)
+            {
+                if (_clients.TryGetValue(widgetId, out var current) &&
+                    ReferenceEquals(current, registration))
+                    startRetirement = ReserveRetirementLocked(
+                        registration, restartReserved: false);
+            }
+            if (startRetirement) StartRetirement(registration);
+            throw;
+        }
+        finally
+        {
+            registration.OperationGate.Release();
+        }
+    }
+
     internal async Task<BridgeClientPublication<WidgetOperationAdmission>> AdmitActionAsync(
         string widgetId,
         WidgetActionEvent action,
@@ -1120,7 +1173,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
         internal void RecordFailure(WidgetFailure failure) => Volatile.Write(
             ref _lastFailure,
-            new WorkerFailureDiagnostic(failure.Reason.ToString(), failure.CanRestart));
+            new WorkerFailureDiagnostic(
+                failure.DiagnosticCode ?? failure.Reason.ToString(),
+                failure.CanRestart));
 
         internal void BeginRetirementLocked()
         {

@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Rejects entrypoint path escape", () => Run(RejectsPathEscape)),
     ("Rejects missing and non-Widget types", () => Run(RejectsInvalidTypes)),
     ("Rejects invalid assemblies without leaking paths", () => Run(RejectsInvalidAssembly)),
+    ("Generic host surfaces a closed safe loader code before connection", LoaderFailureCodeIsSafe),
     ("Broker bootstrap arguments are optional but atomic", () => Run(BrokerArgumentsAreAtomic)),
     ("Typed capability adapter uses the authenticated broker pipe", TypedCapabilityAdapter),
 };
@@ -195,6 +196,47 @@ static void RejectsInvalidAssembly()
     Assert.Equal("invalid_assembly", exception.Code);
     Assert.True(!exception.Message.Contains(temporary.Path, StringComparison.OrdinalIgnoreCase),
         "Public load diagnostics must not disclose the installed package path.");
+}
+
+static async Task LoaderFailureCodeIsSafe()
+{
+    using var temporary = new TemporaryDirectory();
+    var assembly = Path.Combine(temporary.Path, "Widget.dll");
+    File.WriteAllText(assembly, "not an assembly");
+    var root = Path.GetDirectoryName(typeof(WidgetAssemblyLoader).Assembly.Location)!;
+    var executable = Path.Combine(root, "WidgetWorkerHost.exe");
+    WidgetFailure? failure = null;
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = executable,
+        Arguments =
+        [
+            "--package-root", temporary.Path,
+            "--widget-assembly", assembly,
+            "--widget-type", "Example.Widget",
+        ],
+        WidgetInstanceId = "worker-host.loader-failure",
+        ConnectTimeout = TimeSpan.FromSeconds(3),
+        RequestTimeout = TimeSpan.FromSeconds(2),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = 64L * 1024 * 1024,
+        StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
+    });
+    client.Failed += (_, item) => failure = item;
+
+    WidgetProcessException? thrown = null;
+    try { _ = await client.GetSnapshotAsync(); }
+    catch (WidgetProcessException exception) { thrown = exception; }
+    if (thrown is null)
+        throw new InvalidOperationException("Invalid assembly startup unexpectedly connected.");
+    Assert.True(thrown.Message.Contains("invalid_assembly", StringComparison.Ordinal),
+        "The safe loader code was not retained through worker connection failure.");
+    Assert.True(!thrown.ToString().Contains(temporary.Path, StringComparison.OrdinalIgnoreCase),
+        "The public startup failure exposed the installed package path.");
+    if (failure is null)
+        throw new InvalidOperationException("The runtime did not publish the startup failure.");
+    Assert.Equal("invalid_assembly", failure.DiagnosticCode);
+    Assert.Equal(WidgetWorkerStartupDiagnostics.ExitCodeFor("invalid_assembly"), failure.ExitCode);
 }
 
 static void BrokerArgumentsAreAtomic()

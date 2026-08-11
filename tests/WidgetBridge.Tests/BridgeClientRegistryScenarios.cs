@@ -184,6 +184,54 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(1, failedRestore.Registry.ResidencyBudget.ApplicationWorkers);
     }
 
+    internal static async Task LifecycleAndFirstSnapshotAreAtomic()
+    {
+        var configured = Widget("presentation-admission", worker: 'p', catalog: 'p');
+        await using (var fixture = new RegistryFixture(Catalog(configured)))
+        {
+            using var admitted = await fixture.Registry.EstablishPresentationAsync(
+                configured.Id,
+                WidgetLifecycleState.Visible,
+                CancellationToken.None,
+                CancellationToken.None);
+            RegistryAssert.Equal(1, fixture.Clients.Count);
+            RegistryAssert.SequenceEqual(
+                [WidgetLifecycleState.Visible], fixture.Clients[0].LifecycleStates);
+            RegistryAssert.Equal(1L, admitted.Value.Snapshot.Sequence >> 32);
+        }
+
+        await using var failed = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) =>
+            {
+                if (client.ClientGeneration == 1) client.FailSnapshots = 1;
+            });
+        await RegistryAssert.ThrowsAsync<InvalidOperationException>(() =>
+            failed.Registry.EstablishPresentationAsync(
+                configured.Id,
+                WidgetLifecycleState.Interactive,
+                CancellationToken.None,
+                CancellationToken.None));
+        var retired = failed.Clients.Single();
+        await retired.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        RegistryAssert.SequenceEqual(
+            [WidgetLifecycleState.Interactive], retired.LifecycleStates);
+        RegistryAssert.Equal(0, failed.Registry.RunningWorkerCount);
+        RegistryAssert.Equal(0, failed.Registry.ResidencyBudget.ApplicationWorkers);
+
+        using var recovered = await failed.Registry.EstablishPresentationAsync(
+            configured.Id,
+            WidgetLifecycleState.Interactive,
+            CancellationToken.None,
+            CancellationToken.None);
+        RegistryAssert.Equal(2, failed.Clients.Count);
+        RegistryAssert.Equal(2L, recovered.Value.Snapshot.Sequence >> 32);
+        RegistryAssert.SequenceEqual(
+            [WidgetLifecycleState.Interactive], failed.Clients[1].LifecycleStates);
+        retired.RaiseInvalidated(72);
+        RegistryAssert.Equal(0, failed.Invalidations.Count);
+    }
+
     internal static async Task PublicationAdmissionSerializesReplacement()
     {
         var initial = Widget("publication", worker: '7', catalog: '7');
@@ -747,6 +795,7 @@ internal sealed class RegistryTestClient(
     internal Exception? DisposeFailure { get; set; }
     internal int FailStartsAfterReservation { get; set; }
     internal int FailLifecycleTransitions { get; set; }
+    internal int FailSnapshots { get; set; }
     internal Action? OnDisposeStarted { get; set; }
     internal Task SnapshotEntered => _snapshotEntered.Task;
     internal Task Disposed => _disposed.Task;
@@ -760,6 +809,11 @@ internal sealed class RegistryTestClient(
     public async Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
         EnsureStarted();
+        if (FailSnapshots > 0)
+        {
+            FailSnapshots--;
+            throw new InvalidOperationException("synthetic first snapshot failure");
+        }
         if (BlockSnapshots)
         {
             _snapshotEntered.TrySetResult();

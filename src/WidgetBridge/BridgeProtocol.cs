@@ -49,7 +49,8 @@ internal sealed record BridgeHello(string ClientName);
 internal sealed record WidgetIdRequest(string WidgetId);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
-    GameBarAlternative.WidgetSdk.WidgetLifecycleState State);
+    GameBarAlternative.WidgetSdk.WidgetLifecycleState State,
+    bool AdmitSnapshot = false);
 internal sealed record BridgeActionRequest(string WidgetId, GameBarAlternative.WidgetSdk.WidgetActionEvent Action);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(string WidgetId, GameBarAlternative.WidgetSdk.ControllerInputEvent Input);

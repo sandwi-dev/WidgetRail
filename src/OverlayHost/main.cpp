@@ -1619,11 +1619,17 @@ private:
             const bool hoveredBridgeWidget =
                 state_.surface() == gba::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
                 (priorSurface != gba::Surface::Dashboard || priorSelected != state_.selectedWidget());
+            const bool startupFailureBlocksSnapshot =
+                (enteredBridgeWidget && widgetStartupFailures_.contains(
+                    std::wstring(state_.activeWidget()))) ||
+                (hoveredBridgeWidget && widgetStartupFailures_.contains(
+                    std::wstring(state_.selectedWidget())));
             if (priorSurface == gba::Surface::Hidden) {
                 PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
             }
             if (priorSurface != gba::Surface::Hidden &&
-                (enteredBridgeWidget || hoveredBridgeWidget)) {
+                (enteredBridgeWidget || hoveredBridgeWidget) &&
+                !startupFailureBlocksSnapshot) {
                 PostMessageW(window_, kSnapshotRefreshMessage, 0, 0);
             }
         }
@@ -1983,6 +1989,13 @@ private:
                                  presentationChanged(entry.first);
             return changed;
         });
+        std::erase_if(widgetStartupFailures_, [&](const auto& entry) {
+            return std::none_of(
+                widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                [&](const gba::WidgetDescriptor& descriptor) {
+                    return descriptor.id == entry.first;
+                });
+        });
         std::erase_if(renderedSnapshotSequences_, [&](const auto& entry) {
             return !bridgeIds.contains(entry.first);
         });
@@ -2028,6 +2041,38 @@ private:
             [id](const gba::WidgetDescriptor& descriptor) { return descriptor.id == id; });
     }
 
+    void RecordWidgetStartupFailure(
+        const std::wstring_view widgetId,
+        const std::wstring_view safeFailure) {
+        std::wstring message = std::wstring(DisplayWidgetName(widgetId)) +
+            L" failed: " + std::wstring(safeFailure) + L" Press A to retry.";
+        if (message.size() > 640) message.resize(640);
+        widgetStartupFailures_.insert_or_assign(
+            std::wstring(widgetId), std::move(message));
+        AppendDiagnostic(widgetStartupFailures_.at(std::wstring(widgetId)));
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    [[nodiscard]] bool StoreEstablishedWidgetSnapshot(
+        const std::wstring_view widgetId,
+        gba::WidgetSnapshot snapshot) {
+        const auto descriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [widgetId](const gba::WidgetDescriptor& candidate) {
+                return candidate.id == widgetId;
+            });
+        if (descriptor == widgetDescriptors_.end() ||
+            snapshot.instanceId != descriptor->instanceId) {
+            RecordWidgetStartupFailure(
+                widgetId, L"The worker returned a mismatched widget instance.");
+            return false;
+        }
+        widgetSnapshots_.insert_or_assign(
+            std::wstring(widgetId), std::move(snapshot));
+        widgetStartupFailures_.erase(std::wstring(widgetId));
+        return true;
+    }
+
     void SyncWidgetActivity() {
         const auto desired = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
@@ -2057,14 +2102,31 @@ private:
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             AppendDiagnostic(L"Widget lifecycle bridge unavailable: " + bridge_.lastError());
+            RecordWidgetStartupFailure(desired->widgetId, bridge_.lastError());
+            return;
+        }
+        if (!SnapshotFor(desired->widgetId)) {
+            auto snapshot = bridge_.EstablishWidgetPresentation(
+                desired->widgetId,
+                gba::WidgetLifecycleProtocolValue(desired->state));
+            if (!snapshot) {
+                RecordWidgetStartupFailure(desired->widgetId, bridge_.lastError());
+                return;
+            }
+            if (!StoreEstablishedWidgetSnapshot(
+                    desired->widgetId, std::move(*snapshot))) return;
+            lifecycleBridgeWidget_ = desired->widgetId;
+            lifecycleBridgeState_ = desired->state;
             return;
         }
         if (!bridge_.SetWidgetLifecycle(
                 desired->widgetId, gba::WidgetLifecycleProtocolValue(desired->state))) {
             AppendDiagnostic(L"Widget lifecycle transition failed for " + desired->widgetId +
                              L": " + bridge_.lastError());
+            RecordWidgetStartupFailure(desired->widgetId, bridge_.lastError());
             return;
         }
+        widgetStartupFailures_.erase(desired->widgetId);
         lifecycleBridgeWidget_ = desired->widgetId;
         lifecycleBridgeState_ = desired->state;
     }
@@ -3491,12 +3553,7 @@ private:
         if (!IsBridgeWidget(widgetId)) return;
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                                 L" reload failed: " + bridge_.lastError();
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(lastActionMessage_);
-            InvalidateRect(window_, nullptr, FALSE);
+            RecordWidgetStartupFailure(widgetId, bridge_.lastError());
             return;
         }
 
@@ -3520,11 +3577,15 @@ private:
         const auto restarted = bridge_.RestartWidget(widgetId);
         if (!restarted || !*restarted) {
             pendingContentRevealWidget_.clear();
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                                 L" reload failed: " + bridge_.lastError();
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(lastActionMessage_);
+            RecordWidgetStartupFailure(widgetId, bridge_.lastError());
+            return;
+        }
+
+        lifecycleBridgeWidget_.clear();
+        lifecycleBridgeState_.reset();
+        RefreshAndApplyPresentation([&] { SyncWidgetActivity(); });
+        if (!SnapshotFor(widgetId)) {
+            pendingContentRevealWidget_.clear();
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
@@ -3533,12 +3594,15 @@ private:
         lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) + L" reloaded";
         lastActionExpiresAt_ = GetTickCount64() + 1800;
         AppendDiagnostic(lastActionMessage_);
-        RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widgetId); });
         InvalidateRect(window_, nullptr, FALSE);
     }
 
     void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
         if (!IsBridgeWidget(widgetId)) return;
+        // A failed admission owns the presentation until an explicit retry.
+        // Fetching a snapshot from the still-background registration would
+        // replace the actionable startup diagnostic with a missing-cache error.
+        if (widgetStartupFailures_.contains(std::wstring(widgetId))) return;
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             lastActionWidgetId_ = widgetId;
@@ -3794,6 +3858,12 @@ private:
             : state_.selectedWidget();
 
         if (IsBridgeWidget(widget)) {
+            if (phase == gba::input::NavigationEventPhase::Pressed &&
+                button == L"A" &&
+                widgetStartupFailures_.contains(std::wstring(widget))) {
+                RestartCurrentWidget();
+                return;
+            }
             if (!SnapshotFor(widget)) {
                 RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             }
@@ -4238,6 +4308,9 @@ private:
 
     std::optional<std::wstring> DashboardStatus() const {
         const auto now = GetTickCount64();
+        if (const auto startup = widgetStartupFailures_.find(
+                std::wstring(state_.selectedWidget()));
+            startup != widgetStartupFailures_.end()) return startup->second;
         if (const auto failure = actionFailureFeedback_.MessageForSurface(
                 gba::WidgetActionFeedbackSurface::Dashboard,
                 state_.selectedWidget(),
@@ -4341,6 +4414,9 @@ private:
 
     std::optional<std::wstring> OpenWidgetStatus() const {
         const auto now = GetTickCount64();
+        if (const auto startup = widgetStartupFailures_.find(
+                std::wstring(state_.activeWidget()));
+            startup != widgetStartupFailures_.end()) return startup->second;
         if (const auto failure = actionFailureFeedback_.MessageForSurface(
                 gba::WidgetActionFeedbackSurface::OpenWidget,
                 state_.selectedWidget(),
@@ -4353,6 +4429,8 @@ private:
     }
 
     std::wstring OpenWidgetPrompt() const {
+        if (widgetStartupFailures_.contains(std::wstring(state_.activeWidget())))
+            return L"A  Retry    B  Back";
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         if (!snapshot) return L"A  Select";
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
@@ -4790,6 +4868,7 @@ private:
     gba::input::SliderInteractionState sliderInteraction_;
     gba::input::PressedInteractionState pressedInteraction_;
     std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
+    std::unordered_map<std::wstring, std::wstring> widgetStartupFailures_;
     gba::WidgetBridgeClient bridge_;
     unsigned int catalogRetryAttempts_{};
     gba::PlatformAppearanceState appearanceState_;
