@@ -147,6 +147,23 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-015 — Add deterministic real-host accessibility proof
+
+**State:** Done
+**Closing commit:** `b371983` (`[DLV-015] compose real-host accessibility proof`)
+**Integrated on `main`:** `6d3b093`
+
+**Reviewer disposition:** Accepted. One real HWND now hosts the production
+declarative tree and `ProviderHost`, publishes it through `WM_GETOBJECT`, and is
+queried through the UI Automation client path. The retained fixture covers
+Settings, YT Music, and Spotify names, roles, values, bounds, order, hidden-node
+exclusion, Invoke, RangeValue, focus, loading/error, selected/busy/disabled,
+and generation focus restoration with 183 composed assertions. Five focused
+native accessibility groups, the Release host build, the packaged YT Music
+host/UIA fixture, and 52 documentation contracts pass. This closes the missing
+deterministic real-host proof, not physical Narrator/MSAA or packaged
+AppContainer/UIA evidence, which remain in the manual verification queue.
+
 ### DLV-001 — Finish the paused authority-recovery operator surface
 
 **State:** Done
@@ -2436,9 +2453,9 @@ commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
 not be reset or overwritten. DLV-049 is accepted and integrated as `a8bcb27`;
-DLV-015 is now Assigned on its clean source baseline while the widgets lane leads
-serialized DLV-006. Newly confirmed P0 DLV-052 is the next Ready assignment;
-DLV-016 follows it instead of displacing the visible community-addon failure. DLV-011
+DLV-015 is accepted and integrated as `6d3b093` while the widgets lane leads
+serialized DLV-006. Newly confirmed P0 DLV-052 is now Assigned; DLV-016 follows
+it instead of displacing the visible community-addon failure. DLV-011
 awaits accepted DLV-006 integration, DLV-033 awaits the compositor decision, and
 DLV-025 remains user-decision blocked. No third safe platform Ready item is
 manufactured while those explicit cross-lane and architecture dependencies
@@ -2810,7 +2827,7 @@ GBA-003.
 
 ### DLV-015 — Add deterministic real-host accessibility proof
 
-**State:** Assigned on platform source commit `32af19b`
+**State:** Done; accepted source commit `b371983`, integrated as `6d3b093`
 **Baseline:** accepted DLV-049 source commit `32af19b`, integrated on `main` as
 `a8bcb27`
 **Owner:** native accessibility adapter, host harness, and retained evidence
@@ -2840,9 +2857,9 @@ assistive technology, or widgets-lane source changes.
 
 ### DLV-052 — Restore current community addons after a Release relaunch
 
-**State:** Ready after DLV-015
-**Baseline:** accepted integration of DLV-015 plus the reviewer control-plane
-commit assigning this milestone
+**State:** Assigned after accepted DLV-015
+**Baseline:** accepted integration `6d3b093` plus the reviewer control-plane
+commit containing this assignment
 **Owner:** platform lane over community package build/deployment discipline,
 generic installed-worker load diagnostics, WidgetBridge lifecycle/snapshot
 ordering, OverlayHost failure presentation, and the smallest real installed
