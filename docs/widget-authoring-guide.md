@@ -1154,7 +1154,7 @@ Page size is 1–100, retained items are at least two pages and at most 256,
 cursor history is capped at 256, pagination threshold is 1–8, and the protocol
 accepts at most 256 serialized collection items. The logical provider may have
 thousands of items; only this window reaches the host.
-One same-direction traversal admits at most 128 distinct cursor identities and
+One same-direction traversal admits at most 256 distinct cursor identities and
 then fails closed; changing direction or refreshing starts a new bounded
 traversal, so an evicted page can be fetched again without weakening loop
 detection.

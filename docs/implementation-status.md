@@ -1629,6 +1629,11 @@ themes also use non-shrinking fixed regions, a thin native Slider
  PlatformBroker 52/52, Windows app-library provider 43/43, Game Launcher 10/10,
  WidgetCatalog 35/35, and the documentation contract across 55 Markdown files.
  The separately bounded installed generic-worker/AppContainer suite passes 6/6.
+ DLV-074 aligns the checked public API and current author documentation with the
+ intentional 256-cursor same-direction bound. Focused Release verification
+ `artifacts/verification/20260811T123616Z-fe1edc94` passes API compatibility
+ 12/12, Widget SDK 86/86, and the documentation contract across 55 Markdown
+ files; refresh or direction change still resets traversal evidence.
  DLV-066 advances Game Launcher to package 0.2.0 with one current schema-v2
  organization policy. X toggles favorites, LB explicitly groups or ungroups
  selected SavedIds, and RB chooses a preferred group member. No title heuristic
