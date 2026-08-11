@@ -169,12 +169,10 @@ public sealed class GameLauncherWidget : Widget
         switch (action.ActionId)
         {
             case "game-launcher.previous":
-                Operations.Cancel("game-launcher.launch-lifecycle");
-                _ = _library.Move(WidgetCursorDirection.Before, GameLauncherPresentation.ScrollId);
+                TryMovePage(action, WidgetCursorDirection.Before);
                 return;
             case "game-launcher.next":
-                Operations.Cancel("game-launcher.launch-lifecycle");
-                _ = _library.Move(WidgetCursorDirection.After, GameLauncherPresentation.ScrollId);
+                TryMovePage(action, WidgetCursorDirection.After);
                 return;
             case "game-launcher.refresh":
                 Operations.Cancel("game-launcher.launch-lifecycle");
@@ -284,6 +282,26 @@ public sealed class GameLauncherWidget : Widget
                 }});
                 return;
         }
+    }
+
+    private void TryMovePage(
+        WidgetActionEvent action,
+        WidgetCursorDirection direction)
+    {
+        var expectedButtonId = direction == WidgetCursorDirection.Before
+            ? "game-launcher.previous"
+            : "game-launcher.next";
+        if (LifecycleState != WidgetLifecycleState.Interactive ||
+            action.SourceElementId is not GameLauncherPresentation.ScrollId &&
+            action.SourceElementId != expectedButtonId)
+            return;
+        var snapshot = _library.Snapshot;
+        if (snapshot.Status != WidgetPagedResourceStatus.Ready ||
+            direction == WidgetCursorDirection.Before && !snapshot.HasBefore ||
+            direction == WidgetCursorDirection.After && !snapshot.HasAfter)
+            return;
+        Operations.Cancel("game-launcher.launch-lifecycle");
+        _ = _library.Move(direction, GameLauncherPresentation.ScrollId);
     }
 
     private static string? NormalizeSearch(string value)

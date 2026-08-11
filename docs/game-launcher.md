@@ -29,6 +29,10 @@ provider identity, infer games from titles, or cache a complete library.
   page, cursor, or viewport-anchor accounting.
 - A 10,000-item library takes 157 bounded pages. Crossing a boundary requests
   focus on the entering keyed tile and retains the authored viewport anchor.
+  While focus is inside a multi-page results scroll, LB requests the available
+  previous page and RB requests the available next page. An unavailable or busy
+  direction has no shortcut, and focus outside that scroll keeps its existing
+  bumper meaning. Single-page tiles retain LB/RB variant grouping and preference.
   Previous, Next, Refresh, automatic near-edge pagination, retry, and every tile
   remain reachable through controller actions.
 - Cursors remain query/revision/direction bound in the broker. Committing or
