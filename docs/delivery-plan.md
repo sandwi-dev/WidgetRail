@@ -731,9 +731,12 @@ route/action, playback, and presentation boundaries while retaining one
   owner with bounded cancellation, drain, exact-once disposal, and stale-
   publication rejection. DLV-072 `fe66470` is accepted and integrated through
   `7f23738`: the obsolete 512-item snapshot is replaced by bounded opaque cursor
-  queries and Games & Apps now consumes that contract. Visible DLV-060 is active,
-  followed by DLV-066 and DLV-067. DLV-038 remains deferred test-architecture
-  debt rather than filler work.
+  queries and Games & Apps now consumes that contract. DLV-060 candidate
+  `8ca0859` delivers the visible launcher but is unaccepted because its public
+  256-cursor constant, checked API baseline, and author documentation disagree.
+  DLV-066 is active on that preserved prefix; bounded DLV-074 follows it before
+  DLV-067. DLV-038 remains deferred test-architecture debt rather than filler
+  work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3105,7 +3108,7 @@ cursor contract unchanged.
 
 ### DLV-060 — Ship an installed-only Game Launcher library
 
-**State:** Assigned
+**State:** Candidate `8ca0859` rejected pending DLV-074 public-contract correction
 **Lane:** widgets, acting as serialized managed capability/widget lead
 **Baseline:** closing commit of DLV-072
 **Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, DLV-059, DLV-071, and
@@ -3182,9 +3185,24 @@ launch truth requires raw identity, or the widget begins owning discovery/cache/
 source policy. Preserve the exact remaining gap for a serialized framework
 prerequisite.
 
+**Reviewer disposition:** Rejected pending one bounded correction after the
+already-started DLV-066 milestone. Candidate `8ca0859` supplies a compact
+268-line lifecycle/orchestration owner, 159-line pure presenter, bounded warm
+projection, exact SavedId revalidation, lazy artwork, responsive grid, bundled
+package/catalog wiring, and a new MSTest.Sdk 4.3.2 suite. Focused evidence
+reports SDK 86/86, launcher 10/10, installed generic-worker 6/6, and complete
+10,000-row traversal in 157 64-row provider pages while retaining at most 192
+rows and 256 cursors. However `MaximumCursorHistory` is a public const: source
+now declares 256 while `src/WidgetSdk/PublicApi.txt` still declares 128,
+`src/WidgetSdk/README.md` still documents 128, and the public authoring guide
+states both 256 and 128 in adjacent paragraphs. The compatibility suite was not
+part of the retained evidence. Do not integrate `8ca0859` or its dependent
+prefix until DLV-074 intentionally updates and verifies the one current public
+contract. Per the asynchronous review rule, do not interrupt active DLV-066.
+
 ### DLV-066 — Add Game Launcher favorites and preferred variants
 
-**State:** Ready
+**State:** Assigned
 **Lane:** widgets
 **Baseline:** closing commit of DLV-060
 **Dependencies:** DLV-059, DLV-071, DLV-072, and DLV-060
@@ -3221,12 +3239,63 @@ cases plus docs. No aggregate, native, screenshot, or external store run.
 **Stop/escalate when:** durable preference cannot survive without exposing raw
 source identity or requires provider/public protocol changes.
 
+### DLV-074 — Align the public cursor traversal contract
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-066, retaining rejected DLV-060 candidate
+`8ca0859` and the clean accepted-main merge
+**Dependencies:** DLV-060 candidate `8ca0859` and DLV-066 only for contiguous
+lane order
+**Owner:** WidgetSdk checked public-API baseline, cursor contract documentation,
+focused compatibility evidence, and directly affected Game Launcher guidance;
+no product widget, broker, protocol, native, or cursor implementation changes
+**Concurrency:** Execute immediately after DLV-066 and before DLV-067. Do not
+interrupt DLV-066, change its feature behavior, or broaden this correction into
+another cursor redesign.
+
+**Visible successor:** Acceptance and integration of the complete installed
+Game Launcher plus its favorites milestone, followed by DLV-067.
+
+**Objective:** Make the intentional bounded 256-cursor SDK contract introduced
+by DLV-060 one accurate checked public surface instead of shipping source,
+compatibility baseline, and author documentation that disagree.
+
+**In scope:** intentionally update the checked WidgetSdk API baseline for
+`WidgetCursorResource<TItem>.MaximumCursorHistory = 256`; update every current
+public SDK/author guide statement that still claims 128; preserve historical
+review evidence as history; prove the compatibility classifier reports the
+accepted surface as current; retain the 10,000-row/157-page and fail-closed
+257th-cursor SDK cases unchanged.
+
+**Out of scope:** changing the 256 bound again, rolling cursor history, public
+protocol or broker behavior, Game Launcher/favorites behavior, compatibility
+facades, a test-framework migration, broad documentation cleanup, aggregate,
+screenshots, or provider/native work.
+
+**Acceptance criteria:** production source, `PublicApi.txt`, WidgetSdk README,
+public authoring guide, and current feature documentation state one 256-cursor
+same-direction bound with refresh/direction-change reset semantics; no current
+public document still promises 128. The intentional API update passes all 12
+named compatibility cases and the focused WidgetSdk cursor suite still proves
+complete 10,000-row traversal plus fail-closed overflow. No product behavior or
+public symbol other than the constant value changes.
+
+**Verification:** Tier 1 WidgetSdk compatibility 12/12, focused WidgetSdk cursor
+suite, and documentation contracts. Do not rerun Game Launcher, generic-worker,
+provider, native, package, aggregate, or screenshot work because their source
+does not change.
+
+**Stop/escalate when:** compatibility tooling cannot intentionally represent a
+public const value change, another current public surface requires a materially
+different cursor contract, or correction would change product/runtime behavior.
+
 ### DLV-067 — Present honest Game Launcher launch lifecycle
 
 **State:** Ready
 **Lane:** widgets
-**Baseline:** closing commit of DLV-066
-**Dependencies:** DLV-059, DLV-071, DLV-072, DLV-060, and DLV-066
+**Baseline:** closing commit of DLV-074
+**Dependencies:** DLV-059, DLV-071, DLV-072, DLV-060, DLV-066, and DLV-074
 **Owner:** trusted launch-result/lifecycle policy, Game Launcher projection,
 and deterministic adapter/widget fixtures; no generic process authority
 
