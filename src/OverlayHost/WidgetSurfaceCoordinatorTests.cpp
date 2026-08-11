@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -25,6 +26,39 @@ int checks{};
 void Check(const bool condition, const std::string_view message) {
     ++checks;
     if (!condition) throw std::runtime_error(std::string(message));
+}
+
+bool InvokeAutomationId(const HWND window, const wchar_t* automationId) {
+    ComPtr<IUIAutomation> automation;
+    if (FAILED(CoCreateInstance(
+            CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(automation.ReleaseAndGetAddressOf())))) return false;
+    ComPtr<IUIAutomationElement> root;
+    if (FAILED(automation->ElementFromHandle(window, root.ReleaseAndGetAddressOf())) || !root)
+        return false;
+    VARIANT expected{};
+    expected.vt = VT_BSTR;
+    expected.bstrVal = SysAllocString(automationId);
+    ComPtr<IUIAutomationCondition> condition;
+    const HRESULT conditionResult = automation->CreatePropertyCondition(
+        UIA_AutomationIdPropertyId, expected, condition.ReleaseAndGetAddressOf());
+    VariantClear(&expected);
+    if (FAILED(conditionResult) || !condition) return false;
+    ComPtr<IUIAutomationElement> element;
+    if (FAILED(root->FindFirst(
+            TreeScope_Descendants, condition.Get(), element.ReleaseAndGetAddressOf())) ||
+        !element) return false;
+    ComPtr<IUIAutomationInvokePattern> invoke;
+    if (FAILED(element->GetCurrentPatternAs(
+            UIA_InvokePatternId, IID_PPV_ARGS(invoke.ReleaseAndGetAddressOf()))) || !invoke)
+        return false;
+    if (FAILED(invoke->Invoke())) return false;
+    MSG message{};
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+    return true;
 }
 
 [[nodiscard]] std::size_t PrivateWorkingSetBytes() {
@@ -119,9 +153,12 @@ int main() {
 
         gba::pinned::WidgetSurfaceCoordinator coordinator;
         std::wstring error;
+        const auto placementRoot = std::filesystem::temp_directory_path() /
+            (L"gba-widget-surface-" + std::to_wstring(GetCurrentProcessId()));
         Check(coordinator.Initialize(
                   GetModuleHandleW(nullptr), nullptr, WM_APP + 0x410,
-                  d2d.Get(), write.Get(), nullptr, error),
+                  d2d.Get(), write.Get(), nullptr, error,
+                  placementRoot / L"placement.ini"),
               "coordinator initializes with current production primitives");
         Check(!coordinator.Pin(Admission(false), error) && !error.empty(),
               "non-supporting widget is rejected safely");
@@ -145,6 +182,25 @@ int main() {
                   (WS_EX_TOOLWINDOW | WS_EX_TOPMOST) &&
               (styles & WS_EX_APPWINDOW) == 0,
               "real pinned HWND uses the accepted tool-window/topmost contract");
+        RECT originalBounds{};
+        GetWindowRect(surface, &originalBounds);
+        Check(coordinator.BeginPlacement(gba::pinned::PlacementMode::Move) &&
+                  coordinator.StepPlacement(gba::pinned::PlacementDirection::Left) &&
+                  coordinator.CancelPlacement(),
+              "controller move and cancel share one bounded placement session");
+        RECT canceledBounds{};
+        GetWindowRect(surface, &canceledBounds);
+        Check(EqualRect(&originalBounds, &canceledBounds),
+              "cancel restores the exact pre-gesture real-HWND rectangle");
+        Check(coordinator.BeginPlacement(gba::pinned::PlacementMode::Resize) &&
+                  coordinator.StepPlacement(gba::pinned::PlacementDirection::Left),
+              "controller resize changes the real HWND through the placement state machine");
+        Check(coordinator.CommitPlacement(error),
+              "current generation atomically commits real-HWND geometry");
+        RECT committedBounds{};
+        GetWindowRect(surface, &committedBounds);
+        Check(std::filesystem::exists(placementRoot / L"placement.ini"),
+              "committed real-HWND geometry creates the isolated durable record");
         Check(!coordinator.Pin(Admission(), error) &&
                   error.find(L"already pinned") != std::wstring::npos,
               "duplicate pin is bounded");
@@ -188,6 +244,11 @@ int main() {
                   coordinator.presentationState() ==
                       gba::pinned::WidgetSurfacePresentationState::PinnedInteractive,
               "reopened overlay can explicitly restore one interactive pin");
+        Check(InvokeAutomationId(surface, L"host:pinned.move") &&
+                  coordinator.placementMode() == gba::pinned::PlacementMode::Move,
+              "real UI Automation Move action enters the shared placement state machine");
+        Check(coordinator.CancelPlacement(),
+              "UI Automation placement can be canceled through the same authority");
 
         coordinator.ReconcileCatalog({Descriptor()});
         Check(coordinator.pinned(), "current catalog generation retains the surface");
@@ -199,6 +260,13 @@ int main() {
         Check(!IsWindow(surface), "replaced runtime leaves no orphaned HWND");
 
         Check(coordinator.Pin(Admission(), error), "surface can be repinned");
+        RECT restoredBounds{};
+        GetWindowRect(coordinator.window(), &restoredBounds);
+        Check(restoredBounds.right - restoredBounds.left ==
+                  committedBounds.right - committedBounds.left &&
+                  restoredBounds.bottom - restoredBounds.top ==
+                      committedBounds.bottom - committedBounds.top,
+              "repin restores committed logical size from durable storage");
         coordinator.ReconcileCatalog({});
         Check(!coordinator.pinned() && coordinator.teardownCount() == 2 &&
                   coordinator.lastStopReason() ==
@@ -227,6 +295,8 @@ int main() {
         coordinator.Dispose();
         Check(coordinator.teardownCount() == 4,
               "coordinator disposal after cleanup owns no second teardown");
+        std::error_code cleanup;
+        std::filesystem::remove_all(placementRoot, cleanup);
         const auto privateDelta = static_cast<long long>(privatePinned) -
             static_cast<long long>(privateBefore);
         Check(privateDelta <= 128LL * 1024LL * 1024LL,

@@ -3,6 +3,7 @@
 #include <ShellScalingApi.h>
 
 #include <algorithm>
+#include <array>
 #include <utility>
 
 namespace gba::pinned {
@@ -13,6 +14,16 @@ constexpr wchar_t kWindowTitle[] = L"Game Bar Alternative pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
 constexpr float kChromeHeightDip = 44.0F;
 constexpr float kSideInsetDip = 14.0F;
+
+[[nodiscard]] std::filesystem::path DefaultPlacementPath() {
+    std::array<wchar_t, 32768> localAppData{};
+    const DWORD length = GetEnvironmentVariableW(
+        L"LOCALAPPDATA", localAppData.data(), static_cast<DWORD>(localAppData.size()));
+    if (length == 0 || length >= localAppData.size()) return {};
+    return std::filesystem::path(
+               std::wstring_view(localAppData.data(), length)) /
+        L"GameBarAlternative" / L"pinned-surface-placement.ini";
+}
 
 [[nodiscard]] DWORD ExtendedStyle(const InteractionMode mode) noexcept {
     DWORD style = WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED;
@@ -62,7 +73,8 @@ bool WidgetSurfaceCoordinator::Initialize(
     ID2D1Factory* const d2dFactory,
     IDWriteFactory* const writeFactory,
     RemoteImageCache* const imageCache,
-    std::wstring& error) {
+    std::wstring& error,
+    std::optional<std::filesystem::path> placementPath) {
     if (initialized_ || disposed_ || !instance || !d2dFactory || !writeFactory ||
         notificationMessage < WM_APP) {
         error = L"Pinned surface coordinator initialization is invalid.";
@@ -84,6 +96,12 @@ bool WidgetSurfaceCoordinator::Initialize(
     d2dFactory_ = d2dFactory;
     writeFactory_ = writeFactory;
     imageCache_ = imageCache;
+    if (!placementPath) placementPath = DefaultPlacementPath();
+    if (placementPath->empty()) {
+        error = L"Pinned surface placement storage is unavailable.";
+        return false;
+    }
+    placementStore_ = std::make_unique<PinnedPlacementStore>(std::move(*placementPath));
     renderer_ = std::make_unique<DeclarativeRenderer>(
         d2dFactory_.Get(), writeFactory_.Get(), imageCache_);
     initialized_ = true;
@@ -119,6 +137,7 @@ bool WidgetSurfaceCoordinator::Pin(
         error = L"The pinned surface descriptor was rejected.";
         return false;
     }
+    placementLimits_ = admission.placementLimits;
     admission_ = std::move(admission);
     if (!CreateWindowForAdmission(error)) {
         admission_.reset();
@@ -161,9 +180,134 @@ bool WidgetSurfaceCoordinator::ToggleInteractionMode() {
         : InteractionMode::Focusable);
 }
 
+bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
+    if (!pinned() || (mode != PlacementMode::Move && mode != PlacementMode::Resize))
+        return false;
+    RECT bounds{};
+    if (!GetWindowRect(window_, &bounds)) return false;
+    if (placementSession_) (void)CancelPlacement();
+    placementSession_ = BeginPlacementSession(
+        mode, {bounds.left, bounds.top, bounds.right, bounds.bottom},
+        admission_->runtimeGeneration, admission_->presentationGeneration);
+    if (!placementSession_) return false;
+    if (policy_.interactionMode() != InteractionMode::Focusable) {
+        policy_.SetInteractionMode(InteractionMode::Focusable);
+        ApplyWindowPolicy();
+    }
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+std::optional<MonitorWorkArea> WidgetSurfaceCoordinator::CurrentWindowMonitor() const noexcept {
+    if (!window_) return std::nullopt;
+    const HMONITOR selected = MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST);
+    MONITORINFOEXW info{sizeof(info)};
+    if (!selected || !GetMonitorInfoW(selected, &info)) return std::nullopt;
+    UINT dpiX = 96;
+    UINT dpiY = 96;
+    if (FAILED(GetDpiForMonitor(selected, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)) ||
+        dpiX == 0 || dpiY == 0) dpiX = 96;
+    return MonitorWorkArea{
+        info.szDevice,
+        {info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom},
+        dpiX,
+        (info.dwFlags & MONITORINFOF_PRIMARY) != 0,
+    };
+}
+
+void WidgetSurfaceCoordinator::ApplyPlacementBounds(
+    const PhysicalRect& bounds) noexcept {
+    if (!window_) return;
+    SetWindowPos(
+        window_, HWND_TOPMOST, bounds.left, bounds.top,
+        bounds.right - bounds.left, bounds.bottom - bounds.top,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+}
+
+bool WidgetSurfaceCoordinator::StepPlacement(
+    const PlacementDirection direction, const float stepDip) {
+    const auto monitor = CurrentWindowMonitor();
+    if (!placementSession_ || !monitor ||
+        !StepPlacementSession(
+            *placementSession_, direction, *monitor, placementLimits_, stepDip)) return false;
+    ApplyPlacementBounds(placementSession_->current);
+    PublishAccessibility();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::CommitPlacement(std::wstring& error) {
+    const auto monitor = CurrentWindowMonitor();
+    if (!pinned() || !placementSession_ || !monitor) {
+        error = L"No pinned placement gesture is active.";
+        return false;
+    }
+    const auto committed = CommitPlacementSession(
+        *placementSession_, admission_->runtimeGeneration,
+        admission_->presentationGeneration, *monitor, placementLimits_);
+    if (!committed) {
+        (void)CancelPlacement();
+        error = L"The pinned surface changed before placement could be committed.";
+        return false;
+    }
+    if (!placementStore_ ||
+        !placementStore_->Save(admission_->widgetId, *committed, error)) {
+        (void)CancelPlacement();
+        return false;
+    }
+    committedPlacement_ = *committed;
+    placementSession_.reset();
+    pointerPlacement_ = false;
+    if (GetCapture() == window_) ReleaseCapture();
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::CancelPlacement() noexcept {
+    if (!placementSession_) return false;
+    const auto original = placementSession_->original;
+    placementSession_.reset();
+    pointerPlacement_ = false;
+    if (GetCapture() == window_) ReleaseCapture();
+    ApplyPlacementBounds(original);
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+void WidgetSurfaceCoordinator::ReconcileDisplayEnvironment() noexcept {
+    if (!pinned()) return;
+    if (placementSession_) (void)CancelPlacement();
+    const auto resolved = ResolveDurablePlacement(
+        CurrentMonitorWorkAreas(), committedPlacement_, placementLimits_);
+    if (!resolved) {
+        (void)Unpin(WidgetSurfaceStopReason::DisplayUnavailable);
+        return;
+    }
+    ApplyPlacementBounds(resolved->bounds);
+    const auto monitor = CurrentWindowMonitor();
+    if (monitor) {
+        committedPlacement_ = CaptureDurablePlacement(
+            *monitor, resolved->bounds, placementLimits_);
+        if (resolved->usedFallback && committedPlacement_ && placementStore_) {
+            std::wstring ignored;
+            (void)placementStore_->Save(
+                admission_->widgetId, *committedPlacement_, ignored);
+        }
+    }
+    PublishAccessibility();
+}
+
 bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexcept {
     if (!pinned() && !window_) return false;
     lastStopReason_ = reason;
+    placementSession_.reset();
+    pointerPlacement_ = false;
+    if (GetCapture() == window_) ReleaseCapture();
     const HWND retiring = window_;
     tearingDown_ = true;
     accessibilityProvider_.Clear();
@@ -173,6 +317,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     tearingDown_ = false;
     ReleaseGraphicsResources();
     admission_.reset();
+    committedPlacement_.reset();
     policy_.Stop(reason == WidgetSurfaceStopReason::HostExit ||
                          reason == WidgetSurfaceStopReason::CoordinatorDisposed
                      ? StopReason::HostExit
@@ -214,6 +359,7 @@ void WidgetSurfaceCoordinator::Dispose() noexcept {
     if (pinned() || window_)
         (void)Unpin(WidgetSurfaceStopReason::CoordinatorDisposed);
     renderer_.reset();
+    placementStore_.reset();
     d2dFactory_.Reset();
     writeFactory_.Reset();
     imageCache_ = nullptr;
@@ -277,7 +423,64 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             : MA_ACTIVATE;
     case WM_GETOBJECT:
         return accessibilityProvider_.HandleWmGetObject(wParam, lParam);
+    case kAccessibilityActionMessage:
+        HandleAccessibilityActions();
+        return 0;
+    case WM_LBUTTONDOWN:
+        if (policy_.interactionMode() == InteractionMode::Focusable) {
+            RECT client{};
+            GetClientRect(window_, &client);
+            const int x = static_cast<short>(LOWORD(lParam));
+            const int y = static_cast<short>(HIWORD(lParam));
+            const int dpi = static_cast<int>(GetDpiForWindow(window_));
+            const int chrome = MulDiv(44, dpi, 96);
+            const int fromRight = client.right - x;
+            PlacementMode mode = PlacementMode::None;
+            if (y >= 0 && y <= chrome) {
+                if (fromRight >= MulDiv(208, dpi, 96) &&
+                    fromRight < MulDiv(276, dpi, 96)) mode = PlacementMode::Move;
+                else if (fromRight >= MulDiv(132, dpi, 96) &&
+                         fromRight < MulDiv(208, dpi, 96)) mode = PlacementMode::Resize;
+            }
+            if (mode != PlacementMode::None && BeginPlacement(mode)) {
+                pointerPlacement_ = true;
+                GetCursorPos(&pointerStart_);
+                pointerStartBounds_ = placementSession_->current;
+                SetCapture(window_);
+            }
+        }
+        return 0;
+    case WM_MOUSEMOVE:
+        if (pointerPlacement_ && placementSession_ && (wParam & MK_LBUTTON) != 0) {
+            POINT current{};
+            GetCursorPos(&current);
+            const int dx = current.x - pointerStart_.x;
+            const int dy = current.y - pointerStart_.y;
+            auto proposed = pointerStartBounds_;
+            if (placementSession_->mode == PlacementMode::Move) {
+                proposed.left += dx;
+                proposed.right += dx;
+                proposed.top += dy;
+                proposed.bottom += dy;
+            } else {
+                proposed.right += dx;
+                proposed.bottom += dy;
+            }
+            const auto monitor = CurrentWindowMonitor();
+            if (monitor && SetPlacementSessionBounds(
+                    *placementSession_, proposed, *monitor, placementLimits_)) {
+                ApplyPlacementBounds(placementSession_->current);
+            }
+        }
+        return 0;
     case WM_LBUTTONUP:
+        if (pointerPlacement_) {
+            pointerPlacement_ = false;
+            if (GetCapture() == window_) ReleaseCapture();
+            std::wstring ignored;
+            if (!CommitPlacement(ignored)) (void)CancelPlacement();
+            return 0;
+        }
         if (policy_.interactionMode() == InteractionMode::Focusable) {
             RECT client{};
             GetClientRect(window_, &client);
@@ -285,26 +488,43 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             const int y = static_cast<short>(HIWORD(lParam));
             const int chrome = MulDiv(44, static_cast<int>(GetDpiForWindow(window_)), 96);
             if (y >= 0 && y <= chrome) {
-                if (x >= client.right - MulDiv(84, static_cast<int>(GetDpiForWindow(window_)), 96))
+                const int dpi = static_cast<int>(GetDpiForWindow(window_));
+                const int fromRight = client.right - x;
+                if (fromRight < MulDiv(64, dpi, 96))
                     (void)Unpin(WidgetSurfaceStopReason::Close);
-                else if (x >= client.right - MulDiv(176, static_cast<int>(GetDpiForWindow(window_)), 96))
+                else if (fromRight < MulDiv(132, dpi, 96))
                     (void)Unpin(WidgetSurfaceStopReason::Unpin);
-                else if (x >= client.right - MulDiv(320, static_cast<int>(GetDpiForWindow(window_)), 96))
+                else if (fromRight >= MulDiv(276, dpi, 96) &&
+                         fromRight < MulDiv(390, dpi, 96))
                     (void)SetInteractionMode(InteractionMode::ClickThrough);
             }
         }
         return 0;
+    case WM_CAPTURECHANGED:
+        if (pointerPlacement_) (void)CancelPlacement();
+        return 0;
     case WM_KEYDOWN:
-        if (wParam == 'P') (void)ToggleInteractionMode();
+        if (placementSession_) {
+            if (wParam == VK_LEFT) (void)StepPlacement(PlacementDirection::Left);
+            else if (wParam == VK_RIGHT) (void)StepPlacement(PlacementDirection::Right);
+            else if (wParam == VK_UP) (void)StepPlacement(PlacementDirection::Up);
+            else if (wParam == VK_DOWN) (void)StepPlacement(PlacementDirection::Down);
+            else if (wParam == VK_RETURN) {
+                std::wstring ignored;
+                (void)CommitPlacement(ignored);
+            } else if (wParam == VK_ESCAPE) (void)CancelPlacement();
+        } else if (wParam == 'M') (void)BeginPlacement(PlacementMode::Move);
+        else if (wParam == 'R') (void)BeginPlacement(PlacementMode::Resize);
+        else if (wParam == 'P') (void)ToggleInteractionMode();
         else if (wParam == 'U') (void)Unpin(WidgetSurfaceStopReason::Unpin);
         return 0;
     case WM_DPICHANGED:
-        if (const auto* suggested = reinterpret_cast<const RECT*>(lParam))
-            SetWindowPos(window_, HWND_TOPMOST, suggested->left, suggested->top,
-                         suggested->right - suggested->left,
-                         suggested->bottom - suggested->top,
-                         SWP_NOACTIVATE | SWP_SHOWWINDOW);
         ReleaseGraphicsResources();
+        ReconcileDisplayEnvironment();
+        return 0;
+    case WM_DISPLAYCHANGE:
+    case WM_SETTINGCHANGE:
+        ReconcileDisplayEnvironment();
         return 0;
     case WM_SIZE:
         if (renderTarget_ && wParam != SIZE_MINIMIZED) {
@@ -325,8 +545,33 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
     }
 }
 
+void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
+    if (!pinned()) return;
+    for (const auto& request : accessibilityProvider_.TakeActions()) {
+        if (request.kind != accessibility::ActionKind::Invoke ||
+            request.domain != accessibility::ElementDomain::HostShell ||
+            request.widgetId != admission_->widgetId ||
+            request.runtimeGeneration != admission_->runtimeGeneration ||
+            request.snapshotSequence != admission_->snapshot.sequence) continue;
+        if (request.actionId == L"pinned.move")
+            (void)BeginPlacement(PlacementMode::Move);
+        else if (request.actionId == L"pinned.resize")
+            (void)BeginPlacement(PlacementMode::Resize);
+        else if (request.actionId == L"pinned.commit") {
+            std::wstring ignored;
+            (void)CommitPlacement(ignored);
+        } else if (request.actionId == L"pinned.cancel")
+            (void)CancelPlacement();
+    }
+}
+
 bool WidgetSurfaceCoordinator::CreateWindowForAdmission(std::wstring& error) {
-    const auto placement = ResolvePlacement(CurrentMonitorWorkAreas(), std::nullopt);
+    const auto monitors = CurrentMonitorWorkAreas();
+    const auto persisted = placementStore_
+        ? placementStore_->Load(admission_->widgetId)
+        : std::optional<DurablePinnedPlacement>{};
+    const auto placement = ResolveDurablePlacement(
+        monitors, persisted, placementLimits_);
     if (!placement) {
         error = L"No valid monitor work area is available for a pinned surface.";
         return false;
@@ -347,6 +592,12 @@ bool WidgetSurfaceCoordinator::CreateWindowForAdmission(std::wstring& error) {
     ShowWindow(window_, SW_SHOWNORMAL);
     SetWindowPos(window_, HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    const auto monitor = std::ranges::find_if(monitors, [&](const auto& candidate) {
+        return candidate.stableId == placement->monitorId;
+    });
+    if (monitor != monitors.end())
+        committedPlacement_ = CaptureDurablePlacement(
+            *monitor, placement->bounds, placementLimits_);
     InvalidateRect(window_, nullptr, FALSE);
     error.clear();
     return true;
@@ -401,14 +652,21 @@ void WidgetSurfaceCoordinator::Paint() {
     renderTarget_->FillRectangle(D2D1::RectF(0, 0, widthDip, kChromeHeightDip), chromeBrush_.Get());
     renderTarget_->DrawTextW(
         admission_->name.c_str(), static_cast<UINT32>(admission_->name.size()),
-        titleFormat_.Get(), D2D1::RectF(kSideInsetDip, 10.0F, widthDip - 330.0F, 36.0F),
+        titleFormat_.Get(), D2D1::RectF(kSideInsetDip, 10.0F, widthDip - 410.0F, 36.0F),
         textBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
-    const std::wstring chrome = policy_.interactionMode() == InteractionMode::Focusable
-        ? L"P  Click-through     U  Unpin     Close"
-        : L"Click-through — reopen the overlay and press P to interact";
+    std::wstring chrome;
+    if (placementSession_) {
+        chrome = placementSession_->mode == PlacementMode::Move
+            ? L"Moving — arrows/D-pad · Enter/A commit · Esc/B cancel"
+            : L"Resizing — arrows/D-pad · Enter/A commit · Esc/B cancel";
+    } else {
+        chrome = policy_.interactionMode() == InteractionMode::Focusable
+            ? L"P Mode · M Move · R Resize · U Unpin · Close"
+            : L"Click-through — reopen the overlay and press P to interact";
+    }
     renderTarget_->DrawTextW(
         chrome.c_str(), static_cast<UINT32>(chrome.size()), chromeFormat_.Get(),
-        D2D1::RectF(std::max(kSideInsetDip, widthDip - 320.0F), 13.0F,
+        D2D1::RectF(std::max(kSideInsetDip, widthDip - 400.0F), 13.0F,
                     widthDip - kSideInsetDip, 36.0F),
         secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     DeclarativeRenderOptions options;
@@ -439,6 +697,7 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     tree.widgetId = admission_->widgetId;
     tree.runtimeGeneration = admission_->runtimeGeneration;
     tree.snapshotSequence = admission_->snapshot.sequence;
+    tree.activeInputScopeId = L"pinned.host";
     tree.name = admission_->name + L" pinned surface";
     accessibility::Node heading;
     heading.id = L"pinned.heading";
@@ -446,19 +705,47 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     heading.domain = accessibility::ElementDomain::HostShell;
     heading.role = accessibility::Role::Heading;
     heading.keyboardFocusable = false;
-    heading.bounds = {kSideInsetDip, 8.0F, 260.0F, 28.0F};
+    heading.bounds = {kSideInsetDip, 8.0F, 125.0F, 28.0F};
     tree.nodes.push_back(std::move(heading));
     accessibility::Node state;
     state.id = L"pinned.mode";
     state.name = L"Pinned surface mode";
-    state.value = policy_.interactionMode() == InteractionMode::Focusable
-        ? L"Interactive. P switches to click-through. U unpins."
-        : L"Click-through. Reopen the overlay and press P to interact.";
+    if (placementSession_) {
+        state.value = placementSession_->mode == PlacementMode::Move
+            ? L"Move mode. Direction changes position. Commit or cancel."
+            : L"Resize mode. Direction changes size. Commit or cancel.";
+    } else {
+        state.value = policy_.interactionMode() == InteractionMode::Focusable
+            ? L"Interactive. Move and Resize are available. P switches to click-through. U unpins."
+            : L"Click-through. Reopen the overlay and press P to interact.";
+    }
     state.domain = accessibility::ElementDomain::HostShell;
     state.role = accessibility::Role::Status;
     state.keyboardFocusable = false;
-    state.bounds = {270.0F, 8.0F, 200.0F, 28.0F};
+    state.bounds = {145.0F, 8.0F, 145.0F, 28.0F};
     tree.nodes.push_back(std::move(state));
+    const auto addAction = [&](std::wstring id, std::wstring name,
+                               std::wstring actionId, const float x) {
+        accessibility::Node action;
+        action.id = std::move(id);
+        action.name = std::move(name);
+        action.actionId = std::move(actionId);
+        action.domain = accessibility::ElementDomain::HostShell;
+        action.role = accessibility::Role::Button;
+        action.enabled = policy_.interactionMode() == InteractionMode::Focusable;
+        action.keyboardFocusable = action.enabled;
+        action.bounds = {x, 8.0F, 70.0F, 28.0F};
+        tree.nodes.push_back(std::move(action));
+    };
+    if (policy_.interactionMode() == InteractionMode::Focusable) {
+        if (placementSession_) {
+            addAction(L"pinned.commit", L"Commit placement", L"pinned.commit", 300.0F);
+            addAction(L"pinned.cancel", L"Cancel placement", L"pinned.cancel", 375.0F);
+        } else {
+            addAction(L"pinned.move", L"Move pinned surface", L"pinned.move", 300.0F);
+            addAction(L"pinned.resize", L"Resize pinned surface", L"pinned.resize", 375.0F);
+        }
+    }
     RECT bounds{};
     GetWindowRect(window_, &bounds);
     const double scale = static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
