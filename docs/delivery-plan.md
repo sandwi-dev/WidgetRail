@@ -3432,11 +3432,12 @@ DLV-025 remains user-decision blocked. DLV-058 is accepted as source `e160690`
 and integrated on main through `ae34f9a`, providing the first visible generic
 Pin/Unpin lifecycle. DLV-070 `c61a49d` is accepted and integrated through
 `0b21384`; one production owner now receives authenticated bounded Show
-activation from later launches. DLV-068 is active, followed by DLV-069 for
-accessibility/input composition and DLV-062 for the fixed-video trusted-rich-
-media feasibility gate. This visible sequence is independent of the blocked
-animated-resize compositor and may run beside widgets DLV-072 under the explicit
-file boundaries below.
+activation from later launches. DLV-068 `b83b3f7` is accepted and integrated
+through `9e795ac`; durable controller/pointer/UIA placement is now available.
+DLV-069 is active for accessibility/input composition, followed by DLV-062 for
+the fixed-video trusted-rich-media feasibility gate. This visible sequence is
+independent of the blocked animated-resize compositor and may run beside widgets
+DLV-072 under the explicit file boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
@@ -3581,7 +3582,8 @@ one authenticated Show activation. No process was force-terminated.
 
 ### DLV-068 — Add controller placement and durable pin geometry
 
-**State:** Assigned
+**State:** Done; accepted as `b83b3f7`, integrated through `9e795ac`
+**Closing commit:** `b83b3f7` (`[DLV-068] add durable pinned surface placement`)
 **Lane:** platform
 **Baseline:** closing commit `c61a49d` with accepted-main merge `5183e47`
 **Dependencies:** DLV-011, DLV-016, DLV-058, and DLV-070
@@ -3620,11 +3622,25 @@ rich-media run. Launch after integration.
 choose between policies, new window/compositor technology, or public raw monitor
 authority.
 
+**Reviewer disposition:** Accepted. One focused `PinnedSurfacePlacement` policy
+owns normalized anchors, logical size, monitor fallback, constraints,
+generation-bound move/resize sessions, and the bounded 64-record atomic store;
+the existing native surface coordinator remains the sole HWND and gesture
+composition owner. Retained evidence passes 16 pure placement/persistence
+checks, 41 real-HWND lifecycle/placement/UIA checks, the production Release
+build, and 54 documentation contracts. No hidden/idle timer was added, and the
+fresh coordinator observation remained below the existing material memory gate.
+The planner integrated the implementation through `9e795ac`, rebuilt the native
+Release without stale managed outputs, gracefully replaced PID 27520, and left
+the accepted overlay visibly running as PID 34264. Physical controller/display
+hot-plug evidence remains manual; DLV-069 owns the final focus/UIA/emergency-hide
+composition and strengthened real-HWND display-reconciliation proof.
+
 ### DLV-069 — Complete pinned-surface input and accessibility composition
 
-**State:** Ready
+**State:** Assigned
 **Lane:** platform
-**Baseline:** closing commit of DLV-068
+**Baseline:** accepted DLV-068 source `b83b3f7`, integrated through `9e795ac`
 **Dependencies:** DLV-058, DLV-070, and DLV-068
 **Owner:** pinned-surface controller/pointer focus composition, emergency
 visibility authority, UI Automation tree/actions, help, and production-host

@@ -638,16 +638,18 @@ window. Accepted DLV-058 (`e160690`, integrated through `ae34f9a`) now ships the
 first generic declarative Pin/Unpin/click-through lifecycle with a closed-by-
 default manifest opt-in, one host-owned surface coordinator, live snapshot
 updates, generation-bound teardown, and no widget HWND or z-order authority.
-Physical game click-through, durable placement, final controller/UIA
-composition, protected media, and mixed-display behavior remain later gates.
+Physical game click-through, final controller/UIA composition, protected media,
+and physical mixed-display behavior remain later gates. Durable logical
+placement is accepted through DLV-068.
 
 **Current delivery sequence:** Accepted DLV-070 `c61a49d`, integrated through
 `0b21384`, restores one authoritative OverlayHost across ordinary and `--show`
-launches. Assigned DLV-068 now adds controller move/resize and durable monitor-
-safe placement;
-DLV-069 completes input/focus/UIA and emergency-hide composition; DLV-062 then
-runs the fixed-video trusted-media feasibility gate. YouTube URL/video-ID v1 is
-not authorized until those remaining gates are accepted.
+launches. Accepted DLV-068 `b83b3f7`, integrated through `9e795ac`, adds one
+controller/pointer/UIA move-resize state machine with atomic monitor-safe
+placement. Assigned DLV-069 completes input/focus/UIA and emergency-hide
+composition; DLV-062 then runs the fixed-video trusted-media feasibility gate.
+YouTube URL/video-ID v1 is not authorized until those remaining gates are
+accepted.
 
 Framework prerequisites:
 
