@@ -758,12 +758,13 @@ remaining item requires a separate capability, privacy/feedback design, and prov
 undocumented `PolicyConfig`, registry write, or shell-automation output switch
 is acceptable.
 
-Version-1 broker control grants are Interactive-only. DLV-019 may add only a
-distinct bounded host-mediated dashboard authority for exact current-master
-set-volume/set-mute operations and their fixed widget gestures. It must not
-promote the broad Audio Control grant or expose session, input, device-selection,
-or arbitrary-value authority while merely Visible. Saved-network switching and
-other general controls remain prohibited without their own reviewed authority.
+Version-1 broker control grants remain Interactive-only except for the accepted
+DLV-019 exact current-master dashboard path. That path grants only one declared,
+snapshot-bound set-volume or set-mute operation for the selected Audio Mixer
+card while Visible; it does not promote broad Audio Control authority or expose
+session, input, device-selection, or arbitrary-value control. Saved-network
+switching and other general controls remain prohibited without their own
+reviewed authority.
 
 The host broker owns OS handles, COM lifetime, device/session observation,
 permission policy, and sanitized identity. The widget receives bounded semantic

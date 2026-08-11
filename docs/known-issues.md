@@ -80,7 +80,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
 | GBA-060 | P1 | Confirmed | Native renderer / shared component geometry | Button text/icon/checkmark alignment remains visibly inconsistent across first-party surfaces including Now Playing; DLV-021 reopens shared end-to-end measurement and paint evidence. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
-| GBA-062 | P1 | Open | Audio Mixer / dashboard gesture authority | The icon tray has no LB/RB master-volume or X master-mute shortcuts; DLV-019 owns the exact-operation authority and widget integration. |
+| GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
 | GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
 | GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement; DLV-006 and DLV-022 own continuous keyed focus and composed verification. |
 | GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
@@ -1839,12 +1839,17 @@ reported random full-screen replacement no longer recurs.
 
 ## GBA-062 — Audio Mixer lacks icon-tray master controls
 
-**Evidence:** Audio Mixer publishes no dashboard quick actions. Existing tests
-explicitly reject LB/RB session cycling, and audio control capabilities do not
-currently allow dashboard gesture authority.
+**Evidence:** Accepted DLV-019 commit `6afd60b` publishes LB/RB/X master-output
+actions with current value/state labels, reuses the existing coalesced command
+and authoritative reconciliation owner, and preserves open-widget Slider
+behavior. Retained run `20260811T003239Z-60b7c837` passes Audio Mixer 45/45,
+Platform Broker 51/51, the installed AppContainer worker/bridge/broker route
+6/6, and documentation across 52 files. The production route proves LB changes
+72% to 67%, RB restores 72%, X mutes, and reopening exposes the reconciled
+state.
 
-**Ownership:** DLV-019 is a serialized widget/bridge/broker milestone. It may
-authorize only current default-output set-volume/set-mute operations for the
+**Ownership:** Accepted DLV-019 owns the widget/worker/broker slice and
+authorizes only current default-output set-volume/set-mute operations for the
 exact visible snapshot gesture.
 
 **Acceptance:** LB/RB adjust master volume by a documented clamped step and X
@@ -1852,6 +1857,11 @@ toggles master mute; labels and current state are visible; rapid input
 coalesces and reconciles; stale/replayed/expired/wrong-widget/Background/
 permission-denied actions fail closed; session, microphone, and device controls
 receive no new dashboard authority.
+
+**Disposition:** Automated and packaged-route acceptance is complete at
+`6afd60b`. Keep this issue Verifying until the freshly launched Release overlay
+passes physical-controller checks for step direction, rapid input, mute,
+failure feedback, and open-widget reconciliation.
 
 ## GBA-063 — Games & Apps cold start cannot show persisted rows immediately
 

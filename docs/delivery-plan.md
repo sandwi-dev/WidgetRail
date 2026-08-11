@@ -538,16 +538,39 @@ successor. Public protocol and framing bytes are unchanged. Two retained
 stable dirty-worktree runs pass WidgetBridge 66/66, the integrated Release
 package rebuilt successfully, and all 52 documentation contracts pass.
 
+### DLV-019 — Add Audio Mixer dashboard master controls
+
+**State:** Done
+**Closing commit:** `6afd60b` (`[DLV-019] Add Audio Mixer dashboard master controls`)
+**Integrated on `main`:** `6afd60b`
+
+**Reviewer disposition:** Accepted. The selected Audio Mixer tray card now
+publishes exact capability-bearing LB/RB/X actions: LB and RB adjust the current
+master output by a clamped five percentage points, while X toggles master mute.
+All three labels expose the current value/state before activation. The widget
+reuses its existing latest-target output policy, optimistic committed state,
+authoritative confirmation/reread, rollback, and sanitized failure feedback;
+open-widget Slider behavior is unchanged. The worker capability adapter keeps
+only the exact host-issued grant admitted while the physical invocation was
+active across the activation round-trip, while the broker still enforces
+selection, snapshot generation, exact operation, consent, Visible lifecycle,
+expiry, revocation, and single use. Retained focused run
+`20260811T003239Z-60b7c837` passes Audio Mixer 45/45, Platform Broker 51/51,
+the installed AppContainer worker/bridge/broker route 6/6, and documentation
+over 52 files. The freshly rebuilt accepted Release overlay is running for
+physical-controller verification; no aggregate or unrelated provider/native
+suite ran.
+
 ## Widgets lane
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The widgets lane now follows the visible-outcome gate. DLV-045 is accepted and
-integrated. DLV-019 is the current executable milestone and delivers requested
-tray controls. DLV-006 then supplies the shared visible
-collection behavior needed by Spotify focus fixes, Games artwork, and the game
-launcher. DLV-040, DLV-043, and DLV-038 remain valid architecture debt but are
+The widgets lane now follows the visible-outcome gate. DLV-019 is accepted and
+integrated. The lane is intentionally waiting at a clean boundary while the
+platform lane completes DLV-026 and DLV-021; DLV-006 then supplies the shared
+visible collection behavior needed by Spotify focus fixes, Games artwork, and
+the game launcher. DLV-040, DLV-043, and DLV-038 remain valid architecture debt but are
 not automatic Ready work; the planner may promote one only while the other lane
 is delivering a visible milestone or when it becomes the immediate prerequisite
 for named visible work.
@@ -1547,7 +1570,8 @@ production and harness hypotheses without materially broadening scope.
 
 ### DLV-019 — Add Audio Mixer dashboard master controls
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `6afd60b`
+**Closing commit:** `6afd60b`
 **Baseline:** accepted DLV-045 integration commit `dfbe02d`
 **Dependencies:** DLV-014, DLV-029, DLV-042, and DLV-045 only for lane order
 **Owner:** widgets lead over Audio Mixer presentation/action state and the
