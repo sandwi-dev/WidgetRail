@@ -129,6 +129,34 @@ public sealed record NetworkStatusSummary(
     string? ActiveProfileName,
     int? SignalPercent);
 
+public enum NetworkConnectionDetailsState
+{
+    Available,
+    Offline,
+    Ambiguous,
+    PrivacyDenied,
+    Unavailable,
+}
+
+public enum NetworkConnectionDetailsConnectivity
+{
+    None,
+    Local,
+    Constrained,
+    Internet,
+}
+
+public sealed record NetworkConnectionDetailsSummary(
+    long Revision,
+    NetworkConnectionDetailsState State,
+    NetworkConnectionDetailsConnectivity Connectivity,
+    NetworkTransportKind Transport,
+    IReadOnlyList<string> IpAddresses,
+    IReadOnlyList<string> DefaultGateways,
+    IReadOnlyList<string> DnsServers);
+
+public sealed record NetworkConnectionDetailsChangedEvent(long Revision);
+
 public sealed record SavedNetworkProfileSummary(
     string ProfileId,
     string DisplayName,
@@ -846,6 +874,10 @@ public interface IAudioPlatformBrokerBackend : IPlatformBrokerEventSource
 public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
 {
     Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken);
+    Task<NetworkConnectionDetailsSummary> GetNetworkConnectionDetailsAsync(
+        CancellationToken cancellationToken) => Task.FromResult(new NetworkConnectionDetailsSummary(
+            0, NetworkConnectionDetailsState.Unavailable,
+            NetworkConnectionDetailsConnectivity.None, NetworkTransportKind.None, [], [], []));
     Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(CancellationToken cancellationToken);
     Task SwitchSavedNetworkProfileAsync(string profileId, CancellationToken cancellationToken);
     Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(CancellationToken cancellationToken);

@@ -20,6 +20,7 @@
     "system.network.wifi.radio.read.v1"
   ],
   "optionalPermissions": [
+    "system.network.details.read.v1",
     "system.network.wifi.connect.v1",
     "system.network.wifi.radio.control.v1",
     "system.network.bluetooth.read.v1",

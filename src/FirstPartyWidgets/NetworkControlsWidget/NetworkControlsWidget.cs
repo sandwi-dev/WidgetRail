@@ -36,11 +36,16 @@ public enum NetworkControlsTab
 public sealed class NetworkControlsWidget : Widget
 {
     private const string ProviderObservationOperation = "network.providers";
+    private const string ConnectionDetailsRefreshOperation = "network.details.refresh";
 
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private WidgetNetworkStatus? _networkStatus;
     private WidgetNetworkStatus? _authoritativeStatus;
+    private WidgetNetworkConnectionDetails? _connectionDetails;
+    private WidgetNetworkConnectionDetails? _authoritativeConnectionDetails;
+    private string _connectionDetailsMessage = "Connection details are loading";
+    private bool _connectionDetailsOpen;
     private WidgetAvailableWifiNetworks? _wifiSnapshot;
     private WidgetAvailableWifiNetworks? _authoritativeWifiSnapshot;
     private WidgetWifiRadio? _wifiRadio;
@@ -94,6 +99,15 @@ public sealed class NetworkControlsWidget : Widget
                 return _wifiSnapshot is null
                     ? null
                     : _wifiSnapshot with { Networks = _wifiSnapshot.Networks.ToArray() };
+        }
+    }
+
+    public WidgetNetworkConnectionDetails? ConnectionDetails
+    {
+        get
+        {
+            lock (_stateLock)
+                return _connectionDetails is null ? null : CloneDetails(_connectionDetails);
         }
     }
 
@@ -162,6 +176,9 @@ public sealed class NetworkControlsWidget : Widget
                 _status,
                 _statusIsError,
                 _networkStatus,
+                _connectionDetails is null ? null : CloneDetails(_connectionDetails),
+                _connectionDetailsMessage,
+                _connectionDetailsOpen,
                 _wifiSnapshot is null
                     ? null : _wifiSnapshot with { Networks = _wifiSnapshot.Networks.ToArray() },
                 _wifiRadio,
@@ -241,6 +258,14 @@ public sealed class NetworkControlsWidget : Widget
             case NetworkControlsAction.ShowBluetoothDetails:
                 ShowBluetoothDeviceGuidance(action.SourceElementId);
                 break;
+            case NetworkControlsAction.ShowConnectionDetails:
+                lock (_stateLock) _connectionDetailsOpen = true;
+                Invalidate();
+                break;
+            case NetworkControlsAction.CloseConnectionDetails:
+                lock (_stateLock) _connectionDetailsOpen = false;
+                Invalidate();
+                break;
             case NetworkControlsAction.PairBluetooth:
                 await PairBluetoothDeviceAsync(action.SourceElementId, cancellationToken)
                     .ConfigureAwait(false);
@@ -311,7 +336,86 @@ public sealed class NetworkControlsWidget : Widget
     {
         await Task.WhenAll(
             ObserveNetworkAsync(generation, operation),
+            ObserveConnectionDetailsAsync(generation, operation),
             ObserveBluetoothAsync(generation, operation)).ConfigureAwait(false);
+    }
+
+    private async Task ObserveConnectionDetailsAsync(
+        long generation,
+        WidgetOperationContext operation)
+    {
+        var cancellationToken = operation.CancellationToken;
+        try
+        {
+            await using var subscription = await HostServices.Network
+                .OpenConnectionDetailsSubscriptionAsync(cancellationToken)
+                .ConfigureAwait(false);
+            await RefreshConnectionDetailsAsync(generation, operation).ConfigureAwait(false);
+            await foreach (var change in subscription.ReadAllAsync(cancellationToken)
+                               .WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                _ = change;
+                if (!IsCurrentRun(generation, operation)) return;
+                _ = Operations.RunLatest(
+                    ConnectionDetailsRefreshOperation,
+                    refresh => new ValueTask(RefreshConnectionDetailsAsync(generation, refresh)),
+                    WidgetOperationLifetime.Active);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (WidgetCapabilityException exception)
+        {
+            SetConnectionDetailsUnavailable(exception.ErrorCode switch
+            {
+                "permission_denied" or "capability_not_declared" =>
+                    "Allow Connection details in Settings → Permissions",
+                "lifecycle_denied" => "Connection details are paused in the background",
+                _ => "Connection details are unavailable",
+            }, generation,
+            exception.ErrorCode is "permission_denied" or "capability_not_declared"
+                ? WidgetNetworkConnectionDetailsState.PrivacyDenied
+                : WidgetNetworkConnectionDetailsState.Unavailable);
+        }
+        catch (Exception)
+        {
+            SetConnectionDetailsUnavailable(
+                "Connection details are unavailable", generation,
+                WidgetNetworkConnectionDetailsState.Unavailable);
+        }
+    }
+
+    private async Task RefreshConnectionDetailsAsync(
+        long generation,
+        WidgetOperationContext operation)
+    {
+        try
+        {
+            var details = await HostServices.Network.GetConnectionDetailsAsync(
+                operation.CancellationToken).ConfigureAwait(false);
+            if (!IsCurrentRun(generation, operation)) return;
+            var normalized = NormalizeDetails(details);
+            lock (_stateLock)
+            {
+                if (_runGeneration != generation || !operation.IsCurrent) return;
+                _authoritativeConnectionDetails = normalized;
+                _connectionDetails = normalized;
+                _connectionDetailsMessage = DetailsMessage(normalized.State);
+            }
+            Invalidate();
+        }
+        catch (OperationCanceledException) when (operation.CancellationToken.IsCancellationRequested) { }
+        catch (WidgetCapabilityException exception)
+        {
+            SetConnectionDetailsUnavailable(exception.ErrorCode switch
+            {
+                "permission_denied" or "capability_not_declared" =>
+                    "Allow Connection details in Settings → Permissions",
+                _ => "Connection details are unavailable",
+            }, generation,
+            exception.ErrorCode is "permission_denied" or "capability_not_declared"
+                ? WidgetNetworkConnectionDetailsState.PrivacyDenied
+                : WidgetNetworkConnectionDetailsState.Unavailable);
+        }
     }
 
     private async Task ObserveNetworkAsync(
@@ -1294,6 +1398,8 @@ public sealed class NetworkControlsWidget : Widget
     private void RestoreAuthoritativeLocked()
     {
         _networkStatus = _authoritativeStatus;
+        _connectionDetails = _authoritativeConnectionDetails is null
+            ? null : CloneDetails(_authoritativeConnectionDetails);
         _wifiSnapshot = _authoritativeWifiSnapshot;
         _wifiRadio = _authoritativeWifiRadio;
         _bluetooth = _authoritativeBluetooth;
@@ -1357,6 +1463,73 @@ public sealed class NetworkControlsWidget : Widget
         }
         Invalidate();
     }
+
+    private void SetConnectionDetailsUnavailable(
+        string message,
+        long generation,
+        WidgetNetworkConnectionDetailsState state)
+    {
+        lock (_stateLock)
+        {
+            if (_runGeneration != generation) return;
+            var unavailable = new WidgetNetworkConnectionDetails(
+                (_connectionDetails?.Revision ?? 0) + 1,
+                state,
+                WidgetNetworkConnectionDetailsConnectivity.None,
+                WidgetNetworkTransportKind.None, [], [], []);
+            _authoritativeConnectionDetails = unavailable;
+            _connectionDetails = unavailable;
+            _connectionDetailsMessage = message;
+        }
+        Invalidate();
+    }
+
+    private static WidgetNetworkConnectionDetails NormalizeDetails(
+        WidgetNetworkConnectionDetails details)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        if (details.Revision < 0 || !Enum.IsDefined(details.State) ||
+            !Enum.IsDefined(details.Connectivity) || !Enum.IsDefined(details.Transport) ||
+            details.IpAddresses is null || details.DefaultGateways is null ||
+            details.DnsServers is null || details.IpAddresses.Count > 8 ||
+            details.DefaultGateways.Count > 4 || details.DnsServers.Count > 8)
+            throw new WidgetCapabilityException(
+                "malformed_response", "Connection details are invalid.");
+        var values = details.IpAddresses.Concat(details.DefaultGateways)
+            .Concat(details.DnsServers).ToArray();
+        if (values.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 64 ||
+                !System.Net.IPAddress.TryParse(value, out _)) ||
+            details.IpAddresses.Distinct(StringComparer.Ordinal).Count() !=
+                details.IpAddresses.Count ||
+            details.DefaultGateways.Distinct(StringComparer.Ordinal).Count() !=
+                details.DefaultGateways.Count ||
+            details.DnsServers.Distinct(StringComparer.Ordinal).Count() !=
+                details.DnsServers.Count ||
+            details.State != WidgetNetworkConnectionDetailsState.Available &&
+                values.Length != 0)
+            throw new WidgetCapabilityException(
+                "malformed_response", "Connection details are invalid.");
+        return CloneDetails(details);
+    }
+
+    private static WidgetNetworkConnectionDetails CloneDetails(
+        WidgetNetworkConnectionDetails details) => details with
+        {
+            IpAddresses = details.IpAddresses.ToArray(),
+            DefaultGateways = details.DefaultGateways.ToArray(),
+            DnsServers = details.DnsServers.ToArray(),
+        };
+
+    private static string DetailsMessage(WidgetNetworkConnectionDetailsState state) => state switch
+    {
+        WidgetNetworkConnectionDetailsState.Available => "Current Windows connection details",
+        WidgetNetworkConnectionDetailsState.Offline => "This device is offline",
+        WidgetNetworkConnectionDetailsState.Ambiguous =>
+            "Windows reported multiple active routes; no adapter details were guessed",
+        WidgetNetworkConnectionDetailsState.PrivacyDenied =>
+            "Allow Connection details in Settings → Permissions",
+        _ => "Connection details are unavailable",
+    };
 
     private void ReconcileBluetoothSelectionLocked()
     {

@@ -572,6 +572,13 @@ static async Task TypedPlatformServices()
                 "Wi-Fi",
                 80))
         .WithResponse(
+            WidgetNetworkCapabilities.GetConnectionDetails,
+            new WidgetNetworkConnectionDetails(
+                4, WidgetNetworkConnectionDetailsState.Available,
+                WidgetNetworkConnectionDetailsConnectivity.Internet,
+                WidgetNetworkTransportKind.Wifi,
+                ["192.0.2.5"], ["192.0.2.1"], ["9.9.9.9"]))
+        .WithResponse(
             WidgetNetworkCapabilities.GetSavedProfiles,
             (IReadOnlyList<WidgetSavedNetworkProfile>)[
                 new("wifi-1", "Wi-Fi", true, 80)])
@@ -604,6 +611,9 @@ static async Task TypedPlatformServices()
             WidgetAudioCapabilities.SessionsChanged,
             [new WidgetAudioSessionsChanged(
                 [new("audio-1", "Game", 0.75, false, true)])])
+        .WithEvents(
+            WidgetNetworkCapabilities.ConnectionDetailsChanged,
+            [new WidgetNetworkConnectionDetailsChanged(5)])
         .Build();
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
@@ -625,6 +635,11 @@ static async Task TypedPlatformServices()
     Assert.Equal(WidgetNetworkWirelessAvailability.Available, status.WirelessAvailability);
     Assert.Equal(WidgetNetworkDetailsAccess.Available, status.DetailsAccess);
     Assert.Equal(WidgetNetworkConnectionAttemptState.None, status.ConnectionAttemptState);
+    var details = await widget.Network.GetConnectionDetailsAsync();
+    Assert.Equal(4L, details.Revision);
+    Assert.Equal(WidgetNetworkConnectionDetailsConnectivity.Internet,
+        details.Connectivity);
+    Assert.Equal("192.0.2.5", details.IpAddresses.Single());
     var profiles = await widget.Network.GetSavedProfilesAsync();
     Assert.Equal("wifi-1", profiles.Single().ProfileId);
     await widget.Network.SwitchSavedProfileAsync("wifi-1");
@@ -644,6 +659,12 @@ static async Task TypedPlatformServices()
         .PairBluetoothDeviceAsync("native device/id").AsTask().GetAwaiter().GetResult());
     Assert.Throws<ArgumentException>(() => widget.Network
         .OpenBluetoothDeviceSettingsAsync("").AsTask().GetAwaiter().GetResult());
+
+    await using var detailEvents = widget.Network.WatchConnectionDetailsAsync()
+        .GetAsyncEnumerator();
+    Assert.True(await detailEvents.MoveNextAsync(),
+        "Typed network-details event was not forwarded.");
+    Assert.Equal(5L, detailEvents.Current.Revision);
 
     await using var events = widget.Audio.WatchSessionsAsync().GetAsyncEnumerator();
     Assert.True(await events.MoveNextAsync(), "Typed audio event was not forwarded.");

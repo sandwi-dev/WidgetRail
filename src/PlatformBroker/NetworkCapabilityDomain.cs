@@ -15,6 +15,11 @@ internal sealed class NetworkCapabilityDomain(IPlatformBrokerBackend backend)
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateStatus(
                     await backend.GetNetworkStatusAsync(cancellationToken).ConfigureAwait(false)));
+            case PlatformCapabilities.NetworkDetailsGet:
+                BrokerCapabilityDomains.DemandEmptyPayload(payload);
+                return BrokerJson.ToElement(ValidateConnectionDetails(
+                    await backend.GetNetworkConnectionDetailsAsync(cancellationToken)
+                        .ConfigureAwait(false)));
             case PlatformCapabilities.NetworkSavedProfilesList:
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateProfiles(
@@ -115,6 +120,9 @@ internal sealed class NetworkCapabilityDomain(IPlatformBrokerBackend backend)
                 payload is NetworkStatusChangedEvent change =>
                 BrokerJson.ToElement(new NetworkStatusChangedEvent(
                     ValidateStatus(change.Status))),
+            PlatformCapabilities.NetworkDetailsChanged when
+                payload is NetworkConnectionDetailsChangedEvent change =>
+                BrokerJson.ToElement(ValidateConnectionDetailsChanged(change)),
             PlatformCapabilities.NetworkAvailableWifiChanged when
                 payload is AvailableWifiNetworksChangedEvent change =>
                 BrokerJson.ToElement(new AvailableWifiNetworksChangedEvent(
@@ -134,6 +142,49 @@ internal sealed class NetworkCapabilityDomain(IPlatformBrokerBackend backend)
             _ => throw new BrokerException(
                 "invalid_backend_data", "Network event payload is invalid."),
         };
+
+    internal static NetworkConnectionDetailsChangedEvent ValidateConnectionDetailsChanged(
+        NetworkConnectionDetailsChangedEvent? change)
+    {
+        if (change is null || change.Revision < 0)
+            throw new BrokerException(
+                "invalid_backend_data", "Network details revision is invalid.");
+        return change;
+    }
+
+    internal static NetworkConnectionDetailsSummary ValidateConnectionDetails(
+        NetworkConnectionDetailsSummary? details)
+    {
+        if (details is null || details.Revision < 0 || !Enum.IsDefined(details.State) ||
+            !Enum.IsDefined(details.Connectivity) || !Enum.IsDefined(details.Transport) ||
+            details.IpAddresses is null || details.DefaultGateways is null ||
+            details.DnsServers is null)
+            throw new BrokerException(
+                "invalid_backend_data", "Network connection details are invalid.");
+        ValidateAddressList(details.IpAddresses, 8);
+        ValidateAddressList(details.DefaultGateways, 4);
+        ValidateAddressList(details.DnsServers, 8);
+        if (details.State != NetworkConnectionDetailsState.Available &&
+            (details.IpAddresses.Count != 0 || details.DefaultGateways.Count != 0 ||
+             details.DnsServers.Count != 0))
+            throw new BrokerException(
+                "invalid_backend_data", "Unavailable network details contain addresses.");
+        return details with
+        {
+            IpAddresses = details.IpAddresses.ToArray(),
+            DefaultGateways = details.DefaultGateways.ToArray(),
+            DnsServers = details.DnsServers.ToArray(),
+        };
+    }
+
+    private static void ValidateAddressList(IReadOnlyList<string> values, int maximum)
+    {
+        if (values.Count > maximum || values.Any(value => string.IsNullOrWhiteSpace(value) ||
+            value.Length > 64 || !System.Net.IPAddress.TryParse(value, out _)) ||
+            values.Distinct(StringComparer.Ordinal).Count() != values.Count)
+            throw new BrokerException(
+                "invalid_backend_data", "Network address display values are invalid.");
+    }
 
     internal static NetworkStatusSummary ValidateStatus(NetworkStatusSummary? status)
     {

@@ -194,6 +194,7 @@ Declare the smallest authority in `manifest.json`:
     "system.network.wifi.radio.read.v1"
   ],
   "optionalPermissions": [
+    "system.network.details.read.v1",
     "system.network.wifi.connect.v1",
     "system.network.wifi.radio.control.v1",
     "system.network.bluetooth.read.v1",
@@ -208,6 +209,7 @@ Declare the smallest authority in `manifest.json`:
 | Capability | Public SDK surface | Allowed lifecycle |
 | --- | --- | --- |
 | `system.network.read.v1` | `HostServices.Network.GetStatusAsync`, `GetSavedProfilesAsync`, `OpenStatusSubscriptionAsync`, `WatchStatusAsync` | Visible or Interactive |
+| `system.network.details.read.v1` | `GetConnectionDetailsAsync`, acknowledged invalidation subscription, and events that require a current re-query | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | `HostServices.Network.SwitchSavedProfileAsync` | Interactive only |
 | `system.network.wifi.read.v1` | `GetAvailableWifiAsync`, `RequestWifiScanAsync`, `OpenAvailableWifiSubscriptionAsync`, `WatchAvailableWifiAsync` | Snapshot/event read while Visible or Interactive; scan request Interactive only |
 | `system.network.wifi.connect.v1` | `ConnectAvailableWifiAsync` | Interactive only |
@@ -220,7 +222,7 @@ Declare the smallest authority in `manifest.json`:
 | `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync` for one current opaque device; Windows owns the management UI | Interactive only |
 
 `permissions` means the widget considers read access essential;
-`optionalPermissions` means connection/radio/pairing/removal/management enhancements
+`optionalPermissions` means connection-details, connection/radio/pairing/removal/management enhancements
 can degrade independently from coarse status, nearby-network presentation, and
 Wi-Fi radio visibility. Pair and manage are intentionally different decisions:
 granting read/discovery or radio control does not authorize either operation.
@@ -230,6 +232,16 @@ widgets → Permissions & configuration**. A grant is
 confirmed explicitly; deny and revoke take effect immediately. Consent is
 stored by package ID, publisher ID, and capability ID, while each live broker
 session is also bound to the concrete widget instance and declared set.
+
+The Connection details route shows only a closed connectivity value, transport,
+and bounded normalized IP, default-gateway, and DNS display strings for one
+Windows-preferred connection. Loopback, link-local, and temporary addresses are
+excluded. Multiple plausible routes, including VPN ambiguity, are reported as
+ambiguous instead of selecting an adapter by guess. The worker never receives an
+interface GUID, MAC address, route table, DHCP lease, domain, proxy, traffic
+sample, public-IP lookup, or Wi-Fi identity. IP Helper and connectivity change
+notifications carry only a revision; the visible worker re-queries current truth
+through an Active latest-wins operation, while Background owns no polling loop.
 
 There are four independent gates:
 

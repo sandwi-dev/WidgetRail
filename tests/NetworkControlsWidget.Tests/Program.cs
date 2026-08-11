@@ -19,6 +19,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Connection failures are typed sanitized and recoverable", ConnectionFailures),
     ("Capability failures render bounded recovery surfaces", CapabilityFailureStates),
     ("Lifecycle cancellation tears down both event streams", LifecycleCancellation),
+    ("Connection details are optional event-driven and stale-safe", ConnectionDetailsAreOptionalAndStaleSafe),
+    ("Connection-detail denial and malformed data leave controls usable", ConnectionDetailsFailureIsIsolated),
     ("Wi-Fi radio toggle is controller-native and reconciles authoritative state", WifiRadioToggle),
     ("Bluetooth rows pair or manage explicitly without optimistic connection state", BluetoothDeviceListing),
     ("Bluetooth radio control is optional typed and authoritatively reconciled", BluetoothRadioToggle),
@@ -105,6 +107,93 @@ static async Task ExplicitScan()
     Assert.Equal(1, fake.ScanCalls);
     Assert.Valid(Snapshot(widget, 2));
     await Background(widget);
+}
+
+static async Task ConnectionDetailsAreOptionalAndStaleSafe()
+{
+    var fake = ReadyHost(WidgetWifiScanState.Ready, []);
+    fake.ConnectionDetails = new(
+        1, WidgetNetworkConnectionDetailsState.Available,
+        WidgetNetworkConnectionDetailsConnectivity.Internet,
+        WidgetNetworkTransportKind.Ethernet,
+        ["192.0.2.10"], ["192.0.2.1"], ["9.9.9.9"]);
+    var widget = Create(fake);
+    await ActivateVisible(widget);
+    await WaitUntil(() => widget.ConnectionDetails?.Revision == 1);
+    await widget.OnActionAsync(new("network.details.open", "network.details.open"));
+    var opened = Snapshot(widget, 2);
+    Assert.Equal("network.details.back", opened.InitialFocusId);
+    Assert.Contains("192.0.2.10", Text(opened.Root, "network.details.addresses.value").Text!);
+
+    var stale = new TaskCompletionSource<WidgetNetworkConnectionDetails>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var current = new TaskCompletionSource<WidgetNetworkConnectionDetails>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    fake.DetailResponses.Enqueue(stale);
+    fake.DetailResponses.Enqueue(current);
+    fake.EmitConnectionDetailsChanged(2);
+    await WaitUntil(() => fake.ConnectionDetailsCalls == 2);
+    fake.EmitConnectionDetailsChanged(3);
+    stale.SetResult(fake.ConnectionDetails with
+    {
+        Revision = 2,
+        IpAddresses = ["203.0.113.2"],
+    });
+    await WaitUntil(() => fake.ConnectionDetailsCalls == 3);
+    Assert.Equal(1L, widget.ConnectionDetails?.Revision);
+    current.SetResult(fake.ConnectionDetails with
+    {
+        Revision = 3,
+        Connectivity = WidgetNetworkConnectionDetailsConnectivity.Constrained,
+        IpAddresses = ["198.51.100.3"],
+    });
+    await WaitUntil(() => widget.ConnectionDetails?.Revision == 3);
+    Assert.Equal(3L, widget.ConnectionDetails?.Revision);
+    Assert.SequenceEqual(new[] { "198.51.100.3" }, widget.ConnectionDetails!.IpAddresses);
+
+    await Background(widget);
+    Assert.True(fake.CanceledConnectionDetailsSubscriptions > 0);
+    var calls = fake.ConnectionDetailsCalls;
+    fake.EmitConnectionDetailsChanged(4);
+    await Task.Yield();
+    Assert.Equal(calls, fake.ConnectionDetailsCalls);
+}
+
+static async Task ConnectionDetailsFailureIsIsolated()
+{
+    var denied = ReadyHost(WidgetWifiScanState.Ready,
+        [Network("open", "Guest", 70, WidgetWifiSecurityKind.Open)]);
+    denied.ConnectionDetailsException = new WidgetCapabilityException(
+        "permission_denied", "private provider detail");
+    var widget = Create(denied);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready &&
+        widget.ConnectionDetails?.State ==
+            WidgetNetworkConnectionDetailsState.PrivacyDenied);
+    Assert.Equal(1, widget.Networks.Count);
+    await widget.OnActionAsync(new("network.details.open", "network.details.open"));
+    var snapshot = Snapshot(widget, 3);
+    Assert.Contains("Allow Connection details", Text(
+        snapshot.Root, "network.details.message").Text!);
+    Assert.True(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(snapshot)).Contains(
+        "private provider detail", StringComparison.Ordinal));
+    await widget.OnActionAsync(new("network.details.close", "network.details.back"));
+    await widget.OnActionAsync(new("wifi.scan", "network.wifi.scan"));
+    Assert.Equal(1, denied.ScanCalls);
+    await Background(widget);
+
+    var malformed = ReadyHost(WidgetWifiScanState.Ready, []);
+    malformed.ConnectionDetails = new(
+        2, WidgetNetworkConnectionDetailsState.Available,
+        WidgetNetworkConnectionDetailsConnectivity.Internet,
+        WidgetNetworkTransportKind.Ethernet,
+        Enumerable.Repeat("192.0.2.1", 9).ToArray(), [], []);
+    var malformedWidget = Create(malformed);
+    await ActivateVisible(malformedWidget);
+    await WaitUntil(() => malformedWidget.ConnectionDetails?.State ==
+        WidgetNetworkConnectionDetailsState.Unavailable);
+    Assert.True(malformedWidget.NetworkStatus is not null);
+    await Background(malformedWidget);
 }
 
 static async Task AvailableNetworksRender()
@@ -874,6 +963,8 @@ static Task ActionRoutingIsExact()
         ["wifi.radio.toggle"] = NetworkControlsAction.ToggleWifiRadio,
         ["bluetooth.radio.toggle"] = NetworkControlsAction.ToggleBluetoothRadio,
         ["bluetooth.device.details"] = NetworkControlsAction.ShowBluetoothDetails,
+        ["network.details.open"] = NetworkControlsAction.ShowConnectionDetails,
+        ["network.details.close"] = NetworkControlsAction.CloseConnectionDetails,
         ["bluetooth.device.pair"] = NetworkControlsAction.PairBluetooth,
         ["bluetooth.device.manage"] = NetworkControlsAction.ManageBluetooth,
         ["bluetooth.device.unpair.open"] = NetworkControlsAction.OpenUnpairBluetooth,
@@ -909,6 +1000,9 @@ static Task PresentationIsDeterministic()
         "Internet access · 2 nearby · scan complete",
         false,
         status,
+        null,
+        "Connection details unavailable",
+        false,
         wifi,
         new WidgetWifiRadio(WidgetWifiRadioState.On, true),
         false,
@@ -951,7 +1045,7 @@ static async Task ResponsibilityBoundariesAreSingular()
     Assert.Equal(1, CountOccurrences(widget, "private readonly object _stateLock"));
     Assert.Equal(1, CountOccurrences(widget, "private readonly SemaphoreSlim _commandGate"));
     Assert.Equal(1, CountOccurrences(widget, "private long _runGeneration"));
-    Assert.Equal(1, CountOccurrences(widget, "Operations.RunLatest("));
+    Assert.Equal(2, CountOccurrences(widget, "Operations.RunLatest("));
     Assert.Equal(0, CountOccurrences(widget, "_runLifetime"));
     Assert.Equal(0, CountOccurrences(widget, "_ = Observe"));
     Assert.Contains("NetworkControlsPresentation.Render(CapturePresentationState())", widget);
@@ -980,6 +1074,7 @@ static async Task ShippedAssetsValidate()
         "system.network.wifi.read.v1",
         "system.network.wifi.radio.read.v1"], manifest.Permissions);
     Assert.SequenceEqual([
+        "system.network.details.read.v1",
         "system.network.wifi.connect.v1",
         "system.network.wifi.radio.control.v1",
         "system.network.bluetooth.read.v1",
@@ -1235,6 +1330,8 @@ file sealed class FakeNetworkHost
     private readonly List<Channel<WidgetAvailableWifiNetworksChanged>> _wifiSubscribers = [];
     private readonly List<Channel<WidgetWifiRadioChanged>> _radioSubscribers = [];
     private readonly List<Channel<WidgetBluetoothChanged>> _bluetoothSubscribers = [];
+    private readonly List<Channel<WidgetNetworkConnectionDetailsChanged>>
+        _connectionDetailsSubscribers = [];
     private int _statusCalls;
     private int _wifiCalls;
     private int _scanCalls;
@@ -1248,6 +1345,8 @@ file sealed class FakeNetworkHost
     private int _wifiSubscriptionCount;
     private int _radioSubscriptionCount;
     private int _bluetoothSubscriptionCount;
+    private int _connectionDetailsCalls;
+    private int _canceledConnectionDetailsSubscriptions;
     private int _canceledStatusSubscriptions;
     private int _canceledWifiSubscriptions;
     private int _canceledRadioSubscriptions;
@@ -1256,12 +1355,18 @@ file sealed class FakeNetworkHost
     private int _canceledBluetoothUnpairCalls;
 
     public WidgetNetworkStatus Status { get; set; } = StatusDefault();
+    public WidgetNetworkConnectionDetails ConnectionDetails { get; set; } = new(
+        0, WidgetNetworkConnectionDetailsState.Unavailable,
+        WidgetNetworkConnectionDetailsConnectivity.None,
+        WidgetNetworkTransportKind.None, [], [], []);
+    public Queue<TaskCompletionSource<WidgetNetworkConnectionDetails>> DetailResponses { get; } = [];
     public WidgetAvailableWifiNetworks Wifi { get; set; } =
         new(WidgetWifiScanState.NotScanned, []);
     public WidgetWifiRadio Radio { get; set; } = new(WidgetWifiRadioState.On, true);
     public WidgetBluetoothSnapshot Bluetooth { get; set; } = new(
         WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready, []);
     public Exception? ReadException { get; set; }
+    public Exception? ConnectionDetailsException { get; set; }
     public Exception? ScanException { get; set; }
     public Exception? ConnectException { get; set; }
     public Exception? RadioException { get; set; }
@@ -1306,6 +1411,9 @@ file sealed class FakeNetworkHost
     public int BluetoothRadioSetCalls => Volatile.Read(ref _bluetoothRadioSetCalls);
     public int BluetoothPairCalls => Volatile.Read(ref _bluetoothPairCalls);
     public int BluetoothManageCalls => Volatile.Read(ref _bluetoothManageCalls);
+    public int ConnectionDetailsCalls => Volatile.Read(ref _connectionDetailsCalls);
+    public int CanceledConnectionDetailsSubscriptions =>
+        Volatile.Read(ref _canceledConnectionDetailsSubscriptions);
     public int BluetoothUnpairCalls => Volatile.Read(ref _bluetoothUnpairCalls);
     public string? LastBluetoothDeviceId { get; private set; }
     public int StatusSubscriptionCount => Volatile.Read(ref _statusSubscriptionCount);
@@ -1322,6 +1430,7 @@ file sealed class FakeNetworkHost
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetNetworkCapabilities.GetStatus, GetStatusAsync)
+        .WithHandler(WidgetNetworkCapabilities.GetConnectionDetails, GetConnectionDetailsAsync)
         .WithHandler(WidgetNetworkCapabilities.GetAvailableWifi, GetWifiAsync)
         .WithHandler(WidgetNetworkCapabilities.RequestWifiScan, ScanAsync)
         .WithHandler(WidgetNetworkCapabilities.ConnectAvailableWifi, ConnectAsync)
@@ -1334,10 +1443,29 @@ file sealed class FakeNetworkHost
         .WithHandler(WidgetNetworkCapabilities.OpenBluetoothDeviceSettings,
             OpenBluetoothDeviceSettingsAsync)
         .WithEventStream(WidgetNetworkCapabilities.StatusChanged, OpenStatusStream)
+        .WithEventStream(WidgetNetworkCapabilities.ConnectionDetailsChanged,
+            OpenConnectionDetailsStream)
         .WithEventStream(WidgetNetworkCapabilities.AvailableWifiChanged, OpenWifiStream)
         .WithEventStream(WidgetNetworkCapabilities.WifiRadioChanged, OpenRadioStream)
         .WithEventStream(WidgetNetworkCapabilities.BluetoothChanged, OpenBluetoothStream)
         .Build();
+
+    private async ValueTask<WidgetNetworkConnectionDetails> GetConnectionDetailsAsync(
+        WidgetCapabilityQuery request, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref _connectionDetailsCalls);
+        if (ConnectionDetailsException is not null) throw ConnectionDetailsException;
+        TaskCompletionSource<WidgetNetworkConnectionDetails>? response;
+        lock (_gate) response = DetailResponses.Count == 0 ? null : DetailResponses.Dequeue();
+        if (response is not null) return await response.Task.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ConnectionDetails with
+        {
+            IpAddresses = ConnectionDetails.IpAddresses.ToArray(),
+            DefaultGateways = ConnectionDetails.DefaultGateways.ToArray(),
+            DnsServers = ConnectionDetails.DnsServers.ToArray(),
+        };
+    }
 
     private ValueTask<WidgetNetworkStatus> GetStatusAsync(
         WidgetCapabilityQuery request, CancellationToken cancellationToken)
@@ -1515,6 +1643,14 @@ file sealed class FakeNetworkHost
         return ReadStatusEvents(channel, cancellationToken);
     }
 
+    private IAsyncEnumerable<WidgetNetworkConnectionDetailsChanged>
+        OpenConnectionDetailsStream(CancellationToken cancellationToken)
+    {
+        var channel = NewChannel<WidgetNetworkConnectionDetailsChanged>();
+        lock (_gate) _connectionDetailsSubscribers.Add(channel);
+        return ReadConnectionDetailsEvents(channel, cancellationToken);
+    }
+
     private IAsyncEnumerable<WidgetAvailableWifiNetworksChanged> OpenWifiStream(
         CancellationToken cancellationToken)
     {
@@ -1564,6 +1700,23 @@ file sealed class FakeNetworkHost
         {
             lock (_gate) _statusSubscribers.Remove(channel);
             Interlocked.Increment(ref _canceledStatusSubscriptions);
+        }
+    }
+
+    private async IAsyncEnumerable<WidgetNetworkConnectionDetailsChanged>
+        ReadConnectionDetailsEvents(
+            Channel<WidgetNetworkConnectionDetailsChanged> channel,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken))
+                yield return item;
+        }
+        finally
+        {
+            lock (_gate) _connectionDetailsSubscribers.Remove(channel);
+            Interlocked.Increment(ref _canceledConnectionDetailsSubscriptions);
         }
     }
 
@@ -1622,6 +1775,14 @@ file sealed class FakeNetworkHost
         lock (_gate) subscribers = _statusSubscribers.ToArray();
         foreach (var subscriber in subscribers)
             subscriber.Writer.TryWrite(new WidgetNetworkStatusChanged(status));
+    }
+
+    public void EmitConnectionDetailsChanged(long revision)
+    {
+        Channel<WidgetNetworkConnectionDetailsChanged>[] subscribers;
+        lock (_gate) subscribers = _connectionDetailsSubscribers.ToArray();
+        foreach (var subscriber in subscribers)
+            subscriber.Writer.TryWrite(new WidgetNetworkConnectionDetailsChanged(revision));
     }
 
     public void EmitWifi(WidgetAvailableWifiNetworks snapshot)

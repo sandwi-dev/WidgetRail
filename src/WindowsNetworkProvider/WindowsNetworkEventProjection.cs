@@ -18,4 +18,9 @@ internal static class WindowsNetworkEventProjection
         PlatformCapabilities.NetworkWifiRadioReadV1,
         PlatformCapabilities.NetworkWifiRadioChanged,
         new WifiRadioChangedEvent(radio));
+
+    public static BrokerPlatformEvent FromConnectionDetails(long revision) => new(
+        PlatformCapabilities.NetworkDetailsReadV1,
+        PlatformCapabilities.NetworkDetailsChanged,
+        new NetworkConnectionDetailsChangedEvent(revision));
 }

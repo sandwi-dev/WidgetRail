@@ -1237,6 +1237,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.audio.input.read.v1` | get/watch current default microphone volume/mute | Visible or Interactive |
 | `system.audio.input.control.v1` | set current default microphone volume/mute | Interactive |
 | `system.network.read.v1` | status, saved profiles, status events | Visible or Interactive |
+| `system.network.details.read.v1` | bounded current IP/gateway/DNS display values plus revision-only invalidation | Visible or Interactive |
 | `system.network.saved-profile.switch.v1` | switch to a saved profile | Interactive |
 | `system.network.wifi.read.v1` | cached available-network snapshot/events; one explicit scan | read/events Visible or Interactive; scan Interactive |
 | `system.network.wifi.connect.v1` | connect one current saved/open scan result | Interactive |
@@ -1335,6 +1336,15 @@ Render `WirelessAvailability`, `DetailsAccess`, and
 `ConnectionAttemptState` explicitly. Privacy-restricted identity, no adapter,
 radio off, and unavailable WLAN service are normal bounded states; do not
 retry them on a timer, request elevation, inspect WLAN XML, or log SSIDs.
+
+Current connection details require the separate
+`system.network.details.read.v1` grant. Subscribe with
+`OpenConnectionDetailsSubscriptionAsync`, then call `GetConnectionDetailsAsync`
+for current truth after each revision-only invalidation. The closed result is
+already display-bounded and never contains adapter IDs, MAC addresses, route
+tables, traffic, public-IP lookups, or Wi-Fi identity. Treat `Ambiguous`,
+`PrivacyDenied`, `Offline`, and `Unavailable` as complete states; do not guess a
+route or add polling.
 
 Bluetooth IDs are equally opaque and current-snapshot-only. Pair through
 `PairBluetoothDeviceAsync`; do not claim success or profile connectivity until

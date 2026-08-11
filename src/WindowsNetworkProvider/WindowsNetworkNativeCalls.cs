@@ -25,6 +25,14 @@ internal sealed record ManagedNetworkInterfaceData(
     bool HasGateway,
     int? Ipv4Index);
 
+internal sealed record ManagedNetworkConnectionInterfaceData(
+    NetworkInterfaceType Type,
+    OperationalStatus Status,
+    int? Ipv4Index,
+    IReadOnlyList<string> IpAddresses,
+    IReadOnlyList<string> DefaultGateways,
+    IReadOnlyList<string> DnsServers);
+
 internal sealed record WlanConnectRequest(
     int ConnectionMode,
     string? Profile,
@@ -85,6 +93,7 @@ internal interface IWindowsNetworkNativeCalls
     uint ReadBestInterface(uint destinationAddress, out uint interfaceIndex);
     bool IsNetworkAvailable();
     IReadOnlyList<ManagedNetworkInterfaceData> ReadManagedInterfaces();
+    IReadOnlyList<ManagedNetworkConnectionInterfaceData> ReadConnectionInterfaces() => [];
 }
 
 internal sealed class WindowsNetworkNativeCalls : IWindowsNetworkNativeCalls
@@ -331,6 +340,63 @@ internal sealed class WindowsNetworkNativeCalls : IWindowsNetworkNativeCalls
                     adapter.OperationalStatus,
                     hasGateway,
                     ipv4Index));
+            }
+        }
+        catch (NetworkInformationException)
+        {
+        }
+        return values;
+    }
+
+    public IReadOnlyList<ManagedNetworkConnectionInterfaceData> ReadConnectionInterfaces()
+    {
+        var values = new List<ManagedNetworkConnectionInterfaceData>();
+        try
+        {
+            foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (values.Count >= MaximumManagedInterfaces) break;
+                var addresses = new List<string>();
+                var gateways = new List<string>();
+                var dns = new List<string>();
+                int? ipv4Index = null;
+                if (adapter.OperationalStatus == OperationalStatus.Up)
+                {
+                    try
+                    {
+                        var properties = adapter.GetIPProperties();
+                        ipv4Index = properties.GetIPv4Properties()?.Index;
+                        foreach (var item in properties.UnicastAddresses)
+                        {
+                            var address = item.Address;
+                            if (address.IsIPv6LinkLocal || System.Net.IPAddress.IsLoopback(address) ||
+                                address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                                address.GetAddressBytes() is [169, 254, ..] ||
+                                OperatingSystem.IsWindows() &&
+                                item.SuffixOrigin == SuffixOrigin.Random)
+                                continue;
+                            if (addresses.Count < 8) addresses.Add(address.ToString());
+                        }
+                        foreach (var item in properties.GatewayAddresses)
+                            if (gateways.Count < 4 && !item.Address.Equals(System.Net.IPAddress.Any) &&
+                                !item.Address.Equals(System.Net.IPAddress.IPv6Any))
+                                gateways.Add(item.Address.ToString());
+                        foreach (var address in properties.DnsAddresses)
+                            if (dns.Count < 8 && !System.Net.IPAddress.IsLoopback(address) &&
+                                !address.IsIPv6LinkLocal)
+                                dns.Add(address.ToString());
+                    }
+                    catch (NetworkInformationException)
+                    {
+                    }
+                }
+                values.Add(new(
+                    adapter.NetworkInterfaceType,
+                    adapter.OperationalStatus,
+                    ipv4Index,
+                    addresses.Distinct(StringComparer.Ordinal).ToArray(),
+                    gateways.Distinct(StringComparer.Ordinal).ToArray(),
+                    dns.Distinct(StringComparer.Ordinal).ToArray()));
             }
         }
         catch (NetworkInformationException)

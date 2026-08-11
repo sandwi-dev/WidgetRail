@@ -108,6 +108,14 @@ public sealed record NativeNetworkSnapshot(
     NetworkWirelessAvailability WirelessAvailability = NetworkWirelessAvailability.Available,
     bool IsWirelessAccessRestricted = false);
 
+public sealed record NativeNetworkConnectionDetails(
+    NetworkConnectionDetailsState State,
+    NetworkConnectionDetailsConnectivity Connectivity,
+    NativeNetworkMedium Transport,
+    IReadOnlyList<string> IpAddresses,
+    IReadOnlyList<string> DefaultGateways,
+    IReadOnlyList<string> DnsServers);
+
 public sealed record NativeAvailableWifiSnapshot(
     long ScanGeneration,
     NativeWifiScanState ScanState,
@@ -141,6 +149,10 @@ public interface IWindowsNetworkNativeAdapter : IDisposable
     long Generation { get; }
     bool IsDegraded { get; }
     NativeNetworkSnapshot ReadSnapshot();
+    NativeNetworkConnectionDetails ReadConnectionDetails() => new(
+        NetworkConnectionDetailsState.Unavailable,
+        NetworkConnectionDetailsConnectivity.None,
+        NativeNetworkMedium.None, [], [], []);
     bool TryConnectSavedProfile(string nativeProfileKey);
     NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot();
     NativeWifiScanStartResult TryStartWifiScan();

@@ -45,6 +45,14 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             FullMode = BoundedChannelFullMode.DropOldest,
             AllowSynchronousContinuations = false,
         });
+    private readonly Channel<long> _detailsEvents =
+        Channel.CreateBounded<long>(new BoundedChannelOptions(1)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest,
+            AllowSynchronousContinuations = false,
+        });
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _threadExited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _stateGate = new();
@@ -57,6 +65,10 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     private AvailableWifiNetworksSummary _availableWifi =
         new(WifiScanState.NotScanned, []);
     private WifiRadioSummary _wifiRadio = new(WifiRadioState.Unavailable, false);
+    private NetworkConnectionDetailsSummary _connectionDetails = new(
+        0, NetworkConnectionDetailsState.Unavailable,
+        NetworkConnectionDetailsConnectivity.None, NetworkTransportKind.None, [], [], []);
+    private long _connectionDetailsRevision;
     private IReadOnlyDictionary<string, string> _wifiNativeKeysByOpaqueId =
         new Dictionary<string, string>(StringComparer.Ordinal);
     private Thread? _ownerThread;
@@ -148,6 +160,19 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
     {
         await EnsureReadableAsync(cancellationToken).ConfigureAwait(false);
         lock (_stateGate) return _status;
+    }
+
+    public async Task<NetworkConnectionDetailsSummary> GetNetworkConnectionDetailsAsync(
+        CancellationToken cancellationToken)
+    {
+        await EnsureReadableAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateGate)
+            return _connectionDetails with
+            {
+                IpAddresses = _connectionDetails.IpAddresses.ToArray(),
+                DefaultGateways = _connectionDetails.DefaultGateways.ToArray(),
+                DnsServers = _connectionDetails.DnsServers.ToArray(),
+            };
     }
 
     public async Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(
@@ -311,6 +336,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             Volatile.Write(ref _activeGeneration, adapter.Generation);
             adapter.StateChanged += OnNativeStateChanged;
             Refresh(adapter, publish: false);
+            RefreshConnectionDetails(adapter, publish: false);
             RefreshWifiRadio(adapter, publish: false);
             _ready.TrySetResult();
 
@@ -322,6 +348,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                     case RefreshCommand:
                         Interlocked.Exchange(ref _refreshQueued, 0);
                         Refresh(adapter, publish: true);
+                        RefreshConnectionDetails(adapter, publish: true);
                         RefreshAvailableWifi(adapter, publish: true);
                         RefreshWifiRadio(adapter, publish: true);
                         break;
@@ -331,6 +358,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         else
                         {
                             Refresh(adapter, publish: true);
+                            RefreshConnectionDetails(adapter, publish: true);
                             RefreshAvailableWifi(adapter, publish: true);
                             RefreshWifiRadio(adapter, publish: true);
                             retry.Completion.TrySetResult();
@@ -412,6 +440,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             _events.Writer.TryComplete();
             _wifiEvents.Writer.TryComplete();
             _radioEvents.Writer.TryComplete();
+            _detailsEvents.Writer.TryComplete();
             lock (_stateGate)
             {
                 CancelConnectionAttemptTimerLocked();
@@ -430,7 +459,8 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             ThrowIfDisposed();
             if (_started != 0) return;
             _eventPump = Task.WhenAll(
-                DispatchEventsAsync(), DispatchWifiEventsAsync(), DispatchRadioEventsAsync());
+                DispatchEventsAsync(), DispatchWifiEventsAsync(), DispatchRadioEventsAsync(),
+                DispatchDetailsEventsAsync());
             _ownerThread = new Thread(OwnerThreadMain)
             {
                 IsBackground = true,
@@ -829,6 +859,40 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         }
     }
 
+    private void RefreshConnectionDetails(IWindowsNetworkNativeAdapter adapter, bool publish)
+    {
+        NetworkConnectionDetailsSummary next;
+        try
+        {
+            var native = adapter.ReadConnectionDetails() ?? throw new InvalidOperationException();
+            lock (_stateGate)
+                next = _connectionDetails = new(
+                    ++_connectionDetailsRevision,
+                    native.State,
+                    native.Connectivity,
+                    native.Transport switch
+                    {
+                        NativeNetworkMedium.Ethernet => NetworkTransportKind.Ethernet,
+                        NativeNetworkMedium.WiFi => NetworkTransportKind.Wifi,
+                        NativeNetworkMedium.Other => NetworkTransportKind.Other,
+                        _ => NetworkTransportKind.None,
+                    },
+                    native.IpAddresses.Take(8).ToArray(),
+                    native.DefaultGateways.Take(4).ToArray(),
+                    native.DnsServers.Take(8).ToArray());
+        }
+        catch
+        {
+            lock (_stateGate)
+                next = _connectionDetails = new(
+                    ++_connectionDetailsRevision,
+                    NetworkConnectionDetailsState.Unavailable,
+                    NetworkConnectionDetailsConnectivity.None,
+                    NetworkTransportKind.None, [], [], []);
+        }
+        if (publish) _detailsEvents.Writer.TryWrite(next.Revision);
+    }
+
     private void SetDegradedState(bool publish)
     {
         bool changed;
@@ -840,6 +904,11 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             _nativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _availableWifi = new AvailableWifiNetworksSummary(WifiScanState.Unavailable, []);
             _wifiRadio = new WifiRadioSummary(WifiRadioState.Unavailable, false);
+            _connectionDetails = new(
+                ++_connectionDetailsRevision,
+                NetworkConnectionDetailsState.Unavailable,
+                NetworkConnectionDetailsConnectivity.None,
+                NetworkTransportKind.None, [], [], []);
             _wifiNativeKeysByOpaqueId = new Dictionary<string, string>(StringComparer.Ordinal);
             _reconciler.Reset();
             _operations.Reset();
@@ -854,6 +923,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             new AvailableWifiNetworksSummary(WifiScanState.Unavailable, []));
         if (publish) _radioEvents.Writer.TryWrite(
             new WifiRadioSummary(WifiRadioState.Unavailable, false));
+        if (publish) _detailsEvents.Writer.TryWrite(_connectionDetails.Revision);
     }
 
     private async Task DispatchEventsAsync()
@@ -878,6 +948,12 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         {
             Publish(WindowsNetworkEventProjection.FromRadio(radio));
         }
+    }
+
+    private async Task DispatchDetailsEventsAsync()
+    {
+        await foreach (var revision in _detailsEvents.Reader.ReadAllAsync().ConfigureAwait(false))
+            Publish(WindowsNetworkEventProjection.FromConnectionDetails(revision));
     }
 
     private void Publish(BrokerPlatformEvent platformEvent)
@@ -921,6 +997,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             {
                 _events.Writer.TryComplete();
                 _radioEvents.Writer.TryComplete();
+                _detailsEvents.Writer.TryComplete();
                 _ready.TrySetResult();
                 _threadExited.TrySetResult();
             }

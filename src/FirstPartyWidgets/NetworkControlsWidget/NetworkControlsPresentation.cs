@@ -32,6 +32,10 @@ internal static class NetworkControlsPresentation
         if (state.NetworkStatus is null || state.Wifi is null || state.WifiRadio is null)
             return RenderProviderState(header, state.ViewState);
 
+        if (state.ConnectionDetailsOpen)
+            return RenderConnectionDetails(header, state.ConnectionDetails,
+                state.ConnectionDetailsMessage);
+
         if (state.UnpairConfirmationDevice is { } removing)
         {
             var sheet = UI.ActionSheet(
@@ -88,7 +92,7 @@ internal static class NetworkControlsPresentation
         tabs = tabs with
         {
             Children = tabs.Children.Select(child => child is ButtonElement button
-                ? button.FocusUp(button.Id).FocusDown(activeInitialFocus)
+                ? button.FocusUp("network.details.open").FocusDown(activeInitialFocus)
                 : child).ToArray(),
         };
 
@@ -96,6 +100,12 @@ internal static class NetworkControlsPresentation
         {
             header,
             RenderConnectionCard(status),
+            UI.Button("Connection details", "network.details.open", "network.details.open")
+                .Icon(WidgetGlyph.Connection, "Show current connection details")
+                .FocusUp("network.details.open")
+                .FocusDown(state.ActiveTab == NetworkControlsTab.Wifi
+                    ? "network.tab.wifi" : "network.tab.bluetooth")
+                .Classes("network-details-action"),
             tabs,
         };
 
@@ -207,6 +217,70 @@ internal static class NetworkControlsPresentation
                         .Classes("network-signal-value", "is-empty"))
             .Classes("network-connection-card");
     }
+
+    private static WidgetView RenderConnectionDetails(
+        StackElement header,
+        WidgetNetworkConnectionDetails? details,
+        string message)
+    {
+        var back = UI.Button("Back", "network.details.close", "network.details.back")
+            .Icon(WidgetGlyph.Previous, "Back to Network Controls")
+            .FocusUp("network.details.back")
+            .FocusLeft("network.details.back")
+            .FocusRight("network.details.back")
+            .Classes("network-details-back");
+        var content = new List<WidgetElement>
+        {
+            header,
+            back,
+            UI.Text(message, "network.details.message", message)
+                .Classes("network-details-message"),
+        };
+        if (details is { State: WidgetNetworkConnectionDetailsState.Available })
+        {
+            content.Add(DetailRow("Transport", details.Transport switch
+            {
+                WidgetNetworkTransportKind.Ethernet => "Ethernet",
+                WidgetNetworkTransportKind.Wifi => "Wi-Fi",
+                WidgetNetworkTransportKind.Other => "Other network",
+                _ => "Unavailable",
+            }, "transport"));
+            content.Add(DetailRow("Connectivity", details.Connectivity switch
+            {
+                WidgetNetworkConnectionDetailsConnectivity.Internet => "Internet",
+                WidgetNetworkConnectionDetailsConnectivity.Constrained => "Constrained",
+                WidgetNetworkConnectionDetailsConnectivity.Local => "Local only",
+                _ => "Offline",
+            }, "connectivity"));
+            content.Add(DetailRow("IP addresses", Join(details.IpAddresses), "addresses"));
+            content.Add(DetailRow("Default gateway", Join(details.DefaultGateways), "gateway"));
+            content.Add(DetailRow("DNS servers", Join(details.DnsServers), "dns"));
+        }
+        else
+        {
+            content.Add(UI.Text(
+                    "No adapter, route, Wi-Fi identity, or traffic data is exposed.",
+                    "network.details.privacy",
+                    "No sensitive adapter details are exposed")
+                .Classes("network-details-privacy"));
+        }
+        var root = UI.Stack("network.details.root", content.ToArray())
+            .InputScope("network-controls-details")
+            .Shortcut(ControllerButton.B, "network.details.close")
+            .Classes("network-controls-widget", "network-details-view");
+        return new WidgetView(root, "network.details.back", Surface: CompactSurface);
+    }
+
+    private static RowElement DetailRow(string label, string value, string suffix) =>
+        UI.Row($"network.details.{suffix}.row",
+                UI.Text(label, $"network.details.{suffix}.label", label)
+                    .Classes("network-details-label"),
+                UI.Text(value, $"network.details.{suffix}.value", $"{label}: {value}")
+                    .Classes("network-details-value"))
+            .Classes("network-details-row");
+
+    private static string Join(IReadOnlyList<string> values) =>
+        values.Count == 0 ? "Unavailable" : string.Join(" · ", values);
 
     private static RowElement RenderRadioControl(
         WidgetWifiRadio radio, bool busy, bool interactive)

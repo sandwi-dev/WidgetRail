@@ -30,9 +30,13 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
             null,
             null,
             null);
+    public NetworkConnectionDetailsSummary NetworkConnectionDetails { get; set; } = new(
+        0, NetworkConnectionDetailsState.Unavailable,
+        NetworkConnectionDetailsConnectivity.None, NetworkTransportKind.None, [], [], []);
 
     public int AudioControlCalls { get; private set; }
     public int NetworkSwitchCalls { get; private set; }
+    public int NetworkConnectionDetailsReadCalls { get; private set; }
     public int WifiScanCalls { get; private set; }
     public int WifiConnectCalls { get; private set; }
     public int WifiRadioControlCalls { get; private set; }
@@ -239,6 +243,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(NetworkStatus);
+    }
+
+    public Task<NetworkConnectionDetailsSummary> GetNetworkConnectionDetailsAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        NetworkConnectionDetailsReadCalls++;
+        return Task.FromResult(NetworkConnectionDetails);
     }
 
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(

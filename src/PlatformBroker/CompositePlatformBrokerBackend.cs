@@ -83,6 +83,10 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
         _network.GetNetworkStatusAsync(cancellationToken);
 
+    public Task<NetworkConnectionDetailsSummary> GetNetworkConnectionDetailsAsync(
+        CancellationToken cancellationToken) =>
+        _network.GetNetworkConnectionDetailsAsync(cancellationToken);
+
     public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(
         CancellationToken cancellationToken) => _network.GetSavedNetworkProfilesAsync(cancellationToken);
 
