@@ -909,8 +909,10 @@ route/action, playback, and presentation boundaries while retaining one
   operation lane. DLV-095 committed as `bd270c9`; independent review retained
   its visible design but rejected the commit pending DLV-097 because the public
   confirmation response is not fully validated and the native walk bounds
-  accepted observations rather than windows examined. DLV-096 is active and is
-  not interrupted; DLV-097 follows it before this dependent prefix may
+  accepted observations rather than windows examined. DLV-096 committed as
+  `8291c53`, but review found source disposal still precedes scan/observation
+  drain and its locator-generation maps are not bounded. DLV-097 is active and
+  is not interrupted; DLV-098 follows it before this dependent prefix may
   integrate. These visible milestones plus their bounded corrections are the
   complete currently safe queue: another local game-store adapter remains
   blocked on documented,
@@ -1967,7 +1969,8 @@ inspection bound. DLV-097 owns only those gaps plus the inaccurate
 
 ### DLV-096 — Make Steam artwork discovery truly lazy and drain its lifetime
 
-**State:** Assigned; implementation active from clean merge baseline `8de9a88`
+**State:** Rejected in review at `8291c53`; correction queued as DLV-098 after
+active DLV-097
 **Lane:** widgets, correcting the rejected DLV-094 prefix
 **Baseline:** clean closing commit of DLV-095, which remains based on DLV-094
 candidate `3fdbc19`
@@ -2026,17 +2029,33 @@ ignoring artwork operation through terminal cleanup. Re-run the existing DLV-094
 focused provider/broker/widget groups only where the correction changes their
 boundary; Tier 2 repeat only the dedicated installed Steam-artwork route. Do not
 run the canonical aggregate and do not capture screenshots. After the complete
-DLV-094/095/096 prefix is accepted and integrated, fully package and visibly
-relaunch once for both visible outcomes.
+DLV-094/095/096/097/098 prefix is accepted and integrated, fully package and
+visibly relaunch once for both visible outcomes.
 
 **Stop/escalate when:** deferring discovery requires exposing store/path
 identity, terminal correctness requires unbounded waiting or force termination,
 or DLV-095 introduced an overlapping provider lifetime design that cannot be
 corrected mechanically without changing its accepted product behavior.
 
+**Reviewer disposition:** Zero artwork-cache probes during catalog enumeration,
+first-demand discovery, affected-handle rotation, neighbor stability, and the
+cancellation-ignoring artwork timeout are accepted in principle. Focused
+evidence passes provider 56/56, broker 54/54, installed Steam-artwork acceptance,
+and 55 documentation files. The commit remains non-integrable for two bounded
+ownership gaps. `CompleteDisposalAsync` acquires all artwork permits but starts
+source disposal tasks before acquiring `_scanGate` and `_observationGate`; on a
+later drain timeout it can therefore dispose sources and clear state while an
+admitted scan or running-app exact-resolution still uses them. Existing lifetime
+tests encode this unsafe order by waiting for `DisposeStarted` before releasing
+cancellation-ignoring work. Separately, `_rootsByLocator`,
+`_generationByLocator`, and `_observedRevisionByLocator` only add entries and
+never prune or cap them across catalog generations. DLV-098 owns only the
+terminal order, corrected lifetime fixtures, and bounded current-generation
+locator ownership.
+
 ### DLV-097 — Bound running-window inspection and validate confirmed items
 
-**State:** Ready; execute automatically after DLV-096 commits
+**State:** Assigned; implementation active from clean merge baseline `c7d893f`
 **Lane:** widgets, correcting the rejected DLV-095 commit
 **Baseline:** clean closing commit of DLV-096, containing DLV-095 `bd270c9`
 **Dependencies:** DLV-095 candidate `bd270c9` and DLV-096's coherent closing
@@ -2089,12 +2108,77 @@ Widget SDK tests, API compatibility, and the two directly affected widget
 route/state suites only where malformed-confirmation behavior is asserted.
 Documentation validation is required. Reuse existing projects; do not create a
 test project, run the canonical aggregate, or capture screenshots. After the
-complete DLV-094/095/096/097 prefix is accepted and integrated, fully package
-and visibly relaunch once.
+complete DLV-094/095/096/097/098 prefix is accepted and integrated, fully
+package and visibly relaunch once.
 
 **Stop/escalate when:** deterministic bounding requires retaining native handles
 or a continuous monitor, full SDK validation would change an already documented
 valid item contract, or correcting either gap requires a new public authority.
+
+### DLV-098 — Drain every provider lane before disposal and bound lazy locators
+
+**State:** Ready; execute automatically after DLV-097 commits
+**Lane:** widgets, correcting the rejected DLV-096 commit
+**Baseline:** clean closing commit of DLV-097, containing DLV-096 `8291c53`
+**Dependencies:** the DLV-094/095/096 candidates and DLV-097's coherent closing
+commit; no dependency on platform work
+**Owner:** `WindowsAppLibraryProvider` terminal ordering, bounded current-
+generation Steam artwork-locator ownership, focused lifetime/lazy-artwork
+fixtures, and directly affected implementation docs; no public API or visible
+feature change
+**Concurrency:** Start only after DLV-097 commits. Platform remains idle. Do not
+rewrite, squash, or rebase the dependent prefix; close it with one ordinary
+follow-up commit.
+
+**Visible outcome:** Steam icons retain their lazy behavior while overlay
+shutdown never tears down a source still used by catalog or running-app work,
+and repeated changing Steam catalogs do not accumulate locator metadata for the
+life of the process.
+
+**Objective:** Make the provider's single terminal result honest for every
+admitted source-using lane and keep lazy artwork-generation state bounded to
+useful catalog ownership.
+
+**In scope:** after lifetime cancellation, use one shared bounded deadline to
+acquire the full artwork capacity plus scan and observation gates before
+starting any source disposal or clearing provider state. Only a complete drain
+may dispose sources and clear snapshots/maps. Timeout in any lane returns the
+same shared terminal failure to concurrent/repeated disposers, does not dispose
+a source still reachable by admitted work, and prevents late publication.
+Replace or prune Steam locator-generation maps to a named bound tied to current
+catalog ownership while preserving old registration safety: an admitted or
+still-authoritative generation cannot be reinitialized by eviction, stale
+handles fail closed after replacement/removal, unchanged current handles remain
+stable, and current registrations retain learned revision state across refresh.
+Update inherited tests that currently require disposal to begin before a
+cancellation-ignoring scan is released.
+
+**Out of scope:** changing terminal deadlines, adding lanes/semaphores, force
+termination, disposing unsafe sources after a drain timeout, public contracts,
+Steam formats/root discovery, native artwork cache, DLV-097 behavior, provider
+decomposition, screenshots, or aggregate verification.
+
+**Acceptance criteria:** cooperative scan, observation, and artwork operations
+all release before the first source `Dispose`; cancellation-ignoring work in
+each lane reaches the bounded shared failure with zero source disposal and zero
+state clear until manually released. Concurrent/repeated disposal observes one
+terminal result. A deterministic multi-generation catalog churn fixture exceeds
+the locator bound without growing retained locator state, reviving a stale
+generation, or changing an unaffected current handle. Replacement/removal still
+rejects stale demand and rotates only the affected current row after refresh.
+
+**Verification:** Tier 1 Windows app-library provider lifetime and Steam-artwork
+suites plus documentation validation. Run PlatformBroker artwork tests only if
+the host-visible handle behavior changes. Reuse existing test projects and
+bounded injected deadlines; do not add sleeps near the production five-second
+deadline, run the canonical aggregate, repeat the installed route when its
+boundary is unchanged, or capture screenshots. After the complete
+DLV-094/095/096/097/098 prefix is accepted and integrated, fully package and
+visibly relaunch once.
+
+**Stop/escalate when:** safe timeout requires disposing a still-used source,
+locator bounding requires weakening stale-handle failure or current-handle
+stability, or correction requires a new public authority or architecture.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
