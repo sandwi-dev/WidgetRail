@@ -130,6 +130,21 @@ defect from invalid pixels. Continue with deterministic functional/state/
 semantic evidence, then launch the accepted Release for the user's visual
 check. Capture-tool implementation requires its own explicit assignment.
 
+### Managed test framework coexistence
+
+- Every newly created managed test project uses `MSTest.Sdk` version `4.3.2`.
+- Existing executable scenario suites remain supported and keep their current
+  runners, stable case names, exit semantics, and verifier commands.
+- Do not schedule a standalone repository migration. Convert an older suite
+  only when a future assignment explicitly owns that exact migration or already
+  requires a substantial rewrite for a concrete product/testability outcome.
+- When the first MSTest project is accepted, the bounded verifier integration
+  must run both Microsoft Testing Platform projects and legacy executable suites
+  without forcing either model onto helper processes or production-host
+  fixtures.
+- Adopting MSTest does not by itself close a test-architecture hotspot and must
+  not displace visible product work.
+
 ## Recently completed
 
 ### DLV-001 — Finish the paused authority-recovery operator surface
@@ -578,15 +593,14 @@ suite ran.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The widgets lane now follows the non-idling and visible-outcome gates. DLV-019
-is accepted and integrated. DLV-040 is Assigned on that clean branch while the
-platform lane delivers visible DLV-026/DLV-021 work. DLV-046 through DLV-048
-form an ordered independent developer-experience queue so this lane does not
-wait for planner review or cross-lane integration. DLV-006 remains the next
-serialized visible foundation once DLV-021 is available and may replace that
-queue at a clean boundary; it unlocks Spotify focus fixes, Games artwork, and
-the game launcher. DLV-043 and DLV-038 remain dependency-ordered architecture
-debt rather than filler work.
+The widgets lane follows the non-idling and visible-outcome gates. DLV-040 and
+DLV-046 are accepted and integrated on `main`; DLV-047 is the current cleanly
+bounded developer-experience assignment and DLV-048 is its independent Ready
+successor. No third safe widgets-only Ready item is manufactured: DLV-006 is
+the next serialized visible foundation once DLV-021 is accepted, and it unlocks
+Spotify focus fixes, Games artwork, and the game launcher. DLV-043 and DLV-038
+remain dependency-ordered architecture debt rather than filler work. Platform
+DLV-021/DLV-049 continue to supply the required visible-product lane.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1633,9 +1647,10 @@ second Audio Mixer command/committed-state owner.
 
 ### DLV-040 — Extract bridge diagnostics and recovery projection
 
-**State:** Assigned
+**State:** Done; accepted and integrated on `main` as `7d5e29d`
 **Baseline:** accepted widgets-lane commit `6afd60b`; consume reviewer control-
 plane commit containing this assignment at the clean boundary before editing
+**Closing commit:** `df304c3` (`[DLV-040] Extract bridge diagnostics recovery projection`)
 **Dependencies:** DLV-001, DLV-031, DLV-039, and DLV-045
 **Owner:** managed bridge diagnostics/recovery internals and direct typed
 diagnostic fixtures; no Settings presentation or installed-widget policy work
@@ -1678,10 +1693,22 @@ unrelated security work.
 requires Settings product changes, broadens installed-widget hardening, or
 duplicates catalog/client state from DLV-039.
 
+**Reviewer disposition:** Accepted. One read-only projection now owns bounded
+appearance, consent, catalog, registry/residency, provider, and worker status;
+one exact-token projection owns recovery list/retry policy through the existing
+host authority service. The server retains authenticated routing, worker/client
+lifecycle, Stop, and frame publication. Cancellation-ignoring reads are
+observed, malformed/partial inputs fail locally without leaking paths or profile
+names, and retries preserve the DLV-001 commit gate. Retained focused evidence
+passes WidgetBridge 68/68 after the final source edit and all 52 documentation
+contracts. The accepted main Release rebuilt successfully; visible launch was
+temporarily prevented by the Codex approval service, not by the product build.
+
 ### DLV-046 — Make widget scaffolding transactional and versioned
 
-**State:** Ready after DLV-040
+**State:** Done; accepted and integrated on `main` as `06f6cc6`
 **Baseline:** closing commit of DLV-040
+**Closing commit:** `84ef91b` (`[DLV-046] Make widget scaffolding transactional`)
 **Dependencies:** DLV-010; DLV-040 is queue order only
 **Owner:** `gbar new`, ControllerWidget template input, focused CLI/scaffold
 fixtures, and directly affected public authoring documentation
@@ -1723,9 +1750,20 @@ aggregate, native suite, or screenshot work.
 weakening path/content bounds, deleting a non-empty user destination, or
 introducing a general package/template execution engine.
 
+**Reviewer disposition:** Accepted. Version-1 `template.json` is a closed,
+bounded text/binary inventory; traversal, reparse points, duplicates, missing
+or undeclared entries, unsupported versions, replacement destinations, and
+count/file/aggregate overflow fail before publication. Generation writes the
+declared files and matching SDK package to one owned sibling staging directory,
+validates it, and publishes by one rename; failure/cancellation removes only
+that staging tree and never overwrites author output. Retained focused evidence
+passes GbarCli/scaffold 54/54 and all 52 documentation contracts; an independent
+main Release CLI build completed with zero warnings and errors. No public SDK,
+protocol, native, or runtime authority changed.
+
 ### DLV-047 — Establish a checked-in widget SDK compatibility baseline
 
-**State:** Ready after DLV-046
+**State:** Assigned
 **Baseline:** closing commit of DLV-046
 **Dependencies:** DLV-010 and DLV-046
 **Owner:** public WidgetSdk package surface, package metadata/validation, CLI
