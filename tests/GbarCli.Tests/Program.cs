@@ -376,14 +376,18 @@ static async Task NewScaffoldsOutsideCheckout()
     {
         Environment.CurrentDirectory = externalRoot;
         Environment.SetEnvironmentVariable("GBAR_TEMPLATE_ROOT", externalTemplate);
-        var destination = Path.Combine(externalRoot, "ExternalWidget");
+        var destination = Path.Combine(externalRoot, "VolumeControl");
         var created = await RunCli(
-            "new", "widget", "ExternalWidget",
+            "new", "widget", "VolumeControl",
             "--output", destination,
-            "--id", "dev.test.external-widget",
-            "--publisher", "dev.test");
+            "--id", "dev.example.volume-control",
+            "--publisher", "dev.example");
         Assert.Equal(0, created.Code);
-        var project = Path.Combine(destination, "ExternalWidget.csproj");
+        Assert.Contains("Created VolumeControl", created.Output);
+        Assert.Contains("ID: dev.example.volume-control", created.Output);
+        Assert.Contains("local offline feed", created.Output);
+        Assert.DoesNotContain(originalDirectory, created.Output);
+        var project = Path.Combine(destination, "VolumeControl.csproj");
         var projectText = await File.ReadAllTextAsync(project);
         Assert.Contains("PackageReference", projectText);
         Assert.DoesNotContain(originalDirectory, projectText);
@@ -392,28 +396,51 @@ static async Task NewScaffoldsOutsideCheckout()
             "dotnet", ["build", project, "--configuration", "Release", "--nologo"],
             TimeSpan.FromSeconds(90), destination);
         Assert.Equal(0, build.Code);
+        Assert.Contains("Build succeeded", build.Output);
 
         var snapshot = Path.Combine(destination, "fixtures", "ready.snapshot.json");
         var scenario = await RunProcessAsync(
             "dotnet",
-            ["run", "--project", Path.Combine(destination, "tests", "ExternalWidget.Tests.csproj"),
+            ["run", "--project", Path.Combine(destination, "tests", "VolumeControl.Tests.csproj"),
              "--configuration", "Release", "--", snapshot],
             TimeSpan.FromSeconds(90), destination);
         Assert.Equal(0, scenario.Code);
         Assert.Contains("PASS lifecycle, state, actions, and snapshot", scenario.Output);
         Assert.True(File.Exists(snapshot), "Generated scenario did not export its snapshot.");
 
-        Assert.Equal(0, (await RunCli("validate", destination)).Code);
+        var validation = await RunCli("validate", destination);
+        Assert.Equal(0, validation.Code);
+        Assert.Contains("Valid:", validation.Output);
         var canonical = Path.Combine(destination, "fixtures", "ready.canonical.json");
-        Assert.Equal(0, (await RunCli(
-            "render", snapshot, "--output", canonical)).Code);
-        Assert.Equal(0, (await RunCli(
-            "replay", snapshot, Path.Combine(destination, "replays", "smoke.json"))).Code);
+        var rendered = await RunCli("render", snapshot, "--output", canonical);
+        Assert.Equal(0, rendered.Code);
+        Assert.Contains("Snapshot written", rendered.Output);
+        var replayed = await RunCli(
+            "replay", snapshot, Path.Combine(destination, "replays", "smoke.json"));
+        Assert.Equal(0, replayed.Code);
+        Assert.Contains("\"actionId\": \"lower\"", replayed.Output);
+        Assert.Contains("\"actionId\": \"raise\"", replayed.Output);
+        Assert.Contains("\"actionId\": \"apply\"", replayed.Output);
 
-        var packageOne = Path.Combine(externalRoot, "ExternalWidget-0.1.0-a.gbarwidget");
-        var packageOneRepeat = Path.Combine(externalRoot, "ExternalWidget-0.1.0-b.gbarwidget");
-        Assert.Equal(0, (await RunCli(
-            "pack", destination, "--configuration", "Release", "--output", packageOne)).Code);
+        CanonicalAuthorJourneyContract.VerifyQuickstart(
+            originalDirectory,
+            await File.ReadAllTextAsync(Path.Combine(destination, "src", "VolumeControl.cs")));
+
+        var stylePath = Path.Combine(destination, "styles", "default.gbss");
+        var validStyle = await File.ReadAllTextAsync(stylePath);
+        await File.WriteAllTextAsync(stylePath, ".root { background: url(https://invalid.example); }");
+        var invalidStyle = await RunCli("validate", destination);
+        Assert.Equal(1, invalidStyle.Code);
+        Assert.Contains("default.gbss", invalidStyle.Error);
+        Assert.Contains("Validation failed", invalidStyle.Error);
+        await File.WriteAllTextAsync(stylePath, validStyle);
+
+        var packageOne = Path.Combine(externalRoot, "dev.example.volume-control-0.1.0.gbarwidget");
+        var packageOneRepeat = Path.Combine(externalRoot, "dev.example.volume-control-0.1.0-repeat.gbarwidget");
+        var packedOne = await RunCli(
+            "pack", destination, "--configuration", "Release", "--output", packageOne);
+        Assert.Equal(0, packedOne.Code);
+        Assert.Contains(Path.GetFileName(packageOne), packedOne.Output);
         Assert.Equal(0, (await RunCli(
             "pack", project, "--configuration", "Release", "--output", packageOneRepeat)).Code);
         Assert.SequenceEqual(
@@ -422,38 +449,39 @@ static async Task NewScaffoldsOutsideCheckout()
         await AssertPackageIsPortableAsync(packageOne, originalDirectory, externalRoot);
 
         var catalog = Path.Combine(externalRoot, "catalog");
-        Assert.Equal(0, (await RunCli(
-            "install", packageOne, "--catalog", catalog)).Code);
+        var installedOne = await RunCli("install", packageOne, "--catalog", catalog);
+        Assert.Equal(0, installedOne.Code);
+        Assert.Contains("dev.example.volume-control", installedOne.Output);
 
         var manifestPath = Path.Combine(destination, "manifest.json");
         var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(manifestPath));
         await File.WriteAllBytesAsync(
             manifestPath, ManifestJson.Serialize(manifest with { Version = "0.2.0" }));
-        var packageTwo = Path.Combine(externalRoot, "ExternalWidget-0.2.0.gbarwidget");
+        var packageTwo = Path.Combine(externalRoot, "dev.example.volume-control-0.2.0.gbarwidget");
         Assert.Equal(0, (await RunCli(
             "pack", destination, "--output", packageTwo)).Code);
         Assert.Equal(0, (await RunCli(
             "install", packageTwo, "--catalog", catalog)).Code);
         var versions = await RunCli(
-            "version", "list", "dev.test.external-widget", "--catalog", catalog);
+            "version", "list", "dev.example.volume-control", "--catalog", catalog);
         Assert.Contains("active version 0.1.0", versions.Output);
         Assert.Contains("       0.2.0", versions.Output);
         Assert.Equal(0, (await RunCli(
-            "version", "select", "dev.test.external-widget", "0.2.0",
+            "version", "select", "dev.example.volume-control", "0.2.0",
             "--catalog", catalog)).Code);
         Assert.Equal(0, (await RunCli(
-            "enable", "dev.test.external-widget", "--catalog", catalog)).Code);
+            "enable", "dev.example.volume-control", "--catalog", catalog)).Code);
         Assert.Equal(0, (await RunCli(
-            "disable", "dev.test.external-widget", "--catalog", catalog)).Code);
+            "disable", "dev.example.volume-control", "--catalog", catalog)).Code);
         Assert.Equal(0, (await RunCli(
-            "version", "rollback", "dev.test.external-widget", "--catalog", catalog)).Code);
+            "version", "rollback", "dev.example.volume-control", "--catalog", catalog)).Code);
         Assert.Equal(0, (await RunCli(
-            "version", "select", "dev.test.external-widget", "0.2.0",
+            "version", "select", "dev.example.volume-control", "0.2.0",
             "--catalog", catalog)).Code);
         Assert.Equal(0, (await RunCli(
-            "uninstall", "dev.test.external-widget", "--catalog", catalog)).Code);
+            "uninstall", "dev.example.volume-control", "--catalog", catalog)).Code);
         Assert.True(!Directory.Exists(Path.Combine(
-                catalog, "packages", "dev.test.external-widget")),
+                catalog, "packages", "dev.example.volume-control")),
             "Uninstall retained generated package versions.");
     }
     finally
@@ -469,7 +497,7 @@ static async Task AssertPackageIsPortableAsync(
 {
     using (var archive = ZipFile.OpenRead(package))
     {
-        Assert.True(archive.Entries.Any(entry => entry.FullName == "payload/ExternalWidget.dll"),
+        Assert.True(archive.Entries.Any(entry => entry.FullName == "payload/VolumeControl.dll"),
             "Source packing omitted the declared entrypoint.");
         Assert.True(archive.Entries.All(entry =>
                 !entry.FullName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)),

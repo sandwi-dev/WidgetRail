@@ -262,6 +262,30 @@ contract into the nuspec and generated project, focused run
 `20260811T034900Z-0e3b2a40` completed in 48.341 seconds and passed the final
 2,400-symbol compatibility check plus GbarCli 55/55.
 
+DLV-048 makes the marked quickstart blocks the one canonical offline author
+journey instead of maintaining an uncompiled parallel starter in the larger
+authoring guide. The exact generated `VolumeControl.cs` lifecycle/state/action/
+focus source is embedded once and compared to the temporary scaffold before
+that same file is compiled and executed. One cohesive GbarCli contract parses
+the eight marked source/command fences, rejects missing/duplicate/advanced or
+absolute-path content, and binds their new/build/test, validate, render,
+replay, pack/install, version/select/rollback, and disable/remove claims to the
+external fixture. The fixture asserts public success output, exported snapshot
+semantics, lower/raise/apply replay actions, byte-identical checkout-path-free
+packages, two immutable installed versions, selection/rollback, and complete
+uninstall. An intentionally invalid GBSS file proves failure output names
+`styles/default.gbss` and the validation action before the valid source is
+restored. Advanced `gbar dev`, scenario-provider, custom-worker/capability,
+AppContainer, credentialed service, and authority-recovery guidance remains
+explicitly outside this credential-free path. No public API, runtime/native
+authority, widget behavior, external publication, live service, or screenshot
+work changed.
+Focused dirty-worktree Release run `20260811T040047Z-d8e6fe07` completed in
+39.912 seconds and passed GbarCli/scaffold 55/55, including the bounded external
+author journey, plus documentation validation across 53 Markdown files. No
+aggregate, native, Runtime, live-service, external-feed, or screenshot suite
+ran.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic
