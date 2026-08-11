@@ -164,7 +164,8 @@ public sealed partial class SpotifyWidget
         var playlistDetail = presentation.PlaylistDetail;
         var wide = UI.Row("spotify.shell.wide",
                 NavigationRail(destination, "wide"),
-                UI.Stack("spotify.player.wide", PlayerPanel(playback, pending, "wide"))
+                UI.Stack("spotify.player.wide",
+                        PlayerPanel(playback, pending, destination, "wide"))
                     .Classes("spotify-player-pane"),
                 UI.Stack("spotify.context.wide",
                         DestinationPage(destination, presentation.Queue, playlists,
@@ -178,7 +179,7 @@ public sealed partial class SpotifyWidget
                 UI.Stack("spotify.context.compact",
                         destination == SpotifyDestination.Player
                             ? UI.VerticalScroll("spotify.player.compact.scroll",
-                                    PlayerPanel(playback, pending, "compact"))
+                                    PlayerPanel(playback, pending, destination, "compact"))
                                 .Classes("spotify-compact-player-scroll")
                             : DestinationPage(destination, presentation.Queue, playlists,
                                 playlistDetail, presentation.Devices,
@@ -286,6 +287,7 @@ public sealed partial class SpotifyWidget
     private static WidgetElement PlayerPanel(
         WidgetSpotifyPlaybackSummary? playback,
         WidgetSpotifyPlaybackOperation? pending,
+        SpotifyDestination selectedDestination,
         string mode)
     {
         if (playback is not { IsAvailable: true, Item: not null })
@@ -366,6 +368,7 @@ public sealed partial class SpotifyWidget
                 seekId, "Spotify playback position")
             .Disabled(disallowed.Seeking)
             .Busy(pending == WidgetSpotifyPlaybackOperation.Seek)
+            .FocusLeft(NavId(selectedDestination, mode))
             .FocusDown(toggleId)
             .RequireControllerActivation()
             .AddClasses("spotify-scrubber");

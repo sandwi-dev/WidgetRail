@@ -11,7 +11,13 @@ Version 0.2 adds four controller-first destinations:
 - **Playlists** lazily loads the user's first bounded page, opens a scrollable detail page, and can start the playlist or an indexed track context.
 - **Devices** transfers to Spotify devices and exposes **This overlay** through the trusted Web Playback SDK host. Tokens and the local Spotify device ID never enter widget code.
 
-Wide surfaces use a navigation rail with a persistent player. Compact surfaces use tabs and one content pane. Playlist detail is a nested navigation entry: B returns to the exact playlist tile; B at a root destination remains available to the overlay shell. Search is intentionally absent until the SDK has a controller-appropriate text-entry contract.
+Wide surfaces use a navigation rail with a persistent player. Left from the
+inactive seek control returns to the currently selected rail destination;
+compact Player uses the corresponding selected tab. Compact surfaces use tabs
+and one content pane. Playlist detail is a nested navigation entry: B returns
+to the exact playlist tile; B at a root destination remains available to the
+overlay shell. Search is intentionally absent until the SDK has a controller-
+appropriate text-entry contract.
 
 Rendering captures one immutable presentation revision. Playlist detail is keyed
 to both its playlist ID and selection generation, so Back, rapid reselection,
