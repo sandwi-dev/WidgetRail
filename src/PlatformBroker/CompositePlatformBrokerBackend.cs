@@ -147,6 +147,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         CancellationToken cancellationToken) =>
         _appLibrary.QueryAppLibraryAsync(request, cancellationToken);
 
+    Task<AppLibraryIconSummary> IAppLibraryPlatformBrokerBackend.GetAppLibraryIconAsync(
+        string appId,
+        CancellationToken cancellationToken) =>
+        _appLibrary.GetAppLibraryIconAsync(appId, cancellationToken);
+
     public Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken) =>
         _appLibrary.LaunchAppLibraryItemAsync(appId, cancellationToken);

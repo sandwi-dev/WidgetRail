@@ -70,6 +70,7 @@ internal interface IGameLibrarySource : IDisposable
     GameLibraryLaunchResult Launch(
         GameLibrarySourceItem exactItem,
         CancellationToken cancellationToken);
+    bool RequiresStaArtwork => true;
     string? LoadArtwork(GameLibrarySourceItem exactItem, CancellationToken cancellationToken);
 }
 
@@ -96,6 +97,7 @@ internal abstract class GameLibrarySourceBase : IGameLibrarySource
 
     public string SourceIdentity { get; }
     public string Attribution { get; }
+    public abstract bool RequiresStaArtwork { get; }
 
     public GameLibrarySourceSnapshot Snapshot
     {
@@ -275,6 +277,8 @@ internal sealed class WindowsInstalledGameLibrarySource : GameLibrarySourceBase
     private readonly IWindowsShellLauncher _shellLauncher;
     private readonly IWindowsPackagedAppLauncher _packagedLauncher;
     private readonly IWindowsAppIconSource _iconSource;
+
+    public override bool RequiresStaArtwork => true;
 
     internal WindowsInstalledGameLibrarySource(
         IStartMenuApplicationSource startMenu,
@@ -482,6 +486,8 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
     private readonly ISteamApplicationSource _source;
     private readonly IWindowsSteamLauncher _launcher;
 
+    public override bool RequiresStaArtwork => false;
+
     internal SteamGameLibrarySource(
         ISteamApplicationSource source,
         IWindowsSteamLauncher launcher) : base(StableSourceIdentity, "Steam")
@@ -506,7 +512,17 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
         }
         var authorities = new Dictionary<string, IGameLibrarySourceAuthority>(
             StringComparer.Ordinal);
-        var items = registrations.Where(IsValidAuthority).Select(registration =>
+        var current = registrations
+            .Where(IsValidAuthority)
+            .GroupBy(registration => registration.IdentityKey,
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(registration => registration.Artwork is not null)
+                .ThenBy(registration => registration.ManifestPath,
+                    StringComparer.OrdinalIgnoreCase)
+                .First())
+            .ToArray();
+        var items = current.Select(registration =>
         {
             var item = ToItem(registration);
             authorities.Add(item.SourceItemIdentity, new SteamAuthority(registration));
@@ -549,7 +565,10 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
 
     protected override string? LoadArtworkCore(
         GameLibrarySourceItem exactItem,
-        CancellationToken cancellationToken) => null;
+        CancellationToken cancellationToken) =>
+        TryGetAuthority<SteamAuthority>(exactItem, out var authority)
+            ? _source.LoadArtwork(authority.Registration, cancellationToken)
+            : null;
 
     private GameLibrarySourceItem ToItem(SteamRegistration registration) => new(
         SourceIdentity,
@@ -559,11 +578,19 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
         WindowsAppLibraryKind.Game,
         Installed: true,
         Available: true,
-        GameLibrarySourceActions.Launch,
-        registration.RevalidationKey,
+        GameLibrarySourceActions.Launch |
+            (registration.Artwork is null
+                ? GameLibrarySourceActions.None
+                : GameLibrarySourceActions.Artwork),
+        ArtworkRevision(registration),
         "record-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             SourceIdentity + "\0" + registration.IdentityKey + "\0" +
             registration.RevalidationKey))));
+
+    private static string ArtworkRevision(SteamRegistration registration) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            registration.RevalidationKey + "\0" +
+            (registration.Artwork?.Revision ?? "missing"))));
 
     private static bool IsValidAuthority(SteamRegistration registration)
     {

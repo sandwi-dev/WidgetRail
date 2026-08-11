@@ -1652,7 +1652,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  and per-row decoded/bitmap key when trusted icon content changes without a
  SavedId or launch-identity change. Native demand remains lazy with deterministic
  32-entry / 32 MiB in-memory eviction and no disk cache; missing, malformed, stale,
- replaced, or Steam-without-trusted-artwork registrations retain the semantic
+ replaced, or Steam registrations without a valid bounded local cache asset retain the semantic
  fallback without changing launch, focus, membership, or warm-start identity.
  Focused DLV-018 Release evidence passes 32 Windows app-library provider,
  51 broker, 56 Games & Apps, 70 production Bridge, 6 isolated first-party
@@ -1668,6 +1668,17 @@ themes also use non-shrinking fixed regions, a thin native Slider
  OverlayHost target, and the installed first-party package seam 6/6. The
  correction is private bridge/cache behavior and does not close the broader
  synchronous startup issue.
+ DLV-094 extends that accepted lazy route to installed Steam registrations. The
+ source accepts only direct `_icon.png`/`_icon.jpg`/`_icon.jpeg` files beneath
+ the exact non-reparse trusted Steam cache root, records host-only file identity,
+ length, file-change, and last-write evidence, caps input at 1 MiB / 4,096 per dimension /
+ 16,777,216 decoded pixels, normalizes to the existing 64-pixel / 12-KiB PNG
+ contract, and retains at most 64 decoded entries. Steam artwork uses a separate
+ four-operation provider lane; a blocked decode cannot serialize catalog or
+ lifecycle work. Replacement/removal rejects stale demand and rotates handles
+ without changing SavedId or launch authority. Focused Release evidence and the
+ installed generic-AppContainer route are recorded with the closing DLV-094
+ commit.
  Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,

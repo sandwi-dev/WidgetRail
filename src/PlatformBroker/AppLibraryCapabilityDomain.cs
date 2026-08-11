@@ -256,7 +256,6 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         _publicIdsByBackendId.Clear();
         _launchRecency.Clear();
         _launchNodes.Clear();
-        _artwork?.Reset();
     }
 
     private void TouchLaunch(string publicId, string backendAppId)

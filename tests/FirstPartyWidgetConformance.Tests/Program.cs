@@ -16,6 +16,7 @@ using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WindowsAppLibraryProvider;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 
@@ -76,6 +77,18 @@ if (args.Contains("--spotify-installed-acceptance", StringComparer.Ordinal))
         RequiredArgument(args, "--package"),
         RequiredArgument(args, "--acceptance-output"));
     Console.WriteLine("PASS exact installed Spotify Community package acceptance");
+    return 0;
+}
+
+if (args.Contains("--steam-artwork-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await InstalledSteamArtworkRunsIsolated(installed.Catalog);
+    Console.WriteLine("PASS exact installed Steam artwork acceptance");
     return 0;
 }
 
@@ -267,13 +280,157 @@ static async Task PackagesRunIsolated()
         deployment.Packages,
         package => package.Manifest.Id,
         "installed");
-
     var bundled = BridgeCatalog.Load(deployment.BundledCatalogPath);
     await RunCatalogAsync(
         bundled,
         deployment.Packages,
         package => package.ShellId,
         "bundled");
+}
+
+static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
+{
+    using var steam = new InstalledSteamArtworkFixture();
+    await using var provider = new WindowsAppLibraryProvider(
+        [new SteamGameLibrarySource(
+            new WindowsSteamApplicationSource([steam.Root]),
+            new InstalledArtworkSteamLauncher())],
+        ShellStaExecutor.Shared);
+    var simulator = CreateBackend();
+    await using var backend = new CompositePlatformBrokerBackend(
+        simulator, simulator,
+        activity: simulator,
+        bluetooth: simulator,
+        media: simulator,
+        appLibrary: provider,
+        privateSecrets: simulator,
+        loopbackHttp: simulator,
+        privateState: simulator,
+        spotify: simulator);
+    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    Assert.True(configured.RequiresAppContainer,
+        "Installed Steam artwork did not use the generic AppContainer route.");
+    using var consentRoot = new TemporaryDirectory("gba-installed-steam-artwork-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var artwork = new AppLibraryArtworkRegistry();
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context,
+            artwork),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var snapshot = await WaitForSnapshotAsync(client, "Installed Steam One");
+    var firstHandle = ArtworkHandle(snapshot, "Installed Steam One");
+    var neighborHandle = ArtworkHandle(snapshot, "Installed Steam Two");
+    Assert.True(artwork.IsCurrent(identity, firstHandle),
+        "Installed Steam first handle was not current in the host registry.");
+    Assert.True(artwork.IsCurrent(identity, neighborHandle),
+        "Installed Steam neighbor handle was not current in the host registry.");
+    var directPage = await provider.QueryAppLibraryAsync(
+        new AppLibraryBackendCursorRequest(
+            new AppLibraryBackendQuery(), null, null, 64),
+        CancellationToken.None);
+    var directFirst = directPage.Items.Single(item =>
+        item.DisplayName == "Installed Steam One");
+    Assert.True((await provider.GetAppLibraryIconAsync(
+        directFirst.ProviderAppId, CancellationToken.None)).PngBase64 is not null,
+        "Installed Steam provider lost first artwork before registry resolution.");
+    var firstPixels = await artwork.ResolveAsync(
+        identity, firstHandle, CancellationToken.None);
+    var neighborPixels = await artwork.ResolveAsync(
+        identity, neighborHandle, CancellationToken.None);
+    Assert.True(firstPixels is not null,
+        "Installed Steam first artwork did not resolve current bounded pixels.");
+    Assert.True(neighborPixels is not null,
+        "Installed Steam neighbor artwork did not resolve current bounded pixels.");
+
+    steam.ReplaceFirstArtwork();
+    Assert.Equal<string?>(null, await artwork.ResolveAsync(
+        identity, firstHandle, CancellationToken.None));
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.refresh", "game-launcher.refresh"));
+    snapshot = await WaitForArtworkRotation(
+        client, "Installed Steam One", firstHandle);
+    var rotatedHandle = ArtworkHandle(snapshot, "Installed Steam One");
+    Assert.True(rotatedHandle != firstHandle,
+        "Installed Steam artwork replacement reused the prior handle.");
+    Assert.Equal(neighborHandle, ArtworkHandle(snapshot, "Installed Steam Two"));
+    Assert.Equal<string?>(null, await artwork.ResolveAsync(
+        identity, firstHandle, CancellationToken.None));
+    var rotatedPixels = await artwork.ResolveAsync(
+        identity, rotatedHandle, CancellationToken.None);
+    Assert.True(rotatedPixels is not null && rotatedPixels != firstPixels,
+        "Installed Steam replacement reused stale decoded pixels.");
+
+    steam.RemoveFirstArtwork();
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.refresh", "game-launcher.refresh"));
+    snapshot = await WaitForArtworkRotation(
+        client, "Installed Steam One", rotatedHandle);
+    var removedHandle = ArtworkHandle(snapshot, "Installed Steam One");
+    Assert.Equal<string?>(null, await artwork.ResolveAsync(
+        identity, removedHandle, CancellationToken.None));
+    Assert.Equal(neighborHandle, ArtworkHandle(snapshot, "Installed Steam Two"));
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
+
+    static string ArtworkHandle(ViewSnapshot snapshot, string displayName)
+    {
+        var tile = Nodes(snapshot.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            Nodes(node).Any(descendant => string.Equals(
+                descendant.Text, displayName, StringComparison.Ordinal)));
+        return Nodes(tile).Single(node => node.ArtworkHandle is not null).ArtworkHandle!;
+    }
+
+    static async Task<ViewSnapshot> WaitForArtworkRotation(
+        WidgetProcessClient client,
+        string displayName,
+        string priorHandle)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            var current = await client.GetSnapshotAsync();
+            Assert.Equal(0, ViewSnapshotValidator.Validate(current).Count);
+            var tile = Nodes(current.Root).FirstOrDefault(node =>
+                node.ActionId == "game-launcher.launch" &&
+                Nodes(node).Any(descendant => string.Equals(
+                    descendant.Text, displayName, StringComparison.Ordinal)));
+            var handle = tile is null
+                ? null
+                : Nodes(tile).SingleOrDefault(node => node.ArtworkHandle is not null)
+                    ?.ArtworkHandle;
+            if (handle is not null && handle != priorHandle) return current;
+            await Task.Delay(40);
+        }
+        throw new TimeoutException(
+            $"Installed Steam artwork for {displayName} did not rotate.");
+    }
 }
 
 static async Task MaximumDirectoryPackageRunsIsolated()
@@ -2565,6 +2722,67 @@ file sealed record EvidenceGapDescriptor(
     string PackageId,
     string ErrorType,
     string Message);
+
+file sealed class InstalledSteamArtworkFixture : IDisposable
+{
+    private readonly TemporaryDirectory _directory =
+        new("gba-installed-steam-artwork");
+
+    internal InstalledSteamArtworkFixture()
+    {
+        Directory.CreateDirectory(Path.Combine(Root, "steamapps"));
+        Directory.CreateDirectory(Path.Combine(Root, "appcache", "librarycache"));
+        WriteManifest("111", "Installed Steam One");
+        WriteManifest("222", "Installed Steam Two");
+        FirstArtworkPath = WriteArtwork("111", CreatePng(12, 18, 11));
+        _ = WriteArtwork("222", CreatePng(15, 10, 23));
+    }
+
+    internal string Root => _directory.Path;
+    internal string FirstArtworkPath { get; }
+
+    internal void ReplaceFirstArtwork()
+    {
+        File.WriteAllBytes(FirstArtworkPath, CreatePng(19, 17, 47));
+        File.SetLastWriteTimeUtc(FirstArtworkPath, DateTime.UtcNow.AddSeconds(5));
+    }
+
+    internal void RemoveFirstArtwork() => File.Delete(FirstArtworkPath);
+
+    public void Dispose() => _directory.Dispose();
+
+    private void WriteManifest(string appId, string displayName) =>
+        File.WriteAllText(
+            Path.Combine(Root, "steamapps", $"appmanifest_{appId}.acf"),
+            $"\"AppState\" {{ \"appid\" \"{appId}\" \"name\" \"{displayName}\" }}");
+
+    private string WriteArtwork(string appId, byte[] bytes)
+    {
+        var path = Path.Combine(
+            Root, "appcache", "librarycache", $"{appId}_icon.png");
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    private static byte[] CreatePng(int width, int height, byte seed)
+    {
+        var bgra = new byte[checked(width * height * 4)];
+        for (var index = 0; index < bgra.Length; index += 4)
+        {
+            bgra[index] = (byte)(seed + index);
+            bgra[index + 1] = (byte)(seed * 3 + index);
+            bgra[index + 2] = (byte)(seed * 7 + index);
+            bgra[index + 3] = 255;
+        }
+        return WindowsAppIconSource.EncodePng(bgra, width, height);
+    }
+}
+
+file sealed class InstalledArtworkSteamLauncher : IWindowsSteamLauncher
+{
+    public void Launch(string exactSteamAppId, CancellationToken cancellationToken) =>
+        cancellationToken.ThrowIfCancellationRequested();
+}
 
 file sealed class TemporaryDirectory : IDisposable
 {

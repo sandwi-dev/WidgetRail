@@ -231,6 +231,18 @@ at most 12 KiB / 64 by 64 PNG sources into a 32-entry / 32 MiB in-memory LRU
 cache. Handles and pixels are never persisted in widget private state, and no
 disk artwork cache is created.
 
+For an installed Steam registration, the trusted provider may associate the
+exact numeric app identity with an allowlisted `_icon.png`, `_icon.jpg`, or
+`_icon.jpeg` file in that Steam root's local `appcache/librarycache`. It opens
+only a regular non-reparse file beneath the exact trusted root, caps the source
+at 1 MiB / 4,096 per dimension / 16,777,216 decoded pixels, normalizes it to the
+same 64-pixel / 12-KiB PNG contract on demand, and retains at most 64 decoded
+entries in the source cache. File identity, length, file-change, and last-write
+evidence are part of the host-only revision. Replacement or removal therefore
+rejects a stale demand and rotates the opaque handle after refresh. Cache paths,
+Steam AppIds, file identities, and source bytes never enter widget snapshots or
+private state.
+
 `LaunchAsync` accepts only the short-lived opaque `AppId` returned by a current
 page or resolution. Widgets must never persist AppId. Widgets never
 receive a path, `.lnk` filename, target executable, command line, AUMID,
@@ -259,14 +271,18 @@ namespace, and registered Steam libraries. It:
   display text, and treats a malformed/disappearing item as an isolated skip;
 - discovers at most 32 Steam library roots and 4,096 bounded
   `appmanifest_<id>.acf` files, accepts only a matching positive numeric AppId
-  plus sanitized name, and classifies those registrations as games;
+  plus sanitized name, classifies those registrations as games, and prefers an
+  exact duplicate registration with current trusted local artwork before the
+  deterministic manifest-path tie-break;
 - sanitizes display names, deduplicates the same trusted target identity, and
   serves the normalized catalog through revision-bound pages of at most 64;
 - assigns random opaque IDs that stay stable only while that registration
   remains in the current provider snapshot; and
 - rasterizes a shortcut or AppsFolder Shell icon on demand to a bounded 48 by
   48 RGBA PNG, caches it by the exact registration revalidation key, and
-  returns only pixels; and
+  returns only pixels; Steam local PNG/JPEG artwork is separately decoded on a
+  bounded non-STA artwork lane so catalog and lifecycle traffic remain live;
+  and
 - exposes a separate stable private provider fingerprint only to the host
   broker, which derives non-reversible authority-scoped SavedIds with HMAC; and
 - keeps shortcut paths, raw provider identities, arguments, host key, and file
@@ -297,10 +313,11 @@ location, and content hash, then opens only
 - Curation is durable for the package, but deduplication across launchers,
   source-aware grouping, additional evidence-backed game sources, and broader
   source reconciliation remain tracked as [GBA-033](known-issues.md).
-- Shell icons are available only for resolved curated Start Menu or AppsFolder
-  entries.
-  Missing, malformed, or over-budget icons use the host semantic Play glyph;
-  broad Catalog discovery intentionally does not rasterize hundreds of icons.
+- Shell icons are available for resolved curated Start Menu or AppsFolder
+  entries, and installed Steam games may use the bounded trusted local cache
+  association described above. Missing, malformed, stale, unsupported, or
+  over-budget artwork uses the host semantic Play glyph; broad Catalog
+  discovery intentionally does not rasterize hundreds of icons.
 - The public kind enum supports Unknown, Application, and Game. Start Menu and
   AppsFolder entries remain conservative Applications; only reviewed Steam
   manifests are classified as Games. Filename/path guessing is not used.

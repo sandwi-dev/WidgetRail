@@ -142,16 +142,6 @@ internal sealed class AppLibraryArtworkRegistry
         }
     }
 
-    private void Reset(Session session)
-    {
-        lock (_gate)
-        {
-            if (_sessions.TryGetValue(session.Identity, out var current) &&
-                ReferenceEquals(current, session))
-                RemoveSessionLocked(session);
-        }
-    }
-
     private void RemoveSessionLocked(Session session)
     {
         foreach (var registration in session.ByProviderIdentity.Values)
@@ -207,9 +197,6 @@ internal sealed class AppLibraryArtworkRegistry
             IReadOnlyList<AppLibraryBackendItemSummary> items) =>
             (_owner ?? throw new ObjectDisposedException(nameof(AppLibraryArtworkSession)))
                 .RegisterPage(session, items);
-        internal void Reset() =>
-            (_owner ?? throw new ObjectDisposedException(nameof(AppLibraryArtworkSession)))
-                .Reset(session);
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.End(session);
     }
 }

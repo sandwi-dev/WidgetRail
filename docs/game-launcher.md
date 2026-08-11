@@ -55,6 +55,12 @@ provider identity, infer games from titles, or cache a complete library.
 Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
 bytes; the native host requests artwork lazily through the private trusted
 registry and keeps the semantic Play fallback when artwork is absent or stale.
+Installed Steam rows use the same handle when the trusted provider can bind the
+exact current registration to a bounded local Steam library-cache PNG or JPEG.
+The provider normalizes pixels only on demand; widgets never receive the cache
+path, Steam AppId, file identity, or source bytes. Replacing or removing the
+asset invalidates the stale demand and rotates the handle on refresh without
+changing launch authority, focus, favorites, groups, or recent order.
 
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains

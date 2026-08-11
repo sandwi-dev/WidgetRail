@@ -23,6 +23,7 @@ public sealed class WindowsAppLibraryProvider :
     private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly SemaphoreSlim _artworkGate = new(4, 4);
     private readonly object _lifetimeGate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly byte[] _cursorKey = RandomNumberGenerator.GetBytes(32);
@@ -326,7 +327,8 @@ public sealed class WindowsAppLibraryProvider :
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             throw AppUnavailable();
 
-        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
         try
         {
             GameLibrarySourceItem? registered;
@@ -386,7 +388,8 @@ public sealed class WindowsAppLibraryProvider :
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             return new AppLibraryIconSummary(null);
 
-        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterArtworkOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
         try
         {
             GameLibrarySourceItem? registration;
@@ -399,32 +402,49 @@ public sealed class WindowsAppLibraryProvider :
 
             lock (_stateGate)
             {
-                if (_iconsByRevalidationKey.TryGetValue(
+                if (source.RequiresStaArtwork &&
+                    _iconsByRevalidationKey.TryGetValue(
                         registration.ArtworkRevision, out var cached))
                     return new AppLibraryIconSummary(cached);
             }
 
-            var png = await _shellSta.RunAsync(
-                token =>
-                {
-                    var exact = source.ResolveExact(registration, token);
-                    return exact is null ? null : source.LoadArtwork(exact, token);
-                },
-                operation.Token).ConfigureAwait(false);
+            string? ResolveArtwork(CancellationToken token)
+            {
+                var exact = source.ResolveExact(registration, token);
+                return exact is null ||
+                    !string.Equals(exact.ArtworkRevision,
+                        registration.ArtworkRevision, StringComparison.Ordinal)
+                    ? null
+                    : source.LoadArtwork(exact, token);
+            }
+
+            var png = source.RequiresStaArtwork
+                ? await _shellSta.RunAsync(ResolveArtwork, operation.Token)
+                    .ConfigureAwait(false)
+                : await Task.Run(() => ResolveArtwork(operation.Token), operation.Token)
+                    .ConfigureAwait(false);
             operation.Token.ThrowIfCancellationRequested();
             if (png is not null)
             {
                 lock (_stateGate)
                 {
                     operation.Token.ThrowIfCancellationRequested();
-                    _iconsByRevalidationKey[registration.ArtworkRevision] = png;
+                    var isCurrent =
+                        _registrationsByOpaqueId.TryGetValue(appId, out var current) &&
+                        current.SourceIdentity == registration.SourceIdentity &&
+                        current.SourceItemIdentity == registration.SourceItemIdentity &&
+                        current.ArtworkRevision == registration.ArtworkRevision;
+                    if (!isCurrent)
+                        png = null;
+                    else if (source.RequiresStaArtwork)
+                        _iconsByRevalidationKey[registration.ArtworkRevision] = png;
                 }
             }
             return new AppLibraryIconSummary(png);
         }
         finally
         {
-            operation.Release(_scanGate);
+            operation.Release(_artworkGate);
         }
     }
 
@@ -581,6 +601,25 @@ public sealed class WindowsAppLibraryProvider :
         try
         {
             await _scanGate.WaitAsync(linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            return new ProviderOperation(linked);
+        }
+        catch
+        {
+            linked.Dispose();
+            throw;
+        }
+    }
+
+    private async Task<ProviderOperation> EnterArtworkOperationAsync(
+        CancellationToken cancellationToken)
+    {
+        ThrowIfTerminating();
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token);
+        try
+        {
+            await _artworkGate.WaitAsync(linked.Token).ConfigureAwait(false);
             linked.Token.ThrowIfCancellationRequested();
             return new ProviderOperation(linked);
         }

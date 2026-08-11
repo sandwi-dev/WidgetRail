@@ -296,6 +296,7 @@ static async Task AppLibraryIconsAreBounded()
     Assert.Equal(0, backend.AppLibraryIconCalls);
 
     var firstHandle = resolved.Items[0].ArtworkHandle!;
+    var neighborHandle = resolved.Items[1].ArtworkHandle!;
     Assert.Equal(png, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
     Assert.Equal(1, backend.AppLibraryIconCalls);
 
@@ -315,6 +316,9 @@ static async Task AppLibraryIconsAreBounded()
         new AppLibraryBackendItemSummary(
             "provider-0", "stable-0", "App 0",
             AppLibraryKind.Application, "artwork-b"),
+        new AppLibraryBackendItemSummary(
+            "provider-1", "stable-1", "App 1",
+            AppLibraryKind.Application, "artwork-a"),
     ]);
     var rotatedPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
         BrokerJson.ProtocolVersion, 3, identity,
@@ -325,6 +329,7 @@ static async Task AppLibraryIconsAreBounded()
     var rotated = rotatedPayload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
     Assert.True(rotated.Items[0].ArtworkHandle != firstHandle,
         "Changed trusted artwork revision reused its decoded-cache handle.");
+    Assert.Equal(neighborHandle, rotated.Items[1].ArtworkHandle);
     Assert.Equal(null, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
 
     for (var index = 0; index < 10_000; index++)

@@ -18,26 +18,39 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
     internal const int MaximumQuotedTokens = 16_384;
     internal const int MaximumTokenCharacters = 4096;
     private readonly Func<IReadOnlyList<string>> _steamRoots;
+    private readonly WindowsSteamArtworkSource _artwork;
 
-    internal WindowsSteamApplicationSource() : this(DiscoverSteamRoots) { }
+    internal WindowsSteamApplicationSource() : this(
+        DiscoverSteamRoots, new WindowsSteamArtworkSource()) { }
 
     internal WindowsSteamApplicationSource(IEnumerable<string> steamRoots) :
-        this(() => steamRoots.ToArray()) { }
+        this(() => steamRoots.ToArray(), new WindowsSteamArtworkSource()) { }
 
-    private WindowsSteamApplicationSource(Func<IReadOnlyList<string>> steamRoots) =>
+    internal WindowsSteamApplicationSource(
+        IEnumerable<string> steamRoots,
+        WindowsSteamArtworkSource artwork) :
+        this(() => steamRoots.ToArray(), artwork) { }
+
+    private WindowsSteamApplicationSource(
+        Func<IReadOnlyList<string>> steamRoots,
+        WindowsSteamArtworkSource artwork)
+    {
         _steamRoots = steamRoots ?? throw new ArgumentNullException(nameof(steamRoots));
+        _artwork = artwork ?? throw new ArgumentNullException(nameof(artwork));
+    }
 
     public IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows()) return [];
         var result = new List<SteamRegistration>();
-        foreach (var steamApps in DiscoverSteamAppsDirectories(cancellationToken))
+        foreach (var library in DiscoverSteamAppsDirectories(cancellationToken))
         {
             IReadOnlyList<string> manifests;
             try
             {
                 manifests = Directory.EnumerateFiles(
-                        steamApps, "appmanifest_*.acf", SearchOption.TopDirectoryOnly)
+                        library.SteamAppsDirectory, "appmanifest_*.acf",
+                        SearchOption.TopDirectoryOnly)
                     .Take(MaximumManifests - result.Count)
                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
@@ -52,7 +65,8 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             foreach (var manifest in manifests)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (TryReadManifest(manifest) is { } registration)
+                if (TryReadManifest(manifest, library.TrustedSteamRoot,
+                        cancellationToken) is { } registration)
                     result.Add(registration);
                 if (result.Count >= MaximumManifests) return result;
             }
@@ -71,9 +85,12 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
         try
         {
             var exact = Path.GetFullPath(manifestPath);
-            if (!DiscoverSteamAppsDirectories(cancellationToken).Any(
-                    root => IsDirectChild(root, exact))) return null;
-            var current = TryReadManifest(exact);
+            var library = DiscoverSteamAppsDirectories(cancellationToken)
+                .SingleOrDefault(candidate =>
+                    IsDirectChild(candidate.SteamAppsDirectory, exact));
+            if (library is null) return null;
+            var current = TryReadManifest(
+                exact, library.TrustedSteamRoot, cancellationToken);
             return current is not null &&
                 string.Equals(current.SteamAppId, steamAppId, StringComparison.Ordinal)
                     ? current
@@ -87,38 +104,55 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
         }
     }
 
+    public string? LoadArtwork(
+        SteamRegistration exactRegistration,
+        CancellationToken cancellationToken) =>
+        exactRegistration.Artwork is { } artwork
+            ? _artwork.Load(artwork, cancellationToken)
+            : null;
+
     internal static bool IsValidAppId(string? value) =>
         value is { Length: > 0 and <= 10 } &&
         value.All(character => character is >= '0' and <= '9') &&
         uint.TryParse(value, out var parsed) && parsed > 0;
 
-    private IReadOnlyList<string> DiscoverSteamAppsDirectories(
+    private IReadOnlyList<SteamLibraryLocation> DiscoverSteamAppsDirectories(
         CancellationToken cancellationToken)
     {
-        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rootValue in _steamRoots())
+        var locations = new Dictionary<string, SteamLibraryLocation>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var rootValue in _steamRoots()
+                     .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!TryNormalizeDirectory(rootValue, out var root)) continue;
-            AddSteamAppsDirectory(Path.Combine(root, "steamapps"), roots);
-            if (roots.Count >= MaximumLibraries) break;
+            AddSteamAppsDirectory(Path.Combine(root, "steamapps"), root, locations);
+            if (locations.Count >= MaximumLibraries) break;
 
             var librariesFile = Path.Combine(root, "steamapps", "libraryfolders.vdf");
             foreach (var path in ReadLibraryPaths(librariesFile))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                AddSteamAppsDirectory(Path.Combine(path, "steamapps"), roots);
-                if (roots.Count >= MaximumLibraries) break;
+                AddSteamAppsDirectory(Path.Combine(path, "steamapps"), root, locations);
+                if (locations.Count >= MaximumLibraries) break;
             }
         }
-        return roots.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray();
+        return locations.Values
+            .OrderBy(location => location.SteamAppsDirectory,
+                StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
-    private static void AddSteamAppsDirectory(string path, HashSet<string> roots)
+    private static void AddSteamAppsDirectory(
+        string path,
+        string trustedSteamRoot,
+        Dictionary<string, SteamLibraryLocation> locations)
     {
-        if (roots.Count >= MaximumLibraries || !TryNormalizeDirectory(path, out var normalized) ||
+        if (locations.Count >= MaximumLibraries ||
+            !TryNormalizeDirectory(path, out var normalized) ||
             !Directory.Exists(normalized)) return;
-        roots.Add(normalized);
+        locations.TryAdd(normalized, new SteamLibraryLocation(
+            normalized, trustedSteamRoot));
     }
 
     private static bool TryNormalizeDirectory(string? value, out string normalized)
@@ -148,7 +182,10 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
         }
     }
 
-    private static SteamRegistration? TryReadManifest(string manifestPath)
+    private SteamRegistration? TryReadManifest(
+        string manifestPath,
+        string trustedSteamRoot,
+        CancellationToken cancellationToken)
     {
         var nameFromFile = Path.GetFileNameWithoutExtension(manifestPath);
         const string prefix = "appmanifest_";
@@ -174,7 +211,11 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             displayName,
             appId!,
             Path.GetFullPath(manifestPath),
-            "acf-" + snapshot.Sha256);
+            "acf-" + snapshot.Sha256)
+        {
+            Artwork = _artwork.Discover(
+                trustedSteamRoot, appId!, cancellationToken),
+        };
     }
 
     private static string? ReadBoundedText(string file)
@@ -273,4 +314,7 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
     }
 
     private sealed record FileSnapshot(string Text, string Sha256);
+    private sealed record SteamLibraryLocation(
+        string SteamAppsDirectory,
+        string TrustedSteamRoot);
 }

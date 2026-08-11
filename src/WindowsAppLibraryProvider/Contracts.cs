@@ -67,7 +67,19 @@ internal sealed record SteamRegistration(
     string SteamAppId,
     string ManifestPath,
     string RevalidationKey) : WindowsLaunchRegistration(
-        IdentityKey, DisplayName, RevalidationKey);
+        IdentityKey, DisplayName, RevalidationKey)
+{
+    internal SteamArtworkRegistration? Artwork { get; init; }
+}
+
+/// <summary>
+/// Host-only evidence for one allowlisted Steam cache file. Paths and object
+/// identity never leave this provider assembly.
+/// </summary>
+internal sealed record SteamArtworkRegistration(
+    string TrustedSteamRoot,
+    string FilePath,
+    string Revision);
 
 internal interface IStartMenuApplicationSource
 {
@@ -101,6 +113,10 @@ internal interface ISteamApplicationSource
         string steamAppId,
         string manifestPath,
         CancellationToken cancellationToken);
+
+    string? LoadArtwork(
+        SteamRegistration exactRegistration,
+        CancellationToken cancellationToken) => null;
 }
 
 /// <summary>
