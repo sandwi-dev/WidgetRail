@@ -1744,6 +1744,50 @@ text. Finally, show that the next bridge lifecycle/catalog feature changes the
 coordinator and focused tests without editing unrelated drawing or controller
 polling regions of `main.cpp`; reduced line count alone is not closure.
 
+### EQ-031 — P1 — Text-entry commit retains stale native authority across a nested loop
+
+**Status: Open in rejected DLV-075 candidate `9e754f0`; assigned to DLV-079
+after active DLV-076.**
+
+**Evidence.** DLV-075's `OverlayApp::OpenTextEntryModal` resolves a
+`WidgetNode` through a `const WidgetSnapshot&` stored in `widgetSnapshots_`,
+then passes control to `TextEntryModal::Show`. `Show` owns a nested
+`GetMessageW` loop. The owner continues processing timer and bridge events
+during that loop, including paths that call `RefreshWidgetSnapshot` and
+`insert_or_assign` the map value or erase/clear snapshot entries. When `Show`
+returns a value, `OpenTextEntryModal` dereferences the pre-modal node and sends
+its action using the pre-modal input scope. A worker snapshot refresh,
+replacement, removal, hide, or active-widget change can therefore leave both an
+invalid reference and stale action authority at the commit boundary.
+
+The same candidate does not yet meet its controller/responsive acceptance
+criteria. Left/Up both move one position backward and Right/Down both move one
+position forward through a single linear target list, so the keyboard is not a
+spatial controller surface. Its fixed 760 by 520 logical window is DPI-scaled
+and owner-centered but not bounded or reflowed to the monitor work area; at
+150% the requested 1140 by 780 pixels can exceed a 720-pixel work area. Existing
+native evidence proves an edit UIA provider inside an 800 by 600 owner, not
+spatial direction semantics or on-screen bounds at compact/standard/150%.
+
+**Why it matters.** The public boundary correctly withholds raw keyboard events
+and HWND authority from widgets, but the final committed action still needs
+fresh native authorization. Holding container-backed references across a
+reentrant Windows message loop is unsafe even when the modal normally completes
+quickly. The navigation/layout gaps also turn an ostensibly controller-first
+feature into a sequence that is difficult to discover and can be clipped on a
+real small or scaled display.
+
+**Required correction.** DLV-079 must capture only immutable bounded request
+values before opening the modal. After commit it must re-resolve the current
+active widget, admitted snapshot, source node/action identity, generation,
+enabled state, and active input scope, sending exactly once only when all still
+match; every replacement/removal/hide/disable/stale case must fail closed. Add
+deterministic mutations while the modal is open. Give the keyboard and action
+row true spatial 2D controller links, bound/reflow the modal to the active work
+area at compact, standard, and 150%, and retain accurate UIA names, roles,
+focus restoration, and visible bounds. Do not expand widget key/HWND authority,
+redesign the public query contract, or use screenshot capture as acceptance.
+
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 
 **Status: Implemented in commit `4450cfa`; bounded local/CI

@@ -738,10 +738,13 @@ route/action, playback, and presentation boundaries while retaining one
   each launch, and adds bounded favorites plus explicit preferred-variant
   groups. DLV-067 `ddf7626` is accepted and integrated through `3d8f486`:
   evidence-backed launch states now gate overlay close without exposing process
-  identity, and retained per-game results are bounded. DLV-075 is Assigned;
-  DLV-076 and DLV-077 keep the lane on visible recent ordering and manual
-  inclusion. DLV-038 remains deferred test-architecture debt rather than filler
-  work.
+  identity, and retained per-game results are bounded. DLV-075 candidate
+  `9e754f0` is rejected pending DLV-079: its host-owned text-entry modal retains
+  snapshot/node references and action authority across a nested message loop.
+  DLV-076 is Assigned and may finish because it does not touch that boundary;
+  DLV-079 then corrects the retained prefix before DLV-077 continues visible
+  manual inclusion. DLV-038 remains deferred test-architecture debt rather than
+  filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3374,7 +3377,7 @@ worker 6/6, and 55 documentation contracts. Integrated as `3d8f486`.
 
 ### DLV-075 — Add controller-first Game Launcher search and filters
 
-**State:** Assigned
+**State:** Candidate `9e754f0` rejected; retain unchanged for DLV-079 correction
 **Lane:** widgets, acting as serialized cross-lane query/text-entry lead
 **Baseline:** accepted DLV-067 integration `3d8f486` plus the reviewer
 control-plane commit containing this assignment
@@ -3432,9 +3435,23 @@ contract. No screenshot, physical controller, external store, or live account.
 query cannot remain revision/cursor bounded, accessibility requires a materially
 different product model, or another lane owns a required dirty shared file.
 
+**Reviewer disposition:** Rejected pending DLV-079. The bounded public query,
+provider/broker mapping, Game Launcher search/filter presentation, and host-owned
+commit-value boundary are coherent and their focused suites pass. The native
+admission path is not safe to integrate: `OpenTextEntryModal` resolves a node
+inside a `WidgetSnapshot`, then `TextEntryModal::Show` runs a nested Windows
+message loop. That loop continues processing timer/bridge work which may replace,
+erase, or clear `widgetSnapshots_`; after it returns, the host dereferences the
+old node and sends its action with the old input scope. This is both invalid
+memory lifetime and stale action authority. The modal also maps Up/Down through
+the same one-dimensional sequence as Left/Right, and its fixed 760 by 520
+logical extent is not bounded/reflowed to the monitor work area at compact or
+150% scale. Keep `9e754f0` and its evidence unchanged; correct the exact prefix
+after DLV-076 without rebasing or rewriting either commit.
+
 ### DLV-076 — Add bounded recent-launch ordering to Game Launcher
 
-**State:** Ready
+**State:** Assigned; implementation began from retained DLV-075 candidate
 **Lane:** widgets
 **Baseline:** closing commit of DLV-075
 **Dependencies:** DLV-060, DLV-066, DLV-067, and DLV-075
@@ -3478,12 +3495,75 @@ No provider/native/aggregate/screenshot/physical game run.
 wall-clock identity, provider/public protocol changes, or another committed-
 state owner.
 
+### DLV-079 — Revalidate and bound host-owned text entry
+
+**State:** Ready; execute immediately after active DLV-076 and before DLV-077
+**Lane:** widgets, acting as serialized cross-lane native correction lead
+**Baseline:** closing commit of DLV-076, retaining DLV-075 candidate `9e754f0`
+unchanged in branch history
+**Dependencies:** DLV-075 and DLV-076 only for contiguous correction order
+**Owner:** OverlayHost text-entry request/current-authority admission,
+TextEntryModal spatial focus and responsive work-area geometry, exact native
+fixtures, and directly affected text-entry documentation
+**Concurrency:** Do not rebase, reset, amend, merge, or rewrite DLV-075/DLV-076.
+Platform remains idle because this correction owns the same native input/build
+boundary. Do not touch Game Launcher recent/manual policy, provider query
+semantics, compositor/capture work, or reviewer-owned files.
+
+**Visible outcome:** Search entry remains controller-first and accessible, with
+directional movement matching the keyboard grid and the complete modal fitting
+the active monitor at compact, standard, and 150% scale. If the widget restarts,
+is removed, hides, changes input scope, or replaces the source action while the
+keyboard is open, commit closes safely without invoking stale widget authority.
+
+**Objective:** Correct DLV-075 at the native ownership boundary so no pointer,
+reference, generation, or action authority survives the modal's nested message
+loop without revalidation, while completing its already-assigned responsive and
+controller-navigation acceptance criteria.
+
+**In scope:** capture only immutable bounded request values before opening the
+modal; after commit, re-resolve the current active widget, current admitted
+snapshot, current node, current input scope, enabled state, action/source
+identity, and generation before sending one action; fail closed on refresh,
+replacement, removal, hide, disable, stale action, or scope change; deterministic
+mutation/removal/restart/hide fixtures while the modal is open; true spatial 2D
+Left/Right/Up/Down navigation for keyboard rows and the action row; focus restore
+on commit/cancel; monitor-work-area/DPI-bounded layout/reflow; accurate UIA
+names, roles, focus, and on-screen bounds at compact, standard, and 150%.
+
+**Out of scope:** raw key or HWND authority to widgets, IME expansion, public
+query/protocol redesign, provider or broker semantics, Game Launcher feature
+changes, screenshots as an oracle, compositor/capture work, transition animation,
+or broad `OverlayApp` extraction.
+
+**Acceptance criteria:** no snapshot/node pointer or reference is held across
+the nested modal loop. Commit sends exactly once only through a freshly resolved
+current action with the same immutable source identity and current input scope;
+every stale/replaced/removed/hidden/disabled case sends nothing and restores a
+valid host focus state. Controller directions move spatially without wraparound
+surprises between unrelated rows, and Commit/Cancel/Clear/Backspace remain
+reachable. Modal and UIA bounds remain inside the active work area at the named
+sizes/DPI, with no clipped action row or off-screen focus target.
+
+**Verification:** Tier 1 exact TextEntryModal/input/focus/layout/UIA tests plus
+the smallest DLV-075 native bridge/action-admission fixture. Add deterministic
+in-loop snapshot replacement, erase, active-widget change, input-scope change,
+node replacement/disable, and unchanged-current commit cases. Retain the
+already-green managed query suites; rerun one only if the correction changes its
+files. Tier 2 smallest production-host modal route at compact, standard, and
+150%. No canonical aggregate, screenshot acceptance, physical controller,
+external store, or live account.
+
+**Stop/escalate when:** current authority cannot be re-resolved without a public
+protocol change, the nested loop must be replaced by a materially different
+window architecture, or responsive bounds require compositor ownership.
+
 ### DLV-077 — Add explicit manual entries to Game Launcher
 
 **State:** Ready
 **Lane:** widgets
-**Baseline:** closing commit of DLV-076
-**Dependencies:** DLV-060, DLV-066, DLV-072, DLV-075, and DLV-076
+**Baseline:** accepted closing commit of DLV-079
+**Dependencies:** DLV-060, DLV-066, DLV-072, DLV-075, DLV-076, and DLV-079
 **Owner:** Game Launcher manual-inclusion policy over the existing trusted app-
 library query/resolve/launch authority, private state, presentation, and focused
 fixtures; no arbitrary executable or filesystem picker
@@ -3743,24 +3823,26 @@ planner will not manufacture internal filler. The 2026-08-11 accepted-main
 Release build produced a narrower deterministic switch failure before reaching
 the blocked resize/compositor question: worker startup replaced the prior
 admitted content with a transient surface. DLV-078 owns that presentation-
-ordering correction after DLV-075 releases the shared native input/build
-boundary. The platform lane remains idle until then.
+ordering correction after the corrected DLV-075/DLV-076/DLV-079 prefix releases
+the shared native input/build boundary. The platform lane remains idle until
+then.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Blocked only by active DLV-075 shared native/build ownership; assign
-to platform immediately after DLV-075 is accepted
+**State:** Blocked by active DLV-076 plus queued DLV-079 shared native/build
+ownership; assign to platform after the corrected DLV-075/DLV-076/DLV-079
+prefix is accepted
 **Lane:** platform
-**Baseline:** accepted DLV-075 integration plus the reviewer control-plane commit
+**Baseline:** accepted DLV-079 integration plus the reviewer control-plane commit
 that changes this item to Assigned
-**Dependencies:** DLV-020 and accepted DLV-075; independent of blocked DLV-025
+**Dependencies:** DLV-020 and accepted DLV-079; independent of blocked DLV-025
 **Owner:** OverlayHost widget-switch presentation admission/retention ordering,
 the existing deterministic production-host fixture, and directly affected
 diagnostics/docs; no compositor or widget feature ownership
-**Concurrency:** After DLV-075 releases native host/input files, may run beside
-widgets DLV-076, which must not touch OverlayHost, WidgetBridgeClient, transition
+**Concurrency:** After DLV-079 releases native host/input files, may run beside
+widgets DLV-077, which must not touch OverlayHost, WidgetBridgeClient, transition
 fixtures, native build manifests, or switch diagnostics. Do not start before the
-planner accepts DLV-075 and assigns this item.
+planner accepts the DLV-075/DLV-076/DLV-079 prefix and assigns this item.
 
 **Visible outcome:** Cycling to a cold isolated widget keeps the last admitted
 widget content and host chrome painted until the destination's first valid
