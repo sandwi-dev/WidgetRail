@@ -45,15 +45,42 @@ internal static class RunningAppScenarios
     internal static async Task CancellationIgnoringObservationCannotPublish()
     {
         var observer = new BlockingObserver();
+        var source = new Source(1);
         var provider = new WindowsAppLibraryProvider(
-            [new Source(1)], ImmediateSta.Instance, observer);
+            [source], ImmediateSta.Instance, observer, TimeSpan.FromMilliseconds(100));
+        _ = await provider.GetAppsAsync();
         var observation = Task.Run(() => provider.ObserveRunningAppsAsync(
             CancellationToken.None));
         await observer.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        var disposal = provider.DisposeAsync().AsTask();
+        var failure = await Assert.ThrowsAsync<AggregateException>(() =>
+            provider.DisposeAsync().AsTask());
+        Assert.True(failure.Flatten().InnerExceptions.Any(exception =>
+            exception.Message.Contains("bounded deadline", StringComparison.Ordinal)));
+        Assert.Equal(0, source.DisposeCalls);
+        Assert.True(provider.HasRetainedCatalogState);
         observer.Release.Set();
         await Assert.ThrowsAsync<OperationCanceledException>(() => observation);
-        await disposal.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, source.DisposeCalls);
+    }
+
+    internal static async Task CooperativeObservationDrainsBeforeSourceDisposal()
+    {
+        var observer = new CooperativeObserver();
+        var source = new Source(1)
+        {
+            DisposalSafe = () => observer.Completed,
+        };
+        var provider = new WindowsAppLibraryProvider(
+            [source], ImmediateSta.Instance, observer, TimeSpan.FromMilliseconds(500));
+        _ = await provider.GetAppsAsync();
+        var observation = Task.Run(() => provider.ObserveRunningAppsAsync(
+            CancellationToken.None));
+        await observer.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await provider.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => observation);
+        Assert.Equal(1, source.DisposeCalls);
+        Assert.False(source.DisposedBeforeSafe);
     }
 
     internal static Task NativeWindowVisitsAreBoundedBeforeEligibility()
@@ -111,6 +138,30 @@ internal static class RunningAppScenarios
         }
     }
 
+    private sealed class CooperativeObserver : IWindowsRunningAppObserver
+    {
+        private int _completed;
+        internal bool Completed => Volatile.Read(ref _completed) != 0;
+        internal TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IReadOnlyList<WindowsRunningAppObservation> Observe(
+            CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            try
+            {
+                cancellationToken.WaitHandle.WaitOne();
+                cancellationToken.ThrowIfCancellationRequested();
+                return [];
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _completed, 1);
+            }
+        }
+    }
+
     private sealed class WindowReader(
         int count,
         bool eligible,
@@ -140,7 +191,11 @@ internal static class RunningAppScenarios
 
     private sealed class Source(int count) : IGameLibrarySource
     {
+        private int _disposeCalls;
         internal string? RejectIdentity { get; set; }
+        internal Func<bool>? DisposalSafe { get; init; }
+        internal int DisposeCalls => Volatile.Read(ref _disposeCalls);
+        internal bool DisposedBeforeSafe { get; private set; }
         public string SourceIdentity => "running-source";
         public string Attribution => "Windows";
         public GameLibrarySourceSnapshot Snapshot { get; private set; } =
@@ -171,7 +226,11 @@ internal static class RunningAppScenarios
             new(AppLibraryLaunchObservationState.RequestAccepted, GameLibraryLaunchEvidence.None);
         public string? LoadArtwork(
             GameLibrarySourceItem exactItem, CancellationToken cancellationToken) => null;
-        public void Dispose() { }
+        public void Dispose()
+        {
+            DisposedBeforeSafe = DisposalSafe is not null && !DisposalSafe();
+            Interlocked.Increment(ref _disposeCalls);
+        }
     }
 
     private sealed class ImmediateSta : IShellStaExecutor

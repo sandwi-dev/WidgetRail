@@ -138,7 +138,7 @@ public sealed class WindowsAppLibraryProvider :
     {
     }
 
-    private WindowsAppLibraryProvider(
+    internal WindowsAppLibraryProvider(
         IReadOnlyList<IGameLibrarySource> sources,
         IShellStaExecutor shellSta,
         IWindowsRunningAppObserver runningApps,
@@ -819,9 +819,6 @@ public sealed class WindowsAppLibraryProvider :
 
             if (artworkPermitsHeld == 4)
             {
-                var disposals = _sources
-                    .Select(source => Task.Run(() => DisposeSource(source)))
-                    .ToArray();
                 try
                 {
                     await _scanGate.WaitAsync(deadline.Token).ConfigureAwait(false);
@@ -835,16 +832,21 @@ public sealed class WindowsAppLibraryProvider :
                         "Game-library provider work did not drain within its bounded deadline.",
                         exception));
                 }
-
-                var results = await Task.WhenAll(disposals).ConfigureAwait(false);
-                failures.AddRange(results.OfType<Exception>());
-
-                lock (_stateGate)
+                if (gateHeld && observationGateHeld)
                 {
-                    _snapshot = null;
-                    _registrationsByOpaqueId = new(StringComparer.Ordinal);
-                    _opaqueIdsByIdentity.Clear();
-                    _iconsByRevalidationKey.Clear();
+                    var disposals = _sources
+                        .Select(source => Task.Run(() => DisposeSource(source)))
+                        .ToArray();
+                    var results = await Task.WhenAll(disposals).ConfigureAwait(false);
+                    failures.AddRange(results.OfType<Exception>());
+
+                    lock (_stateGate)
+                    {
+                        _snapshot = null;
+                        _registrationsByOpaqueId = new(StringComparer.Ordinal);
+                        _opaqueIdsByIdentity.Clear();
+                        _iconsByRevalidationKey.Clear();
+                    }
                 }
             }
         }
@@ -867,6 +869,15 @@ public sealed class WindowsAppLibraryProvider :
             completion.TrySetException(new AggregateException(
                 "One or more game-library sources failed bounded terminal cleanup.",
                 failures));
+    }
+
+    internal bool HasRetainedCatalogState
+    {
+        get
+        {
+            lock (_stateGate)
+                return _snapshot is not null && _registrationsByOpaqueId.Count != 0;
+        }
     }
 
     private static Exception? DisposeSource(IGameLibrarySource source)

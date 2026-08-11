@@ -20,6 +20,8 @@ internal sealed class WindowsSteamArtworkSource
     internal const uint MaximumSourceDimension = 4_096;
     internal const long MaximumSourcePixels = 16_777_216;
     internal const int MaximumCacheEntries = 64;
+    internal const int MaximumLocatorRegistrations =
+        WindowsSteamApplicationSource.MaximumManifests;
     internal static readonly TimeSpan DecodeDeadline = TimeSpan.FromMilliseconds(250);
 
     private const uint GenericRead = 0x80000000;
@@ -40,11 +42,7 @@ internal sealed class WindowsSteamArtworkSource
     private readonly Func<byte[], CancellationToken, string?> _decode;
     private readonly Dictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<string> _recency = [];
-    private readonly Dictionary<string, string> _observedRevisionByLocator =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _generationByLocator =
-        new(StringComparer.Ordinal);
-    private readonly Dictionary<string, IReadOnlyList<string>> _rootsByLocator =
+    private readonly Dictionary<string, SteamArtworkLocator> _locators =
         new(StringComparer.Ordinal);
     private int _fileProbeCalls;
 
@@ -64,6 +62,52 @@ internal sealed class WindowsSteamArtworkSource
     }
 
     internal int FileProbeCalls => Volatile.Read(ref _fileProbeCalls);
+    internal int LocatorCount
+    {
+        get { lock (_cacheGate) return _locators.Count; }
+    }
+
+    internal IReadOnlyDictionary<string, SteamArtworkRegistration> RegisterCatalog(
+        IEnumerable<string> trustedSteamRoots,
+        IEnumerable<string> steamAppIds)
+    {
+        ArgumentNullException.ThrowIfNull(steamAppIds);
+        var roots = NormalizeRoots(trustedSteamRoots);
+        var appIds = roots.Count == 0
+            ? []
+            : steamAppIds
+                .Where(WindowsSteamApplicationSource.IsValidAppId)
+                .Distinct(StringComparer.Ordinal)
+                .Take(MaximumLocatorRegistrations + 1)
+                .ToArray();
+        if (appIds.Length > MaximumLocatorRegistrations)
+            throw new InvalidOperationException("Steam artwork locator catalog is too large.");
+        var keys = appIds.ToDictionary(
+            appId => appId,
+            appId => LocatorKey(roots, appId),
+            StringComparer.Ordinal);
+        lock (_cacheGate)
+        {
+            var retainedKeys = keys.Values.ToHashSet(StringComparer.Ordinal);
+            foreach (var stale in _locators.Keys
+                         .Where(key => !retainedKeys.Contains(key))
+                         .ToArray())
+            {
+                _locators[stale].Retire();
+                _locators.Remove(stale);
+            }
+            var result = new Dictionary<string, SteamArtworkRegistration>(
+                appIds.Length, StringComparer.Ordinal);
+            foreach (var appId in appIds)
+            {
+                var key = keys[appId];
+                if (!_locators.TryGetValue(key, out var locator))
+                    _locators.Add(key, locator = new SteamArtworkLocator(roots, appId));
+                result.Add(appId, locator.Snapshot());
+            }
+            return result;
+        }
+    }
 
     internal SteamArtworkRegistration? Register(
         IEnumerable<string> trustedSteamRoots,
@@ -74,21 +118,14 @@ internal sealed class WindowsSteamArtworkSource
             !WindowsSteamApplicationSource.IsValidAppId(steamAppId)) return null;
         try
         {
-            var roots = trustedSteamRoots
-                .Where(root => !string.IsNullOrWhiteSpace(root))
-                .Select(Path.GetFullPath)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Order(StringComparer.OrdinalIgnoreCase)
-                .Take(WindowsSteamApplicationSource.MaximumLibraries)
-                .ToArray();
-            if (roots.Length == 0) return null;
+            var roots = NormalizeRoots(trustedSteamRoots);
+            if (roots.Count == 0) return null;
             var key = LocatorKey(roots, steamAppId);
             lock (_cacheGate)
             {
-                if (!_rootsByLocator.TryGetValue(key, out var canonicalRoots))
-                    _rootsByLocator.Add(key, canonicalRoots = roots);
-                return new(canonicalRoots, steamAppId,
-                    _generationByLocator.GetValueOrDefault(key, "undiscovered"));
+                return _locators.TryGetValue(key, out var current)
+                    ? current.Snapshot()
+                    : new SteamArtworkLocator(roots, steamAppId).Snapshot();
             }
         }
         catch (Exception exception) when (IsExpectedFileFailure(exception))
@@ -103,26 +140,10 @@ internal sealed class WindowsSteamArtworkSource
     {
         ArgumentNullException.ThrowIfNull(expected);
         cancellationToken.ThrowIfCancellationRequested();
-        var locatorKey = LocatorKey(expected.TrustedSteamRoots, expected.SteamAppId);
-        string? priorRevision;
-        lock (_cacheGate)
-            _observedRevisionByLocator.TryGetValue(locatorKey, out priorRevision);
         var discovered = DiscoverCurrent(expected, cancellationToken);
         var currentRevision = discovered?.Revision ?? "missing";
-        string generation;
-        lock (_cacheGate)
-        {
-            if (priorRevision is not null &&
-                !string.Equals(priorRevision, currentRevision, StringComparison.Ordinal))
-                _generationByLocator[locatorKey] = currentRevision;
-            _observedRevisionByLocator[locatorKey] = currentRevision;
-            generation = _generationByLocator.GetValueOrDefault(
-                locatorKey, "undiscovered");
-        }
-        var matchesExpectedGeneration = discovered is not null &&
-            (priorRevision is null ||
-                string.Equals(priorRevision, currentRevision, StringComparison.Ordinal)) &&
-            string.Equals(expected.Revision, generation, StringComparison.Ordinal);
+        var matchesExpectedGeneration = expected.Locator.Observe(
+            expected.Revision, currentRevision, discovered is not null);
         if (!matchesExpectedGeneration)
             return null;
         var current = discovered!;
@@ -130,6 +151,7 @@ internal sealed class WindowsSteamArtworkSource
         {
             if (_cache.TryGetValue(current.Revision, out var cached))
             {
+                if (!expected.Locator.IsCurrent(expected.Revision)) return null;
                 TouchLocked(current.Revision, cached);
                 return cached.PngBase64;
             }
@@ -170,9 +192,10 @@ internal sealed class WindowsSteamArtworkSource
                 return null;
 
             var png = _decode(bytes, cancellationToken);
-            if (png is null) return null;
+            if (png is null || !expected.Locator.IsCurrent(expected.Revision)) return null;
             lock (_cacheGate)
             {
+                if (!expected.Locator.IsCurrent(expected.Revision)) return null;
                 if (_cache.TryGetValue(current.Revision, out var raced))
                 {
                     TouchLocked(current.Revision, raced);
@@ -206,7 +229,7 @@ internal sealed class WindowsSteamArtworkSource
     {
         try
         {
-            foreach (var trustedRoot in registration.TrustedSteamRoots)
+            foreach (var trustedRoot in registration.Locator.TrustedSteamRoots)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var cacheRoot = Path.Combine(trustedRoot, "appcache", "librarycache");
@@ -224,7 +247,8 @@ internal sealed class WindowsSteamArtworkSource
                 foreach (var suffix in CandidateSuffixes)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var path = Path.Combine(cacheRoot, registration.SteamAppId + suffix);
+                    var path = Path.Combine(
+                        cacheRoot, registration.Locator.SteamAppId + suffix);
                     using var file = ProbeArtworkFile(path);
                     if (file is null) continue;
                     var finalFile = GetFinalPath(file);
@@ -248,6 +272,15 @@ internal sealed class WindowsSteamArtworkSource
         IReadOnlyList<string> roots,
         string steamAppId) => Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(steamAppId + "\0" + string.Join('\0', roots))));
+
+    private static IReadOnlyList<string> NormalizeRoots(
+        IEnumerable<string> trustedSteamRoots) => trustedSteamRoots
+        .Where(root => !string.IsNullOrWhiteSpace(root))
+        .Select(Path.GetFullPath)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Order(StringComparer.OrdinalIgnoreCase)
+        .Take(WindowsSteamApplicationSource.MaximumLibraries)
+        .ToArray();
 
     private SafeFileHandle? ProbeDirectory(string path)
     {
@@ -528,4 +561,54 @@ internal sealed class WindowsSteamArtworkSource
         StringBuilder? filePath,
         uint filePathLength,
         uint flags);
+}
+
+internal sealed class SteamArtworkLocator(
+    IReadOnlyList<string> trustedSteamRoots,
+    string steamAppId)
+{
+    private readonly object _gate = new();
+    private string? _observedRevision;
+    private string _generation = "undiscovered";
+    private bool _active = true;
+
+    internal IReadOnlyList<string> TrustedSteamRoots { get; } = trustedSteamRoots;
+    internal string SteamAppId { get; } = steamAppId;
+
+    internal SteamArtworkRegistration Snapshot()
+    {
+        lock (_gate) return new(this, _generation);
+    }
+
+    internal bool Observe(
+        string expectedGeneration,
+        string currentRevision,
+        bool exists)
+    {
+        lock (_gate)
+        {
+            if (!_active) return false;
+            var priorRevision = _observedRevision;
+            if (priorRevision is not null &&
+                !string.Equals(priorRevision, currentRevision, StringComparison.Ordinal))
+                _generation = currentRevision;
+            _observedRevision = currentRevision;
+            return exists &&
+                (priorRevision is null || string.Equals(
+                    priorRevision, currentRevision, StringComparison.Ordinal)) &&
+                string.Equals(expectedGeneration, _generation, StringComparison.Ordinal);
+        }
+    }
+
+    internal bool IsCurrent(string expectedGeneration)
+    {
+        lock (_gate)
+            return _active && string.Equals(
+                expectedGeneration, _generation, StringComparison.Ordinal);
+    }
+
+    internal void Retire()
+    {
+        lock (_gate) _active = false;
+    }
 }

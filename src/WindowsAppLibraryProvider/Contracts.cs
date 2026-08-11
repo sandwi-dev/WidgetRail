@@ -78,8 +78,7 @@ internal sealed record SteamRegistration(
 /// and object evidence do not exist until explicit artwork demand.
 /// </summary>
 internal sealed record SteamArtworkRegistration(
-    IReadOnlyList<string> TrustedSteamRoots,
-    string SteamAppId,
+    SteamArtworkLocator Locator,
     string Revision);
 
 internal interface IStartMenuApplicationSource

@@ -279,6 +279,24 @@ internal static class SteamArtworkScenarios
         Assert.Equal(1, source.ArtworkCalls);
     }
 
+    internal static async Task CooperativeArtworkDrainsBeforeSourceDisposal()
+    {
+        var source = new CancellationIgnoringArtworkSource
+        {
+            IgnoreCancellation = false,
+        };
+        var provider = new WindowsAppLibraryProvider(
+            [source], ImmediateSta.Instance, TimeSpan.FromMilliseconds(500));
+        var appId = (await Query(provider)).Items.Single().ProviderAppId;
+        var artwork = provider.GetAppLibraryIconAsync(appId, CancellationToken.None);
+        await source.ArtworkStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await provider.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => artwork);
+        Assert.Equal(1, source.DisposeCalls);
+        Assert.False(source.DisposedBeforeArtworkCompleted);
+    }
+
     internal static async Task CancellationIgnoringArtworkCannotRaceSourceDisposal()
     {
         var source = new CancellationIgnoringArtworkSource();
@@ -298,10 +316,79 @@ internal static class SteamArtworkScenarios
             exception.Message.Contains("artwork work", StringComparison.Ordinal)));
         Assert.Equal(0, source.DisposeCalls);
         Assert.True(source.CancellationObserved);
+        Assert.True(provider.HasRetainedCatalogState);
 
         source.ReleaseArtwork.Set();
         await Assert.ThrowsAsync<OperationCanceledException>(() => artwork);
         Assert.Equal(0, source.DisposeCalls);
+    }
+
+    internal static async Task LocatorCatalogChurnStaysBounded()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var layout = SteamLayout.CreateEmpty();
+        const string stableId = "50001";
+        const string removedId = "50002";
+        _ = layout.WriteArtwork(stableId, ".png", CreatePng(3, 3, 17));
+        var removedPath = layout.WriteArtwork(
+            removedId, ".png", CreatePng(3, 3, 23));
+        var resolver = new WindowsSteamArtworkSource();
+        var firstIds = Enumerable.Range(
+                50_001, WindowsSteamArtworkSource.MaximumLocatorRegistrations)
+            .Select(value => value.ToString(
+                System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        var first = resolver.RegisterCatalog([layout.Root], firstIds);
+        var stable = first[stableId];
+        var removed = first[removedId];
+        Assert.True(resolver.Load(stable, CancellationToken.None) is not null);
+        Assert.True(resolver.Load(removed, CancellationToken.None) is not null);
+
+        var secondIds = new[] { stableId }.Concat(Enumerable.Range(
+                60_001, WindowsSteamArtworkSource.MaximumLocatorRegistrations - 1)
+            .Select(value => value.ToString(
+                System.Globalization.CultureInfo.InvariantCulture)))
+            .ToArray();
+        var second = resolver.RegisterCatalog([layout.Root], secondIds);
+        Assert.Equal(WindowsSteamArtworkSource.MaximumLocatorRegistrations,
+            resolver.LocatorCount);
+        Assert.True(ReferenceEquals(stable.Locator, second[stableId].Locator));
+        Assert.Equal(stable.Revision, second[stableId].Revision);
+        Assert.Equal<string?>(null, resolver.Load(removed, CancellationToken.None));
+
+        File.WriteAllBytes(removedPath, CreatePng(4, 3, 31));
+        Assert.Equal<string?>(null, resolver.Load(removed, CancellationToken.None));
+
+        var third = resolver.RegisterCatalog(
+            [layout.Root], new[] { stableId, removedId });
+        Assert.Equal(2, resolver.LocatorCount);
+        Assert.True(ReferenceEquals(stable.Locator, third[stableId].Locator));
+        Assert.False(ReferenceEquals(removed.Locator, third[removedId].Locator));
+        Assert.Equal("undiscovered", third[removedId].Revision);
+        Assert.Equal<string?>(null, resolver.Load(removed, CancellationToken.None));
+        Assert.True(resolver.Load(third[removedId], CancellationToken.None) is not null);
+
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var delayed = new WindowsSteamArtworkSource((bytes, cancellationToken) =>
+        {
+            entered.TrySetResult();
+            WaitHandle.WaitAny([release.WaitHandle, cancellationToken.WaitHandle]);
+            cancellationToken.ThrowIfCancellationRequested();
+            return Convert.ToBase64String(bytes);
+        });
+        var admitted = delayed.RegisterCatalog(
+            [layout.Root], new[] { stableId })[stableId];
+        var late = Task.Run(() => delayed.Load(admitted, CancellationToken.None));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        _ = delayed.RegisterCatalog([layout.Root], Array.Empty<string>());
+        Assert.Equal(0, delayed.LocatorCount);
+        release.Set();
+        Assert.Equal<string?>(null, await late.WaitAsync(TimeSpan.FromSeconds(2)));
+        var replacement = delayed.RegisterCatalog(
+            [layout.Root], new[] { stableId })[stableId];
+        Assert.False(ReferenceEquals(admitted.Locator, replacement.Locator));
     }
 
     private static WindowsAppLibraryProvider CreateProvider(
@@ -425,7 +512,7 @@ internal static class SteamArtworkScenarios
             "acf-blocked")
         {
             Artwork = new SteamArtworkRegistration(
-                [Path.GetTempPath()], "12345",
+                new SteamArtworkLocator([Path.GetTempPath()], "12345"),
                 new string('A', 64)),
         };
 
@@ -476,7 +563,10 @@ internal static class SteamArtworkScenarios
         private int _disposeCalls;
 
         internal int DisposeCalls => Volatile.Read(ref _disposeCalls);
+        internal bool IgnoreCancellation { get; init; } = true;
         internal bool CancellationObserved { get; private set; }
+        internal bool ArtworkCompleted { get; private set; }
+        internal bool DisposedBeforeArtworkCompleted { get; private set; }
         internal TaskCompletionSource ArtworkStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         internal ManualResetEventSlim ReleaseArtwork { get; } = new();
@@ -511,10 +601,25 @@ internal static class SteamArtworkScenarios
         {
             ArtworkStarted.TrySetResult();
             cancellationToken.Register(() => CancellationObserved = true);
-            ReleaseArtwork.Wait();
-            return Convert.ToBase64String(CreatePng(2, 2, 9));
+            try
+            {
+                if (IgnoreCancellation)
+                    ReleaseArtwork.Wait();
+                else
+                    cancellationToken.WaitHandle.WaitOne();
+                cancellationToken.ThrowIfCancellationRequested();
+                return Convert.ToBase64String(CreatePng(2, 2, 9));
+            }
+            finally
+            {
+                ArtworkCompleted = true;
+            }
         }
 
-        public void Dispose() => Interlocked.Increment(ref _disposeCalls);
+        public void Dispose()
+        {
+            DisposedBeforeArtworkCompleted = !ArtworkCompleted;
+            Interlocked.Increment(ref _disposeCalls);
+        }
     }
 }

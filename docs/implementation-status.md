@@ -1681,13 +1681,22 @@ themes also use non-shrinking fixed regions, a thin native Slider
  unchanged neighbor from rotating merely because its first demand learned file
  evidence; replacement/removal instead fails the stale demand and rotates only
  the affected handle on refresh. Steam artwork uses a separate four-operation
- provider lane. Terminal cleanup cancels first and acquires that lane completely
- before source disposal or state clearing; cooperative work drains, while an
- injected cancellation-ignoring operation produces one shared bounded failure
- and never races disposed source state. Focused Release evidence passes the
- Windows app-library provider (56/56) and PlatformBroker (54/54) suites plus the
- exact installed generic-AppContainer Steam-artwork route. No aggregate, native,
- screenshot, or live Steam verification ran.
+ provider lane. DLV-098 makes terminal ownership exact across all three admitted
+ lanes: after cancellation, one deadline drains the four artwork permits plus
+ the scan and running-observation gates before any source disposal or catalog
+ state clear. A timeout in any lane produces the same shared terminal failure,
+ retains state, and performs no source disposal. Current Steam catalog ownership
+ retains at most 4,096 locator generations; removal retires an old locator
+ object, unchanged current registrations retain learned revisions, and an old
+ admitted handle cannot be reinitialized by later catalog churn. Focused
+ DLV-096 Release evidence passes the Windows app-library provider (56/56) and
+ PlatformBroker (54/54) suites plus the exact installed generic-AppContainer
+ Steam-artwork route. DLV-098 focused Release evidence passes the expanded
+ Windows app-library provider suite (60/60), including cooperative and timed-out
+ scan, observation, and artwork ordering plus over-bound locator churn and
+ paused-decode retirement. Documentation validation covers 55 Markdown files.
+ DLV-098 did not repeat the unchanged broker or installed routes, and neither
+ milestone ran an aggregate, native, screenshot, or live Steam verification.
  Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,

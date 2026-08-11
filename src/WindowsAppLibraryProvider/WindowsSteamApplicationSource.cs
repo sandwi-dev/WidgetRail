@@ -70,8 +70,7 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             foreach (var manifest in manifests)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (TryReadManifest(manifest, library.TrustedSteamRoot,
-                        cancellationToken) is { } registration)
+                if (TryReadManifest(manifest, cancellationToken) is { } registration)
                     result.Add(registration);
                 if (result.Count >= MaximumManifests)
                     return RegisterArtwork(result, trustedRoots);
@@ -96,8 +95,7 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
                 .SingleOrDefault(candidate =>
                     IsDirectChild(candidate.SteamAppsDirectory, exact));
             if (library is null) return null;
-            var current = TryReadManifest(
-                exact, library.TrustedSteamRoot, cancellationToken);
+            var current = TryReadManifest(exact, cancellationToken);
             return current is not null &&
                 string.Equals(current.SteamAppId, steamAppId, StringComparison.Ordinal)
                     ? current with
@@ -196,7 +194,6 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
 
     private SteamRegistration? TryReadManifest(
         string manifestPath,
-        string trustedSteamRoot,
         CancellationToken cancellationToken)
     {
         var nameFromFile = Path.GetFileNameWithoutExtension(manifestPath);
@@ -223,20 +220,22 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             displayName,
             appId!,
             Path.GetFullPath(manifestPath),
-            "acf-" + snapshot.Sha256)
-        {
-            Artwork = _artwork.Register([trustedSteamRoot], appId!),
-        };
+            "acf-" + snapshot.Sha256);
     }
 
     private IReadOnlyList<SteamRegistration> RegisterArtwork(
         IReadOnlyList<SteamRegistration> registrations,
-        IReadOnlyList<string> trustedRoots) => registrations
-        .Select(registration => registration with
-        {
-            Artwork = _artwork.Register(trustedRoots, registration.SteamAppId),
-        })
-        .ToArray();
+        IReadOnlyList<string> trustedRoots)
+    {
+        var artwork = _artwork.RegisterCatalog(
+            trustedRoots, registrations.Select(registration => registration.SteamAppId));
+        return registrations
+            .Select(registration => registration with
+            {
+                Artwork = artwork.GetValueOrDefault(registration.SteamAppId),
+            })
+            .ToArray();
+    }
 
     private static string? ReadBoundedText(string file)
     {

@@ -250,8 +250,10 @@ disk artwork cache is created.
 For an installed Steam registration, the trusted provider may associate the
 exact numeric app identity with an allowlisted `_icon.png`, `_icon.jpg`, or
 `_icon.jpeg` file in that Steam root's local `appcache/librarycache`. Catalog
-enumeration and refresh retain only a bounded host-internal lazy locator and do
-not open the cache directory or any candidate image. Exact artwork demand opens
+enumeration and refresh retain only the current bounded host-internal lazy
+locator set (at most 4,096 entries) and do not open the cache directory or any
+candidate image. Removing a catalog row retires its locator generation rather
+than allowing later churn to revive it. Exact artwork demand opens
 only regular non-reparse objects beneath the trusted root, chooses an allowlisted
 candidate, captures object evidence, caps the source at 1 MiB / 4,096 per
 dimension / 16,777,216 decoded pixels, normalizes it to the same 64-pixel /

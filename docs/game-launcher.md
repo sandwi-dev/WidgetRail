@@ -64,6 +64,9 @@ receive the cache path, Steam AppId, file identity, or source bytes. Replacing
 or removing the asset invalidates the stale demand and rotates the affected
 handle on the next refresh without changing an unaffected neighbor, launch
 authority, focus, favorites, groups, or recent order.
+The provider retains only the bounded current Steam locator set; terminal
+shutdown drains catalog scans, running observation, and all artwork permits
+before it disposes any source or clears committed catalog state.
 
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains
