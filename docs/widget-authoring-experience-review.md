@@ -1,6 +1,6 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof and source-aware packaging, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, transactional versioned template generation, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, and transactional versioned template generation, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-10<br>
 Reassessed: 2026-08-10 against integrated `main` `6b9144d`, including accepted DLV-010 external package-journey proof, DLV-028 Network responsibility boundaries, DLV-030 YT Music responsibility boundaries, and the earlier advanced-widget evidence plus the two-lane delivery plan<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
@@ -43,10 +43,11 @@ and snapshot-only presentation seams without adding another coordinator.
 Accepted DLV-010 now gives an unrelated temporary project a matching
 offline SDK dependency, generated executable lifecycle/state/action snapshot
 proof, source-aware deterministic packaging, and local version
-selection/rollback/removal without checkout references. Externally published
-SDK/API governance and strict transactional template input remain open while
-native geometry, feedback, accessibility, and performance work continues
-independently.
+selection/rollback/removal without checkout references. Accepted DLV-046 adds a
+closed versioned text/binary inventory, bounded paths/content, validated sibling
+staging, one atomic publish, and rollback that never touches author output.
+Externally published SDK/API governance remains open while native geometry,
+feedback, accessibility, and performance work continues independently.
 
 The framework becomes difficult when a widget has multiple pages, remote state,
 commands, caching, optimistic updates, and lifecycle-sensitive work. Authors
@@ -137,11 +138,13 @@ the interactive overlay path.
 The scaffold is now a cloneable offline local authoring product, not yet an
 externally published SDK release. `gbar new widget` writes a matching
 content-addressed SDK package into a relative feed and generates the executable
-snapshot proof; no checkout or `--sdk-project` is required. Focused external-
-directory evidence executes the complete local package lifecycle. Publication,
-API compatibility governance, transactional template generation, and generic
-isolated scenario execution remain the boundaries between this accepted local
-journey and a supported public release.
+snapshot proof; no checkout or `--sdk-project` is required. DLV-046 makes that
+operation all-or-nothing over one strict versioned text/binary inventory and
+proves malformed input, unreadable files, validation failure, cancellation,
+destination races, and cleanup. Focused external-directory evidence executes
+the complete local package lifecycle. Publication, API compatibility governance,
+and generic isolated scenario execution remain the boundaries between this
+accepted local journey and a supported public release.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and

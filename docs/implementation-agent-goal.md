@@ -310,6 +310,24 @@ Subagents must not edit reviewer-owned documents.
 Verification is tiered. Do not run the complete repository suite after every
 small correction or assignment.
 
+### Managed test framework coexistence
+
+Use `MSTest.Sdk` version `4.3.2` for every newly created managed test project.
+This is a per-project adoption policy, not a repository-wide migration program.
+Keep existing bounded executable scenario suites, their explicit runners, and
+their current verifier commands working unchanged unless an assignment
+explicitly owns their migration or already requires a substantial rewrite of
+that exact suite. Do not create a standalone milestone merely to convert old
+tests, and do not convert a suite just because nearby production code changed.
+
+The repository verifier must support both forms as soon as the first MSTest
+project lands: new MSTest projects run through their documented Microsoft
+Testing Platform command, while existing executable suites continue through
+their established commands and case extraction. Helper processes, fake
+providers, generated author fixtures, and production-host fixtures remain
+ordinary executables unless they independently contain discoverable assertions.
+A framework migration alone does not close a test-architecture hotspot.
+
 ### Tier 1 — focused verification
 
 Required for every assignment:
