@@ -87,6 +87,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
 | GBA-068 | P0 | Verifying | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. PID 27684 is visibly running with no new startup/lifecycle error. The supplied 21:54 startup-failure screenshots predate DLV-052 and are not a current recurrence; direct opening of both widgets remains the user's final live check. |
+| GBA-069 | P1 | Confirmed | OverlayHost process ownership / local activation | Invoking the documented `--show` command while a healthy hidden host was resident created a second healthy OverlayHost instead of forwarding Show to the owner. DLV-070 is queued at the next platform boundary. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2120,6 +2121,28 @@ failure. The user-supplied screenshots showing the hidden-cache and worker-
 connection messages were created at 21:54 and therefore document the earlier
 failing process, not the fully packaged 23:23 process. Live Spotify and YT
 Music opening in that current process remains the final product check.
+
+## GBA-069 — `--show` can create a second resident OverlayHost
+
+**Evidence:** Accepted main `94d4ee0` had healthy hidden PID 27684 resident from
+02:35 with `MainWindowHandle=0`. The approved foreground command
+`.\src\OverlayHost\out\Release\OverlayHost.exe --show` returned successfully at
+02:46 but created healthy visible PID 17952; PID 27684 remained healthy and
+resident. Its lack of a visible main HWND also made a bounded
+`CloseMainWindow` request return false, so the planner did not force-terminate
+or destructively recover it.
+
+**Ownership:** DLV-070 owns OverlayHost owner election and one bounded per-user
+local activation path. Widget workers, provider lifecycle, pinning semantics,
+and the compositor are not credible owners for this defect.
+
+**Acceptance:** With a hidden or visible production host resident, subsequent
+ordinary/`--show` launches forward exactly one Show request to that owner and
+exit without initializing a second bridge, catalog, controller lease, or
+window. Simultaneous launches elect one owner, crashed-owner leases recover,
+other users/stale clients cannot activate it, and orderly shutdown releases
+the transport exactly once. The final coherent Release must retain one PID
+across two visible `--show` invocations.
 
 ## Closed issues
 
