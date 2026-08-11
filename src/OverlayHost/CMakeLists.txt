@@ -232,6 +232,17 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(AccessibilityProviderTests PRIVATE user32 ole32 oleaut32 uiautomationcore)
     add_test(NAME AccessibilityProviderTests COMMAND AccessibilityProviderTests)
 
+    add_executable(RealHostAccessibilityTests
+        RealHostAccessibilityTests.cpp AccessibilityTree.cpp HostAccessibility.cpp
+        AccessibilityProvider.cpp AccessibilityEvents.cpp TrayLayout.cpp)
+    target_compile_features(RealHostAccessibilityTests PRIVATE cxx_std_20)
+    target_compile_options(RealHostAccessibilityTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(RealHostAccessibilityTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(RealHostAccessibilityTests PRIVATE
+        user32 ole32 oleaut32 uiautomationcore)
+    add_test(NAME RealHostAccessibilityTests COMMAND RealHostAccessibilityTests)
+
     # Cross-process production-host coverage. This target is invoked by
     # build.ps1 with an isolated managed YT Music fixture and packaged host
     # directory; CTest deliberately omits it because those paths are required.

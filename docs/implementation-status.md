@@ -6,6 +6,24 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-015 composes representative Settings, YT Music, and Spotify semantic trees
+through the production native accessibility adapter, open-widget shell,
+free-threaded provider, `WM_GETOBJECT`, and a real Windows UI Automation client
+bound to a pumping Win32 HWND. Compact 100%, standard 100%, and standard 150%
+profiles cover exact preorder, unique IDs, names, roles, help/range values,
+physical bounds, enabled/disabled/busy/selected copy, loading-to-error
+replacement, hidden interactive exclusion, Invoke, RangeValue, focus actions,
+and focus restoration after unrelated widget generations. The new cohesive
+`RealHostAccessibilityTests` target owns the named fixtures, host lifetime,
+client inspection, and sanitized evidence; existing provider and adapter tests
+remain the lower-layer authority. Release evidence passes 183 composed checks,
+the five-test native accessibility group, a fresh OverlayHost build, and the
+smallest packaged YT Music OverlayHost/UIA fixture. The retained manifest at
+`artifacts/evidence/dlv015-final/manifest.json` contains only fixed public
+semantic states and no screenshots. Physical Narrator/MSAA and packaged
+AppContainer/UIA validation remain manual ship-gate evidence and are not
+claimed complete.
+
 DLV-049 locks the user-reported four-session Audio Mixer reverse-scroll state
 to the corrected shared-geometry baseline from DLV-021. The emitted production
 snapshot retains the exact `audio.input.volume.slider` Up edge to
