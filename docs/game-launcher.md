@@ -67,6 +67,8 @@ authority, focus, favorites, groups, or recent order.
 The provider retains only the bounded current Steam locator set; terminal
 shutdown drains catalog scans, running observation, and all artwork permits
 before it disposes any source or clears committed catalog state.
+Candidate locator sets remain staged until the matching Steam source generation
+commits, so cancellation or a newer refresh cannot retire current row artwork.
 
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains

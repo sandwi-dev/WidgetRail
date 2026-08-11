@@ -41,7 +41,14 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
 
     public IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken)
     {
-        if (!OperatingSystem.IsWindows()) return [];
+        var candidate = Stage(cancellationToken);
+        candidate.Commit?.Commit();
+        return candidate.Registrations;
+    }
+
+    public SteamApplicationSourceCandidate Stage(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows()) return new([]);
         var result = new List<SteamRegistration>();
         var libraries = DiscoverSteamAppsDirectories(cancellationToken);
         var trustedRoots = libraries
@@ -73,10 +80,10 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
                 if (TryReadManifest(manifest, cancellationToken) is { } registration)
                     result.Add(registration);
                 if (result.Count >= MaximumManifests)
-                    return RegisterArtwork(result, trustedRoots);
+                    return StageArtwork(result, trustedRoots);
             }
         }
-        return RegisterArtwork(result, trustedRoots);
+        return StageArtwork(result, trustedRoots);
     }
 
     public SteamRegistration? ReadExact(
@@ -223,18 +230,20 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             "acf-" + snapshot.Sha256);
     }
 
-    private IReadOnlyList<SteamRegistration> RegisterArtwork(
+    private SteamApplicationSourceCandidate StageArtwork(
         IReadOnlyList<SteamRegistration> registrations,
         IReadOnlyList<string> trustedRoots)
     {
-        var artwork = _artwork.RegisterCatalog(
+        var artwork = _artwork.StageCatalog(
             trustedRoots, registrations.Select(registration => registration.SteamAppId));
-        return registrations
+        var staged = registrations
             .Select(registration => registration with
             {
-                Artwork = artwork.GetValueOrDefault(registration.SteamAppId),
+                Artwork = artwork.Registrations.GetValueOrDefault(
+                    registration.SteamAppId),
             })
             .ToArray();
+        return new(staged, artwork);
     }
 
     private static string? ReadBoundedText(string file)

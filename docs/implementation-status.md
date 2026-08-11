@@ -1697,6 +1697,14 @@ themes also use non-shrinking fixed regions, a thin native Slider
  paused-decode retirement. Documentation validation covers 55 Markdown files.
  DLV-098 did not repeat the unchanged broker or installed routes, and neither
  milestone ran an aggregate, native, screenshot, or live Steam verification.
+ DLV-099 couples locator ownership to the existing normalized source-generation
+ commit: Steam enumeration stages a bounded candidate map without mutating the
+ current map, and only the latest accepted source generation promotes that map
+ and retires removed locators. Canceled and losing candidates publish nothing;
+ unchanged locators retain object and learned-revision identity. Focused Release
+ evidence passes the expanded Windows app-library provider suite (62/62) and
+ documentation validation across 55 Markdown files. The unchanged broker,
+ installed, widget, aggregate, native, and screenshot routes were not repeated.
  Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,

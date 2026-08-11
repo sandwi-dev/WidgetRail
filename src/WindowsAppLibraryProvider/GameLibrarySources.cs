@@ -49,7 +49,13 @@ internal sealed record GameLibrarySourceItem(
 internal sealed record GameLibrarySourceCandidate(
     GameLibrarySourceHealth Health,
     IReadOnlyList<GameLibrarySourceItem> Items,
-    IReadOnlyDictionary<string, IGameLibrarySourceAuthority> Authorities);
+    IReadOnlyDictionary<string, IGameLibrarySourceAuthority> Authorities,
+    IGameLibrarySourceCandidateCommit? Commit = null);
+
+internal interface IGameLibrarySourceCandidateCommit
+{
+    void Commit();
+}
 
 internal sealed record GameLibrarySourceSnapshot(
     string SourceIdentity,
@@ -116,9 +122,11 @@ internal abstract class GameLibrarySourceBase : IGameLibrarySource
             operation.Token.ThrowIfCancellationRequested();
             lock (_lifetimeGate)
             {
+                operation.Token.ThrowIfCancellationRequested();
                 ThrowIfDisposedLocked();
                 if (operation.Generation == _requestedGeneration)
                 {
+                    candidate.Commit?.Commit();
                     _snapshot = new GameLibrarySourceSnapshot(
                         SourceIdentity,
                         Attribution,
@@ -502,7 +510,9 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
         IReadOnlyList<SteamRegistration> registrations;
         try
         {
-            registrations = _source.Enumerate(cancellationToken);
+            var staged = _source.Stage(cancellationToken);
+            registrations = staged.Registrations;
+            return CreateCandidate(registrations, staged.Commit);
         }
         catch (Exception exception) when (exception is IOException or
             UnauthorizedAccessException or InvalidOperationException or
@@ -510,6 +520,12 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
         {
             return RetainCurrent(GameLibrarySourceHealth.Unavailable);
         }
+    }
+
+    private GameLibrarySourceCandidate CreateCandidate(
+        IReadOnlyList<SteamRegistration> registrations,
+        IGameLibrarySourceCandidateCommit? commit)
+    {
         var authorities = new Dictionary<string, IGameLibrarySourceAuthority>(
             StringComparer.Ordinal);
         var current = registrations
@@ -528,7 +544,7 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
             return item;
         }).ToArray();
         return new(GameLibrarySourceHealth.Healthy,
-            Array.AsReadOnly(items), authorities);
+            Array.AsReadOnly(items), authorities, commit);
     }
 
     protected override GameLibrarySourceItem? ResolveExactCore(

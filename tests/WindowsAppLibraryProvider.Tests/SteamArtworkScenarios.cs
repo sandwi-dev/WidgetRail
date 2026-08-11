@@ -338,7 +338,9 @@ internal static class SteamArtworkScenarios
             .Select(value => value.ToString(
                 System.Globalization.CultureInfo.InvariantCulture))
             .ToArray();
-        var first = resolver.RegisterCatalog([layout.Root], firstIds);
+        var firstCandidate = resolver.StageCatalog([layout.Root], firstIds);
+        firstCandidate.Commit();
+        var first = firstCandidate.Registrations;
         var stable = first[stableId];
         var removed = first[removedId];
         Assert.True(resolver.Load(stable, CancellationToken.None) is not null);
@@ -349,7 +351,9 @@ internal static class SteamArtworkScenarios
             .Select(value => value.ToString(
                 System.Globalization.CultureInfo.InvariantCulture)))
             .ToArray();
-        var second = resolver.RegisterCatalog([layout.Root], secondIds);
+        var secondCandidate = resolver.StageCatalog([layout.Root], secondIds);
+        secondCandidate.Commit();
+        var second = secondCandidate.Registrations;
         Assert.Equal(WindowsSteamArtworkSource.MaximumLocatorRegistrations,
             resolver.LocatorCount);
         Assert.True(ReferenceEquals(stable.Locator, second[stableId].Locator));
@@ -359,8 +363,10 @@ internal static class SteamArtworkScenarios
         File.WriteAllBytes(removedPath, CreatePng(4, 3, 31));
         Assert.Equal<string?>(null, resolver.Load(removed, CancellationToken.None));
 
-        var third = resolver.RegisterCatalog(
+        var thirdCandidate = resolver.StageCatalog(
             [layout.Root], new[] { stableId, removedId });
+        thirdCandidate.Commit();
+        var third = thirdCandidate.Registrations;
         Assert.Equal(2, resolver.LocatorCount);
         Assert.True(ReferenceEquals(stable.Locator, third[stableId].Locator));
         Assert.False(ReferenceEquals(removed.Locator, third[removedId].Locator));
@@ -378,17 +384,103 @@ internal static class SteamArtworkScenarios
             cancellationToken.ThrowIfCancellationRequested();
             return Convert.ToBase64String(bytes);
         });
-        var admitted = delayed.RegisterCatalog(
-            [layout.Root], new[] { stableId })[stableId];
+        var admittedCandidate = delayed.StageCatalog(
+            [layout.Root], new[] { stableId });
+        admittedCandidate.Commit();
+        var admitted = admittedCandidate.Registrations[stableId];
         var late = Task.Run(() => delayed.Load(admitted, CancellationToken.None));
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        _ = delayed.RegisterCatalog([layout.Root], Array.Empty<string>());
+        delayed.StageCatalog([layout.Root], Array.Empty<string>()).Commit();
         Assert.Equal(0, delayed.LocatorCount);
         release.Set();
         Assert.Equal<string?>(null, await late.WaitAsync(TimeSpan.FromSeconds(2)));
-        var replacement = delayed.RegisterCatalog(
-            [layout.Root], new[] { stableId })[stableId];
+        var replacementCandidate = delayed.StageCatalog(
+            [layout.Root], new[] { stableId });
+        replacementCandidate.Commit();
+        var replacement = replacementCandidate.Registrations[stableId];
         Assert.False(ReferenceEquals(admitted.Locator, replacement.Locator));
+    }
+
+    internal static async Task CanceledStagedCatalogLeavesCurrentLocatorsActive()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var layout = SteamLayout.Create("71001", ".png", CreatePng(3, 3, 41));
+        var resolver = new WindowsSteamArtworkSource();
+        var stagedSource = new StagedSteamSource(
+            new WindowsSteamApplicationSource([layout.Root], resolver), blockCall: 2);
+        using var source = new SteamGameLibrarySource(
+            stagedSource, new NoopSteamLauncher());
+        var initial = source.Refresh(CancellationToken.None);
+        var initialItem = initial.Items.Single();
+        var initialRegistration = resolver.Register([layout.Root], "71001")!;
+        var initialLocator = initialRegistration.Locator;
+        Assert.True(source.LoadArtwork(initialItem, CancellationToken.None) is not null);
+        var probesBeforeStage = resolver.FileProbeCalls;
+        layout.WriteManifest("71002", "Candidate game");
+
+        using var cancellation = new CancellationTokenSource();
+        var refresh = Task.Run(() => source.Refresh(cancellation.Token));
+        await stagedSource.Staged.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, resolver.LocatorCount);
+        Assert.Equal(probesBeforeStage, resolver.FileProbeCalls);
+        cancellation.Cancel();
+        stagedSource.Release.Set();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => refresh);
+
+        var retainedRegistration = resolver.Register([layout.Root], "71001")!;
+        var stagedLocator = stagedSource.Captured!.Registrations
+            .Single(registration => registration.SteamAppId == "71002")
+            .Artwork!.Locator;
+        Assert.Equal(1, resolver.LocatorCount);
+        Assert.Equal(1, source.Snapshot.Items.Count);
+        Assert.True(ReferenceEquals(initialLocator, retainedRegistration.Locator));
+        Assert.Equal(initialRegistration.Revision, retainedRegistration.Revision);
+        Assert.False(ReferenceEquals(stagedLocator,
+            resolver.Register([layout.Root], "71002")!.Locator));
+        Assert.True(source.LoadArtwork(initialItem, CancellationToken.None) is not null);
+        Assert.False(source.Snapshot.Items.Any(item =>
+            item.DisplayName == "Candidate game"));
+    }
+
+    internal static async Task LosingStagedCatalogCannotReplaceLatestLocators()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var layout = SteamLayout.Create("72001", ".png", CreatePng(3, 3, 47));
+        var resolver = new WindowsSteamArtworkSource();
+        var stagedSource = new StagedSteamSource(
+            new WindowsSteamApplicationSource([layout.Root], resolver), blockCall: 2);
+        using var source = new SteamGameLibrarySource(
+            stagedSource, new NoopSteamLauncher());
+        var initial = source.Refresh(CancellationToken.None);
+        var stableRegistration = resolver.Register([layout.Root], "72001")!;
+        var stableLocator = stableRegistration.Locator;
+        var probesBeforeStages = resolver.FileProbeCalls;
+        layout.WriteManifest("72002", "Losing game");
+
+        var losing = Task.Run(() => source.Refresh(CancellationToken.None));
+        await stagedSource.Staged.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var losingLocator = stagedSource.Captured!.Registrations
+            .Single(registration => registration.SteamAppId == "72002")
+            .Artwork!.Locator;
+        layout.DeleteManifest("72002");
+        layout.WriteManifest("72003", "Winning game");
+        var winning = source.Refresh(CancellationToken.None);
+        Assert.True(winning.Items.Any(item => item.DisplayName == "Winning game"));
+        Assert.False(winning.Items.Any(item => item.DisplayName == "Losing game"));
+        Assert.Equal(2, resolver.LocatorCount);
+        Assert.Equal(probesBeforeStages, resolver.FileProbeCalls);
+        stagedSource.Release.Set();
+        var staleResult = await losing.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(staleResult.Items.Any(item => item.DisplayName == "Winning game"));
+        Assert.False(staleResult.Items.Any(item => item.DisplayName == "Losing game"));
+        var retainedStable = resolver.Register([layout.Root], "72001")!;
+        Assert.True(ReferenceEquals(stableLocator, retainedStable.Locator));
+        Assert.Equal(stableRegistration.Revision, retainedStable.Revision);
+        Assert.False(ReferenceEquals(losingLocator,
+            resolver.Register([layout.Root], "72002")!.Locator));
+        Assert.True(source.LoadArtwork(initial.Items.Single(), CancellationToken.None)
+            is not null);
     }
 
     private static WindowsAppLibraryProvider CreateProvider(
@@ -483,6 +575,9 @@ internal static class SteamArtworkScenarios
                 $"\"AppState\" {{ \"appid\" \"{appId}\" " +
                 $"\"name\" \"{displayName}\" }}");
 
+        internal void DeleteManifest(string appId) => File.Delete(Path.Combine(
+            Root, "steamapps", $"appmanifest_{appId}.acf"));
+
         public void Dispose()
         {
             if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
@@ -493,6 +588,44 @@ internal static class SteamArtworkScenarios
     {
         public void Launch(string exactSteamAppId, CancellationToken cancellationToken) =>
             cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private sealed class StagedSteamSource(
+        WindowsSteamApplicationSource inner,
+        int blockCall) : ISteamApplicationSource
+    {
+        private int _calls;
+        internal SteamApplicationSourceCandidate? Captured { get; private set; }
+        internal TaskCompletionSource Staged { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ManualResetEventSlim Release { get; } = new();
+
+        public IReadOnlyList<SteamRegistration> Enumerate(
+            CancellationToken cancellationToken) => inner.Enumerate(cancellationToken);
+
+        public SteamApplicationSourceCandidate Stage(
+            CancellationToken cancellationToken)
+        {
+            var candidate = inner.Stage(cancellationToken);
+            if (Interlocked.Increment(ref _calls) == blockCall)
+            {
+                Captured = candidate;
+                Staged.TrySetResult();
+                Release.Wait();
+            }
+            return candidate;
+        }
+
+        public SteamRegistration? ReadExact(
+            string steamAppId,
+            string manifestPath,
+            CancellationToken cancellationToken) =>
+            inner.ReadExact(steamAppId, manifestPath, cancellationToken);
+
+        public string? LoadArtwork(
+            SteamRegistration exactRegistration,
+            CancellationToken cancellationToken) =>
+            inner.LoadArtwork(exactRegistration, cancellationToken);
     }
 
     private sealed class ImmediateSta : IShellStaExecutor

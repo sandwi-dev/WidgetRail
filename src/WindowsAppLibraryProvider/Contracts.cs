@@ -81,6 +81,10 @@ internal sealed record SteamArtworkRegistration(
     SteamArtworkLocator Locator,
     string Revision);
 
+internal sealed record SteamApplicationSourceCandidate(
+    IReadOnlyList<SteamRegistration> Registrations,
+    IGameLibrarySourceCandidateCommit? Commit = null);
+
 internal interface IStartMenuApplicationSource
 {
     IReadOnlyList<StartMenuRegistration> Enumerate(CancellationToken cancellationToken);
@@ -108,6 +112,9 @@ internal interface IAppsFolderApplicationSource
 internal interface ISteamApplicationSource
 {
     IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken);
+
+    SteamApplicationSourceCandidate Stage(CancellationToken cancellationToken) =>
+        new(Enumerate(cancellationToken));
 
     SteamRegistration? ReadExact(
         string steamAppId,

@@ -42,7 +42,7 @@ internal sealed class WindowsSteamArtworkSource
     private readonly Func<byte[], CancellationToken, string?> _decode;
     private readonly Dictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<string> _recency = [];
-    private readonly Dictionary<string, SteamArtworkLocator> _locators =
+    private Dictionary<string, SteamArtworkLocator> _locators =
         new(StringComparer.Ordinal);
     private int _fileProbeCalls;
 
@@ -67,7 +67,7 @@ internal sealed class WindowsSteamArtworkSource
         get { lock (_cacheGate) return _locators.Count; }
     }
 
-    internal IReadOnlyDictionary<string, SteamArtworkRegistration> RegisterCatalog(
+    internal SteamArtworkCatalogCandidate StageCatalog(
         IEnumerable<string> trustedSteamRoots,
         IEnumerable<string> steamAppIds)
     {
@@ -88,24 +88,35 @@ internal sealed class WindowsSteamArtworkSource
             StringComparer.Ordinal);
         lock (_cacheGate)
         {
-            var retainedKeys = keys.Values.ToHashSet(StringComparer.Ordinal);
-            foreach (var stale in _locators.Keys
-                         .Where(key => !retainedKeys.Contains(key))
-                         .ToArray())
-            {
-                _locators[stale].Retire();
-                _locators.Remove(stale);
-            }
+            var candidateLocators = new Dictionary<string, SteamArtworkLocator>(
+                appIds.Length, StringComparer.Ordinal);
             var result = new Dictionary<string, SteamArtworkRegistration>(
                 appIds.Length, StringComparer.Ordinal);
             foreach (var appId in appIds)
             {
                 var key = keys[appId];
                 if (!_locators.TryGetValue(key, out var locator))
-                    _locators.Add(key, locator = new SteamArtworkLocator(roots, appId));
+                    locator = new SteamArtworkLocator(roots, appId);
+                candidateLocators.Add(key, locator);
                 result.Add(appId, locator.Snapshot());
             }
-            return result;
+            return new(this, candidateLocators, result);
+        }
+    }
+
+    internal void CommitCatalog(SteamArtworkCatalogCandidate candidate)
+    {
+        lock (_cacheGate)
+        {
+            if (!candidate.TryCommit()) return;
+            var prior = _locators;
+            _locators = candidate.Locators;
+            foreach (var (key, locator) in prior)
+            {
+                if (!_locators.TryGetValue(key, out var retained) ||
+                    !ReferenceEquals(locator, retained))
+                    locator.Retire();
+            }
         }
     }
 
@@ -611,4 +622,21 @@ internal sealed class SteamArtworkLocator(
     {
         lock (_gate) _active = false;
     }
+}
+
+internal sealed class SteamArtworkCatalogCandidate(
+    WindowsSteamArtworkSource owner,
+    Dictionary<string, SteamArtworkLocator> locators,
+    IReadOnlyDictionary<string, SteamArtworkRegistration> registrations) :
+    IGameLibrarySourceCandidateCommit
+{
+    private int _committed;
+
+    internal IReadOnlyDictionary<string, SteamArtworkRegistration> Registrations =>
+        registrations;
+    internal Dictionary<string, SteamArtworkLocator> Locators => locators;
+
+    public void Commit() => owner.CommitCatalog(this);
+
+    internal bool TryCommit() => Interlocked.Exchange(ref _committed, 1) == 0;
 }
