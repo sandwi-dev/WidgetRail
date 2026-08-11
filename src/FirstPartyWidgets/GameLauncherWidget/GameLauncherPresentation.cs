@@ -146,7 +146,7 @@ internal static class GameLauncherPresentation
                 .SelectMany(group => group.SavedIds.Select(savedId => (savedId, group)))
                 .ToDictionary(value => value.savedId, value => value.group,
                     StringComparer.Ordinal);
-            var resolvedFixed = state.FixedRows.All
+            var resolvedFixed = snapshot.Items.Concat(state.FixedRows.All)
                 .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
                 .ToDictionary(item => item.Value.SavedId, StringComparer.Ordinal);
             var stored = state.Organization.Items.ToDictionary(
@@ -223,13 +223,14 @@ internal static class GameLauncherPresentation
                     snapshot.HasAfter ? "game-launcher.library.cursor.after" : null, 2);
             var catalogIds = orderedCatalog.Select(row => row.Display.SavedId)
                 .ToHashSet(StringComparer.Ordinal);
+            var retainedCatalogAnchor = snapshot.Anchor is { } anchor &&
+                snapshot.Items.Any(item => item.Key == anchor &&
+                    catalogIds.Contains(item.Value.SavedId))
+                ? anchor.Value
+                : orderedCatalog.FirstOrDefault()?.Current?.Key.Value;
             scroll = scroll with
             {
-                CollectionAnchorKey = snapshot.Anchor is { } anchor &&
-                    snapshot.Items.Any(item => item.Key == anchor &&
-                        catalogIds.Contains(item.Value.SavedId))
-                    ? anchor.Value
-                    : null,
+                CollectionAnchorKey = retainedCatalogAnchor,
             };
             var controls = UI.Row("game-launcher.actions",
                     UI.Button("Previous page", "game-launcher.previous", "game-launcher.previous")

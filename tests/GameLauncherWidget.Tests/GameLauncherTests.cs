@@ -841,6 +841,73 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task ImmediateRecentPromotionRetainsCurrentItemAndRelaunchesExactly()
+    {
+        const string artwork = "library.art.0123456789abcdef0123456789abcdef";
+        var resolveGeneration = 0;
+        var host = new FakeHost(3)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                DisplayName = $"Current game {index}",
+                SourceAttribution = "Current catalog",
+                ArtworkHandle = artwork,
+            },
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        host.ResolveHandler = request => request.SavedIds.Select(savedId =>
+        {
+            var index = int.Parse(savedId.AsSpan(savedId.LastIndexOf('-') + 1));
+            return host.ItemFactory(index) with
+            {
+                AppId = $"fresh-app-{++resolveGeneration}",
+                DisplayName = $"Resolved game {index}",
+                SourceAttribution = "Resolved catalog",
+            };
+        }).ToArray();
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.recent", "game-launcher.filter.recent"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "empty recent-first reload");
+        var queriesBeforeLaunch = host.Queries.Count;
+        var promotedId = GameLauncherIdentity.FocusId(
+            "grid", GameLauncherIdentity.Key("saved-00001"));
+
+        await widget.OnActionAsync(new("game-launcher.launch", promotedId));
+
+        var promotedSnapshot = Snapshot(widget, 601);
+        var launchTiles = Nodes(promotedSnapshot.Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+        Assert.AreEqual(3, launchTiles.Length);
+        Assert.AreEqual(promotedId, launchTiles[0].Id);
+        Assert.AreEqual(1, launchTiles.Count(node => node.Id == promotedId),
+            "the promoted identity must not remain duplicated in the catalog section");
+        Assert.IsFalse(launchTiles[0].IsDisabled ?? false);
+        Assert.IsNull(launchTiles[0].CollectionItemKey,
+            "the promoted fixed row must stay outside cursor anchor accounting");
+        Assert.AreEqual(artwork,
+            Nodes(launchTiles[0]).Single(node => node.ArtworkHandle is not null).ArtworkHandle);
+        StringAssert.Contains(launchTiles[0].AccessibilityLabel!, "Current game 1");
+        StringAssert.Contains(launchTiles[0].AccessibilityLabel!, "Current catalog");
+        Assert.AreEqual(queriesBeforeLaunch, host.Queries.Count,
+            "promotion must not reload the provider page");
+
+        await widget.OnActionAsync(new("game-launcher.launch", promotedId));
+
+        Assert.AreEqual(2, host.ResolveRequests.Count);
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[0].ToArray());
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[1].ToArray());
+        CollectionAssert.AreEqual(new[] { "fresh-app-1", "fresh-app-2" },
+            host.Launches.ToArray());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task RecentMutationConflictPreservesOrganizationAndConcurrentOrder()
     {
         var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");
