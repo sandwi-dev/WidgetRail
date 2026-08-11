@@ -475,6 +475,11 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.sliderInteractionMode != L"activateToAdjust")
         throw winrt::hresult_invalid_argument();
     node.imageSource = OptionalString(source, L"imageSource");
+    node.artworkHandle = OptionalString(source, L"artworkHandle");
+    if ((!node.artworkHandle.empty() &&
+         (node.artworkHandle.size() > kMaximumIdentifierLength ||
+          !IsIdentifier(node.artworkHandle))))
+        throw winrt::hresult_invalid_argument();
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
     node.indicatorSize = OptionalString(source, L"indicatorSize");
@@ -486,6 +491,15 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.scrollAxis = OptionalString(source, L"scrollAxis");
     node.scrollNearStartActionId = OptionalString(source, L"scrollNearStartActionId");
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
+    node.collectionAnchorKey = OptionalString(source, L"collectionAnchorKey");
+    node.collectionItemKey = OptionalString(source, L"collectionItemKey");
+    if ((!node.collectionAnchorKey.empty() &&
+         (node.collectionAnchorKey.size() > kMaximumIdentifierLength ||
+          !IsIdentifier(node.collectionAnchorKey))) ||
+        (!node.collectionItemKey.empty() &&
+         (node.collectionItemKey.size() > kMaximumIdentifierLength ||
+          !IsIdentifier(node.collectionItemKey))))
+        throw winrt::hresult_invalid_argument();
     if (source.HasKey(L"scrollPaginationThreshold")) {
         if (source.GetNamedValue(L"scrollPaginationThreshold").ValueType() !=
             JsonValueType::Number)

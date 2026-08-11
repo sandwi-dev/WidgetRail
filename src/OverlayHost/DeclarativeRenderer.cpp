@@ -625,12 +625,45 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     void StoreScrollOffset(const std::wstring_view key, const float offset) {
-        owner->scrollOffsets_.insert_or_assign(
-            std::wstring{key},
-            DeclarativeRenderer::ScrollStateEntry{
-                offset,
-                ++owner->scrollStateAccessClock_,
-            });
+        auto& state = owner->scrollOffsets_[std::wstring{key}];
+        state.offset = offset;
+        state.lastAccess = ++owner->scrollStateAccessClock_;
+    }
+
+    [[nodiscard]] const WidgetNode* FindCollectionItem(
+        const WidgetNode& node, const std::wstring_view key) const noexcept {
+        if (node.collectionItemKey == key) return &node;
+        for (const auto& child : node.children) {
+            if (const auto* found = FindCollectionItem(child, key)) return found;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] bool ReconcileCollectionAnchors() {
+        bool changed{};
+        VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
+            if (scroll.collectionAnchorKey.empty()) return;
+            const auto key = ScrollStateKey(scroll.id);
+            const auto existing = owner->scrollOffsets_.find(key);
+            if (existing == owner->scrollOffsets_.end() ||
+                !existing->second.hasAnchorPosition ||
+                existing->second.anchorKey != scroll.collectionAnchorKey) return;
+            const auto* item = FindCollectionItem(scroll, scroll.collectionAnchorKey);
+            const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
+            const auto* itemBox = item ? layout.Find(NarrowStableId(item->id)) : nullptr;
+            if (!scrollBox || !itemBox ||
+                scrollBox->scrollAxis == declarative::ScrollAxis::None) return;
+            const auto position = scrollBox->scrollAxis == declarative::ScrollAxis::Vertical
+                ? itemBox->borderBox.y - scrollBox->contentBox.y
+                : itemBox->borderBox.x - scrollBox->contentBox.x;
+            const auto desired = std::clamp(
+                scrollBox->scrollOffset + position - existing->second.anchorPosition,
+                0.0F, scrollBox->maximumScrollOffset);
+            if (std::abs(desired - scrollBox->scrollOffset) <= 0.01F) return;
+            StoreScrollOffset(key, desired);
+            changed = true;
+        });
+        return changed;
     }
 
     [[nodiscard]] std::vector<const WidgetNode*> FocusPath() const {
@@ -866,6 +899,22 @@ struct DeclarativeRenderer::RenderPass final {
             if (const auto* box = layout.Find(NarrowStableId(scroll.id))) {
                 StoreScrollOffset(key, box->scrollOffset);
                 result.scrollOffsets[scroll.id] = box->scrollOffset;
+                auto& state = owner->scrollOffsets_[key];
+                state.anchorKey = scroll.collectionAnchorKey;
+                state.hasAnchorPosition = false;
+                if (!scroll.collectionAnchorKey.empty()) {
+                    const auto* item = FindCollectionItem(
+                        scroll, scroll.collectionAnchorKey);
+                    const auto* itemBox = item
+                        ? layout.Find(NarrowStableId(item->id)) : nullptr;
+                    if (itemBox) {
+                        state.anchorPosition =
+                            box->scrollAxis == declarative::ScrollAxis::Vertical
+                            ? itemBox->borderBox.y - box->contentBox.y
+                            : itemBox->borderBox.x - box->contentBox.x;
+                        state.hasAnchorPosition = true;
+                    }
+                }
             }
         });
         std::wstring prefix(snapshot->instanceId);
@@ -946,12 +995,14 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind == L"text")
             return MeasureText(node, style, constraints);
         if (node.kind == L"button") {
-            const bool hasLeading = !node.imageSource.empty() || !node.glyph.empty();
+            const bool hasLeading = !node.imageSource.empty() ||
+                !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = hasText &&
                 (node.isBusy || node.isSelected || node.isDisabled);
             const auto lineHeight = style.fontSizePx() * style.lineHeight();
-            const auto maximumLeadingSize = node.imageSource.empty() ? 32.0F : 44.0F;
+            const auto maximumLeadingSize =
+                node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
             const auto alignment = ResolveButtonContentAlignment(node, style, false, false);
             const auto& padding = style.paddingPx();
             const auto verticalPadding = padding.top + padding.bottom;
@@ -1047,6 +1098,18 @@ struct DeclarativeRenderer::RenderPass final {
                 return MeasureLeaf(element, constraints);
             },
             layoutOptions);
+        if (ReconcileCollectionAnchors()) {
+            prepared.clear();
+            auto anchoredRoot = PrepareNode(
+                snapshot->root, {}, viewport.width, viewport.height,
+                options.rootFontSizePx, options.surfaceBackground);
+            layout = declarative::ComputeLayout(
+                anchoredRoot, viewport,
+                [this](const LayoutElement& element,
+                       const declarative::MeasureConstraints& constraints) {
+                    return MeasureLeaf(element, constraints);
+                }, layoutOptions);
+        }
         // Focus-follow runs after percentage/em correction. Nested scrollers
         // require a fixed point: revealing inside the innermost viewport moves
         // the target geometry observed by each outer viewport. The wire tree
@@ -1617,11 +1680,13 @@ struct DeclarativeRenderer::RenderPass final {
             DrawTextContent(node, style, presented.contentBox, opacity);
         } else if (node.kind == L"button") {
             auto textRect = presented.contentBox;
-            const bool hasLeading = !node.imageSource.empty() || !node.glyph.empty();
+            const bool hasLeading = !node.imageSource.empty() ||
+                !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = hasText &&
                 (node.isBusy || node.isSelected || node.isDisabled);
-            const auto maximumLeadingSize = node.imageSource.empty() ? 32.0F : 44.0F;
+            const auto maximumLeadingSize =
+                node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
             const auto iconSize = hasLeading
                 ? std::min(maximumLeadingSize, std::max(0.0F, textRect.height))
                 : 0.0F;
@@ -1649,7 +1714,7 @@ struct DeclarativeRenderer::RenderPass final {
                     if (visibleImageRect.width > 0.5F && visibleImageRect.height > 0.5F)
                         DrawImage(node, style, iconRect, opacity, focused);
                 }
-                else
+                else if (!node.glyph.empty())
                     DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
             }
             if (hasText) DrawTextContent(
@@ -1900,6 +1965,9 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ID2D1RenderTarget* renderTarget,
     const WidgetNode& node,
     RenderPass& pass) {
+    // Protocol-v14 handles are deliberately inert until the trusted artwork
+    // resolver supplies pixels. They are never interpreted as URLs or paths.
+    if (!node.artworkHandle.empty() && node.imageSource.empty()) return {};
     if (!imageCache_ || !renderTarget || node.imageSource.empty()) {
         pass.Add(node.id, L"missing_image", L"Image has no HTTPS source or image cache.");
         return {};

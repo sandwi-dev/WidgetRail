@@ -39,6 +39,19 @@ bool IsResponsiveVisible(const WidgetNode& node, const bool compactMode) noexcep
         (!compactMode && node.visibleWhen == L"expandedOnly");
 }
 
+void CollectCollectionItems(
+    const WidgetNode& node,
+    const WidgetNode& collectionRoot,
+    std::vector<const WidgetNode*>& items) {
+    if (&node != &collectionRoot && node.kind == L"scroll") return;
+    if (!node.collectionItemKey.empty()) {
+        items.push_back(&node);
+        return;
+    }
+    for (const auto& child : node.children)
+        CollectCollectionItems(child, collectionRoot, items);
+}
+
 } // namespace
 
 std::optional<ScrollPaginationAction> FindScrollPaginationAction(
@@ -60,6 +73,20 @@ std::optional<ScrollPaginationAction> FindScrollPaginationAction(
         (root.scrollAxis == L"vertical" && direction == NavigationDirection::Down) ||
         (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Right);
     if (!towardStart && !towardEnd) return std::nullopt;
+    if (!root.collectionAnchorKey.empty()) {
+        std::vector<const WidgetNode*> items;
+        CollectCollectionItems(root, root, items);
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            if (!ContainsWidgetNode(*items[index], focusedId)) continue;
+            if (towardStart && !root.scrollNearStartActionId.empty() &&
+                index < root.scrollPaginationThreshold)
+                return ScrollPaginationAction{root.scrollNearStartActionId, root.id};
+            if (towardEnd && !root.scrollNearEndActionId.empty() &&
+                items.size() - index <= root.scrollPaginationThreshold)
+                return ScrollPaginationAction{root.scrollNearEndActionId, root.id};
+            return std::nullopt;
+        }
+    }
     for (std::size_t index = 0; index < root.children.size(); ++index) {
         if (!ContainsWidgetNode(root.children[index], focusedId)) continue;
         if (towardStart && !root.scrollNearStartActionId.empty() &&

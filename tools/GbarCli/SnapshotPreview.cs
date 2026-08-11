@@ -31,6 +31,12 @@ public static class SnapshotPreview
         if (!string.IsNullOrWhiteSpace(node.InputScopeId)) writer.Write($" scope={node.InputScopeId}");
         if (!string.IsNullOrWhiteSpace(node.FocusPersistenceId))
             writer.Write($" focusPersistence={node.FocusPersistenceId}");
+        if (!string.IsNullOrWhiteSpace(node.CollectionAnchorKey))
+            writer.Write($" collectionAnchor={node.CollectionAnchorKey}");
+        if (!string.IsNullOrWhiteSpace(node.CollectionItemKey))
+            writer.Write($" collectionItem={node.CollectionItemKey}");
+        if (!string.IsNullOrWhiteSpace(node.ArtworkHandle))
+            writer.Write($" artworkHandle={node.ArtworkHandle}");
         if (!string.IsNullOrWhiteSpace(node.AccessibilityLabel))
             writer.Write($" a11y={Quote(node.AccessibilityLabel)}");
         if (!string.IsNullOrWhiteSpace(node.AccessibilityValue))

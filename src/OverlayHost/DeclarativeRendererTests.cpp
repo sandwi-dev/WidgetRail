@@ -1167,6 +1167,57 @@ void ControllerScrollFollowsFocusAndRestoresState() {
     }), "invalid native scroll axis fails closed with an error");
 }
 
+void CursorCollectionPreservesKeyedViewportAnchor() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"cursor.collection@1";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"collection", L"scroll");
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.collectionAnchorKey = L"item.2";
+    const auto append = [&](WidgetSnapshot& target, const int index) {
+        auto item = Node((L"item.node." + std::to_wstring(index)).c_str(), L"button");
+        item.text = L"Item";
+        item.actionId = L"select";
+        item.collectionItemKey = L"item." + std::to_wstring(index);
+        item.baseStyle = {
+            {L"height", Length(44)},
+            {L"min-height", Length(44)},
+            {L"flex-shrink", Number(0)},
+        };
+        target.root.children.push_back(std::move(item));
+    };
+    for (int index = 0; index < 6; ++index) append(snapshot, index);
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto initial = renderer.Render(
+        nullptr, snapshot, L"item.node.2", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto initialY = initial.focusRects.at(L"item.node.2").y;
+
+    auto prepended = snapshot;
+    prepended.root.children.clear();
+    append(prepended, -2);
+    append(prepended, -1);
+    prepended.root.children.insert(prepended.root.children.end(),
+        snapshot.root.children.begin(), snapshot.root.children.end());
+    const auto afterPrepend = renderer.Render(
+        nullptr, prepended, L"item.node.2", {0.0F, 0.0F, 240.0F, 100.0F});
+    Near(afterPrepend.focusRects.at(L"item.node.2").y, initialY,
+         "prepending a cursor page preserves the keyed viewport anchor");
+    Check(afterPrepend.scrollOffsets.at(L"collection") >
+              initial.scrollOffsets.at(L"collection") + 80.0F,
+          "anchor preservation compensates for prepended collection geometry");
+
+    auto deleted = prepended;
+    std::erase_if(deleted.root.children, [](const WidgetNode& node) {
+        return node.collectionItemKey == L"item.2";
+    });
+    deleted.root.collectionAnchorKey = L"item.3";
+    const auto fallback = renderer.Render(
+        nullptr, deleted, L"item.node.3", {0.0F, 0.0F, 240.0F, 100.0F});
+    Check(fallback.focusRects.contains(L"item.node.3"),
+          "a deleted anchor admits the authored nearest keyed fallback");
+}
+
 WidgetNode FixedSpacer(const wchar_t* id, const double height) {
     auto spacer = Node(id, L"spacer");
     spacer.baseStyle = {
@@ -2616,6 +2667,7 @@ int main() {
     TranslatedFocusConvergesInsideScrollViewport();
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
+    CursorCollectionPreservesKeyedViewportAnchor();
     WholeWidgetScrollRevealsAudioMixerControls();
     SegmentedTabsSurviveConstrainedNetworkSurfaces();
     CenteredWrappedStatePreservesTextFlowAndControllerTarget();

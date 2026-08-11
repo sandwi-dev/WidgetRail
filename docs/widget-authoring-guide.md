@@ -86,7 +86,8 @@ A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
 v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
-and explicit focus persistence v13. Combining features selects the highest
+explicit focus persistence v13; cursor collections and opaque artwork handles v14.
+Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
 
@@ -1116,8 +1117,58 @@ The deterministic 29-item contract exercises 12/12/5 forward and reverse
 navigation for both playlists and detail tracks with exactly three provider
 page calls per collection and responsive mode. Queue remains non-paged state
 owned by the widget.
-Cursor/append collections are not supplied by this API; use
-`WidgetResource<TValue>` only for one non-paged current value.
+### Continuous cursor collections (protocol v14)
+
+Use `WidgetCursorResource<TItem>` when transport pages must compose into one
+continuous controller collection. Cursors and item keys are typed opaque
+values; never derive keys from a title or visible ordinal.
+
+```csharp
+_items = CreateCursorResource<Item>("library.items", new()
+{
+    PageSize = 64,
+    MaximumRetainedItems = 192,
+    LoadPage = LoadCursorPageAsync,
+    MapError = _ => new("library_unavailable", "The library is unavailable."),
+    Viewports =
+    [
+        new("library.list", item => new(item.SavedId),
+            item => $"library.item.{item.StableFocusId}", "library.empty"),
+    ],
+});
+```
+
+Render only `Snapshot.Items`, mark every root item with
+`resource.PresentItem(item, element)`, wrap the Scroll with
+`resource.Present(scroll)`, and use `Snapshot.RequestedFocusId`. Route
+`TryHandlePagination` before unrelated actions. `Move(Before/After)` prepends
+or appends a whole page; the resource retains complete page segments, evicts
+from the opposite edge, and never exceeds 256 items. `Refresh` reloads the
+retained segment containing the anchor. Existing keys preserve anchor and
+focus; deletion uses a deterministic nearest retained fallback.
+
+The provider has one Latest request lane. Cancellation-ignoring and stale
+completions cannot publish. Duplicate keys, a returned cursor loop, null or
+oversized pages, and unsafe errors fail without partially changing the window.
+Page size is 1–100, retained items are at least two pages and at most 256,
+cursor history is capped at 128, pagination threshold is 1–8, and the protocol
+accepts at most 256 serialized collection items. The logical provider may have
+thousands of items; only this window reaches the host.
+One same-direction traversal admits at most 128 distinct cursor identities and
+then fails closed; changing direction or refreshing starts a new bounded
+traversal, so an evicted page can be fetched again without weakening loop
+detection.
+
+`WidgetArtworkHandle` is also protocol v14. `UI.Artwork(handle, ...)` and
+`ButtonElement.LeadingArtwork(handle, ...)` publish a bounded opaque identity.
+It is not a URL or path and grants no file, network, decode, or launch
+authority. Until a trusted host resolver supplies pixels, authors must retain
+accessible text or a semantic fallback. Do not embed artwork bytes in cursor
+snapshots.
+
+`WidgetPagedResource<TItem>` remains the offset-based replacement-window API;
+its compatibility behavior is unchanged. Use `WidgetResource<TValue>` for one
+non-paged current value.
 
 ## GBSS: safe widget-local styling
 

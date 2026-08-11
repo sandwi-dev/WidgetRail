@@ -162,6 +162,23 @@ public static partial class UI
         return new ImageElement(id, source, accessibilityLabel, fit);
     }
 
+    /// <summary>
+    /// Creates lazy artwork identified only by a bounded opaque host handle.
+    /// The value is not a URL or path and grants no fetch or decode authority.
+    /// </summary>
+    public static ImageElement Artwork(
+        WidgetArtworkHandle handle,
+        string id,
+        string accessibilityLabel,
+        ImageFit fit = ImageFit.Cover)
+    {
+        StableIdentifier.Validate(handle.Value, nameof(handle));
+        return new(id, string.Empty, accessibilityLabel, fit)
+        {
+            ArtworkHandle = handle.Value,
+        };
+    }
+
     internal static string CanonicalInlinePngSource(string pngBase64, string parameterName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pngBase64, parameterName);

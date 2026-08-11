@@ -239,8 +239,21 @@ Statuses are `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
 `LoadingAdjacent`, and `Error`. Bounds are page size 1–100, cached pages 1–8,
 cached items 1–512 (and at least one page), pagination threshold 1–8, and error
 messages up to 256 visible characters. The lifetime defaults to `Active`, cache
-duration to five minutes, and last-good retention to enabled. This API is
-offset-based: cursor paging and append/infinite feeds are not implemented. Use
+duration to five minutes, and last-good retention to enabled. This API remains
+offset-based with replacement-window compatibility.
+
+For continuous feeds, use `WidgetCursorResource<TItem>` with typed
+`WidgetCollectionCursor` and `WidgetCollectionItemKey` values. Its
+`PresentItem`/`Present` helpers author protocol-v14 item keys and one viewport
+anchor; adjacent pages append/prepend, whole segments evict from the opposite
+edge, and refresh follows the segment containing the anchor. Page size is
+1–100, retention is at least two pages and at most 256 items, and cursor
+history is capped at 128. Duplicate keys, cursor loops, stale completions, and
+malformed pages fail without partial publication.
+
+Protocol v14 also supplies `WidgetArtworkHandle`, `UI.Artwork`, and
+`ButtonElement.LeadingArtwork`. Handles are bounded opaque identities—not URLs
+or paths—and grant no fetch, file, network, decode, or action authority. Use
 the separate `WidgetResource<TValue>` for one current non-paged value.
 Sparse pages are supported for providers that filter unavailable server
 entries; next-page offsets use the server page limit rather than rendered item

@@ -161,6 +161,7 @@ struct WidgetNode final {
     std::wstring focusPersistenceId;
     std::wstring sliderInteractionMode;
     std::wstring imageSource;
+    std::wstring artworkHandle;
     std::wstring imageFit;
     std::wstring glyph;
     std::wstring indicatorSize;
@@ -172,6 +173,8 @@ struct WidgetNode final {
     std::wstring scrollNearStartActionId;
     std::wstring scrollNearEndActionId;
     std::size_t scrollPaginationThreshold{};
+    std::wstring collectionAnchorKey;
+    std::wstring collectionItemKey;
     std::wstring actionSurfaceOrientation;
     std::optional<double> gridMinimumColumnWidth;
     std::optional<std::size_t> gridMaximumColumns;

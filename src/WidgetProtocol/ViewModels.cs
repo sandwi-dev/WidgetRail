@@ -224,6 +224,11 @@ public sealed record ViewNode
     /// </summary>
     public SliderInteractionMode? SliderInteractionMode { get; init; }
     public string? ImageSource { get; init; }
+    /// <summary>
+    /// Optional protocol-v14 host-resolved artwork identity. It is opaque to
+    /// widgets and grants no path, URL, file, network, or decode authority.
+    /// </summary>
+    public string? ArtworkHandle { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
     public LoadingIndicatorSize? IndicatorSize { get; init; }
@@ -272,6 +277,16 @@ public sealed record ViewNode
     public string? ScrollNearStartActionId { get; init; }
     public string? ScrollNearEndActionId { get; init; }
     public int? ScrollPaginationThreshold { get; init; }
+    /// <summary>
+    /// Protocol-v14 keyed collection anchor retained at the same viewport
+    /// position when children are appended, prepended, refreshed, or evicted.
+    /// </summary>
+    public string? CollectionAnchorKey { get; init; }
+    /// <summary>
+    /// Protocol-v14 stable identity for one direct collection item. This key
+    /// is presentation identity only and never authorizes an action.
+    /// </summary>
+    public string? CollectionItemKey { get; init; }
     public IReadOnlyList<string> StyleClasses { get; init; } = [];
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public IReadOnlyList<ViewNode> Children { get; init; } = [];
