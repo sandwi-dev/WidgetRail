@@ -296,6 +296,10 @@ static async Task PairingReplacesStaleCredential()
     await client.CompletePairingAsync(pairing.Code);
     var status = await client.GetStatusAsync();
 
+    using var requestCodeBody = JsonDocument.Parse(
+        host.Requests[0].Request.JsonBody!);
+    Assert.Equal(YtmDesktopApiClient.PackageVersion,
+        requestCodeBody.RootElement.GetProperty("appVersion").GetString());
     Assert.Equal("replacement-token", host.LastSavedSecret);
     Assert.Equal(1, host.SaveCalls);
     Assert.True(host.Requests.Take(2).All(request => request.Request.BearerSecretSlot is null),
