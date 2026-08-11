@@ -370,10 +370,10 @@ public sealed record WidgetAppLibraryItem(
     public string SavedId { get; init; } = string.Empty;
 
     /// <summary>
-    /// Optional host-rasterized PNG icon pixels. This never contains a file,
-    /// shortcut, package, or executable identifier.
+    /// Optional opaque host artwork registration. It carries no path, URL,
+    /// image bytes, provider identity, or launch authority.
     /// </summary>
-    public string? IconPngBase64 { get; init; }
+    public string? ArtworkHandle { get; init; }
 }
 
 public sealed record WidgetAppLibraryPageRequest(

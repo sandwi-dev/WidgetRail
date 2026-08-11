@@ -203,11 +203,14 @@ package IDs; it remains stable across worker/host restarts and package updates,
 but it cannot be correlated or reused by another widget package. The widget
 instance ID is intentionally not part of this durable authority.
 
-Resolved items may set `IconPngBase64`. This is host-rasterized pixel data, not
-an icon path. Use `UI.InlinePngImage` when present and a semantic `UI.Icon`
-fallback otherwise. The broker requests icons on demand only for the curated
-resolution, validates each PNG, attaches at most 32, and caps aggregate source
-pixels at 384 KiB so the snapshot remains below its 1 MiB transport limit.
+Current items may set `ArtworkHandle`, an opaque generation-bound registration
+that is neither a path nor a URL. Pass it to `UI.Artwork`,
+`Button.LeadingArtwork`, or `TileArtwork.FromHandle` and retain a semantic glyph
+fallback when it is absent. The host asks the trusted provider for pixels only
+when the artwork is rendered, revalidates the exact current registration, and
+decodes at most 12 KiB / 64 by 64 PNG sources into a 32-entry / 32 MiB in-memory
+LRU cache. Handles and pixels are never persisted in widget private state, and
+no disk artwork cache is created.
 
 `LaunchAsync` accepts only the short-lived opaque `AppId` returned by a current
 page or resolution. Widgets must never persist AppId. Widgets never

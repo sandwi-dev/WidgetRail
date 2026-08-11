@@ -1462,8 +1462,20 @@ themes also use non-shrinking fixed regions, a thin native Slider
  position before the first paint and keyed List/Grid descendants drive the
  existing near-edge actions before focus can escape to a fixed header. Opaque
  artwork handles are parsed and preserved as bounded identities but grant no
- URL, file, network, decode, or action authority; trusted resolution remains
- separate. Deterministic managed fixtures traverse both 2,000- and 10,000-item
+ URL, file, network, decode, or action authority. DLV-018 completes the trusted
+ application-artwork route: Start Menu and AppsFolder registrations issue
+ generation-bound opaque handles, the private bridge rechecks the current
+ worker/catalog generation, and the provider revalidates its exact source before
+ returning a bounded PNG. Native demand is lazy and uses deterministic 32-entry
+ / 32 MiB in-memory eviction with no disk cache; missing, malformed, stale,
+ replaced, or Steam-without-trusted-artwork registrations retain the semantic
+ fallback without changing launch, focus, membership, or warm-start identity.
+ Focused DLV-018 Release evidence passes 32 Windows app-library provider,
+ 51 broker, 56 Games & Apps, 70 production Bridge, 6 isolated first-party
+ conformance, 85 Widget SDK, 12 API-compatibility, and 53 documentation cases;
+ the native 10,000-demand cache fixture passes and the Release OverlayHost
+ target compiles.
+ Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,
  49 native focus checks, 4,777 native renderer checks, and the native bridge

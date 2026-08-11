@@ -21,6 +21,7 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
         ConsentStore consentStore,
         IPlatformBrokerBackend backend,
         WidgetProcessCompanionContext context,
+        AppLibraryArtworkRegistry? artworkRegistry = null,
         Action<BrokerHostEffect>? hostEffectSink = null)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -36,6 +37,7 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
             declaredCapabilities,
             consentStore,
             backend,
+            artworkRegistry ?? new AppLibraryArtworkRegistry(),
             isolatedClientAppContainerSid: context.AppContainerSid,
             hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1],
             hostEffectSink: hostEffectSink);

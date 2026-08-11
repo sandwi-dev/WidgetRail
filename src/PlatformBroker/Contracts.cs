@@ -313,11 +313,10 @@ public sealed record AppLibraryItemSummary(
     public string SavedId { get; init; } = string.Empty;
 
     /// <summary>
-    /// Optional bounded PNG pixels for the application icon. The trusted
-    /// provider rasterizes these pixels; no executable, shortcut, package, or
-    /// native icon location crosses the broker boundary.
+    /// Opaque, generation-bound host artwork registration. It is not a path,
+    /// URL, provider identity, launch token, or persisted image payload.
     /// </summary>
-    public string? IconPngBase64 { get; init; }
+    public string? ArtworkHandle { get; init; }
 }
 
 /// <summary>
@@ -338,8 +337,6 @@ public static class AppLibraryImageLimits
 {
     public const int MaximumPngBytes = 12 * 1024;
     public const int MaximumPixelDimension = 64;
-    public const int MaximumResolvedIconCount = 32;
-    public const int MaximumAggregatePngBytes = 384 * 1024;
 }
 
 public sealed record AppLibraryPageRequest(

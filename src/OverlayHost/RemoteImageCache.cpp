@@ -231,7 +231,7 @@ RemoteImageCache::RemoteImageCache(
     FetchFunction fetch)
     : limits_(limits),
       completion_(std::move(completion)),
-      fetch_(fetch ? std::move(fetch) : FetchAndDecode) {
+      fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumDecodedBytes < 4 ||
         limits_.maximumDecodedBytes > 256U * 1024U * 1024U ||
@@ -255,6 +255,13 @@ RemoteImageRequestResult RemoteImageCache::Request(std::wstring url) {
     if (!IsAllowedImageSource(url)) return RemoteImageRequestResult::InvalidUrl;
     std::scoped_lock lock(mutex_);
     return QueueLocked(std::move(url), false);
+}
+
+RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring key) {
+    constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+    if (!key.starts_with(prefix) || key.size() > 256) return RemoteImageRequestResult::InvalidUrl;
+    std::scoped_lock lock(mutex_);
+    return QueueLocked(std::move(key), false);
 }
 
 RemoteImageRequestResult RemoteImageCache::Retry(std::wstring url) {
@@ -459,7 +466,7 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
     entry.state = RemoteImageState::Failed;
 }
 
-RemoteImageFetchResult RemoteImageCache::FetchAndDecode(
+RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
     std::wstring_view url,
     std::stop_token stopToken,
     const RemoteImageLimits& limits) {

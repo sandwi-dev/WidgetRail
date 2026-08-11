@@ -386,7 +386,8 @@ internal static class GamesAppsPresentation
     private static TileArtwork AppArtwork(
         WidgetAppLibraryItem item,
         string accessibilityLabel) =>
-        item.IconPngBase64 is { Length: > 0 } png
-            ? TileArtwork.FromInlinePng(png, accessibilityLabel, ImageFit.Contain)
+        item.ArtworkHandle is { Length: > 0 } handle
+            ? TileArtwork.FromHandle(
+                new WidgetArtworkHandle(handle), accessibilityLabel, ImageFit.Contain)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, accessibilityLabel);
 }

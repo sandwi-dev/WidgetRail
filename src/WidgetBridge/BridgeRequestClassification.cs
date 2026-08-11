@@ -7,6 +7,7 @@ internal enum BridgeRequestKind
     ListWidgets,
     GetPlatformAppearance,
     GetSnapshot,
+    ResolveArtwork,
     RestartWidget,
     SetWidgetLifecycle,
     Action,
@@ -33,6 +34,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
         if (kind is BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -45,6 +47,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -82,6 +85,9 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
+                BridgeMessageTypes.ResolveArtwork => Widget(
+                    BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload).WidgetId,
+                    BridgeRequestKind.ResolveArtwork),
                 BridgeMessageTypes.RestartWidget => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.RestartWidget),

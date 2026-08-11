@@ -443,6 +443,27 @@ public:
             gba::RemoteImageLimits{},
             [this](std::wstring_view, gba::RemoteImageState) {
                 if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
+            },
+            [this](std::wstring_view source,
+                   std::stop_token stopToken,
+                   const gba::RemoteImageLimits& limits) {
+                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+                if (!source.starts_with(prefix))
+                    return gba::RemoteImageCache::FetchAndDecodeSource(
+                        source, stopToken, limits);
+                const auto separator = source.find(L'\x1f', prefix.size());
+                if (separator == std::wstring_view::npos || stopToken.stop_requested())
+                    return gba::RemoteImageFetchResult{
+                        E_INVALIDARG, {}, L"Trusted artwork cache key is invalid."};
+                const auto widgetId = source.substr(prefix.size(), separator - prefix.size());
+                const auto handle = source.substr(separator + 1);
+                const auto png = bridge_.ResolveArtwork(widgetId, handle);
+                if (!png || stopToken.stop_requested())
+                    return gba::RemoteImageFetchResult{
+                        HRESULT_FROM_WIN32(ERROR_NOT_FOUND), {},
+                        L"Trusted artwork is unavailable."};
+                return gba::RemoteImageCache::FetchAndDecodeSource(
+                    L"data:image/png;base64," + *png, stopToken, limits);
             });
         declarativeRenderer_ = std::make_unique<gba::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
@@ -4699,6 +4720,7 @@ private:
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
                 options.sliderValueOverrides = presentedSliderValues;
+                options.artworkWidgetId = std::wstring{renderedWidget};
                 if (!retainedCommittedSnapshot) {
                     sliderInteraction_.RetainAdjustmentMode(
                         snapshot->instanceId,

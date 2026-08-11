@@ -4,32 +4,36 @@ namespace GameBarAlternative.WidgetSdk;
 
 /// <summary>
 /// One safe leading visual for a rich tile. A tile can use either a closed
-/// semantic glyph, one absolute credential-free HTTPS image, or one bounded
-/// inline PNG; it cannot combine visual sources.
+/// semantic glyph, one absolute credential-free HTTPS image, one bounded
+/// inline PNG, or one host-resolved opaque artwork handle; it cannot combine
+/// visual sources.
 /// </summary>
 public sealed class TileArtwork
 {
     private TileArtwork(
         WidgetGlyph? glyph,
         string? imageSource,
+        WidgetArtworkHandle? artworkHandle,
         ImageFit imageFit,
         string accessibilityLabel)
     {
         Glyph = glyph;
         ImageSource = imageSource;
+        ArtworkHandle = artworkHandle;
         ImageFit = imageFit;
         AccessibilityLabel = ValidateLabel(accessibilityLabel, nameof(accessibilityLabel));
     }
 
     internal WidgetGlyph? Glyph { get; }
     internal string? ImageSource { get; }
+    internal WidgetArtworkHandle? ArtworkHandle { get; }
     internal ImageFit ImageFit { get; }
     internal string AccessibilityLabel { get; }
 
     public static TileArtwork FromGlyph(WidgetGlyph glyph, string accessibilityLabel)
     {
         if (!Enum.IsDefined(glyph)) throw new ArgumentOutOfRangeException(nameof(glyph));
-        return new TileArtwork(glyph, null, ImageFit.Contain, accessibilityLabel);
+        return new TileArtwork(glyph, null, null, ImageFit.Contain, accessibilityLabel);
     }
 
     public static TileArtwork FromHttps(
@@ -47,7 +51,7 @@ public sealed class TileArtwork
             throw new ArgumentException(
                 "Tile artwork must be an absolute HTTPS URL without embedded credentials.",
                 nameof(source));
-        return new TileArtwork(null, source, fit, accessibilityLabel);
+        return new TileArtwork(null, source, null, fit, accessibilityLabel);
     }
 
     public static TileArtwork FromInlinePng(
@@ -59,8 +63,18 @@ public sealed class TileArtwork
         return new TileArtwork(
             null,
             UI.CanonicalInlinePngSource(pngBase64, nameof(pngBase64)),
+            null,
             fit,
             accessibilityLabel);
+    }
+
+    public static TileArtwork FromHandle(
+        WidgetArtworkHandle handle,
+        string accessibilityLabel,
+        ImageFit fit = ImageFit.Cover)
+    {
+        if (!Enum.IsDefined(fit)) throw new ArgumentOutOfRangeException(nameof(fit));
+        return new TileArtwork(null, null, handle, fit, accessibilityLabel);
     }
 
     private static string ValidateLabel(string? value, string parameterName)
@@ -330,6 +344,10 @@ public static partial class UI
             WidgetElement leading = artwork.Glyph is { } glyph
                 ? new IconElement(
                     StableIdentifier.Child(id, "artwork"), glyph, artwork.AccessibilityLabel)
+                : artwork.ArtworkHandle is { } handle
+                    ? UI.Artwork(
+                        handle, StableIdentifier.Child(id, "artwork"),
+                        artwork.AccessibilityLabel, artwork.ImageFit)
                 : new ImageElement(
                     StableIdentifier.Child(id, "artwork"), artwork.ImageSource!,
                     artwork.AccessibilityLabel, artwork.ImageFit);

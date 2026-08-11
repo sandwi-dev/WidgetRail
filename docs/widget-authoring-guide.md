@@ -1371,10 +1371,13 @@ an opaque provider-lifetime token and never persist it. `SavedId` is the
 non-reversible publisher/package-scoped value for private state. The current
 Windows provider exposes bounded Start Menu `.lnk` plus current-user
 AppsFolder/AUMID registrations and conservatively reports them as Application.
-Resolved curated entries may include a bounded host-rasterized
-`IconPngBase64`; broad discovery remains text-only. Paths, AUMIDs, arguments,
-and activation PIDs remain provider-private. The provider does not yet support
-Steam/Xbox/other launcher aggregation or authoritative game detection. See the
+Current entries may include an opaque `ArtworkHandle`; the native host resolves
+it lazily only against the exact current trusted registration and keeps decoded
+pixels in a bounded memory cache. No image bytes enter snapshots or private
+state. Paths, AUMIDs, arguments, launcher identifiers, and activation PIDs
+remain provider-private. The provider includes reviewed Steam manifests as
+games but uses a semantic fallback because that source supplies no trusted icon
+surface; Xbox and other store adapters remain unsupported. See the
 [Games & Apps reference](games-and-apps.md).
 
 Handle `WidgetCapabilityUnavailableException`, `WidgetCapabilityException`

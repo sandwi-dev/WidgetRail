@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <cstddef>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -316,6 +317,9 @@ public:
     /// snapshot/input authority, and restores its prior host lifecycle.
     [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);
     [[nodiscard]] std::optional<WidgetSnapshot> GetSnapshot(std::wstring_view widgetId);
+    [[nodiscard]] std::optional<std::wstring> ResolveArtwork(
+        std::wstring_view widgetId,
+        std::wstring_view artworkHandle);
     [[nodiscard]] std::optional<bool> SendControllerInput(
         std::wstring_view widgetId,
         std::wstring_view button,
@@ -333,7 +337,7 @@ public:
         std::wstring_view actionId,
         std::wstring_view sourceElementId,
         std::wstring_view inputScopeId);
-    [[nodiscard]] const std::wstring& lastError() const noexcept { return lastError_; }
+    [[nodiscard]] std::wstring lastError() const;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
@@ -360,6 +364,7 @@ private:
     WidgetHostEffectQueue hostEffects_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
+    mutable std::recursive_mutex requestMutex_;
 };
 
 } // namespace gba

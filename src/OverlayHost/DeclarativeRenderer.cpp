@@ -1362,7 +1362,8 @@ struct DeclarativeRenderer::RenderPass final {
         const float opacity,
         const bool focused) {
         if (!target) return;
-        auto bitmap = owner->GetImageBitmap(target, node, *this);
+        auto bitmap = owner->GetImageBitmap(
+            target, node, *this, options.artworkWidgetId);
         if (!bitmap) {
             DrawSemanticIcon(node, style, Inset(rect, std::min(rect.width, rect.height) * 0.32F),
                 opacity * 0.65F, L"warning");
@@ -1964,24 +1965,34 @@ void DeclarativeRenderer::ForgetWidgetState(
 ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ID2D1RenderTarget* renderTarget,
     const WidgetNode& node,
-    RenderPass& pass) {
-    // Protocol-v14 handles are deliberately inert until the trusted artwork
-    // resolver supplies pixels. They are never interpreted as URLs or paths.
-    if (!node.artworkHandle.empty() && node.imageSource.empty()) return {};
-    if (!imageCache_ || !renderTarget || node.imageSource.empty()) {
+    RenderPass& pass,
+    const std::wstring_view artworkWidgetId) {
+    const bool trustedArtwork = !node.artworkHandle.empty() && node.imageSource.empty();
+    std::wstring source;
+    if (trustedArtwork && !artworkWidgetId.empty()) {
+        source = L"gbar-artwork\x1f";
+        source.append(artworkWidgetId);
+        source.push_back(L'\x1f');
+        source.append(node.artworkHandle);
+    } else {
+        source = node.imageSource;
+    }
+    if (!imageCache_ || !renderTarget || source.empty()) {
         pass.Add(node.id, L"missing_image", L"Image has no HTTPS source or image cache.");
         return {};
     }
-    if (!RemoteImageCache::IsAllowedImageSource(node.imageSource)) {
+    if (!trustedArtwork && !RemoteImageCache::IsAllowedImageSource(source)) {
         pass.Add(node.id, L"invalid_image_url",
             L"Only bounded HTTPS or canonical inline PNG image sources are accepted.");
         return {};
     }
-    if (const auto existing = bitmaps_.find(node.imageSource); existing != bitmaps_.end())
+    if (const auto existing = bitmaps_.find(source); existing != bitmaps_.end())
         return existing->second;
-    const auto state = imageCache_->GetState(node.imageSource);
+    const auto state = imageCache_->GetState(source);
     if (state == RemoteImageState::Missing) {
-        const auto request = imageCache_->Request(node.imageSource);
+        const auto request = trustedArtwork
+            ? imageCache_->RequestTrustedArtwork(source)
+            : imageCache_->Request(source);
         if (request == RemoteImageRequestResult::InvalidUrl ||
             request == RemoteImageRequestResult::CapacityExceeded ||
             request == RemoteImageRequestResult::ShuttingDown) {
@@ -1991,18 +2002,18 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     }
     if (state == RemoteImageState::Queued || state == RemoteImageState::Loading) return {};
     if (state == RemoteImageState::Failed) {
-        pass.Add(node.id, L"image_failed", imageCache_->GetError(node.imageSource));
+        pass.Add(node.id, L"image_failed", imageCache_->GetError(source));
         return {};
     }
     ComPtr<ID2D1Bitmap> bitmap;
     const auto result = imageCache_->CreateBitmap(
-        renderTarget, node.imageSource, bitmap.ReleaseAndGetAddressOf());
+        renderTarget, source, bitmap.ReleaseAndGetAddressOf());
     if (FAILED(result) || !bitmap) {
         pass.Add(node.id, L"image_bitmap", L"Ready image could not create a render-target bitmap.");
         return {};
     }
     if (bitmaps_.size() >= kMaximumBitmapEntries) bitmaps_.clear();
-    bitmaps_.emplace(node.imageSource, bitmap);
+    bitmaps_.emplace(source, bitmap);
     return bitmap;
 }
 

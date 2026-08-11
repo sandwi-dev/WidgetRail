@@ -120,6 +120,8 @@ struct DeclarativeRenderOptions final {
     /// Exact focused/actionable node held by a physical controller press. The
     /// host owns this transient state; widget snapshots remain immutable.
     std::wstring pressedElementId;
+    /// Current bridge widget ID used only to bind lazy opaque artwork demand.
+    std::wstring artworkWidgetId;
 };
 
 [[nodiscard]] constexpr bool IsCompactResponsiveSurface(
@@ -198,7 +200,8 @@ private:
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetImageBitmap(
         ID2D1RenderTarget* renderTarget,
         const WidgetNode& node,
-        RenderPass& pass);
+        RenderPass& pass,
+        std::wstring_view artworkWidgetId);
     [[nodiscard]] bool EnsureSurfaceClip(
         ID2D1RenderTarget* renderTarget,
         declarative::Rect viewport,
