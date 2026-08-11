@@ -92,6 +92,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-071 | P1 | Closed | Game Launcher Hidden route / cursor-resource readiness | Accepted DLV-088 plus DLV-090 make Restore/Back publish an enabled current row without Refresh. Final direct evidence is 43/43 and clean installed generic-worker run `20260811T175350Z-011a57cd` passes 6/6. |
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
 | GBA-073 | P1 | Closed | Protected Wi-Fi host transport / Native Wi-Fi rollback | Accepted DLV-093 `3ce8991`, integrated with DLV-087 through `63ca3a2`, replaces password-bearing JSON/string copies with a bounded mutable zeroed frame and requires an exact per-attempt profile ownership token before deletion. Mismatch, unavailable verification, and delete failure are explicit and preserve current Windows state. |
+| GBA-074 | P1 | Implementing; DLV-095 rejected, DLV-097 queued after active DLV-096 | Running-app observation / Widget SDK / Games & Apps / Game Launcher | DLV-095 candidate `bd270c9` adds the visible normalized running-app routes, but independent review found the OS walk caps accepted observations instead of windows inspected and the SDK returns a confirmed item after checking only SavedId equality. DLV-097 adds the deterministic inspection bound and complete confirmed-item validation before this dependent prefix integrates. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2341,6 +2342,36 @@ deleted. Failed rollback is reported explicitly, and only the exact still-
 current attempt-owned profile can be removed. Focused buffer/race evidence, one
 installed production-host route, and one clean exact-commit aggregate pass
 before DLV-087 is integrated and the Release is relaunched.
+
+## GBA-074 — Running-app inspection is not fully bounded or validated
+
+**Evidence:** DLV-095 candidate `bd270c9` adds a separate on-demand read grant,
+maps current windows to normalized SavedIds inside the trusted provider,
+confirms the current observation before CAS mutation, and keeps process/window/
+path identity out of widget IPC. Its native observer stops after 256 appended
+eligible process observations, not after 256 top-level windows visited. A
+desktop with many owned, cloaked, unreadable, elevated, or otherwise excluded
+windows can therefore cause an unbounded number of eligibility checks and
+process-open attempts before the observer reaches its named cap. Separately,
+`WidgetAppLibraryService.ConfirmRunningAsync` verifies only that a returned
+item's SavedId equals the request, then returns AppId, kind, display, and source
+fields without the validation applied to ordinary app-library items.
+
+**Ownership:** DLV-097 follows already-active DLV-096 so review does not
+interrupt the implementation lane. It owns one deterministic examined-window
+bound, complete SDK validation for a non-null confirmed item, focused boundary/
+malformed-response fixtures, and correction of the inaccurate implementation-
+status wording. It does not change matching, consent, persistence, launch
+authority, widget layout, provider architecture, or artwork work.
+
+**Acceptance:** At most the documented number of top-level windows are visited
+and process-open attempts cannot exceed that bound, including an all-ineligible
+fixture. The public result remains capped at 64 with stable duplicate collapse.
+A valid exact confirmation succeeds; invalid opaque IDs, mismatched SavedId,
+undefined kind, and empty, overlong, or control-bearing display/source values
+fail as `malformed_response` before either widget writes state. Neighbor state
+is unchanged and the complete corrected prefix passes its bounded focused and
+installed evidence before integration.
 
 ## Closed issues
 

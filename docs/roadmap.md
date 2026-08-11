@@ -308,9 +308,11 @@ remains off until the publisher-trust gates in Phase 4.
   The coherent post-DLV-055 Release is now
   running for packaged live artwork checks. Launcher sources, authoritative game
   classification, history, search, and source grouping are implemented in the
-  normalized Game Launcher path. Active DLV-095 adds only on-demand running-
-  program capture for exact current normalized registrations; arbitrary file-
-  picker additions remain later roadmap work.
+  normalized Game Launcher path. DLV-095 candidate `bd270c9` adds only on-demand
+  running-program capture for exact current normalized registrations; queued
+  DLV-097 bounds the native inspection walk and closes confirmed-item validation
+  before that prefix integrates. Arbitrary file-picker additions remain later
+  roadmap work.
 - Capture proof and widget if Windows API tests pass
 - Expand the implemented Spotify Community addon beyond its controller-first
   player core. The trusted provider is composed by `WidgetBridge`, the local
@@ -400,8 +402,9 @@ not irreversible API priority:
    AppsFolder/AUMID sources plus curated icons and a bounded Steam manifest/URI
    adapter are implemented. DLV-094 plus queued correction DLV-096 add bounded,
    demand-only trusted local Steam artwork through the existing lazy handle
-   path; active DLV-095 adds an on-demand running-program route only for exact
-   normalized registrations. Add
+   path; DLV-095 candidate `bd270c9` adds an on-demand running-program route only
+   for exact normalized registrations, with DLV-097 queued to close its bounded
+   observation and SDK-validation review gaps. Add
    other reviewed launcher adapters and a host-owned file picker later.
    Keep classification evidence-backed and launch identities opaque/revalidated.
 6. **Harden local providers and resource behavior.** The bounded schema-2

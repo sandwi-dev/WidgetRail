@@ -155,6 +155,18 @@ refactoring. DLV-096 is queued after already-active DLV-095 to make discovery
 entirely demand-only and add one bounded shared terminal result that joins both
 scan and artwork operations without racing source disposal.
 
+Independent review also rejects DLV-095 candidate `bd270c9` pending DLV-097,
+without interrupting already-active DLV-096. The new read grant and widget flows
+preserve opaque normalized authority and focused tests pass, but the public SDK
+confirmation path validates only SavedId equality before returning the remaining
+untrusted item fields. A malformed AppId, undefined kind, or invalid display/
+source value could therefore enter widget state instead of failing closed. The
+native observer's `MaximumWindows` counter also advances only when an eligible
+process identity is appended; arbitrarily many excluded or unreadable windows
+can be examined first. DLV-097 reuses the existing validation contract, counts
+every enumerated top-level window before filtering, and adds only the boundary
+fixtures needed to close those two gaps.
+
 DLV-059 `c7c354d`, corrected by DLV-071 `355a858`, is accepted and integrated
 through `6f4c642`. The provider's central Start Menu/AppsFolder/Steam discovery,
 resolve, launch, and artwork switches become private normalized source owners,

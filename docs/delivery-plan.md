@@ -906,9 +906,12 @@ route/action, playback, and presentation boundaries while retaining one
   adapter identity. DLV-094 committed as `3fdbc19`, but independent review
   rejected it pending DLV-096: catalog enumeration still performs synchronous
   artwork-file discovery and terminal cleanup does not join the new artwork-
-  operation lane. DLV-095 is active for the on-demand normalized running-app
-  route and is not interrupted; DLV-096 follows it before this dependent prefix
-  may integrate. These visible milestones plus their bounded correction are the
+  operation lane. DLV-095 committed as `bd270c9`; independent review retained
+  its visible design but rejected the commit pending DLV-097 because the public
+  confirmation response is not fully validated and the native walk bounds
+  accepted observations rather than windows examined. DLV-096 is active and is
+  not interrupted; DLV-097 follows it before this dependent prefix may
+  integrate. These visible milestones plus their bounded corrections are the
   complete currently safe queue: another local game-store adapter remains
   blocked on documented,
   maintainable registration/launch authority; audio endpoint selection remains
@@ -1877,7 +1880,8 @@ dependent prefix remains unintegrated until the correction passes review.
 
 ### DLV-095 — Add a current running app through normalized authority
 
-**State:** Assigned; implementation active from clean merge baseline `dd3efa7`
+**State:** Rejected in review at `bd270c9`; correction queued as DLV-097 after
+active DLV-096
 **Lane:** widgets, acting as the serialized app-library observation lead
 **Baseline:** DLV-094 candidate `3fdbc19` plus planner main merge `dd3efa7`
 **Dependencies:** DLV-059, DLV-071, DLV-072, DLV-075, DLV-077, and the accepted
@@ -1947,9 +1951,23 @@ process tracking; the OS cannot provide a bounded observation without keeping
 handles across the user decision; or the work requires changing existing launch
 semantics instead of reusing normalized SavedId resolution.
 
+**Reviewer disposition:** The distinct consent grant, opaque SavedId projection,
+confirm-before-CAS routes, duplicate collapse, provider revalidation, and
+installed generic-worker path are directionally accepted. Focused evidence is
+green for SDK 87/87, API compatibility 12/12, broker 54/54, provider 54/54,
+Games & Apps 58/58, and Game Launcher 44/44. The commit is not integrable yet:
+`WidgetAppLibraryService.ConfirmRunningAsync` checks only SavedId equality and
+returns the rest of an untrusted confirmed item without validating AppId,
+display/source bounds, controls, or the closed kind enum; and
+`WindowsRunningAppObserver.MaximumWindows` counts appended observations rather
+than enumerated top-level windows, so a desktop containing many excluded,
+owned, cloaked, unreadable, or otherwise ineligible windows has no deterministic
+inspection bound. DLV-097 owns only those gaps plus the inaccurate
+"visible owned top-level" implementation-status wording.
+
 ### DLV-096 — Make Steam artwork discovery truly lazy and drain its lifetime
 
-**State:** Ready; execute automatically after DLV-095 commits
+**State:** Assigned; implementation active from clean merge baseline `8de9a88`
 **Lane:** widgets, correcting the rejected DLV-094 prefix
 **Baseline:** clean closing commit of DLV-095, which remains based on DLV-094
 candidate `3fdbc19`
@@ -2015,6 +2033,68 @@ relaunch once for both visible outcomes.
 identity, terminal correctness requires unbounded waiting or force termination,
 or DLV-095 introduced an overlapping provider lifetime design that cannot be
 corrected mechanically without changing its accepted product behavior.
+
+### DLV-097 — Bound running-window inspection and validate confirmed items
+
+**State:** Ready; execute automatically after DLV-096 commits
+**Lane:** widgets, correcting the rejected DLV-095 commit
+**Baseline:** clean closing commit of DLV-096, containing DLV-095 `bd270c9`
+**Dependencies:** DLV-095 candidate `bd270c9` and DLV-096's coherent closing
+commit; no dependency on platform work
+**Owner:** the native running-window observation bound, public Widget SDK
+confirmation validation, focused provider/SDK/widget regressions, and directly
+affected implementation documentation; no new product behavior or authority
+**Concurrency:** Start only after DLV-096 commits. Platform remains idle. Do not
+rewrite, squash, or rebase the dependent prefix; close it with one ordinary
+follow-up commit.
+
+**Visible outcome:** **Add running app** remains responsive on a desktop with
+many irrelevant windows, and malformed confirmation data cannot enter either
+widget's in-memory or durable library state.
+
+**Objective:** Close the two independent-review gaps while preserving DLV-095's
+on-demand, exact-normalized, no-process-identity design.
+
+**In scope:** count every top-level window visited by the native observer before
+any eligibility filter or process open and stop at one named deterministic
+bound; retain the separate lower public-result cap and deterministic duplicate
+collapse. Keep owned/cloaked/background/inaccessible/elevated/overlay/worker/
+tool windows excluded without titles, polling, hooks, or retained handles.
+Validate a non-null `ConfirmRunningAsync` response with the same closed item
+rules used by app-library pages/resolution: exact requested SavedId, valid opaque
+AppId and SavedId, defined kind, bounded nonblank display/source values, and no
+control characters. Reject malformed values with the existing closed
+`malformed_response` error before either widget can project or persist them.
+Correct the implementation-status claim so it describes unowned top-level
+application windows rather than "owned" windows.
+
+**Out of scope:** changing consent or capability IDs, adding process/store/path
+identity, broadening executable matching, supporting arbitrary executables,
+changing widget routes/state schemas/launch behavior, rewriting the native
+observer, refactoring the provider, DLV-096 artwork work, screenshots, or an
+aggregate run.
+
+**Acceptance criteria:** observation performs at most the documented number of
+window visits and process-open attempts even when every window is ineligible;
+eligible results remain capped at 64 and duplicates remain stable. Boundary-
+minus-one, boundary, and boundary-plus-one fixtures prove deterministic stop
+behavior and no late candidate publication. SDK confirmation accepts one fully
+valid exact item and rejects malformed AppId, SavedId mismatch, undefined kind,
+empty/overlong/control-character display or source values without returning an
+item. Both widgets retain neighbor state and perform no CAS write when
+confirmation is malformed.
+
+**Verification:** Tier 1 Windows app-library provider injected-observer tests,
+Widget SDK tests, API compatibility, and the two directly affected widget
+route/state suites only where malformed-confirmation behavior is asserted.
+Documentation validation is required. Reuse existing projects; do not create a
+test project, run the canonical aggregate, or capture screenshots. After the
+complete DLV-094/095/096/097 prefix is accepted and integrated, fully package
+and visibly relaunch once.
+
+**Stop/escalate when:** deterministic bounding requires retaining native handles
+or a continuous monitor, full SDK validation would change an already documented
+valid item contract, or correcting either gap requires a new public authority.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
