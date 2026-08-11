@@ -89,6 +89,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
 | GBA-070 | P2 | Confirmed | YT Music package metadata / companion handshake | The DLV-082 integrated Tier-3 checkpoint proved the current immutable manifest is `0.2.7` while `YtmDesktopApiClient.PackageVersion` and its companion `appVersion` remain `0.2.6`. DLV-086 is queued behind visible work to restore one current version owner without republishing the package. |
+| GBA-071 | P1 | Implementing | Game Launcher Hidden route / cursor-resource readiness | Candidate DLV-084 passes its direct state suite, but the installed worker can return from Restore/Back with every library row disabled as a warm projection, even after Refresh. DLV-088 is queued immediately after active DLV-085 for one bounded ordering correction and retained installed-route rerun. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2205,6 +2206,30 @@ companion handshake agree on `0.2.7`; the existing mismatch assertion remains
 effective; no new package version or different bytes under immutable `0.2.7`
 are published. Run the focused YT Music suite and metadata validation once, not
 the repository aggregate.
+
+## GBA-071 — Game Launcher Restore can strand the library on unavailable rows
+
+**Evidence:** Candidate DLV-084 `6511dc9` passes the focused Game Launcher
+Release suite 42/42, including hide/restore after explicitly waiting for each
+resource operation to become idle. Its required installed generic-worker run
+`20260811T170031Z-c45cff26` passes 5/6. Under ordinary serialized actions, the
+fixture hides an exact current game, opens Hidden, restores it, returns Back,
+and then observes all 64 games plus the manual entry only as disabled
+`Unavailable` warm rows. Sending the visible Refresh action still does not
+produce an enabled launch row within five seconds.
+
+**Ownership:** DLV-088 owns the narrow Hidden-to-Library readiness and
+replacement ordering after already-running DLV-085. Provider discovery,
+broker/SDK contracts, native rendering, arbitrary delays, and broad cursor-
+resource redesign are not authorized. Candidate DLV-084 remains unintegrated
+until this correction is accepted.
+
+**Acceptance:** Hide, Hidden, Restore, and Back through the installed generic
+worker expose the exact restored game as a current enabled launch row without
+manual Refresh. Premature empty-Hidden state cannot admit route actions that
+allow a late or canceled resource generation to restore old warm-only rows.
+Focused slow/cancellation coverage and one installed-route run pass; unchanged
+fixtures are not rerun repeatedly.
 
 ## Closed issues
 

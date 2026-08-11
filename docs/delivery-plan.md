@@ -792,9 +792,12 @@ route/action, playback, and presentation boundaries while retaining one
   manual entries are now available on main. DLV-082 `a862ed4` is accepted and
   integrated through `ef8fbab`: bounded source-health truth now reaches Game
   Launcher without exposing adapter control or suppressing usable games.
-  DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084 is
-  Assigned and DLV-085 remains ordered visible Ready work;
-  DLV-086 follows as the bounded correction for the unrelated YT Music
+  DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084
+  candidate `6511dc9` is committed but not accepted: its installed-worker
+  Restore/Back path can remain on disabled warm rows. DLV-085 is already
+  executing from that coherent branch boundary; DLV-088 is its next ordered
+  Ready item and owns the narrow DLV-084 correction without interrupting
+  DLV-085. DLV-086 follows as the bounded correction for the unrelated YT Music
   package-version drift exposed by DLV-082's one aggregate. DLV-087 is the
   next visible cross-lane milestone: protected Personal Wi-Fi connection through
   a host-owned credential prompt. DLV-038 remains deferred test-architecture
@@ -931,8 +934,8 @@ native changes.
 
 ### DLV-084 — Add durable Game Launcher hide and restore
 
-**State:** Assigned; implementation started automatically from clean DLV-083
-commit `f441472`
+**State:** Candidate `6511dc9` rejected pending DLV-088 correction; DLV-085 was
+already in progress when review completed and must not be interrupted
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-083
 **Dependencies:** DLV-060, DLV-066, DLV-075, DLV-080, and DLV-083 only for
@@ -987,9 +990,21 @@ physical-game run.
 source identity, an unbounded list, another committed-state owner, or a public
 contract change.
 
+**Reviewer disposition:** Not accepted. The focused Game Launcher Release suite
+passes 42/42 and documentation passes across 55 Markdown files, but the required
+installed generic-worker route passes only 5/6. After an exact Hide, Hidden,
+Restore, and Back sequence, every returned catalog row remains a disabled warm
+projection; even the visible Refresh action does not produce a launchable
+current row within the fixture's five-second bound. This is behaviorally
+relevant because direct coverage waits for the resource to become idle between
+route actions while the installed path exercises ordinary serialized actions.
+DLV-088 owns one bounded readiness/reload correction and a single retained
+installed-route rerun. Do not repeat the unchanged fixture or broaden the work.
+
 ### DLV-085 — Clear selected widget private state from Settings
 
-**State:** Ready; execute automatically after committing DLV-084
+**State:** Assigned; implementation started automatically after candidate
+DLV-084 commit `6511dc9` and clean merge of current `main`
 **Lane:** widgets, acting as serialized managed widget-management lead
 **Baseline:** clean closing commit of DLV-084
 **Dependencies:** DLV-001, DLV-017, DLV-044, DLV-058, and DLV-084 only for
@@ -1054,12 +1069,65 @@ widget's document, deleting unowned files, broadening ordinary widget
 authority, changing the threat model materially, or requiring a global profile
 reset. Preserve the current state and return the design decision instead.
 
-### DLV-086 — Reconcile YT Music package version ownership
+### DLV-088 — Complete Game Launcher Restore-to-library readiness
 
 **State:** Ready; execute automatically after committing DLV-085
 **Lane:** widgets
-**Baseline:** clean closing commit of DLV-085
-**Dependencies:** accepted package reproducibility through DLV-057 and DLV-085
+**Baseline:** clean closing commit of DLV-085, retaining candidate DLV-084
+`6511dc9`
+**Dependencies:** candidate DLV-084 and DLV-085 only for contiguous lane order
+**Owner:** Game Launcher Hidden-route transition/readiness policy and its exact
+focused/installed fixtures; no provider, broker, SDK, native, or management
+boundary changes
+**Concurrency:** Managed Game Launcher only. Do not change DLV-085's state
+management contract, app-library authority, native rendering, or reviewer-owned
+files.
+
+**Visible outcome:** After Restore and Back, the restored game becomes a normal
+current launchable library row without requiring a manual Refresh. Rapid normal
+controller actions cannot strand the library on disabled cached projections.
+
+**Objective:** Correct the one installed-worker transition rejected during
+DLV-084 review by making route completion/readiness and resource replacement
+coherent under serialized real-worker action timing, without adding another
+reload owner or weakening the fixture.
+
+**In scope:** exact Hide, Hidden, Restore, empty-Hidden, Back, and current-library
+reload sequence; action/readiness gating while the Hidden resource replacement
+is still settling; cancellation/replacement ordering; current SavedId authority;
+deterministic focus on the restored or nearest current row; ensure any warm-state
+fallback anchor names a displayed non-hidden row; accurate loading/error copy.
+
+**Out of scope:** provider/broker/SDK/native changes, new retry loops, arbitrary
+delays, longer test timeouts, broad cursor-resource redesign, Game Launcher
+visual redesign, more organization features, aggregate verification,
+screenshots, or external store/game execution.
+
+**Acceptance criteria:** the installed generic-worker sequence can perform
+Hide, open Hidden, Restore, Back, and observe the exact restored current row as
+enabled and launch-authorized without sending Refresh. A user cannot activate
+Back or Refresh against a premature empty-Hidden projection that later restores
+an older resource snapshot. Late/canceled Hidden loads cannot replace the
+current Library generation. Direct slow/cancellation-ignoring coverage proves
+the same ordering, and warm fallback never publishes a focus anchor for an
+excluded row.
+
+**Verification:** Tier 1 Game Launcher Release suite once after the correction,
+then the smallest installed generic-worker route once with the manual Refresh
+step removed. Retain the exact result whether green or red. No documentation
+suite unless public copy changes, and no provider, broker, SDK, native,
+aggregate, screenshot, external store, or physical-game run.
+
+**Stop/escalate when:** correctness requires changing the shared cursor-resource
+contract, public action serialization, provider authority, or accepting manual
+Refresh as intended product behavior.
+
+### DLV-086 — Reconcile YT Music package version ownership
+
+**State:** Ready; execute automatically after committing DLV-088
+**Lane:** widgets
+**Baseline:** clean closing commit of DLV-088
+**Dependencies:** accepted package reproducibility through DLV-057 and DLV-088
 only for contiguous lane order
 **Owner:** YT Music package-version value ownership, its directly affected
 credential-free test, and implementation-status documentation; no runtime,
