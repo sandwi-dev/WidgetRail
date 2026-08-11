@@ -255,12 +255,14 @@ remains off until the publisher-trust gates in Phase 4.
   responsive widget can author and replay an exact seek-to-selected-navigation
   edge without native special cases. Widgets-led serialized DLV-006 is accepted
   through `9c7438f` as the distinct cursor/append collection and bounded lazy-
-  artwork foundation. DLV-022 candidate `c349bbd` proves the main Spotify cursor path but
-  remains unintegrated because URI-only keys collide for repeated media and a
-  singleton playlist row self-links. DLV-018 candidate `039b7b8` adds the lazy
+  artwork foundation. DLV-022 candidate `c349bbd` proves the main Spotify cursor
+  path, and accepted-at-code DLV-053 commit `7f5c2fd` now supplies bounded
+  repeated-media occurrence keys plus the singleton graph correction. DLV-018
+  candidate `039b7b8` adds the lazy
   trusted path but remains unintegrated until DLV-054 removes UI-thread bridge
-  contention and invalidates same-identity changed icons. Finish the already-
-  started DLV-053 Spotify correction, then take DLV-054 before DLV-043. Continue suitable
+  contention and invalidates same-identity changed icons. Finish active DLV-054,
+  integrate and launch the coherent visible prefix if accepted, then take
+  DLV-043. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -317,9 +319,10 @@ remains off until the publisher-trust gates in Phase 4.
   eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
   Do not claim public distribution while the documented five-user Development
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
-  Before expanding breadth, the DLV-022-dependent prefix must pass DLV-053's
-  duplicate-occurrence and singleton-focus correction so Queue/Playlist
-  traversal safely consumes the continuous keyed-list contract from DLV-006.
+  Before expanding breadth, integrate and live-verify accepted-at-code DLV-053
+  (`7f5c2fd`) after active DLV-054 closes the preceding artwork prefix. DLV-053
+  gives Queue/Playlist traversal bounded duplicate-occurrence identity and a
+  non-self-linking singleton header graph over DLV-006's continuous keyed list.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,

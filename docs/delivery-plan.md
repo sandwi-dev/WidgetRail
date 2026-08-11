@@ -686,14 +686,15 @@ The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
 `main`. DLV-006's public/native prefix, cursor-cycle correction, and final
 production-host/UIA composition proof are accepted and integrated through
-`9c7438f`. DLV-022 produced candidate `c349bbd`, but independent review rejected
-that prefix because URI-only media keys cannot represent legitimate duplicate
-queue/playlist occurrences and the single-row playlist graph authors a self
+`9c7438f`. DLV-022 candidate `c349bbd` is corrected at code level by accepted
+DLV-053 commit `7f5c2fd`: bounded occurrence keys now distinguish repeated
+queue/playlist media, preserve exact actions, and remove the singleton self
 edge. DLV-018 candidate `039b7b8` adds the trusted artwork path but is rejected
 pending DLV-054 because slow artwork demand serializes the native UI behind the
 same synchronous bridge client and same-identity icon changes do not invalidate
-the retained native cache. DLV-053 is already Assigned and continues without
-interruption; DLV-054 is next before DLV-043. DLV-038 remains deferred test-
+the retained native cache. DLV-054 is now Assigned and active before DLV-043;
+the complete DLV-022/018/053 prefix remains unintegrated until that correction
+is accepted. DLV-038 remains deferred test-
 architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
@@ -2221,8 +2222,8 @@ canonical result remains the sole Tier-3 run.
 
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Candidate `c349bbd` rejected; correction queued as DLV-053 after the
-already-started DLV-018 milestone
+**State:** Candidate `c349bbd` corrected by accepted-at-code DLV-053 commit
+`7f5c2fd`; complete dependent prefix remains unintegrated pending DLV-054
 **Baseline:** accepted DLV-006 integration `9c7438f` plus the reviewer commit
 recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
@@ -2294,7 +2295,7 @@ paged resource first joins an equal current intent. The bounded parity fix above
 is therefore an immediate prerequisite of the visible DLV-022 outcome and is
 authorized inside this milestone; a Spotify-local busy flag remains prohibited.
 
-**Reviewer disposition:** Rejected. Candidate `c349bbd` correctly adds the exact-
+**Initial reviewer disposition:** Rejected. Candidate `c349bbd` correctly adds the exact-
 intent shared join and broad continuous-list coverage, but
 `SpotifyCollectionIdentity.Media` hashes only the media URI. Spotify queues and
 playlists may legitimately contain the same track or episode more than once;
@@ -2306,6 +2307,22 @@ second independent graph defect gives the first playlist row an explicit Down
 edge to itself when the detail contains one item. Do not integrate `c349bbd` or
 dependent commits until DLV-053 supplies bounded occurrence identity and removes
 the self edge. Per the asynchronous review rule, DLV-018 continues first.
+
+**Correction disposition:** Accepted at code level through DLV-053 commit
+`7f5c2fd`. URI remains semantic media identity while one private, collection-
+context-bound policy supplies unique occurrence keys for same-page and retained
+cross-page duplicates. Unique items preserve URI-derived keys across offset
+changes; distinguishable duplicates retain keys through refresh/insertion/
+deletion; otherwise-identical rows use deterministic nearest-equivalent
+matching. Matcher state is capped to the resource window, Reset clears it, and
+an exact request generation makes cancellation-ignoring superseded completion
+side-effect free. Exact occurrence keys flow through focus and playback lookup.
+The singleton row retains Up to Play but no longer authors Down to itself.
+Retained focused evidence passes Spotify 45/45, installed-worker conformance
+6/6, documentation across 53 files, and Spotify 0.2.11 package validation. No
+shared SDK, provider, native, protocol, public API, live-account, screenshot, or
+aggregate work changed. The complete prefix is still unintegrated only because
+DLV-018 requires DLV-054's separate correction.
 
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
@@ -2378,7 +2395,7 @@ gaps without broadening widget authority.
 
 ### DLV-053 — Correct Spotify occurrence identity and singleton focus
 
-**State:** Assigned after DLV-018 candidate `039b7b8`
+**State:** Done; accepted at code level as `7f5c2fd`; unintegrated pending DLV-054
 **Baseline:** closing commit of DLV-018, including unaccepted candidate
 `c349bbd`; retain the complete prefix for correction and review
 **Dependencies:** DLV-006, DLV-022 candidate `c349bbd`, and DLV-018
@@ -2437,9 +2454,24 @@ duplicate-key failure, or a product choice about which non-equivalent Spotify
 item should play. Preserve exact provider evidence rather than substituting a
 title/global-ordinal key.
 
+**Reviewer disposition:** Accepted. One private occurrence policy per Spotify
+media collection retains URI as semantic identity and adds only a bounded
+collection-context discriminator. Same-page and retained cross-page duplicates
+receive unique collection/focus/action keys; unique URI keys survive offset
+changes; duplicate keys remain stable through refresh, insertion, deletion,
+eviction/refetch, and exact playback lookup. Truly indistinguishable occurrences
+use deterministic nearest-equivalent matching within the retained window. An
+exact request generation prevents superseded cancellation-ignoring completion
+from mutating matcher state, and Reset clears all retained occurrences. A
+one-row playlist now authors Play Down to row and row Up to Play with no self
+Down edge. Retained Release evidence passes Spotify 45/45, installed-worker
+conformance 6/6, 53 documentation files, and the validated Spotify 0.2.11
+package. The commit is not integrated because its ancestry still contains the
+rejected DLV-018 candidate; DLV-054 must close that prefix first.
+
 ### DLV-054 — Keep trusted artwork current without blocking the overlay
 
-**State:** Ready after DLV-053
+**State:** Assigned after accepted-at-code DLV-053
 **Baseline:** closing commit of DLV-053, including rejected DLV-018 candidate
 `039b7b8`; retain the complete prefix for correction and review
 **Dependencies:** DLV-006, DLV-018 candidate `039b7b8`, and DLV-053 only for
