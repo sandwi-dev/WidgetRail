@@ -64,6 +64,15 @@ struct WidgetSurfaceAdmission final {
     PlacementLimits placementLimits{};
 };
 
+#ifdef GBA_WIDGET_SURFACE_COORDINATOR_TESTING
+struct WidgetSurfacePaintTrace final {
+    long long snapshotSequence{};
+    ContentPresentation contentPresentation{ContentPresentation::AdmittedWidget};
+    bool declarativeRenderSucceeded{}, admittedContentPresented{};
+    std::size_t navigationNodeCount{};
+};
+#endif
+
 /// Sole native owner for the first generic pinned HWND. Widget input is data
 /// only: catalog identity, immutable generations, and a validated declarative
 /// snapshot. No public or worker-facing type can supply a window or z-order.
@@ -112,6 +121,12 @@ public:
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     [[nodiscard]] std::optional<POINT> PointerPointForTesting(
         std::wstring_view nodeId) const noexcept;
+    [[nodiscard]] WidgetSurfacePaintTrace PaintTraceForTesting() const noexcept {
+        return {admission_ ? admission_->snapshot.sequence : 0,
+                ResolveSurfacePresentationPolicy(policy_.interactionMode()).content,
+                lastRenderResult_.succeeded, pinned() && lastRenderResult_.succeeded,
+                lastRenderResult_.navigationRects.size()};
+    }
 #endif
     [[nodiscard]] bool Unpin(WidgetSurfaceStopReason reason) noexcept;
     void OnOverlayHidden() noexcept;

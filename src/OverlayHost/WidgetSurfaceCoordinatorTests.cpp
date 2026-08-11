@@ -290,6 +290,16 @@ int main() {
         Check(coordinator.SetInteractionMode(gba::pinned::InteractionMode::ClickThrough),
               "fixture returns to closed click-through mode after placement setup");
         UpdateWindow(surface);
+        const auto initialClickThroughPaint = coordinator.PaintTraceForTesting();
+        Check(initialClickThroughPaint.snapshotSequence == 1 &&
+                  coordinator.interactionMode() ==
+                      gba::pinned::InteractionMode::ClickThrough &&
+                  initialClickThroughPaint.contentPresentation ==
+                      gba::pinned::ContentPresentation::AdmittedWidget &&
+                  initialClickThroughPaint.declarativeRenderSucceeded &&
+                  initialClickThroughPaint.admittedContentPresented &&
+                  initialClickThroughPaint.navigationNodeCount >= 2,
+              "click-through production paint retains admitted sentinel content without a placeholder");
         Check(!FindAutomationId(surface, L"host:pinned.move") &&
                   !FindAutomationId(surface, L"widget:pin.fixture.action"),
               "click-through UIA tree exposes no hidden interactive controls");
@@ -321,6 +331,27 @@ int main() {
               "hidden-overlay pin is nonactivating and click-through");
         Check(SendMessageW(surface, WM_NCHITTEST, 0, 0) == HTTRANSPARENT,
               "click-through pin rejects hit-test ownership");
+        Check(coordinator.UpdateSnapshot(
+                  coordinator.widgetId(), coordinator.runtimeGeneration(), Snapshot(3)),
+              "hidden click-through pin admits a current replacement snapshot");
+        UpdateWindow(surface);
+        const auto hiddenReplacementPaint = coordinator.PaintTraceForTesting();
+        Check(hiddenReplacementPaint.snapshotSequence == 3 &&
+                  coordinator.interactionMode() ==
+                      gba::pinned::InteractionMode::ClickThrough &&
+                  hiddenReplacementPaint.contentPresentation ==
+                      gba::pinned::ContentPresentation::AdmittedWidget &&
+                  hiddenReplacementPaint.declarativeRenderSucceeded &&
+                  hiddenReplacementPaint.admittedContentPresented &&
+                  hiddenReplacementPaint.navigationNodeCount >= 2,
+              "hidden-overlay repaint presents the current sentinel content without reopening");
+        SendMessageW(surface, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(40, 100));
+        SendMessageW(surface, WM_LBUTTONUP, 0, MAKELPARAM(40, 100));
+        Check(!coordinator.controllerFocused() &&
+                  coordinator.TakeInputRequests().empty() &&
+                  !FindAutomationId(surface, L"widget:pin.fixture.action") &&
+                  !FindAutomationId(surface, L"host:pinned.close"),
+              "hidden click-through content retains no focus, input, or actionable UIA authority");
         coordinator.OnOverlayShown();
         Check(coordinator.ToggleInteractionMode() &&
                   coordinator.presentationState() ==
@@ -349,7 +380,7 @@ int main() {
         Check(controllerInputs.size() == 1 &&
                   controllerInputs[0].widgetId == coordinator.widgetId() &&
                   controllerInputs[0].runtimeGeneration == coordinator.runtimeGeneration() &&
-                  controllerInputs[0].snapshotSequence == 2 &&
+                  controllerInputs[0].snapshotSequence == 3 &&
                   controllerInputs[0].nodeId == L"pin.fixture.action" &&
                   controllerInputs[0].protocolButton == L"a" &&
                   controllerInputs[0].origin ==

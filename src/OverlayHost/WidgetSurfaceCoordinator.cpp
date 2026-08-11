@@ -982,8 +982,8 @@ void WidgetSurfaceCoordinator::Paint() {
         secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     DeclarativeRenderOptions options;
     options.pixelScale = dpiScale;
-    options.collectAccessibility =
-        policy_.interactionMode() == InteractionMode::Focusable;
+    options.collectAccessibility = ResolveSurfacePresentationPolicy(
+        policy_.interactionMode()).exposeInteractiveSemantics;
     options.responsiveViewport = {widthDip, heightDip};
     options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
     options.accessibility.reducedMotion = true;
@@ -998,21 +998,6 @@ void WidgetSurfaceCoordinator::Paint() {
             ? std::wstring_view{focusedElementId_}
             : std::wstring_view{},
         viewport, options);
-    if (policy_.interactionMode() == InteractionMode::ClickThrough) {
-        renderTarget_->FillRectangle(
-            D2D1::RectF(viewport.x, viewport.y,
-                        viewport.x + viewport.width,
-                        viewport.y + viewport.height),
-            backgroundBrush_.Get());
-        const std::wstring preview =
-            L"Click-through preview — reopen the overlay to interact";
-        renderTarget_->DrawTextW(
-            preview.c_str(), static_cast<UINT32>(preview.size()), titleFormat_.Get(),
-            D2D1::RectF(viewport.x + 12.0F, viewport.y + 12.0F,
-                        viewport.x + viewport.width - 12.0F,
-                        viewport.y + viewport.height - 12.0F),
-            textBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
-    }
     const HRESULT result = renderTarget_->EndDraw();
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else PublishAccessibility();

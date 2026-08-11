@@ -274,6 +274,21 @@ void TestPolicyAndPlacement() {
     Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
           "placement mode retains exclusive A/B controller ownership");
 
+    const auto clickThroughPresentation =
+        gba::pinned::ResolveSurfacePresentationPolicy(
+            gba::pinned::InteractionMode::ClickThrough);
+    const auto interactivePresentation =
+        gba::pinned::ResolveSurfacePresentationPolicy(
+            gba::pinned::InteractionMode::Focusable);
+    Check(clickThroughPresentation.content ==
+              gba::pinned::ContentPresentation::AdmittedWidget &&
+              !clickThroughPresentation.exposeInteractiveSemantics,
+          "click-through preserves admitted content while withholding actions");
+    Check(interactivePresentation.content ==
+              gba::pinned::ContentPresentation::AdmittedWidget &&
+              interactivePresentation.exposeInteractiveSemantics,
+          "interactive mode preserves the same content and exposes actions");
+
     gba::pinned::SurfacePolicy policy;
     Check(policy.state() == gba::pinned::LifecycleState::Unpinned,
           "policy begins unpinned");

@@ -244,11 +244,12 @@ physical-game claim.
 DLV-068 adds no hidden or idle placement timer. Its 16-check pure fixture covers
 normalized mixed-DPI restore, invalid-state reset, monitor loss, declared-minimum
 failure, generation rejection, constraints, cancel/commit, and atomic storage.
-The 76-check real-HWND coordinator fixture includes controller focus, pointer
+The 80-check real-HWND coordinator fixture includes controller focus, pointer
 capture cancellation, widget/host UI Automation, move/resize, minimum-size
 action bounds, exact cancel, coordinator monitor-loss reconciliation, durable
-repin, Close, and emergency hide; its incremental pinned private-working-set
-observation was 11,026,432 bytes, below the existing 128 MiB material gate.
+repin, Close, emergency hide, and stateless Click-through/hidden-snapshot paint
+evidence; its incremental pinned private-working-set observation was 11,370,496
+bytes, below the existing 128 MiB material gate.
 DLV-069 adds no hidden or idle input timer. This is still a short fixture-process observation, not a
 production process-tree, display-hot-plug, GPU, or long-run measurement.
 

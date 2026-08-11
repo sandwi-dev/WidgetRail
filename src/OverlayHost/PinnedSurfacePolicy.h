@@ -12,6 +12,18 @@ enum class InteractionMode {
     Focusable,
 };
 
+enum class ContentPresentation { AdmittedWidget };
+
+struct SurfacePresentationPolicy final {
+    ContentPresentation content{ContentPresentation::AdmittedWidget};
+    bool exposeInteractiveSemantics{};
+};
+
+[[nodiscard]] constexpr SurfacePresentationPolicy ResolveSurfacePresentationPolicy(
+    const InteractionMode mode) noexcept {
+    return {ContentPresentation::AdmittedWidget, mode == InteractionMode::Focusable};
+}
+
 enum class LifecycleState {
     Unpinned,
     Pinned,

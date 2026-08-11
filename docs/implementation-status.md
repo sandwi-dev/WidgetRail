@@ -1895,6 +1895,21 @@ focus-valid on-screen recovery, and Move/Resize/Commit/Cancel bounds inside the
 minimum surface. The latter observed an 11,026,432-byte incremental private-
 working-set delta below the DLV-016 gate, with no hidden/idle timer added.
 
+DLV-073 corrects the rejected Click-through paint branch without changing
+interaction authority: the coordinator no longer covers the admitted widget
+viewport with an opaque placeholder after rendering it. The existing renderer
+continues to present current snapshots while Click-through still exits focus,
+rejects hit testing and input, empties pending requests, and publishes only
+nonactionable host semantics. The 308-check pure host-policy run and 80-check
+focused real-HWND run include a
+stateless production-paint trace proving sentinel sequence 1 survives the mode
+and hidden-overlay sequence 3 repaints before reopen; its incremental private-
+working-set delta is 11,370,496 bytes. The coordinator remains 1,416 aggregate
+physical lines before and after (1,203 + 213 versus 1,188 + 228), with the same
+single admission/HWND/render/focus/input/placement/UIA/teardown owner and no new
+mutable dependency, state machine, timer, public API, media authority, or
+compositor.
+
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is
 **0.684-0.707 MiB**, normalized 750 ms idle CPU is **0%**, and the two-node host

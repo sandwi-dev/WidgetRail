@@ -56,9 +56,11 @@ Only one surface may be pinned in this first bounded release:
 3. press `U`, use the pinned Interactive chrome, close the pinned window, remove
    or replace its package generation, restart its worker, or exit the host to
    perform one exact paired HWND/semantic teardown;
-4. closing the main overlay preserves the surface but always returns it to
+4. closing the main overlay preserves the current declarative content and keeps
+   repainting accepted snapshot replacements, but always returns the surface to
    click-through. Reopen the main overlay before explicitly restoring
-   Interactive mode.
+   Interactive mode. Click-through never covers the widget with substitute or
+   placeholder content.
 
 While the pin owns controller focus, `X` closes it. `LB`+`RB`+`X` is the
 host-owned emergency action: it unpins the bounded surface and releases input
@@ -163,12 +165,16 @@ the timings are not interchangeable product benchmarks.
 
 `src\OverlayHost\build.ps1 -Configuration Release
 -WidgetSurfaceTestsOnly` builds the production coordinator with its focused
-real-HWND fixture. After DLV-069 it passes 76 admission, closed-state, style,
+real-HWND fixture. After DLV-073 it passes 80 admission, closed-state, style,
 real-window, controller focus, pointer capture, UI Automation composition,
 generation, live-update, placement/cancel/commit, minimum-size action bounds,
 coordinator monitor-loss reconciliation, durable-repin, overlay-hide, Close,
-emergency-hide, cap, and exact-teardown checks. Its current incremental pinned
-private-working-set observation is 11,026,432 bytes, below
+emergency-hide, cap, and exact-teardown checks. The deterministic production
+paint trace proves the same sentinel render is present in Interactive and
+Click-through and that a hidden-overlay snapshot replacement advances without
+a placeholder while actions remain inert. The pure host policy fixture passes
+308 checks. The current incremental pinned private-working-set observation is
+11,370,496 bytes, below
 DLV-016's 128 MiB material gate.
 
 `src\OverlayHost\build.ps1 -Configuration Release
@@ -176,6 +182,21 @@ DLV-016's 128 MiB material gate.
 mixed-DPI, monitor-loss, generation, constraint, minimum, and atomic-persistence
 fixture. Neither short single-process fixture is a production process-tree,
 GPU, idle-CPU, physical-display, or long-run benchmark.
+
+### Coordinator responsibility disposition
+
+Before and after DLV-073, `WidgetSurfaceCoordinator.cpp` plus its header contain
+1,416 physical lines (1,203 + 213 before; 1,188 + 228 after). The same sole
+coordinator still owns admission/generation, the one HWND and mode, render/focus
+composition, bounded input requests, placement delegation, UIA projection, and
+exact teardown. Its coordination state remains one admission, one policy, one
+renderer result, one focus identity, one bounded request queue, and one optional
+placement session; mutable dependencies remain the existing factories, renderer,
+image cache, placement store, UIA provider, and host notification window. The
+paint evidence seam is test-only and stateless: it reads the existing admitted
+sequence and renderer result and introduces no lifecycle, renderer, or focus
+owner. Retaining the cohesive owner is therefore bounded for this correction;
+any broader decomposition remains separate planner-authorized work.
 
 ## Explicit limitations
 
