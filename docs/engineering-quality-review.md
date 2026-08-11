@@ -1,11 +1,10 @@
 # Engineering Quality Review
 
 Status: living independent quality audit; active findings require disposition<br>
-Date: 2026-08-10<br>
-Last reassessed: 2026-08-10 against integrated `main` `6d3b093`, including
-accepted work through DLV-015 plus
-the retained stable dirty full-gate run `20260810T030727Z-449cac31` and clean
-full-gate result for `0598e5a`<br>
+Date: 2026-08-11<br>
+Last reassessed: 2026-08-11 against integrated `main` `af37786` and unintegrated
+widgets candidate `c7c354d`; prior retained evidence remains scoped to the
+commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -13,6 +12,32 @@ verification credibility, UI/UX foundations, and product readiness
 
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
+
+### Current review delta — normalized game-library ownership
+
+DLV-059 candidate `c7c354d` is a meaningful architecture improvement but is
+not accepted. The provider's central Start Menu/AppsFolder/Steam discovery,
+resolve, launch, and artwork switches become two private normalized source
+owners, and raw launch identity remains inside those owners. The candidate's
+36/36 focused provider cases and 54 documentation contracts are proportional
+for that boundary.
+
+The new source base also owns a lifetime CTS, active-operation count, drain
+event, generation, and bounded `Dispose`, but the production
+`WindowsAppLibraryProvider` does not implement `IDisposable`. The composite
+broker already calls an app-library backend's terminal interface when present,
+so this omission leaves the source drain contract unreachable in production
+and makes the direct disposal test insufficient acceptance evidence. DLV-071
+is the bounded correction; the unintegrated candidate must not be extended into
+the Game Launcher until that terminal owner exists.
+
+DLV-060 also stopped correctly before edits after proving a framework gap: the
+public app-library service and broker materialize and cap one snapshot at 512
+items. That contract cannot support the required 2,000/10,000-item launcher
+without a fake test or widget-local cache. DLV-072 therefore explicitly replaces
+the obsolete pre-release offset/snapshot path with bounded revision-bound
+cursor queries, migrates Games & Apps, and requires one clean exact-commit
+cross-process integration checkpoint before visible Game Launcher work resumes.
 
 This cycle closes the bounded security-stabilization implementation gate and
 then returns to product work. DLV-001 (`d0c0420`) completes the exact-token,

@@ -571,8 +571,10 @@ Framework prerequisites:
 Staged rollout:
 
 1. Normalize the existing Start Menu/AppsFolder and Steam sources behind the
-   adapter contract and render a 2,000/10,000-entry deterministic fake library
-   through the virtualized grid.
+   adapter contract, close their production terminal ownership, replace the
+   old 512-item app-library snapshot capability with bounded opaque cursor
+   queries, and render a 2,000/10,000-entry deterministic fake library through
+   the virtualized grid.
 2. Ship installed-only Steam plus one independently implemented local adapter
    such as Epic or GOG. Prove source isolation, refresh, stale launch refusal,
    artwork bounds, duplicate names, offline store clients, and controller-only
@@ -586,13 +588,18 @@ Staged rollout:
    and partner requirements are documented. This is not a prerequisite for a
    strong installed-game launcher.
 
-**Current delivery sequence:** DLV-059 now normalizes the existing trusted
-Start Menu/AppsFolder and Steam sources behind one internal adapter contract.
-DLV-060 then ships the dedicated installed-only Game Launcher over the accepted
-cursor-grid and lazy-artwork foundations; DLV-066 adds explicit favorites and
-preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
-Host-owned query/text entry and additional store adapters remain later
-serialized stages rather than being hidden inside the first widget.
+**Current delivery sequence:** DLV-059 candidate `c7c354d` normalizes the
+existing trusted Start Menu/AppsFolder and Steam sources behind one internal
+adapter contract; DLV-071 closes the candidate's missing production disposal/
+drain owner before integration. DLV-060 then correctly stopped before edits
+because the current public capability materializes and caps the library at 512
+items. DLV-072 replaces that obsolete pre-release path with bounded opaque
+cursor queries and migrates Games & Apps; DLV-060 then ships the dedicated
+installed-only Game Launcher over those queries plus the accepted cursor-grid
+and lazy-artwork foundations. DLV-066 adds explicit favorites and preferred
+variants, and DLV-067 adds only adapter-provable launch lifecycle. Host-owned
+query/text entry and additional store adapters remain later serialized stages
+rather than being hidden inside the first widget.
 
 Completion evidence includes deterministic adapter contract suites; 2,000 and
 10,000 item cold/refresh/search/scroll measurements; bounded memory, decoded
