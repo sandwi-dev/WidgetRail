@@ -881,8 +881,10 @@ route/action, playback, and presentation boundaries while retaining one
   integrated through `63ca3a2`: protected Personal Wi-Fi uses a zeroed mutable
   host path with attempt-owned rollback, and confirmed Bluetooth removal affects
   only one current pairing. DLV-092 is now active for privacy-safe connection
-  details. This keeps the lane on visible product work after the bounded
-  credential correction.
+  details. Ready DLV-094 then fills the remaining trusted Steam-artwork fallback,
+  followed by Ready DLV-095 for an on-demand normalized running-app capture
+  route. This keeps the lane on visible product work after the bounded
+  credential correction and prevents another empty clean boundary.
   DLV-038 remains deferred test-architecture debt rather than filler work.
 
 ### DLV-082 — Surface isolated game-library source health
@@ -1754,6 +1756,145 @@ privacy model would expose location-sensitive Wi-Fi identity outside its
 existing explicit flow, or the assignment starts becoming a throughput/
 latency/repair framework. Preserve the exact gap for a later diagnostic
 milestone.
+
+### DLV-094 — Resolve trusted local Steam artwork lazily
+
+**State:** Ready; execute automatically after DLV-092 commits
+**Lane:** widgets, acting as the serialized app-library artwork lead
+**Baseline:** clean closing commit of DLV-092 after merging the planner commit
+that contains this assignment
+**Dependencies:** DLV-006, DLV-018, DLV-054, DLV-059, DLV-060, and DLV-072
+**Owner:** the existing trusted Steam source adapter's local artwork resolver,
+app-library artwork revision/handle projection, bounded decode fixtures, Games &
+Apps and Game Launcher inherited presentation, and directly affected docs; no
+renderer/compositor, store login, network fetch, or new launch authority
+**Concurrency:** Begin only from the clean DLV-092 boundary. Platform remains
+idle and must not change app-library artwork, bridge artwork admission, native
+image cache, or shared packaging files while this assignment runs.
+
+**Visible outcome:** Installed Steam games show their current trusted local
+library icon/artwork in Games & Apps and Game Launcher when Steam has a valid
+cached asset. Missing, stale, corrupt, or unsupported assets retain the honest
+semantic Play fallback without delaying navigation or widget switching.
+
+**Objective:** Close the user-visible Steam artwork gap through the existing
+lazy opaque-handle pipeline, using only bounded local cache files associated
+with an already revalidated Steam registration.
+
+**In scope:** derive candidate artwork only from the current trusted Steam root
+and exact provider-internal app identity; support the smallest current Steam
+library-cache filename/layout set proven by deterministic fixtures; resolve
+regular non-reparse files beneath the trusted cache root; allowlist PNG/JPEG
+input; bound path components, file bytes, decoded dimensions/pixels, decode
+time, and per-source cache entries; include exact file identity/content revision
+in the host-only revalidation digest so changed or removed bytes rotate/revoke
+the handle; reuse DLV-054 demand acknowledgement, worker/session admission,
+decoded-cache eviction, and fallback behavior; duplicate registrations, multiple
+Steam roots, cache replacement during read, malformed images, source removal,
+worker replacement, cancellation, and provider failure.
+
+**Out of scope:** Steam login, Web API, CDN/network downloads, scraping, account
+libraries, uninstalled games, arbitrary widget-supplied paths/URLs, raw Steam
+app IDs or cache paths in public contracts/snapshots/logs, base64 artwork in
+widget payloads, eagerly decoding a library, new image formats, per-widget file
+access, renderer changes, or treating artwork presence as launch authority.
+
+**Acceptance criteria:** only an exact current Steam registration can mint one
+opaque lazy artwork handle, and the widget sees no store identity or path.
+Resolution refuses traversal, reparse escape, over-bound files, malformed
+dimensions, unsupported formats, stale source/worker/session generations, and
+identity/content changes. Ordinary list/query/input/lifecycle traffic never
+waits for image I/O. Asset replacement or removal rotates/revokes both decoded
+and native render caches; missing/corrupt assets leave the row fully actionable
+with the semantic fallback. Start Menu/AppsFolder and launch behavior remain
+unchanged.
+
+**Verification:** Tier 1 Steam-provider/app-library artwork, bridge registry,
+Games & Apps, Game Launcher, native image-cache contract where changed, and docs
+Release suites using temporary bounded Steam layouts and generated tiny images.
+Tier 2 one installed generic-AppContainer route proving lazy request, current
+bytes, replacement rotation, stale rejection, and unaffected neighbor. Do not
+run the canonical aggregate and do not capture screenshots. After accepted
+integration, fully package and visibly relaunch for the user's live artwork
+check.
+
+**Stop/escalate when:** trustworthy association requires account credentials,
+remote Steam APIs, an undocumented executable launch shortcut, arbitrary file
+authority, or a cache layout that cannot be bounded and fail closed. Preserve
+the Play fallback rather than guessing from titles or scanning unrelated image
+trees.
+
+### DLV-095 — Add a current running app through normalized authority
+
+**State:** Ready; execute automatically after DLV-094 commits
+**Lane:** widgets, acting as the serialized app-library observation lead
+**Baseline:** clean closing commit of DLV-094
+**Dependencies:** DLV-059, DLV-071, DLV-072, DLV-075, DLV-077, and the accepted
+Games & Apps/Game Launcher private-state prefixes
+**Owner:** one on-demand trusted running-window observation, exact mapping to the
+existing normalized installed-library identity, a separate read grant, bounded
+Games & Apps and Game Launcher add routes, focused fixtures, and directly
+affected docs; no continuous process monitor or arbitrary executable launch
+**Concurrency:** May begin only after DLV-094 commits. Platform remains idle
+unless assigned work disjoint from app-library provider, broker/SDK contracts,
+both launcher widgets, and public capability/API files.
+
+**Visible outcome:** Games & Apps and Game Launcher offer **Add running app**.
+The route lists only currently visible programs that the trusted provider can
+map unambiguously to an existing normalized installed registration. Choosing a
+row adds that exact opaque SavedId through the widgets' existing bounded manual
+state; unsupported programs explain why the normal catalog remains available.
+
+**Objective:** Make adding a game/application already on screen quick without
+granting widgets process, window, path, command, package, or store identity and
+without creating a second discovery or launch model.
+
+**In scope:** a distinct read-only consent grant; one explicit on-demand
+enumeration when the route opens or the user refreshes; visible, owned top-level
+application windows only; exact trusted matching by provider-internal packaged
+identity or canonical executable registration identity already present in the
+normalized library; collapse duplicate windows and variants deterministically;
+exclude the overlay, its workers, tool/owned/cloaked/background windows,
+unreadable/elevated processes, ambiguous matches, and over-bound results; expose
+only sanitized display, closed kind/source state, opaque SavedId, and one short-
+lived observation revision; revalidate both current observation and current
+registration on add; reuse existing CAS/manual limits, fresh launch resolution,
+focus restoration, and private-state schemas; process exit, replacement,
+duplicate title, access denial, lifecycle cancellation, stale completion, and
+provider loss.
+
+**Out of scope:** persisting or exposing PID/HWND/path/AUMID/package family/
+command line, enumerating services/background processes, continuous tracking or
+polling, play-time/running-state history, arbitrary `.exe`/file picker support,
+adding an unregistered executable, elevated-process inspection, killing or
+focusing processes, launching by process identity, title/icon heuristics,
+screenshots, or a new private-state/launch authority.
+
+**Acceptance criteria:** every visible candidate maps one-to-one to a current
+normalized SavedId and carries no raw provider/process identity. An ambiguous,
+unreadable, exited, replaced, stale, or over-bound candidate cannot mutate
+state. Add writes only the exact SavedId/sanitized projection through the
+existing bounded CAS owner; Games & Apps auto-included games cannot acquire
+redundant manual membership, and Game Launcher deduplicates against automatic,
+recent, hidden, and existing manual rows without changing launch authority.
+Hidden/Background widgets own no enumerator, timer, hook, or retained process
+handle. The ordinary catalog/search route remains usable when observation is
+denied or unavailable.
+
+**Verification:** Tier 1 provider mapping, capability/broker/SDK compatibility,
+both widget route/state/focus suites, and docs using an injected deterministic
+window/process observation seam. Cover duplicates, ambiguity, access denial,
+exit/replacement, stale revisions, limits, neighbor state, lifecycle drain, and
+no raw identity serialization. Tier 2 one installed generic-AppContainer route
+over deterministic host observations. Do not run the canonical aggregate and
+do not capture screenshots. After accepted integration, fully package and
+visibly relaunch.
+
+**Stop/escalate when:** exact matching requires title guessing, undocumented
+store state, arbitrary executable authority, elevated inspection, or persistent
+process tracking; the OS cannot provide a bounded observation without keeping
+handles across the user decision; or the work requires changing existing launch
+semantics instead of reusing normalized SavedId resolution.
 
 ### DLV-007 — Make Spotify presentation state coherent
 

@@ -77,7 +77,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-056 | P1 | Verifying | Spotify widget focus composition | Accepted DLV-051 (`dc22202`, integrated as `822d29c`) authors the inactive seek Slider's Left edge to the selected wide rail destination or compact Player tab and passes exact semantic/controller replay. Fresh live confirmation remains. |
 | GBA-057 | P0 | Verifying | Widget SDK cursor resources / Spotify focus | DLV-022/053 are accepted and integrated through `8c1bbdf`; accepted DLV-055 `efffa53` installs/selects/enables the latest source as `0.2.12`, and the coherent Release is visibly running for live traversal. |
 | GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
-| GBA-059 | P1 | Verifying | App-library provider / artwork / Games & Apps / native bridge/cache | DLV-018 plus accepted correction DLV-054 are integrated through `8c1bbdf`: provider work follows quick demand admission, retired completions are suppressed, and exact revalidation changes rotate handles and native pixels. The coherent Release is visibly running for live artwork verification. Steam remains an honest fallback until a trusted local source exists. |
+| GBA-059 | P1 | Confirmed; DLV-094 Ready after active DLV-092 | App-library provider / artwork / Games & Apps / Game Launcher / native bridge/cache | DLV-018 plus accepted DLV-054 provide nonblocking lazy artwork and exact handle rotation for Start Menu/AppsFolder. Steam still shows the semantic fallback when trusted local cache bytes exist; DLV-094 owns only that bounded local-source gap and must preserve the fallback when evidence is absent or unsafe. |
 | GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
@@ -1892,6 +1892,13 @@ evicts the old per-row decoded and render bitmap.
 DLV-054's exact-generation/revision registry, and a bounded native artwork
 request owner that does not block the UI. This is not a widget-authored URL/file
 escape or permission to redesign the whole bridge.
+
+**Current assignment:** DLV-094 follows active DLV-092. It may resolve only
+bounded regular PNG/JPEG cache files beneath the current trusted Steam root for
+an exact already-revalidated Steam registration, rotate the host-only artwork
+revision when bytes change, and reuse the accepted lazy demand/session/cache
+owners. It cannot fetch from Steam, expose app IDs/paths, scan unrelated image
+trees, or weaken the semantic fallback.
 
 **Acceptance:** Supported sources resolve bounded artwork lazily through opaque
 handles, validate identity/format/dimensions/bytes, cap decode/cache/transport
