@@ -35,6 +35,18 @@ real Games & Apps responsibility split are accepted. Trusted artwork, shared
 list/focus and geometry corrections, Audio
 endpoint blocker, and physical/product evidence remain open.
 
+The 2026-08-10 visible relaunch exposed a release-composition gap that focused
+tests did not catch. Both installed Community workers repeatedly exited with
+code 2 before connecting. The selected Spotify `0.2.10` payload did not match
+the current same-version package artifact, while installed YT Music remained at
+manifest `0.2.5` against source `0.2.6`. OverlayHost then compounded the failed
+YT Music lifecycle transition by requesting a hidden snapshot and presenting a
+secondary missing-cache error. DLV-052 is therefore a P0 product correction:
+the accepted Release must include content-current uniquely versioned addons,
+and lifecycle establishment plus first-snapshot admission must compose into one
+accurate recoverable result. This is not authorization to weaken package
+integrity or permit public same-version replacement.
+
 DLV-010 now closes the immediate external package-journey break: the scaffold
 has a matching offline SDK dependency, an executable lifecycle/state/action
 snapshot test, and one bounded source build/stage/validate/pack operation. Its

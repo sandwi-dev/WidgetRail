@@ -2437,7 +2437,8 @@ The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
 not be reset or overwritten. DLV-049 is accepted and integrated as `a8bcb27`;
 DLV-015 is now Assigned on its clean source baseline while the widgets lane leads
-serialized DLV-006. DLV-016 remains the next independent Ready item. DLV-011
+serialized DLV-006. Newly confirmed P0 DLV-052 is the next Ready assignment;
+DLV-016 follows it instead of displacing the visible community-addon failure. DLV-011
 awaits accepted DLV-006 integration, DLV-033 awaits the compositor decision, and
 DLV-025 remains user-decision blocked. No third safe platform Ready item is
 manufactured while those explicit cross-lane and architecture dependencies
@@ -2837,10 +2838,84 @@ manual evidence.
 **Stop/escalate when:** reliable proof requires user desktop control, physical
 assistive technology, or widgets-lane source changes.
 
-### DLV-016 — Establish native idle and semantic-churn baselines
+### DLV-052 — Restore current community addons after a Release relaunch
 
 **State:** Ready after DLV-015
-**Baseline:** closing commit of DLV-015
+**Baseline:** accepted integration of DLV-015 plus the reviewer control-plane
+commit assigning this milestone
+**Owner:** platform lane over community package build/deployment discipline,
+generic installed-worker load diagnostics, WidgetBridge lifecycle/snapshot
+ordering, OverlayHost failure presentation, and the smallest real installed
+Spotify/YT Music fixture
+**Concurrency:** May run while widgets DLV-006 changes only its assigned
+collection/SDK/protocol/native collection surface. Do not edit DLV-006 files,
+public Widget SDK/protocol behavior, Spotify/YT Music feature logic, or shared
+native build/test manifests being modified by DLV-006. Stop for planner
+serialization if the exact fix overlaps those boundaries.
+
+**Visible outcome:** The freshly relaunched accepted Release opens both Spotify
+and YT Music instead of showing `Widget worker connection failed` or `A hidden
+suspended widget has no cached snapshot`. A real worker-start failure produces
+one accurate safe status and Retry can recover without restarting the overlay.
+
+**Reproduction evidence:** The 2026-08-10 21:52-21:54 live overlay log records
+both community workers repeatedly exiting with code 2 before connecting. YT
+Music then receives a snapshot request after its Visible lifecycle transition
+failed and exposes the secondary hidden-cache exception. The selected installed
+Spotify `0.2.10` DLL hash differs from the current same-version package artifact,
+and installed YT Music is `0.2.5` while source is `0.2.6`. Treat package freshness
+and failure-state ordering as two required parts of one product recovery, not as
+widget-provider failures.
+
+**In scope:** determine and retain the exact bounded safe loader failure code;
+rebuild/stage/validate/pack/install/select current Spotify and YT Music through
+the supported generic Community path; establish version/content discipline so
+a visible Release refresh cannot silently exercise an older same-version
+payload; allow an intentional pre-release state reset or package version bump
+instead of legacy compatibility; make lifecycle establishment and initial
+snapshot admission one coherent result; retain the prior admitted presentation
+or one accurate actionable failure; bounded retry with exactly one fresh worker
+generation; rapid Spotify/YT Music cycling, overlay close/reopen, worker crash,
+and failed/successful retry.
+
+**Out of scope:** OAuth/Premium or companion credentials, provider feature
+changes, permissive public same-version overwrite, weakening digest/AppContainer/
+capability admission, broad installer redesign, public SDK/protocol changes,
+DLV-006 collection work, compositor/animation work, or preserving obsolete
+pre-release installed state.
+
+**Acceptance criteria:** from a clean bounded test profile, the exact current
+source packages receive content-unique versions, validate, pack, install,
+select, and start through the production generic AppContainer worker path; the
+selected installed payload digest equals the package that was just built. A
+latest-Release relaunch cannot select an older payload under the same version.
+Spotify and YT Music each complete lifecycle establishment and publish a first
+snapshot. Forced load/connect/lifecycle failures expose one bounded safe reason,
+never request a contradictory hidden snapshot, never reveal a path/credential/
+exception/provider body, and never leave a half-current lifecycle record. One
+Retry starts one fresh generation and can recover; stale completion from the
+failed generation cannot publish. Existing first-party worker startup and
+suspend/unload behavior remain unchanged.
+
+**Verification:** one bounded installed-package fixture covering both exact
+current addons through build/stage/validate/pack/install/select/start/first
+snapshot, plus the smallest WidgetWorkerHost, WidgetRuntime, WidgetBridge, and
+OverlayHost lifecycle/failure Release groups. Use metadata/digests and safe
+diagnostic codes rather than executing package assemblies in the planner or
+capturing screenshots. Build the production OverlayHost. No aggregate unless a
+canonical manifest changes. After integration, refresh the exact community
+packages in the user's local profile through the supported tool, rebuild main
+Release, and visibly relaunch it for immediate testing.
+
+**Stop/escalate when:** correction requires public SDK/protocol behavior while
+DLV-006 is active, weakens installed-package isolation/integrity, needs external
+credentials, requires destructive package/state recovery outside an explicit
+pre-release reset, or overlaps the preserved DLV-025 worktree.
+
+### DLV-016 — Establish native idle and semantic-churn baselines
+
+**State:** Ready after DLV-052
+**Baseline:** closing commit of DLV-052
 **Owner:** OverlayHost/native renderer measurement harness and budgets
 
 **Objective:** Add reproducible bounded measurements for hidden/idle host cost
