@@ -57,6 +57,16 @@ clean. The planner launch contract now forbids `-SkipPackaging` whenever an
 accepted milestone changes a managed runtime, bridge, worker, bundled widget,
 or packaged metadata output.
 
+DLV-016 is accepted through main `fee1103`. A five-process native semantic
+sample now reports bounded snapshot/node/update churn, private resident pages,
+input-to-projection latency, repeat range, machine/source/executable provenance,
+and broad material-regression gates. A separate current production-host sample
+records real Hidden/Visible process-tree CPU, memory, process, timer, and
+Direct2D-frame observations. Both explicitly retain unavailable GPU, scheduler,
+presentation, controller, private-process-tree, and long-run metrics instead of
+converting proxies into claims. This is a credible local foundation for the
+DLV-011 pinned-surface comparison, not a universal gaming-performance sign-off.
+
 DLV-006 is accepted through `9c7438f`. Its final existing-host fixture composes
 bounded managed-format List/Grid cursor states through bridge parsing,
 Direct2D, focus pagination, HWND/UIA projection, refresh churn, error states,
@@ -1287,16 +1297,17 @@ The coordinator should make last-good retention a deliberate state transition,
 disable or qualify stale actions, retain a safe typed reason, and expose one
 controller-reachable retry or remediation action.
 
-The retained schema-2 performance baseline does not yet prove the aggregate
-contract. It launches only the trusted Settings worker, takes 31 observations
-per state in one dirty-tree run, and reports Hidden CPU p95 of 0.0977% against a
-0.1% diagnostic target—too little margin and repetition to establish a noise
-envelope. Hidden also records 31.65 Guide-compatibility timer messages per
-second. The harness correctly labels these as host messages rather than OS
-wakeups and reports GPU, scheduler, presentation, controller latency, and
-long-run trends as unavailable. Visible/Interactive aggregate working set
-reaches 203.6/214.3 MiB, but Settings' trusted control-plane exception makes
-that run unsuitable for extrapolating ordinary Community-widget cost.
+DLV-016 improves the retained performance evidence without pretending to prove
+the aggregate ecosystem contract. Five fresh Release processes repeat one
+stable native 55-node/48-semantic-node workload through 256 updates, with
+projection p95 `0.399–0.591 ms`, private working set `0.63–1.32 MiB`, exact
+source/executable hashes, and bounded variation. A separate current real-host
+observation records Hidden/Visible CPU p95 `0.09737%/0.09773%`, zero hidden
+host timer messages, and zero post-warmup Direct2D frames. The runs remain dirty
+focused local evidence; they do not cover GPU/DWM, scheduler wakeups,
+controller hardware, game-frame impact, long-run trends, or multi-widget
+accumulation. DLV-011 must use these as a comparison baseline, not extrapolate
+them into a pinned-surface or Community-ecosystem budget.
 
 **Why it matters.** A user exploring community widgets can accumulate resident
 .NET processes during a gaming session even when every individual package

@@ -150,6 +150,27 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-016 — Establish native idle and semantic-churn baselines
+
+**State:** Done
+**Closing commit:** `df1258e` (`[DLV-016] establish native performance
+baselines`)
+**Integrated on `main`:** `fee1103`
+
+**Reviewer disposition:** Accepted. One focused native target measures a stable
+55-node snapshot and 48-node semantic projection through hidden, visible-idle,
+and 256-update phases, while the existing schema-2 sampler supplies the real
+Hidden/Visible host process-tree observation. Five fresh Release processes pass
+13,120 native checks with projection p95 `0.399–0.591 ms`, private working set
+`0.63–1.32 MiB`, bounded node/update/snapshot counts, exact source/executable
+hashes, repeated-range evidence, and broad material-regression gates. The real
+host sample records Hidden/Visible CPU p95 `0.09737%/0.09773%`, zero hidden
+timer messages, and zero post-warmup Direct2D frames. Both reports preserve
+unavailable GPU, scheduler, presentation, controller, private-process-tree, and
+long-run metrics explicitly; they are dirty focused local evidence, not release
+or universal game-time claims. Runner self-tests and 53 documentation contracts
+pass; no aggregate ran.
+
 ### DLV-015 — Add deterministic real-host accessibility proof
 
 **State:** Done
@@ -2537,10 +2558,11 @@ clean recovery task, not an integration source. DLV-025 retains only its
 committed branch baseline and documented evidence after its former worktree
 disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
-`56f6908`. DLV-016 is now Assigned. DLV-011 follows the accepted collection and
-measurement foundations, DLV-033 awaits the compositor decision, and DLV-025
-remains user-decision blocked. No third safe platform Ready item is manufactured
-while those explicit architecture dependencies remain.
+`56f6908`; DLV-016 is accepted and integrated as `fee1103`. DLV-011 is now
+Assigned on the accepted collection and measurement foundations, DLV-033 awaits
+the compositor decision, and DLV-025 remains user-decision blocked. No third
+safe platform Ready item is manufactured while those explicit architecture
+dependencies remain.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -3036,7 +3058,7 @@ as one coherent artifact graph rather than a native executable alone.
 
 ### DLV-016 — Establish native idle and semantic-churn baselines
 
-**State:** Assigned after accepted DLV-052
+**State:** Done; accepted source commit `df1258e`, integrated as `fee1103`
 **Baseline:** accepted DLV-052 integration `56f6908` plus the reviewer commit
 recording this assignment
 **Owner:** OverlayHost/native renderer measurement harness and budgets
@@ -3064,10 +3086,20 @@ samples. No aggregate unless the verifier manifest changes.
 **Stop/escalate when:** evidence requires elevated tracing, a representative
 game/hardware choice, or a product budget decision not already documented.
 
+**Reviewer disposition:** Accepted. The focused synthetic harness and the
+existing production-host sampler are complementary rather than substituted:
+the first supplies deterministic semantic churn, snapshot/node/update,
+latency, private-resident-page, provenance, repeat range, and material gates;
+the second supplies actual Hidden/Visible process-tree CPU, memory, process,
+timer, and Direct2D-frame observations. Retained evidence and limitations match
+the Recently completed disposition. No product behavior, aggregate verifier,
+capture path, or elevated tracing changed.
+
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 
-**State:** Ready after DLV-016
-**Baseline:** closing commit of DLV-016
+**State:** Assigned after accepted DLV-016
+**Baseline:** accepted DLV-016 integration `fee1103` plus the reviewer commit
+advancing this assignment
 **Dependencies:** DLV-006 and DLV-016
 **Owner:** platform lane over a host-owned pinned-window feasibility harness,
 window/focus/input/lifecycle policy, monitor/DPI placement, and bounded native

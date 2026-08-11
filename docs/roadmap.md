@@ -1067,7 +1067,8 @@ The current product order is:
    quarantine, local performance/resource evidence, and lifecycle-policy
    enforcement;
 4. complete locally testable Audio/Network hardware, churn, privacy, and denial
-   paths; then Performance, Games & Apps catalog depth, and capture feasibility;
+   paths; use the accepted DLV-016 local performance baseline for named feature
+   deltas, then continue Games & Apps catalog depth and capture feasibility;
 5. prove the reusable foundations for the two flagship widgets before filling
    out their integrations: trusted game-source adapters plus a virtualized fake
    2,000/10,000-game library, then generic pinned-surface/click-through/placement
