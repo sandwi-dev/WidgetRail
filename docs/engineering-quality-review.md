@@ -302,8 +302,13 @@ installation, selection, rollback, and removal without checkout references.
 It remains a local pre-publication workflow rather than a governed externally
 published SDK/template release. Accepted DLV-046 now gives the checked-in
 template a strict versioned text/binary inventory and an all-or-nothing sibling-
-staging transaction. API compatibility, generic isolated scenario execution,
-and public release/CI provenance remain open. The prior generated source-to-package mismatch was
+staging transaction. Accepted DLV-047 adds one checked-in bounded public API and
+release-unit contract; accepted DLV-050 converts only that new suite to 12 named
+`MSTest.Sdk` 4.3.2 cases, moves intentional baseline mutation to a separate
+bounded tool, and retains every legacy executable runner. Accepted DLV-048 binds
+the exact generated source and eight canonical command phases to the same
+external fixture. Generic isolated scenario execution and public release/CI
+provenance remain open. The prior generated source-to-package mismatch was
 closed by reusing the bounded build/generation owner and validating the staged
 entrypoint before deterministic publication.
 DLV-046 closes the prior generator defect: `templateVersion` is enforced, every
@@ -311,8 +316,10 @@ file is declared with text/binary mode, count/file/aggregate/path/reparse rules
 are bounded, and success follows validation plus one atomic rename. Its focused
 failure matrix proves malformed inventory, binary preservation, unreadable input,
 late validation, cancellation, destination faults, and rollback. The roughly
-200-declaration public SDK surface still has no accepted package metadata or
-API-compatibility baseline; active DLV-047 owns that next boundary.
+2,400-symbol generated public surface now has accepted package metadata and an
+ordinal 5,000-symbol/1-MiB compatibility baseline. Compatible additions and
+removals/signature changes are explicit reviewed diffs; no post-1.0 compatibility
+promise or external publication is implied.
 
 Current HEAD closes the remaining CLI author-code bypass: `gbar render`
 now accepts only bounded snapshot JSON, and DLL input fails closed before type
@@ -1423,18 +1430,13 @@ complete package validation occurs only after the author reaches `gbar pack`.
 That remains short of the promised 15-minute community starter experience.
 
 **Remaining underlying problem.** The accepted local dependency and package
-journey do not make the SDK an externally published platform contract. The
-generator also still treats the template as an unversioned recursively copied
-text directory rather than a strict, bounded, transactional input artifact.
-At the pre-DLV-010 baseline, the generator treated local SDK resolution as a
-validated dependency, but the CLI, template, SDK/runtime package, generated
-tests, API-compatibility baseline, and copyable commands were not shipped as
-one versioned release set. Development and distribution also constructed package
-generations through different author-facing workflows: `gbar dev` owned a useful
-source build/stage implementation that `gbar pack` could not consume. Generated
-documentation remained outside executable documentation checks. The template was
-also treated as an unversioned directory convention rather than one validated
-input artifact owned by the same CLI release.
+journey do not make the SDK an externally published platform contract. DLV-046
+has closed the versioned transactional-template gap; DLV-047/DLV-050 have closed
+the local release-unit/API-baseline and mixed-runner gap; and DLV-048 has closed
+the canonical quickstart drift for the marked offline journey. What remains is
+external immutable publication with provenance/support policy, ordinary external
+CI against that published unit, and isolated executable semantic preview—not a
+repository-wide test migration or another local packaging path.
 
 **Recommended direction.** Treat the CLI, template, SDK/runtime packages, and
 compatibility range as one release set. The production endpoint is a supported,
@@ -1442,10 +1444,10 @@ immutable NuGet SDK/runtime release plus a template that pins a compatible
 version and can be restored from a clean machine without the platform source.
 The accepted content-addressed local package is appropriate for offline
 scaffolding until that artifact exists; do not reintroduce checkout references.
-Define the intended author-facing API before the first package: enable package
-validation against a checked-in baseline, generate XML documentation and symbol/
-source metadata, and classify intentional breaks through the same host-API/
-template compatibility policy rather than silently growing a 200-type surface.
+Preserve the accepted checked-in API baseline and intentional pre-release reset
+workflow. Before external publication, add the remaining package validation,
+XML documentation, symbol/source metadata, provenance, and support policy
+without retaining obsolete local APIs solely for compatibility.
 
 Retain DLV-010's generated `WidgetTestHost`/`SnapshotJson` executable and its
 small complete build-test-render-replay-package loop. The remaining isolated
@@ -3932,8 +3934,8 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Audio Mixer | Accepted DLV-029 (`9647718` plus `091ec51`, integrated through `6fc8d73`) moves complete snapshot-only presentation and closed output/input/session transitions into direct seams. Accepted DLV-042 (`37119f7` plus `0a3635a`, integrated through `f64c35a`) then moves linked lifetime, four subscription-before-snapshot paths/pumps, optional retry attempts, failure classification, and exact drain into one 484-line internal Active session. The root falls from 2,496 to roughly 1,687 lines, has no provider pump/retry semaphore/provider CTS/subscription startup, and admits only immutable observations from the exact current session. Accepted DLV-019 (`6afd60b`) adds LB/RB/X tray controls through the existing output command/reconciliation owner and exact broker gesture authority without another lifecycle, task registry, or committed-state owner; retained focused evidence reaches Audio Mixer 45/45 plus the installed production route 6/6. DLV-026 remains an integrated native candidate whose 84-record fixture failed to predict the live four-session reverse trap | **Cohesive exception at the accepted managed boundary:** the residual root is the single state-lock, action-admission, six host-control-call/command-task, committed-model, selection, status, and invalidation transaction owner. DLV-049 must first prove the actual emitted Microphone Up edge; if it is correct, fix native retained scroll/extent/reveal reconciliation, otherwise return an exact snapshot for widgets-lane correction. Treat endpoint selection as a separate supported-API/role-policy spike; do not use undocumented `PolicyConfig` behavior |
 | Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion; separate algorithm ownership and real route proof remain open, typed choices remain open, and exact clean evidence stops at `0598e5a` | Bind native/managed Back through shared conformance or one protocol result, retain clean evidence, then prove full real-client Picker/ActionSheet/Navigator traversal plus packaged Narrator/MSAA/AppContainer evidence |
 | YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag and adopts SDK Active lanes plus one immutable presentation record. DLV-030 (`549da57`, integrated by `6b9144d`) reduces the owner from 1,365 to 677 physical lines, preserves singular lifecycle/client/state authority, and directly tests connection, confirmation/rollback, action, and pure presentation seams; retained focused evidence passes 55/55 plus SDK 84/84, worker 9/9, and docs 52 | Real companion, packaged lifecycle/controller/accessibility, and visual evidence remain; use the private seams as a reference, not yet a mandatory public framework |
-| Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while arranging lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partial files; the current aggregate remains one roughly 2,040-line class with unrestricted member access. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy: recoverable refresh/poll faults retain route, focus, playback, and cached list state with bounded 5/15/30-second backoff, fatal permission/auth/configuration remains explicit, recovery clears the warning, and stale Active-generation results are rejected. Accepted DLV-021 corrects shared Library-header measurement with exact product/profile bounds; live composition remains to verify. User evidence still confirms an incomplete seek/nav focus graph, replacement-page jumps, and fixed-header oscillation | DLV-043 first replaces the partial-file organization with real value-based route/action, playback-reconciliation, and presentation types without behavior change. DLV-022 then owns the explicit focus graph and continuous-list migration after DLV-006. Keep GBA-058/GBA-061 Verifying until live recurrence testing; retain current credential-free full-state/composed-host visuals and run live auth/playback gates only when authorized |
-| CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Accepted DLV-046 (`84ef91b`, integrated by `06f6cc6`) adds a strict versioned text/binary manifest plus all-or-nothing validated staging/publish; retained CLI/scaffold evidence passes 54/54 and docs 52/52 | Externally published/versioned SDK/template release and checked-in API-compatibility baseline (DLV-047); isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence |
+| Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while arranging lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partial files; the current aggregate remains one roughly 2,040-line class with unrestricted member access. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy: recoverable refresh/poll faults retain route, focus, playback, and cached list state with bounded 5/15/30-second backoff, fatal permission/auth/configuration remains explicit, recovery clears the warning, and stale Active-generation results are rejected. Accepted DLV-021 corrects shared Library-header measurement with exact product/profile bounds; live composition remains to verify. User evidence still confirms an incomplete seek/nav focus graph, replacement-page jumps, and fixed-header oscillation | Visible DLV-051 is Assigned now for only the explicit compact/expanded seek-to-selected-menu edge. DLV-006/DLV-022 then own continuous collection anchoring and header/list traversal. DLV-043 remains deferred behind that visible work. Keep GBA-058/GBA-061 Verifying until live recurrence testing; run live auth/playback gates only when authorized |
+| CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Accepted DLV-046 (`84ef91b`, integrated by `06f6cc6`) adds a strict versioned text/binary manifest plus all-or-nothing validated staging/publish. Accepted DLV-047 (`7e33f45`, integrated by `7da7eaa`) adds the checked-in package/API release unit; DLV-050 (`263536f`, integrated by `7563471`) gives its new compatibility surface 12 named MSTest.Sdk 4.3.2 cases and a separate bounded updater while legacy suites remain unchanged. Accepted DLV-048 (`829e9fd`, integrated by `18d461e`) compile-tests the exact starter and eight marked external author phases. Final mixed focused evidence passes compatibility 12/12, WidgetSdk 84/84, GbarCli 55/55, and docs 53 | Externally published/versioned SDK/template release, isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence remain. Do not schedule a repo-wide test migration. |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and accepted DLV-032 bounds managed dispatch to 16 plus session drain to two seconds with manually controlled cancellation-ignoring quarantine proof; exact ACL application remains unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget and cancellable correlation-safe off-UI-thread native bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists. DLV-024 retains 16 current widget-body captures and seven semantic snapshots for Games continuity, including compact, 150%, and wide removal states, with zero renderer diagnostics. DLV-021 retains 16 current Games/Spotify body renders and exact five-product production-renderer bounds while disclosing the Settings worker-start capture gap. DLV-020's 44 real-HWND frames removed startup blanking in its bounded harness, but DLV-025 real temporal evidence now proves the current HWND resize path still exposes repeated dark-band frames on list-heavy product surfaces. Historical user captures show the Library/alignment defects that DLV-021 now places in Verifying; Games & Apps artwork remains missing | Choose an atomic compositor architecture for DLV-025, then repeat timestamped first-party intervals. Run the fresh packaged DLV-021 visual check; retain clean current package/state/profile plus physical full-shell/controller/DPI evidence. Offscreen body captures cannot close compositor behavior. |
 | Native host ownership | Proven low-level input, focus, lifecycle, bridge, and renderer helpers, but `OverlayApp` still owns their mutable orchestration in about 3,753 lines | DLV-033 owns one tested `WidgetSessionCoordinator` after DLV-025/DLV-032; remove duplicate descriptor/snapshot/lifecycle/retry state from `OverlayApp` and retain typed persistent session failures |

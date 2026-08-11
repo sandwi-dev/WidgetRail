@@ -74,7 +74,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-053 | P1 | Verifying | Widget SDK resource coordination | Public `WidgetResource<TValue>` now owns bounded non-paged load/cache/retry/last-good/subscription state with lifecycle cancellation and stale-result rejection; broader production migrations and packaged evidence remain. |
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
 | GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | Typed status-only service failures and bounded safe UI copy remain intact through DLV-009's immutable presentation/current-attempt migration; focused YT Music coverage passes 51/51 and real-companion failure evidence remains. |
-| GBA-056 | P1 | Confirmed | Spotify widget focus composition | Left from the inactive seek Slider moves to Previous track instead of the navigation menu to its left; DLV-022 owns explicit responsive focus edges. |
+| GBA-056 | P1 | Confirmed | Spotify widget focus composition | Left from the inactive seek Slider moves to Previous track instead of the selected menu destination to its left; visible widgets-lane DLV-051 is Assigned independently of DLV-006 list work. |
 | GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | Auto-loading list transitions visibly jump focus from bottom to top or top to bottom when replacing pages; DLV-006 owns continuous cursor/append and keyed viewport anchoring. |
 | GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
 | GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
@@ -1758,9 +1758,10 @@ and cancellation-ignoring pairing and polling completion after deactivation.
 seek Slider owns focus moves to Previous track below it. The selected navigation
 rail is the visually and structurally intended destination to the left.
 
-**Ownership:** Spotify's explicit responsive focus graph first. The native
-geometric resolver is a verification seam, not a reason to encode Spotify IDs
-in the host.
+**Ownership:** Assigned DLV-051 owns Spotify's explicit compact/expanded focus
+graph first. The native geometric resolver is a verification seam, not a reason
+to encode Spotify IDs in the host. DLV-006/DLV-022 separately own continuous
+playlist collection and header/list traversal.
 
 **Acceptance:** Expanded Left enters the selected rail destination; compact
 mode uses its corresponding navigation tab; Slider adjustment mode still owns

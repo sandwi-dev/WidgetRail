@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, transactional versioned template generation, and a compile-tested canonical offline author journey are implemented or complete in the current reviewed candidate; manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, transactional versioned template generation, a checked-in pre-release SDK/API release unit, and a compile-tested canonical offline author journey are implemented; manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-10<br>
-Reassessed: 2026-08-10 against integrated `main` `bc2de86` and reviewed widgets candidates through DLV-048 `829e9fd`; DLV-047/DLV-048 remain unintegrated until the bounded DLV-050 MSTest correction is accepted<br>
+Reassessed: 2026-08-10 against integrated `main` `7563471`, including accepted DLV-047 API/release-unit baseline, DLV-048 canonical author journey, and DLV-050 incremental MSTest.Sdk 4.3.2 correction<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -46,13 +46,15 @@ proof, source-aware deterministic packaging, and local version
 selection/rollback/removal without checkout references. Accepted DLV-046 adds a
 closed versioned text/binary inventory, bounded paths/content, validated sibling
 staging, one atomic publish, and rollback that never touches author output.
-Reviewed DLV-048 candidate `829e9fd` then makes the exact generated starter and
+Accepted DLV-048 `829e9fd` then makes the exact generated starter and
 eight marked quickstart phases one compile-tested external-directory journey,
-removing the divergent Tutorial 1 command/source sequence. It is held from
-integration only because preceding DLV-047 requires the bounded DLV-050 test-
-framework correction. Externally published SDK/API governance remains open
-while native geometry, feedback, accessibility, and performance work continues
-independently.
+removing the divergent Tutorial 1 command/source sequence; it is integrated on
+`main` as `18d461e`. Accepted DLV-047/DLV-050 add the local
+release-unit/API baseline and convert only its new compatibility suite to 12
+named `MSTest.Sdk` 4.3.2 cases with a separate bounded update tool; existing
+executable suites are unchanged. External publication and its support/provenance
+policy remain open while native geometry, feedback, accessibility, and
+performance work continues independently.
 
 The framework becomes difficult when a widget has multiple pages, remote state,
 commands, caching, optimistic updates, and lifecycle-sensitive work. Authors
@@ -146,13 +148,14 @@ content-addressed SDK package into a relative feed and generates the executable
 snapshot proof; no checkout or `--sdk-project` is required. DLV-046 makes that
 operation all-or-nothing over one strict versioned text/binary inventory and
 proves malformed input, unreadable files, validation failure, cancellation,
-destination races, and cleanup. Reviewed DLV-048 candidate `829e9fd` adds the
+destination races, and cleanup. Accepted DLV-048 `829e9fd` adds the
 missing documentation contract: the exact emitted starter is embedded once in
 the quickstart and compared to the generated compiled source, while the same
-external fixture executes every marked local package-lifecycle phase. Publication,
-the pending DLV-050 compatibility-test correction, and generic isolated scenario
-execution remain the boundaries between this local journey and a supported
-public release.
+external fixture executes every marked local package-lifecycle phase. Accepted
+DLV-047/DLV-050 add the checked-in bounded public surface and discoverable
+compatibility checks without migrating legacy suites. Publication and generic
+isolated scenario execution remain the boundaries between this local journey
+and a supported public release.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -693,7 +696,7 @@ publishes only by one rename after validation. Failure removes only the owned
 staging tree and never overwrites or deletes author output. Focused evidence
 passes GbarCli/scaffold 54/54 and 52 documentation contracts.
 
-Reviewed DLV-048 candidate `829e9fd` closes the local canonical-documentation
+Accepted DLV-048 `829e9fd` closes the local canonical-documentation
 gap. `CanonicalAuthorJourneyContract` requires exactly eight marked blocks,
 compares the documented C# source to the emitted `VolumeControl.cs`, rejects
 absolute checkout and advanced/credential-adjacent content, and binds the
@@ -702,8 +705,8 @@ validates, renders, replays, packs, installs, selects, rolls back, and removes.
 The fixture additionally proves actionable invalid-style failure, all three
 starter actions, portable byte-identical packages, and complete uninstall.
 Retained Release evidence `20260811T040047Z-d8e6fe07` passes GbarCli 55/55 and
-53 Markdown contracts. Integration waits only for the preceding DLV-047
-candidate's DLV-050 framework correction.
+53 Markdown contracts. It is integrated on `main` as `18d461e`; accepted
+DLV-050 separately closes the preceding compatibility-test framework boundary.
 
 DLV-010 closes the prior generated-test and source-to-package breaks. The
 sibling executable uses public `WidgetTestHost` and `SnapshotJson`, exercises
@@ -1633,7 +1636,7 @@ enough for review, with pixel comparisons used cautiously and semantic
 snapshots retained as the primary contract.
 
 The expanded public guide and quickstart make both NavigationShell and scenario
-preview easier to discover. DLV-048 candidate `829e9fd` now compile-tests the
+preview easier to discover. Accepted DLV-048 `829e9fd` now compile-tests the
 canonical getting-started source against the same local SDK release unit an
 external scaffold consumes and executes the eight marked command phases through
 the same external fixture. The broader repository still has many illustrative
@@ -1823,7 +1826,7 @@ and fail-closed scenario selection with contract and safety tests.
    deterministic bounds/focus/scroll assertions and reviewed tolerant images
    from clean current packages.
 5. Fluent deterministic test harness.
-6. **Completed at local-candidate level by DLV-048 `829e9fd`:** compile-test the
+6. **Completed locally by accepted DLV-048 `829e9fd`:** compile-test the
    canonical quickstart source and execute its marked external author journey.
    Future recommended canonical paths must use the same derived/compiled model;
    illustrative advanced fences need not become a repository-wide migration.
