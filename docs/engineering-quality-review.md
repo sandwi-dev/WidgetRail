@@ -36,16 +36,23 @@ list/focus and geometry corrections, Audio
 endpoint blocker, and physical/product evidence remain open.
 
 The 2026-08-10 visible relaunch exposed a release-composition gap that focused
-tests did not catch. Both installed Community workers repeatedly exited with
-code 2 before connecting. The selected Spotify `0.2.10` payload did not match
-the current same-version package artifact, while installed YT Music remained at
-manifest `0.2.5` against source `0.2.6`. OverlayHost then compounded the failed
-YT Music lifecycle transition by requesting a hidden snapshot and presenting a
-secondary missing-cache error. DLV-052 is therefore a P0 product correction:
-the accepted Release must include content-current uniquely versioned addons,
-and lifecycle establishment plus first-snapshot admission must compose into one
-accurate recoverable result. This is not authorization to weaken package
-integrity or permit public same-version replacement.
+tests did not catch: stale Community packages failed before connecting and YT
+Music replaced the primary failure with a secondary hidden-cache error. DLV-052
+is now accepted through `56f6908`. Generic-loader failures use a closed safe
+code, lifecycle establishment and first-snapshot admission commit together, and
+Retry owns one fresh generation. Review of the real profile caught a second gap
+that the empty-catalog fixture missed: install succeeded while the older version
+remained selected. The corrected workflow and fixture now prove disable,
+install, explicit select, enable, and content-digest replacement from an older
+enabled version. The local profile selects enabled Spotify `0.2.11` and YT
+Music `0.2.7`; live open confirmation remains without weakening immutable
+package integrity.
+
+DLV-006 is accepted through `9c7438f`. Its final existing-host fixture composes
+bounded managed-format List/Grid cursor states through bridge parsing,
+Direct2D, focus pagination, HWND/UIA projection, refresh churn, error states,
+and 2,000/10,000-item logical bounds. Spotify still needs DLV-022 migration
+before the reported replacement-page jumps and header oscillation are fixed.
 
 DLV-015 now closes the deterministic real-host accessibility-proof gap. Its
 production-host fixture creates one real HWND, publishes the production
