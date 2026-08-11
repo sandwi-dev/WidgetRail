@@ -1972,6 +1972,7 @@ private:
 
     void ApplyPendingDisplayEnvironmentRefresh() {
         const auto plan = displayRefresh_.Take();
+        pinnedSurfaceCoordinator_.ReconcileDisplayEnvironment();
         if (state_.surface() == gba::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
 
@@ -2470,6 +2471,7 @@ private:
     }
 
     void HideOverlay() {
+        (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
         KillTimer(window_, kPinnedSurfaceTimer);
@@ -2872,6 +2874,52 @@ private:
 
     void HandleKey(const UINT key, const bool repeated) {
         if (state_.surface() == gba::Surface::Hidden) return;
+        if (pinnedSurfaceCoordinator_.placementMode() !=
+            gba::pinned::PlacementMode::None) {
+            bool changed = false;
+            if (key == VK_LEFT)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Left);
+            else if (key == VK_RIGHT)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Right);
+            else if (key == VK_UP)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Up);
+            else if (key == VK_DOWN)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Down);
+            else if (!repeated && key == VK_RETURN) {
+                std::wstring error;
+                changed = pinnedSurfaceCoordinator_.CommitPlacement(error);
+                lastActionMessage_ = changed ? L"Pinned placement saved" : error;
+                lastActionExpiresAt_ = GetTickCount64() + 3000;
+            } else if (!repeated && key == VK_ESCAPE) {
+                changed = pinnedSurfaceCoordinator_.CancelPlacement();
+                lastActionMessage_ = L"Pinned placement canceled";
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+            }
+            if (changed) InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        if (!repeated && (key == 'M' || key == 'R') &&
+            pinnedSurfaceCoordinator_.pinned() &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId()) {
+            const auto mode = key == 'M'
+                ? gba::pinned::PlacementMode::Move
+                : gba::pinned::PlacementMode::Resize;
+            if (pinnedSurfaceCoordinator_.BeginPlacement(mode)) {
+                (void)pressedInteraction_.Clear();
+                lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
+                lastActionMessage_ = key == 'M'
+                    ? L"Move pinned surface: arrows, Enter commit, Esc cancel"
+                    : L"Resize pinned surface: arrows, Enter commit, Esc cancel";
+                lastActionExpiresAt_ = GetTickCount64() + 5000;
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
         const auto phase = repeated
             ? gba::input::NavigationEventPhase::Repeated
             : gba::input::NavigationEventPhase::Pressed;
@@ -3151,6 +3199,76 @@ private:
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
         if (recoveryChordDown && !reloadChordHeld_) RestartCurrentWidget();
         reloadChordHeld_ = recoveryChordDown;
+
+        const auto stepPinnedPlacement = [&](const gba::input::StickNavigationEvent& event) {
+            using gba::input::NavigationDirection;
+            switch (event.direction) {
+            case NavigationDirection::Left:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Left);
+                break;
+            case NavigationDirection::Right:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Right);
+                break;
+            case NavigationDirection::Up:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Up);
+                break;
+            case NavigationDirection::Down:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Down);
+                break;
+            default: break;
+            }
+        };
+        if (pinnedSurfaceCoordinator_.placementMode() !=
+            gba::pinned::PlacementMode::None) {
+            if (const auto direction = stickNavigator_.UpdateEvent(
+                    connected ? controller.Gamepad.sThumbLX : 0,
+                    connected ? controller.Gamepad.sThumbLY : 0, now))
+                stepPinnedPlacement(*direction);
+            if (const auto direction = dpadNavigator_.UpdateEvent(
+                    gba::input::DigitalNavigationAxis(
+                        buttons, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT),
+                    gba::input::DigitalNavigationAxis(
+                        buttons, XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_UP), now))
+                stepPinnedPlacement(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0) {
+                std::wstring error;
+                const bool committed = pinnedSurfaceCoordinator_.CommitPlacement(error);
+                lastActionMessage_ = committed ? L"Pinned placement saved" : error;
+                lastActionExpiresAt_ = now + 3000;
+            } else if ((pressed & XINPUT_GAMEPAD_B) != 0) {
+                (void)pinnedSurfaceCoordinator_.CancelPlacement();
+                lastActionMessage_ = L"Pinned placement canceled";
+                lastActionExpiresAt_ = now + 2400;
+            }
+            leftTriggerPressed_ = connected && controller.Gamepad.bLeftTrigger >= 30;
+            rightTriggerPressed_ = connected && controller.Gamepad.bRightTrigger >= 30;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        const bool placementEligible = !recoveryChordDown &&
+            pinnedSurfaceCoordinator_.pinned() &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId();
+        gba::pinned::PlacementMode requestedPlacement = gba::pinned::PlacementMode::None;
+        if (placementEligible && (pressed & XINPUT_GAMEPAD_START) != 0)
+            requestedPlacement = gba::pinned::PlacementMode::Move;
+        else if (placementEligible && (pressed & XINPUT_GAMEPAD_BACK) != 0)
+            requestedPlacement = gba::pinned::PlacementMode::Resize;
+        if (requestedPlacement != gba::pinned::PlacementMode::None &&
+            pinnedSurfaceCoordinator_.BeginPlacement(requestedPlacement)) {
+            (void)pressedInteraction_.Clear();
+            lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
+            lastActionMessage_ = requestedPlacement == gba::pinned::PlacementMode::Move
+                ? L"Move pinned surface: D-pad/stick, A commit, B cancel"
+                : L"Resize pinned surface: D-pad/stick, A commit, B cancel";
+            lastActionExpiresAt_ = now + 5000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
 
         const auto releaseButton = [&](const WORD mask, const std::wstring_view protocolButton) {
             if ((released & mask) != 0 && pressedInteraction_.Release(protocolButton))

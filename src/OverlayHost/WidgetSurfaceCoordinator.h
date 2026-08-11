@@ -3,6 +3,7 @@
 #include "AccessibilityProvider.h"
 #include "DeclarativeRenderer.h"
 #include "PinnedSurfacePolicy.h"
+#include "PinnedSurfacePlacement.h"
 #include "WidgetBridgeClient.h"
 
 #include <Windows.h>
@@ -11,6 +12,7 @@
 #include <wrl/client.h>
 
 #include <cstddef>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,6 +34,7 @@ enum class WidgetSurfaceStopReason {
     WidgetRemoved,
     RuntimeReplaced,
     WorkerUnavailable,
+    DisplayUnavailable,
     HostExit,
     CoordinatorDisposed,
 };
@@ -44,6 +47,8 @@ struct WidgetSurfaceAdmission final {
     std::wstring name;
     bool pinningSupported{};
     WidgetSnapshot snapshot;
+    // Host-injected policy. Public manifests cannot set physical geometry.
+    PlacementLimits placementLimits{};
 };
 
 /// Sole native owner for the first generic pinned HWND. Widget input is data
@@ -65,7 +70,8 @@ public:
         ID2D1Factory* d2dFactory,
         IDWriteFactory* writeFactory,
         RemoteImageCache* imageCache,
-        std::wstring& error);
+        std::wstring& error,
+        std::optional<std::filesystem::path> placementPath = std::nullopt);
     [[nodiscard]] bool Pin(WidgetSurfaceAdmission admission, std::wstring& error);
     [[nodiscard]] bool UpdateSnapshot(
         std::wstring_view widgetId,
@@ -73,6 +79,11 @@ public:
         const WidgetSnapshot& snapshot);
     [[nodiscard]] bool SetInteractionMode(InteractionMode mode);
     [[nodiscard]] bool ToggleInteractionMode();
+    [[nodiscard]] bool BeginPlacement(PlacementMode mode);
+    [[nodiscard]] bool StepPlacement(PlacementDirection direction, float stepDip = 16.0F);
+    [[nodiscard]] bool CommitPlacement(std::wstring& error);
+    [[nodiscard]] bool CancelPlacement() noexcept;
+    void ReconcileDisplayEnvironment() noexcept;
     [[nodiscard]] bool Unpin(WidgetSurfaceStopReason reason) noexcept;
     void OnOverlayHidden() noexcept;
     void OnOverlayShown() noexcept;
@@ -85,6 +96,9 @@ public:
     [[nodiscard]] std::wstring_view runtimeGeneration() const noexcept;
     [[nodiscard]] InteractionMode interactionMode() const noexcept;
     [[nodiscard]] WidgetSurfacePresentationState presentationState() const noexcept;
+    [[nodiscard]] PlacementMode placementMode() const noexcept {
+        return placementSession_ ? placementSession_->mode : PlacementMode::None;
+    }
     [[nodiscard]] std::size_t teardownCount() const noexcept { return teardownCount_; }
     [[nodiscard]] WidgetSurfaceStopReason lastStopReason() const noexcept {
         return lastStopReason_;
@@ -101,6 +115,9 @@ private:
     void NotifyOwner() const noexcept;
     void ReleaseGraphicsResources() noexcept;
     void OnWindowDestroyed() noexcept;
+    [[nodiscard]] std::optional<MonitorWorkArea> CurrentWindowMonitor() const noexcept;
+    void ApplyPlacementBounds(const PhysicalRect& bounds) noexcept;
+    void HandleAccessibilityActions();
 
     HINSTANCE instance_{};
     HWND notificationWindow_{};
@@ -125,6 +142,13 @@ private:
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> secondaryBrush_;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> titleFormat_;
     Microsoft::WRL::ComPtr<IDWriteTextFormat> chromeFormat_;
+    PlacementLimits placementLimits_{};
+    std::unique_ptr<PinnedPlacementStore> placementStore_;
+    std::optional<DurablePinnedPlacement> committedPlacement_;
+    std::optional<PlacementSession> placementSession_;
+    bool pointerPlacement_{};
+    POINT pointerStart_{};
+    PhysicalRect pointerStartBounds_{};
 };
 
 [[nodiscard]] constexpr std::wstring_view WidgetSurfacePresentationStateValue(

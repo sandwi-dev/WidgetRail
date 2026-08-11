@@ -30,6 +30,7 @@ add_executable(OverlayHost WIN32
     DeclarativeMotion.cpp
     OverlayPlacement.cpp
     PinnedSurfacePolicy.cpp
+    PinnedSurfacePlacement.cpp
     WidgetSurfaceCoordinator.cpp
     OverlayTargeting.cpp
     OverlayTransition.cpp
@@ -156,7 +157,7 @@ if(GBA_BUILD_TESTS)
 
     add_executable(WidgetSurfaceCoordinatorTests
         WidgetSurfaceCoordinatorTests.cpp WidgetSurfaceCoordinator.cpp
-        PinnedSurfacePolicy.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp
+        PinnedSurfacePolicy.cpp PinnedSurfacePlacement.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(WidgetSurfaceCoordinatorTests PRIVATE cxx_std_20)
@@ -167,6 +168,15 @@ if(GBA_BUILD_TESTS)
         user32 gdi32 d2d1 dwrite shcore winhttp windowscodecs psapi
         ole32 oleaut32 uiautomationcore)
     add_test(NAME WidgetSurfaceCoordinatorTests COMMAND WidgetSurfaceCoordinatorTests)
+
+    add_executable(PinnedSurfacePlacementTests
+        PinnedSurfacePlacementTests.cpp PinnedSurfacePlacement.cpp PinnedSurfacePolicy.cpp)
+    target_compile_features(PinnedSurfacePlacementTests PRIVATE cxx_std_20)
+    target_compile_options(PinnedSurfacePlacementTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(PinnedSurfacePlacementTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(PinnedSurfacePlacementTests PRIVATE user32)
+    add_test(NAME PinnedSurfacePlacementTests COMMAND PinnedSurfacePlacementTests)
 
     add_executable(OverlayTargetingTests OverlayTargetingTests.cpp OverlayTargeting.cpp)
     target_compile_features(OverlayTargetingTests PRIVATE cxx_std_20)

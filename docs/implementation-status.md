@@ -1844,8 +1844,7 @@ New pins begin click-through; explicit `P` toggles interaction, `U` unpins, and
 removal, generation replacement, worker restart/loss, close, or host exit clean
 up exactly once. The focused DLV-058 fixture passed 33 checks with a
 10,264,576-byte incremental private-working-set observation, below DLV-016's
-material gate. Durable geometry and final composed input/accessibility remain
-DLV-068/DLV-069.
+material gate. Final composed input/accessibility remains DLV-069.
 
 DLV-070 moves process ownership ahead of every `OverlayApp` initialization.
 One race-safe global per-user/profile mutex elects the owner; later ordinary or
@@ -1862,6 +1861,23 @@ simultaneous, malformed, squatted-endpoint, timeout, abandoned-owner, and
 orderly-exit checks. The isolated exact-executable probe confirms the no-HWND
 owner receives Show and both processes exit 0 without initializing `OverlayApp`
 in the probe owner or client.
+
+DLV-068 adds one generation-bound `PlacementSession` and schema-1 durable
+geometry store to the same coordinator. Placement records contain only widget
+ID, stable monitor ID, normalized work-area anchors, and logical DIP size;
+atomic replacement is bounded to 64 records and malformed/incompatible state
+resets closed. Controller Menu/View, keyboard M/R, host pointer chrome, and UIA
+Move/Resize all enter the same Move/Resize preview. Directional input changes a
+work-area-constrained rectangle, A/Enter commits, and B/Escape/capture loss or
+overlay close restores the exact original rectangle. Commit revalidates runtime
+and presentation generations before writing. DPI, work-area, orientation,
+topology, and monitor loss resolve the last logical placement through one
+normalized-anchor policy; a work area below the host-injected minimum fails
+closed. The focused Release evidence passes 16 pure placement/persistence
+checks and 41 real-HWND lifecycle/placement/UIA checks. The latter observed a
+10,833,920-byte incremental private-working-set delta, below DLV-016's material
+gate. Placement adds no hidden/idle timer. Final focus/emergency/UIA composition
+remains DLV-069.
 
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is

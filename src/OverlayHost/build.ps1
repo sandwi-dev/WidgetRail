@@ -8,6 +8,7 @@ param(
     [switch]$SkipPackaging,
     [switch]$SemanticChurnTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
+    [switch]$PinnedPlacementTestsOnly,
     [switch]$ProcessOwnerTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$WidgetSurfaceTestsOnly
@@ -115,10 +116,11 @@ $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catal
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
 $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
 $pinnedSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-surface-host-tests'
+$pinnedPlacementTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-placement-tests'
 $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surface-coordinator-tests'
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -191,11 +193,31 @@ function Invoke-PinnedSurfaceHostTests {
     }
 }
 
+function Invoke-PinnedSurfacePlacementTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'PinnedSurfacePlacementTests.cpp'),
+        (Join-Path $projectDirectory 'PinnedSurfacePlacement.cpp'),
+        (Join-Path $projectDirectory 'PinnedSurfacePolicy.cpp'),
+        "/Fo:$pinnedPlacementTestObjectDirectory\",
+        "/Fe:$outputDirectory\PinnedSurfacePlacementTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "PinnedSurfacePlacementTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'PinnedSurfacePlacementTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "PinnedSurfacePlacementTests failed with exit code $LASTEXITCODE."
+    }
+}
+
 function Invoke-WidgetSurfaceCoordinatorTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'WidgetSurfaceCoordinatorTests.cpp'),
         (Join-Path $projectDirectory 'WidgetSurfaceCoordinator.cpp'),
         (Join-Path $projectDirectory 'PinnedSurfacePolicy.cpp'),
+        (Join-Path $projectDirectory 'PinnedSurfacePlacement.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
@@ -296,6 +318,14 @@ if ($PinnedSurfaceTestsOnly) {
     return
 }
 
+if ($PinnedPlacementTestsOnly) {
+    if ($SkipTests) {
+        throw 'PinnedPlacementTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-PinnedSurfacePlacementTests
+    return
+}
+
 if ($WidgetSurfaceTestsOnly) {
     if ($SkipTests) {
         throw 'WidgetSurfaceTestsOnly cannot be combined with SkipTests.'
@@ -335,6 +365,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
     (Join-Path $projectDirectory 'PinnedSurfacePolicy.cpp'),
+    (Join-Path $projectDirectory 'PinnedSurfacePlacement.cpp'),
     (Join-Path $projectDirectory 'WidgetSurfaceCoordinator.cpp'),
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
     (Join-Path $projectDirectory 'OverlayTransition.cpp'),
@@ -690,6 +721,7 @@ if (-not $SkipTests) {
     }
 
     Invoke-PinnedSurfaceHostTests
+    Invoke-PinnedSurfacePlacementTests
     Invoke-WidgetSurfaceCoordinatorTests
     Invoke-OverlayProcessOwnerTests
 
