@@ -358,6 +358,23 @@ public sealed record AppLibraryBackendCursorPage(
     string? After,
     string Revision);
 
+/// <summary>
+/// Sanitized host-only evidence from one exact app-library launch adapter.
+/// No process, window, command, or filesystem identity is carried.
+/// </summary>
+public enum AppLibraryLaunchObservationState
+{
+    RequestAccepted,
+    LauncherStarted,
+    Running,
+    Ended,
+}
+
+public sealed record AppLibraryLaunchObservationSummary(
+    AppLibraryLaunchObservationState State,
+    bool SupportsRunning,
+    bool SupportsEnded);
+
 /// <summary>Trusted backend icon result; the broker validates every byte.</summary>
 public sealed record AppLibraryIconSummary(string? PngBase64);
 
@@ -790,6 +807,14 @@ public interface IAppLibraryPlatformBrokerBackend
         CancellationToken cancellationToken) =>
         Task.FromException(
             new BrokerException("platform_unavailable", "App launch is unavailable."));
+
+    async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        string appId,
+        CancellationToken cancellationToken)
+    {
+        await LaunchAppLibraryItemAsync(appId, cancellationToken).ConfigureAwait(false);
+        return new(AppLibraryLaunchObservationState.RequestAccepted, false, false);
+    }
 
     /// <summary>
     /// Rasterizes an icon only for an already resolved provider token. List

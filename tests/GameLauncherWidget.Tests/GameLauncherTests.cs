@@ -335,6 +335,133 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task AdapterEvidenceProjectsExactLifecyclePerSavedIdentity()
+    {
+        var host = new FakeHost(3)
+        {
+            LaunchHandler = (request, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                var state = request.AppId.EndsWith("0", StringComparison.Ordinal)
+                    ? WidgetAppLaunchObservationState.Running
+                    : request.AppId.EndsWith("1", StringComparison.Ordinal)
+                        ? WidgetAppLaunchObservationState.Ended
+                        : WidgetAppLaunchObservationState.LauncherStarted;
+                return ValueTask.FromResult(new WidgetAppLaunchObservation(
+                    state, SupportsRunning: true, SupportsEnded: true));
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var first = Nodes(Snapshot(widget, 20).Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+
+        await widget.OnActionAsync(new("game-launcher.launch", first[0].Id));
+        await widget.OnActionAsync(new("game-launcher.launch", first[1].Id));
+        await widget.OnActionAsync(new("game-launcher.launch", first[2].Id));
+
+        var tiles = Nodes(Snapshot(widget, 21).Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+        StringAssert.Contains(tiles[0].AccessibilityLabel!, "Running");
+        StringAssert.Contains(tiles[1].AccessibilityLabel!, "Ended");
+        StringAssert.Contains(tiles[2].AccessibilityLabel!, "Launcher started");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task UnsupportedAdapterUsesRequestAcceptedAndDoesNotClaimRunning()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tile = Nodes(Snapshot(widget, 22).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+
+        var rendered = Nodes(Snapshot(widget, 23).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+        StringAssert.Contains(rendered.AccessibilityLabel!, "Request accepted");
+        Assert.IsFalse(rendered.AccessibilityLabel!.Contains("Running", StringComparison.Ordinal));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task LateCanceledEvidenceCannotPublishAfterDeactivation()
+    {
+        var admitted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<WidgetAppLaunchObservation>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new FakeHost(1)
+        {
+            LaunchHandler = (_, _) =>
+            {
+                admitted.TrySetResult();
+                return new ValueTask<WidgetAppLaunchObservation>(release.Task);
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tile = Nodes(Snapshot(widget, 24).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+        var launch = widget.OnActionAsync(new("game-launcher.launch", tile.Id)).AsTask();
+        await Bounded(admitted.Task, "launch evidence admission");
+        StringAssert.Contains(
+            Nodes(Snapshot(widget, 25).Root)
+                .Single(node => node.ActionId == "game-launcher.launch")
+                .AccessibilityLabel!,
+            "Pending");
+
+        var background = Background(widget);
+        Assert.IsFalse(background.IsCompleted);
+        release.TrySetResult(new(WidgetAppLaunchObservationState.Running, true, false));
+        await Bounded(background, "launch lifecycle drain");
+        await Bounded(launch, "late launch completion");
+
+        Assert.IsFalse(Nodes(Snapshot(widget, 26).Root).Any(node =>
+            node.AccessibilityLabel?.Contains("Running", StringComparison.Ordinal) == true));
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RefreshGenerationRejectsLateLaunchEvidence()
+    {
+        var admitted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<WidgetAppLaunchObservation>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new FakeHost(1)
+        {
+            LaunchHandler = (_, _) =>
+            {
+                admitted.TrySetResult();
+                return new ValueTask<WidgetAppLaunchObservation>(release.Task);
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tile = Nodes(Snapshot(widget, 28).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+        var launch = widget.OnActionAsync(new("game-launcher.launch", tile.Id)).AsTask();
+        await Bounded(admitted.Task, "stale launch admission");
+
+        var revision = widget.Collection.Revision;
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "collection refresh");
+        Assert.IsGreaterThan(revision, widget.Collection.Revision);
+        release.TrySetResult(new(WidgetAppLaunchObservationState.Running, true, false));
+        await Bounded(launch, "stale launch completion");
+
+        Assert.IsFalse(Nodes(Snapshot(widget, 29).Root).Any(node =>
+            node.AccessibilityLabel?.Contains("Running", StringComparison.Ordinal) == true));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task MissingCurrentIdentityCannotLaunch()
     {
         var host = new FakeHost(1) { ResolveHandler = _ => [] };
@@ -347,9 +474,31 @@ public sealed class GameLauncherTests
         await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
 
         Assert.AreEqual(0, host.Launches.Count);
-        Assert.AreEqual("The selected game is no longer installed",
+        Assert.AreEqual("Failed · The selected game is no longer installed",
             Nodes(widget.RenderSnapshot("launcher.test", 4).Root)
                 .Single(node => node.Id == "game-launcher.status").Text);
+        StringAssert.Contains(
+            Nodes(widget.RenderSnapshot("launcher.test", 5).Root)
+                .Single(node => node.ActionId == "game-launcher.launch")
+                .AccessibilityLabel!, "Failed");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task LaunchStateRetentionIsBounded()
+    {
+        var host = new FakeHost(LauncherWidget.MaximumRetainedLaunchStates + 4);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tiles = Nodes(Snapshot(widget, 27).Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+
+        foreach (var tile in tiles)
+            await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+
+        Assert.AreEqual(LauncherWidget.MaximumRetainedLaunchStates,
+            widget.RetainedLaunchStateCount);
         await Background(widget);
     }
 
@@ -532,6 +681,8 @@ public sealed class GameLauncherTests
             IReadOnlyList<WidgetAppLibraryItem>>? ResolveHandler { get; set; }
         internal List<IReadOnlyList<string>> ResolveRequests { get; } = [];
         internal List<string> Launches { get; } = [];
+        internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
+            ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
         internal TaskCompletionSource FirstQueryStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -545,6 +696,7 @@ public sealed class GameLauncherTests
             .WithHandler(WidgetAppLibraryCapabilities.GetPage, Query)
             .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, Resolve)
             .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)
+            .WithHandler(WidgetAppLibraryCapabilities.LaunchObserved, LaunchObserved)
             .WithPrivateState(_state)
             .Build();
 
@@ -592,6 +744,17 @@ public sealed class GameLauncherTests
             token.ThrowIfCancellationRequested();
             Launches.Add(request.AppId);
             return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+        }
+
+        private ValueTask<WidgetAppLaunchObservation> LaunchObserved(
+            LaunchWidgetAppLibraryItemRequest request,
+            CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            Launches.Add(request.AppId);
+            return LaunchHandler?.Invoke(request, token) ??
+                ValueTask.FromResult(new WidgetAppLaunchObservation(
+                    WidgetAppLaunchObservationState.RequestAccepted, false, false));
         }
     }
 }

@@ -82,9 +82,42 @@ internal static class AppLibraryCursorScenarios
             CancellationToken.None));
     }
 
+    internal static async Task ControlledLaunchEvidenceIsPreserved()
+    {
+        var source = new CursorSource(1)
+        {
+            LaunchResult = new(AppLibraryLaunchObservationState.Running,
+                GameLibraryLaunchEvidence.LauncherStarted |
+                GameLibraryLaunchEvidence.Running |
+                GameLibraryLaunchEvidence.Ended),
+        };
+        await using var provider = new WindowsAppLibraryProvider(
+            [source], CursorSta.Instance);
+        var page = await provider.QueryAppLibraryAsync(
+            new(new(Kind: AppLibraryKind.Game), null, null, 1, Refresh: true),
+            CancellationToken.None);
+
+        var running = await provider.LaunchAppLibraryItemObservedAsync(
+            page.Items.Single().ProviderAppId, CancellationToken.None);
+        Assert.Equal(AppLibraryLaunchObservationState.Running, running.State);
+        Assert.True(running.SupportsRunning);
+        Assert.True(running.SupportsEnded);
+
+        source.LaunchResult = new(AppLibraryLaunchObservationState.Ended,
+            GameLibraryLaunchEvidence.LauncherStarted |
+            GameLibraryLaunchEvidence.Running |
+            GameLibraryLaunchEvidence.Ended);
+        var ended = await provider.LaunchAppLibraryItemObservedAsync(
+            page.Items.Single().ProviderAppId, CancellationToken.None);
+        Assert.Equal(AppLibraryLaunchObservationState.Ended, ended.State);
+    }
+
     private sealed class CursorSource(int count) : IGameLibrarySource
     {
         internal int Count { get; set; } = count;
+        internal GameLibraryLaunchResult LaunchResult { get; set; } = new(
+            AppLibraryLaunchObservationState.RequestAccepted,
+            GameLibraryLaunchEvidence.None);
         public string SourceIdentity => "source-cursor";
         public string Attribution => "Steam";
         public GameLibrarySourceSnapshot Snapshot { get; private set; } =
@@ -108,8 +141,12 @@ internal static class AppLibraryCursorScenarios
 
         public GameLibrarySourceItem? ResolveExact(
             GameLibrarySourceItem item, CancellationToken cancellationToken) => item;
-        public void Launch(GameLibrarySourceItem exactItem,
-            CancellationToken cancellationToken) => cancellationToken.ThrowIfCancellationRequested();
+        public GameLibraryLaunchResult Launch(GameLibrarySourceItem exactItem,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return LaunchResult;
+        }
         public string? LoadArtwork(GameLibrarySourceItem exactItem,
             CancellationToken cancellationToken) => null;
         public void Dispose() { }

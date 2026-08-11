@@ -262,6 +262,13 @@ public sealed class WindowsAppLibraryProvider :
     public async Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken)
     {
+        _ = await LaunchAppLibraryItemObservedAsync(appId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        string appId, CancellationToken cancellationToken)
+    {
         ThrowIfTerminating();
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             throw AppUnavailable();
@@ -277,16 +284,19 @@ public sealed class WindowsAppLibraryProvider :
                     registered.SourceIdentity, out var source))
                 throw AppUnavailable();
 
-            await _shellSta.RunAsync(
+            var result = await _shellSta.RunAsync(
                 token =>
                 {
                     var exact = source.ResolveExact(registered, token);
                     token.ThrowIfCancellationRequested();
                     if (exact is null || !IsStructurallyValid(exact)) throw AppUnavailable();
-                    source.Launch(exact, token);
-                    return true;
+                    return source.Launch(exact, token);
                 }, operation.Token).ConfigureAwait(false);
             operation.Token.ThrowIfCancellationRequested();
+            return new AppLibraryLaunchObservationSummary(
+                result.State,
+                result.SupportedEvidence.HasFlag(GameLibraryLaunchEvidence.Running),
+                result.SupportedEvidence.HasFlag(GameLibraryLaunchEvidence.Ended));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

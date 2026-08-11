@@ -1269,6 +1269,8 @@ static async Task AppLaunchHostEffectIsSuccessBound()
     ]);
     var effects = 0;
     var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var secondPublished = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     var options = new BrokerPipeTransportOptions
     {
         AcceptTimeout = TimeSpan.FromSeconds(2),
@@ -1287,8 +1289,9 @@ static async Task AppLaunchHostEffectIsSuccessBound()
         hostEffectSink: effect =>
         {
             if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
-            Interlocked.Increment(ref effects);
+            var count = Interlocked.Increment(ref effects);
             published.TrySetResult();
+            if (count == 2) secondPublished.TrySetResult();
         });
     server.SetLifecycle(BrokerLifecycleState.Interactive);
     var serverTask = server.RunAsync();
@@ -1319,13 +1322,46 @@ static async Task AppLaunchHostEffectIsSuccessBound()
     await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
     Assert.Equal(1, Volatile.Read(ref effects));
 
+    var acceptedOnly = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunchObserved,
+        new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true });
+    Assert.True(acceptedOnly.Succeeded);
+    Assert.Equal(AppLibraryLaunchObservationState.RequestAccepted,
+        acceptedOnly.Payload!.Value.Deserialize<AppLibraryLaunchObservationSummary>(
+            BrokerJson.StrictOptions)!.State);
+    Assert.Equal(1, Volatile.Read(ref effects));
+
+    backend.AppLibraryObservedLaunchHandler = (_, token) =>
+    {
+        token.ThrowIfCancellationRequested();
+        return Task.FromResult(new AppLibraryLaunchObservationSummary(
+            AppLibraryLaunchObservationState.LauncherStarted, false, false));
+    };
+    var evidence = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunchObserved,
+        new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true });
+    Assert.True(evidence.Succeeded);
+    await secondPublished.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+    backend.AppLibraryObservedLaunchHandler = (_, _) => Task.FromResult(
+        new AppLibraryLaunchObservationSummary(
+            AppLibraryLaunchObservationState.Running, false, false));
+    var invalidEvidence = await client.RequestAsync(
+        PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunchObserved,
+        new LaunchAppLibraryItemRequest(appId) { CloseOverlayOnSuccess = true });
+    Assert.Equal("invalid_backend_data", invalidEvidence.ErrorCode);
+    Assert.Equal(2, Volatile.Read(ref effects));
+
     var failed = await client.RequestAsync(
         PlatformCapabilities.AppLibraryLaunchV1,
         PlatformCapabilities.AppLibraryLaunch,
         new LaunchAppLibraryItemRequest("missing") { CloseOverlayOnSuccess = true });
     Assert.Equal("app_not_found", failed.ErrorCode);
     await Task.Delay(50);
-    Assert.Equal(1, Volatile.Read(ref effects));
+    Assert.Equal(2, Volatile.Read(ref effects));
 
     await client.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));

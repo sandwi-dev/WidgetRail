@@ -49,6 +49,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int SpotifyPlaybackStartCalls { get; private set; }
     public int SpotifyLocalPlaybackControlCalls { get; private set; }
     public int AppLibraryLaunchCalls { get; private set; }
+    public Func<string, CancellationToken, Task<AppLibraryLaunchObservationSummary>>?
+        AppLibraryObservedLaunchHandler { get; set; }
     public int AppLibraryReadCalls { get; private set; }
     public int AppLibraryRefreshCalls { get; private set; }
     public int AppLibraryIconCalls { get; private set; }
@@ -391,6 +393,17 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         AppLibraryLaunchCalls++;
         LastLaunchedAppId = appId;
         return Task.CompletedTask;
+    }
+
+    public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        string appId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        AppLibraryLaunchCalls++;
+        LastLaunchedAppId = appId;
+        return AppLibraryObservedLaunchHandler?.Invoke(appId, cancellationToken) ??
+            Task.FromResult(new AppLibraryLaunchObservationSummary(
+                AppLibraryLaunchObservationState.RequestAccepted, false, false));
     }
 
     public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(

@@ -42,7 +42,11 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             PlatformCapabilities.AppLibraryResolveSaved => BrokerJson.ToElement(
                 await ResolveSavedAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryLaunch =>
-                await LaunchAsync(payload, cancellationToken).ConfigureAwait(false),
+                await LaunchAsync(payload, observed: false, cancellationToken)
+                    .ConfigureAwait(false),
+            PlatformCapabilities.AppLibraryLaunchObserved =>
+                await LaunchAsync(payload, observed: true, cancellationToken)
+                    .ConfigureAwait(false),
             _ => throw new BrokerException(
                 "unsupported_operation", "App-library operation is unsupported."),
         };
@@ -128,6 +132,7 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
 
     private async Task<JsonElement> LaunchAsync(
         JsonElement payload,
+        bool observed,
         CancellationToken cancellationToken)
     {
         var request = BrokerJson.ParsePayload<LaunchAppLibraryItemRequest>(payload);
@@ -138,9 +143,22 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             if (!_launchByPublicId.TryGetValue(request.AppId, out var registration))
                 throw new BrokerException(
                     "app_not_found", "The selected app is no longer available.");
-            await _backend.LaunchAppLibraryItemAsync(
+            if (!observed)
+            {
+                await _backend.LaunchAppLibraryItemAsync(
+                    registration.BackendAppId, cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
+            var result = await _backend.LaunchAppLibraryItemObservedAsync(
                 registration.BackendAppId, cancellationToken).ConfigureAwait(false);
-            return BrokerCapabilityDomains.Acknowledged();
+            if (!Enum.IsDefined(result.State) ||
+                result.State == AppLibraryLaunchObservationState.Running &&
+                    !result.SupportsRunning ||
+                result.State == AppLibraryLaunchObservationState.Ended &&
+                    !result.SupportsEnded)
+                throw new BrokerException(
+                    "invalid_backend_data", "App launch evidence is invalid.");
+            return BrokerJson.ToElement(result);
         }
         finally
         {

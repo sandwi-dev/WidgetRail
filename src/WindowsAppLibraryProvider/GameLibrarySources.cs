@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WindowsAppLibraryProvider;
 
@@ -17,6 +18,19 @@ internal enum GameLibrarySourceHealth
     Degraded,
     Unavailable,
 }
+
+[Flags]
+internal enum GameLibraryLaunchEvidence
+{
+    None = 0,
+    LauncherStarted = 1,
+    Running = 2,
+    Ended = 4,
+}
+
+internal sealed record GameLibraryLaunchResult(
+    AppLibraryLaunchObservationState State,
+    GameLibraryLaunchEvidence SupportedEvidence);
 
 internal interface IGameLibrarySourceAuthority;
 
@@ -53,7 +67,9 @@ internal interface IGameLibrarySource : IDisposable
     GameLibrarySourceItem? ResolveExact(
         GameLibrarySourceItem item,
         CancellationToken cancellationToken);
-    void Launch(GameLibrarySourceItem exactItem, CancellationToken cancellationToken);
+    GameLibraryLaunchResult Launch(
+        GameLibrarySourceItem exactItem,
+        CancellationToken cancellationToken);
     string? LoadArtwork(GameLibrarySourceItem exactItem, CancellationToken cancellationToken);
 }
 
@@ -125,12 +141,10 @@ internal abstract class GameLibrarySourceBase : IGameLibrarySource
         CancellationToken cancellationToken) =>
         Execute(cancellationToken, token => ResolveExactCore(item, token));
 
-    public void Launch(GameLibrarySourceItem exactItem, CancellationToken cancellationToken) =>
-        Execute(cancellationToken, token =>
-        {
-            LaunchCore(exactItem, token);
-            return true;
-        });
+    public GameLibraryLaunchResult Launch(
+        GameLibrarySourceItem exactItem,
+        CancellationToken cancellationToken) =>
+        Execute(cancellationToken, token => LaunchCore(exactItem, token));
 
     public string? LoadArtwork(
         GameLibrarySourceItem exactItem,
@@ -142,7 +156,7 @@ internal abstract class GameLibrarySourceBase : IGameLibrarySource
     protected abstract GameLibrarySourceItem? ResolveExactCore(
         GameLibrarySourceItem item,
         CancellationToken cancellationToken);
-    protected abstract void LaunchCore(
+    protected abstract GameLibraryLaunchResult LaunchCore(
         GameLibrarySourceItem exactItem,
         CancellationToken cancellationToken);
     protected abstract string? LoadArtworkCore(
@@ -348,7 +362,7 @@ internal sealed class WindowsInstalledGameLibrarySource : GameLibrarySourceBase
             : null;
     }
 
-    protected override void LaunchCore(
+    protected override GameLibraryLaunchResult LaunchCore(
         GameLibrarySourceItem exactItem,
         CancellationToken cancellationToken)
     {
@@ -358,14 +372,18 @@ internal sealed class WindowsInstalledGameLibrarySource : GameLibrarySourceBase
         {
             case StartMenuRegistration shortcut:
                 _shellLauncher.Launch(shortcut.ShortcutPath, cancellationToken);
-                return;
+                return StartedOnly();
             case AppsFolderRegistration packaged:
                 _packagedLauncher.Launch(packaged.Aumid, cancellationToken);
-                return;
+                return StartedOnly();
             default:
                 throw new InvalidOperationException("Windows launch authority is invalid.");
         }
     }
+
+    private static GameLibraryLaunchResult StartedOnly() => new(
+        AppLibraryLaunchObservationState.LauncherStarted,
+        GameLibraryLaunchEvidence.LauncherStarted);
 
     protected override string? LoadArtworkCore(
         GameLibrarySourceItem exactItem,
@@ -518,13 +536,15 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
             : null;
     }
 
-    protected override void LaunchCore(
+    protected override GameLibraryLaunchResult LaunchCore(
         GameLibrarySourceItem exactItem,
         CancellationToken cancellationToken)
     {
         if (!TryGetAuthority<SteamAuthority>(exactItem, out var authority))
             throw new InvalidOperationException("Steam launch authority is invalid.");
         _launcher.Launch(authority.Registration.SteamAppId, cancellationToken);
+        return new(AppLibraryLaunchObservationState.LauncherStarted,
+            GameLibraryLaunchEvidence.LauncherStarted);
     }
 
     protected override string? LoadArtworkCore(

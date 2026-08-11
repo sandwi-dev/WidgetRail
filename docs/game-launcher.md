@@ -1,6 +1,6 @@
 # Game Launcher reference
 
-Status: bundled package 0.2.0 implements the installed-only controller-first
+Status: bundled package 0.3.0 implements the installed-only controller-first
 library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
@@ -64,8 +64,22 @@ cannot partially survive or authorize launch.
 Activation of a current tile resolves its exact SavedId again, verifies that
 the keyed row is still in the current retained window, and sends only the newly
 issued AppId to the broker. Missing, stale, unavailable, or permission-denied
-records cannot launch. Confirmed success requests the existing
-`CloseOnConfirmedSuccess` overlay behavior.
+records cannot launch.
+
+The tile becomes **Pending** while exact revalidation and launch admission run.
+The trusted adapter then returns a bounded, sanitized evidence result: **Request
+accepted**, **Launcher started**, **Running**, or **Ended**. A failure is shown
+as **Failed**. Windows shortcut, packaged-app, and Steam URI launchers currently
+prove only **Launcher started**; they never infer Running or Ended from process
+names, windows, paths, or store acknowledgement. Adapters without stronger
+evidence use **Request accepted**. The overlay closes only after evidence at
+least as strong as Launcher started, never for acknowledgement alone.
+
+Lifecycle results are keyed to the exact current SavedId and launch generation.
+A late completion after deactivation or replacement cannot change a newer row,
+and launching one explicit variant cannot overwrite another variant's state.
+No PID, HWND, command, store identity, or path enters widget state, snapshots,
+or logs.
 
 ## Bounds and failure states
 
