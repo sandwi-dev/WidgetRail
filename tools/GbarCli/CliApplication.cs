@@ -28,7 +28,7 @@ public static class CliApplication
         {
             return args[0] switch
             {
-                "new" => await NewCommand.RunAsync(args[1..], output),
+                "new" => await NewCommand.RunAsync(args[1..], output, cancellationToken),
                 "validate" => await ValidateCommand.RunAsync(args[1..], output, error),
                 "dev" => await DevCommand.RunAsync(args[1..], output, error, cancellationToken),
                 "preview" => await ScenarioPreviewCommand.RunAsync(args[1..], output, cancellationToken),

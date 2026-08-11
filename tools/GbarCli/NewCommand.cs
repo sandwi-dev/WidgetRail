@@ -4,7 +4,10 @@ namespace GameBarAlternative.GbarCli;
 
 internal static partial class NewCommand
 {
-    public static async Task<int> RunAsync(string[] args, TextWriter output)
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        CancellationToken cancellationToken = default)
     {
         var parsed = new CommandArguments(args, "--output", "--id", "--publisher");
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
@@ -23,12 +26,12 @@ internal static partial class NewCommand
         if (!WidgetIdRegex().IsMatch(id))
             throw new CliUsageException("Widget ID must be a lowercase reverse-DNS identifier.");
         var target = Path.GetFullPath(parsed.Option("--output") ?? Path.Combine(Environment.CurrentDirectory, name));
-        if (File.Exists(target) || (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any()))
-            throw new CliUsageException($"Output directory is not empty: {target}");
+        if (File.Exists(target) || Directory.Exists(target))
+            throw new CliUsageException(
+                $"Output path already exists: {target}. Choose a new path; gbar never overwrites or deletes an existing destination.");
 
         var templateRoot = TemplateLocator.Find();
         var sdkPackage = LocalWidgetSdkPackage.Create();
-        Directory.CreateDirectory(target);
         var replacements = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["{{WidgetName}}"] = name,
@@ -37,25 +40,12 @@ internal static partial class NewCommand
             ["{{SdkVersion}}"] = sdkPackage.Version,
         };
 
-        var created = 0;
-        foreach (var source in Directory.EnumerateFiles(templateRoot, "*", SearchOption.AllDirectories))
-        {
-            if (Path.GetFileName(source).Equals("template.json", StringComparison.OrdinalIgnoreCase)) continue;
-            var relative = Path.GetRelativePath(templateRoot, source);
-            if (relative.EndsWith(".template", StringComparison.Ordinal)) relative = relative[..^".template".Length];
-            var destination = Path.Combine(target, relative.Replace("WidgetName", name, StringComparison.Ordinal));
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            var content = await File.ReadAllTextAsync(source);
-            foreach (var replacement in replacements) content = content.Replace(replacement.Key, replacement.Value, StringComparison.Ordinal);
-            await File.WriteAllTextAsync(destination, content);
-            created++;
-        }
-
-        var feed = Path.Combine(target, ".gbar", "packages");
-        Directory.CreateDirectory(feed);
-        await File.WriteAllBytesAsync(
-            Path.Combine(feed, sdkPackage.FileName), sdkPackage.Content);
-        created++;
+        var created = await ControllerWidgetScaffolder.GenerateAsync(
+            templateRoot,
+            target,
+            replacements,
+            sdkPackage,
+            cancellationToken).ConfigureAwait(false);
 
         await output.WriteLineAsync($"Created {name} in {target}");
         await output.WriteLineAsync($"  ID: {id}");
@@ -84,7 +74,7 @@ internal static class TemplateLocator
     public static string Find()
     {
         var configured = Environment.GetEnvironmentVariable("GBAR_TEMPLATE_ROOT");
-        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(Path.Combine(configured, "template.json")))
+        if (!string.IsNullOrWhiteSpace(configured))
             return Path.GetFullPath(configured);
 
         foreach (var start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })

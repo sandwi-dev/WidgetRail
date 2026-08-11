@@ -204,6 +204,33 @@ After the final atomic catalog-diagnostics capture edit, focused run
 `20260811T031849Z-591cf5c6` completed in 17.523 seconds and passed WidgetBridge
 68/68 against the final source state.
 
+DLV-046 makes the checked-in ControllerWidget input and `gbar new widget`
+transactional. Version-1 `template.json` now owns one closed inventory of at
+most 64 canonical relative files, labels strict UTF-8 replacement templates
+separately from byte-preserved assets, and applies 64-KiB manifest, 1-MiB
+per-file, and 4-MiB aggregate input bounds. The loader rejects unknown or
+duplicate fields, unsupported versions, traversal/backslash/rooted paths,
+destination collisions, reparse points, missing or undeclared files and
+directories, invalid replacement destinations, unreadable inputs, and size
+overflow before publication. The scaffolder holds an immutable loaded input,
+writes the matching local SDK package and declared files into a private sibling
+directory, runs production manifest/GBSS validation there, and performs one
+directory rename only after the result is complete. Any failure or cancellation
+removes that owned staging tree; an existing author path is refused and never
+deleted or overwritten. The direct failure matrix covers manifest shape and
+version, binary preservation, every bound, unsafe inventory, unreadable and
+invalid UTF-8 inputs, late validation rollback, destination faults,
+cancellation, and reparse input. The existing external temporary-directory
+journey still builds, executes its generated lifecycle fixture, validates,
+renders, replays, produces identical packages, and exercises install/version/
+rollback/remove without checkout paths. No public SDK/protocol, template
+visuals, package trust, external feed, native, or runtime authority changed.
+Focused dirty-worktree Release run `20260811T033333Z-abe40db8` completed in
+44.002 seconds and passed GbarCli/scaffold 54/54 plus documentation validation
+across 52 Markdown files. It retained one stable dirty-state fingerprint at
+DLV-040 baseline `df304c3`; no aggregate, native, Runtime, or unrelated suite
+ran.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic

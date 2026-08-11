@@ -79,7 +79,12 @@ it does not search for a source project or use an external feed. Rebuild or
 reinstall the complete `gbar` distribution so `gbar.exe`, `WidgetSdk.dll`,
 `WidgetProtocol.dll`, and the controller template come from the same build,
 then rerun `gbar new`. The command validates those bounded inputs before it
-creates the target directory and never leaves a partial scaffold.
+publishes the target directory and never leaves a partial scaffold. The
+ControllerWidget `template.json` must be supported version 1 and declare every
+input as bounded `text` or `binary`; the error identifies a missing,
+undeclared, unsafe, unreadable, or oversized file and the correction. The
+requested output path must not already exist, because `gbar new` never removes
+or overwrites an author-owned destination.
 
 ## Spotify Connect returns `ERR_CONNECTION_REFUSED`
 
