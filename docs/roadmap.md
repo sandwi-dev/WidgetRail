@@ -259,9 +259,12 @@ remains off until the publisher-trust gates in Phase 4.
   corrections are integrated through `8c1bbdf`: Spotify has bounded repeated-
   media occurrence keys plus the singleton graph correction, while trusted Games
   artwork no longer waits on provider I/O under the native request path and
-  exact revalidation changes rotate stale pixels. Before the visible launch,
-  DLV-055 must publish/install Spotify `0.2.12` because the changed source still
-  declares the already-installed immutable `0.2.11`; then take DLV-043. Continue suitable
+  exact revalidation changes rotate stale pixels. Accepted DLV-055 `efffa53`
+  publishes/installs/selects the changed Spotify source as `0.2.12`, and the
+  coherent Release is visibly running. In-progress DLV-043 now establishes real
+  Spotify ownership boundaries; immediately afterward, DLV-056 must remove the
+  demonstrated checkout-path-sensitive package output and publish a two-root-
+  reproducible main artifact as `0.2.13`. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -288,8 +291,8 @@ remains off until the publisher-trust gates in Phase 4.
   add bounded lazy handles for trusted Start Menu and AppsFolder artwork without
   serializing base64 images into snapshots or holding provider I/O under native
   control-plane progress; exact trusted revalidation rotates the handle, decoded
-  cache entry, and render bitmap. Steam remains a documented fallback. Packaged
-  live artwork coverage follows the coherent post-DLV-055 launch.
+  cache entry, and render bitmap. Steam remains a documented fallback. The
+  coherent post-DLV-055 Release is now running for packaged live artwork checks.
   Launcher sources,
   authoritative game classification, history, search, source grouping,
   running-program capture, and file-picker additions remain roadmap work.
@@ -319,10 +322,11 @@ remains off until the publisher-trust gates in Phase 4.
   eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
   Do not claim public distribution while the documented five-user Development
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
-  Before expanding breadth, finish DLV-055 so the already-integrated DLV-022/053
-  Queue/Playlist traversal, bounded duplicate-occurrence identity, and non-self-
-  linking singleton header graph execute from unique installed Spotify version
-  `0.2.12` instead of the older selected `0.2.11`.
+  Accepted DLV-055 now runs the integrated DLV-022/053 Queue/Playlist traversal,
+  bounded duplicate-occurrence identity, and non-self-linking singleton header
+  graph from unique selected Spotify `0.2.12`. DLV-056 follows DLV-043 to make
+  the managed package checkout-independent and publish the exact main artifact
+  as `0.2.13`; immutable `0.2.11`/`0.2.12` remain rollback generations.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,

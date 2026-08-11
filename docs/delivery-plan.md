@@ -691,10 +691,15 @@ through `8c1bbdf`: Spotify now uses bounded continuous occurrence-aware lists,
 and Games & Apps has lazy trusted artwork whose provider work does not serialize
 ordinary bridge traffic and whose exact revalidation revision rotates stale
 native pixels. Integration review then found Spotify source changed while its
-already-installed immutable manifest remained `0.2.11`. DLV-055 is Assigned to
-issue, install, select, and enable a content-unique package before the visible
-launch; DLV-043 follows. DLV-038 remains deferred test-architecture debt rather
-than filler work.
+already-installed immutable manifest remained `0.2.11`. Accepted DLV-055
+`efffa53` publishes, installs, selects, enables, and first-renders `0.2.12`; the
+fresh Release overlay is visibly running for user verification. An independent
+main-worktree rebuild then exposed path-sensitive package output: the same
+commit produced a different sealed digest and immutable `0.2.12` correctly
+refused replacement. In-progress DLV-043 is not interrupted; DLV-056 is next to
+make Community output checkout-independent and publish the corrected artifact
+as `0.2.13`. DLV-038 remains deferred test-architecture debt rather than filler
+work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2559,7 +2564,8 @@ remains verification evidence rather than a claim that EQ-020 is closed.
 
 ### DLV-055 — Publish the current Spotify correction under a unique version
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `efffa53`
+**Closing commit:** `efffa53` (`[DLV-055] publish Spotify 0.2.12 package`)
 **Baseline:** accepted integration `8c1bbdf` plus the reviewer control-plane
 commit containing this assignment
 **Dependencies:** DLV-022 and DLV-053; DLV-054 only for contiguous integration
@@ -2610,10 +2616,25 @@ deleting or overwriting an immutable package, the exact digest cannot be proven,
 or startup fails for a reason outside package freshness. Preserve the profile
 and report rather than weakening catalog integrity.
 
+**Reviewer disposition:** Accepted for its stated implementation-worktree
+artifact. Source/manifest/docs, archive, installed manifest, active catalog, and
+enabled worker identify `0.2.12`; `0.2.11` remains installed and inactive. The
+independent archive-to-installed content digest matches, differs from `0.2.11`,
+and the required-AppContainer generic worker returns a valid credential-free
+first snapshot at sequence 2. The 45-case behavior suite and broader gates did
+not rerun. Commit `efffa53` is fast-forwarded to main and the coherent Release
+overlay is visibly running as PID 25956. A subsequent build from main produced
+the same three-file 146,050-byte archive shape but a different sealed content
+digest (`f989ac...` versus installed `a946b3...`); immutable install correctly
+refused replacement and the supported workflow reselected/re-enabled the
+accepted installed artifact. DLV-056 owns this newly demonstrated checkout-path
+reproducibility gap; it does not invalidate the latest-source live behavior but
+prevents calling the main artifact graph exact.
+
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
-**State:** Ready after DLV-055
-**Baseline:** closing commit of DLV-055
+**State:** In progress after accepted DLV-055
+**Baseline:** accepted DLV-055 commit `efffa53`
 **Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
@@ -2655,6 +2676,59 @@ Release suites. No aggregate, live account, provider, or native suite.
 **Stop/escalate when:** real separation requires public SDK/protocol or provider
 changes, duplicates lifecycle/committed-state/resource authority, exposes a
 DLV-022 list/focus defect, or changes authentication/product behavior.
+
+### DLV-056 — Make Community packages reproducible across worktrees
+
+**State:** Ready after DLV-043; do not interrupt the active milestone
+**Baseline:** closing commit of DLV-043 plus the reviewer control-plane commit
+containing this assignment
+**Dependencies:** DLV-055 and DLV-043 only for source/integration order
+**Owner:** widgets lane over the shared managed Community package build inputs,
+Spotify manifest/version references, supported pack/install workflow, and the
+existing exact installed-package acceptance entry point; no product behavior
+or framework architecture changes
+**Visible outcome:** A package rebuilt from accepted local main is byte/content
+identical to the same commit built in an isolated worktree and can be installed
+as the uniquely versioned payload the visible overlay actually runs.
+
+**Objective:** Remove absolute-checkout-path influence from managed Community
+addon output, prove the same commit packages identically in main and an isolated
+worktree, then publish the post-DLV-043 Spotify source as immutable `0.2.13`.
+
+**In scope:** identify the exact path-sensitive managed build input; apply the
+smallest shared deterministic/path-map configuration that is safe for public
+Community addon builds; bump Spotify source/manifest/docs to `0.2.13`; build and
+pack the same commit from two distinct absolute checkout roots; compare archive
+SHA-256 and independently derived sealed content-tree digests; use the supported
+disable/install/select/enable workflow for the main-built archive; retain
+`0.2.11` and `0.2.12` as inactive rollback versions; run the existing exact
+installed-package AppContainer first-snapshot acceptance against `0.2.13`.
+
+**Out of scope:** Spotify behavior or DLV-043 ownership changes, deleting or
+overwriting installed versions, weakening immutable catalog rules, broad build-
+system cleanup, repo-wide test migration, native/provider/public SDK/protocol
+work, screenshots, credentials, live playback, or aggregate verification.
+
+**Acceptance criteria:** two clean builds of the exact closing commit from
+distinct absolute roots produce identical `.gbarwidget` SHA-256 and sealed
+content-tree digest; no compiled payload, manifest, archive entry, or validation
+evidence contains either checkout root. The main-built `0.2.13` archive is the
+enabled selected installed generation and its digest matches the independently
+installed archive; `0.2.11` and `0.2.12` remain distinct inactive rollbacks. The
+production generic worker requires AppContainer and publishes a valid first
+credential-free snapshot. Repeating the main build does not change either hash.
+
+**Verification:** Tier 1 two-root Release package/validation/hash comparison and
+documentation contracts. Tier 2 only the existing exact installed Spotify
+package/digest/AppContainer first-snapshot acceptance. Do not rerun Spotify's
+behavior suite, the product aggregate, provider/native suites, screenshots, or
+live-account checks.
+
+**Stop/escalate when:** checkout independence requires changing public PDB/debug
+semantics or repository-wide release policy beyond a narrow documented setting,
+either older immutable version would need deletion/overwrite, hashes still vary
+after the identified path input is removed, or startup fails outside packaging.
+Preserve all installed generations and report exact differing archive entries.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
