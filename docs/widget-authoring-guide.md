@@ -1245,6 +1245,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.read.v1` | get/watch sanitized Bluetooth radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | request Bluetooth software radio On/Off | Interactive |
 | `system.network.bluetooth.pair.v1` | pair one current opaque Bluetooth association endpoint and receive a typed outcome | Interactive |
+| `system.network.bluetooth.unpair.v1` | remove one explicitly confirmed current paired opaque Bluetooth endpoint and reconcile authoritative disappearance | Interactive |
 | `system.network.bluetooth.manage.v1` | open Windows Bluetooth Settings after validating one current opaque device | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
 | `system.apps.library.read.v1` | page installed-app names/kinds, observe bounded sanitized source health, and resolve authority-scoped durable SavedIds to current launch IDs | Visible or Interactive |

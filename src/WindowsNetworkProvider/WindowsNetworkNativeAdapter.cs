@@ -192,6 +192,35 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         }
     }
 
+    public NativeProtectedWifiConnectStartResult TryConnectProtectedWifiNetwork(
+        string nativeNetworkKey,
+        ReadOnlySpan<char> secret)
+    {
+        ThrowIfDisposed();
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            return _wlan.TryConnectProtectedNetwork(
+                _calls, _wlanHandle, nativeNetworkKey, secret);
+        }
+    }
+
+    public NativeProtectedWifiRollbackResult RollbackProtectedWifiConnection(
+        string nativeNetworkKey)
+    {
+        ThrowIfDisposed();
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            var result = _wlan.RollbackProtected(_calls, _wlanHandle, nativeNetworkKey);
+            if (result is NativeProtectedWifiRollbackResult.OwnershipMismatch or
+                NativeProtectedWifiRollbackResult.DeleteFailed or
+                NativeProtectedWifiRollbackResult.VerificationUnavailable)
+                Volatile.Write(ref _degraded, 1);
+            return result;
+        }
+    }
+
     public NativeWifiRadioSnapshot ReadWifiRadio()
     {
         ThrowIfDisposed();
@@ -295,7 +324,12 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         lock (_lifetimeGate)
         {
             if (_lifetimeState != LifetimeActive) return;
-            projection = _wlan.ProcessNotification(ref data);
+            projection = _wlan.ProcessNotification(_calls, _wlanHandle, ref data);
+            if (projection.RollbackResult is
+                NativeProtectedWifiRollbackResult.OwnershipMismatch or
+                NativeProtectedWifiRollbackResult.DeleteFailed or
+                NativeProtectedWifiRollbackResult.VerificationUnavailable)
+                Volatile.Write(ref _degraded, 1);
         }
         RaiseChanged(projection.ConnectionOutcome, projection.ScanOutcome);
     }
@@ -381,6 +415,11 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             }
             if (_wlanHandle != IntPtr.Zero)
             {
+                var rollback = _wlan.RollbackPendingProtected(_calls, _wlanHandle);
+                if (rollback is NativeProtectedWifiRollbackResult.OwnershipMismatch or
+                    NativeProtectedWifiRollbackResult.DeleteFailed or
+                    NativeProtectedWifiRollbackResult.VerificationUnavailable)
+                    Volatile.Write(ref _degraded, 1);
                 if (_wlanNotificationsRegistered)
                     _ = _calls.RegisterWlanNotification(
                         _wlanHandle,

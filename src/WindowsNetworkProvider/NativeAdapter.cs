@@ -51,6 +51,26 @@ public enum NativeWifiConnectStartResult
     Unavailable,
 }
 
+public enum NativeProtectedWifiConnectStartResult
+{
+    Started,
+    NotFound,
+    InvalidCredential,
+    UnsupportedAuthentication,
+    ProfileAlreadyExists,
+    RollbackUnverified,
+    Unavailable,
+}
+
+public enum NativeProtectedWifiRollbackResult
+{
+    NothingToRollback,
+    Deleted,
+    OwnershipMismatch,
+    DeleteFailed,
+    VerificationUnavailable,
+}
+
 public enum NativeWifiRadioState
 {
     On,
@@ -125,6 +145,11 @@ public interface IWindowsNetworkNativeAdapter : IDisposable
     NativeAvailableWifiSnapshot ReadAvailableWifiSnapshot();
     NativeWifiScanStartResult TryStartWifiScan();
     NativeWifiConnectStartResult TryConnectAvailableWifiNetwork(string nativeNetworkKey);
+    NativeProtectedWifiConnectStartResult TryConnectProtectedWifiNetwork(
+        string nativeNetworkKey,
+        ReadOnlySpan<char> secret) => NativeProtectedWifiConnectStartResult.Unavailable;
+    NativeProtectedWifiRollbackResult RollbackProtectedWifiConnection(string nativeNetworkKey) =>
+        NativeProtectedWifiRollbackResult.NothingToRollback;
     NativeWifiRadioSnapshot ReadWifiRadio();
     NativeWifiRadioSetResult TrySetWifiRadio(bool enabled);
 }

@@ -32,8 +32,9 @@ The initial surface is intentionally narrow:
   while the widget is Interactive;
 - render currently visible networks with sanitized name, signal, security,
   credential-required, connected, and saved-profile state; and
-- connect an exact visible saved-profile or unsaved open network by its opaque
-  scan ID while Interactive;
+- connect an exact visible saved-profile, unsaved open network, or supported
+  WPA2/WPA3 Personal network by its opaque scan ID while Interactive; protected
+  connections use a masked host-owned prompt that bypasses the widget worker;
 - present Wi-Fi and Bluetooth as separate controller views rather than one
   overlong mixed list; and
 - switch those views with LB/RB or a focused segmented-tab A action while
@@ -46,9 +47,16 @@ tab names the visible section, while connected/paired/radio-On state comes only
 from the provider snapshot. Completing these semantics under scan/device churn
 is tracked as [GBA-034](known-issues.md).
 
-The bundled surface does **not** prompt for or store a password, create/edit/
-delete protected profiles, read profile XML or key material, expose BSSID/MAC/
-  IP/DNS/gateway values, open captive portals, change airplane mode,
+The bundled surface never prompts inside the widget process or stores a
+password. The trusted host creates an attempt-unique per-user WPA2/WPA3
+Personal profile without overwrite and tags it with random per-profile custom
+user data. Terminal rollback rereads that tag and deletes only an exact match;
+a missing, changed, or unreadable tag and a failed deletion are explicit
+degraded outcomes, never permission to delete by SSID or common profile name.
+Successful connection clears the temporary tag and retains the Windows-owned
+profile. The host does not read stored profile XML or key material,
+edit/delete pre-existing profiles, expose BSSID/MAC/IP/DNS/gateway values,
+open captive portals, change airplane mode,
 disconnect, or silently reorder Windows profile preference. It does not shell
 out to `netsh`, edit the registry, install a service/driver, or elevate.
 
@@ -95,10 +103,9 @@ Available-network read/scan/connect is implemented end to end in the typed
 SDK, authenticated broker, Native Wi-Fi provider, bundled manifest/catalog,
 Settings consent descriptions, first-party widget, and deterministic tests.
 Software Wi-Fi radio read/control, Bluetooth radio/discovery, explicit
-association pairing, and a Windows-owned management fallback are also
+association pairing/removal, and a Windows-owned management fallback are also
 implemented behind separate closed grants. Remaining work is deliberately
-separate: host-owned protected-network credential entry, enterprise
-provisioning, Bluetooth unpair, and profile-specific Bluetooth communication.
+separate: enterprise provisioning and profile-specific Bluetooth communication.
 Unknown future capability names continue to fail closed.
 
 The implemented Wi-Fi contract is:
@@ -112,9 +119,20 @@ The implemented Wi-Fi contract is:
    for that scan/provider generation and must never be persisted, logged, or
    treated as the SSID/BSSID/interface identity.
 3. An exact current result may start a connection when it has a saved Windows
-   profile or is an unsaved open network. New WPA/WPA2/WPA3 Personal networks
-   return `credential_required`; the future prompt must be host-owned, and the
-   worker must never receive the credential.
+   profile or is an unsaved open network. Supported unsaved WPA2/WPA3 Personal
+   rows open a masked native modal only for the exact current Interactive
+   Network Controls generation. The host revalidates authority after the modal
+   closes and sends the mutable password directly to the trusted provider; it
+   never dispatches the password or profile XML through the widget worker or a
+   JSON value. Native frame bytes, managed characters, command storage, profile
+   XML, and the edit control are mutable owners cleared at their terminal
+   boundaries. The provider creates one attempt-unique `WLAN_PROFILE_USER`
+   profile with overwrite disabled, binds a random ownership token through
+   Native Wi-Fi custom user data, starts one `WlanConnect`, and trusts only the
+   matching ACM completion. Failure or cancellation rereads and compares that
+   token before deletion; replacement, unreadable ownership, or deletion
+   failure stays fail-closed. Success removes the token and retains the
+   Windows-owned profile.
 4. Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially. Stored Windows keys
    are never read or exposed.
@@ -141,17 +159,21 @@ the effective Windows state, including typed partial failure. An explicit A
 action on one current unpaired opaque device invokes Windows Association
 Endpoint `PairAsync`; every completed Windows result maps to a bounded typed
 outcome, and the provider always refreshes authoritative device state. A result
-never claims profile connectivity. Devices already paired/connected, and
+never claims profile connectivity. A paired row opens a nested confirmation;
+confirm resolves that exact current opaque ID, invokes `UnpairAsync`, and shows
+success only after the authoritative refresh no longer reports the pairing.
+Cancel, stale identity, lifecycle loss, and replacement invoke nothing. Devices
+already paired/connected, and
 pairing outcomes that require a ceremony the overlay does not own, can open the
 Windows Bluetooth Settings page through a separate manage grant. The validated
 native device ID remains host-only and is never embedded in the Settings URI.
-Unpair is not implemented. A generic
-Bluetooth device Connect/Disconnect operation is **not** promised: Windows
+A generic Bluetooth device Connect/Disconnect operation is **not** promised: Windows
 communication is profile-specific, such as GATT service/characteristic access
 or RFCOMM sockets, and each future profile integration needs a separate narrow
 capability. See Microsoft's [Radio](https://learn.microsoft.com/en-us/uwp/api/windows.devices.radios.radio?view=winrt-26100),
 [DeviceWatcher](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.devicewatcher?view=winrt-26100),
 [DeviceInformationPairing](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing?view=winrt-26100),
+[UnpairAsync](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing.unpairasync?view=winrt-26100),
 [Bluetooth GATT client](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-client),
 and [Bluetooth RFCOMM](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/send-or-receive-files-with-rfcomm)
 documentation.
@@ -177,6 +199,7 @@ Declare the smallest authority in `manifest.json`:
     "system.network.bluetooth.read.v1",
     "system.network.bluetooth.radio.control.v1",
     "system.network.bluetooth.pair.v1",
+    "system.network.bluetooth.unpair.v1",
     "system.network.bluetooth.manage.v1"
   ]
 }
@@ -193,10 +216,11 @@ Declare the smallest authority in `manifest.json`:
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, acknowledged subscription, and sanitized device/radio events | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync` | Interactive only |
 | `system.network.bluetooth.pair.v1` | `PairBluetoothDeviceAsync` for one current opaque device and typed authoritative outcome | Interactive only |
+| `system.network.bluetooth.unpair.v1` | `UnpairBluetoothDeviceAsync` for one explicitly confirmed current paired opaque device; authoritative removal gates success | Interactive only |
 | `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync` for one current opaque device; Windows owns the management UI | Interactive only |
 
 `permissions` means the widget considers read access essential;
-`optionalPermissions` means connection/radio/pairing/management enhancements
+`optionalPermissions` means connection/radio/pairing/removal/management enhancements
 can degrade independently from coarse status, nearby-network presentation, and
 Wi-Fi radio visibility. Pair and manage are intentionally different decisions:
 granting read/discovery or radio control does not authorize either operation.
@@ -227,6 +251,12 @@ details automatically: those fields remain `PrivacyRestricted` and omitted.
 Nearby-network access begins only from the separate explicit scan action.
 Opening the overlay, selecting its tray item, or entering the widget does not
 scan, prompt, or retry.
+
+The protected prompt uses native password semantics, exposes no accessibility
+value, rejects clipboard copy/cut/paste and context-menu transfer, and clears
+the edit control plus every mutable native-frame, managed, command, P/Invoke,
+and profile-XML password owner after the attempt.
+Cancel or stale widget/snapshot authority performs no profile or connect call.
 
 ## Public data model
 
@@ -484,7 +514,7 @@ The implemented first-party package contract is:
 - source `src/FirstPartyWidgets/NetworkControlsWidget`;
 - required `system.network.read.v1`, `system.network.wifi.read.v1`, and
   `system.network.wifi.radio.read.v1`; optional connection, Wi-Fi radio control,
-  Bluetooth read, and Bluetooth radio-control grants;
+  Bluetooth read, radio-control, pairing, removal, and management grants;
 - x64, `unload-after-idle` background policy with a 120-second bound, 64 MiB
   requested memory, and 10 Hz maximum widget update budget; and
 - root controller input scope `network-controls`.
@@ -501,7 +531,10 @@ Its implemented stable actions are:
 | Focused Scan action | A | `wifi.scan` | Request one bounded scan while Interactive; there is no automatic or repeating scan. |
 | Focused network row | A or X | `wifi.connect.item` | Request connection to that exact current saved/open result while Interactive. |
 | Focused Bluetooth radio | A | `bluetooth.radio.toggle` | Request software radio On/Off while Interactive and reconcile denial/partial failure. |
-| Focused Bluetooth device | A | `bluetooth.device.info` | Select/show sanitized state only; no pair or connect command. |
+| Focused nearby Bluetooth device | A | `bluetooth.device.pair` | Start association for that exact current opaque row. |
+| Focused paired Bluetooth device | A | `bluetooth.device.unpair.open` | Open explicit Remove device confirmation; B/Cancel changes nothing. |
+| Removal confirmation | A | `bluetooth.device.unpair.confirm` | Invoke one exact current removal, then reconcile authoritative disappearance. |
+| Focused Bluetooth device | X | `bluetooth.device.manage` | Open the Windows-owned Bluetooth Settings fallback for the exact current row. |
 | Failure/unavailable surface | focused A | `retry` | Make one explicit refresh/recovery attempt; never start a retry loop. |
 
 There is deliberately no dashboard selection or connect action. The open

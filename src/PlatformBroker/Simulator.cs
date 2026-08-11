@@ -79,6 +79,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public bool CanControlBluetoothRadio { get; set; } = true;
     public BluetoothPairingResultStatus BluetoothPairingResult { get; set; } =
         BluetoothPairingResultStatus.Paired;
+    public BluetoothUnpairingResultStatus BluetoothUnpairingResult { get; set; } =
+        BluetoothUnpairingResultStatus.Unpaired;
     public string? LastBluetoothDeviceId { get; private set; }
     public WifiScanState WifiScanState { get; set; } = WifiScanState.NotScanned;
     public AudioOutputSummary AudioOutput { get; set; } = new(0.5, false);
@@ -327,6 +329,18 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         BluetoothPairCalls++;
         LastBluetoothDeviceId = deviceId;
         return Task.FromResult(new BluetoothPairingResultSummary(BluetoothPairingResult));
+    }
+
+    public Task<BluetoothUnpairingResultSummary> UnpairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LastBluetoothDeviceId = deviceId;
+        if (BluetoothUnpairingResult is BluetoothUnpairingResultStatus.Unpaired or
+            BluetoothUnpairingResultStatus.AlreadyUnpaired)
+            _bluetoothDevices.RemoveAll(device =>
+                string.Equals(device.DeviceId, deviceId, StringComparison.Ordinal));
+        return Task.FromResult(new BluetoothUnpairingResultSummary(BluetoothUnpairingResult));
     }
 
     public Task OpenBluetoothDeviceSettingsAsync(

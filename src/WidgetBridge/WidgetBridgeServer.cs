@@ -145,10 +145,37 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     break;
                 }
 
-                var dispatch = requestDispatcher.TryDispatch(
-                    request.RequestId,
-                    requestKey,
-                    token => DispatchRequestAsync(request, requestKey, token));
+                BridgeProtectedWifiRequest? protectedWifiRequest = null;
+                BridgeProtectedWifiSecret? protectedWifiSecret = null;
+                if (requestKey.Kind == BridgeRequestKind.ConnectProtectedWifi)
+                {
+                    protectedWifiRequest = BridgeJson.FromElement<BridgeProtectedWifiRequest>(
+                        request.Payload);
+                    protectedWifiSecret = await _channel.ReadProtectedWifiSecretAsync(
+                        protectedWifiRequest.SecretLength,
+                        sessionCancellation.Token).ConfigureAwait(false);
+                }
+                BridgeRequestDispatch dispatch;
+                try
+                {
+                    var capturedProtectedWifiRequest = protectedWifiRequest;
+                    var capturedProtectedWifiSecret = protectedWifiSecret;
+                    dispatch = requestDispatcher.TryDispatch(
+                        request.RequestId,
+                        requestKey,
+                        token => capturedProtectedWifiRequest is not null &&
+                                 capturedProtectedWifiSecret is not null
+                            ? DispatchProtectedWifiRequestAsync(
+                                request, requestKey, capturedProtectedWifiRequest,
+                                capturedProtectedWifiSecret, token)
+                            : DispatchRequestAsync(request, requestKey, token));
+                    if (dispatch.Status == BridgeRequestDispatchStatus.Accepted)
+                        protectedWifiSecret = null;
+                }
+                finally
+                {
+                    protectedWifiSecret?.Dispose();
+                }
                 if (dispatch.Status == BridgeRequestDispatchStatus.CapacityExceeded)
                 {
                     await ReplyAsync(
@@ -347,6 +374,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     new { handled }, cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.ConnectProtectedWifi:
+            throw new BridgeProtocolException(
+                "Protected Wi-Fi requests require the dedicated secret-frame owner.");
         case BridgeMessageTypes.QuickAction:
         {
             var quickRequest = BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload);
@@ -391,6 +421,55 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 await ReplyAsync(
                         BridgeMessageTypes.Error,
                         request.RequestId,
+                        new BridgeError("request_failed", SafeMessage(exception)),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+    }
+
+    private async Task DispatchProtectedWifiRequestAsync(
+        BridgeEnvelope envelope,
+        BridgeRequestKey requestKey,
+        BridgeProtectedWifiRequest request,
+        BridgeProtectedWifiSecret secret,
+        CancellationToken cancellationToken)
+    {
+        using (secret)
+        try
+        {
+            if (!requestKey.IsKnown)
+                throw new BridgeProtocolException("Protected Wi-Fi request is invalid.");
+            if (_platformBackend is not IProtectedWifiHostBackend protectedWifi)
+                throw new BridgeProtocolException("Protected Wi-Fi service is unavailable.");
+            if (!NetworkControlsHostPolicy.TryParseNetworkId(
+                    request.SourceElementId, out var networkId) ||
+                secret.Characters.Length != request.SecretLength)
+                throw new BridgeProtocolException("Protected Wi-Fi request is invalid.");
+            using var publication = _registry.AdmitProtectedWifi(
+                request.WidgetId, request.RuntimeGeneration);
+            var result = await protectedWifi.ConnectProtectedWifiAsync(
+                networkId, secret.Characters, cancellationToken).ConfigureAwait(false);
+            secret.Dispose();
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged,
+                envelope.RequestId,
+                new { status = result.Status, code = result.Code },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            try
+            {
+                await ReplyAsync(
+                        BridgeMessageTypes.Error,
+                        envelope.RequestId,
                         new BridgeError("request_failed", SafeMessage(exception)),
                         cancellationToken)
                     .ConfigureAwait(false);

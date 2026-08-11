@@ -1042,12 +1042,13 @@ Up/Down navigation.
   authoritative and multi-PHY partial failure is explicit.
 - `WindowsBluetoothProvider`: a lazy event-driven WinRT backend for sanitized
   Bluetooth software-radio state and bounded nearby/paired/connected discovery.
-  It supports software radio On/Off and explicit pairing of one current opaque
-  device through Windows Association Endpoint pairing. Unsupported ceremonies,
-  paired-device management, and profile-specific operations open the Windows
+  It supports software radio On/Off plus explicit pairing and removal of one
+  current opaque device through Windows Association Endpoint pairing. Removal
+  uses its own destructive grant and always refreshes authoritative state.
+  Unsupported ceremonies and profile-specific operations open the Windows
   Bluetooth Settings surface through a separately consented capability. Native
-  device IDs never cross the broker. Host-owned unpair and generic device
-  Connect/Disconnect are not implemented.
+  device IDs never cross the broker. Generic device Connect/Disconnect is not
+  implemented.
 - `WindowsActivityProvider`: a lazy WinEvent foreground/destroy observer with
   no polling. It keeps at most 16 eligible running applications and publishes
   bounded display names plus per-process-lifetime opaque IDs; activation can
@@ -1265,12 +1266,56 @@ Available-network broker/SDK contracts and the explicit, event-driven Native
 Wi-Fi scan/connect provider are declared and rendered by the bundled widget.
 They use generation-bound opaque IDs and cover saved-profile-backed and
 unsaved-open connection starts with dedicated broker/provider/widget tests.
-Host-owned WPA Personal credential entry remains staged. Software Wi-Fi radio
-read/control, Bluetooth radio/discovery, explicit pairing, and a separately
-consented Windows Settings management fallback are implemented behind granular
-grants. Unpair and generic Bluetooth Connect/Disconnect remain outside the
-current broker surface, and physical pairing still needs reversible hardware
-verification.
+Host-owned WPA2/WPA3 Personal credential entry is implemented for the exact
+current bundled Network Controls generation. The masked native modal bypasses
+the worker; the provider creates one per-user profile without overwrite,
+correlates the existing ACM completion, and removes only its newly created
+profile on terminal failure. Software Wi-Fi radio
+read/control, Bluetooth radio/discovery, explicit pairing/removal, and a
+separately consented Windows Settings management fallback are implemented
+behind granular grants. Removal requires an ActionSheet confirmation, a current
+paired opaque identity, Interactive lifecycle, and authoritative disappearance
+before success. Generic Bluetooth Connect/Disconnect remains outside the
+current broker surface, and physical remove/re-pair still needs reversible
+hardware verification.
+
+DLV-091 adds the separately consented
+`system.network.bluetooth.unpair.v1` operation. Network Controls binds an
+explicit destructive ActionSheet to one current paired opaque row, cancels or
+rejects stale/lost-Interactive requests, and reports success only after the
+trusted provider's authoritative refresh removes that pairing. Focused Release
+evidence passes Network Controls 22/22, Windows Bluetooth 18/18, PlatformBroker
+52/52, WidgetSdk 87/87, SDK compatibility 12/12, Settings 54/54, WidgetBridge
+74/74, WidgetRuntime 74/74, and documentation validation across 55 Markdown
+files. The installed generic-AppContainer route passes 6/6 with cancel,
+confirmation, exact removal, stale-row rejection, and unaffected-neighbor
+coverage; retained result:
+`artifacts/verification/20260811T191258Z-5004ee02/verification-result.json`.
+
+DLV-093 replaces the protected-Wi-Fi JSON credential member with one bounded
+raw secret frame owned by mutable native bytes and managed characters. The
+masked edit control is overwritten before destruction; native serialization,
+managed parsing, provider-command, pinned profile XML, and rejected/failed-read
+owners clear at their terminal boundaries. Tests retain only generated mutable
+inputs and derived sentinels. Temporary profiles now use random attempt-unique
+names plus 32-byte per-profile custom user data. The provider verifies that
+token before connect and again before rollback, never overwrites a profile,
+never deletes on missing/replaced/unreadable ownership, exposes typed rollback
+outcomes, and clears the temporary tag after successful connection. Focused
+Release evidence passes Windows Network 55/55, Network Controls 22/22, and
+WidgetBridge 76/76. The final provider result is
+`artifacts/verification/20260811T201025Z-1ccb30f2/verification-result.json`;
+the retained Network Controls/Bridge group is
+`artifacts/verification/20260811T200911Z-98b11010/verification-result.json`.
+The installed generic-AppContainer conformance seam passes 6/6 at
+`artifacts/verification/20260811T200444Z-b424f5c7/verification-result.json`.
+The focused native build compiled the production host and directly passed
+`WidgetBridgeCatalogTests` plus `TextEntryModalTests`; the broader native group
+then stopped in the unchanged production-host fixture because OverlayHost did
+not create a visible HWND in time. Retained result:
+`artifacts/verification/20260811T200143Z-4081e739/verification-result.json`.
+That later fixture limitation is not represented as protected-Wi-Fi acceptance
+evidence and is not rerun here.
 
 DLV-035 keeps `WindowsNetworkPlatformBackend` as the only native-adapter
 lifetime, MTA owner-thread, command-queue, committed provider-state, event-
@@ -2592,11 +2637,13 @@ with C++ installed:
   measured throughput/latency/loss diagnostics, and reviewed recovery actions.
   The implemented reference includes precise-location-gated explicit
   available-network scans and current saved/open result connections; it
-  excludes password entry, profile creation, and automatic current SSID/signal
-  access. Software Wi-Fi radio control plus separately capability-gated
-  Bluetooth radio/discovery and explicit association pairing are implemented.
-  Staged roadmap work adds a host-owned WPA Personal credential prompt and
-  unpair/profile-specific Bluetooth operations. Enterprise Wi-Fi and generic Bluetooth
+  includes host-owned masked WPA2/WPA3 Personal entry and exact per-user profile
+  creation without exposing secret/profile XML to the worker, but excludes
+  enterprise/legacy provisioning and automatic current SSID/signal access.
+  Software Wi-Fi radio control plus separately capability-gated
+  Bluetooth radio/discovery and explicit association pairing/removal are
+  implemented. Remaining roadmap work includes profile-specific Bluetooth operations.
+  Enterprise Wi-Fi and generic Bluetooth
   Connect/Disconnect are not promised. See
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls

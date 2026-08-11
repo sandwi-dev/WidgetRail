@@ -8,7 +8,8 @@ namespace GameBarAlternative.WindowsNetworkProvider;
 /// Event-driven Windows network provider. A dedicated MTA thread owns all native resources;
 /// native callback threads only enqueue a bounded, coalesced invalidation.
 /// </summary>
-public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBackend, IAsyncDisposable
+public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBackend,
+    IProtectedWifiHostBackend, IAsyncDisposable
 {
     internal const int MaximumOrdinaryQueuedCommands =
         WindowsNetworkCommandQueue.MaximumOrdinaryQueuedCommands;
@@ -192,6 +193,34 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<ProtectedWifiConnectionResult> ConnectProtectedWifiAsync(
+        string networkId,
+        char[] secret,
+        CancellationToken cancellationToken)
+    {
+        if (!WindowsNetworkCommandPolicy.IsValidAvailableWifiId(networkId))
+            throw new BrokerException("invalid_payload", "The available Wi-Fi identifier is invalid.");
+        ArgumentNullException.ThrowIfNull(secret);
+        if (secret.Length is < 8 or > 63)
+            return new(ProtectedWifiConnectionStatus.Rejected, "invalid_credential");
+        EnsureStarted();
+        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        if (_ownerUnavailable)
+            return new(ProtectedWifiConnectionStatus.Rejected, "platform_unavailable");
+        var command = new ConnectProtectedWifiCommand(
+            networkId, secret.ToArray(), cancellationToken);
+        try
+        {
+            EnqueueCommand(command);
+            return await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            command.Dispose();
+        }
+    }
+
     public async Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken)
     {
         await EnsureReadableAsync(cancellationToken).ConfigureAwait(false);
@@ -317,10 +346,13 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         ExecuteWifiScanTimeout(timeout.Generation);
                         break;
                     case ConnectionTimeoutCommand timeout:
-                        ExecuteConnectionTimeout(timeout.Generation);
+                        ExecuteConnectionTimeout(adapter, timeout.Generation);
                         break;
                     case ConnectAvailableWifiCommand connectWifi:
                         ExecuteConnectAvailableWifi(adapter, connectWifi);
+                        break;
+                    case ConnectProtectedWifiCommand protectedWifi:
+                        ExecuteConnectProtectedWifi(adapter, protectedWifi);
                         break;
                     case SetWifiRadioCommand radio:
                         ExecuteSetWifiRadio(adapter, radio);
@@ -365,6 +397,11 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                     case ConnectAvailableWifiCommand connectWifi:
                         connectWifi.Completion.TrySetException(
                             new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
+                        break;
+                    case ConnectProtectedWifiCommand protectedWifi:
+                        protectedWifi.Completion.TrySetException(
+                            new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
+                        protectedWifi.Dispose();
                         break;
                     case SetWifiRadioCommand radio:
                         radio.Completion.TrySetException(
@@ -588,6 +625,59 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         }
     }
 
+    private void ExecuteConnectProtectedWifi(
+        IWindowsNetworkNativeAdapter adapter,
+        ConnectProtectedWifiCommand command)
+    {
+        ProtectedWifiConnectionResult result;
+        try
+        {
+            if (command.CancellationToken.IsCancellationRequested)
+            {
+                command.Dispose();
+                command.Completion.TrySetCanceled(command.CancellationToken);
+                return;
+            }
+            string nativeKey;
+            lock (_stateGate)
+            {
+                _operations.EnsureConnectionCanStart();
+                if (_availableWifi.ScanState != WifiScanState.Ready ||
+                    !_wifiNativeKeysByOpaqueId.TryGetValue(command.NetworkId, out nativeKey!))
+                    throw new BrokerException(
+                        "resource_not_found", "The visible Wi-Fi network is no longer available.");
+            }
+            WindowsNetworkCommandPolicy.StartProtectedWifiConnection(
+                adapter, nativeKey, command.Secret);
+            NetworkStatusSummary connecting;
+            lock (_stateGate)
+            {
+                var attempt = _operations.BeginConnection(command.NetworkId, nativeKey);
+                CancelConnectionAttemptTimerLocked();
+                _connectionAttemptTimer = _deadlineScheduler.Schedule(
+                    _connectionAttemptTimeout,
+                    () => OnConnectionAttemptTimeout(attempt.Generation));
+                connecting = _status = _operations.ApplyTo(_status);
+            }
+            _events.Writer.TryWrite(connecting);
+            result = new(ProtectedWifiConnectionStatus.Connecting, "connecting");
+        }
+        catch (BrokerException exception)
+        {
+            result = new(ProtectedWifiConnectionStatus.Rejected, exception.Code);
+        }
+        catch
+        {
+            result = new(
+                ProtectedWifiConnectionStatus.Rejected, "platform_unavailable");
+        }
+        finally
+        {
+            command.Dispose();
+        }
+        command.Completion.TrySetResult(result);
+    }
+
     private void ExecuteSetWifiRadio(IWindowsNetworkNativeAdapter adapter, SetWifiRadioCommand command)
     {
         if (command.CancellationToken.IsCancellationRequested)
@@ -653,14 +743,23 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         _commands.EnqueueDeadline(new ConnectionTimeoutCommand(generation));
     }
 
-    private void ExecuteConnectionTimeout(long generation)
+    private void ExecuteConnectionTimeout(
+        IWindowsNetworkNativeAdapter adapter,
+        long generation)
     {
         NetworkStatusSummary? failed = null;
+        string? nativeKey = null;
         lock (_stateGate)
         {
+            nativeKey = _operations.Connection.NativeKey;
             if (!_operations.ApplyConnectionTimeout(generation)) return;
             CancelConnectionAttemptTimerLocked();
             failed = _status = _operations.ApplyTo(_status);
+        }
+        if (nativeKey is not null)
+        {
+            _ = adapter.RollbackProtectedWifiConnection(nativeKey);
+            _degraded = adapter.IsDegraded;
         }
         _events.Writer.TryWrite(failed);
     }

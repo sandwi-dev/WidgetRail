@@ -680,6 +680,26 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         throw new BridgeProtocolException($"Widget '{widgetId}' has no current generation.");
     }
 
+    internal BridgeClientPublication<ConfiguredWidget> AdmitProtectedWifi(
+        string widgetId,
+        string runtimeGeneration)
+    {
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(widgetId, out var registration) &&
+                !registration.IsRetiring &&
+                registration.HostLifecycle == WidgetLifecycleState.Interactive &&
+                string.Equals(
+                    registration.Configured.PublicDescriptor().RuntimeGeneration,
+                    runtimeGeneration,
+                    StringComparison.Ordinal) &&
+                registration.Configured.PublicDescriptor().ProtectedWifiPromptSupported)
+                return AdmitPublicationLocked(registration, registration.Configured);
+        }
+        throw new BridgeProtocolException(
+            "Protected Wi-Fi authority is stale or unavailable.");
+    }
+
     internal BridgeClientPublication<ConfiguredWidget>? TryAdmitArtwork(
         string widgetId,
         string expectedWorkerFingerprint)

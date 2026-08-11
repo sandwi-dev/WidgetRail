@@ -139,6 +139,15 @@ int wmain() {
     CheckLayout({120, 80, 1120, 780}, 96, "standard modal fits an offset work area");
     CheckLayout({0, 0, 1920, 1080}, 144, "150-percent modal fits the active work area");
 
+    std::vector<wchar_t> ownedSecret(12);
+    for (std::size_t index = 0; index < ownedSecret.size(); ++index)
+        ownedSecret[index] = static_cast<wchar_t>(L'!' + index);
+    gba::input::SecureTextBuffer secureBuffer(std::move(ownedSecret));
+    Check(secureBuffer.view().size() == 12,
+        "secure modal result owns one bounded mutable character buffer");
+    secureBuffer.clear();
+    Check(secureBuffer.empty(), "secure modal result clears its terminal buffer");
+
     gba::input::TextEntryModal modal;
     Check(!modal.active(), "modal starts inactive");
     Check(!modal.Show(GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96),
@@ -216,7 +225,10 @@ int wmain() {
     const auto committed = modal.Show(
         GetModuleHandleW(nullptr), owner, L"A", L"Search installed games", 8);
     driver.join();
-    Check(committed && *committed == L"AI",
+    const auto expectedCommitted = std::wstring_view(L"AI");
+    Check(committed && std::equal(
+        committed->view().begin(), committed->view().end(),
+        expectedCommitted.begin(), expectedCommitted.end()),
         "on-screen key and commit publish one bounded final value");
     Check(!modal.active(), "committed modal releases its window");
 
@@ -272,6 +284,48 @@ int wmain() {
     Check(!cancelled, "cancel returns no committed text");
     Check(GetFocus() == owner, "modal restores focus to its owner after cancellation");
     Check(!modal.active(), "cancelled modal releases its window");
+
+    std::thread passwordDriver([&] {
+        const auto comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        Check(WaitUntil([&] { return modal.active(); }), "password modal becomes active");
+        HWND window{};
+        HWND edit{};
+        Check(WaitUntil([&] {
+            window = FindWindowW(
+                L"GameBarAlternative.TextEntryModal", L"Password for test network");
+            edit = window ? FindWindowExW(window, nullptr, L"EDIT", nullptr) : nullptr;
+            return window && edit;
+        }), "password modal exposes one native edit control");
+        Check((GetWindowLongPtrW(edit, GWL_STYLE) & ES_PASSWORD) != 0,
+            "password modal uses native password semantics");
+        IUIAutomation* automation{};
+        IUIAutomationElement* element{};
+        Check(SUCCEEDED(CoCreateInstance(
+                CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(&automation))) && automation &&
+                SUCCEEDED(automation->ElementFromHandle(edit, &element)) && element,
+            "password edit exposes a UI Automation element");
+        if (element) {
+            VARIANT isPassword{};
+            VariantInit(&isPassword);
+            Check(SUCCEEDED(element->GetCurrentPropertyValue(
+                        UIA_IsPasswordPropertyId, &isPassword)) &&
+                    isPassword.vt == VT_BOOL && isPassword.boolVal == VARIANT_TRUE,
+                "UI Automation marks the protected edit as a password");
+            VariantClear(&isPassword);
+            element->Release();
+        }
+        if (automation) automation->Release();
+        SendMessageW(edit, WM_PASTE, 0, 0);
+        Check(WindowText(edit).empty(), "clipboard paste is suppressed for protected input");
+        Check(modal.PostController(L"B"), "controller B cancels protected input");
+        if (SUCCEEDED(comResult)) CoUninitialize();
+    });
+    const auto protectedCancelled = modal.Show(
+        GetModuleHandleW(nullptr), owner, L"", L"Password for test network", 63, true);
+    passwordDriver.join();
+    Check(!protectedCancelled, "cancelled protected input publishes no secret");
+    Check(!modal.active(), "protected modal releases its window");
     if (owner) DestroyWindow(owner);
     if (failures == 0) std::cout << "TextEntryModalTests passed\n";
     return failures == 0 ? 0 : 1;

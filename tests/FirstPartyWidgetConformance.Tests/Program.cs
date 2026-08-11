@@ -1456,6 +1456,15 @@ static async Task RunCatalogAsync(
             firstRenderObserved?.Invoke(activationStopwatch.Elapsed);
             Assert.True(client.IsRunning,
                 $"{package.Manifest.Name} {route} worker exited after render.");
+            if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+            {
+                var protectedEntry = Nodes(snapshot.Root).Single(node =>
+                    node.Kind == ViewNodeKind.TextEntry &&
+                    string.Equals(node.ActionId, "wifi.connect.protected",
+                        StringComparison.Ordinal));
+                Assert.Equal(string.Empty, protectedEntry.TextEntryValue);
+                Assert.Equal(63, protectedEntry.TextEntryMaximumLength);
+            }
 
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
             await ExerciseControlAsync(package, client, snapshot, backend, route);
@@ -1502,16 +1511,17 @@ static async Task ExerciseControlAsync(
         await ExerciseAudioDashboardControlsAsync(client, snapshot, backend);
         return;
     }
+    if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+    {
+        await ExerciseNetworkControlsUnpairAsync(client, snapshot, backend);
+        return;
+    }
 
     string actionId;
     ViewNode? explicitSource = null;
     Func<int> calls;
     switch (package.Manifest.Id)
     {
-        case "org.gbar.firstparty.network-controls":
-            actionId = "wifi.radio.toggle";
-            calls = () => backend.WifiRadioControlCalls;
-            break;
         case "org.gbar.firstparty.games-apps":
             var openCatalog = Nodes(snapshot.Root).Single(node =>
                 string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
@@ -1703,6 +1713,55 @@ static async Task ExerciseControlAsync(
             SpotifyPlaybackOperation.Next,
             backend.LastSpotifyPlaybackCommand?.Operation);
     }
+}
+
+static async Task ExerciseNetworkControlsUnpairAsync(
+    WidgetProcessClient client,
+    ViewSnapshot snapshot,
+    SimulatedPlatformBrokerBackend backend)
+{
+    var bluetoothTab = Nodes(snapshot.Root).Single(node =>
+        node.Id == "network.tab.bluetooth");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "network.tab.select", bluetoothTab.Id));
+    snapshot = await WaitForSnapshotAsync(client, "Conformance Controller");
+    var target = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "bluetooth.device.unpair.open" &&
+        string.Equals(node.Text, "Conformance Controller", StringComparison.Ordinal));
+
+    await client.SendActionAsync(new WidgetActionEvent(
+        "bluetooth.device.unpair.open", target.Id));
+    var confirmation = await WaitForActionSnapshotAsync(
+        client, "bluetooth.device.unpair.confirm", "Remove device");
+    var cancel = Nodes(confirmation.Root).Single(node =>
+        node.ActionId == "bluetooth.device.unpair.cancel");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "bluetooth.device.unpair.cancel", cancel.Id));
+    snapshot = await WaitForSnapshotAsync(client, "Conformance Controller");
+    Assert.Equal(2, (await backend.GetBluetoothAsync(CancellationToken.None)).Devices.Count);
+
+    target = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "bluetooth.device.unpair.open" &&
+        string.Equals(node.Text, "Conformance Controller", StringComparison.Ordinal));
+    await client.SendActionAsync(new WidgetActionEvent(
+        "bluetooth.device.unpair.open", target.Id));
+    confirmation = await WaitForActionSnapshotAsync(
+        client, "bluetooth.device.unpair.confirm", "Remove device");
+    var remove = Nodes(confirmation.Root).Single(node =>
+        node.ActionId == "bluetooth.device.unpair.confirm");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "bluetooth.device.unpair.confirm", remove.Id));
+    snapshot = await WaitForSnapshotAsync(client, "Conformance Headset");
+    var authoritative = await backend.GetBluetoothAsync(CancellationToken.None);
+    Assert.Equal(1, authoritative.Devices.Count);
+    Assert.Equal("Conformance Headset", authoritative.Devices.Single().DisplayName);
+
+    await client.SendActionAsync(new WidgetActionEvent(
+        "bluetooth.device.unpair.open", target.Id));
+    Assert.Equal(1, (await backend.GetBluetoothAsync(CancellationToken.None)).Devices.Count);
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+            node.Text?.Contains("bt-one", StringComparison.Ordinal) == true),
+        "The generic worker exposed the broker's opaque Bluetooth identity as text.");
 }
 
 static async Task ExerciseAudioDashboardControlsAsync(
@@ -1898,10 +1957,13 @@ static SimulatedPlatformBrokerBackend CreateBackend(
     [
         new AvailableWifiNetworkSummary(
             "wifi-current", "Conformance Wi-Fi", 87, WifiSecurityKind.Personal,
-            false, true, true),
+            true, false, false),
     ]);
     backend.SetBluetoothDevices(
-        [new BluetoothDeviceSummary("bt-one", "Conformance Controller", true, true, true)]);
+    [
+        new BluetoothDeviceSummary("bt-one", "Conformance Controller", true, true, true),
+        new BluetoothDeviceSummary("bt-two", "Conformance Headset", true, false, true),
+    ]);
     backend.SetRecentActivities(
         [new RecentActivitySummary("activity-one", "Conformance Editor", RecentActivityKind.Application, true, true)]);
     backend.SetMediaSessions(

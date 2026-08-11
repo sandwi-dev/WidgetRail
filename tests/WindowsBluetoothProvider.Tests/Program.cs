@@ -19,6 +19,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pairing resolves only opaque current devices and reconciles state", PairingReconciles),
     ("Pairing cancellation propagates without optimistic state", PairingCancellation),
     ("Windows pairing statuses are mapped without claiming connection", PairingStatusMapping),
+    ("Unpairing resolves one current paired device and reconciles removal", UnpairingReconciles),
+    ("Unpair cancellation and stale identity never remove a neighbor", UnpairingCancellation),
+    ("Windows unpairing statuses map to the closed destructive outcome", UnpairingStatusMapping),
     ("Bluetooth Settings handoff is exact validated and authoritative", SettingsHandoff),
 };
 
@@ -313,6 +316,80 @@ static Task PairingStatusMapping()
     return Task.CompletedTask;
 }
 
+static async Task UnpairingReconciles()
+{
+    var removedNativeId = "native-headset";
+    var neighbor = Device("native-controller", "Controller", paired: true);
+    var adapter = ReadyAdapter(Device(removedNativeId, "Headset", paired: true), neighbor);
+    adapter.UnpairResult = BluetoothUnpairingOutcome.Unpaired;
+    adapter.SnapshotAfterUnpair = adapter.Snapshot with { Devices = [neighbor] };
+    await using var backend = new WindowsBluetoothPlatformBackend(new FakeFactory(adapter));
+    var before = await backend.GetBluetoothAsync(CancellationToken.None);
+    var removed = before.Devices.Single(device => device.DisplayName == "Headset");
+    var neighborOpaqueId = before.Devices.Single(device => device.DisplayName == "Controller").DeviceId;
+    BrokerPlatformEvent? published = null;
+    backend.EventPublished += (_, change) => published = change;
+
+    var outcome = await backend.UnpairBluetoothDeviceAsync(
+        removed.DeviceId, CancellationToken.None);
+
+    Assert.Equal(BluetoothUnpairingResultStatus.Unpaired, outcome.Outcome);
+    Assert.Equal(1, adapter.UnpairCalls);
+    Assert.Equal(removedNativeId, adapter.LastUnpairedNativeId);
+    var effective = await backend.GetBluetoothAsync(CancellationToken.None);
+    Assert.Equal(neighborOpaqueId, effective.Devices.Single().DeviceId);
+    Assert.True(effective.Devices.Single().IsPaired);
+    Assert.True(published?.Payload is BluetoothChangedEvent change &&
+                change.Snapshot.Devices.Count == 1,
+        "Completed unpair did not publish authoritative device removal.");
+
+    await Assert.ThrowsBroker(
+        () => backend.UnpairBluetoothDeviceAsync(removed.DeviceId, CancellationToken.None),
+        "unknown_device");
+    Assert.Equal(1, adapter.UnpairCalls);
+}
+
+static async Task UnpairingCancellation()
+{
+    var adapter = ReadyAdapter(
+        Device("native-headset", "Headset", paired: true),
+        Device("native-controller", "Controller", paired: true));
+    adapter.HoldUnpairUntilCanceled = true;
+    await using var backend = new WindowsBluetoothPlatformBackend(new FakeFactory(adapter));
+    var before = await backend.GetBluetoothAsync(CancellationToken.None);
+    var headset = before.Devices.Single(device => device.DisplayName == "Headset");
+    using var cancellation = new CancellationTokenSource();
+
+    var pending = backend.UnpairBluetoothDeviceAsync(headset.DeviceId, cancellation.Token);
+    await adapter.UnpairStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    cancellation.Cancel();
+    await Assert.Canceled(pending);
+
+    Assert.Equal(1, adapter.UnpairCalls);
+    var after = await backend.GetBluetoothAsync(CancellationToken.None);
+    Assert.Equal(2, after.Devices.Count);
+    Assert.True(after.Devices.All(device => device.IsPaired),
+        "Cancellation optimistically removed the target or its unaffected neighbor.");
+}
+
+static Task UnpairingStatusMapping()
+{
+    var expected = new Dictionary<DeviceUnpairingResultStatus, BluetoothUnpairingOutcome>
+    {
+        [DeviceUnpairingResultStatus.Unpaired] = BluetoothUnpairingOutcome.Unpaired,
+        [DeviceUnpairingResultStatus.AlreadyUnpaired] =
+            BluetoothUnpairingOutcome.AlreadyUnpaired,
+        [DeviceUnpairingResultStatus.OperationAlreadyInProgress] =
+            BluetoothUnpairingOutcome.OperationInProgress,
+        [DeviceUnpairingResultStatus.AccessDenied] = BluetoothUnpairingOutcome.AccessDenied,
+        [DeviceUnpairingResultStatus.Failed] = BluetoothUnpairingOutcome.Failed,
+    };
+    foreach (var (native, outcome) in expected)
+        Assert.Equal(outcome, WindowsBluetoothNativeAdapter.MapUnpairingStatus(native));
+    Assert.Equal(Enum.GetValues<DeviceUnpairingResultStatus>().Length, expected.Count);
+    return Task.CompletedTask;
+}
+
 static async Task SettingsHandoff()
 {
     var adapter = ReadyAdapter(Device("native-headset", "Headset", paired: true));
@@ -372,20 +449,28 @@ file sealed class FakeAdapter : IWindowsBluetoothNativeAdapter
         NativeBluetoothRadioSetResult.Succeeded;
     public NativeBluetoothSnapshot? SnapshotAfterSet { get; set; }
     public NativeBluetoothSnapshot? SnapshotAfterPair { get; set; }
+    public NativeBluetoothSnapshot? SnapshotAfterUnpair { get; set; }
     public BluetoothPairingOutcome PairResult { get; set; } =
         BluetoothPairingOutcome.Paired;
     public bool HoldStartUntilCanceled { get; set; }
     public bool HoldPairUntilCanceled { get; set; }
+    public bool HoldUnpairUntilCanceled { get; set; }
     public TaskCompletionSource Started { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource PairStarted { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource UnpairStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int StartCalls { get; private set; }
     public int SetCalls { get; private set; }
     public int PairCalls { get; private set; }
+    public int UnpairCalls { get; private set; }
     public int DisposeCalls { get; private set; }
     public bool? LastEnabled { get; private set; }
     public string? LastPairedNativeId { get; private set; }
+    public string? LastUnpairedNativeId { get; private set; }
+    public BluetoothUnpairingOutcome UnpairResult { get; set; } =
+        BluetoothUnpairingOutcome.Unpaired;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -426,6 +511,19 @@ file sealed class FakeAdapter : IWindowsBluetoothNativeAdapter
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         if (SnapshotAfterPair is not null) Snapshot = SnapshotAfterPair;
         return PairResult;
+    }
+
+    public async Task<BluetoothUnpairingOutcome> UnpairAsync(
+        string nativeDeviceId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        UnpairCalls++;
+        LastUnpairedNativeId = nativeDeviceId;
+        UnpairStarted.TrySetResult();
+        if (HoldUnpairUntilCanceled)
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        if (SnapshotAfterUnpair is not null) Snapshot = SnapshotAfterUnpair;
+        return UnpairResult;
     }
 
     public void EmitChanged() => StateChanged?.Invoke(this, EventArgs.Empty);

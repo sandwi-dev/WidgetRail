@@ -63,6 +63,7 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothReadV1 = "system.network.bluetooth.read.v1";
     public const string NetworkBluetoothRadioControlV1 = "system.network.bluetooth.radio.control.v1";
     public const string NetworkBluetoothPairV1 = "system.network.bluetooth.pair.v1";
+    public const string NetworkBluetoothUnpairV1 = "system.network.bluetooth.unpair.v1";
     public const string NetworkBluetoothManageV1 = "system.network.bluetooth.manage.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string AppLibraryReadV1 = "system.apps.library.read.v1";
@@ -103,6 +104,7 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothGet = "network.bluetooth.get";
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
     public const string NetworkBluetoothDevicePair = "network.bluetooth.device.pair";
+    public const string NetworkBluetoothDeviceUnpair = "network.bluetooth.device.unpair";
     public const string NetworkBluetoothDeviceSettingsOpen =
         "network.bluetooth.device.settings.open";
     public const string RecentActivitiesList = "activity.recent.list";
@@ -186,6 +188,8 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothRadioSet), Set()),
             [NetworkBluetoothPairV1] = new(NetworkBluetoothPairV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothDevicePair), Set()),
+            [NetworkBluetoothUnpairV1] = new(NetworkBluetoothUnpairV1, 1,
+                BrokerCapabilityKind.Control, Set(NetworkBluetoothDeviceUnpair), Set()),
             [NetworkBluetoothManageV1] = new(NetworkBluetoothManageV1, 1,
                 BrokerCapabilityKind.Control,
                 Set(NetworkBluetoothDeviceSettingsOpen), Set()),

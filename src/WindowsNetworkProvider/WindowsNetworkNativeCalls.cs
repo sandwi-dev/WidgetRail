@@ -50,6 +50,30 @@ internal interface IWindowsNetworkNativeCalls
     uint QueryRadio(IntPtr handle, Guid interfaceId, out uint size, out IntPtr data);
     uint SetRadio(IntPtr handle, Guid interfaceId, WlanPhyRadioState state);
     uint ConnectWlan(IntPtr handle, Guid interfaceId, WlanConnectRequest request);
+    uint SetWlanProfile(
+        IntPtr handle,
+        Guid interfaceId,
+        char[] profileXml,
+        out uint reasonCode)
+    {
+        reasonCode = 0;
+        return 50;
+    }
+    uint DeleteWlanProfile(IntPtr handle, Guid interfaceId, string profileName) => 50;
+    uint SetWlanProfileCustomUserData(
+        IntPtr handle,
+        Guid interfaceId,
+        string profileName,
+        byte[] data) => 50;
+    uint GetWlanProfileCustomUserData(
+        IntPtr handle,
+        Guid interfaceId,
+        string profileName,
+        out byte[] data)
+    {
+        data = [];
+        return 50;
+    }
     void FreeWlanMemory(IntPtr memory);
 
     uint RegisterIpInterfaceChange(IpInterfaceChangeCallback callback, out IntPtr handle);
@@ -163,6 +187,95 @@ internal sealed class WindowsNetworkNativeCalls : IWindowsNetworkNativeCalls
         finally
         {
             if (ssidPointer != IntPtr.Zero) Marshal.FreeHGlobal(ssidPointer);
+        }
+    }
+
+    public uint SetWlanProfile(
+        IntPtr handle,
+        Guid interfaceId,
+        char[] profileXml,
+        out uint reasonCode)
+    {
+        ArgumentNullException.ThrowIfNull(profileXml);
+        var pinned = GCHandle.Alloc(profileXml, GCHandleType.Pinned);
+        try
+        {
+            return NativeMethods.WlanSetProfile(
+                handle,
+                ref interfaceId,
+                0x00000002,
+                pinned.AddrOfPinnedObject(),
+                IntPtr.Zero,
+                false,
+                IntPtr.Zero,
+                out reasonCode);
+        }
+        finally
+        {
+            pinned.Free();
+        }
+    }
+
+    public uint DeleteWlanProfile(IntPtr handle, Guid interfaceId, string profileName) =>
+        NativeMethods.WlanDeleteProfile(handle, ref interfaceId, profileName, IntPtr.Zero);
+
+    public uint SetWlanProfileCustomUserData(
+        IntPtr handle,
+        Guid interfaceId,
+        string profileName,
+        byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Length == 0)
+            return NativeMethods.WlanSetProfileCustomUserData(
+                handle,
+                ref interfaceId,
+                profileName,
+                0,
+                IntPtr.Zero,
+                IntPtr.Zero);
+        var pinned = GCHandle.Alloc(data, GCHandleType.Pinned);
+        try
+        {
+            return NativeMethods.WlanSetProfileCustomUserData(
+                handle,
+                ref interfaceId,
+                profileName,
+                checked((uint)data.Length),
+                pinned.AddrOfPinnedObject(),
+                IntPtr.Zero);
+        }
+        finally
+        {
+            pinned.Free();
+        }
+    }
+
+    public uint GetWlanProfileCustomUserData(
+        IntPtr handle,
+        Guid interfaceId,
+        string profileName,
+        out byte[] data)
+    {
+        data = [];
+        var result = NativeMethods.WlanGetProfileCustomUserData(
+            handle,
+            ref interfaceId,
+            profileName,
+            out var size,
+            out var pointer,
+            IntPtr.Zero);
+        if (result != 0 || pointer == IntPtr.Zero) return result;
+        try
+        {
+            if (size is 0 or > 256) return 13;
+            data = new byte[checked((int)size)];
+            Marshal.Copy(pointer, data, 0, data.Length);
+            return 0;
+        }
+        finally
+        {
+            NativeMethods.WlanFreeMemory(pointer);
         }
     }
 
@@ -302,6 +415,42 @@ internal sealed class WindowsNetworkNativeCalls : IWindowsNetworkNativeCalls
             IntPtr clientHandle,
             ref Guid interfaceId,
             ref WlanConnectionParameters connectionParameters,
+            IntPtr reserved);
+
+        [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
+        internal static extern uint WlanSetProfile(
+            IntPtr clientHandle,
+            ref Guid interfaceId,
+            uint flags,
+            IntPtr profileXml,
+            IntPtr allUserProfileSecurity,
+            [MarshalAs(UnmanagedType.Bool)] bool overwrite,
+            IntPtr reserved,
+            out uint reasonCode);
+
+        [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
+        internal static extern uint WlanDeleteProfile(
+            IntPtr clientHandle,
+            ref Guid interfaceId,
+            string profileName,
+            IntPtr reserved);
+
+        [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
+        internal static extern uint WlanSetProfileCustomUserData(
+            IntPtr clientHandle,
+            ref Guid interfaceId,
+            string profileName,
+            uint dataSize,
+            IntPtr data,
+            IntPtr reserved);
+
+        [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
+        internal static extern uint WlanGetProfileCustomUserData(
+            IntPtr clientHandle,
+            ref Guid interfaceId,
+            string profileName,
+            out uint dataSize,
+            out IntPtr data,
             IntPtr reserved);
 
         [DllImport("wlanapi.dll")]

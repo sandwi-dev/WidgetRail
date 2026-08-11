@@ -4540,9 +4540,14 @@ private:
         (void)pressedInteraction_.Clear();
         focusedElementId_ = request->nodeId;
         focusMemory_.Remember(widget, snapshot, focusedElementId_);
-        const auto committed = textEntryModal_.Show(
+        const bool protectedWifi = descriptor->protectedWifiPromptSupported &&
+            request->actionId == L"wifi.connect.protected";
+        const auto modalTitle = protectedWifi
+            ? std::wstring(L"Password for ") + request->placeholder
+            : request->placeholder;
+        auto committed = textEntryModal_.Show(
             instance_, window_, request->value,
-            request->placeholder, request->maximumLength);
+            modalTitle, request->maximumLength, protectedWifi);
         if (committed) {
             const auto currentDescriptor = std::find_if(
                 widgetDescriptors_.begin(), widgetDescriptors_.end(),
@@ -4559,15 +4564,32 @@ private:
                     currentDescriptor->runtimeGeneration, *currentSnapshot)
                 : std::nullopt;
             if (target) {
-                const auto handled = bridge_.SendAction(
-                    request->widgetId, target->actionId, target->sourceElementId,
-                    target->activeInputScopeId, *committed);
+                std::optional<bool> handled;
+                if (protectedWifi) {
+                    const auto result = bridge_.ConnectProtectedWifi(
+                        request->widgetId,
+                        request->runtimeGeneration,
+                        target->sourceElementId,
+                        committed->view());
+                    handled = result.has_value();
+                    lastActionWidgetId_ = request->widgetId;
+                    lastActionMessage_ = result && *result == L"connecting"
+                        ? L"Connecting to protected Wi-Fi"
+                        : L"Protected Wi-Fi connection was not started";
+                    lastActionExpiresAt_ = GetTickCount64() + 3000;
+                } else {
+                    handled = bridge_.SendAction(
+                        request->widgetId, target->actionId, target->sourceElementId,
+                        target->activeInputScopeId,
+                        std::wstring_view(committed->view().data(), committed->view().size()));
+                }
                 if (handled && *handled) {
                     RefreshAndApplyPresentation([&] {
                         RefreshWidgetSnapshot(request->widgetId);
                     });
                 }
             }
+            committed->clear();
         }
         if (state_.surface() == gba::Surface::Widget)
             RestoreFocusForActiveSurface(state_.activeWidget());

@@ -43,6 +43,22 @@ constexpr std::string_view ValidAppearance = R"json({
 } // namespace
 
 int main() {
+    std::vector<wchar_t> secret(14);
+    for (std::size_t index = 0; index < secret.size(); ++index)
+        secret[index] = static_cast<wchar_t>(L'!' + index);
+    auto protectedFrame = gba::ProtectedWifiSecretFrame::Create(secret);
+    assert(protectedFrame && protectedFrame->bytes().size() == secret.size());
+    assert(std::equal(
+        protectedFrame->bytes().begin(),
+        protectedFrame->bytes().end(),
+        secret.begin(),
+        [](const unsigned char encoded, const wchar_t source) {
+            return encoded == static_cast<unsigned char>(source);
+        }));
+    protectedFrame->clear();
+    assert(protectedFrame->bytes().empty());
+    secret[0] = L'\n';
+    assert(!gba::ProtectedWifiSecretFrame::Create(secret));
     std::wstring error;
     const auto valid = gba::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
@@ -53,6 +69,7 @@ int main() {
             "presentationGeneration": "presentation-1",
             "icon": "music",
             "pinningSupported": true,
+            "protectedWifiPromptSupported": true,
             "quickActions": [{
                 "id": "refresh",
                 "label": "Refresh",
@@ -77,6 +94,7 @@ int main() {
     assert((*valid)[0].presentationGeneration == L"presentation-1");
     assert((*valid)[0].icon == L"music");
     assert((*valid)[0].pinningSupported);
+    assert((*valid)[0].protectedWifiPromptSupported);
     assert((*valid)[0].quickActions.size() == 2);
     assert((*valid)[0].quickActions[0].controllerButton == L"x");
     assert(!(*valid)[0].quickActions[1].controllerButton);
@@ -93,6 +111,20 @@ int main() {
         }]
     })json", error);
     assert(defaultPinning && !(*defaultPinning)[0].pinningSupported);
+    assert(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
+
+    error.clear();
+    assert(!gba::testing::ParseWidgetDescriptors(R"json({
+        "widgets": [{
+            "id": "dev.test.invalid-protected",
+            "name": "Invalid protected",
+            "instanceId": "invalid-protected.instance",
+            "runtimeGeneration": "runtime-invalid-protected",
+            "presentationGeneration": "presentation-invalid-protected",
+            "protectedWifiPromptSupported": "yes",
+            "quickActions": []
+        }]
+    })json", error));
     error.clear();
     assert(!gba::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{

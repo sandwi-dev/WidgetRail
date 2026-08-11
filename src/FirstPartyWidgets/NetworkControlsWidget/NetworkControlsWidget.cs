@@ -51,6 +51,7 @@ public sealed class NetworkControlsWidget : Widget
     private bool _bluetoothIsError;
     private bool _bluetoothBusy;
     private WidgetBluetoothDevice? _bluetoothGuidanceDevice;
+    private WidgetBluetoothDevice? _unpairConfirmationDevice;
     private string? _pendingBluetoothDeviceId;
     private string? _selectedBluetoothDeviceId;
     private int _selectedBluetoothIndex;
@@ -177,7 +178,8 @@ public sealed class NetworkControlsWidget : Widget
                 _pendingNetworkId,
                 _selectedNetworkId,
                 _activeTab,
-                LifecycleState == WidgetLifecycleState.Interactive);
+                LifecycleState == WidgetLifecycleState.Interactive,
+                _unpairConfirmationDevice);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -246,6 +248,15 @@ public sealed class NetworkControlsWidget : Widget
             case NetworkControlsAction.ManageBluetooth:
                 await OpenBluetoothDeviceSettingsAsync(
                     action.SourceElementId, cancellationToken).ConfigureAwait(false);
+                break;
+            case NetworkControlsAction.OpenUnpairBluetooth:
+                OpenBluetoothUnpairConfirmation(action.SourceElementId);
+                break;
+            case NetworkControlsAction.ConfirmUnpairBluetooth:
+                await UnpairBluetoothDeviceAsync(cancellationToken).ConfigureAwait(false);
+                break;
+            case NetworkControlsAction.CancelUnpairBluetooth:
+                CancelBluetoothUnpairConfirmation();
                 break;
             case NetworkControlsAction.Retry:
                 if (IsActive) StartActiveRun();
@@ -462,6 +473,11 @@ public sealed class NetworkControlsWidget : Widget
             var preserveOperationMessage = _pendingBluetoothDeviceId is not null;
             _authoritativeBluetooth = snapshot;
             _bluetooth = snapshot;
+            if (_unpairConfirmationDevice is { } confirmation &&
+                snapshot.Devices.FirstOrDefault(device => string.Equals(
+                    device.DeviceId, confirmation.DeviceId, StringComparison.Ordinal)) is not
+                    { IsPaired: true })
+                _unpairConfirmationDevice = null;
             if (_pendingBluetoothDeviceId is null) _bluetoothBusy = false;
             _bluetoothIsError = false;
             if (!preserveGuidance && !preserveOperationMessage)
@@ -493,6 +509,7 @@ public sealed class NetworkControlsWidget : Widget
             _bluetoothBusy = false;
             _pendingBluetoothDeviceId = null;
             _bluetoothGuidanceDevice = null;
+            _unpairConfirmationDevice = null;
             _bluetoothMessage = message;
             _bluetoothIsError = error;
             _selectedBluetoothDeviceId = null;
@@ -885,6 +902,116 @@ public sealed class NetworkControlsWidget : Widget
         finally { _commandGate.Release(); }
     }
 
+    private void OpenBluetoothUnpairConfirmation(string sourceElementId)
+    {
+        lock (_stateLock)
+        {
+            if (LifecycleState != WidgetLifecycleState.Interactive || _bluetoothBusy) return;
+            var device = BluetoothDeviceFromElementIdLocked(sourceElementId);
+            if (device is not { IsPaired: true }) return;
+            _selectedBluetoothDeviceId = device.DeviceId;
+            _unpairConfirmationDevice = device;
+        }
+        Invalidate();
+    }
+
+    private void CancelBluetoothUnpairConfirmation()
+    {
+        lock (_stateLock)
+        {
+            if (_bluetoothBusy) return;
+            _unpairConfirmationDevice = null;
+        }
+        Invalidate();
+    }
+
+    private async ValueTask UnpairBluetoothDeviceAsync(CancellationToken cancellationToken)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        await _commandGate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
+        {
+            WidgetBluetoothDevice? device;
+            long generation = 0;
+            lock (_stateLock)
+            {
+                device = _unpairConfirmationDevice;
+                var current = device is null ? null : CurrentBluetoothDeviceLocked(device.DeviceId);
+                if (current is not { IsPaired: true })
+                {
+                    _unpairConfirmationDevice = null;
+                    device = null;
+                }
+                else if (!_bluetoothBusy)
+                {
+                    generation = _runGeneration;
+                    _pendingBluetoothDeviceId = current.DeviceId;
+                    _bluetoothBusy = true;
+                    _bluetoothMessage = $"Removing {current.DisplayName}…";
+                    _bluetoothIsError = false;
+                    device = current;
+                }
+                else device = null;
+            }
+            Invalidate();
+            if (device is null) return;
+            try
+            {
+                var result = await HostServices.Network.UnpairBluetoothDeviceAsync(
+                    device.DeviceId, linked.Token).ConfigureAwait(false);
+                var authoritative = await HostServices.Network.GetBluetoothAsync(linked.Token)
+                    .ConfigureAwait(false);
+                ApplyBluetooth(authoritative, generation);
+                lock (_stateLock)
+                {
+                    if (_runGeneration != generation) return;
+                    var retained = CurrentBluetoothDeviceLocked(device.DeviceId);
+                    _pendingBluetoothDeviceId = null;
+                    _bluetoothBusy = false;
+                    _unpairConfirmationDevice = null;
+                    var removed = retained is not { IsPaired: true } &&
+                        result.Outcome is WidgetBluetoothUnpairingOutcome.Unpaired or
+                            WidgetBluetoothUnpairingOutcome.AlreadyUnpaired;
+                    _bluetoothMessage = removed
+                        ? $"Removed {device.DisplayName}"
+                        : result.Outcome switch
+                        {
+                            WidgetBluetoothUnpairingOutcome.AccessDenied =>
+                                "Windows denied Bluetooth device removal",
+                            WidgetBluetoothUnpairingOutcome.OperationInProgress =>
+                                "Another Bluetooth operation is still in progress",
+                            WidgetBluetoothUnpairingOutcome.DeviceUnavailable =>
+                                "The Bluetooth device is no longer available",
+                            _ => "Windows could not remove the Bluetooth device",
+                        };
+                    _bluetoothIsError = !removed;
+                }
+                Invalidate();
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                lock (_stateLock) _unpairConfirmationDevice = null;
+                RestoreBluetoothAfterCancellation(generation);
+                throw;
+            }
+            catch (WidgetCapabilityException exception)
+            {
+                lock (_stateLock) _unpairConfirmationDevice = null;
+                SetBluetoothFailure(
+                    NetworkControlsCommandPolicy.MapBluetoothUnpairFailure(exception.ErrorCode),
+                    generation);
+            }
+            catch (Exception)
+            {
+                lock (_stateLock) _unpairConfirmationDevice = null;
+                SetBluetoothFailure("Windows could not remove the Bluetooth device", generation);
+            }
+        }
+        finally { _commandGate.Release(); }
+    }
+
     private void CompleteBluetoothPairing(
         WidgetBluetoothDevice requested,
         WidgetBluetoothPairingOutcome outcome,
@@ -1177,6 +1304,7 @@ public sealed class NetworkControlsWidget : Widget
         _bluetoothBusy = false;
         _pendingBluetoothDeviceId = null;
         _bluetoothGuidanceDevice = null;
+        _unpairConfirmationDevice = null;
         if (_networkStatus is not null && _wifiSnapshot is not null && _wifiRadio is not null)
         {
             ReconcileSelectionLocked();

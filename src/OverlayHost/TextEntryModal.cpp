@@ -6,6 +6,31 @@
 #include <limits>
 
 namespace gba::input {
+
+SecureTextBuffer::SecureTextBuffer(std::vector<wchar_t>&& value) noexcept
+    : value_(std::move(value)) {}
+
+SecureTextBuffer::~SecureTextBuffer() { clear(); }
+
+SecureTextBuffer::SecureTextBuffer(SecureTextBuffer&& other) noexcept
+    : value_(std::move(other.value_)) {
+    other.clear();
+}
+
+SecureTextBuffer& SecureTextBuffer::operator=(SecureTextBuffer&& other) noexcept {
+    if (this != &other) {
+        clear();
+        value_ = std::move(other.value_);
+        other.clear();
+    }
+    return *this;
+}
+
+void SecureTextBuffer::clear() noexcept {
+    if (!value_.empty())
+        SecureZeroMemory(value_.data(), value_.size() * sizeof(wchar_t));
+    value_.clear();
+}
 namespace {
 
 constexpr wchar_t kClassName[] = L"GameBarAlternative.TextEntryModal";
@@ -77,15 +102,17 @@ TextEntryModalLayout CalculateTextEntryModalLayout(
     return result;
 }
 
-std::optional<std::wstring> TextEntryModal::Show(
+std::optional<SecureTextBuffer> TextEntryModal::Show(
     HINSTANCE instance,
     HWND owner,
     const std::wstring_view value,
     const std::wstring_view placeholder,
-    const std::size_t maximumLength) {
+    const std::size_t maximumLength,
+    const bool password) {
     if (active() || !instance || !owner || maximumLength == 0 ||
         maximumLength > MaximumLength || value.size() > maximumLength ||
-        placeholder.size() > MaximumLength) return std::nullopt;
+        placeholder.size() > MaximumLength || (password && !value.empty()))
+        return std::nullopt;
 
     WNDCLASSEXW type{sizeof(type)};
     type.hInstance = instance;
@@ -101,6 +128,7 @@ std::optional<std::wstring> TextEntryModal::Show(
     initialValue_ = value;
     placeholder_ = placeholder;
     maximumLength_ = maximumLength;
+    password_ = password;
     const auto ownerDpi = GetDpiForWindow(owner);
     dpi_ = ownerDpi == 0 ? 96U : ownerDpi;
     result_.reset();
@@ -150,7 +178,15 @@ std::optional<std::wstring> TextEntryModal::Show(
     window_ = nullptr;
     edit_ = nullptr;
     focusTargets_.clear();
-    return result_;
+    priorEditWindowProc_ = nullptr;
+    auto result = std::move(result_);
+    result_.reset();
+    if (!initialValue_.empty())
+        SecureZeroMemory(initialValue_.data(), initialValue_.size() * sizeof(wchar_t));
+    initialValue_.clear();
+    placeholder_.clear();
+    password_ = false;
+    return result;
 }
 
 void TextEntryModal::CreateControls() {
@@ -163,10 +199,17 @@ void TextEntryModal::CreateControls() {
     const auto editBounds = createBounds(layout_.editBounds);
     edit_ = CreateWindowExW(
         WS_EX_CLIENTEDGE, L"EDIT", initialValue_.c_str(),
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL |
+            (password_ ? ES_PASSWORD : 0),
         editBounds[0], editBounds[1], editBounds[2], editBounds[3],
         window_, reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(kEditId)), instance_, nullptr);
+    if (password_) {
+        SetWindowLongPtrW(edit_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+        priorEditWindowProc_ = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(
+            edit_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(EditWindowProc)));
+        SendMessageW(edit_, EM_SETPASSWORDCHAR, static_cast<WPARAM>(L'●'), 0);
+    }
     SendMessageW(edit_, EM_SETLIMITTEXT, static_cast<WPARAM>(maximumLength_), 0);
     focusTargets_.push_back({edit_, layout_.editBounds});
 
@@ -217,11 +260,12 @@ void TextEntryModal::Complete(const bool commit) {
     if (commit) {
         const int length = std::clamp(GetWindowTextLengthW(edit_), 0,
             static_cast<int>(maximumLength_));
-        std::wstring value(static_cast<std::size_t>(length) + 1, L'\0');
+        std::vector<wchar_t> value(static_cast<std::size_t>(length) + 1, L'\0');
         if (length != 0) GetWindowTextW(edit_, value.data(), length + 1);
         value.resize(static_cast<std::size_t>(length));
-        result_ = std::move(value);
+        result_.emplace(std::move(value));
     }
+    if (edit_) SetWindowTextW(edit_, L"");
     HWND closing = window_;
     if (closing) DestroyWindow(closing);
     window_ = nullptr;
@@ -317,6 +361,16 @@ LRESULT CALLBACK TextEntryModal::WindowProc(
     }
     return self ? self->HandleMessage(message, wParam, lParam)
                 : DefWindowProcW(window, message, wParam, lParam);
+}
+
+LRESULT CALLBACK TextEntryModal::EditWindowProc(
+    const HWND window, const UINT message, const WPARAM wParam, const LPARAM lParam) {
+    auto* self = reinterpret_cast<TextEntryModal*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (!self || !self->priorEditWindowProc_)
+        return DefWindowProcW(window, message, wParam, lParam);
+    if (message == WM_COPY || message == WM_CUT || message == WM_PASTE ||
+        message == WM_CONTEXTMENU) return 0;
+    return CallWindowProcW(self->priorEditWindowProc_, window, message, wParam, lParam);
 }
 
 LRESULT TextEntryModal::HandleMessage(

@@ -48,7 +48,7 @@ eventual widgets:
 | `system.network.read.v1` | Read sanitized connectivity/saved-profile state and subscribe to bounded network-change events. |
 | `system.network.saved-profile.switch.v1` | Connect one opaque already-saved profile while Interactive; no profile creation or secrets. |
 | `system.network.wifi.read.v1` | Read the cached available-network snapshot, explicitly request one scan while Interactive, and subscribe to bounded scan snapshots. |
-| `system.network.wifi.connect.v1` | Connect one current generation-bound saved/open scan result while Interactive; no credential entry. |
+| `system.network.wifi.connect.v1` | Connect one current generation-bound saved/open scan result while Interactive. Bundled Network Controls may additionally use its trusted masked host prompt for one supported WPA2/WPA3 Personal result; the secret and profile XML bypass the worker/public SDK. |
 | `system.network.wifi.radio.read.v1` | Read/watch effective software/hardware/policy Wi-Fi radio state. |
 | `system.network.wifi.radio.control.v1` | Request software Wi-Fi radio On/Off while Interactive; hardware/policy remains authoritative. |
 | `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |
@@ -288,8 +288,15 @@ extension of `system.network.read.v1` or the saved-profile-switch grant:
    generation. BSSID, interface GUID, raw SSID bytes, authentication structures,
    profile XML, and keys never cross the broker or enter logs.
 4. Connection accepts current saved-profile-backed and unsaved open results.
-   A later host-owned credential prompt may create/connect a new WPA/WPA2/WPA3
-   Personal profile without exposing the secret to the widget worker.
+   The exact first-party host-owned credential prompt may create/connect one
+   attempt-unique WPA2/WPA3 Personal profile without exposing the secret to the
+   widget worker or JSON. The edit control, native frame, managed command, and
+   profile XML are bounded mutable owners and are cleared. The provider creates
+   without overwrite, stores a random attempt token as Native Wi-Fi per-profile
+   custom user data, and rereads/fixed-time-compares it before rollback. A
+   neighbor replacement, unreadable token, or failed delete is explicit and
+   never authorizes deletion by SSID/common name. Success clears the token and
+   retains the Windows-owned profile.
    Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially.
 5. Software radio control uses `WlanSetInterface` only after a separate
@@ -324,6 +331,9 @@ on the owner thread. No provider timer runs while the system is unchanged.
   operations. Desktop UI-dependent pairing objects must be associated with the
   owner window. See
   [DeviceInformationPairing](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing?view=winrt-26100).
+- `UnpairAsync` returns the closed `DeviceUnpairingResultStatus` result set;
+  access denial, an operation already in progress, and failure are not success.
+  See [UnpairAsync](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing.unpairasync?view=winrt-26100).
 - Bluetooth communication is profile-specific. GATT requires knowledge of the
   intended services/characteristics, while RFCOMM establishes a socket to a
   service. The public API therefore does not justify a generic device-level
@@ -332,8 +342,9 @@ on the owner thread. No provider timer runs while the system is unchanged.
 
 ### Implemented boundary and remaining work
 
-Bluetooth radio read/control, event-driven device enumeration, pairing, and
-management fallback are separate closed broker capabilities. The trusted WinRT
+Bluetooth radio read/control, event-driven device enumeration, pairing,
+destructive removal, and management fallback are separate closed broker
+capabilities. The trusted WinRT
 adapter publishes bounded opaque IDs, sanitized names, and paired/present/
 connected state; native device IDs, addresses, handles, and pairing secrets
 never cross the broker. Software-radio changes reconcile effective state and
@@ -344,10 +355,13 @@ Pairing resolves one current opaque ID to a retained native association
 endpoint only inside the trusted provider, calls `PairAsync`, returns a bounded
 typed Windows outcome, and refreshes/publishes authoritative state even after
 failure or cancellation. It does not claim that a Bluetooth profile connected.
+Removal similarly resolves only a current paired opaque ID, calls `UnpairAsync`,
+maps the closed Windows outcome, and refreshes/publishes authoritative state in
+all completion paths. Native IDs and provider exceptions remain host-only.
 The separate manage operation validates the same opaque ID and opens
 `ms-settings:bluetooth` without placing that native ID in the URI. That fallback
-lets Windows own unsupported ceremonies and paired-device management. Unpair is
-not implemented and physical pairing still needs reversible hardware evidence.
+lets Windows own unsupported ceremonies and profile-specific management.
+Physical remove/re-pair still needs reversible hardware evidence.
 Generic Connect/Disconnect remains out of scope; a future GATT or RFCOMM
 integration must declare its exact profile/service authority and resource/
 lifecycle policy.

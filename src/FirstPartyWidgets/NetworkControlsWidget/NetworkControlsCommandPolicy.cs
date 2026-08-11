@@ -106,6 +106,18 @@ internal static class NetworkControlsCommandPolicy
         _ => "Windows Bluetooth Settings could not be opened",
     };
 
+    internal static string MapBluetoothUnpairFailure(string errorCode) => errorCode switch
+    {
+        "permission_denied" or "capability_not_declared" =>
+            "Allow Bluetooth device removal in Settings → Permissions",
+        "unknown_device" or "resource_not_found" =>
+            "That Bluetooth device is no longer available",
+        "lifecycle_denied" =>
+            "Bluetooth removal is available only while this widget is open",
+        "request_timeout" => "Bluetooth device removal timed out",
+        _ => "Windows could not remove the Bluetooth device",
+    };
+
     internal static NetworkBluetoothFeedback PairingFeedback(
         WidgetBluetoothDevice requested,
         WidgetBluetoothPairingOutcome outcome) => outcome switch

@@ -124,6 +124,37 @@ public sealed class WindowsBluetoothPlatformBackend : IBluetoothPlatformBrokerBa
         }
     }
 
+    public async Task<BluetoothUnpairingResultSummary> UnpairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken)
+    {
+        await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        IWindowsBluetoothNativeAdapter adapter;
+        string nativeDeviceId;
+        lock (_stateGate)
+        {
+            ThrowIfDisposed();
+            adapter = _adapter ?? throw new BrokerException(
+                "platform_unavailable", "Windows Bluetooth is unavailable.");
+            nativeDeviceId = NativeIdForOpaqueLocked(deviceId);
+            var current = _snapshot.Devices.FirstOrDefault(device =>
+                string.Equals(device.DeviceId, deviceId, StringComparison.Ordinal));
+            if (current is not { IsPaired: true })
+                throw new BrokerException(
+                    "resource_not_found", "The paired Bluetooth device is no longer available.");
+        }
+        try
+        {
+            var outcome = await adapter.UnpairAsync(nativeDeviceId, cancellationToken)
+                .ConfigureAwait(false);
+            return new BluetoothUnpairingResultSummary(
+                Enum.Parse<BluetoothUnpairingResultStatus>(outcome.ToString(), false));
+        }
+        finally
+        {
+            RefreshAndPublish(adapter);
+        }
+    }
+
     /// <summary>
     /// Opens the exact Windows Bluetooth Settings page for management that is
     /// profile-specific or unsupported by the generic pairing API. The native
