@@ -2,7 +2,7 @@ namespace GameBarAlternative.PlatformBroker;
 
 internal sealed class AppLibraryArtworkRegistry
 {
-    internal const int MaximumRegistrationsPerSession = 512;
+    internal const int MaximumRegistrationsPerSession = 256;
     private readonly object _gate = new();
     private readonly Dictionary<string, Registration> _registrations =
         new(StringComparer.Ordinal);
@@ -83,7 +83,7 @@ internal sealed class AppLibraryArtworkRegistry
                 ReferenceEquals(session, registration.Session);
     }
 
-    private IReadOnlyDictionary<string, string> Replace(
+    private IReadOnlyDictionary<string, string> RegisterPage(
         Session session,
         IReadOnlyList<AppLibraryBackendItemSummary> items)
     {
@@ -98,28 +98,35 @@ internal sealed class AppLibraryArtworkRegistry
                 RemoveSessionLocked(current);
             _sessions[session.Identity] = session;
 
-            var previous = session.ByProviderIdentity;
-            var next = new Dictionary<string, HandleRegistration>(StringComparer.Ordinal);
             var projected = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var item in items)
             {
                 var key = new RegistrationIdentity(
                     item.ProviderAppId, item.StableProviderIdentity, item.ArtworkRevision);
-                var handle = previous.TryGetValue(item.ProviderAppId, out var existing) &&
+                var handle = session.ByProviderIdentity.TryGetValue(
+                        item.ProviderAppId, out var existing) &&
                     existing.Key == key
                         ? existing.Handle
                         : NewHandle();
-                next.Add(item.ProviderAppId, new HandleRegistration(handle, key));
+                if (existing is not null && existing.Handle != handle)
+                    _registrations.Remove(existing.Handle);
+                session.ByProviderIdentity[item.ProviderAppId] =
+                    new HandleRegistration(handle, key);
+                session.Touch(item.ProviderAppId);
                 projected.Add(item.ProviderAppId, handle);
+                _registrations[handle] = new Registration(
+                    session, item.ProviderAppId, item.StableProviderIdentity);
             }
 
-            foreach (var old in previous.Values)
-                if (!next.Values.Any(item => item.Handle == old.Handle))
-                    _registrations.Remove(old.Handle);
-            foreach (var item in next.Values)
-                _registrations[item.Handle] = new Registration(
-                    session, item.Key.ProviderAppId, item.Key.StableProviderIdentity);
-            session.ByProviderIdentity = next;
+            while (session.ByProviderIdentity.Count > MaximumRegistrationsPerSession)
+            {
+                var evictedId = session.LeastRecent.First!.Value;
+                session.LeastRecent.RemoveFirst();
+                session.Recency.Remove(evictedId);
+                var evicted = session.ByProviderIdentity[evictedId];
+                session.ByProviderIdentity.Remove(evictedId);
+                _registrations.Remove(evicted.Handle);
+            }
             return projected;
         }
     }
@@ -135,11 +142,23 @@ internal sealed class AppLibraryArtworkRegistry
         }
     }
 
+    private void Reset(Session session)
+    {
+        lock (_gate)
+        {
+            if (_sessions.TryGetValue(session.Identity, out var current) &&
+                ReferenceEquals(current, session))
+                RemoveSessionLocked(session);
+        }
+    }
+
     private void RemoveSessionLocked(Session session)
     {
         foreach (var registration in session.ByProviderIdentity.Values)
             _registrations.Remove(registration.Handle);
         session.ByProviderIdentity.Clear();
+        session.LeastRecent.Clear();
+        session.Recency.Clear();
     }
 
     private static string NewHandle() => "library.art." + Guid.NewGuid().ToString("N");
@@ -155,8 +174,18 @@ internal sealed class AppLibraryArtworkRegistry
         internal BrokerWidgetIdentity Identity { get; } = identity;
         internal IPlatformBrokerBackend Backend { get; } = backend;
         internal long Sequence { get; } = sequence;
-        internal Dictionary<string, HandleRegistration> ByProviderIdentity { get; set; } =
+        internal Dictionary<string, HandleRegistration> ByProviderIdentity { get; } =
             new(StringComparer.Ordinal);
+        internal LinkedList<string> LeastRecent { get; } = [];
+        internal Dictionary<string, LinkedListNode<string>> Recency { get; } =
+            new(StringComparer.Ordinal);
+
+        internal void Touch(string providerAppId)
+        {
+            if (Recency.Remove(providerAppId, out var existing))
+                LeastRecent.Remove(existing);
+            Recency[providerAppId] = LeastRecent.AddLast(providerAppId);
+        }
     }
 
     private sealed record Registration(
@@ -174,10 +203,13 @@ internal sealed class AppLibraryArtworkRegistry
         Session session) : IDisposable
     {
         private AppLibraryArtworkRegistry? _owner = owner;
-        internal IReadOnlyDictionary<string, string> Replace(
+        internal IReadOnlyDictionary<string, string> RegisterPage(
             IReadOnlyList<AppLibraryBackendItemSummary> items) =>
             (_owner ?? throw new ObjectDisposedException(nameof(AppLibraryArtworkSession)))
-                .Replace(session, items);
+                .RegisterPage(session, items);
+        internal void Reset() =>
+            (_owner ?? throw new ObjectDisposedException(nameof(AppLibraryArtworkSession)))
+                .Reset(session);
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.End(session);
     }
 }

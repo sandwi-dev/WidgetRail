@@ -19,6 +19,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
+    ("App library cursors and registrations stay bounded across ten thousand items",
+        AppLibraryCursorBounds),
     ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
     ("Durable app IDs persist and remain authority scoped", AppLibrarySavedIdsAreDurableAndScoped),
     ("Pipe host effects publish only after requested successful app launch", AppLaunchHostEffectIsSuccessBound),
@@ -75,6 +77,13 @@ foreach (var (name, run) in tests)
 
 if (failures != 0) Environment.Exit(1);
 Console.WriteLine($"PlatformBroker.Tests passed ({tests.Length} tests)");
+
+static AppLibraryCursorRequest AppQuery(
+    int limit,
+    string? cursor = null,
+    AppLibraryCursorDirection? direction = null,
+    bool refresh = false) =>
+    new(new AppLibraryQuery(), cursor, direction, limit, refresh);
 
 static Task CapabilityDomainAuthorityIsSingular()
 {
@@ -155,13 +164,16 @@ static async Task CapabilityDomainPoliciesAreBounded()
         "invalid_backend_data");
 
     var tooManyApps = Enumerable.Range(
-            0, PlatformCapabilityBroker.MaximumAppLibraryItems + 1)
+            0, PlatformCapabilityBroker.MaximumAppLibraryPageSize + 1)
         .Select(index => new AppLibraryBackendItemSummary(
             $"provider-{index}", $"stable-{index}", $"App {index}",
             AppLibraryKind.Application))
         .ToArray();
     Assert.Throws<BrokerException>(
-        () => AppLibraryCapabilityDomain.ValidateItems(tooManyApps),
+        () => AppLibraryCapabilityDomain.ValidatePage(
+            new AppLibraryBackendCursorPage(
+                tooManyApps, null, null, "revision"),
+            PlatformCapabilityBroker.MaximumAppLibraryPageSize),
         "invalid_backend_data");
 
     var tooManyMediaSessions = Enumerable.Range(0, 33)
@@ -220,9 +232,9 @@ static async Task AppLibraryIconsAreBounded()
         BrokerJson.ProtocolVersion, 1, identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        JsonSerializer.SerializeToElement(new AppLibraryPageRequest(0, 64),
+        JsonSerializer.SerializeToElement(AppQuery(64),
             BrokerJson.StrictOptions)));
-    var page = listPayload.Deserialize<AppLibraryPageSummary>(BrokerJson.StrictOptions)!;
+    var page = listPayload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
     Assert.Equal(33, page.Items.Count);
     Assert.True(page.Items.All(item =>
         AppLibraryArtworkRegistry.IsHandle(item.ArtworkHandle)));
@@ -243,7 +255,7 @@ static async Task AppLibraryIconsAreBounded()
     Assert.True(resolved.Items.All(item => item.ArtworkHandle is not null));
     Assert.Equal(0, backend.AppLibraryIconCalls);
 
-    var firstHandle = page.Items[0].ArtworkHandle!;
+    var firstHandle = resolved.Items[0].ArtworkHandle!;
     Assert.Equal(png, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
     Assert.Equal(1, backend.AppLibraryIconCalls);
 
@@ -269,8 +281,8 @@ static async Task AppLibraryIconsAreBounded()
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
         JsonSerializer.SerializeToElement(
-            new AppLibraryPageRequest(0, 64), BrokerJson.StrictOptions)));
-    var rotated = rotatedPayload.Deserialize<AppLibraryPageSummary>(BrokerJson.StrictOptions)!;
+            AppQuery(64, refresh: true), BrokerJson.StrictOptions)));
+    var rotated = rotatedPayload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
     Assert.True(rotated.Items[0].ArtworkHandle != firstHandle,
         "Changed trusted artwork revision reused its decoded-cache handle.");
     Assert.Equal(null, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
@@ -986,7 +998,7 @@ static async Task AppLibraryContracts()
     var denied = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     Assert.Equal("permission_denied", denied.ErrorCode);
 
     await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryReadV1,
@@ -995,18 +1007,19 @@ static async Task AppLibraryContracts()
     var background = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     Assert.Equal("lifecycle_denied", background.ErrorCode);
 
     broker.SetLifecycle(BrokerLifecycleState.Visible);
     var first = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     Assert.True(first.Succeeded, $"First app-library page failed: {first.ErrorCode}");
     var firstPayload = first.Payload!.Value;
     Assert.Equal(64, firstPayload.GetProperty("items").GetArrayLength());
-    Assert.Equal(64, firstPayload.GetProperty("nextOffset").GetInt32());
+    var after = firstPayload.GetProperty("after").GetString()!;
+    Assert.True(after.StartsWith("sim.", StringComparison.Ordinal));
     var firstItem = firstPayload.GetProperty("items")[0];
     var publicAppId = firstItem.GetProperty("appId").GetString()!;
     var savedAppId = firstItem.GetProperty("savedId").GetString()!;
@@ -1022,8 +1035,23 @@ static async Task AppLibraryContracts()
     Assert.True(!json.Contains("private-stable", StringComparison.OrdinalIgnoreCase));
     Assert.Equal(1, backend.AppLibraryRefreshCalls);
 
-    // Later pages remain bound to the first-page snapshot even if the shared
-    // backend changes. A new first page is the explicit refresh boundary.
+    var second = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        AppQuery(64, after, AppLibraryCursorDirection.After)));
+    Assert.True(second.Succeeded);
+    Assert.Equal(6, second.Payload!.Value.GetProperty("items").GetArrayLength());
+    Assert.Equal(JsonValueKind.Null, second.Payload.Value.GetProperty("after").ValueKind);
+    var before = second.Payload.Value.GetProperty("before").GetString()!;
+    var reversed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        AppQuery(64, before, AppLibraryCursorDirection.Before)));
+    Assert.True(reversed.Succeeded);
+    Assert.Equal("Launchable 000", reversed.Payload!.Value.GetProperty("items")[0]
+        .GetProperty("displayName").GetString());
+
+    // A source revision change makes an older cursor stale.
     backend.SetAppLibraryBackend([
         new AppLibraryBackendItemSummary(
             "changed", "changed-stable", "Changed", AppLibraryKind.Application),
@@ -1031,17 +1059,15 @@ static async Task AppLibraryContracts()
     var last = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 64, limit = 64 }));
-    Assert.True(last.Succeeded);
-    Assert.Equal(6, last.Payload!.Value.GetProperty("items").GetArrayLength());
-    Assert.Equal(JsonValueKind.Null,
-        last.Payload.Value.GetProperty("nextOffset").ValueKind);
+        AppQuery(64, after, AppLibraryCursorDirection.After)));
+    Assert.Equal("invalid_cursor", last.ErrorCode);
     Assert.Equal(1, backend.AppLibraryRefreshCalls);
 
     var invalidPage = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = -1, limit = 65 }));
+        new AppLibraryCursorRequest(
+            new AppLibraryQuery(), "bad", null, 65)));
     Assert.Equal("invalid_payload", invalidPage.ErrorCode);
 
     backend.SetAppLibraryBackend([
@@ -1053,7 +1079,7 @@ static async Task AppLibraryContracts()
     var invalidBackend = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     Assert.Equal("invalid_backend_data", invalidBackend.ErrorCode);
 
     var launchWithoutConsent = await broker.HandleAsync(Request(identity,
@@ -1109,7 +1135,7 @@ static async Task AppLibraryContracts()
     var refreshed = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     Assert.True(refreshed.Succeeded);
     Assert.Equal("Changed", refreshed.Payload!.Value.GetProperty("items")[0]
         .GetProperty("displayName").GetString());
@@ -1131,13 +1157,100 @@ static async Task AppLibraryContracts()
     var secondWidget = await secondBroker.HandleAsync(Request(secondIdentity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     var secondWidgetId = secondWidget.Payload!.Value.GetProperty("items")[0]
         .GetProperty("appId").GetString();
     var firstWidgetId = refreshed.Payload.Value.GetProperty("items")[0]
         .GetProperty("appId").GetString();
     Assert.True(firstWidgetId != secondWidgetId,
         "Opaque app IDs must not correlate two widget broker sessions.");
+}
+
+static async Task AppLibraryCursorBounds()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
+    await store.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend(Enumerable.Range(0, 10_000).Select(index =>
+        new AppLibraryBackendItemSummary(
+            $"provider-{index:D5}", $"stable-{index:D5}", $"Game {index:D5}",
+            AppLibraryKind.Game, $"art-{index:D5}", "Steam")));
+    var artwork = new AppLibraryArtworkRegistry();
+    using var artworkSession = artwork.BeginSession(identity, backend);
+    await using var broker = new PlatformCapabilityBroker(
+        identity,
+        [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1],
+        store, backend,
+        null, AppLibrarySavedIdIssuer.Shared, artworkSession);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    string? cursor = null;
+    AppLibraryCursorPageSummary? page = null;
+    string? firstHandle = null;
+    string? firstSavedId = null;
+    var pages = 0;
+    do
+    {
+        var payload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+            BrokerJson.ProtocolVersion, pages + 1, identity,
+            PlatformCapabilities.AppLibraryReadV1,
+            PlatformCapabilities.AppLibraryList,
+            JsonSerializer.SerializeToElement(
+                AppQuery(64, cursor,
+                    cursor is null ? null : AppLibraryCursorDirection.After,
+                    refresh: cursor is null), BrokerJson.StrictOptions)));
+        Assert.True(payload.GetRawText().Length < BrokerJson.MaximumResponseBytes);
+        page = payload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
+        Assert.True(page.Items.Count is > 0 and <= 64);
+        firstHandle ??= page.Items[0].ArtworkHandle;
+        firstSavedId ??= page.Items[0].SavedId;
+        Assert.True(artwork.RegistrationCount <=
+            AppLibraryArtworkRegistry.MaximumRegistrationsPerSession);
+        cursor = page.After;
+        pages++;
+    } while (cursor is not null);
+
+    Assert.Equal(157, pages);
+    Assert.Equal(16, page!.Items.Count);
+    Assert.Equal(null, await artwork.ResolveAsync(
+        identity, firstHandle!, CancellationToken.None));
+    var previousPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 1000, identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        JsonSerializer.SerializeToElement(
+            AppQuery(64, page.Before, AppLibraryCursorDirection.Before),
+            BrokerJson.StrictOptions)));
+    var previous = previousPayload.Deserialize<AppLibraryCursorPageSummary>(
+        BrokerJson.StrictOptions)!;
+    Assert.Equal("Game 09920", previous.Items[0].DisplayName);
+    Assert.Equal(64, previous.Items.Count);
+
+    var lastSavedId = page.Items[^1].SavedId;
+    var resolvedPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+        BrokerJson.ProtocolVersion, 1001, identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryResolveSaved,
+        JsonSerializer.SerializeToElement(
+            new ResolveSavedAppLibraryItemsRequest([firstSavedId!, lastSavedId]),
+            BrokerJson.StrictOptions)));
+    var resolved = resolvedPayload.Deserialize<ResolveSavedAppLibraryItemsSummary>(
+        BrokerJson.StrictOptions)!;
+    Assert.Equal(2, resolved.Items.Count);
+    Assert.True(resolved.Items.All(item =>
+        artwork.IsCurrent(identity, item.ArtworkHandle!)));
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var launch = await broker.HandleAsync(Request(
+        identity, PlatformCapabilities.AppLibraryLaunchV1,
+        PlatformCapabilities.AppLibraryLaunch,
+        new LaunchAppLibraryItemRequest(resolved.Items[0].AppId)));
+    Assert.True(launch.Succeeded);
+    Assert.Equal("provider-00000", backend.LastLaunchedAppId);
 }
 
 static async Task AppLaunchHostEffectIsSuccessBound()
@@ -1186,7 +1299,7 @@ static async Task AppLaunchHostEffectIsSuccessBound()
     var page = await client.RequestAsync(
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new AppLibraryPageRequest(0, 1));
+        AppQuery(1));
     Assert.True(page.Succeeded);
     var appId = page.Payload!.Value.GetProperty("items")[0]
         .GetProperty("appId").GetString()!;
@@ -1273,7 +1386,7 @@ static async Task AppLibrarySavedIdsAreDurableAndScoped()
     var page = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
-        new { offset = 0, limit = 64 }));
+        AppQuery(64, refresh: true)));
     Assert.True(page.Succeeded);
     var pageItem = page.Payload!.Value.GetProperty("items")[0];
     var savedId = pageItem.GetProperty("savedId").GetString()!;
@@ -3094,7 +3207,7 @@ static byte[] Request(
         },
         capabilityId = capability,
         operation,
-        payload,
+        payload = JsonSerializer.SerializeToElement(payload, BrokerJson.StrictOptions),
     });
 
 static byte[] GestureRequest(

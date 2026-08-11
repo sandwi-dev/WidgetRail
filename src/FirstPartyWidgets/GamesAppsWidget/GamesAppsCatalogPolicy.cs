@@ -11,12 +11,12 @@ internal enum GamesAppsCatalogPageTransition
 
 internal sealed record GamesAppsCatalogState(
     IReadOnlyList<WidgetAppLibraryItem> Items,
-    int Offset,
-    int? NextOffset,
-    IReadOnlyList<int> BackOffsets)
+    WidgetCollectionCursor? Before,
+    WidgetCollectionCursor? After,
+    string Revision)
 {
-    internal static GamesAppsCatalogState Empty { get; } = new([], 0, null, []);
-    internal bool CanLoadPrevious => BackOffsets.Count != 0;
+    internal static GamesAppsCatalogState Empty { get; } = new([], null, null, string.Empty);
+    internal bool CanLoadPrevious => Before is not null;
 }
 
 internal sealed record GamesAppsCatalogPageResult(
@@ -34,9 +34,7 @@ internal static class GamesAppsCatalogPolicy
         GamesAppsCatalogState current,
         WidgetAppLibraryPage? page,
         GamesAppsCatalogPageTransition transition,
-        int requestedOffset,
-        int pageSize,
-        int maximumItems)
+        int pageSize)
     {
         ArgumentNullException.ThrowIfNull(current);
         var normalized = Normalize(page?.Items, pageSize);
@@ -46,38 +44,19 @@ internal static class GamesAppsCatalogPolicy
         if (transition != GamesAppsCatalogPageTransition.Initial && normalized.Count == 0)
         {
             var noMore = transition == GamesAppsCatalogPageTransition.Next
-                ? current with { NextOffset = null }
+                ? current with { After = null }
                 : current;
             return new GamesAppsCatalogPageResult(
                 noMore, EmptyInitial: false, EmptyContinuation: true);
         }
 
-        IReadOnlyList<int> backOffsets;
-        if (transition == GamesAppsCatalogPageTransition.Initial)
-        {
-            backOffsets = [];
-        }
-        else if (transition == GamesAppsCatalogPageTransition.Next)
-        {
-            backOffsets = current.BackOffsets.Concat([current.Offset]).ToArray();
-        }
-        else if (current.BackOffsets.Count != 0 &&
-            current.BackOffsets[^1] == requestedOffset)
-        {
-            backOffsets = current.BackOffsets.Take(current.BackOffsets.Count - 1).ToArray();
-        }
-        else
-        {
-            backOffsets = current.BackOffsets;
-        }
-
         var items = normalized.Take(pageSize).ToArray();
-        int? nextOffset = requestedOffset + items.Length < maximumItems &&
-            page?.NextOffset is int next && next > requestedOffset && next <= maximumItems
-                ? next
-                : null;
+        WidgetCollectionCursor? before = page?.Before is { } beforeValue
+            ? new WidgetCollectionCursor(beforeValue) : null;
+        WidgetCollectionCursor? after = page?.After is { } afterValue
+            ? new WidgetCollectionCursor(afterValue) : null;
         return new GamesAppsCatalogPageResult(
-            new GamesAppsCatalogState(items, requestedOffset, nextOffset, backOffsets),
+            new GamesAppsCatalogState(items, before, after, page?.Revision ?? string.Empty),
             EmptyInitial: false,
             EmptyContinuation: false);
     }

@@ -9,6 +9,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
     private readonly List<RecentActivitySummary> _recentActivities = [];
     private readonly List<AppLibraryBackendItemSummary> _appLibrary = [];
+    private long _appLibraryRevision = 1;
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
     private readonly List<MediaSessionSummary> _mediaSessions = [];
     private readonly Dictionary<string, (string Secret, long WrittenAt)> _privateSecrets =
@@ -130,12 +131,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         _appLibrary.Clear();
         _appLibrary.AddRange(items.Select(item => new AppLibraryBackendItemSummary(
             item.AppId, item.AppId, item.DisplayName, item.Kind)));
+        _appLibraryRevision++;
     }
 
     public void SetAppLibraryBackend(IEnumerable<AppLibraryBackendItemSummary> items)
     {
         _appLibrary.Clear();
         _appLibrary.AddRange(items);
+        _appLibraryRevision++;
     }
 
     public void SetBluetoothDevices(IEnumerable<BluetoothDeviceSummary> devices)
@@ -339,20 +342,46 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         return Task.FromResult<IReadOnlyList<RecentActivitySummary>>(_recentActivities.ToArray());
     }
 
-    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
+    public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+        AppLibraryBackendCursorRequest request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        AppLibraryReadCalls++;
-        return Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>(_appLibrary.ToArray());
-    }
-
-    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        AppLibraryRefreshCalls++;
-        return Task.FromResult<IReadOnlyList<AppLibraryBackendItemSummary>>(_appLibrary.ToArray());
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Refresh)
+        {
+            AppLibraryRefreshCalls++;
+            _appLibraryRevision++;
+        }
+        else AppLibraryReadCalls++;
+        var filtered = _appLibrary.Where(item =>
+                request.Query.Kind is null || item.Kind == request.Query.Kind)
+            .Where(item => request.Query.SourceAttribution is null ||
+                item.SourceAttribution == request.Query.SourceAttribution)
+            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.StableProviderIdentity, StringComparer.Ordinal)
+            .ToArray();
+        var offset = 0;
+        if (request.Cursor is not null)
+        {
+            var parts = request.Cursor.Split('.');
+            if (parts.Length != 4 || parts[0] != "sim" ||
+                parts[1] != _appLibraryRevision.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) ||
+                parts[2] != (request.Direction == AppLibraryCursorDirection.Before ? "B" : "A") ||
+                !int.TryParse(parts[3], out offset))
+                throw new BrokerException("invalid_cursor", "The app-library cursor is stale.");
+        }
+        var items = filtered.Skip(offset).Take(request.Limit).ToArray();
+        var before = offset > 0
+            ? $"sim.{_appLibraryRevision}.B.{Math.Max(0, offset - request.Limit)}"
+            : null;
+        var next = offset + items.Length;
+        var after = next < filtered.Length
+            ? $"sim.{_appLibraryRevision}.A.{next}"
+            : null;
+        return Task.FromResult(new AppLibraryBackendCursorPage(
+            items, before, after, $"sim-revision-{_appLibraryRevision}"));
     }
 
     public Task LaunchAppLibraryItemAsync(

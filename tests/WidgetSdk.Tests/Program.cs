@@ -213,15 +213,18 @@ static async Task AppLibraryPlatformService()
             (request, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Assert.Equal(64, request.Offset);
+                Assert.Equal("cursor-64", request.Cursor);
+                Assert.Equal(WidgetCursorDirection.After, request.Direction);
                 Assert.Equal(12, request.Limit);
+                Assert.Equal(WidgetAppLibraryKind.Application, request.Query.Kind);
                 return ValueTask.FromResult(new WidgetAppLibraryPage(
                     [new WidgetAppLibraryItem(
                         "app-opaque", "Launchable App", WidgetAppLibraryKind.Application)
                     {
                         SavedId = "saved-durable",
+                        SourceAttribution = "Windows",
                     }],
-                    null));
+                    "cursor-32", null, "revision-2"));
             })
         .WithHandler(
             WidgetAppLibraryCapabilities.ResolveSaved,
@@ -237,6 +240,7 @@ static async Task AppLibraryPlatformService()
                     {
                         SavedId = "saved-durable",
                         ArtworkHandle = "library.art.0123456789abcdef0123456789abcdef",
+                        SourceAttribution = "Windows",
                     }]));
             })
         .WithResponse(
@@ -245,13 +249,17 @@ static async Task AppLibraryPlatformService()
         .Build();
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
-    var page = await widget.AppLibrary.GetPageAsync(64, 12);
+    var page = await widget.AppLibrary.QueryAsync(
+        new WidgetAppLibraryQuery(Kind: WidgetAppLibraryKind.Application),
+        new WidgetCollectionCursor("cursor-64"), WidgetCursorDirection.After, 12);
     Assert.Equal(1, page.Items.Count);
     Assert.Equal("app-opaque", page.Items[0].AppId);
     Assert.Equal("saved-durable", page.Items[0].SavedId);
     Assert.Equal("Launchable App", page.Items[0].DisplayName);
     Assert.Equal(WidgetAppLibraryKind.Application, page.Items[0].Kind);
-    Assert.Equal<int?>(null, page.NextOffset);
+    Assert.Equal("cursor-32", page.Before);
+    Assert.Equal<string?>(null, page.After);
+    Assert.Equal("revision-2", page.Revision);
     Assert.Equal(0, (await widget.AppLibrary.ResolveSavedAsync([])).Count);
     var resolved = await widget.AppLibrary.ResolveSavedAsync(
         ["saved-missing", "saved-durable"]);
@@ -263,13 +271,13 @@ static async Task AppLibraryPlatformService()
     await widget.AppLibrary.LaunchAsync("app-opaque");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());
-    Assert.Throws<ArgumentOutOfRangeException>(() =>
-        widget.AppLibrary.GetPageAsync(-1).GetAwaiter().GetResult());
-    Assert.Throws<ArgumentOutOfRangeException>(() =>
-        widget.AppLibrary.GetPageAsync(WidgetAppLibraryService.MaximumItems + 1)
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.QueryAsync(new WidgetAppLibraryQuery(),
+                new WidgetCollectionCursor("cursor"), direction: null)
             .GetAwaiter().GetResult());
     Assert.Throws<ArgumentOutOfRangeException>(() =>
-        widget.AppLibrary.GetPageAsync(0, WidgetAppLibraryService.MaximumPageSize + 1)
+        widget.AppLibrary.QueryAsync(new WidgetAppLibraryQuery(),
+                limit: WidgetAppLibraryService.MaximumPageSize + 1)
             .GetAwaiter().GetResult());
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.ResolveSavedAsync(["saved-same", "saved-same"])

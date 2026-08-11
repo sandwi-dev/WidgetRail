@@ -15,7 +15,7 @@ public sealed class WindowsAppLibraryProvider :
     IAppLibraryPlatformBrokerBackend,
     IAsyncDisposable
 {
-    internal const int MaximumApps = 512;
+    internal const int MaximumApps = 10_000;
     internal const int MaximumDisplayNameLength = 120;
     private static readonly TimeSpan TerminalDrainDeadline = TimeSpan.FromSeconds(5);
 
@@ -25,6 +25,7 @@ public sealed class WindowsAppLibraryProvider :
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly object _lifetimeGate = new();
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly byte[] _cursorKey = RandomNumberGenerator.GetBytes(32);
     private readonly object _stateGate = new();
     private readonly Dictionary<string, string> _opaqueIdsByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
@@ -34,6 +35,7 @@ public sealed class WindowsAppLibraryProvider :
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
         new(StringComparer.Ordinal);
     private TaskCompletionSource? _terminalCompletion;
+    private long _catalogRevision;
 
     public WindowsAppLibraryProvider() : this(
         new WindowsStartMenuApplicationSource(),
@@ -141,50 +143,118 @@ public sealed class WindowsAppLibraryProvider :
         CancellationToken cancellationToken = default) =>
         ScanAsync(force: true, cancellationToken);
 
-    public async Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
+    public async Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+        AppLibraryBackendCursorRequest request,
         CancellationToken cancellationToken)
     {
-        await GetAppsAsync(cancellationToken).ConfigureAwait(false);
-        return ProjectCurrentForBroker();
-    }
+        ValidateQuery(request);
+        if (request.Refresh)
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        else
+            await GetAppsAsync(cancellationToken).ConfigureAwait(false);
 
-    public async Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
-        CancellationToken cancellationToken)
-    {
-        await RefreshAsync(cancellationToken).ConfigureAwait(false);
-        return ProjectCurrentForBroker();
-    }
-
-    private IReadOnlyList<AppLibraryBackendItemSummary> ProjectCurrentForBroker()
-    {
         ThrowIfTerminating();
         lock (_stateGate)
         {
             if (_snapshot is null)
                 throw new BrokerException(
                     "invalid_backend_data", "App library snapshot is unavailable.");
-            var projected = new AppLibraryBackendItemSummary[_snapshot.Count];
-            for (var index = 0; index < _snapshot.Count; index++)
-            {
-                var app = _snapshot[index];
-                if (!_registrationsByOpaqueId.TryGetValue(app.AppId, out var registration))
-                    throw new BrokerException(
-                        "invalid_backend_data", "App library snapshot is inconsistent.");
-                projected[index] = new AppLibraryBackendItemSummary(
-                    app.AppId,
-                    registration.StableIdentity,
-                    app.DisplayName,
-                    registration.Kind switch
-                {
-                    WindowsAppLibraryKind.Unknown => AppLibraryKind.Unknown,
-                    WindowsAppLibraryKind.Application => AppLibraryKind.Application,
-                    WindowsAppLibraryKind.Game => AppLibraryKind.Game,
-                    _ => AppLibraryKind.Unknown,
-                }, ArtworkRevision(registration.ArtworkRevision));
-            }
-            return Array.AsReadOnly(projected);
+            var filtered = _snapshot
+                .Select(app => (registration: _registrationsByOpaqueId.TryGetValue(
+                    app.AppId, out var registration) ? registration : null, app))
+                .Where(entry => entry.registration is not null)
+                .Where(entry => request.Query.Kind is null ||
+                    ToBrokerKind(entry.registration!.Kind) == request.Query.Kind)
+                .Where(entry => request.Query.SourceAttribution is null ||
+                    string.Equals(entry.registration!.Attribution,
+                        request.Query.SourceAttribution, StringComparison.Ordinal))
+                .ToArray();
+            var queryHash = QueryHash(request.Query, request.Limit);
+            var offset = request.Cursor is null ? 0 :
+                ParseCursor(request.Cursor, request.Direction!.Value,
+                    _catalogRevision, queryHash);
+            if (offset < 0 || offset > filtered.Length)
+                throw InvalidCursor();
+            var page = filtered.Skip(offset).Take(request.Limit).ToArray();
+            var projected = page.Select(entry => new AppLibraryBackendItemSummary(
+                entry.app.AppId,
+                entry.registration!.StableIdentity,
+                entry.app.DisplayName,
+                ToBrokerKind(entry.registration.Kind),
+                ArtworkRevision(entry.registration.ArtworkRevision),
+                entry.registration.Attribution)).ToArray();
+            var before = offset > 0
+                ? CreateCursor(Math.Max(0, offset - request.Limit),
+                    AppLibraryCursorDirection.Before, _catalogRevision, queryHash)
+                : null;
+            var consumed = offset + projected.Length;
+            var after = consumed < filtered.Length
+                ? CreateCursor(consumed, AppLibraryCursorDirection.After,
+                    _catalogRevision, queryHash)
+                : null;
+            return new AppLibraryBackendCursorPage(
+                projected, before, after, $"library-{_catalogRevision:X16}");
         }
     }
+
+    private static AppLibraryKind ToBrokerKind(WindowsAppLibraryKind kind) => kind switch
+    {
+        WindowsAppLibraryKind.Application => AppLibraryKind.Application,
+        WindowsAppLibraryKind.Game => AppLibraryKind.Game,
+        _ => AppLibraryKind.Unknown,
+    };
+
+    private static void ValidateQuery(AppLibraryBackendCursorRequest? request)
+    {
+        if (request is null || request.Query is null ||
+            !Enum.IsDefined(request.Query.Sort) ||
+            request.Query.Kind is { } kind && !Enum.IsDefined(kind) ||
+            request.Limit is < 1 or > 64 ||
+            (request.Cursor is null) != (request.Direction is null) ||
+            request.Cursor is { Length: > 128 } ||
+            request.Query.SourceAttribution is { } source &&
+                (string.IsNullOrWhiteSpace(source) || source.Length > 64 ||
+                    source.Any(char.IsControl)))
+            throw new BrokerException("invalid_payload", "App-library query is invalid.");
+    }
+
+    private static string QueryHash(AppLibraryBackendQuery query, int limit)
+    {
+        var value = string.Join('\u001f', query.InstalledOnly, query.Kind,
+            query.SourceAttribution ?? string.Empty, query.Sort, limit);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16];
+    }
+
+    private string CreateCursor(int offset, AppLibraryCursorDirection direction,
+        long revision, string queryHash)
+    {
+        var payload = $"{revision:X16}.{queryHash}.{(direction == AppLibraryCursorDirection.Before ? 'B' : 'A')}.{offset:X8}";
+        using var hmac = new HMACSHA256(_cursorKey);
+        return $"library.cursor.{payload}.{Convert.ToHexString(hmac.ComputeHash(Encoding.ASCII.GetBytes(payload)))}";
+    }
+
+    private int ParseCursor(string cursor, AppLibraryCursorDirection direction,
+        long revision, string queryHash)
+    {
+        var parts = cursor.Split('.', StringSplitOptions.None);
+        if (parts.Length != 7 || parts[0] != "library" || parts[1] != "cursor" ||
+            parts[2] != $"{revision:X16}" || parts[3] != queryHash ||
+            parts[4] != (direction == AppLibraryCursorDirection.Before ? "B" : "A") ||
+            parts[5].Length != 8 || parts[6].Length != 64)
+            throw InvalidCursor();
+        var payload = string.Join('.', parts[2], parts[3], parts[4], parts[5]);
+        using var hmac = new HMACSHA256(_cursorKey);
+        var expected = Convert.ToHexString(hmac.ComputeHash(Encoding.ASCII.GetBytes(payload)));
+        if (!CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(expected), Encoding.ASCII.GetBytes(parts[6])) ||
+            !int.TryParse(parts[5], System.Globalization.NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture, out var offset))
+            throw InvalidCursor();
+        return offset;
+    }
+
+    private static BrokerException InvalidCursor() =>
+        new("invalid_cursor", "The app-library cursor is invalid or stale.");
 
     private static string ArtworkRevision(string revalidationKey) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revalidationKey)));
@@ -384,6 +454,7 @@ public sealed class WindowsAppLibraryProvider :
 
             _registrationsByOpaqueId = byId;
             _snapshot = Array.AsReadOnly(snapshot);
+            _catalogRevision++;
             return _snapshot;
         }
     }

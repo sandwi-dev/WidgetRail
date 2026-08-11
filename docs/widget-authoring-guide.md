@@ -1346,9 +1346,10 @@ Use the typed `HostServices.AppLibrary` surface; do not turn a display name,
 path, command line, or launcher-specific ID into an action target:
 
 ```csharp
-var page = await HostServices.AppLibrary.GetPageAsync(
-    offset: 0,
+var page = await HostServices.AppLibrary.QueryAsync(
+    new WidgetAppLibraryQuery(InstalledOnly: true),
     limit: 32,
+    refresh: true,
     cancellationToken);
 
 var savedIds = page.Items.Select(item => item.SavedId).ToArray();
@@ -1363,8 +1364,12 @@ if (LifecycleState == WidgetLifecycleState.Interactive && restored.Count != 0)
         cancellationToken);
 ```
 
-`GetPageAsync` permits 1–64 items per request. `ResolveSavedAsync` accepts at
-most 64 unique host-issued SavedIds, preserves request order, and omits apps
+`QueryAsync` permits 1–64 items per request and returns opaque Before/After
+cursors plus a provider revision. Supply a cursor only with its matching
+`WidgetCursorDirection`; do not parse or persist cursors as durable identity.
+Queries may filter the installed catalog by conservative kind or sanitized
+source attribution and currently sort by display name. `ResolveSavedAsync`
+accepts at most 64 unique host-issued SavedIds, preserves request order, and omits apps
 that are no longer available. Read is allowed only in Visible or Interactive;
 launch is separately declared/consented and Interactive-only. Treat `AppId` as
 an opaque provider-lifetime token and never persist it. `SavedId` is the
@@ -1379,6 +1384,11 @@ remain provider-private. The provider includes reviewed Steam manifests as
 games but uses a semantic fallback because that source supplies no trusted icon
 surface; Xbox and other store adapters remain unsupported. See the
 [Games & Apps reference](games-and-apps.md).
+
+This is an intentional pre-release replacement for
+`GetPageAsync(offset, limit)`. There is no compatibility facade: rebuild against
+the current SDK, replace stored offset traversal with the returned opaque
+cursors, and retain only `SavedId` as durable application identity.
 
 Handle `WidgetCapabilityUnavailableException`, `WidgetCapabilityException`
 using its stable `ErrorCode`, and normal lifecycle cancellation. Common codes

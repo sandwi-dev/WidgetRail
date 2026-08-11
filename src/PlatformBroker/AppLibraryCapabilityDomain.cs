@@ -4,16 +4,21 @@ namespace GameBarAlternative.PlatformBroker;
 
 internal sealed class AppLibraryCapabilityDomain : IDisposable
 {
+    private const int MaximumRetainedLaunchIds = 256;
+    private const int MaximumTraversalPages = 160;
     private readonly IPlatformBrokerBackend _backend;
     private readonly BrokerWidgetIdentity _identity;
     private readonly IAppLibrarySavedIdIssuer _savedIdIssuer;
     private readonly AppLibraryArtworkRegistry.AppLibraryArtworkSession? _artwork;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Dictionary<string, LaunchRegistration> _launchByPublicId =
+        new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _publicIdsByBackendId =
         new(StringComparer.Ordinal);
-    private IReadOnlyList<AppLibraryItemSummary>? _snapshot;
-    private Dictionary<string, string> _backendIdsByPublicId =
+    private readonly LinkedList<string> _launchRecency = [];
+    private readonly Dictionary<string, LinkedListNode<string>> _launchNodes =
         new(StringComparer.Ordinal);
+    private string? _currentRevision;
 
     internal AppLibraryCapabilityDomain(
         IPlatformBrokerBackend backend,
@@ -33,7 +38,7 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         CancellationToken cancellationToken) => operation switch
         {
             PlatformCapabilities.AppLibraryList => BrokerJson.ToElement(
-                await GetPageAsync(payload, cancellationToken).ConfigureAwait(false)),
+                await QueryAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryResolveSaved => BrokerJson.ToElement(
                 await ResolveSavedAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryLaunch =>
@@ -42,59 +47,19 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                 "unsupported_operation", "App-library operation is unsupported."),
         };
 
-    internal static IReadOnlyList<AppLibraryBackendItemSummary> ValidateItems(
-        IReadOnlyList<AppLibraryBackendItemSummary>? items)
-    {
-        if (items is null || items.Count > PlatformCapabilityBroker.MaximumAppLibraryItems)
-            throw new BrokerException(
-                "invalid_backend_data", "App library result is invalid.");
-        var providerIds = new HashSet<string>(StringComparer.Ordinal);
-        var stableIdentities = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var item in items)
-        {
-            if (item is null || !Enum.IsDefined(item.Kind))
-                throw new BrokerException(
-                    "invalid_backend_data", "App library entry is invalid.");
-            ContractValidation.OpaqueId(item.ProviderAppId, "invalid_backend_data");
-            AppLibrarySavedIdIssuer.ValidateStableProviderIdentity(
-                item.StableProviderIdentity);
-            ContractValidation.DisplayName(item.DisplayName);
-            if (!providerIds.Add(item.ProviderAppId) ||
-                !stableIdentities.Add(item.StableProviderIdentity))
-                throw new BrokerException(
-                    "invalid_backend_data", "App library identities are duplicated.");
-        }
-        return items.ToArray();
-    }
-
-    private async Task<AppLibraryPageSummary> GetPageAsync(
+    private async Task<AppLibraryCursorPageSummary> QueryAsync(
         JsonElement payload,
         CancellationToken cancellationToken)
     {
-        var request = BrokerJson.ParsePayload<AppLibraryPageRequest>(payload);
-        if (request.Offset < 0 ||
-            request.Offset > PlatformCapabilityBroker.MaximumAppLibraryItems ||
-            request.Limit is < 1 or
-                > PlatformCapabilityBroker.MaximumAppLibraryPageSize)
-            throw new BrokerException(
-                "invalid_payload", "App library page bounds are invalid.");
-
+        var request = BrokerJson.ParsePayload<AppLibraryCursorRequest>(payload);
+        var backendRequest = ValidateRequest(request);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (request.Offset == 0 || _snapshot is null)
-            {
-                var backendItems = ValidateItems(
-                    await _backend.RefreshAppLibraryAsync(cancellationToken)
-                        .ConfigureAwait(false));
-                cancellationToken.ThrowIfCancellationRequested();
-                _snapshot = ProjectSnapshot(backendItems);
-            }
-            var items = _snapshot;
-            var page = items.Skip(request.Offset).Take(request.Limit).ToArray();
-            var consumed = request.Offset + page.Length;
-            return new AppLibraryPageSummary(
-                page, consumed < items.Count ? consumed : null);
+            var page = ValidatePage(await _backend.QueryAppLibraryAsync(
+                    backendRequest, cancellationToken).ConfigureAwait(false), request.Limit);
+            cancellationToken.ThrowIfCancellationRequested();
+            return ProjectPage(page);
         }
         finally
         {
@@ -107,38 +72,53 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         CancellationToken cancellationToken)
     {
         var request = BrokerJson.ParsePayload<ResolveSavedAppLibraryItemsRequest>(payload);
-        if (request.SavedIds is null ||
-            request.SavedIds.Count >
-                PlatformCapabilityBroker.MaximumResolvedAppLibraryItems)
-            throw new BrokerException(
-                "invalid_payload", "Saved app-library identifier bounds are invalid.");
-        var requested = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var savedId in request.SavedIds)
-        {
-            ContractValidation.OpaqueId(savedId);
-            if (!savedId.StartsWith("saved-", StringComparison.Ordinal) ||
-                !requested.Add(savedId))
-                throw new BrokerException(
-                    "invalid_payload", "Saved app-library identifiers are invalid.");
-        }
+        ValidateSavedIds(request.SavedIds);
         if (request.SavedIds.Count == 0)
             return new ResolveSavedAppLibraryItemsSummary([]);
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var backendItems = ValidateItems(
-                await _backend.RefreshAppLibraryAsync(cancellationToken)
-                    .ConfigureAwait(false));
-            cancellationToken.ThrowIfCancellationRequested();
-            _snapshot = ProjectSnapshot(backendItems);
-            var currentBySavedId = _snapshot.ToDictionary(
-                item => item.SavedId, StringComparer.Ordinal);
-            var resolved = request.SavedIds
-                .Where(currentBySavedId.ContainsKey)
-                .Select(savedId => currentBySavedId[savedId])
-                .ToArray();
-            return new ResolveSavedAppLibraryItemsSummary(resolved);
+            var requested = request.SavedIds.ToHashSet(StringComparer.Ordinal);
+            var matches = new Dictionary<string, AppLibraryBackendItemSummary>(StringComparer.Ordinal);
+            var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+            string? cursor = null;
+            string? revision = null;
+            for (var pageIndex = 0;
+                 pageIndex < MaximumTraversalPages && matches.Count < requested.Count;
+                 pageIndex++)
+            {
+                var page = ValidatePage(await _backend.QueryAppLibraryAsync(
+                    new AppLibraryBackendCursorRequest(
+                        new AppLibraryBackendQuery(), cursor,
+                        cursor is null ? null : AppLibraryCursorDirection.After,
+                        PlatformCapabilityBroker.MaximumAppLibraryPageSize,
+                        Refresh: cursor is null),
+                    cancellationToken).ConfigureAwait(false),
+                    PlatformCapabilityBroker.MaximumAppLibraryPageSize);
+                cancellationToken.ThrowIfCancellationRequested();
+                revision ??= page.Revision;
+                if (!string.Equals(revision, page.Revision, StringComparison.Ordinal))
+                    throw new BrokerException(
+                        "invalid_backend_data", "App-library revision changed during traversal.");
+                foreach (var item in page.Items)
+                {
+                    var savedId = _savedIdIssuer.Issue(
+                        _identity, item.StableProviderIdentity);
+                    if (requested.Contains(savedId)) matches[savedId] = item;
+                }
+                if (page.After is null) break;
+                if (!seenCursors.Add(page.After))
+                    throw new BrokerException(
+                        "invalid_backend_data", "App-library cursor loop is invalid.");
+                cursor = page.After;
+            }
+
+            var matchedItems = request.SavedIds.Where(matches.ContainsKey)
+                .Select(savedId => matches[savedId]).ToArray();
+            var projected = ProjectPage(new AppLibraryBackendCursorPage(
+                matchedItems, null, null, revision!));
+            return new ResolveSavedAppLibraryItemsSummary(projected.Items);
         }
         finally
         {
@@ -155,11 +135,11 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!_backendIdsByPublicId.TryGetValue(request.AppId, out var backendAppId))
+            if (!_launchByPublicId.TryGetValue(request.AppId, out var registration))
                 throw new BrokerException(
                     "app_not_found", "The selected app is no longer available.");
-            await _backend.LaunchAppLibraryItemAsync(backendAppId, cancellationToken)
-                .ConfigureAwait(false);
+            await _backend.LaunchAppLibraryItemAsync(
+                registration.BackendAppId, cancellationToken).ConfigureAwait(false);
             return BrokerCapabilityDomains.Acknowledged();
         }
         finally
@@ -168,39 +148,133 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         }
     }
 
-    private IReadOnlyList<AppLibraryItemSummary> ProjectSnapshot(
-        IReadOnlyList<AppLibraryBackendItemSummary> backendItems)
+    private AppLibraryCursorPageSummary ProjectPage(AppLibraryBackendCursorPage page)
     {
-        var liveBackendIds = backendItems.Select(item => item.ProviderAppId)
-            .ToHashSet(StringComparer.Ordinal);
-        foreach (var stale in _publicIdsByBackendId.Keys
-                     .Where(id => !liveBackendIds.Contains(id)).ToArray())
-            _publicIdsByBackendId.Remove(stale);
-
-        var byPublicId = new Dictionary<string, string>(StringComparer.Ordinal);
-        var artworkHandles = _artwork?.Replace(backendItems) ??
+        EnsureRevision(page.Revision);
+        var artworkHandles = _artwork?.RegisterPage(page.Items) ??
             new Dictionary<string, string>(StringComparer.Ordinal);
-        var projected = new AppLibraryItemSummary[backendItems.Count];
-        for (var index = 0; index < backendItems.Count; index++)
+        var projected = new AppLibraryItemSummary[page.Items.Count];
+        for (var index = 0; index < page.Items.Count; index++)
         {
-            var item = backendItems[index];
+            var item = page.Items[index];
             if (!_publicIdsByBackendId.TryGetValue(item.ProviderAppId, out var publicId))
             {
                 publicId = "app-" + Guid.NewGuid().ToString("N");
-                _publicIdsByBackendId.Add(item.ProviderAppId, publicId);
+                _publicIdsByBackendId[item.ProviderAppId] = publicId;
             }
-            byPublicId.Add(publicId, item.ProviderAppId);
+            TouchLaunch(publicId, item.ProviderAppId);
             projected[index] = new AppLibraryItemSummary(
                 publicId, item.DisplayName, item.Kind)
             {
-                SavedId = _savedIdIssuer.Issue(
-                    _identity, item.StableProviderIdentity),
+                SavedId = _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
                 ArtworkHandle = artworkHandles.GetValueOrDefault(item.ProviderAppId),
+                SourceAttribution = item.SourceAttribution,
             };
         }
-        _backendIdsByPublicId = byPublicId;
-        return Array.AsReadOnly(projected);
+        TrimLaunchWindow();
+        return new AppLibraryCursorPageSummary(
+            projected, page.Before, page.After, page.Revision);
+    }
+
+    private void EnsureRevision(string revision)
+    {
+        if (string.Equals(_currentRevision, revision, StringComparison.Ordinal)) return;
+        _currentRevision = revision;
+        _launchByPublicId.Clear();
+        _publicIdsByBackendId.Clear();
+        _launchRecency.Clear();
+        _launchNodes.Clear();
+        _artwork?.Reset();
+    }
+
+    private void TouchLaunch(string publicId, string backendAppId)
+    {
+        if (_launchNodes.Remove(publicId, out var existing))
+            _launchRecency.Remove(existing);
+        _launchNodes[publicId] = _launchRecency.AddLast(publicId);
+        _launchByPublicId[publicId] = new LaunchRegistration(backendAppId);
+    }
+
+    private void TrimLaunchWindow()
+    {
+        while (_launchByPublicId.Count > MaximumRetainedLaunchIds)
+        {
+            var publicId = _launchRecency.First!.Value;
+            _launchRecency.RemoveFirst();
+            _launchNodes.Remove(publicId);
+            if (_launchByPublicId.Remove(publicId, out var registration))
+                _publicIdsByBackendId.Remove(registration.BackendAppId);
+        }
+    }
+
+    private static AppLibraryBackendCursorRequest ValidateRequest(
+        AppLibraryCursorRequest request)
+    {
+        if (request.Query is null || !Enum.IsDefined(request.Query.Sort) ||
+            request.Query.Kind is { } kind && !Enum.IsDefined(kind) ||
+            request.Limit is < 1 or > PlatformCapabilityBroker.MaximumAppLibraryPageSize ||
+            (request.Cursor is null) != (request.Direction is null) ||
+            request.Cursor is { Length: > 128 } ||
+            request.Query.SourceAttribution is { Length: > 64 })
+            throw new BrokerException(
+                "invalid_payload", "App-library cursor query is invalid.");
+        if (request.Query.SourceAttribution is { } source)
+            ContractValidation.DisplayName(source);
+        return new AppLibraryBackendCursorRequest(
+            new AppLibraryBackendQuery(
+                request.Query.InstalledOnly,
+                request.Query.Kind,
+                request.Query.SourceAttribution,
+                request.Query.Sort),
+            request.Cursor, request.Direction, request.Limit, request.Refresh);
+    }
+
+    internal static AppLibraryBackendCursorPage ValidatePage(
+        AppLibraryBackendCursorPage? page,
+        int limit)
+    {
+        if (page is null || page.Items is null || page.Items.Count > limit ||
+            page.Revision is not { Length: > 0 and <= 128 } ||
+            page.Before is { Length: > 128 } || page.After is { Length: > 128 })
+            throw new BrokerException(
+                "invalid_backend_data", "App-library cursor page is invalid.");
+        var providerIds = new HashSet<string>(StringComparer.Ordinal);
+        var stableIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in page.Items)
+        {
+            if (item is null || !Enum.IsDefined(item.Kind))
+                throw InvalidItem();
+            ContractValidation.OpaqueId(item.ProviderAppId, "invalid_backend_data");
+            AppLibrarySavedIdIssuer.ValidateStableProviderIdentity(item.StableProviderIdentity);
+            ContractValidation.DisplayName(item.DisplayName);
+            ContractValidation.DisplayName(item.SourceAttribution);
+            if (!providerIds.Add(item.ProviderAppId) ||
+                !stableIds.Add(item.StableProviderIdentity)) throw InvalidItem();
+        }
+        return page with { Items = page.Items.ToArray() };
+    }
+
+    private static BrokerException InvalidItem() =>
+        new("invalid_backend_data", "App-library entry is invalid.");
+
+    private static void ValidateSavedIds(IReadOnlyList<string>? savedIds)
+    {
+        if (savedIds is null ||
+            savedIds.Count > PlatformCapabilityBroker.MaximumResolvedAppLibraryItems)
+            throw new BrokerException(
+                "invalid_payload", "Saved app-library identifier bounds are invalid.");
+        var requested = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var savedId in savedIds)
+        {
+            ContractValidation.OpaqueId(savedId);
+            if (!savedId.StartsWith("saved-", StringComparison.Ordinal) ||
+                !requested.Add(savedId))
+                throw new BrokerException(
+                    "invalid_payload", "Saved app-library identifiers are invalid.");
+        }
     }
 
     public void Dispose() => _artwork?.Dispose();
+
+    private sealed record LaunchRegistration(string BackendAppId);
 }

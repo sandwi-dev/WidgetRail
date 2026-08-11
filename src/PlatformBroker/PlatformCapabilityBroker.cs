@@ -111,7 +111,6 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 {
     public static readonly TimeSpan MaximumDashboardGestureLifetime = TimeSpan.FromSeconds(2);
     public const int MaximumDashboardGestureAuthorities = 16;
-    internal const int MaximumAppLibraryItems = 512;
     internal const int MaximumAppLibraryPageSize = 64;
     internal const int MaximumResolvedAppLibraryItems = 64;
     private readonly BrokerWidgetIdentity _identity;

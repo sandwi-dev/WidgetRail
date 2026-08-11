@@ -1547,8 +1547,43 @@ static async Task ExerciseControlAsync(
     Assert.True(source is not null,
         $"{package.Manifest.Name} {route} snapshot omitted action '{actionId}'.");
     var before = calls();
-    await client.SendActionAsync(new WidgetActionEvent(actionId, source!.Id));
-    await WaitUntilAsync(() => calls() > before);
+    var actionFailed = new TaskCompletionSource<WidgetActionFailure>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    EventHandler<WidgetActionFailure> failureHandler = (_, failure) =>
+        actionFailed.TrySetResult(failure);
+    client.ActionFailed += failureHandler;
+    try
+    {
+        await client.SendActionAsync(new WidgetActionEvent(actionId, source!.Id));
+        var effect = WaitUntilAsync(() => calls() > before);
+        var terminal = await Task.WhenAny(effect, actionFailed.Task)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        if (ReferenceEquals(terminal, actionFailed.Task))
+        {
+            var failure = await actionFailed.Task;
+            throw new InvalidOperationException(
+                $"{package.Manifest.Name} action failed before its broker effect: " +
+                $"{failure.ActionId}/{failure.SourceElementId}: {failure.Message}");
+        }
+        try
+        {
+            await effect;
+        }
+        catch (TimeoutException exception)
+        {
+            var diagnostic = await client.GetSnapshotAsync();
+            var status = Nodes(diagnostic.Root).FirstOrDefault(node =>
+                string.Equals(node.Id, "games.status", StringComparison.Ordinal))?.Text ??
+                "<missing games.status>";
+            throw new TimeoutException(
+                $"{package.Manifest.Name} produced no broker effect; widget status: {status}",
+                exception);
+        }
+    }
+    finally
+    {
+        client.ActionFailed -= failureHandler;
+    }
     if (package.Manifest.Id == "org.gbar.samples.spotify")
     {
         Assert.Equal(

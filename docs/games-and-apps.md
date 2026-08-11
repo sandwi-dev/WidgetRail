@@ -28,7 +28,8 @@ explicit game-library source, not a guess based on process or executable names.
 - **Add applications** opens a nested Catalog backed by a vertical controller
   Scroll; A toggles the focused entry in/out of the Library and B returns.
   Next/Previous page controls retain at most 32 application rows in any one
-  semantic snapshot while the trusted catalog walk remains bounded to 512.
+  semantic snapshot while the trusted catalog is traversed through bounded
+  opaque cursor pages.
   Library X removes the focused entry. Removing a Game records its exact
   authority-scoped SavedId as an exclusion, so the same identity stays absent
   after restart, disappearance, and reappearance. Adding it explicitly clears
@@ -48,8 +49,9 @@ explicit game-library source, not a guess based on process or executable names.
   last only for the current provider snapshot.
 - Library Up/Down selects one full-width application row. The icon and complete
   two-line name are rendered inside the same focus target, so its outline never
-  lands on an inner text fragment. A launches that exact row only while the
-  widget is Interactive. After confirmed provider success, that item moves to
+  lands on an inner text fragment. A resolves that row's stable SavedId again
+  and launches only the resulting current AppId while the widget is Interactive.
+  After confirmed provider success, that item moves to
   the front and the new order is persisted; failure preserves order and
   actionable focus. Removing a focused item selects the next surviving row, or
   the previous row when the removed item was last.
@@ -70,7 +72,9 @@ explicit game-library source, not a guess based on process or executable names.
   Fresh provider resolution atomically replaces each tile with a short-lived
   AppId without changing SavedId-derived focus or order; unresolved rows cannot
   launch. Cached AppIds are discarded on each active-lifetime transition and
-  after a failed authority refresh, so only the current resolution can enable A.
+  after a failed authority refresh. Launch performs one final SavedId resolution,
+  so a provider revision that retires the displayed AppId cannot authorize stale
+  launch authority.
 - Missing SavedIds remain visible as bounded disabled order tombstones.
   Reappearance with the same SavedId restores launch using a fresh short-lived
   AppId. A different SavedId is an independent new Game even when the display
@@ -83,9 +87,9 @@ explicit game-library source, not a guess based on process or executable names.
   Enqueueing, timeout, stale generation, denial, or failure leaves the overlay
   visible with focus and an actionable status.
 - Catalog `Next page` requests another bounded page and moves selection to its
-  first item; `Previous page` returns through the exact visited offsets. The
-  widget renders only the current 32-row page, so even a 512-entry provider
-  catalog cannot overflow the 2,048-node snapshot budget. The
+  first item; `Previous page` follows the provider's exact reverse cursor. The
+  widget renders only the current 32-row page, so a large provider catalog
+  cannot overflow the 2,048-node snapshot budget. The
   curated order remains capped at the public 64-SavedId resolver limit, with
   existing user order taking precedence over newly discovered Games.
 - Newly committed automatic additions produce one count-only, non-focusable,
@@ -113,7 +117,7 @@ explicit game-library source, not a guess based on process or executable names.
 
 The DLV-027 boundary is behavioral, not a file-size convention. Before this
 split, the widget class itself composed every visual tree, maintained Catalog
-offset history, interpreted schema-v3 membership/projection/exclusion rules,
+page history, interpreted schema-v3 membership/projection/exclusion rules,
 implemented the private-state compare-and-swap loop, called providers, admitted
 actions, and owned lifecycle cancellation. It also mirrored the committed
 schema in three mutable membership/provenance/exclusion lists.
@@ -124,7 +128,7 @@ The current implementation has four deliberately narrow internal seams:
 | --- | --- | --- |
 | Active lifetime, action admission, provider calls, current AppId launch admission, one state lock, one command semaphore, publication/invalidation | `GamesAppsWidget` | A second lifecycle/state coordinator |
 | Library, Catalog, loading, empty, and failure tree composition from one immutable input value; stable hashed element IDs | `GamesAppsPresentation` | Host services, locks, persistence, or provider calls |
-| Current Catalog page, next offset, and visited reverse offsets as bounded immutable transitions | `GamesAppsCatalogPolicy` | Library membership or private state |
+| Current Catalog page plus opaque forward/reverse cursors as bounded immutable transitions | `GamesAppsCatalogPolicy` | Library membership, private state, or cursor parsing |
 | Schema-v3 normalization, add/remove/order/exclusion policy, display projection, trusted-Game reconciliation, conflict merge, and the two-attempt CAS transaction | `GamesAppsLibraryPolicy` and `GamesAppsLibraryStore` | Rendering, lifecycle, launch, or ambient host-service ownership |
 
 `GamesAppsLibraryState` is now the single committed membership/provenance/
@@ -173,9 +177,10 @@ launch grant only when opening a selected app is an optional feature:
 The corresponding public service is `HostServices.AppLibrary`:
 
 ```csharp
-var page = await HostServices.AppLibrary.GetPageAsync(
-    offset: 0,
+var page = await HostServices.AppLibrary.QueryAsync(
+    new WidgetAppLibraryQuery(InstalledOnly: true),
     limit: 32,
+    refresh: true,
     cancellationToken);
 
 // Save SavedId—not AppId—in package-private state.
@@ -192,10 +197,13 @@ await HostServices.AppLibrary.LaunchAsync(
     cancellationToken);
 ```
 
-`GetPageAsync` accepts offsets from 0 through the bounded library and a page
-size of 1–64. It returns `WidgetAppLibraryPage`, containing sanitized
-`WidgetAppLibraryItem` records and an optional next offset. Each item has a
-short-lived `AppId` for launch and a durable `SavedId` for private state.
+`QueryAsync` accepts a bounded installed/kind/source/sort query, an optional
+opaque cursor with its direction, and a page size of 1–64. It returns
+`WidgetAppLibraryPage`, containing sanitized `WidgetAppLibraryItem` records,
+opaque Before/After cursors, and a provider revision. Each item has a short-lived
+`AppId` for launch, a durable `SavedId` for private state, and a sanitized source
+label. Cursors are traversal-only: never parse them or use them as launch or
+durable identity.
 `ResolveSavedAsync` accepts at most 64 unique SavedIds, refreshes the provider,
 preserves request order, and omits apps that are no longer available. A
 SavedId is scoped by a persisted host key plus the authenticated publisher and
@@ -248,7 +256,7 @@ namespace, and registered Steam libraries. It:
   `appmanifest_<id>.acf` files, accepts only a matching positive numeric AppId
   plus sanitized name, and classifies those registrations as games;
 - sanitizes display names, deduplicates the same trusted target identity, and
-  publishes at most 512 entries;
+  serves the normalized catalog through revision-bound pages of at most 64;
 - assigns random opaque IDs that stay stable only while that registration
   remains in the current provider snapshot; and
 - rasterizes a shortcut or AppsFolder Shell icon on demand to a bounded 48 by
@@ -311,7 +319,7 @@ and a forced CAS conflict, disappearance/reappearance, same-title identity
 replacement, stable order/focus across AppId rotation, stale action rejection,
 healthy empty and sanitized failure states, Catalog add/remove,
 confirmed recent-first ordering, nearest-row removal focus, opaque selected
-launch, bidirectional 32-row Catalog paging through the 512-item bound,
+launch, bidirectional 32-row Catalog cursor paging,
 64-entry long-name Library snapshots, shared component classes, and responsive
 GBSS contracts. Provider tests cover
 lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,

@@ -491,18 +491,27 @@ static async Task TrustedArtworkDemandIsExact()
         "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
     using var catalogFiles = TemporaryCatalog.Create(
         instanceId: "artwork.instance",
-        declaredCapabilities: [PlatformCapabilities.AppLibraryReadV1]);
+        declaredCapabilities:
+        [
+            PlatformCapabilities.AppLibraryReadV1,
+            PlatformCapabilities.AppLibraryLaunchV1,
+        ]);
     using var consentFiles = new TemporaryDirectory("gba-artwork-consent");
     var identity = new BrokerWidgetIdentity(
         "dev.test.widget", "dev.test", "artwork.instance");
     var consent = new ConsentStore(consentFiles.Path);
     await consent.SetDecisionAsync(
         identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Grant);
     var backend = new SimulatedPlatformBrokerBackend();
     backend.SetAppLibraryBackend([
         new AppLibraryBackendItemSummary(
             "provider-one", "stable-one", "Artwork App", AppLibraryKind.Application,
             "artwork-a"),
+        new AppLibraryBackendItemSummary(
+            "provider-two", "stable-two", "Second App", AppLibraryKind.Application,
+            "artwork-two"),
     ]);
     var iconStarted = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously);
@@ -539,6 +548,15 @@ static async Task TrustedArtworkDemandIsExact()
             firstHandle.StartsWith("library.art.", StringComparison.Ordinal),
             "Worker snapshot did not carry one bounded opaque artwork handle.");
         Assert.Equal(0, backend.AppLibraryIconCalls);
+        Assert.Equal(2, backend.AppLibraryRefreshCalls);
+        Assert.Equal(2, backend.AppLibraryReadCalls);
+        var launched = await client.RequestAsync(
+            BridgeMessageTypes.Action,
+            new BridgeActionRequest(
+                "test-widget", new WidgetActionEvent("artwork.launch", "artwork.launch")));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, launched.Type);
+        Assert.Equal(1, backend.AppLibraryLaunchCalls);
+        Assert.Equal("provider-one", backend.LastLaunchedAppId);
 
         var resolved = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
@@ -575,6 +593,9 @@ static async Task TrustedArtworkDemandIsExact()
             new AppLibraryBackendItemSummary(
                 "provider-one", "stable-one", "Replacement", AppLibraryKind.Application,
                 "artwork-b"),
+            new AppLibraryBackendItemSummary(
+                "provider-two", "stable-two", "Second App", AppLibraryKind.Application,
+                "artwork-two"),
         ]);
         _ = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
@@ -2257,6 +2278,7 @@ file sealed class BridgeTestWidget : Widget
         if (_artworkFixture)
         {
             children.Add(UI.Button("Load artwork", "artwork.load", "artwork.load"));
+            children.Add(UI.Button("Launch app", "artwork.launch", "artwork.launch"));
             children.Add(_artworkItem?.ArtworkHandle is { } handle
                 ? UI.Artwork(
                     new WidgetArtworkHandle(handle), "artwork.image", "Application icon",
@@ -2288,8 +2310,28 @@ file sealed class BridgeTestWidget : Widget
     {
         if (_artworkFixture && current == WidgetLifecycleState.Interactive)
         {
-            var page = await HostServices.AppLibrary.GetPageAsync(0, 1, stateLifetime);
-            _artworkItem = page.Items.Single();
+            var query = new WidgetAppLibraryQuery();
+            var first = await HostServices.AppLibrary.QueryAsync(
+                query, limit: 1, refresh: true,
+                cancellationToken: stateLifetime);
+            var after = first.After is { } afterValue
+                ? new WidgetCollectionCursor(afterValue)
+                : throw new InvalidOperationException("Artwork fixture lacked a forward cursor.");
+            var second = await HostServices.AppLibrary.QueryAsync(
+                query, after, WidgetCursorDirection.After, 1,
+                cancellationToken: stateLifetime);
+            var before = second.Before is { } beforeValue
+                ? new WidgetCollectionCursor(beforeValue)
+                : throw new InvalidOperationException("Artwork fixture lacked a reverse cursor.");
+            var reversed = await HostServices.AppLibrary.QueryAsync(
+                query, before, WidgetCursorDirection.Before, 1,
+                cancellationToken: stateLifetime);
+            if (reversed.Items.Single().SavedId != first.Items.Single().SavedId)
+                throw new InvalidOperationException("Artwork cursor traversal was not reversible.");
+            var refreshed = await HostServices.AppLibrary.QueryAsync(
+                query, limit: 1, refresh: true,
+                cancellationToken: stateLifetime);
+            _artworkItem = refreshed.Items.Single();
             if (_artworkItem.ArtworkHandle is null)
                 throw new InvalidOperationException(
                     "Artwork fixture received an item without a registered handle.");
@@ -2318,10 +2360,17 @@ file sealed class BridgeTestWidget : Widget
         }
         else if (action.ActionId == "artwork.load" && _artworkFixture)
         {
-            var page = await HostServices.AppLibrary.GetPageAsync(
-                0, 1, cancellationToken);
+            var page = await HostServices.AppLibrary.QueryAsync(
+                new WidgetAppLibraryQuery(), limit: 1, refresh: true,
+                cancellationToken: cancellationToken);
             _artworkItem = page.Items.Single();
             Invalidate();
+        }
+        else if (action.ActionId == "artwork.launch" && _artworkFixture &&
+            _artworkItem is not null)
+        {
+            await HostServices.AppLibrary.LaunchAsync(
+                _artworkItem.AppId, cancellationToken);
         }
         else if (action is { ActionId: "volume.changed", RequestedValue: { } requested })
         {

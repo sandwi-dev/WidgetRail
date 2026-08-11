@@ -26,7 +26,7 @@ internal sealed record GamesAppsPresentationState(
     string? LaunchingAppId,
     bool LoadingMore,
     bool LibraryMutationBusy,
-    int? NextOffset,
+    bool HasNextPage,
     bool CanLoadPrevious,
     WidgetLifecycleState LifecycleState,
     GamesAppsToastNotice? Toast);
@@ -193,7 +193,7 @@ internal static class GamesAppsPresentation
         var curated = state.LibrarySavedIds.ToHashSet(StringComparer.Ordinal);
         var elementIds = state.Items.Select(item => CatalogElementId(item.SavedId)).ToArray();
         var rows = new List<WidgetElement>(
-            state.Items.Count + (state.NextOffset is null ? 0 : 1) +
+            state.Items.Count + (state.HasNextPage ? 1 : 0) +
             (state.CanLoadPrevious ? 1 : 0));
         if (state.CanLoadPrevious)
         {
@@ -216,7 +216,7 @@ internal static class GamesAppsPresentation
             var saved = curated.Contains(item.SavedId);
             var down = index + 1 < state.Items.Count
                 ? elementIds[index + 1]
-                : state.NextOffset is not null ? "games.load-more" : id;
+                : state.HasNextPage ? "games.load-more" : id;
             rows.Add(UI.AppTile(
                     item.DisplayName,
                     saved ? "Saved" : "Available",
@@ -239,7 +239,7 @@ internal static class GamesAppsPresentation
                 .AddClasses("games-card-action", "games-app-row",
                     saved ? "is-saved" : "is-available"));
         }
-        if (state.NextOffset is not null)
+        if (state.HasNextPage)
         {
             rows.Add(UI.Button("Next page", "games.load-more", "games.load-more")
                 .Icon(WidgetGlyph.Refresh, "Load the next application page")
@@ -255,7 +255,7 @@ internal static class GamesAppsPresentation
         var selected = state.Items.FirstOrDefault(item => string.Equals(
             item.AppId, state.SelectedAppId, StringComparison.Ordinal)) ?? state.Items[0];
         var count = UI.StatusBadge(
-            $"{state.Items.Count}{(state.NextOffset is null ? string.Empty : "+")} available",
+            $"{state.Items.Count}{(state.HasNextPage ? "+" : string.Empty)} available",
             StatusTone.Info,
             "games.section.count");
         var section = UI.SectionHeader(

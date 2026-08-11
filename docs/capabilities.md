@@ -47,7 +47,7 @@ The current closed capability set is:
 | `system.network.bluetooth.pair.v1` | `PairBluetoothDeviceAsync(deviceId)` for one current broker-issued opaque device ID; returns an authoritative bounded pairing outcome and never implies profile connection | Interactive only |
 | `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync(deviceId)` after validating one current opaque device ID; opens the Windows-owned Bluetooth Settings surface without placing the native ID in a URI | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
-| `system.apps.library.read.v1` | `HostServices.AppLibrary.GetPageAsync(offset, limit)` and `ResolveSavedAsync(savedIds)` for sanitized names, conservative kinds, short-lived launch IDs, and authority-scoped durable SavedIds | Visible or Interactive |
+| `system.apps.library.read.v1` | `HostServices.AppLibrary.QueryAsync(query, cursor, direction, limit, refresh)` and `ResolveSavedAsync(savedIds)` for bounded cursor pages, sanitized names/source labels, conservative kinds, short-lived launch IDs, and authority-scoped durable SavedIds | Visible or Interactive |
 | `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
@@ -226,14 +226,19 @@ The app-library read and launch capabilities are deliberately separate. A
 launcher can make `system.apps.library.read.v1` required while declaring
 `system.apps.library.launch.v1` optional, as the bundled Games & Apps reference
 does. Read pages contain `WidgetAppLibraryItem.AppId`, `SavedId`, `DisplayName`,
-and `Kind`. `AppId` is an opaque current-provider launch token and must never be
+`Kind`, `SourceAttribution`, and an optional lazy `ArtworkHandle`. `AppId` is an
+opaque current-provider launch token and must never be
 persisted. `SavedId` is a non-reversible durable token scoped to the
 authenticated publisher/package authority; retain it in private state, then
 use `ResolveSavedAsync` to obtain current launch tokens after restart. The
 resolver accepts at most 64 unique SavedIds, preserves request order, and omits
 apps that are no longer available. Neither ID is a Windows path, AUMID,
-provider identity, or launcher identifier. The public page limit is 64 and the
-complete broker projection is bounded to 512 entries.
+provider identity, or launcher identifier. The public page limit is 64. Forward
+and reverse cursors are opaque, query/page-size/direction/revision bound, and at
+most 128 characters; callers must not parse or persist them as durable state.
+The broker retains only bounded current launch/artwork windows while the trusted
+provider owns the normalized catalog, so neither widget IPC nor the capability
+domain materializes the complete library.
 
 Launch requires Interactive even if the widget has already listed the item.
 The broker validates the opaque ID and the trusted Start Menu provider

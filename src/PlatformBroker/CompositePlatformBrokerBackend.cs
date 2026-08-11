@@ -124,13 +124,10 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         CancellationToken cancellationToken) =>
         _activity.GetRecentActivitiesAsync(cancellationToken);
 
-    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
+    public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+        AppLibraryBackendCursorRequest request,
         CancellationToken cancellationToken) =>
-        _appLibrary.GetAppLibraryAsync(cancellationToken);
-
-    public Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
-        CancellationToken cancellationToken) =>
-        _appLibrary.RefreshAppLibraryAsync(cancellationToken);
+        _appLibrary.QueryAppLibraryAsync(request, cancellationToken);
 
     public Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken) =>
@@ -439,14 +436,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     {
         internal static UnavailableAppLibraryPlatformBrokerBackend Instance { get; } = new();
 
-        public Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
+        public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+            AppLibraryBackendCursorRequest request,
             CancellationToken cancellationToken) =>
-            Task.FromException<IReadOnlyList<AppLibraryBackendItemSummary>>(
+            Task.FromException<AppLibraryBackendCursorPage>(
                 new BrokerException("platform_unavailable", "App library is unavailable."));
-
-        public Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
-            CancellationToken cancellationToken) =>
-            GetAppLibraryAsync(cancellationToken);
 
         public Task LaunchAppLibraryItemAsync(
             string appId, CancellationToken cancellationToken) =>
