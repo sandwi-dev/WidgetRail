@@ -588,22 +588,47 @@ over 52 files. The freshly rebuilt accepted Release overlay is running for
 physical-controller verification; no aggregate or unrelated provider/native
 suite ran.
 
+### DLV-026 — Restore bidirectional Audio Mixer scrolling
+
+**State:** Integrated candidate; product acceptance withdrawn after live failure
+**Closing commits:** `979de24`, `68efc70`, corrected by `9cc633a`
+**Integrated on `main`:** `4957101`
+
+**Reviewer disposition:** Rejected as a complete product fix after the user
+reproduced the reverse dead end with both keyboard and controller in the freshly
+packaged Release. The candidate addressed one real scale-conversion boundary: a
+Slider edge no more than one native raster pixel beyond its otherwise matching
+card clip, causing the host to reject later offscreen controls as irrevealable.
+One scale-aware native-pixel tolerance now applies to that fixed-edge test while
+wrong-axis displacement, more than one pixel of overlap, and controls trapped
+inside a non-scroll clip remain rejected. The final screenshot-excluded host
+manifest retains 84 functional records: complete 14-control Down and reverse Up
+traversal at preferred, constrained, and 150% surfaces, zero leading offset on
+return to master output, plus unrelated removal, focused removal with nearest
+fallback, and session addition. Direct renderer boundary coverage and the
+authenticated production-HWND/UIA fixture passed; invalid capture artifacts
+are not acceptance evidence. That fixture begins with a fully populated healthy
+12-session snapshot and did not reproduce the user's live four-session state.
+When cycling away and back, the product becomes navigable after moving upward
+slightly; the live log records `value_clamped [audio.root] scrollOffset ...
+outside its safe range` on return. DLV-049 owns the missing live-edge and retained-
+state diagnosis and correction. The integrated tolerance remains candidate code,
+not evidence that GBA-003 is fixed.
+
 ## Widgets lane
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The widgets lane follows the non-idling and visible-outcome gates. DLV-040 and
-DLV-046 are accepted and integrated on `main`. DLV-047 is committed but remains
-unaccepted because its newly created managed test project predates and violates
-the `MSTest.Sdk` 4.3.2 policy. The agent had already started DLV-048, so DLV-048
-remains the current assignment and bounded DLV-050 is the immediate correction
-after it; neither candidate enters `main` until the correction is accepted. No
-third safe widgets-only Ready item is manufactured: DLV-006 is the next
-serialized visible foundation once DLV-021 is accepted, and it unlocks Spotify
-focus fixes, Games artwork, and the game launcher. DLV-043 and DLV-038 remain
-dependency-ordered architecture debt rather than filler work. Platform DLV-021/
-DLV-049 continue to supply the required visible-product lane.
+The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
+DLV-046, DLV-047, DLV-048, and DLV-050 are accepted and integrated on `main`.
+DLV-051 is the current independent visible correction: it fixes the reported
+Spotify seek-bar Left edge without waiting for or duplicating DLV-006's shared
+continuous-list contract. No third safe widgets-only Ready item is manufactured:
+DLV-006 is the next serialized visible foundation after the active corrections
+and unlocks Spotify list focus, Games artwork, and the game launcher. DLV-043
+and DLV-038 remain dependency-ordered architecture debt rather than filler work.
+Platform DLV-049 continues to supply the second visible-product lane.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1766,9 +1791,9 @@ protocol, native, or runtime authority changed.
 
 ### DLV-047 — Establish a checked-in widget SDK compatibility baseline
 
-**State:** Completed as `7e33f45`; reviewer correction required by DLV-050;
-not accepted or integrated
+**State:** Done; accepted and integrated on `main` as `7da7eaa`
 **Baseline:** closing commit of DLV-046
+**Closing commit:** `7e33f45` (`[DLV-047] Check WidgetSdk compatibility release unit`)
 **Dependencies:** DLV-010 and DLV-046
 **Owner:** public WidgetSdk package surface, package metadata/validation, CLI
 release-unit checks, and directly affected author documentation
@@ -1807,21 +1832,19 @@ external feed.
 promise, changing public protocol semantics, external publication, or retaining
 an obsolete API solely for legacy support.
 
-**Reviewer disposition:** The release-unit contract, bounded deterministic API
-baseline, exact symbol diagnostics, and retained focused evidence are otherwise
-credible: WidgetSdk passes 84/84, the compatibility command passes over 2,400
-symbols, GbarCli passes 55/55, and docs pass 53/53. Acceptance is withheld only
-because the newly created `WidgetSdk.Compatibility.Tests` project uses another
-handwritten executable runner and lets that test executable mutate the reviewed
-baseline. Current planner policy requires new managed test projects to use
-`MSTest.Sdk` 4.3.2 while leaving existing executable suites unchanged. DLV-050
-owns that bounded correction after the already-started DLV-048 milestone.
+**Reviewer disposition:** Accepted with DLV-050 as the required closing
+correction. The release-unit contract, bounded deterministic 2,400-symbol API
+baseline, exact addition/removal/signature diagnostics, matching CLI/template/
+SDK metadata, and portable package checks are credible. DLV-050 replaces the
+candidate handwritten test runner with 12 named `MSTest.Sdk` 4.3.2 cases and
+moves mutation to a separate bounded tool without changing the reviewed API
+baseline or any legacy suite. Final focused evidence is recorded under DLV-050.
 
 ### DLV-048 — Compile-test the canonical widget authoring path
 
-**State:** Assigned on the unaccepted DLV-047 candidate; finish the coherent
-milestone before DLV-050 and do not mix the correction into this commit
+**State:** Done; accepted and integrated on `main` as `18d461e`
 **Baseline:** closing commit of DLV-047
+**Closing commit:** `829e9fd` (`[DLV-048] Compile-test canonical author journey`)
 **Dependencies:** DLV-010, DLV-046, and DLV-047
 **Owner:** canonical public C# examples, generated starter verification,
 documentation contracts, and focused author-journey fixtures
@@ -1857,12 +1880,26 @@ suite.
 **Stop/escalate when:** proof requires external publication/credentials, a new
 public API, or broad documentation restructuring beyond the canonical path.
 
+**Reviewer disposition:** Accepted and integrated. The exact generated
+`VolumeControl.cs` is the only
+canonical starter source and is compared byte-for-normalized-byte to the
+scaffolded file before that file builds and executes outside the checkout. Eight
+marked quickstart blocks bind create/build/test, validate, render, replay,
+pack/install, version selection/rollback, and removal claims to the same
+external fixture. The fixture also proves actionable invalid-GBSS failure,
+three replay actions, byte-identical portable packages, two installed versions,
+rollback, and complete uninstall. Retained focused Release evidence
+`20260811T040047Z-d8e6fe07` passes GbarCli/scaffold 55/55 and documentation
+validation across 53 Markdown files in 39.912 seconds. DLV-050 changed only the
+preceding compatibility-test framework/verifier boundary and did not rewrite
+this author journey.
+
 ### DLV-050 — Adopt MSTest.Sdk 4.3.2 for the new SDK compatibility tests
 
-**State:** Ready immediately after DLV-048; execute before any later widgets
-work
+**State:** Done; accepted and integrated on `main` as `7563471`
 **Baseline:** closing commit of DLV-048, including unaccepted DLV-047 candidate
 `7e33f45`
+**Closing commit:** `263536f` (`[DLV-050] Adopt MSTest for SDK compatibility checks`)
 **Dependencies:** DLV-047 and DLV-048 only for contiguous lane order
 **Owner:** the newly created WidgetSdk compatibility test project, its bounded
 baseline-update tool path, focused verifier entry, and directly affected
@@ -1910,6 +1947,81 @@ managed suite, native suite, or screenshot work.
 .NET SDK without a broader framework/toolchain decision, the correction would
 change the public WidgetSdk surface/release unit, or baseline mutation cannot be
 separated without adding a broad new build framework.
+
+**Reviewer disposition:** Accepted. Only the new compatibility project adopts
+`MSTest.Sdk/4.3.2`; every pre-existing executable suite keeps its project SDK,
+case names, exit semantics, and `dotnet run` command. Twelve independently named
+cases cover the current baseline, bounded deterministic generation, release-unit
+metadata, additions, removals, signature changes, malformed/missing/oversized/
+path-bearing input, bounded updater behavior, and read-only ordinary execution.
+The reviewed `PublicApi.txt` did not change. A separate ordinary
+`WidgetSdkApiBaseline` tool owns atomic intentional updates. The verifier opts
+the new project into Microsoft Testing Platform, retains named cases in JUnit,
+and keeps helper fixtures outside discoverable-test inventory. Stable dirty
+focused run `20260811T041316Z-596d7304` passes the verifier self-test, SDK build,
+new compatibility 12/12, unchanged WidgetSdk 84/84, unchanged GbarCli 55/55,
+and 53 documentation files in 61.527 seconds. No aggregate or legacy migration
+ran.
+
+### DLV-051 — Correct Spotify seek-bar Left navigation
+
+**State:** Assigned
+**Lane:** widgets
+**Baseline:** widgets branch `263536f`, whose accepted implementation content is
+integrated on `main` through `7563471`; consume the planner assignment commit at
+the clean boundary before editing
+**Dependencies:** DLV-007, DLV-008, and DLV-021; independent of DLV-006's
+continuous-list contract
+**Owner:** Spotify managed responsive focus graph, exact semantic fixtures, and
+directly affected Spotify documentation; no native host or public SDK/protocol
+files
+**Concurrency:** May run while platform owns DLV-049. Do not touch Audio Mixer,
+native focus/scroll/layout, shared component geometry, provider/OAuth, or
+reviewer-owned files.
+
+**Visible outcome:** In expanded Spotify Player, pressing Left from the inactive
+seek Slider moves to the selected navigation-rail destination to its left, not
+to Previous track. Compact Spotify moves to the spatially corresponding selected
+navigation tab. Right and vertical transport navigation remain predictable.
+
+**Objective:** Correct the reported responsive spatial edge in the widget's
+authored focus graph without adding a native spatial exception or coupling it to
+playlist paging.
+
+**In scope:** inspect the exact compact and expanded Player snapshots before host
+processing; identify the stable selected destination/tab IDs; author explicit
+seek Slider Left edges for both responsive compositions; preserve activation-
+first Slider behavior, transport-row Left/Right order, route/Back focus, selected
+destination persistence, disabled/busy states, and stable IDs across playback,
+device, and responsive snapshot refresh; deterministic compact/expanded semantic
+and controller-replay cases beginning on the inactive seek Slider.
+
+**Out of scope:** DLV-006 cursor/append collections, page-window anchoring,
+playlist header/first-row oscillation, native focus heuristics, per-widget pixel
+offsets, Spotify provider/auth/playback behavior, route redesign, public SDK or
+protocol changes, live credentials, screenshots, or Spotify architecture
+decomposition.
+
+**Acceptance criteria:** in every supported expanded Player state, one Left from
+the inactive seek Slider names and reaches the currently selected rail
+destination; in compact mode it names and reaches the selected tab. The edge is
+explicit in the emitted snapshot and uses stable authored IDs rather than titles
+or ordinal parsing. Previous/Play/Next traversal and Slider activation/value
+behavior remain unchanged; responsive reflow and a current-route snapshot
+replacement preserve a valid corresponding focus target; no native or public
+contract special case appears.
+
+**Verification:** Tier 1 Spotify Release suite with exact emitted compact and
+expanded focus-link assertions plus the smallest existing controller/navigation
+replay that proves one Left step and unchanged transport edges. Build the
+Spotify package and validate directly affected docs. No aggregate, provider,
+live account, native suite, screenshot, or broad playlist matrix.
+
+**Stop/escalate when:** the selected rail/tab identity is absent from the emitted
+snapshot, the host ignores a valid explicit edge, correction requires public
+responsive-focus semantics, or current Spotify composition cannot express one
+stable corresponding target without a route/product decision. Preserve the
+exact snapshot and report instead of adding a widget-local ordinal/native hack.
 
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
@@ -2143,10 +2255,16 @@ commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
-not be reset or overwritten; the planner must provision a clean accepted-main
-platform boundary for DLV-026, then DLV-021. A blocked compositor milestone
-does not authorize idling the platform lane or switching both lanes to backend
-refactors.
+not be reset or overwritten. DLV-026 is integrated but failed live product
+acceptance. DLV-021 is accepted and integrated as `bc2de86`; DLV-049 is now
+Assigned before any earlier Ready item. Its production-host fixture ownership
+includes the smallest managed test-fixture-only state needed to reproduce the
+four-session product shape, but excludes managed Audio Mixer product source. A
+blocked compositor milestone does not authorize idling the platform lane or
+switching both lanes to backend refactors. DLV-015 and DLV-016 are the two safe
+independent later items; DLV-006 is the higher-priority serialized visible
+checkpoint after the active corrections, DLV-011 awaits that shared baseline, and DLV-025
+remains user-decision blocked.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -2334,8 +2452,10 @@ real-product temporal evidence before escalating.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
-**State:** Assigned
+**State:** Integrated as `4957101`; acceptance withdrawn after live keyboard and
+controller failure; correction assigned as DLV-049
 **Baseline:** accepted visible-priority main commit `8028b83`
+**Closing commits:** `979de24`, `68efc70`, corrected by `9cc633a`
 **Dependencies:** DLV-003 and DLV-029; independent of blocked DLV-025
 **Owner:** native host focus navigation, controller scroll reveal/state, and
 real-product Audio Mixer host fixtures
@@ -2383,8 +2503,10 @@ than adding a native special case.
 
 ### DLV-021 — Correct shared text and component geometry end to end
 
-**State:** Ready after DLV-026
-**Baseline:** closing commit of DLV-026
+**State:** Done; accepted and integrated on `main` as `bc2de86`
+**Baseline:** accepted DLV-026 closing commit `9cc633a` (integrated on `main`
+as `4957101`)
+**Closing commit:** `b714efe` (`[DLV-021] unify shared text geometry`)
 **Owner:** native declarative measurement/paint, shared Button/ActionSurface/
 SectionHeader styles, and component-level semantic/capture tests
 
@@ -2416,10 +2538,87 @@ capture matrix. No aggregate.
 **Stop/escalate when:** the defect is proven to be product-specific composition
 with no shared geometry cause, or correction changes a public layout contract.
 
+**Reviewer disposition:** Accepted. One `NativeTextLayoutPlan` now supplies
+DirectWrite measurement and paint from the same transform, font, wrapping,
+trimming, spacing, overhang, and baseline inputs; non-wrapping rows remeasure
+cross-size after final flex widths, and intrinsic extents round outward at the
+effective pixel scale. The direct production-renderer matrix covers Games &
+Apps, Spotify, Now Playing, Settings, and SDK Gallery at compact, standard,
+wide/150%, and combined high-contrast/reduced-transparency profiles, including
+selected, busy, disabled, trailing-action, and complete text-bound assertions.
+Focused Release evidence passes NativeTextLayout 25, DeclarativeLayout 250,
+DeclarativeRenderer 4,769, shared component geometry 589, NativeStyle, the
+production host build, and 52 documentation contracts. The standalone body
+artifact retains 16 Games/Spotify renders with zero renderer diagnostics and
+honestly excludes its existing Settings worker-start gap; live packaged visual
+confirmation remains in the verification queue.
+
+### DLV-049 — Correct the live Audio Mixer reverse-scroll state
+
+**State:** Assigned on platform commit `b714efe`; execute before DLV-015
+**Baseline:** accepted DLV-021 closing commit `b714efe` plus integrated DLV-026
+candidate `4957101`
+**Dependencies:** DLV-021 only for same-lane order; independent of blocked
+DLV-025
+**Owner:** platform lane over emitted-snapshot inspection, native focus target
+admission, retained scroll state, layout/extent reconciliation, and the smallest
+production-host Audio Mixer fixture; managed widget source remains widgets-owned
+
+**Visible outcome:** Without cycling away and back, Up from the focused
+Microphone Slider returns through the device section to Master output and the
+viewport follows it in the user's four-session Audio Mixer state. Returning to
+the widget must not be required to repair navigation or unexpectedly normalize
+an invalid offset.
+
+**Objective:** Reproduce the exact live failure that DLV-026's healthy static
+12-session fixture missed, prove whether the emitted `audio.input.volume.slider`
+Up edge names the intended target, and correct the owning native retained-state/
+reveal path when that edge is valid.
+
+**In scope:** start from the real staged Audio Mixer worker/provider-shaped
+snapshot with four application sessions; retain the live sequence where the
+Microphone Slider is at the leading visible edge and Master is above the
+viewport; record the emitted explicit Up target before host processing, current
+focus ID, active scope, root offset and maximum, viewport/target bounds, and
+revealability before and after one Up; reproduce without screenshots; compare
+the same state before and after cycling away/back; reconcile offsets and focus
+admission across snapshot arrival, content-extent change, and widget extent
+transition; remove or supersede DLV-026 fixture assumptions that cannot detect
+this state.
+
+**Out of scope:** controller-versus-keyboard routing changes, capture/screenshot
+harness work, generic scroll redesign, per-widget pixel offsets, provider or
+audio-capability behavior, managed Audio Mixer edits without planner
+reassignment, DLV-021 geometry work, or another broad traversal matrix.
+
+**Acceptance criteria:** the retained live-shaped evidence first states whether
+`Microphone.Up` is present and exact in the emitted snapshot. If it is valid,
+the host admits Master as revealable, moves focus on the first Up, decreases the
+root offset toward the true leading boundary, and reaches Master without a
+widget cycle under stable content and after the reproduced extent/snapshot
+transition. The stored offset is always finite and within the current measured
+maximum; cycling away/back does not produce `value_clamped` for `audio.root` or
+change navigation viability. Keyboard and controller use the same corrected
+focus result. Other scroll surfaces retain their current behavior.
+
+**Verification:** one bounded live-shaped production-HWND/UIA regression plus
+the smallest directly affected renderer/focus/scroll-state Release tests and a
+production OverlayHost Release build. Begin the regression in the broken
+Microphone/offscreen-Master state; do not derive expected reverse order by first
+walking forward from Master. No screenshots, capture work, aggregate, broad
+scale matrix, unrelated widget suite, or repeated full traversal run. After
+integration, launch the fresh main Release for the user's immediate functional
+check.
+
+**Stop/escalate when:** the emitted live snapshot lacks or misstates the Up edge;
+preserve the exact snapshot/evidence and report it for an immediate widgets-lane
+correction instead of adding a native fallback. Also stop for public protocol
+changes or a defect inseparable from the blocked compositor architecture.
+
 ### DLV-015 — Add deterministic real-host accessibility proof
 
-**State:** Ready after DLV-021
-**Baseline:** closing commit of DLV-021
+**State:** Ready after DLV-049
+**Baseline:** closing commit of DLV-049
 **Owner:** native accessibility adapter, host harness, and retained evidence
 
 **Objective:** Exercise the production UI Automation projection over
@@ -2481,8 +2680,8 @@ one Assigned on an accepted integrated baseline.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Highest-priority serialized visible foundation after DLV-019 and
-DLV-021; awaiting planner-selected lead/baseline
+**State:** Highest-priority serialized visible foundation after DLV-049 and
+DLV-051; awaiting planner-selected lead/baseline
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 
@@ -2528,19 +2727,17 @@ presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
 
-### DLV-022 — Repair Spotify spatial and continuous-list focus
+### DLV-022 — Repair Spotify continuous-list focus
 
 **State:** Awaiting DLV-006 and DLV-021 acceptance
 **Intended lead:** widgets lane on an accepted shared collection/geometry baseline
 **Dependencies:** DLV-006, DLV-021
 
 Migrate Spotify playlists and playlist items to the shared continuous
-cursor/append collection and correct the explicit responsive focus graph. In
-expanded mode, Left from the inactive seek Slider must enter the selected
-navigation-rail destination rather than Previous track; compact mode must use
-the spatially corresponding navigation tab. Reverse traversal from the first
-playlist item must move to the Play/header action only once when intended and
-must never oscillate during load/snapshot replacement. Queue/list traversal,
+cursor/append collection and consume DLV-051's accepted responsive Player edge
+without changing it. Reverse traversal from the first playlist item must move
+to the Play/header action only once when intended and must never oscillate during
+load/snapshot replacement. Queue/list traversal,
 12/12/5 and sparse pages, forward/reverse cache transitions, Back/return focus,
 rapid refresh, compact/expanded responsive identity, and the clipped `LIBRARY`
 header must have composed host/renderer/controller evidence. Do not add
