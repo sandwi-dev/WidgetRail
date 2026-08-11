@@ -57,7 +57,13 @@ dotnet run --project .\scratch\VolumeControl\tests\VolumeControl.Tests.csproj `
 test proves Created/Interactive/Background lifecycle transitions, a
 state-changing action, retained state, and the snapshot used below. This local
 dependency bundle is an offline scaffold contract, not a public NuGet release
-or a publisher-trust claim.
+or a publisher-trust claim. The bundled version-1 template manifest explicitly
+declares every bounded text or binary input. `gbar new` builds and validates the
+complete result in a private sibling staging directory, then publishes it with
+one rename. The requested output path must not already exist; malformed or
+unreadable template input, validation failure, cancellation, and destination
+failure leave no new output or staging residue and never alter an existing
+author directory.
 
 For the normal edit/build/overlay loop, replace the manual build with:
 

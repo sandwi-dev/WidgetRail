@@ -1,5 +1,52 @@
 {
   "templateVersion": 1,
   "name": "Controller Widget",
-  "description": "A controller-first C# widget with focus, shortcuts, state, GBSS, and input replay."
+  "description": "A controller-first C# widget with focus, shortcuts, state, GBSS, and input replay.",
+  "files": [
+    {
+      "source": "WidgetName.csproj.template",
+      "destination": "{{WidgetName}}.csproj",
+      "kind": "text"
+    },
+    {
+      "source": "manifest.json.template",
+      "destination": "manifest.json",
+      "kind": "text"
+    },
+    {
+      "source": "NuGet.Config.template",
+      "destination": "NuGet.Config",
+      "kind": "text"
+    },
+    {
+      "source": "README.md.template",
+      "destination": "README.md",
+      "kind": "text"
+    },
+    {
+      "source": "src/WidgetName.cs.template",
+      "destination": "src/{{WidgetName}}.cs",
+      "kind": "text"
+    },
+    {
+      "source": "tests/WidgetName.Tests.csproj.template",
+      "destination": "tests/{{WidgetName}}.Tests.csproj",
+      "kind": "text"
+    },
+    {
+      "source": "tests/Program.cs.template",
+      "destination": "tests/Program.cs",
+      "kind": "text"
+    },
+    {
+      "source": "styles/default.gbss",
+      "destination": "styles/default.gbss",
+      "kind": "binary"
+    },
+    {
+      "source": "replays/smoke.json",
+      "destination": "replays/smoke.json",
+      "kind": "binary"
+    }
+  ]
 }

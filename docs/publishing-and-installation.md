@@ -37,7 +37,11 @@ that clears external sources. The repository therefore builds offline without
 a Game Bar Alternative checkout or absolute project reference. Commit that
 small local dependency with the generated source when sharing the repository;
 it identifies the `gbar` SDK build used by the scaffold but is not a signature
-or publisher-trust assertion.
+or publisher-trust assertion. The matching version-1 template manifest is a
+closed bounded file inventory. `gbar new` stages the declared template files
+and SDK package beside the requested target, validates the complete scaffold,
+and atomically renames it into place. It refuses every pre-existing target and
+removes its private staging directory on failure.
 
 ## `.gbarwidget` packages
 

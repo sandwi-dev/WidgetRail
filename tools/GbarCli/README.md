@@ -45,6 +45,14 @@ gbar theme list
 
 - `new widget` instantiates the bundled controller-first C# template and a
   matching `GameBarAlternative.WidgetSdk` package in `.gbar/packages`. Its
+  version-1 `template.json` is a closed inventory of bounded text templates and
+  byte-preserved binary assets; undeclared, missing, duplicate, traversing,
+  reparse, oversized, or unsupported inputs are rejected with the affected
+  file or manifest rule. Generation occurs in a private sibling staging
+  directory, validates the complete scaffold, and publishes it with one
+  directory rename. A failed command removes its staging directory and never
+  creates, deletes, or overwrites the requested output path. Consequently the
+  output path must not already exist, even as an empty directory. Its
   generated `NuGet.Config` clears external feeds and resolves that dependency
   only from the relative project-local feed, so the scaffold builds offline in
   a clean directory without a platform checkout or machine-specific project

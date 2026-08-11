@@ -126,6 +126,13 @@ publisher identity. The generated executable test drives lifecycle changes,
 one state-changing action, retained state, and exports the bounded snapshot
 used by render/replay. If the CLI installation lacks its SDK assemblies or the
 bundled template, scaffolding fails before the target directory is written.
+The bundled template's version-1 manifest is a closed inventory: it labels
+bounded UTF-8 replacement templates separately from byte-preserved assets and
+rejects missing, undeclared, duplicate, traversing, reparse, or oversized
+entries. Generation and validation occur in a private sibling staging
+directory; one final directory rename publishes the project. Choose an output
+path that does not exist. On any failure, `gbar` removes its staging directory
+without deleting or overwriting an author-owned path.
 
 The smallest useful widget is a public `Widget` subclass with a public
 parameterless constructor (or one whose parameters are all optional):
