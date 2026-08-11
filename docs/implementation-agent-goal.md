@@ -346,6 +346,34 @@ Every test or build command must have a bounded timeout. Inspect actual output,
 machine-readable results, commit provenance, and failure fields. Do not infer
 success from an exit code alone.
 
+### Capture evidence integrity
+
+Screenshots and frame sequences remain required whenever an assignment asks for
+visual or temporal evidence, but validate the capture pipeline before treating
+an apparent visual defect as a product defect.
+
+For every retained product capture:
+
+- Record or assert the intended process/window identity, client/content bounds,
+  capture rectangle and output dimensions, DPI/scale, product state, and frame
+  or sequence position needed to interpret it.
+- Confirm that the image covers the full region required by the acceptance
+  claim. Cross-check window/client geometry and semantics/UIA or deterministic
+  host state; when direct live observation is available, reconcile any mismatch
+  with what was visibly rendered.
+- Reject, recapture, or clearly label images that are cropped, stale, from the
+  wrong window, taken before final layout/presentation, missing expected tray or
+  root extents, or otherwise inconsistent with the recorded geometry.
+- Diagnose and correct the capture harness first when the live product and
+  semantic/geometry evidence are complete but the screenshot is clipped. Do not
+  search for or change production layout/rendering code to explain pixels that
+  lie outside an invalid capture boundary.
+- Investigate production code when the defect reproduces live or remains in a
+  validated full-frame capture with consistent geometry and state evidence.
+
+Do not weaken this rule by abandoning captures. A valid capture is product
+evidence; an invalid capture is test-infrastructure evidence.
+
 When a test fails:
 
 - Retain and report the failing evidence.

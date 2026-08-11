@@ -118,6 +118,16 @@ repeat unrelated green suites after every correction. Every command has a
 bounded timeout and retained failures are evidence, not an invitation to rerun
 unchanged code.
 
+Visual evidence is admissible only after its capture provenance is validated.
+The assignment must identify the intended window/client region, capture bounds
+and dimensions, scale/state, and enough host geometry or semantics/UIA evidence
+to prove the required content was actually inside the captured region. If live
+observation and host state show the complete overlay while an image is cropped,
+stale, premature, or missing expected extents, correct or exclude the capture
+artifact before investigating product layout/rendering code. This gate preserves
+capture-based review; it prevents invalid captures from generating product
+changes.
+
 ## Recently completed
 
 ### DLV-001 — Finish the paused authority-recovery operator surface
@@ -2122,7 +2132,11 @@ surfaces retain their current behavior.
 **Verification:** Tier 1 native focus, declarative renderer, scroll-state, and
 host Release suites plus the production Audio Mixer fixture at preferred,
 constrained, and 150%-scale surfaces with a reviewed down-and-reverse capture
-sequence. No aggregate.
+sequence. Before interpreting the sequence, assert the target HWND/client and
+content bounds, capture rectangle/output dimensions, scale, expected root/tray
+extents, and agreement with the recorded focus/scroll/UIA state; a clipped or
+premature frame is capture-harness evidence and must be recaptured or excluded,
+not treated as missing widget UI. No aggregate.
 
 **Stop/escalate when:** the production snapshot lacks or misstates an explicit
 Audio Mixer Up link, the defect requires managed widget source changes, or the

@@ -206,6 +206,14 @@ Check:
   affected.
 - Performance implications and measurements when relevant.
 - Test determinism, failure-route coverage, timeout bounds, and provenance.
+- Capture-evidence integrity before interpreting pixels: the retained frame
+  must identify the intended window/client area, cover its expected bounds,
+  come from the intended state and frame, and agree with host geometry,
+  semantics/UIA, or direct live observation. Treat a cropped, stale, partial,
+  wrong-window, or prematurely captured image as a capture-harness defect or
+  invalid artifact first, not as evidence of missing product UI. Require the
+  implementation task to correct or explicitly exclude invalid captures before
+  investigating production layout/rendering code from them.
 - Documentation accuracy and absence of unrelated/reviewer-owned changes.
 - Full diff quality: duplication, dead code, giant responsibilities, AI-like
   boilerplate, speculative abstraction, debug artifacts, and whitespace.
