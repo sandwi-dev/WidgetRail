@@ -21,7 +21,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | --- | --- | --- | --- | --- |
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
-| GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
+| GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | DLV-026 is integrated as `4957101`: preferred, constrained, and 150% production-host traversal now reaches all 14 controls and reverses to master at offset zero; live controller/visual confirmation remains. |
 | GBA-004 | P1 | Blocked | OverlayHost UI thread / presentation / composition | DLV-020 removed the startup surface in focused captures, but 2026-08-10 user evidence shows the real Games & Apps extent animation misses frames, flickers the whole interface, and exposes large gray/black bands. DLV-025 reproduced the single-HWND resize/composition failure and stopped without a product commit; resumption requires a user-authorized atomic compositor design. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
@@ -168,6 +168,19 @@ updates, 128-session, and long-label cases. Native renderer coverage passes
 4,311 checks and walks Audio-like master/input/application geometry at the
 actual 464-DIP host content height and a constrained 304-DIP height. These
 focused checks do not replace packaged controller and visual verification.
+
+DLV-026 (`979de24`, `68efc70`, corrected by `9cc633a`, integrated as
+`4957101`) closes the later user-reported reverse trap at the host layer. Scale
+conversion could leave a Slider edge within one native raster pixel of its
+matching rounded card clip; the prior feasibility test rejected that target
+even though the root Scroll still had range. The renderer now tolerates only
+that scale-aware raster edge while retaining negative coverage for wrong-axis,
+greater-than-one-pixel, and fixed nested clipping. A screenshot-excluded
+production-HWND/UIA manifest records 84 functional states across preferred,
+constrained, and 150% surfaces: every 14-control Down path reverses one control
+at a time to master output and offset zero, while unrelated removal, focused
+removal, nearest fallback, and addition preserve deterministic focus. The fresh
+accepted Release is running for the remaining live controller/visual check.
 
 **Acceptance:**
 

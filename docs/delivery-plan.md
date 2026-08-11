@@ -573,6 +573,28 @@ over 52 files. The freshly rebuilt accepted Release overlay is running for
 physical-controller verification; no aggregate or unrelated provider/native
 suite ran.
 
+### DLV-026 — Restore bidirectional Audio Mixer scrolling
+
+**State:** Done
+**Closing commits:** `979de24`, `68efc70`, corrected by `9cc633a`
+**Integrated on `main`:** `4957101`
+
+**Reviewer disposition:** Accepted at deterministic functional and freshly
+packaged Release level; live controller/visual confirmation remains with the
+user. The production focus graph was valid, but scale conversion could place a
+Slider edge no more than one native raster pixel beyond its otherwise matching
+card clip, causing the host to reject later offscreen controls as irrevealable.
+One scale-aware native-pixel tolerance now applies to that fixed-edge test while
+wrong-axis displacement, more than one pixel of overlap, and controls trapped
+inside a non-scroll clip remain rejected. The final screenshot-excluded host
+manifest retains 84 functional records: complete 14-control Down and reverse Up
+traversal at preferred, constrained, and 150% surfaces, zero leading offset on
+return to master output, plus unrelated removal, focused removal with nearest
+fallback, and session addition. Direct renderer boundary coverage and the
+authenticated production-HWND/UIA fixture passed; invalid capture artifacts
+are not acceptance evidence. Main Release rebuilt successfully with tests
+skipped after review and is running from `4957101` for the user's live check.
+
 ## Widgets lane
 
 Task identity: `widgets`
@@ -2036,10 +2058,10 @@ commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
-not be reset or overwritten; the planner must provision a clean accepted-main
-platform boundary for DLV-026, then DLV-021. A blocked compositor milestone
-does not authorize idling the platform lane or switching both lanes to backend
-refactors.
+not be reset or overwritten. DLV-026 is accepted and integrated; DLV-021 is
+Assigned on its closing commit and is the active visible geometry milestone. A
+blocked compositor milestone does not authorize idling the platform lane or
+switching both lanes to backend refactors.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -2227,8 +2249,9 @@ real-product temporal evidence before escalating.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `4957101`
 **Baseline:** accepted visible-priority main commit `8028b83`
+**Closing commits:** `979de24`, `68efc70`, corrected by `9cc633a`
 **Dependencies:** DLV-003 and DLV-029; independent of blocked DLV-025
 **Owner:** native host focus navigation, controller scroll reveal/state, and
 real-product Audio Mixer host fixtures
@@ -2276,8 +2299,9 @@ than adding a native special case.
 
 ### DLV-021 — Correct shared text and component geometry end to end
 
-**State:** Ready after DLV-026
-**Baseline:** closing commit of DLV-026
+**State:** Assigned
+**Baseline:** accepted DLV-026 closing commit `9cc633a` (integrated on `main`
+as `4957101`)
 **Owner:** native declarative measurement/paint, shared Button/ActionSurface/
 SectionHeader styles, and component-level semantic/capture tests
 
