@@ -175,6 +175,30 @@ static async Task CapabilityDomainPoliciesAreBounded()
                 tooManyApps, null, null, "revision"),
             PlatformCapabilityBroker.MaximumAppLibraryPageSize),
         "invalid_backend_data");
+    var boundedSources = Enumerable.Range(0, 16)
+        .Select(index => new AppLibrarySourceSummary(
+            $"source-{index}", $"Source {index}", AppLibrarySourceHealth.Healthy,
+            index, "healthy"))
+        .ToArray();
+    var sourcePage = AppLibraryCapabilityDomain.ValidatePage(
+        new AppLibraryBackendCursorPage([], null, null, "revision")
+        {
+            Sources = boundedSources,
+        }, PlatformCapabilityBroker.MaximumAppLibraryPageSize);
+    Assert.Equal(16, sourcePage.Sources.Count);
+    Assert.Throws<BrokerException>(() => AppLibraryCapabilityDomain.ValidatePage(
+        sourcePage with
+        {
+            Sources = [.. boundedSources,
+                new("source-overflow", "Overflow", AppLibrarySourceHealth.Healthy,
+                    1, "healthy")],
+        }, PlatformCapabilityBroker.MaximumAppLibraryPageSize), "invalid_backend_data");
+    Assert.Throws<BrokerException>(() => AppLibraryCapabilityDomain.ValidatePage(
+        sourcePage with
+        {
+            Sources = [new("source-one", "Source", AppLibrarySourceHealth.Degraded,
+                1, "unsafe status")],
+        }, PlatformCapabilityBroker.MaximumAppLibraryPageSize), "invalid_backend_data");
 
     var tooManyMediaSessions = Enumerable.Range(0, 33)
         .Select(index => new MediaSessionSummary(
@@ -212,6 +236,15 @@ static async Task AppLibraryIconsAreBounded()
     await consent.SetDecisionAsync(
         identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
     var backend = new SimulatedPlatformBrokerBackend();
+    backend.AppLibrarySources =
+    [
+        new AppLibrarySourceSummary(
+            "source-0123456789abcdef01234567", "Windows", AppLibrarySourceHealth.Healthy,
+            4, "healthy"),
+        new AppLibrarySourceSummary(
+            "source-89abcdef0123456789abcdef", "Steam", AppLibrarySourceHealth.Degraded,
+            7, "source_degraded"),
+    ];
     backend.SetAppLibraryBackend(Enumerable.Range(0, 33).Select(index =>
         new AppLibraryBackendItemSummary(
             $"provider-{index}", $"stable-{index}", $"App {index}",
@@ -236,6 +269,12 @@ static async Task AppLibraryIconsAreBounded()
             BrokerJson.StrictOptions)));
     var page = listPayload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
     Assert.Equal(33, page.Items.Count);
+    Assert.Equal(2, page.Sources.Count);
+    Assert.Equal("Windows", page.Sources[0].DisplayName);
+    Assert.Equal(AppLibrarySourceHealth.Degraded, page.Sources[1].Health);
+    Assert.Equal("source_degraded", page.Sources[1].StatusCode);
+    Assert.True(page.Sources.All(source => source.SourceId.StartsWith(
+        "source-", StringComparison.Ordinal)));
     Assert.True(page.Items.All(item =>
         AppLibraryArtworkRegistry.IsHandle(item.ArtworkHandle)));
     Assert.Equal(33, page.Items.Select(item => item.ArtworkHandle).Distinct().Count());

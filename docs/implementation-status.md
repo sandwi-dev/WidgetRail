@@ -1724,6 +1724,15 @@ themes also use non-shrinking fixed regions, a thin native Slider
  mutation. Focused Release coverage includes a disjoint 64 + 32 + 32 semantic
  tree, source/favorite/sort coexistence, traversal overlap deduplication,
  missing/replacement identities, and the installed 64-row-plus-manual route.
+ DLV-082 carries the normalized provider's exact source health and source
+ revision through one additive app-library page contract. The broker accepts at
+ most 16 unique opaque source IDs with bounded labels and safe status codes;
+ the SDK rejects malformed or over-bound responses and grants no per-source
+ operation. Game Launcher renders Healthy, Degraded, Unavailable, and transient
+ Refreshing text while retaining usable games and the existing refresh owner.
+ Deterministic source-isolation, partial-result, stale/recovery/disappearance,
+ broker validation, SDK compatibility, installed-worker, and documentation
+ evidence accompanies the public API baseline addition.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

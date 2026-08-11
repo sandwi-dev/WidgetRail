@@ -91,6 +91,38 @@ internal static class GameLibrarySourceScenarios
         Assert.True(refreshed.Any(item => item.DisplayName == "Steam One"));
         Assert.Equal(GameLibrarySourceHealth.Unavailable, steam.Snapshot.Health);
         Assert.Equal(2L, steam.Snapshot.SourceVersion);
+
+        var partial = await provider.QueryAppLibraryAsync(
+            new(new(Kind: GameBarAlternative.PlatformBroker.AppLibraryKind.Game),
+                null, null, 64), CancellationToken.None);
+        Assert.Equal(2, partial.Sources.Count);
+        var windowsHealth = partial.Sources.Single(source => source.DisplayName == "Windows");
+        var steamHealth = partial.Sources.Single(source => source.DisplayName == "Steam");
+        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Healthy,
+            windowsHealth.Health);
+        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Unavailable,
+            steamHealth.Health);
+        Assert.Equal("source_unavailable", steamHealth.StatusCode);
+        Assert.Equal(2L, steamHealth.Revision);
+        Assert.False(steamHealth.SourceId.Contains("steam", StringComparison.OrdinalIgnoreCase));
+        Assert.True(partial.Items.Any(item => item.DisplayName == "Steam One"));
+
+        steamComponent.Fail = false;
+        var recovered = await provider.QueryAppLibraryAsync(
+            new(new(Kind: GameBarAlternative.PlatformBroker.AppLibraryKind.Game),
+                null, null, 64, Refresh: true), CancellationToken.None);
+        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Healthy,
+            recovered.Sources.Single(source => source.DisplayName == "Steam").Health);
+        Assert.Equal(3L,
+            recovered.Sources.Single(source => source.DisplayName == "Steam").Revision);
+
+        steamComponent.Items = [];
+        var disappeared = await provider.QueryAppLibraryAsync(
+            new(new(Kind: GameBarAlternative.PlatformBroker.AppLibraryKind.Game),
+                null, null, 64, Refresh: true), CancellationToken.None);
+        Assert.Equal(0, disappeared.Items.Count);
+        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Healthy,
+            disappeared.Sources.Single(source => source.DisplayName == "Steam").Health);
     }
 
     internal static async Task LateGenerationCannotReplaceCurrent()
@@ -179,18 +211,19 @@ internal static class GameLibrarySourceScenarios
         ISteamApplicationSource
     {
         internal bool Fail { get; set; }
+        internal IReadOnlyList<SteamRegistration> Items { get; set; } = items;
         public IReadOnlyList<SteamRegistration> Enumerate(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Fail) throw new IOException("Simulated Steam failure.");
-            return items;
+            return Items;
         }
         public SteamRegistration? ReadExact(
             string steamAppId, string manifestPath, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return items.SingleOrDefault(item => item.SteamAppId == steamAppId &&
+            return Items.SingleOrDefault(item => item.SteamAppId == steamAppId &&
                 string.Equals(item.ManifestPath, manifestPath,
                     StringComparison.OrdinalIgnoreCase));
         }

@@ -64,6 +64,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         CancellationToken, Task<LoopbackJsonResponse>>? LoopbackHandler { get; set; }
     public Func<string, CancellationToken, Task<AppLibraryIconSummary>>?
         AppLibraryIconHandler { get; set; }
+    internal IReadOnlyList<AppLibrarySourceSummary> AppLibrarySources { get; set; } = [];
     public string? LastLaunchedAppId { get; private set; }
     public string? LastControlledMediaSessionId { get; private set; }
     public MediaSessionCommand? LastMediaCommand { get; private set; }
@@ -401,7 +402,10 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
             ? $"sim.{_appLibraryRevision}.A.{next}"
             : null;
         return Task.FromResult(new AppLibraryBackendCursorPage(
-            items, before, after, $"sim-revision-{_appLibraryRevision}"));
+            items, before, after, $"sim-revision-{_appLibraryRevision}")
+        {
+            Sources = AppLibrarySources,
+        });
     }
 
     public Task LaunchAppLibraryItemAsync(

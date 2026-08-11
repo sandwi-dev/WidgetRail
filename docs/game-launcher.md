@@ -40,6 +40,11 @@ provider identity, infer games from titles, or cache a complete library.
 - The responsive grid authors five maximum columns with a 980 by 700 preferred
   surface and 420 by 340 minimum. Native layout chooses the actual compact,
   standard, or wide column count at the active client size and scale.
+- **Library sources** lists every normalized source relevant to the current
+  provider revision as Healthy, Degraded, Unavailable, or Refreshing. A partial
+  source failure keeps healthy and last-good usable games visible and leaves
+  the existing Refresh action in charge of recovery. The displayed source ID,
+  label, revision, and safe status carry no adapter-control or launch authority.
 
 ## Artwork, state, and launch authority
 
@@ -59,8 +64,9 @@ The same schema retains at most 32 opaque SavedIds in newest-accepted order.
 Only an exact current **Launcher started**, **Running**, or **Ended** observation
 may move an identity to the front. Acknowledgement-only, failed, stale,
 replaced, or canceled launches do not change history. **Recent: First**
-reorders the current resolved window and **Recent: Only** asks the trusted
-catalog for the exact current SavedIds; neither path authorizes launch.
+composes the bounded current recent slice before the provider window and
+**Recent: Only** asks the trusted catalog for the exact current SavedIds;
+neither path authorizes launch.
 Missing identities stay as non-authorizing display rows, replacement SavedIds
 remain independent, and **Clear recent** preserves favorites and variant
 groups.

@@ -386,6 +386,25 @@ public enum WidgetAppLibrarySortOrder
     SourceThenDisplayName,
 }
 
+public enum WidgetAppLibrarySourceHealth
+{
+    Healthy,
+    Degraded,
+    Unavailable,
+    Refreshing,
+}
+
+/// <summary>
+/// Sanitized observation-only status for one normalized local library source.
+/// SourceId cannot be used to query, refresh, or launch through that source.
+/// </summary>
+public sealed record WidgetAppLibrarySource(
+    [property: JsonRequired] string SourceId,
+    [property: JsonRequired] string DisplayName,
+    [property: JsonRequired] WidgetAppLibrarySourceHealth Health,
+    [property: JsonRequired] long Revision,
+    [property: JsonRequired] string StatusCode);
+
 public sealed record WidgetAppLibraryQuery(
     bool InstalledOnly = true,
     WidgetAppLibraryKind? Kind = null,
@@ -409,7 +428,11 @@ public sealed record WidgetAppLibraryPage(
     [property: JsonRequired] IReadOnlyList<WidgetAppLibraryItem> Items,
     string? Before,
     string? After,
-    [property: JsonRequired] string Revision);
+    [property: JsonRequired] string Revision)
+{
+    [JsonRequired]
+    public IReadOnlyList<WidgetAppLibrarySource> Sources { get; init; } = [];
+}
 
 public sealed record ResolveSavedWidgetAppLibraryItemsRequest(
     [property: JsonRequired] IReadOnlyList<string> SavedIds);
@@ -1047,10 +1070,12 @@ public sealed class WidgetAppLibraryService
                 }, cursor?.Value, direction, limit, refresh),
             cancellationToken).ConfigureAwait(false);
         if (page?.Items is null || page.Items.Count > limit ||
+            page.Sources is null || page.Sources.Count > 16 ||
             page.Revision is not { Length: > 0 and <= 128 } ||
             page.Before is { Length: > 128 } || page.After is { Length: > 128 })
             throw MalformedPage();
         ValidatePageItems(page.Items);
+        ValidatePageSources(page.Sources);
         try
         {
             if (page.Before is not null) _ = new WidgetCollectionCursor(page.Before);
@@ -1196,6 +1221,25 @@ public sealed class WidgetAppLibraryService
 
     private static WidgetCapabilityException MalformedPage() => new(
         "malformed_response", "The app library provider returned an invalid cursor page.");
+
+    private static void ValidatePageSources(IReadOnlyList<WidgetAppLibrarySource> sources)
+    {
+        var sourceIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var source in sources)
+        {
+            if (source is null || !Enum.IsDefined(source.Health) ||
+                source.Revision < 0 ||
+                string.IsNullOrWhiteSpace(source.DisplayName) ||
+                source.DisplayName.Length > 64 || source.DisplayName.Any(char.IsControl) ||
+                source.StatusCode is not { Length: > 0 and <= 48 } ||
+                source.StatusCode.Any(character =>
+                    !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-' and not '.'))
+                throw MalformedPage();
+            try { ValidateOpaqueId(source.SourceId, nameof(sources)); }
+            catch (ArgumentException) { throw MalformedPage(); }
+            if (!sourceIds.Add(source.SourceId)) throw MalformedPage();
+        }
+    }
 
     private static void ValidatePageItems(IReadOnlyList<WidgetAppLibraryItem> items)
     {

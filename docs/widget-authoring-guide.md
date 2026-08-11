@@ -1247,7 +1247,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.pair.v1` | pair one current opaque Bluetooth association endpoint and receive a typed outcome | Interactive |
 | `system.network.bluetooth.manage.v1` | open Windows Bluetooth Settings after validating one current opaque device | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
-| `system.apps.library.read.v1` | page installed-app names/kinds and resolve authority-scoped durable SavedIds to current launch IDs | Visible or Interactive |
+| `system.apps.library.read.v1` | page installed-app names/kinds, observe bounded sanitized source health, and resolve authority-scoped durable SavedIds to current launch IDs | Visible or Interactive |
 | `system.apps.library.launch.v1` | launch one current broker-issued opaque app ID | Interactive only |
 | `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
 | `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |

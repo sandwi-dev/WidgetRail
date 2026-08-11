@@ -260,6 +260,15 @@ edge, and refresh follows the segment containing the anchor. Page size is
 history is capped at 256. Duplicate keys, cursor loops, stale completions, and
 malformed pages fail without partial publication.
 
+`WidgetAppLibraryPage.Sources` carries at most 16 immutable value-only source
+observations for the same page revision. Each row contains an opaque
+observation-only `SourceId`, sanitized display label, closed
+`Healthy`/`Degraded`/`Unavailable`/`Refreshing` health, monotonic source
+revision, and a bounded safe status code. It grants no adapter selection,
+refresh, launch, filesystem, registry, store, or account authority. Keep usable
+items visible when another source is degraded, and use the existing page
+refresh operation rather than creating a per-source refresh pipeline.
+
 Protocol v14 also supplies `WidgetArtworkHandle`, `UI.Artwork`, and
 `ButtonElement.LeadingArtwork`. Handles are bounded opaque identities—not URLs
 or paths—and grant no fetch, file, network, decode, or action authority. Use

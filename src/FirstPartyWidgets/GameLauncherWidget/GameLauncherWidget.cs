@@ -42,6 +42,7 @@ public sealed class GameLauncherWidget : Widget
     private bool _favoriteFilter;
     private GameLauncherRecentMode _recentMode;
     private GameLauncherFixedRows _fixedRows = GameLauncherFixedRows.Empty;
+    private IReadOnlyList<WidgetAppLibrarySource> _sourceObservations = [];
     private long _fixedRowsRevision;
     private readonly SortedSet<string> _knownSources = new(StringComparer.OrdinalIgnoreCase);
 
@@ -102,7 +103,8 @@ public sealed class GameLauncherWidget : Widget
                 _recentMode,
                 _favoriteFilter,
                 navigation.Route,
-                _fixedRows);
+                _fixedRows,
+                _sourceObservations);
         var view = GameLauncherPresentation.Render(state);
         var root = _navigation.Scope(navigation, (StackElement)view.Root);
         return view with
@@ -135,6 +137,7 @@ public sealed class GameLauncherWidget : Widget
             _variantSeedSavedId = null;
             _organizationBusy = false;
             _fixedRows = GameLauncherFixedRows.Empty;
+            _sourceObservations = [];
             _fixedRowsRevision++;
             _status = "Game Launcher is paused";
         }
@@ -482,7 +485,8 @@ public sealed class GameLauncherWidget : Widget
             fixedRows = new(recent, manual);
         }
         lock (_gate)
-            foreach (var source in page.Items.Select(item => item.SourceAttribution))
+            foreach (var source in page.Sources.Select(source => source.DisplayName)
+                         .Concat(page.Items.Select(item => item.SourceAttribution)))
                 if (!string.IsNullOrWhiteSpace(source) &&
                     (_knownSources.Contains(source) ||
                      _knownSources.Count < MaximumKnownSources))
@@ -503,6 +507,9 @@ public sealed class GameLauncherWidget : Widget
                 _fixedRows = fixedRows;
                 _fixedRowsRevision++;
             }
+            if (route == _navigation.Value.Route && baseQuery == _query &&
+                recentMode == _recentMode && favoriteFilter == _favoriteFilter)
+                _sourceObservations = page.Sources.ToArray();
             _status = !projectionSaved
                 ? "Games loaded · organization was not saved"
                 : items.Length == 0 && fixedRows.All.Any() ? "Saved games resolved" :

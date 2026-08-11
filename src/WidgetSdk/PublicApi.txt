@@ -34,6 +34,7 @@ ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest(GameBarAlternati
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryItem(string AppId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAppLibraryKind Kind)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryPage(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> Items, string? Before, string? After, string Revision)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery(bool InstalledOnly = true, GameBarAlternative.WidgetSdk.WidgetAppLibraryKind? Kind = null, string? SourceAttribution = null, GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder Sort = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibrarySource(string SourceId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth Health, long Revision, string StatusCode)
 ctor GameBarAlternative.WidgetSdk.WidgetArtworkHandle(string value)
 ctor GameBarAlternative.WidgetSdk.WidgetAudioDevice(string DeviceId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection Direction, bool IsDefault)
 ctor GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAudioDevice> Devices, bool IsAvailable = true)
@@ -161,6 +162,10 @@ enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Unknown = GameBarAlternat
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayNameDescending = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayNameDescending
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.SourceThenDisplayName = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.SourceThenDisplayName
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Degraded = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Degraded
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Healthy = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Healthy
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Unavailable = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Unavailable
 enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Input = GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Input
 enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Output = GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Output
 enum GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating = GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating
@@ -701,6 +706,11 @@ method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.LaunchAsync(string a
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.LaunchAsync(string appId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.QueryAsync(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery query, GameBarAlternative.WidgetSdk.WidgetCollectionCursor? cursor = null, GameBarAlternative.WidgetSdk.WidgetCursorDirection? direction = null, int limit = 64, bool refresh = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetAppLibraryPage>
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.ResolveSavedAsync(System.Collections.Generic.IReadOnlyList<string> savedIds, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem>>
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibrarySource
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Deconstruct(out string SourceId, out string DisplayName, out GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth Health, out long Revision, out string StatusCode) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetArtworkHandle.Equals(object obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetArtworkHandle.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetArtworkHandle.ToString() -> string
@@ -1403,6 +1413,8 @@ method static GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.op_Equality(Game
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? left, GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? left, GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetArtworkHandle.op_Equality(GameBarAlternative.WidgetSdk.WidgetArtworkHandle left, GameBarAlternative.WidgetSdk.WidgetArtworkHandle right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetArtworkHandle.op_Inequality(GameBarAlternative.WidgetSdk.WidgetArtworkHandle left, GameBarAlternative.WidgetSdk.WidgetArtworkHandle right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAudioDevice.op_Equality(GameBarAlternative.WidgetSdk.WidgetAudioDevice? left, GameBarAlternative.WidgetSdk.WidgetAudioDevice? right) -> bool
@@ -1652,6 +1664,7 @@ method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Equals
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetArtworkHandle.Equals(GameBarAlternative.WidgetSdk.WidgetArtworkHandle other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAudioDevice.Equals(GameBarAlternative.WidgetSdk.WidgetAudioDevice? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged.Equals(GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged? other) -> bool
@@ -1773,6 +1786,7 @@ property GameBarAlternative.WidgetSdk.WidgetAppLibraryKind? GameBarAlternative.W
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Query { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryService GameBarAlternative.WidgetSdk.WidgetHostServices.AppLibrary { get; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Sort { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Health { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection GameBarAlternative.WidgetSdk.WidgetAudioDevice.Direction { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAudioInput? GameBarAlternative.WidgetSdk.WidgetAudioInputChanged.Input { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAudioOutput? GameBarAlternative.WidgetSdk.WidgetAudioOutputChanged.Output { get; set; }
@@ -1857,6 +1871,7 @@ property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetProto
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetProtocol.WidgetQuickAction>? GameBarAlternative.WidgetSdk.WidgetView.QuickActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> GameBarAlternative.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Items { get; set; }
+property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibrarySource> GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Sources { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAudioDevice> GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged.Devices { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAudioSession> GameBarAlternative.WidgetSdk.WidgetAudioSessionsChanged.Sessions { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetwork> GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworks.Networks { get; set; }
@@ -2094,6 +2109,7 @@ property long GameBarAlternative.WidgetSdk.ControllerInputEvent.SnapshotSequence
 property long GameBarAlternative.WidgetSdk.Widget.Revision { get; }
 property long GameBarAlternative.WidgetSdk.WidgetActionEvent.MonotonicTimestampMicroseconds { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetActionEvent.Sequence { get; set; }
+property long GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetInvalidatedEventArgs.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetMediaSession.CapturedAtUnixMilliseconds { get; set; }
@@ -2232,6 +2248,9 @@ property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.DisplayName { 
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.SavedId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.SourceAttribution { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Revision { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.DisplayName { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.SourceId { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.StatusCode { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetArtworkHandle.Value { get; }
 property string GameBarAlternative.WidgetSdk.WidgetAudioDevice.DeviceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAudioDevice.DisplayName { get; set; }
@@ -2373,6 +2392,7 @@ type enum GameBarAlternative.WidgetSdk.ToastTone : System.IComparable, System.IC
 type enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetBluetoothPairingOutcome : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2458,6 +2478,7 @@ type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryItem : System.IEq
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryPage : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryPage>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryService
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibrarySource : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibrarySource>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAudioDevice : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAudioDevice>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAudioInput : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAudioInput>

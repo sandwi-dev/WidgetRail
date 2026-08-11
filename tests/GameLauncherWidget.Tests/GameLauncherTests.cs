@@ -908,6 +908,114 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task SourceHealthRetainsPartialRowsRejectsStaleAndRecovers()
+    {
+        var staleStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var currentReturned = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStale = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var host = new FakeHost(2)
+        {
+            QueryHandler = (_, _) => Interlocked.Increment(ref calls) switch
+            {
+                1 => ValueTask.FromResult(SourcePage(
+                    [Source("source-windows", "Windows",
+                        WidgetAppLibrarySourceHealth.Healthy, 1, "healthy"),
+                     Source("source-steam", "Steam",
+                        WidgetAppLibrarySourceHealth.Degraded, 1,
+                        "source_degraded")], "revision-1")),
+                2 => WaitForStaleSourcePage(),
+                3 => ReturnRecoveredPage(),
+                4 => ValueTask.FromResult(SourcePage(
+                    [Source("source-windows", "Windows",
+                        WidgetAppLibrarySourceHealth.Healthy, 3, "healthy")],
+                    "revision-3")),
+                _ => throw new InvalidOperationException("Unexpected source query."),
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var partial = Snapshot(widget, 602);
+        StringAssert.Contains(Nodes(partial.Root).Single(node =>
+            node.Id == "game-launcher.source.source-windows").Text!, "Healthy");
+        StringAssert.Contains(Nodes(partial.Root).Single(node =>
+            node.Id == "game-launcher.source.source-steam").Text!, "Degraded");
+        Assert.IsTrue(Nodes(partial.Root).Where(node =>
+            node.ActionId == "game-launcher.launch").All(node =>
+                !(node.IsDisabled ?? false)),
+            "partial source health must not suppress usable games");
+        var initialFocus = partial.InitialFocusId;
+
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(staleStarted.Task, "stale source refresh admission");
+        var refreshing = Snapshot(widget, 603);
+        Assert.AreEqual(2, Nodes(refreshing.Root).Count(node =>
+            node.Id.StartsWith("game-launcher.source.", StringComparison.Ordinal) &&
+            (node.Text ?? string.Empty).Contains("Refreshing", StringComparison.Ordinal)));
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.source", "game-launcher.filter.source"));
+        releaseStale.TrySetResult(SourcePage(
+            [Source("source-windows", "Windows",
+                WidgetAppLibrarySourceHealth.Healthy, 2, "healthy"),
+             Source("source-steam", "Steam",
+                WidgetAppLibrarySourceHealth.Unavailable, 2,
+                "source_unavailable")], "revision-stale"));
+        await Bounded(currentReturned.Task, "recovered source revision");
+        await Bounded(widget.WhenLibraryIdleAsync(), "stale source drain");
+        var recovered = Snapshot(widget, 604);
+        StringAssert.Contains(Nodes(recovered.Root).Single(node =>
+            node.Id == "game-launcher.source.source-steam").Text!, "Healthy");
+        Assert.IsFalse(Nodes(recovered.Root).Any(node =>
+            (node.Text ?? string.Empty).Contains("Unavailable", StringComparison.Ordinal)));
+        Assert.AreEqual(initialFocus, recovered.InitialFocusId);
+
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "source disappearance refresh");
+        var disappeared = Snapshot(widget, 605);
+        Assert.IsFalse(Nodes(disappeared.Root).Any(node =>
+            node.Id == "game-launcher.source.source-steam"));
+        StringAssert.Contains(Nodes(disappeared.Root).Single(node =>
+            node.Id == "game-launcher.source.source-windows").Text!, "Healthy");
+        await Background(widget);
+
+        ValueTask<WidgetAppLibraryPage> WaitForStaleSourcePage()
+        {
+            staleStarted.TrySetResult();
+            return new(releaseStale.Task);
+        }
+
+        ValueTask<WidgetAppLibraryPage> ReturnRecoveredPage()
+        {
+            currentReturned.TrySetResult();
+            return ValueTask.FromResult(SourcePage(
+                [Source("source-windows", "Windows",
+                    WidgetAppLibrarySourceHealth.Healthy, 2, "healthy"),
+                 Source("source-steam", "Steam",
+                    WidgetAppLibrarySourceHealth.Healthy, 2, "healthy")],
+                "revision-2"));
+        }
+
+        WidgetAppLibraryPage SourcePage(
+            IReadOnlyList<WidgetAppLibrarySource> sources,
+            string revision) => new(
+                [Item(0), Item(1)], null, null, revision)
+            {
+                Sources = sources,
+            };
+
+        static WidgetAppLibrarySource Source(
+            string id, string label, WidgetAppLibrarySourceHealth health,
+            long revision, string statusCode) =>
+            new(id, label, health, revision, statusCode);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task RecentMutationConflictPreservesOrganizationAndConcurrentOrder()
     {
         var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");

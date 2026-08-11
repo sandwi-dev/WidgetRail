@@ -30,6 +30,7 @@ public sealed class WindowsAppLibraryProvider :
     private readonly Dictionary<string, string> _opaqueIdsByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<WindowsAppLibraryItem>? _snapshot;
+    private IReadOnlyList<AppLibrarySourceSummary> _sourceObservations = [];
     private Dictionary<string, GameLibrarySourceItem> _registrationsByOpaqueId =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
@@ -117,6 +118,12 @@ public sealed class WindowsAppLibraryProvider :
         ArgumentNullException.ThrowIfNull(sources);
         if (sources.Count == 0 || sources.Count > 16 ||
             sources.Any(source => source is null) ||
+            sources.Any(source =>
+                string.IsNullOrWhiteSpace(source.SourceIdentity) ||
+                source.SourceIdentity.Length > 64 ||
+                string.IsNullOrWhiteSpace(source.Attribution) ||
+                source.Attribution.Length > 64 ||
+                SanitizeDisplayName(source.Attribution) != source.Attribution) ||
             sources.Select(source => source.SourceIdentity)
                 .Distinct(StringComparer.Ordinal).Count() != sources.Count)
             throw new ArgumentException("Game-library sources are invalid.", nameof(sources));
@@ -217,7 +224,10 @@ public sealed class WindowsAppLibraryProvider :
                     _catalogRevision, queryHash)
                 : null;
             return new AppLibraryBackendCursorPage(
-                projected, before, after, $"library-{_catalogRevision:X16}");
+                projected, before, after, $"library-{_catalogRevision:X16}")
+            {
+                Sources = _sourceObservations,
+            };
         }
     }
 
@@ -439,7 +449,7 @@ public sealed class WindowsAppLibraryProvider :
             var registrations = snapshots
                 .SelectMany(snapshot => snapshot.Items)
                 .ToArray();
-            return Commit(registrations, clearIcons: force);
+            return Commit(snapshots, registrations, clearIcons: force);
         }
         finally
         {
@@ -448,6 +458,7 @@ public sealed class WindowsAppLibraryProvider :
     }
 
     private IReadOnlyList<WindowsAppLibraryItem> Commit(
+        IReadOnlyList<GameLibrarySourceSnapshot> sourceSnapshots,
         IReadOnlyList<GameLibrarySourceItem>? registrations,
         bool clearIcons)
     {
@@ -507,10 +518,33 @@ public sealed class WindowsAppLibraryProvider :
 
             _registrationsByOpaqueId = byId;
             _snapshot = Array.AsReadOnly(snapshot);
+            _sourceObservations = Array.AsReadOnly(sourceSnapshots
+                .Select(SourceObservation)
+                .ToArray());
             _catalogRevision++;
             return _snapshot;
         }
     }
+
+    private static AppLibrarySourceSummary SourceObservation(
+        GameLibrarySourceSnapshot snapshot) => new(
+        "source-" + Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(snapshot.SourceIdentity)).AsSpan(0, 12))
+            .ToLowerInvariant(),
+        snapshot.Attribution,
+        snapshot.Health switch
+        {
+            GameLibrarySourceHealth.Healthy => AppLibrarySourceHealth.Healthy,
+            GameLibrarySourceHealth.Degraded => AppLibrarySourceHealth.Degraded,
+            _ => AppLibrarySourceHealth.Unavailable,
+        },
+        snapshot.SourceVersion,
+        snapshot.Health switch
+        {
+            GameLibrarySourceHealth.Healthy => "healthy",
+            GameLibrarySourceHealth.Degraded => "source_degraded",
+            _ => "source_unavailable",
+        });
 
     private bool IsStructurallyValid(GameLibrarySourceItem registration) =>
         registration is not null &&
