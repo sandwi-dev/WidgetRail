@@ -1417,6 +1417,22 @@ themes also use non-shrinking fixed regions, a thin native Slider
  absolute visible IDs, and exact provider call counts. Matching native tests use the
  exact Spotify scroll/rail IDs and five-row final topology. Focused Release
  coverage passes 24 widget-surface focus checks and 47 focus-navigation checks.
+ DLV-006 adds protocol-v14 continuous cursor collections without changing the
+ offset-paged replacement-window contract. `WidgetCursorResource<T>` owns one
+ latest-wins bidirectional request lane, complete-page append/prepend, a
+ two-page/256-item retention ceiling, 128 remembered cursors, stable typed item
+ keys, anchor-aware refresh, safe nearest deletion fallback, and exact entering-
+ edge focus. Native layout retains the authored anchor's viewport-relative
+ position before the first paint and keyed List/Grid descendants drive the
+ existing near-edge actions before focus can escape to a fixed header. Opaque
+ artwork handles are parsed and preserved as bounded identities but grant no
+ URL, file, network, decode, or action authority; trusted resolution remains
+ separate. Deterministic managed fixtures traverse both 2,000- and 10,000-item
+ providers while retaining at most 200 items and serializing at most 203 nodes.
+ Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,
+ 49 native focus checks, 4,777 native renderer checks, and the native bridge
+ parser; the clean exact-commit aggregate remains the named integration
+ checkpoint rather than evidence inherited from this dirty worktree.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

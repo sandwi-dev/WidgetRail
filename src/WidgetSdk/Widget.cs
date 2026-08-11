@@ -57,9 +57,26 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.RepeatOneGlyphVersion);
             if (ContainsFocusPersistence(Root))
                 required = Math.Max(required, ProtocolConstants.FocusPersistenceVersion);
+            if (ContainsCursorCollectionFeature(Root))
+                required = Math.Max(required, ProtocolConstants.CursorCollectionVersion);
             return required;
         }
     }
+
+    private static bool ContainsCursorCollectionFeature(WidgetElement element) => element switch
+    {
+        CollectionItemElement => true,
+        ResponsiveBranchElement branch => ContainsCursorCollectionFeature(branch.Child),
+        ScrollElement scroll => scroll.CollectionAnchorKey is not null ||
+            scroll.Children.Any(ContainsCursorCollectionFeature),
+        ButtonElement button => button.LeadingArtworkHandle is not null,
+        ImageElement image => image.ArtworkHandle is not null,
+        StackElement stack => stack.Children.Any(ContainsCursorCollectionFeature),
+        RowElement row => row.Children.Any(ContainsCursorCollectionFeature),
+        ActionSurfaceElement surface => surface.Children.Any(ContainsCursorCollectionFeature),
+        GridElement grid => grid.Children.Any(ContainsCursorCollectionFeature),
+        _ => false,
+    };
 
     private static bool ContainsFocusPersistence(WidgetElement element) => element switch
     {

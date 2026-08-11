@@ -284,8 +284,20 @@ guide](widget-authoring-guide.md#bounded-offset-paged-resources). Its
 contract while the SDK owns page state, invalidation, Latest coordination,
 bounded LRU caching, and entering-edge focus. It is an SDK state helper, not a
 new declarative node. A replacement page's changed entering-edge focus request
-outranks ordinal fallback from the prior page. Cursor and append/infinite-feed
-resources are not part of the current API.
+outranks ordinal fallback from the prior page.
+
+Protocol v14 adds `WidgetCursorResource<TItem>` for continuous collections.
+Its `PresentItem` modifier publishes a stable `collectionItemKey`; `Present`
+publishes one `collectionAnchorKey` plus the existing near-edge actions. The
+native host retains the anchor's viewport-relative position when a bounded
+window prepends, appends, refreshes, or evicts nodes, including items nested in
+a responsive Grid. At most 256 keyed items are serialized and offset paging
+continues to use its unchanged replacement-window behavior.
+
+The same version adds an opaque `artworkHandle` on Image/Button nodes. The host
+does not interpret it as a URL or filesystem path. Resolution is a separate
+trusted service; omission of resolved pixels is safe and grants no ambient
+authority.
 
 ## Per-view surface hints
 

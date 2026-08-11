@@ -268,13 +268,70 @@ public static class ViewSnapshotValidator
                         Add($"{path}.scrollPaginationThreshold", "invalid_scroll_pagination_threshold",
                             $"Scroll pagination threshold must be between 1 and {ProtocolConstants.MaximumScrollPaginationThreshold}.");
                 }
+                if (node.CollectionAnchorKey is not null)
+                {
+                    if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
+                        Add($"{path}.collectionAnchorKey", "feature_requires_version",
+                            $"Cursor collections require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
+                    CheckIdentifier(node.CollectionAnchorKey,
+                        $"{path}.collectionAnchorKey", "collection anchor key");
+                    var itemKeys = new HashSet<string>(StringComparer.Ordinal);
+                    var itemCount = 0;
+                    CollectCollectionItems(node, path);
+                    if (itemCount > ProtocolConstants.MaximumCursorCollectionItems)
+                        Add(path, "too_many_collection_items",
+                            $"A cursor collection may serialize at most {ProtocolConstants.MaximumCursorCollectionItems} retained items.");
+                    if (!itemKeys.Contains(node.CollectionAnchorKey))
+                        Add($"{path}.collectionAnchorKey", "missing_collection_anchor",
+                            "The collection anchor must name one retained item key.");
+
+                    void CollectCollectionItems(ViewNode current, string currentPath)
+                    {
+                        if (!ReferenceEquals(current, node) && current.Kind is ViewNodeKind.Scroll)
+                            return;
+                        if (current.CollectionItemKey is { } key)
+                        {
+                            itemCount++;
+                            if (!itemKeys.Add(key))
+                                Add($"{currentPath}.collectionItemKey", "duplicate_collection_item_key",
+                                    $"The collection item key '{key}' is repeated.");
+                            return;
+                        }
+                        var currentChildren = current.Children ?? [];
+                        for (var childIndex = 0; childIndex < currentChildren.Count; childIndex++)
+                            CollectCollectionItems(currentChildren[childIndex],
+                                $"{currentPath}.children[{childIndex}]");
+                    }
+                }
+                else if (ContainsCollectionItem(node, isRoot: true))
+                {
+                    Add($"{path}.collectionAnchorKey", "collection_anchor_required",
+                        "A non-empty keyed cursor collection requires one retained anchor.");
+                }
+
+                static bool ContainsCollectionItem(ViewNode current, bool isRoot)
+                {
+                    if (!isRoot && current.Kind is ViewNodeKind.Scroll) return false;
+                    if (current.CollectionItemKey is not null) return true;
+                    return (current.Children ?? []).Any(child =>
+                        ContainsCollectionItem(child, isRoot: false));
+                }
             }
             else if (node.ScrollAxis is not null || node.ScrollNearStartActionId is not null ||
                      node.ScrollNearEndActionId is not null ||
-                     node.ScrollPaginationThreshold is not null)
+                     node.ScrollPaginationThreshold is not null ||
+                     node.CollectionAnchorKey is not null)
             {
                 Add(path, "scroll_property_not_allowed",
                     "Scroll properties apply only to scroll containers.");
+            }
+            if (node.CollectionItemKey is not null)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
+                    Add($"{path}.collectionItemKey", "feature_requires_version",
+                        $"Cursor collection item keys require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
+                CheckIdentifier(node.CollectionItemKey,
+                    $"{path}.collectionItemKey", "collection item key");
             }
             if (node.Kind is ViewNodeKind.Grid)
             {
@@ -421,8 +478,26 @@ public static class ViewSnapshotValidator
                 Add($"{path}.actionId", "action_not_allowed",
                     "Action IDs apply only to buttons, sliders, and action surfaces.");
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
-            if (node.Kind is ViewNodeKind.Image ||
-                (node.Kind is ViewNodeKind.Button && node.ImageSource is not null))
+            if (node.ArtworkHandle is not null)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
+                    Add($"{path}.artworkHandle", "feature_requires_version",
+                        $"Opaque artwork handles require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
+                if (!supportsImageSource)
+                    Add($"{path}.artworkHandle", "artwork_handle_not_allowed",
+                        "Opaque artwork handles apply only to image and button nodes.");
+                CheckIdentifier(node.ArtworkHandle, $"{path}.artworkHandle", "artwork handle");
+                if (node.ImageSource is not null)
+                    Add(path, "multiple_artwork_sources",
+                        "A node may use an image source or an opaque artwork handle, not both.");
+                if (node.ImageFit is null)
+                    Add($"{path}.imageFit", "required", "Artwork requires a fit mode.");
+                else if (!Enum.IsDefined(node.ImageFit.Value))
+                    Add($"{path}.imageFit", "invalid_image_fit", "The image fit mode is not supported.");
+                if (node.Kind is ViewNodeKind.Image && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
+                    Add($"{path}.accessibilityLabel", "required", "An image requires an accessibility label.");
+            }
+            if (node.ImageSource is not null && supportsImageSource)
             {
                 var imageSource = ValidateImageSource(node.ImageSource);
                 if (imageSource == ImageSourceKind.Invalid)
@@ -440,19 +515,24 @@ public static class ViewSnapshotValidator
                     string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                     Add($"{path}.accessibilityLabel", "required", "An image requires an accessibility label.");
             }
+            else if (node.Kind is ViewNodeKind.Image && node.ArtworkHandle is null)
+            {
+                Add($"{path}.imageSource", "required",
+                    "An image requires an image source or opaque artwork handle.");
+            }
             else if (!supportsImageSource &&
-                (node.ImageSource is not null || node.ImageFit is not null))
+                (node.ImageSource is not null || node.ImageFit is not null || node.ArtworkHandle is not null))
             {
                 Add(path, "image_property_not_allowed",
                     "Image source and fit apply only to images and buttons with leading artwork.");
             }
-            else if (node.Kind is ViewNodeKind.Button && node.ImageFit is not null)
+            else if (node.Kind is ViewNodeKind.Button && node.ImageFit is not null && node.ArtworkHandle is null)
             {
                 Add($"{path}.imageFit", "image_fit_without_source",
                     "A button image fit requires a leading image source.");
             }
             if (node.Kind is ViewNodeKind.Button &&
-                node.ImageSource is not null && node.Glyph is not null)
+                (node.ImageSource is not null || node.ArtworkHandle is not null) && node.Glyph is not null)
                 Add(path, "multiple_leading_visuals",
                     "A button may use either one semantic glyph or one leading image, not both.");
             if (node.Glyph is not null && node.Kind is not (ViewNodeKind.Icon or ViewNodeKind.Button))
