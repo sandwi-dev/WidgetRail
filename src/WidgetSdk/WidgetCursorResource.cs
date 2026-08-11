@@ -272,6 +272,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             bool changed;
             lock (_gate)
             {
+                if (_current is { } duplicate && duplicate.Intent == intent)
+                    return new(WidgetOperationAdmission.Joined, duplicate.Completion.Task);
                 var before = _snapshot;
                 request = new(intent, _epoch, before);
                 _current = request;

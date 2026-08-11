@@ -19,7 +19,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
-    ("Resolved app icons are on-demand bounded and optional", AppLibraryIconsAreBounded),
+    ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
     ("Durable app IDs persist and remain authority scoped", AppLibrarySavedIdsAreDurableAndScoped),
     ("Pipe host effects publish only after requested successful app launch", AppLaunchHostEffectIsSuccessBound),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
@@ -203,14 +203,17 @@ static async Task AppLibraryIconsAreBounded()
     backend.SetAppLibraryBackend(Enumerable.Range(0, 33).Select(index =>
         new AppLibraryBackendItemSummary(
             $"provider-{index}", $"stable-{index}", $"App {index}",
-            AppLibraryKind.Application)));
+            AppLibraryKind.Application, "artwork-a")));
     backend.AppLibraryIconHandler = (_, cancellationToken) =>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(new AppLibraryIconSummary(png));
     };
+    var artwork = new AppLibraryArtworkRegistry();
+    var artworkSession = artwork.BeginSession(identity, backend);
     await using var broker = new PlatformCapabilityBroker(
-        identity, [PlatformCapabilities.AppLibraryReadV1], consent, backend);
+        identity, [PlatformCapabilities.AppLibraryReadV1], consent, backend,
+        null, AppLibrarySavedIdIssuer.Shared, artworkSession);
     broker.SetLifecycle(BrokerLifecycleState.Visible);
 
     var listPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
@@ -221,7 +224,9 @@ static async Task AppLibraryIconsAreBounded()
             BrokerJson.StrictOptions)));
     var page = listPayload.Deserialize<AppLibraryPageSummary>(BrokerJson.StrictOptions)!;
     Assert.Equal(33, page.Items.Count);
-    Assert.True(page.Items.All(item => item.IconPngBase64 is null));
+    Assert.True(page.Items.All(item =>
+        AppLibraryArtworkRegistry.IsHandle(item.ArtworkHandle)));
+    Assert.Equal(33, page.Items.Select(item => item.ArtworkHandle).Distinct().Count());
     Assert.Equal(0, backend.AppLibraryIconCalls);
 
     var resolvePayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
@@ -235,22 +240,45 @@ static async Task AppLibraryIconsAreBounded()
     var resolved = resolvePayload.Deserialize<ResolveSavedAppLibraryItemsSummary>(
         BrokerJson.StrictOptions)!;
     Assert.Equal(33, resolved.Items.Count);
-    Assert.Equal(AppLibraryImageLimits.MaximumResolvedIconCount,
-        resolved.Items.Count(item => item.IconPngBase64 is not null));
-    Assert.Equal(AppLibraryImageLimits.MaximumResolvedIconCount,
-        backend.AppLibraryIconCalls);
+    Assert.True(resolved.Items.All(item => item.ArtworkHandle is not null));
+    Assert.Equal(0, backend.AppLibraryIconCalls);
+
+    var firstHandle = page.Items[0].ArtworkHandle!;
+    Assert.Equal(png, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
+    Assert.Equal(1, backend.AppLibraryIconCalls);
+
+    Assert.Equal(null, await artwork.ResolveAsync(
+        new BrokerWidgetIdentity("other.package", "other.publisher", "other.instance"),
+        firstHandle, CancellationToken.None));
+    Assert.Equal(null, await artwork.ResolveAsync(
+        identity, "library.art.00000000000000000000000000000000", CancellationToken.None));
+    Assert.Equal(1, backend.AppLibraryIconCalls);
 
     backend.AppLibraryIconHandler = (_, _) =>
         Task.FromResult(new AppLibraryIconSummary("not-base64"));
-    var invalidPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+    Assert.Equal(null, await artwork.ResolveAsync(
+        identity, firstHandle, CancellationToken.None));
+
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-0", "stable-0", "App 0",
+            AppLibraryKind.Application, "artwork-b"),
+    ]);
+    var rotatedPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
         BrokerJson.ProtocolVersion, 3, identity,
         PlatformCapabilities.AppLibraryReadV1,
-        PlatformCapabilities.AppLibraryResolveSaved,
+        PlatformCapabilities.AppLibraryList,
         JsonSerializer.SerializeToElement(
-            new ResolveSavedAppLibraryItemsRequest([page.Items[0].SavedId]),
-            BrokerJson.StrictOptions)));
-    Assert.Equal(null, invalidPayload.Deserialize<ResolveSavedAppLibraryItemsSummary>(
-        BrokerJson.StrictOptions)!.Items.Single().IconPngBase64);
+            new AppLibraryPageRequest(0, 64), BrokerJson.StrictOptions)));
+    var rotated = rotatedPayload.Deserialize<AppLibraryPageSummary>(BrokerJson.StrictOptions)!;
+    Assert.True(rotated.Items[0].ArtworkHandle != firstHandle,
+        "Changed trusted artwork revision reused its decoded-cache handle.");
+    Assert.Equal(null, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
+
+    for (var index = 0; index < 10_000; index++)
+        Assert.Equal(null, await artwork.ResolveAsync(
+            identity, $"library.art.{index:x32}", CancellationToken.None));
+    Assert.Equal(2, backend.AppLibraryIconCalls);
 }
 
 static Task CapabilityVocabularyIsClosed()

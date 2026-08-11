@@ -829,12 +829,10 @@ static async Task OneAppUsesCompactTile()
 
 static async Task ResolvedIconRenders()
 {
-    const string png =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
-        "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    const string handle = "library.art.0123456789abcdef0123456789abcdef";
     var fake = new FakeAppLibraryHost
     {
-        Pages = { [0] = Page([App("opaque-a", "Alpha", iconPngBase64: png)], null) },
+        Pages = { [0] = Page([App("opaque-a", "Alpha", artworkHandle: handle)], null) },
         PrivateState = SavedState("saved-opaque-a"),
     };
     var widget = Create(fake);
@@ -845,10 +843,11 @@ static async Task ResolvedIconRenders()
     var launch = ActionSurfaces(snapshot.Root).Single(tile => tile.ActionId == "games.launch");
     Assert.Equal(ViewNodeKind.ActionSurface, launch.Kind);
     var artwork = Nodes(launch).Single(node => node.Id == launch.Id + ".artwork");
-    Assert.True(artwork.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal));
+    Assert.Equal(handle, artwork.ArtworkHandle);
+    Assert.True(artwork.ImageSource is null);
     Assert.Equal(ImageFit.Contain, artwork.ImageFit);
     Assert.True(artwork.Glyph is null);
-    Assert.Equal(ProtocolConstants.ActionSurfaceVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.CursorCollectionVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -2253,11 +2252,11 @@ static WidgetAppLibraryItem App(
     string id,
     string name,
     WidgetAppLibraryKind kind = WidgetAppLibraryKind.Application,
-    string? iconPngBase64 = null) =>
+    string? artworkHandle = null) =>
     new(id, name, kind)
     {
         SavedId = "saved-" + id,
-        IconPngBase64 = iconPngBase64,
+        ArtworkHandle = artworkHandle,
     };
 
 static WidgetAppLibraryPage Page(IReadOnlyList<WidgetAppLibraryItem> items, int? next) =>

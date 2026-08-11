@@ -443,6 +443,19 @@ public:
             gba::RemoteImageLimits{},
             [this](std::wstring_view, gba::RemoteImageState) {
                 if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
+            },
+            gba::RemoteImageCache::FetchFunction{},
+            [this](std::wstring_view source) {
+                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+                const auto widgetSeparator = source.find(L'\x1f', prefix.size());
+                const auto handleSeparator = source.rfind(L'\x1f');
+                if (!source.starts_with(prefix) || widgetSeparator == std::wstring_view::npos ||
+                    handleSeparator == widgetSeparator)
+                    return false;
+                const auto widgetId = source.substr(
+                    prefix.size(), widgetSeparator - prefix.size());
+                const auto handle = source.substr(handleSeparator + 1);
+                return bridge_.RequestArtwork(widgetId, handle).value_or(false);
             });
         declarativeRenderer_ = std::make_unique<gba::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
@@ -1206,6 +1219,15 @@ private:
                 if (awaitingSuccessfulOpenPaint_) return 0;
                 PollController();
                 (void)bridge_.PumpEvents();
+                for (auto& artwork : bridge_.TakeArtworkResults()) {
+                    if (artwork.pngBase64.empty())
+                        (void)imageCache_->FailTrustedArtwork(
+                            artwork.widgetId, artwork.artworkHandle);
+                    else
+                        (void)imageCache_->SupplyTrustedArtwork(
+                            artwork.widgetId, artwork.artworkHandle,
+                            std::move(artwork.pngBase64));
+                }
                 if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
                     const auto& current = appearanceState_.current();
                     if (!current || *revision > current->revision) {
@@ -4699,6 +4721,7 @@ private:
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
                 options.sliderValueOverrides = presentedSliderValues;
+                options.artworkWidgetId = std::wstring{renderedWidget};
                 if (!retainedCommittedSnapshot) {
                     sliderInteraction_.RetainAdjustmentMode(
                         snapshot->instanceId,

@@ -20,6 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Trusted broker projection separates launch and stable provider identities", BrokerProjectionSeparatesIdentities),
     ("Application icons are rasterized on demand and cached", IconsAreOnDemandAndCached),
     ("AppsFolder icons are on demand and degrade safely", AppsFolderIconsAreOnDemand),
+    ("Artwork demand revalidates the exact current registration", ArtworkDemandRevalidatesRegistration),
     ("Missing application icons degrade to an empty optional result", MissingIconFallsBack),
     ("Application icon PNG encoder is bounded and structurally valid", IconPngIsBounded),
     ("Launch revalidates the exact current shortcut before invoking Shell", LaunchRevalidatesExactShortcut),
@@ -186,6 +187,15 @@ static async Task SteamCatalogIsOpaque()
     Assert.False(json.Contains("440", StringComparison.Ordinal));
     Assert.False(json.Contains("appmanifest", StringComparison.OrdinalIgnoreCase));
     Assert.Equal(AppLibraryKind.Game, projected.Kind);
+    Assert.True(projected.ArtworkRevision is { Length: 64 });
+    Assert.False(projected.ArtworkRevision.Contains("acf-one", StringComparison.Ordinal));
+
+    steam.Items = [steam.Items.Single() with { RevalidationKey = "acf-two" }];
+    var refreshed = (await ((IAppLibraryPlatformBrokerBackend)provider)
+        .RefreshAppLibraryAsync(CancellationToken.None)).Single();
+    Assert.Equal(projected.ProviderAppId, refreshed.ProviderAppId);
+    Assert.Equal(projected.StableProviderIdentity, refreshed.StableProviderIdentity);
+    Assert.True(projected.ArtworkRevision != refreshed.ArtworkRevision);
 }
 
 static async Task SteamLaunchRevalidatesManifest()
@@ -396,6 +406,33 @@ static async Task AppsFolderIconsAreOnDemand()
     Assert.Equal(null, (await fallback.GetAppLibraryIconAsync(
         fallbackId, CancellationToken.None)).PngBase64);
     Assert.Equal(2, fallbackIconSource.Calls);
+}
+
+static async Task ArtworkDemandRevalidatesRegistration()
+{
+    const string shortcut = @"C:\Menu\Artwork.lnk";
+    var start = new FakeSource(
+        Reg("original", "Original", StartMenuScope.CurrentUser, shortcut));
+    var apps = new FakeAppsFolderSource(
+        AppReg("Contoso.Original_abcd!App", "Original packaged app"));
+    var iconSource = new FakeIconSource(CreateTestIcon());
+    var provider = CreateMerged(start, apps, iconSource: iconSource);
+    var initial = await provider.GetAppsAsync();
+    var shortcutId = initial.Single(item => item.DisplayName == "Original").AppId;
+    var packagedId = initial.Single(
+        item => item.DisplayName == "Original packaged app").AppId;
+
+    start.Items = [Reg("replacement", "Replacement", StartMenuScope.CurrentUser, shortcut)];
+    apps.Items = [AppReg("Contoso.Original_abcd!App", "Changed packaged app") with
+    {
+        RevalidationKey = "replacement-registration",
+    }];
+
+    Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+        shortcutId, CancellationToken.None)).PngBase64);
+    Assert.Equal(null, (await provider.GetAppLibraryIconAsync(
+        packagedId, CancellationToken.None)).PngBase64);
+    Assert.Equal(0, iconSource.Calls);
 }
 
 static Task IconPngIsBounded()

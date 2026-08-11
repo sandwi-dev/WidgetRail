@@ -342,4 +342,14 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(SharedComponentGeometryTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32)
     add_test(NAME SharedComponentGeometryTests COMMAND SharedComponentGeometryTests)
+
+    add_executable(RemoteImageCacheTests
+        RemoteImageCacheTests.cpp RemoteImageCache.cpp)
+    target_compile_features(RemoteImageCacheTests PRIVATE cxx_std_20)
+    target_compile_options(RemoteImageCacheTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(RemoteImageCacheTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(RemoteImageCacheTests PRIVATE
+        d2d1 winhttp windowscodecs ole32)
+    add_test(NAME RemoteImageCacheTests COMMAND RemoteImageCacheTests)
 endif()

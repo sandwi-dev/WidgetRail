@@ -1,10 +1,15 @@
 #include "RemoteImageCache.h"
 
+#include <algorithm>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
+#include <string>
 
 int main() {
     using namespace gba;
@@ -72,5 +77,93 @@ int main() {
     assert(cache.GetState(inlinePng) == RemoteImageState::Ready);
     cache.Shutdown();
     assert(cache.Request(L"https://example.test/c") == RemoteImageRequestResult::ShuttingDown);
+
+    std::mutex artworkMutex;
+    std::condition_variable artworkCompleted;
+    int artworkFetches = 0;
+    RemoteImageLimits artworkLimits;
+    artworkLimits.maximumEntries = 32;
+    artworkLimits.maximumDecodedBytes = 32 * 4;
+    RemoteImageCache* artworkCacheOwner = nullptr;
+    RemoteImageCache artworkCache(
+        artworkLimits,
+        [&](std::wstring_view, RemoteImageState state) {
+            assert(state == RemoteImageState::Ready);
+            {
+                std::scoped_lock lock(artworkMutex);
+                ++artworkFetches;
+            }
+            artworkCompleted.notify_all();
+        },
+        [](std::wstring_view source, std::stop_token, const RemoteImageLimits&) {
+            assert(source.starts_with(L"data:image/png;base64,"));
+            RemoteDecodedImage image;
+            image.width = 1;
+            image.height = 1;
+            image.stride = 4;
+            image.premultipliedBgra = {0x20, 0x30, 0x40, 0xFF};
+            image.mimeType = L"image/png";
+            return RemoteImageFetchResult{S_OK, std::move(image), {}};
+        },
+        [&](std::wstring_view key) {
+            assert(key.starts_with(L"gbar-artwork\x1f"));
+            constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+            const auto widgetEnd = key.find(L'\x1f', prefix.size());
+            const auto handleStart = key.rfind(L'\x1f');
+            return artworkCacheOwner->SupplyTrustedArtwork(
+                key.substr(prefix.size(), widgetEnd - prefix.size()),
+                key.substr(handleStart + 1), L"AAAA");
+        });
+    artworkCacheOwner = &artworkCache;
+    assert(artworkCache.RequestTrustedArtwork(L"https://example.test/not-trusted") ==
+           RemoteImageRequestResult::InvalidUrl);
+    constexpr int largeCollectionItems = 10'000;
+    for (int base = 0; base < largeCollectionItems; base += 32) {
+        const int batch = std::min(32, largeCollectionItems - base);
+        for (int index = 0; index < batch; ++index) {
+            auto suffix = std::to_wstring(base + index);
+            suffix.insert(suffix.begin(), 32 - suffix.size(), L'0');
+            const auto key = L"gbar-artwork\x1fgames-apps\x1frow-" +
+                std::to_wstring(base + index) + L"\x1flibrary.art." + suffix;
+            assert(artworkCache.RequestTrustedArtwork(key) ==
+                   RemoteImageRequestResult::Queued);
+            assert(artworkCache.RequestTrustedArtwork(key) ==
+                   RemoteImageRequestResult::AlreadyTracked);
+        }
+        std::unique_lock lock(artworkMutex);
+        assert(artworkCompleted.wait_for(
+            lock, std::chrono::seconds(2),
+            [&] { return artworkFetches >= base + batch; }));
+        const auto stats = artworkCache.GetStats();
+        assert(stats.entries <= 32);
+        assert(stats.decodedBytes <= 32 * 4);
+    }
+    assert(artworkFetches == largeCollectionItems);
+    const auto oldRevision =
+        L"gbar-artwork\x1fgames-apps\x1frow-revision\x1f"
+        L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const auto newRevision =
+        L"gbar-artwork\x1fgames-apps\x1frow-revision\x1f"
+        L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    assert(artworkCache.RequestTrustedArtwork(oldRevision) ==
+           RemoteImageRequestResult::Queued);
+    {
+        std::unique_lock lock(artworkMutex);
+        assert(artworkCompleted.wait_for(
+            lock, std::chrono::seconds(2),
+            [&] { return artworkFetches == largeCollectionItems + 1; }));
+    }
+    assert(artworkCache.GetState(oldRevision) == RemoteImageState::Ready);
+    assert(artworkCache.RequestTrustedArtwork(newRevision) ==
+           RemoteImageRequestResult::Queued);
+    assert(artworkCache.GetState(oldRevision) == RemoteImageState::Missing);
+    {
+        std::unique_lock lock(artworkMutex);
+        assert(artworkCompleted.wait_for(
+            lock, std::chrono::seconds(2),
+            [&] { return artworkFetches == largeCollectionItems + 2; }));
+    }
+    assert(artworkCache.GetState(newRevision) == RemoteImageState::Ready);
+    artworkCache.Shutdown();
     std::cout << "RemoteImageCacheTests passed\n";
 }

@@ -1319,6 +1319,7 @@ method static GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileReques
 method static GameBarAlternative.WidgetSdk.TextElement.op_Equality(GameBarAlternative.WidgetSdk.TextElement? left, GameBarAlternative.WidgetSdk.TextElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.TextElement.op_Inequality(GameBarAlternative.WidgetSdk.TextElement? left, GameBarAlternative.WidgetSdk.TextElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.TileArtwork.FromGlyph(GameBarAlternative.WidgetProtocol.WidgetGlyph glyph, string accessibilityLabel) -> GameBarAlternative.WidgetSdk.TileArtwork
+method static GameBarAlternative.WidgetSdk.TileArtwork.FromHandle(GameBarAlternative.WidgetSdk.WidgetArtworkHandle handle, string accessibilityLabel, GameBarAlternative.WidgetProtocol.ImageFit fit = GameBarAlternative.WidgetProtocol.ImageFit.Cover) -> GameBarAlternative.WidgetSdk.TileArtwork
 method static GameBarAlternative.WidgetSdk.TileArtwork.FromHttps(string source, string accessibilityLabel, GameBarAlternative.WidgetProtocol.ImageFit fit = GameBarAlternative.WidgetProtocol.ImageFit.Cover) -> GameBarAlternative.WidgetSdk.TileArtwork
 method static GameBarAlternative.WidgetSdk.TileArtwork.FromInlinePng(string pngBase64, string accessibilityLabel, GameBarAlternative.WidgetProtocol.ImageFit fit = GameBarAlternative.WidgetProtocol.ImageFit.Cover) -> GameBarAlternative.WidgetSdk.TileArtwork
 method static GameBarAlternative.WidgetSdk.ToastElement.op_Equality(GameBarAlternative.WidgetSdk.ToastElement? left, GameBarAlternative.WidgetSdk.ToastElement? right) -> bool
@@ -2282,7 +2283,7 @@ property string? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.
 property string? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.OffsetUri { get; set; }
 property string? GameBarAlternative.WidgetSdk.TextElement.AccessibilityLabel { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetActionEvent.InputScopeId { get; set; }
-property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.IconPngBase64 { get; set; }
+property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.ArtworkHandle { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.RequestedFocusId { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetCursorViewport<TItem>.EmptyFocusId { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetLoopbackJsonRequest.BearerSecretSlot { get; set; }

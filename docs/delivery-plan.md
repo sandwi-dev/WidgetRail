@@ -686,12 +686,29 @@ The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
 `main`. DLV-006's public/native prefix, cursor-cycle correction, and final
 production-host/UIA composition proof are accepted and integrated through
-`9c7438f`. DLV-022 produced candidate `c349bbd`, but independent review rejected
-that prefix because URI-only media keys cannot represent legitimate duplicate
-queue/playlist occurrences and the single-row playlist graph authors a self
-edge. DLV-018 was already started and remains the Assigned visible milestone;
-DLV-053 is the next bounded correction before DLV-043. DLV-038 remains deferred
-test-architecture debt rather than filler work.
+`9c7438f`. The coherent DLV-022/018/053/054 prefix is accepted and integrated
+through `8c1bbdf`: Spotify now uses bounded continuous occurrence-aware lists,
+and Games & Apps has lazy trusted artwork whose provider work does not serialize
+ordinary bridge traffic and whose exact revalidation revision rotates stale
+native pixels. Integration review then found Spotify source changed while its
+already-installed immutable manifest remained `0.2.11`. Accepted DLV-055
+`efffa53` publishes, installs, selects, enables, and first-renders `0.2.12`; the
+fresh Release overlay is visibly running for user verification. An independent
+main-worktree rebuild then exposed path-sensitive package output: the same
+commit produced a different sealed digest and immutable `0.2.12` correctly
+refused replacement. Accepted DLV-043 source commit `6c619e9`, integrated
+through `d534410`, replaces the logical partial widget with real value-based
+route/action, playback, and presentation boundaries while retaining one
+  orchestration owner. DLV-056 candidate `2737852`, integrated through
+  `e694316`, proved identical clean-root output but failed the required ordinary
+  warm-main refresh: main rebuilt a different DLL/archive from the same commit.
+  DLV-057 commit `90cadf4` is accepted and integrated: warm main, repeated
+  main, detached-root, installed content, and the planner's post-integration
+  main refresh now match exactly at immutable `0.2.14`, and PID 27684 is visibly
+  running. DLV-059 is the active immediate prerequisite for the requested
+  dedicated Game Launcher; DLV-060, DLV-066, and DLV-067 form its ordered
+  visible queue. DLV-038 remains deferred test-architecture debt rather than
+  filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2218,8 +2235,8 @@ canonical result remains the sole Tier-3 run.
 
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Candidate `c349bbd` rejected; correction queued as DLV-053 after the
-already-started DLV-018 milestone
+**State:** Done; source `c349bbd` corrected by DLV-053 and integrated through
+`8c1bbdf`
 **Baseline:** accepted DLV-006 integration `9c7438f` plus the reviewer commit
 recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
@@ -2291,7 +2308,7 @@ paged resource first joins an equal current intent. The bounded parity fix above
 is therefore an immediate prerequisite of the visible DLV-022 outcome and is
 authorized inside this milestone; a Spotify-local busy flag remains prohibited.
 
-**Reviewer disposition:** Rejected. Candidate `c349bbd` correctly adds the exact-
+**Initial reviewer disposition:** Rejected. Candidate `c349bbd` correctly adds the exact-
 intent shared join and broad continuous-list coverage, but
 `SpotifyCollectionIdentity.Media` hashes only the media URI. Spotify queues and
 playlists may legitimately contain the same track or episode more than once;
@@ -2304,10 +2321,26 @@ edge to itself when the detail contains one item. Do not integrate `c349bbd` or
 dependent commits until DLV-053 supplies bounded occurrence identity and removes
 the self edge. Per the asynchronous review rule, DLV-018 continues first.
 
+**Correction disposition:** Accepted at code level through DLV-053 commit
+`7f5c2fd`. URI remains semantic media identity while one private, collection-
+context-bound policy supplies unique occurrence keys for same-page and retained
+cross-page duplicates. Unique items preserve URI-derived keys across offset
+changes; distinguishable duplicates retain keys through refresh/insertion/
+deletion; otherwise-identical rows use deterministic nearest-equivalent
+matching. Matcher state is capped to the resource window, Reset clears it, and
+an exact request generation makes cancellation-ignoring superseded completion
+side-effect free. Exact occurrence keys flow through focus and playback lookup.
+The singleton row retains Up to Play but no longer authors Down to itself.
+Retained focused evidence passes Spotify 45/45, installed-worker conformance
+6/6, documentation across 53 files, and Spotify 0.2.11 package validation. No
+shared SDK, provider, native, protocol, public API, live-account, screenshot, or
+aggregate work changed. The complete prefix is still unintegrated only because
+DLV-018 requires DLV-054's separate correction.
+
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
-**State:** Assigned on top of the unaccepted DLV-022 candidate; finish and commit
-before taking DLV-053
+**State:** Done; source `039b7b8` corrected by DLV-054 and integrated through
+`8c1bbdf`
 **Baseline:** unaccepted DLV-022 candidate `c349bbd`
 **Dependencies:** DLV-006 and DLV-017
 **Owner:** trusted app-library artwork registration/projection, brokered opaque
@@ -2354,9 +2387,28 @@ resolution cannot stay identity/generation bound, native cache changes overlap
 active platform work, or a new public authority/protocol beyond DLV-006 is
 required.
 
+**Reviewer disposition:** Rejected. Candidate `039b7b8` correctly replaces
+eager inline icon pixels with opaque lazy handles, revalidates supported source
+registrations before rasterization, bounds broker registrations and the native
+decode cache, composes Games & Apps through the public SDK, and retains focused
+provider/broker/bridge/native evidence. However the image-cache worker calls
+the synchronous `WidgetBridgeClient::ResolveArtwork` while holding the same new
+recursive request mutex that every UI-thread bridge operation acquires. A slow
+or cancellation-ignoring provider lookup can therefore delay event pumping,
+input/lifecycle requests, catalog work, and Stop for the broker request
+deadline, so moving work to the image thread does not make the UI path
+nonblocking. The candidate also preserves a handle when provider AppId and
+stable identity are unchanged, but neither that handle nor the native bitmap
+key includes the trusted registration revalidation revision. When an icon
+changes in place, the provider refreshes its private icon cache while the
+renderer can retain the old decoded bitmap indefinitely. Current tests cover
+different-identity replacement, not these two cases. Keep `039b7b8` and its
+dependent commits unintegrated until DLV-054 closes both visible reliability
+gaps without broadening widget authority.
+
 ### DLV-053 — Correct Spotify occurrence identity and singleton focus
 
-**State:** Ready after DLV-018
+**State:** Done; accepted as `7f5c2fd` and integrated through `8c1bbdf`
 **Baseline:** closing commit of DLV-018, including unaccepted candidate
 `c349bbd`; retain the complete prefix for correction and review
 **Dependencies:** DLV-006, DLV-022 candidate `c349bbd`, and DLV-018
@@ -2415,10 +2467,185 @@ duplicate-key failure, or a product choice about which non-equivalent Spotify
 item should play. Preserve exact provider evidence rather than substituting a
 title/global-ordinal key.
 
+**Reviewer disposition:** Accepted. One private occurrence policy per Spotify
+media collection retains URI as semantic identity and adds only a bounded
+collection-context discriminator. Same-page and retained cross-page duplicates
+receive unique collection/focus/action keys; unique URI keys survive offset
+changes; duplicate keys remain stable through refresh, insertion, deletion,
+eviction/refetch, and exact playback lookup. Truly indistinguishable occurrences
+use deterministic nearest-equivalent matching within the retained window. An
+exact request generation prevents superseded cancellation-ignoring completion
+from mutating matcher state, and Reset clears all retained occurrences. A
+one-row playlist now authors Play Down to row and row Up to Play with no self
+Down edge. Retained Release evidence passes Spotify 45/45, installed-worker
+conformance 6/6, 53 documentation files, and the validated Spotify 0.2.11
+package. DLV-054 subsequently closed the preceding artwork correction and the
+coherent prefix is integrated through `8c1bbdf`; live proof waits for DLV-055 to
+publish the changed Spotify source under a new immutable package version.
+
+### DLV-054 — Keep trusted artwork current without blocking the overlay
+
+**State:** Done; accepted source commit `546f014`, integrated through `8c1bbdf`
+**Closing commit:** `546f014` (`[DLV-054] keep trusted artwork current without
+blocking`)
+**Baseline:** closing commit of DLV-053, including rejected DLV-018 candidate
+`039b7b8`; retain the complete prefix for correction and review
+**Dependencies:** DLV-006, DLV-018 candidate `039b7b8`, and DLV-053 only for
+serialized lane order
+**Owner:** widgets lane as the serialized cross-lane lead over trusted app-
+library artwork revision/generation admission, native bridge demand ownership,
+bounded decode/cache invalidation, direct host fixtures, and affected public
+artwork documentation; no new widget authority or unrelated bridge redesign
+**Concurrency:** Platform remains idle while this correction owns the shared
+WidgetBridgeClient, renderer, cache, and broker artwork files. Do not touch
+DLV-025 compositor evidence or reviewer-owned files.
+**Visible outcome:** Games & Apps loads and refreshes the exact current trusted
+icons without freezing controller/keyboard interaction, widget switching,
+event pumping, or overlay shutdown when icon resolution is slow or fails.
+
+**Objective:** Preserve DLV-018's opaque lazy artwork path while making demand
+nonblocking with respect to native UI/control-plane work and making an in-place
+trusted registration/icon change invalidate the old handle, decoded image, and
+render-target bitmap deterministically.
+
+**In scope:** map `WidgetBridgeClient` responsibility and threading before and
+after; one bounded artwork request owner that never holds the UI caller behind
+provider I/O; exact correlation, current widget/runtime generation, request
+count, queue, timeout, cancellation, shutdown, and late-reply rules; current-
+generation publication admission before and after provider completion; a
+trusted host-only artwork revision derived from the exact registration
+revalidation key without exposing source identity; handle rotation or explicit
+cache invalidation when that revision changes; stale-handle, same-identity icon
+replacement, removal/reappearance, worker restart before first new list,
+provider stall/failure, rapid switch, and cache eviction/refetch fixtures;
+deletion of superseded broad bridge locking or cache state.
+
+**Out of scope:** embedding pixels in snapshots, arbitrary file/URL/network
+access, a generic community media service, public SDK/protocol revision,
+provider launch-identity changes, Steam remote artwork, DLV-025 composition,
+the full DLV-033 session-coordinator refactor, per-widget timing branches, or
+accepting a two-second UI pause as a bound.
+
+**Acceptance criteria:** a manually blocked artwork provider can consume its
+bounded request deadline without delaying native event pumping, an unrelated
+snapshot/action/lifecycle request, B/Guide/Close processing, or Stop; no
+artwork task or frame read survives shutdown or widget-generation retirement,
+and a late old-generation reply cannot populate cache or paint. Replacing icon
+content/revalidation data while preserving provider AppId, SavedId, and stable
+launch identity produces a new artwork revision and the next render decodes
+the new pixels; the old handle and bitmap cannot reappear after refresh,
+worker restart, eviction, or route return. Existing 512-registration,
+32-entry/32-MiB native cache, 12-KiB/64-pixel decode, 2,000/10,000 logical
+demand, semantic fallback, focus, membership, warm-state, and launch-authority
+bounds remain exact. The completion report gives the required before/after
+`WidgetBridgeClient` threading/responsibility map and does not claim EQ-020's
+broader synchronous startup problem is closed.
+
+**Verification:** Tier 1 provider, broker registry, bridge, Widget SDK, Games &
+Apps, RemoteImageCache, renderer, and documentation Release suites. Tier 2 one
+production-host fixture with manually controlled slow artwork, concurrent
+control-plane/UI progress, generation replacement, and same-identity icon
+revision. Build and validate the Games & Apps package and production
+OverlayHost. No aggregate, screenshot, live store, broad bridge coordinator,
+or physical controller run.
+
+**Stop/escalate when:** a safe correction requires a public protocol/authority
+change, a second native bridge process or broad session coordinator, cannot
+separate artwork I/O from UI/control-plane progress without material
+architecture choice, or overlaps active platform work. Preserve the exact
+blocked-provider trace rather than accepting serialized UI latency.
+
+**Reviewer disposition:** Accepted. Artwork demand receives a quick correlated
+acknowledgement before trusted provider I/O, then completes through a bounded
+private event queue with current worker/artwork-session admission. Stop and
+same-widget lifecycle traffic proceed while a cancellation-ignoring provider is
+blocked; retired completion cannot publish. A host-only digest of the exact
+provider revalidation key rotates the opaque handle, decoded cache entry, and
+per-node render bitmap even when AppId, SavedId, and launch identity are stable.
+The 512-registration, 32-entry/32-MiB cache, 12-KiB/64-pixel decode, semantic
+fallback, focus, membership, warm-state, and launch-authority bounds remain.
+Focused Release evidence passes provider 32/32, broker 51/51, Bridge 70/70,
+Widget SDK 85/85, Games & Apps 56/56, first-party installed conformance 6/6,
+4,777 renderer checks, native cache/parser cases, the production host build, and
+54 documentation contracts. No aggregate or screenshot ran. The main Release
+artifact graph rebuilt successfully after integration; packaged live artwork
+remains verification evidence rather than a claim that EQ-020 is closed.
+
+### DLV-055 — Publish the current Spotify correction under a unique version
+
+**State:** Done; accepted and integrated as `efffa53`
+**Closing commit:** `efffa53` (`[DLV-055] publish Spotify 0.2.12 package`)
+**Baseline:** accepted integration `8c1bbdf` plus the reviewer control-plane
+commit containing this assignment
+**Dependencies:** DLV-022 and DLV-053; DLV-054 only for contiguous integration
+order
+**Owner:** widgets lane over Spotify Community manifest/package metadata,
+directly affected version references, supported install/select workflow, and the
+smallest exact installed-package fixture; no Spotify behavior or architecture
+changes
+**Concurrency:** Platform may remain idle; do not touch native host, bridge,
+provider, public SDK/protocol, DLV-025 evidence, or reviewer-owned files.
+**Visible outcome:** The freshly launched overlay executes the accepted
+continuous-list and duplicate-occurrence Spotify code instead of silently
+reusing the older installed `0.2.11` payload.
+
+**Objective:** Restore DLV-052's content-unique package discipline after
+DLV-022/DLV-053 changed Spotify source without changing its immutable manifest
+version, then make the exact built package the enabled active local version.
+
+**In scope:** increment Spotify to canonical pre-release version `0.2.12`;
+update exact public/version references; build, validate, and pack through the
+supported Community script; disable, install, explicitly select `0.2.12`, and
+enable through the supported catalog workflow; prove the installed payload
+digest equals the just-built package and differs from `0.2.11`; start the exact
+package through the generic AppContainer path and obtain its first snapshot;
+retain `0.2.11` as an inactive rollback version.
+
+**Out of scope:** Spotify behavior, list/focus/occurrence changes, DLV-043
+decomposition, provider/OAuth/Premium work, deleting an installed version,
+permissive same-version overwrite, catalog/security redesign, public SDK or
+protocol changes, screenshots, live credentials, or aggregate verification.
+
+**Acceptance criteria:** source, manifest, docs, built archive, installed
+manifest, active catalog entry, and enabled worker all identify `0.2.12`; the
+installed sealed payload digest equals the archive that was just built and is
+not the prior `0.2.11` digest. The package starts through the production generic
+AppContainer worker path and publishes a first credential-free snapshot. The
+workflow never silently selects `0.2.11`, never overwrites an immutable version,
+and leaves the previous version available only as an inactive rollback.
+
+**Verification:** Tier 1 Spotify package build/validation and documentation
+contracts. Tier 2 only the smallest installed first-party/community package
+start/first-snapshot fixture plus exact catalog/digest inspection. Do not rerun
+the 45-case Spotify behavior suite because production behavior did not change;
+no aggregate, provider, native, screenshot, or live-account run.
+
+**Stop/escalate when:** the supported workflow cannot install/select without
+deleting or overwriting an immutable package, the exact digest cannot be proven,
+or startup fails for a reason outside package freshness. Preserve the profile
+and report rather than weakening catalog integrity.
+
+**Reviewer disposition:** Accepted for its stated implementation-worktree
+artifact. Source/manifest/docs, archive, installed manifest, active catalog, and
+enabled worker identify `0.2.12`; `0.2.11` remains installed and inactive. The
+independent archive-to-installed content digest matches, differs from `0.2.11`,
+and the required-AppContainer generic worker returns a valid credential-free
+first snapshot at sequence 2. The 45-case behavior suite and broader gates did
+not rerun. Commit `efffa53` is fast-forwarded to main and the coherent Release
+overlay is visibly running as PID 25956. A subsequent build from main produced
+the same three-file 146,050-byte archive shape but a different sealed content
+digest (`f989ac...` versus installed `a946b3...`); immutable install correctly
+refused replacement and the supported workflow reselected/re-enabled the
+accepted installed artifact. DLV-056 owns this newly demonstrated checkout-path
+reproducibility gap; it does not invalidate the latest-source live behavior but
+prevents calling the main artifact graph exact.
+
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
-**State:** Ready after DLV-053
-**Baseline:** closing commit of DLV-053
+**State:** Done; accepted source commit `6c619e9`, integrated through `d534410`
+**Closing commit:** `6c619e9` (`[DLV-043] replace Spotify partials with real
+boundaries`)
+**Baseline:** accepted DLV-055 commit `efffa53`
 **Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
@@ -2460,6 +2687,373 @@ Release suites. No aggregate, live account, provider, or native suite.
 **Stop/escalate when:** real separation requires public SDK/protocol or provider
 changes, duplicates lifecycle/committed-state/resource authority, exposes a
 DLV-022 list/focus defect, or changes authentication/product behavior.
+
+**Reviewer disposition:** Accepted as a material responsibility split, with a
+conditional cohesive exception for the residual root rather than a claim that
+line count alone is closed. The four-declaration 2,207-line logical partial type
+becomes one non-partial 1,275-line orchestration owner. It retains the sole
+lifecycle, provider-call, three cursor-resource, three task, two-lock/one-
+semaphore, committed-state, and invalidation authority. A closed value-only
+route/action classifier and playback/device command policy own no provider,
+task, lock, resource, or invalidation state; the presenter consumes only one
+immutable `SpotifyPresentationState`. Direct deterministic cases cover repeated
+presentation, action/route admission, and playback command/projection rules,
+while the retained route/Back, provider-event/command, late-result,
+cancellation, and Active-drain matrix remains green. Focused Release evidence
+passes Spotify 48/48, Widget SDK 85/85, generic AppContainer conformance 6/6,
+and 54 documentation contracts. No aggregate, live account, provider, native,
+or screenshot suite ran. Reopen the residual root if presentation/policy returns,
+another lifecycle/resource/coordination owner appears, or material unrelated
+growth occurs. Exact packaged live refresh follows active DLV-056 because
+immutable `0.2.12` cannot carry the newly integrated source.
+
+### DLV-056 — Make Community packages reproducible across worktrees
+
+**State:** Integrated candidate `2737852` through `e694316`; acceptance withdrawn
+after the required ordinary warm-main refresh produced a different payload;
+corrected by active DLV-057
+**Baseline:** accepted DLV-043 integration `d534410` plus reviewer control-plane
+commit `509d915`
+**Dependencies:** DLV-055 and DLV-043 only for source/integration order
+**Owner:** widgets lane over the shared managed Community package build inputs,
+Spotify manifest/version references, supported pack/install workflow, and the
+existing exact installed-package acceptance entry point; no product behavior
+or framework architecture changes
+**Visible outcome:** A package rebuilt from accepted local main is byte/content
+identical to the same commit built in an isolated worktree and can be installed
+as the uniquely versioned payload the visible overlay actually runs.
+
+**Objective:** Remove absolute-checkout-path influence from managed Community
+addon output, prove the same commit packages identically in main and an isolated
+worktree, then publish the post-DLV-043 Spotify source as immutable `0.2.13`.
+
+**In scope:** identify the exact path-sensitive managed build input; apply the
+smallest shared deterministic/path-map configuration that is safe for public
+Community addon builds; bump Spotify source/manifest/docs to `0.2.13`; build and
+pack the same commit from two distinct absolute checkout roots; compare archive
+SHA-256 and independently derived sealed content-tree digests; use the supported
+disable/install/select/enable workflow for the main-built archive; retain
+`0.2.11` and `0.2.12` as inactive rollback versions; run the existing exact
+installed-package AppContainer first-snapshot acceptance against `0.2.13`.
+
+**Out of scope:** Spotify behavior or DLV-043 ownership changes, deleting or
+overwriting installed versions, weakening immutable catalog rules, broad build-
+system cleanup, repo-wide test migration, native/provider/public SDK/protocol
+work, screenshots, credentials, live playback, or aggregate verification.
+
+**Acceptance criteria:** two clean builds of the exact closing commit from
+distinct absolute roots produce identical `.gbarwidget` SHA-256 and sealed
+content-tree digest; no compiled payload, manifest, archive entry, or validation
+evidence contains either checkout root. The main-built `0.2.13` archive is the
+enabled selected installed generation and its digest matches the independently
+installed archive; `0.2.11` and `0.2.12` remain distinct inactive rollbacks. The
+production generic worker requires AppContainer and publishes a valid first
+credential-free snapshot. Repeating the main build does not change either hash.
+
+**Verification:** Tier 1 two-root Release package/validation/hash comparison and
+documentation contracts. Tier 2 only the existing exact installed Spotify
+package/digest/AppContainer first-snapshot acceptance. Do not rerun Spotify's
+behavior suite, the product aggregate, provider/native suites, screenshots, or
+live-account checks.
+
+**Stop/escalate when:** checkout independence requires changing public PDB/debug
+semantics or repository-wide release policy beyond a narrow documented setting,
+either older immutable version would need deletion/overwrite, hashes still vary
+after the identified path input is removed, or startup fails outside packaging.
+Preserve all installed generations and report exact differing archive entries.
+
+**Reviewer disposition:** The closing commit correctly removes absolute checkout
+paths and three retained clean proof builds match byte-for-byte: archive SHA-256
+`9c4de014d9d8fb2847c3f75b32778a492e8c602cabbf731497366c06419e83da`
+and payload-DLL SHA-256
+`1752c8203fb9c1161419f8d433761e611b0081551b13f331805c5b77cab65c74`.
+The required post-integration build from ordinary warm main did not match:
+archive SHA-256
+`e0000c3ba6979600461caf775f57fef009d588fbf88a8f869e4b2ce1d8dde25f`
+and payload-DLL SHA-256
+`540d33093f2829c3b8f978af528df434d9467e9bc358a6312718c13b62398c26`.
+Manifest and theme entries are identical; the same-length managed DLL alone
+differs. The package command can therefore reuse path-map-sensitive stale
+intermediates and does not yet meet its normal main-worktree acceptance gate.
+No latest-payload launch is claimed from DLV-056.
+
+### DLV-057 — Make Community packaging independent of prior build state
+
+**State:** Done; accepted and integrated as `90cadf4`
+**Closing commit:** `90cadf4` (`[DLV-057] isolate Community package build state`)
+**Baseline:** integrated DLV-056 candidate `e694316` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-056; no platform-lane dependency
+**Owner:** widgets lane over the supported Community package script, narrow
+deterministic build inputs/intermediate-output ownership, Spotify immutable
+version/docs, and the existing installed-package acceptance entry point
+**Concurrency:** Platform work may proceed only when it does not edit Community
+packaging, generic installed-worker acceptance, or Spotify version documentation.
+
+**Visible outcome:** An ordinary warm main checkout builds the exact Spotify
+payload that is installed, selected, enabled, and visibly opened after the
+milestone; prior local build state cannot silently change what the user tests.
+
+**Objective:** Reproduce DLV-056's warm-main mismatch, identify the exact reused
+intermediate/reference input, and make the supported Community package command
+publish from an owned isolated/rebuilt artifact graph so output depends only on
+the closing source commit and declared build inputs.
+
+**In scope:** retain a bounded deliberately preseeded warm-state reproduction;
+give the package command an owned generated intermediate/output graph under its
+artifact root (or an equivalently narrow deterministic mechanism); clean only
+that script-owned generated root before use; retain checkout path mapping and
+bounded restore/cache behavior; bump Spotify to unique immutable `0.2.14`; build
+from warm main, repeat main, and a clean detached root; compare archive and DLL
+SHA-256 plus sealed content-tree digest; scan payload metadata for checkout
+roots; install/select/enable `0.2.14` through the supported flow; retain
+`0.2.11`, `0.2.12`, and `0.2.13` inactive; run the existing exact package/digest/
+required-AppContainer first-snapshot acceptance.
+
+**Out of scope:** deleting arbitrary repository `bin`/`obj`, deleting or
+overwriting installed generations, repo-wide clean/build policy, Spotify
+behavior or ownership changes, public SDK/protocol/provider/native changes,
+aggregate verification, screenshots, credentials, or live playback.
+
+**Acceptance criteria:** the deliberately warm main build, repeated main build,
+and clean detached-root build of the exact closing commit have identical archive
+SHA-256, payload-DLL SHA-256, and sealed content-tree digest. No payload metadata
+contains an absolute checkout root. The exact main archive is installed as
+selected/enabled `0.2.14`, its installed digest matches independently, all three
+older immutable generations remain distinct and inactive, and the production
+generic worker requires AppContainer and returns one valid credential-free first
+snapshot. The package script does not mutate or delete ordinary developer build
+outputs outside its owned generated artifact root.
+
+**Verification:** one bounded warm-state reproduction followed by the three
+named package/hash comparisons, documentation contracts, and only the existing
+exact installed Spotify first-snapshot acceptance. Do not run Spotify's 48-case
+behavior suite, product aggregate, provider/native suites, screenshots, or live
+account checks. After planner integration, repeat the supported package command
+from ordinary warm main, compare it to the accepted proof, and visibly relaunch
+the exact selected payload for immediate user testing.
+
+**Stop/escalate when:** correction requires deleting developer-owned `bin`/`obj`,
+changing repository-wide debug semantics, weakening immutable catalog or
+AppContainer rules, or the exact package starts failing for a reason outside
+build-state ownership. Preserve all evidence and installed generations.
+
+**Reviewer disposition:** Accepted. The supported package command deletes and
+rebuilds only a verified script-owned `build-graph` beneath the selected
+artifact root, passes that graph through `dotnet publish --artifacts-path`, and
+maps both the graph and repository to fixed virtual compiler paths. It neither
+consumes nor deletes ordinary developer `bin`/`obj`. Warm main, repeated main,
+and a detached checkout at the exact closing commit all produce the same
+57,075-byte archive SHA-256
+`66d85242ef7993c0bbf277591c010d40c1e69494fec648c2cd326d289b33b270`,
+the same 137,728-byte DLL SHA-256
+`fea3f92d5aacb6902c77a35a2d50f2ec729dd516311fdc79693dbf1b0912e485`,
+and installed content digest
+`21b8e00d692a14bd53ea37aa640581d1e5be2b7d108610483d2d3a5b880c4028`.
+Spotify `0.2.14` is selected/enabled, `0.2.11` through `0.2.13` remain distinct
+inactive rollbacks, the required AppContainer first snapshot is sequence 2,
+and 54 documentation contracts pass. Planner main rebuilt the same hashes,
+gracefully replaced the prior host, and visibly launched PID 27684. The agent
+rewrote failed local candidate `3de1a3f` before planner clarification, contrary
+to the no-rewrite contract; no accepted history was lost, `90cadf4` was not
+rewritten, and future failed evidence must append a correction commit.
+
+### DLV-059 — Normalize trusted installed-game source ownership
+
+**State:** Assigned
+**Lane:** widgets
+**Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-002, DLV-017, DLV-018, and DLV-054
+**Owner:** trusted Windows app-library provider internals, existing Start Menu/
+AppsFolder and Steam source adapters, focused provider fixtures, and directly
+affected provider documentation; no widget, public capability/protocol, broker,
+native-host, or reviewer-owned files
+**Concurrency:** May run with platform DLV-058. Do not touch WidgetProtocol,
+WidgetSdk, package manifests, OverlayHost, shared native build files, or pinning
+documentation.
+
+**Visible successor:** DLV-060's dedicated installed-game Game Launcher. This
+internal prerequisite is scheduled only because the requested visible widget
+must not accumulate source-specific discovery and launch switches.
+
+**Objective:** Put current Start Menu/AppsFolder and Steam installed-game
+discovery, exact resolve, launch, change observation, health, and source-version
+behavior behind one internal trusted `IGameLibrarySource`-style contract while
+retaining one normalized authoritative library owner.
+
+**In scope:** before/after responsibility and authority map; independently
+bounded source discovery and exact resolve/launch inputs/results; normalized
+host-only records with stable opaque source identity, sanitized attribution,
+installed/available state, supported actions, artwork revision/handle source,
+and source health/version; per-source cancellation, failure isolation, refresh,
+duplicate-name, replacement, disappearance/reappearance, and stale-result
+fixtures; deletion of duplicated source switch logic only when covered.
+
+**Out of scope:** a Game Launcher UI, new stores, account libraries, raw path/
+command/AUMID/Steam-ID exposure, title-based merging, public API/protocol or
+broker changes, new persistence, artwork transport changes, native UI, or
+unrelated provider refactoring.
+
+**Acceptance criteria:** Start Menu/AppsFolder and Steam are ordinary bounded
+implementations of one internal contract; one source can fail, refresh, or be
+disabled without replacing another source's last-good records; exact resolve
+and launch remain source-owned and cannot be selected by title; normalized
+records reveal no raw launch authority to consumers; source generations reject
+late results and drain on disposal; one source can be added or changed without
+editing a central source-specific discovery/launch switch. The completion
+report maps responsibilities, caches, locks/tasks, generations, and mutable
+cross-source knowledge before and after and introduces no new hotspot.
+
+**Verification:** Tier 1 Windows app-library provider Release suite with direct
+adapter-contract, failure-isolation, stale-result, exact-resolve/launch, and
+duplicate-name cases plus affected documentation. No broker, widget, native,
+aggregate, screenshot, live store, or physical launch suite.
+
+**Stop/escalate when:** meaningful normalization changes public capability or
+launch authority, requires undocumented store data, cannot keep exact source
+identity private, or overlaps platform pinning files. Preserve the current
+provider behavior and report rather than adding a facade over the existing
+switches.
+
+### DLV-060 — Ship an installed-only Game Launcher library
+
+**State:** Ready
+**Lane:** widgets, acting as serialized managed capability/widget lead
+**Baseline:** closing commit of DLV-059
+**Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, and DLV-059
+**Owner:** normalized trusted game-library query/cursor capability, dedicated
+Game Launcher first-party widget, private user projection, focused broker/widget
+fixtures, and directly affected public documentation; existing native
+VirtualizedGrid/List and opaque artwork contracts are consumed unchanged
+**Concurrency:** May run with platform pinning only while it requires no public
+WidgetProtocol/WidgetSdk/native change. Stop for planner serialization if an
+existing public collection or native grid contract is insufficient.
+
+**Visible outcome:** A dedicated controller-first Game Launcher presents the
+complete installed local game library from the normalized current sources,
+separate from the lightweight curated Games & Apps tray, with continuous grid
+navigation, real lazy artwork, source attribution, and exact launch.
+
+**Objective:** Prove the framework can support the first complex launcher slice
+without serializing thousands of games, duplicating provider caches/authority,
+or embedding source-specific rules in the widget.
+
+**In scope:** dedicated bundled widget/catalog entry; installed-only normalized
+Steam and trusted Windows game records; library-revision-bound opaque cursors;
+stable item/focus IDs; existing `VirtualizedGrid`/cursor append-prepend window,
+bounded prefetch/eviction and page-jump actions; lazy artwork/fallback; loading,
+partial-source, empty, unavailable, and safe error rows; exact current launch
+revalidation; compact/standard/wide and 100-150% semantic states; 2,000/10,000-
+item fake libraries; bounded current-schema display projection for warm start
+without persisting launch IDs or raw source identity.
+
+**Out of scope:** Epic/GOG/EA/Ubisoft/Battle.net/Xbox adapters, account-owned or
+uninstalled games, installs/updates, search/text entry (DLV-061), favorites or
+variant preferences (DLV-066), running-process truth (DLV-067), remote artwork,
+title-based merging, raw launch authority, public plugin trust, native
+collection redesign, screenshots as acceptance, or credentials.
+
+**Acceptance criteria:** Games & Apps and Game Launcher consume one trusted
+library/cache and the same opaque launch authority while keeping independent
+presentation/user projection; no 2,000/10,000-item snapshot or native tree is
+created; crossing cursor boundaries preserves the adjacent keyed focus and
+viewport; source failure degrades only its rows; same-title variants remain
+separate; stale/unavailable records cannot launch; current exact records launch
+only after revalidation; warm projection appears first but remains visibly
+non-authorizing until resolved; every essential action is reachable across the
+named surface/scale envelope.
+
+**Verification:** Tier 1 Game Launcher, normalized provider, broker mapping,
+Widget SDK cursor/grid, private-state, catalog, and documentation Release
+suites. Tier 2 smallest installed generic-worker/production-host semantic route
+covering continuous grid navigation, lazy artwork, exact launch admission, and
+2,000/10,000-item bounds. No aggregate, screenshot, physical launch, external
+store, or native redesign.
+
+**Stop/escalate when:** the accepted collection/artwork contracts cannot express
+the product without public/native changes, launch truth requires raw identity,
+or the widget begins owning discovery/cache/source policy. Preserve the exact
+gap for a serialized framework prerequisite.
+
+### DLV-066 — Add Game Launcher favorites and preferred variants
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-060
+**Dependencies:** DLV-059 and DLV-060
+**Owner:** Game Launcher private durable organization policy, presentation, and
+credential-free fixtures; no provider discovery, native host, or public
+protocol changes
+
+**Visible outcome:** Users can favorite games and choose a preferred launch
+variant for duplicate titles without title heuristics silently merging launch
+authority; choices survive overlay/source refresh and temporarily missing
+stores.
+
+**Objective:** Add durable user organization above replaceable normalized
+source records using opaque stable identities and one current pre-release schema.
+
+**In scope:** favorites, explicit variant grouping/preference, unavailable
+retention, deterministic unmerge/reset, source revision replacement, CAS/
+persistence failure, warm projection, focus/order retention, and whole-schema
+reset for incompatible overlay-owned state.
+
+**Out of scope:** automatic title matching, raw store IDs, account sync,
+metadata services, cloud persistence, provider changes, or launch lifecycle.
+
+**Acceptance criteria:** only explicit user grouping can establish a preferred
+variant; source disappearance/reappearance and identity replacement preserve or
+invalidate choices deterministically without authorizing stale launch; one
+mutation cannot erase unrelated favorites/order/grouping; incompatible local
+state resets atomically; all state is bounded and contains no raw authority.
+
+**Verification:** Tier 1 Game Launcher/private-state Release suite with exact
+mutation, CAS failure, restart, disappearance/reappearance, and duplicate-title
+cases plus docs. No aggregate, native, screenshot, or external store run.
+
+**Stop/escalate when:** durable preference cannot survive without exposing raw
+source identity or requires provider/public protocol changes.
+
+### DLV-067 — Present honest Game Launcher launch lifecycle
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-066
+**Dependencies:** DLV-059, DLV-060, and DLV-066
+**Owner:** trusted launch-result/lifecycle policy, Game Launcher projection,
+and deterministic adapter/widget fixtures; no generic process authority
+
+**Visible outcome:** Launching a game shows accurate Pending, Launcher started,
+Running, Failed, and Ended states only when the selected adapter can prove them,
+instead of treating store acknowledgement as successful game execution.
+
+**Objective:** Separate accepted launch requests from observable running truth
+without leaking PID/HWND/path data or adding ambient process monitoring.
+
+**In scope:** typed host-only launch observations, per-adapter supported-state
+declaration, bounded timeout/cancellation, already-running, intermediary
+launcher, stale entry, adapter refresh/update, failure and ended projection,
+overlay-close signal, exact current-generation admission, and safe fallback to
+`Request accepted` when stronger truth is unavailable.
+
+**Out of scope:** arbitrary process scanning, raw PID/HWND exposure, game-time
+tracking, achievements, installs/updates, remote launch, macros, or undocumented
+store hooks.
+
+**Acceptance criteria:** every displayed lifecycle state has adapter evidence;
+unsupported adapters never claim Running/Ended; late observations from stale
+launch/source generations cannot change the current row; one launch cannot
+overwrite another variant's state; all observations drain and remain bounded;
+logs/snapshots expose no process or command identity.
+
+**Verification:** Tier 1 provider launch-policy, broker mapping, Game Launcher,
+and docs Release suites with manually controlled adapter observations. Tier 2
+smallest generic-worker exact-launch route. No physical game, aggregate,
+screenshot, or external store run.
+
+**Stop/escalate when:** honest state requires undocumented process/store hooks,
+generic process authority, or a public protocol change not already assigned.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
@@ -2650,7 +3244,7 @@ unregistered directory and the previously observed uncommitted DLV-025 files
 are not present. Do not reconstruct, reset, or otherwise act on that lost
 uncommitted state without explicit user authority.
 
-The platform queue prioritizes visible controller and geometry defects even
+The platform queue prioritizes visible controller and surface features even
 while DLV-025 awaits a compositor choice. The preserved DLV-016 worktree must
 not be reset or overwritten; its files are read-only reference material for the
 clean recovery task, not an integration source. DLV-025 retains only its
@@ -2659,10 +3253,205 @@ disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 `56f6908`; DLV-016 is accepted and integrated as `fee1103`; DLV-011 is accepted
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
-DLV-025 remains user-decision blocked. The platform task remains at a clean
-idle boundary while DLV-018 owns shared native/bridge files in the widgets
-lane. No conflicting or fabricated Ready item is manufactured while those
-explicit architecture and file-ownership dependencies remain.
+DLV-025 remains user-decision blocked. DLV-058 now turns DLV-011's accepted
+tool-window architecture into the first visible generic Pin/Unpin lifecycle.
+DLV-068 and DLV-069 complete placement and accessibility/input composition,
+then DLV-062 runs the fixed-video trusted-rich-media feasibility gate. This
+visible sequence is independent of the blocked animated-resize compositor and
+may run beside widgets DLV-059 under the explicit file boundaries below.
+
+### DLV-058 — Ship generic pinned-surface lifecycle
+
+**State:** Assigned
+**Lane:** platform, acting as serialized public-manifest/native lead
+**Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-011 and DLV-016; independent of blocked DLV-025
+**Owner:** public manifest/presentation-state declarations, native pinned-surface
+coordinator, host chrome/lifecycle, focused protocol/native/host fixtures, and
+directly affected public pinning documentation
+**Concurrency:** May run with widgets DLV-059, which may not touch public
+WidgetProtocol/WidgetSdk, package manifests, OverlayHost, native build files, or
+pinning docs. Stop for planner serialization if another lane reaches those files.
+
+**Visible outcome:** A declarative test widget that explicitly supports pinning
+can be pinned, left visibly topmost when the main overlay closes, switched
+between Interactive and click-through, reopened, unpinned, and closed without
+stealing game input or leaving an orphaned window.
+
+**Objective:** Productize DLV-011's selected host-owned Win32 tool-window
+architecture as one bounded generic surface lifecycle before any YouTube or
+community rich-media widget owns it.
+
+**In scope:** manifest-declared `pinningSupported` default false; one native
+`WidgetSurfaceCoordinator`-style owner for stable surface identity, HWND,
+generation, visibility, pin state, z-order, focus/input mode, and teardown;
+host-owned Pin/Unpin/Close/click-through chrome and help/UIA labels; Overlay,
+PinnedInteractive, PinnedClickThrough, and Hidden presentation state without raw
+HWND/z-order authority; cap simultaneous pins; exact removal/restart/crash/
+host-exit cleanup; overlay close/reopen; stale generation; inaccessible or
+non-supporting widget rejection; unchanged unpinned widget behavior.
+
+**Out of scope:** move/resize/persistence (DLV-068), final controller/UIA input
+composition and emergency hide (DLV-069), YouTube/WebView2/media playback,
+arbitrary community HWNDs, animated main-panel resize/compositor work, pointer
+game matrix, public raw window handles, opacity, or screenshots as acceptance.
+
+**Acceptance criteria:** only a current admitted supporting widget can create
+one host-owned pinned surface; main-overlay hide/close does not destroy it;
+click-through forwards pointer activity and exposes no interactive-looking
+controls; controller actions stay with the main overlay unless the pinned
+surface is explicitly Interactive; reopen restores one valid focus owner;
+unpin, widget removal/restart/crash, host exit, stale generation, and coordinator
+disposal converge to exact-once teardown with no orphan/task/resource leak;
+bounded surface count and safe failure copy are enforced; widgets receive only
+typed presentation state.
+
+**Verification:** Tier 1 WidgetProtocol/manifest, native surface lifecycle,
+focus/input/chrome, UIA semantics, placement smoke, and production OverlayHost
+Release suites. Tier 2 smallest real-HWND declarative pinned-widget fixture over
+pin, overlay close/reopen, click-through, stale restart, removal, and teardown,
+plus DLV-016 resource-delta comparison. No aggregate, YouTube, screenshot,
+physical game/controller/display, or DLV-025 compositor run. After integration,
+refresh and visibly launch main for direct user testing.
+
+**Stop/escalate when:** implementation requires Windows App SDK/new compositor,
+raw widget window authority, a public threat-model change, a substantial
+conflict with preserved platform work, or physical-only evidence to choose the
+architecture. Do not borrow the blocked main-panel resize path.
+
+### DLV-068 — Add controller placement and durable pin geometry
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-058
+**Dependencies:** DLV-011, DLV-016, and DLV-058
+**Owner:** pinned-surface placement/resize state machine, monitor/DPI persistence,
+host chrome/actions, focused native/UIA fixtures, and public pinning docs
+
+**Visible outcome:** A pinned widget has an explicit controller move/resize mode:
+D-pad/stick moves, a bounded resize gesture changes size, A commits, B cancels,
+and restart/monitor changes restore it fully on-screen at a usable size.
+
+**Objective:** Give the generic pinned surface one host-owned placement and
+persistence policy shared by controller, pointer, and accessibility actions.
+
+**In scope:** logical size, normalized work-area anchor, bounded monitor
+affinity, minimum/maximum/safe-area constraints, move/resize focus isolation,
+A commit/B cancel, pointer and UIA parity, atomic overlay-owned persistence,
+invalid/incompatible state reset, runtime DPI/work-area/orientation/topology/
+monitor-loss reconciliation, interrupted gesture, rapid changes, and restart.
+
+**Out of scope:** YouTube-specific 200x200 policy beyond an injected minimum,
+rich media, main-panel transitions, snap-layout integration, unrestricted
+offscreen placement, or preserving obsolete pre-release geometry schemas.
+
+**Acceptance criteria:** every input route reaches one state machine; cancel
+restores the exact prior committed placement; commit persists atomically;
+invalid or incompatible state resets as a whole; every restore/reflow is finite,
+within current work area, at or above declared minimum, and focus-valid; stale
+surface generations cannot write placement; hidden/idle cost remains unchanged.
+
+**Verification:** Tier 1 native placement/input/persistence/UIA/host Release
+suites over mixed logical DPI/work areas and invalid state plus one real-HWND
+restart/monitor-loss fixture. No aggregate, screenshot, physical hot-plug, or
+rich-media run. Launch after integration.
+
+**Stop/escalate when:** credible behavior needs physical display evidence to
+choose between policies, new window/compositor technology, or public raw monitor
+authority.
+
+### DLV-069 — Complete pinned-surface input and accessibility composition
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-068
+**Dependencies:** DLV-058 and DLV-068
+**Owner:** pinned-surface controller/pointer focus composition, emergency
+visibility authority, UI Automation tree/actions, help, and production-host
+fixtures
+
+**Visible outcome:** Pinned widgets never trap controller focus or steal hidden-
+overlay input, expose accurate Pin/Move/Close/click-through accessibility, and
+have one global emergency action that hides all pins safely.
+
+**Objective:** Finish the generic pinning gate's input/accessibility behavior
+before trusted remote media is introduced.
+
+**In scope:** deterministic controller entry/exit and B/Guide/Close semantics;
+Overlay versus pinned Interactive focus restoration; click-through pointer and
+control visibility; emergency hide/unpin authority; accelerator/pointer-capture
+cancellation; UIA names, roles, states, bounds, order, Invoke/Move/Resize/Close
+actions and live failure feedback; widget hide/restart/removal during focus;
+reduced motion/high contrast; no hidden input forwarding.
+
+**Out of scope:** WebView2/browser focus, YouTube controls, physical Narrator or
+game compatibility, main-panel compositor changes, or a second input authority.
+
+**Acceptance criteria:** exactly one surface owns controller focus; closing the
+main overlay leaves click-through pins non-interactive; reopened overlay can
+explicitly enter one valid pin and B exits predictably; emergency action is
+host-owned, bounded, accessible, and always releases interaction; removal,
+restart, mode change, and monitor reconciliation choose deterministic focus;
+the real UIA tree contains no hidden interactive controls or duplicate actions.
+
+**Verification:** Tier 1 controller/focus/pointer/UIA/host Release suites plus
+one production real-HWND/UIA pinned-widget composition fixture. Physical
+controller/Narrator/game proof remains manual. No aggregate or screenshot run.
+Launch after integration.
+
+**Stop/escalate when:** behavior requires elevated/global hooks, physical-only
+policy choice, or duplicates existing OverlayHost input authority.
+
+### DLV-062 — Gate one trusted fixed-video media surface
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-069
+**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-068, and DLV-069
+**Owner:** trusted rich-media process/session feasibility, fixed-video host
+composition, resource measurement, policy evidence, and focused process/native
+fixtures; no public YouTube widget or account integration
+
+**Visible outcome:** One fixed embeddable public YouTube video can play in the
+accepted pinned surface with user-initiated audio and standard controls, and it
+pauses/stops when no visible pinned surface remains.
+
+**Objective:** Prove or reject the narrow trusted WebView2/IFrame Player
+architecture and resource envelope before authorizing YouTube v1.
+
+**In scope:** reuse the SpotifyPlaybackHost process-containment lessons; one
+typed `MediaSurfaceSession` prototype for load/cue/play/pause/seek/volume and
+state/error events; fixed allowlisted video/https origin/referrer; WebView2 host
+objects off; navigation/frame/popup/download/permission/certificate/external-
+browser policy; user gesture/autoplay blocked; errors 5/100/101/150/153;
+ProcessFailed recovery; one environment/user-data lifecycle; visible-pinned
+lease and hidden/minimized/unpinned pause/stop; process/memory/CPU/GPU-where-
+available/startup/idle measurements; kill-switch/policy checklist.
+
+**Out of scope:** URL input/search, Google OAuth/API key, recent library,
+multiple videos/surfaces, generic community WebView, stream extraction,
+background audio, ad/control suppression, public media API, or claiming
+universal game/anti-cheat compatibility.
+
+**Acceptance criteria:** remote content receives no shell/widget broker/native
+object authority; only allowlisted typed messages and origins are admitted;
+standard YouTube controls/captions/links/ads remain; user-visible pin state owns
+the playback lease; hidden/minimized/unpinned state cannot continue playback;
+crash/teardown releases controller/environment/process resources; measured
+incremental cost and unsupported GPU/game evidence are explicit; failure of the
+gate leaves generic pinning intact and does not authorize YouTube v1.
+
+**Verification:** Tier 1 offline typed-protocol/origin/policy/process-lifecycle
+fixtures and DLV-016 resource comparison. Tier 2 one bounded fixed public-video
+manual/automated hybrid run when network/WebView2 is available; record external
+unavailability honestly without using credentials. No aggregate, screenshots as
+closure, account, search, or physical-game claim.
+
+**Stop/escalate when:** a new runtime dependency is required, compliant
+origin/referrer/standard-player behavior cannot be retained, EME/composition or
+resource cost materially fails the gate, or physical representative-game choice
+is needed for the architecture decision.
 
 ### DLV-003 — Correct shared button-content geometry
 

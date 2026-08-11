@@ -618,6 +618,34 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         return null;
     }
 
+    internal BridgeClientPublication<ConfiguredWidget> AdmitArtwork(string widgetId)
+    {
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(widgetId, out var registration) &&
+                !registration.IsRetiring)
+                return AdmitPublicationLocked(registration, registration.Configured);
+        }
+        throw new BridgeProtocolException($"Widget '{widgetId}' has no current generation.");
+    }
+
+    internal BridgeClientPublication<ConfiguredWidget>? TryAdmitArtwork(
+        string widgetId,
+        string expectedWorkerFingerprint)
+    {
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(widgetId, out var registration) &&
+                !registration.IsRetiring &&
+                string.Equals(
+                    registration.Configured.WorkerFingerprint,
+                    expectedWorkerFingerprint,
+                    StringComparison.Ordinal))
+                return AdmitPublicationLocked(registration, registration.Configured);
+        }
+        return null;
+    }
+
     public async ValueTask DisposeAsync()
     {
         ClientRegistration[]? registrations = null;

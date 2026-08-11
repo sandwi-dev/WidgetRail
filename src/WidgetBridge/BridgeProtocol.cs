@@ -22,6 +22,8 @@ internal static class BridgeMessageTypes
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string CatalogChanged = "widget-catalog-changed";
     public const string GetSnapshot = "get-snapshot";
+    public const string ResolveArtwork = "resolve-artwork";
+    public const string Artwork = "artwork";
     public const string RestartWidget = "restart-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
@@ -47,6 +49,7 @@ internal sealed record BridgeEnvelope
 
 internal sealed record BridgeHello(string ClientName);
 internal sealed record WidgetIdRequest(string WidgetId);
+internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandle);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
     GameBarAlternative.WidgetSdk.WidgetLifecycleState State,

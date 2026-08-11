@@ -80,17 +80,32 @@ public:
         std::wstring_view url,
         std::stop_token stopToken,
         const RemoteImageLimits& limits)>;
+    using ArtworkRequestFunction = std::function<bool(std::wstring_view key)>;
 
     explicit RemoteImageCache(
         RemoteImageLimits limits = {},
         CompletionCallback completion = {},
-        FetchFunction fetch = {});
+        FetchFunction fetch = {},
+        ArtworkRequestFunction artworkRequest = {});
     ~RemoteImageCache();
 
     RemoteImageCache(const RemoteImageCache&) = delete;
     RemoteImageCache& operator=(const RemoteImageCache&) = delete;
 
     [[nodiscard]] RemoteImageRequestResult Request(std::wstring url);
+    /// Queues a host-created opaque artwork cache key. Snapshot image sources
+    /// cannot enter this path; only the renderer constructs these keys from a
+    /// validated protocol-v14 artwork handle and current widget ID.
+    [[nodiscard]] RemoteImageRequestResult RequestTrustedArtwork(std::wstring key);
+    /// Supplies a correlated host-only completion for a previously requested
+    /// trusted artwork key. Late, evicted, or retired keys are ignored.
+    [[nodiscard]] bool SupplyTrustedArtwork(
+        std::wstring_view widgetId,
+        std::wstring_view artworkHandle,
+        std::wstring pngBase64);
+    [[nodiscard]] bool FailTrustedArtwork(
+        std::wstring_view widgetId,
+        std::wstring_view artworkHandle);
     [[nodiscard]] RemoteImageRequestResult Retry(std::wstring url);
     [[nodiscard]] RemoteImageState GetState(std::wstring_view url) const;
     [[nodiscard]] std::wstring GetError(std::wstring_view url) const;
@@ -112,12 +127,17 @@ public:
     /// HTTPS or a strictly bounded canonical PNG data source. Inline pixels
     /// are decoded locally and never reach WinHTTP.
     [[nodiscard]] static bool IsAllowedImageSource(std::wstring_view source) noexcept;
+    [[nodiscard]] static RemoteImageFetchResult FetchAndDecodeSource(
+        std::wstring_view source,
+        std::stop_token stopToken,
+        const RemoteImageLimits& limits);
 
 private:
     struct Entry {
         RemoteImageState state{RemoteImageState::Queued};
         std::shared_ptr<const RemoteDecodedImage> image;
         std::wstring error;
+        std::wstring pendingSource;
         std::uint64_t lastUse{};
     };
 
@@ -125,14 +145,10 @@ private:
     [[nodiscard]] bool EvictOneLocked(std::wstring_view protectedUrl);
     void WorkerLoop(std::stop_token stopToken);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
-    [[nodiscard]] static RemoteImageFetchResult FetchAndDecode(
-        std::wstring_view url,
-        std::stop_token stopToken,
-        const RemoteImageLimits& limits);
-
     RemoteImageLimits limits_;
     CompletionCallback completion_;
     FetchFunction fetch_;
+    ArtworkRequestFunction artworkRequest_;
     mutable std::mutex mutex_;
     std::condition_variable condition_;
     std::unordered_map<std::wstring, Entry> entries_;

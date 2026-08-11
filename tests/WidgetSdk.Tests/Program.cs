@@ -236,7 +236,7 @@ static async Task AppLibraryPlatformService()
                         "app-current", "Launchable App", WidgetAppLibraryKind.Application)
                     {
                         SavedId = "saved-durable",
-                        IconPngBase64 = "icon-pixels",
+                        ArtworkHandle = "library.art.0123456789abcdef0123456789abcdef",
                     }]));
             })
         .WithResponse(
@@ -258,7 +258,8 @@ static async Task AppLibraryPlatformService()
     Assert.Equal(1, resolved.Count);
     Assert.Equal("app-current", resolved[0].AppId);
     Assert.Equal("saved-durable", resolved[0].SavedId);
-    Assert.Equal("icon-pixels", resolved[0].IconPngBase64);
+    Assert.Equal("library.art.0123456789abcdef0123456789abcdef",
+        resolved[0].ArtworkHandle);
     await widget.AppLibrary.LaunchAsync("app-opaque");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());

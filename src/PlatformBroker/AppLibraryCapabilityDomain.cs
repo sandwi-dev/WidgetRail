@@ -2,11 +2,12 @@ using System.Text.Json;
 
 namespace GameBarAlternative.PlatformBroker;
 
-internal sealed class AppLibraryCapabilityDomain
+internal sealed class AppLibraryCapabilityDomain : IDisposable
 {
     private readonly IPlatformBrokerBackend _backend;
     private readonly BrokerWidgetIdentity _identity;
     private readonly IAppLibrarySavedIdIssuer _savedIdIssuer;
+    private readonly AppLibraryArtworkRegistry.AppLibraryArtworkSession? _artwork;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, string> _publicIdsByBackendId =
         new(StringComparer.Ordinal);
@@ -17,11 +18,13 @@ internal sealed class AppLibraryCapabilityDomain
     internal AppLibraryCapabilityDomain(
         IPlatformBrokerBackend backend,
         BrokerWidgetIdentity identity,
-        IAppLibrarySavedIdIssuer savedIdIssuer)
+        IAppLibrarySavedIdIssuer savedIdIssuer,
+        AppLibraryArtworkRegistry.AppLibraryArtworkSession? artwork = null)
     {
         _backend = backend;
         _identity = identity;
         _savedIdIssuer = savedIdIssuer;
+        _artwork = artwork;
     }
 
     internal async Task<JsonElement> ExecuteAsync(
@@ -135,48 +138,6 @@ internal sealed class AppLibraryCapabilityDomain
                 .Where(currentBySavedId.ContainsKey)
                 .Select(savedId => currentBySavedId[savedId])
                 .ToArray();
-            var iconBytes = 0;
-            for (var index = 0;
-                 index < resolved.Length &&
-                 index < AppLibraryImageLimits.MaximumResolvedIconCount;
-                 index++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!_backendIdsByPublicId.TryGetValue(
-                        resolved[index].AppId, out var backendAppId))
-                    continue;
-                AppLibraryIconSummary? icon;
-                try
-                {
-                    icon = await _backend.GetAppLibraryIconAsync(
-                        backendAppId, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (
-                    cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception) when (
-                    exception is BrokerException or IOException or
-                        UnauthorizedAccessException or InvalidOperationException or
-                        ArgumentException or NotSupportedException)
-                {
-                    icon = null;
-                }
-                var validated = BrokerInlinePngPolicy.Validate(
-                    icon?.PngBase64,
-                    AppLibraryImageLimits.MaximumPngBytes,
-                    AppLibraryImageLimits.MaximumPixelDimension);
-                if (validated is null ||
-                    iconBytes + validated.Value.Bytes >
-                        AppLibraryImageLimits.MaximumAggregatePngBytes)
-                    continue;
-                iconBytes += validated.Value.Bytes;
-                resolved[index] = resolved[index] with
-                {
-                    IconPngBase64 = validated.Value.Base64,
-                };
-            }
             return new ResolveSavedAppLibraryItemsSummary(resolved);
         }
         finally
@@ -217,6 +178,8 @@ internal sealed class AppLibraryCapabilityDomain
             _publicIdsByBackendId.Remove(stale);
 
         var byPublicId = new Dictionary<string, string>(StringComparer.Ordinal);
+        var artworkHandles = _artwork?.Replace(backendItems) ??
+            new Dictionary<string, string>(StringComparer.Ordinal);
         var projected = new AppLibraryItemSummary[backendItems.Count];
         for (var index = 0; index < backendItems.Count; index++)
         {
@@ -232,9 +195,12 @@ internal sealed class AppLibraryCapabilityDomain
             {
                 SavedId = _savedIdIssuer.Issue(
                     _identity, item.StableProviderIdentity),
+                ArtworkHandle = artworkHandles.GetValueOrDefault(item.ProviderAppId),
             };
         }
         _backendIdsByPublicId = byPublicId;
         return Array.AsReadOnly(projected);
     }
+
+    public void Dispose() => _artwork?.Dispose();
 }

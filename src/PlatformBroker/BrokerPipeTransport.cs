@@ -256,6 +256,33 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         string? isolatedClientAppContainerSid = null,
         IEnumerable<string>? hostGrantedCapabilities = null,
         Action<BrokerHostEffect>? hostEffectSink = null)
+        : this(
+            pipeName,
+            authenticatedIdentity,
+            declaredCapabilities,
+            consentStore,
+            backend,
+            null,
+            options,
+            channelNonce,
+            isolatedClientAppContainerSid,
+            hostGrantedCapabilities,
+            hostEffectSink)
+    {
+    }
+
+    internal BrokerPipeServer(
+        string pipeName,
+        BrokerWidgetIdentity authenticatedIdentity,
+        IEnumerable<string> declaredCapabilities,
+        ConsentStore consentStore,
+        IPlatformBrokerBackend backend,
+        AppLibraryArtworkRegistry? appLibraryArtworkRegistry,
+        BrokerPipeTransportOptions? options = null,
+        string? channelNonce = null,
+        string? isolatedClientAppContainerSid = null,
+        IEnumerable<string>? hostGrantedCapabilities = null,
+        Action<BrokerHostEffect>? hostEffectSink = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -274,9 +301,18 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         if (ChannelNonce.Length is < 32 or > 128 ||
             !ChannelNonce.All(character => char.IsAsciiLetterOrDigit(character)))
             throw new ArgumentException("Broker channel nonce is invalid.", nameof(channelNonce));
-        _broker = new PlatformCapabilityBroker(
-            _identity, _declaredCapabilities, consentStore, backend,
-            _hostGrantedCapabilities);
+        var artworkSession = appLibraryArtworkRegistry?.BeginSession(_identity, backend);
+        try
+        {
+            _broker = new PlatformCapabilityBroker(
+                _identity, _declaredCapabilities, consentStore, backend,
+                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession);
+        }
+        catch
+        {
+            artworkSession?.Dispose();
+            throw;
+        }
         _consentMonitor = new ConsentChangeMonitor(
             consentStore, _broker.RefreshConsentAsync, _broker.RevokeSubscriptions);
     }

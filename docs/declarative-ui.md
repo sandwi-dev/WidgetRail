@@ -307,8 +307,10 @@ continues to use its unchanged replacement-window behavior.
 
 The same version adds an opaque `artworkHandle` on Image/Button nodes. The host
 does not interpret it as a URL or filesystem path. Resolution is a separate
-trusted service; omission of resolved pixels is safe and grants no ambient
-authority.
+trusted service on a bounded asynchronous bridge lane; a slow provider cannot
+serialize ordinary input or lifecycle requests. Completion must still match the
+current worker, handle, and per-node cache revision. Omission of resolved pixels
+is safe and grants no ambient authority.
 
 ## Per-view surface hints
 
@@ -537,18 +539,18 @@ host decodes those pixels in memory and never sends them through WinHTTP.
 Redirect, download-size, decode-size, MIME, and cache policy are enforced by the
 host image service; widgets never receive native image handles or filesystem paths.
 
-For an application/media list action, attach those same trusted pixels to the
-Button itself so icon, label, state cue, pointer hit area, and controller outline
-remain one semantic target:
+For a trusted application list action, attach the broker-issued lazy handle to
+the Button itself so icon, label, state cue, pointer hit area, and controller
+outline remain one semantic target without placing pixels in the snapshot:
 
 ```csharp
 UI.Button(app.DisplayName, "launch", app.Id)
-    .LeadingInlinePng(app.IconPngBase64, ImageFit.Contain,
+    .LeadingArtwork(new WidgetArtworkHandle(app.ArtworkHandle), ImageFit.Contain,
         $"Launch {app.DisplayName}");
 ```
 
-`LeadingInlinePng` replaces `.Icon(...)`; the validator rejects two competing
-leading visuals. Use a semantic `.Icon(...)` fallback when pixels are absent.
+`LeadingArtwork` replaces `.Icon(...)`; the validator rejects two competing
+leading visuals. Use a semantic `.Icon(...)` fallback when the handle is absent.
 
 The closed `WidgetGlyph` set is `Music`, `Play`, `Pause`, `Previous`, `Next`,
 `Refresh`, `Shuffle`, `Like`, `Dislike`, `Repeat`, `RepeatOne`, `Settings`, `Warning`,

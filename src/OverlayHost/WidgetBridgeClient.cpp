@@ -656,7 +656,8 @@ bool HandleAsyncEvent(
     WidgetHostEffectQueue& hostEffects,
     PlatformAppearanceRevisionTracker& appearanceChanges,
     WidgetCatalogRevisionTracker& catalogChanges,
-    std::wstring& status) {
+    std::wstring& status,
+    WidgetArtworkResultQueue* artworkResults = nullptr) {
     if (!event.HasKey(L"type") ||
         event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
         !event.HasKey(L"payload") ||
@@ -702,6 +703,23 @@ bool HandleAsyncEvent(
     if (!IsIdentifier(widgetId)) {
         status = L"WidgetBridge asynchronous event has an invalid widget ID.";
         return false;
+    }
+    if (type == L"artwork") {
+        if (!artworkResults || !HasOnlyProperties(
+                payload, {L"widgetId", L"artworkHandle", L"pngBase64"})) {
+            status = L"WidgetBridge artwork event has an invalid payload.";
+            return false;
+        }
+        const auto handle = OptionalString(payload, L"artworkHandle");
+        const auto png = OptionalString(payload, L"pngBase64");
+        if (handle.size() != 44 || !handle.starts_with(L"library.art.") ||
+            !IsIdentifier(handle) || png.size() > 16'384 ||
+            !artworkResults->Push({widgetId, handle, png})) {
+            status = L"WidgetBridge artwork event could not be queued.";
+            return false;
+        }
+        status.clear();
+        return true;
     }
     if (type == L"widget-invalidated") {
         if (!payload.HasKey(L"revision") ||
@@ -861,6 +879,26 @@ void WidgetHostEffectQueue::Reset() noexcept {
     queued_.clear();
 }
 
+bool WidgetArtworkResultQueue::Push(WidgetArtworkResult result) {
+    const auto existing = std::find_if(
+        queued_.begin(), queued_.end(), [&](const WidgetArtworkResult& item) {
+            return item.widgetId == result.widgetId &&
+                   item.artworkHandle == result.artworkHandle;
+        });
+    if (existing != queued_.end()) *existing = std::move(result);
+    else {
+        if (queued_.size() >= MaximumResults) return false;
+        queued_.push_back(std::move(result));
+    }
+    return true;
+}
+
+std::vector<WidgetArtworkResult> WidgetArtworkResultQueue::Take() noexcept {
+    auto result = std::move(queued_);
+    queued_.clear();
+    return result;
+}
+
 std::vector<std::wstring> ChangedWidgetRuntimeIds(
     const std::vector<WidgetDescriptor>& before,
     const std::vector<WidgetDescriptor>& after) {
@@ -949,6 +987,7 @@ WidgetBridgeClient::~WidgetBridgeClient() {
 bool WidgetBridgeClient::EnsureStarted(
     const std::wstring& installationDirectory,
     const std::wstring& installedCatalogRoot) {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ != INVALID_HANDLE_VALUE) {
         return true;
     }
@@ -1039,6 +1078,7 @@ bool WidgetBridgeClient::Connect() {
 }
 
 void WidgetBridgeClient::Stop() noexcept {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ != INVALID_HANDLE_VALUE) {
         CloseHandle(pipe_);
         pipe_ = INVALID_HANDLE_VALUE;
@@ -1053,11 +1093,13 @@ void WidgetBridgeClient::Stop() noexcept {
     (void)invalidations_.Take();
     (void)actionFailures_.Take();
     hostEffects_.Reset();
+    artworkResults_.Reset();
     (void)appearanceChanges_.Take();
     catalogChanges_.Reset();
 }
 
 std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         const long long requestId = ++nextRequestId_;
@@ -1093,7 +1135,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1149,6 +1191,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
 }
 
 std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         const long long requestId = ++nextRequestId_;
@@ -1181,7 +1224,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1221,6 +1264,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
 std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
     const std::wstring_view widgetId,
     const std::wstring_view state) {
+    std::scoped_lock lock(requestMutex_);
     const bool validState = state == L"background" || state == L"visible" ||
                             state == L"interactive";
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
@@ -1251,7 +1295,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1281,6 +1325,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
 std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
     const std::wstring_view widgetId,
     const std::wstring_view state) {
+    std::scoped_lock lock(requestMutex_);
     const bool validState = state == L"visible" || state == L"interactive";
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
@@ -1314,7 +1359,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                 std::wstring status;
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
-                        appearanceChanges_, catalogChanges_, status)) {
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1358,6 +1403,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
 
 std::optional<bool> WidgetBridgeClient::RestartWidget(
     const std::wstring_view widgetId) {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId)) {
         if (pipe_ != INVALID_HANDLE_VALUE) Fail(L"Widget restart request is invalid.");
@@ -1385,7 +1431,7 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status)) {
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1426,6 +1472,7 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
 }
 
 std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring_view widgetId) {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         JsonObject payload;
@@ -1442,7 +1489,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1476,6 +1523,47 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
     return std::nullopt;
 }
 
+std::optional<bool> WidgetBridgeClient::RequestArtwork(
+    const std::wstring_view widgetId,
+    const std::wstring_view artworkHandle) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
+        widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
+        artworkHandle.size() != 44 || !artworkHandle.starts_with(L"library.art.") ||
+        !IsIdentifier(artworkHandle)) return std::nullopt;
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        payload.Insert(L"artworkHandle",
+                       JsonValue::CreateStringValue(winrt::hstring(artworkHandle)));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"resolve-artwork"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            const auto responseId = static_cast<long long>(
+                response.GetNamedNumber(L"requestId"));
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_))
+                    return std::nullopt;
+                continue;
+            }
+            if (responseId != requestId ||
+                response.GetNamedString(L"type") != L"acknowledged") return std::nullopt;
+            return true;
+        }
+    } catch (const winrt::hresult_error&) {
+    }
+    return std::nullopt;
+}
+
 std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view widgetId,
     const std::wstring_view button,
@@ -1488,6 +1576,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view phase,
     const std::optional<double> requestedValue,
     const ControllerInputOrigin origin) {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
         JsonObject input;
@@ -1535,7 +1624,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1565,6 +1654,7 @@ std::optional<bool> WidgetBridgeClient::SendAction(
     const std::wstring_view actionId,
     const std::wstring_view sourceElementId,
     const std::wstring_view inputScopeId) {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() || actionId.empty() ||
         sourceElementId.empty() || !IsIdentifier(widgetId) ||
         !IsIdentifier(actionId) || !IsIdentifier(sourceElementId) ||
@@ -1605,7 +1695,7 @@ std::optional<bool> WidgetBridgeClient::SendAction(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status)) {
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1670,7 +1760,13 @@ void WidgetBridgeClient::Fail(std::wstring message) {
     lastError_ = std::move(message);
 }
 
+std::wstring WidgetBridgeClient::lastError() const {
+    std::scoped_lock lock(requestMutex_);
+    return lastError_;
+}
+
 bool WidgetBridgeClient::PumpEvents() {
+    std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return false;
     bool consumed = false;
     try {
@@ -1699,7 +1795,7 @@ bool WidgetBridgeClient::PumpEvents() {
                 return consumed;
             }
             std::wstring status;
-            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                 Fail(std::move(status));
                 return consumed;
             }
@@ -1713,36 +1809,49 @@ bool WidgetBridgeClient::PumpEvents() {
 }
 
 std::vector<std::wstring> WidgetBridgeClient::TakeInvalidatedWidgetIds() noexcept {
+    std::scoped_lock lock(requestMutex_);
     return invalidations_.Take();
 }
 
 std::vector<WidgetActionFailure> WidgetBridgeClient::TakeActionFailures() noexcept {
+    std::scoped_lock lock(requestMutex_);
     return actionFailures_.Take();
 }
 
 std::vector<WidgetHostEffect> WidgetBridgeClient::TakeHostEffects() noexcept {
+    std::scoped_lock lock(requestMutex_);
     return hostEffects_.Take();
+}
+
+std::vector<WidgetArtworkResult> WidgetBridgeClient::TakeArtworkResults() noexcept {
+    std::scoped_lock lock(requestMutex_);
+    return artworkResults_.Take();
 }
 
 std::optional<long long>
 WidgetBridgeClient::TakePlatformAppearanceChangedRevision() noexcept {
+    std::scoped_lock lock(requestMutex_);
     return appearanceChanges_.Take();
 }
 
 std::optional<long long>
 WidgetBridgeClient::TakeWidgetCatalogChangedRevision() noexcept {
+    std::scoped_lock lock(requestMutex_);
     return catalogChanges_.Take();
 }
 
 void WidgetBridgeClient::RetryWidgetCatalogChangedRevision() noexcept {
+    std::scoped_lock lock(requestMutex_);
     catalogChanges_.Retry();
 }
 
 void WidgetBridgeClient::AbandonWidgetCatalogChangedRevision() noexcept {
+    std::scoped_lock lock(requestMutex_);
     catalogChanges_.Abandon();
 }
 
 bool WidgetBridgeClient::HasWidgetCatalogChangedRevisionInFlight() const noexcept {
+    std::scoped_lock lock(requestMutex_);
     return catalogChanges_.hasInFlight();
 }
 
@@ -1848,6 +1957,38 @@ std::optional<WidgetActionFailure> ParseWidgetActionFailureEvent(
         return std::move(queued.front());
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget action-failure JSON: " +
+                std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetArtworkResult> ParseWidgetArtworkResultEvent(
+    const std::string_view eventUtf8,
+    std::wstring& error) {
+    try {
+        const auto event = JsonObject::Parse(winrt::to_hstring(eventUtf8));
+        WidgetInvalidationQueue invalidations;
+        WidgetActionFailureQueue failures;
+        WidgetHostEffectQueue effects;
+        WidgetArtworkResultQueue artwork;
+        PlatformAppearanceRevisionTracker appearance;
+        WidgetCatalogRevisionTracker catalog;
+        std::wstring status;
+        if (!HandleAsyncEvent(
+                event, invalidations, failures, effects, appearance, catalog,
+                status, &artwork)) {
+            error = std::move(status);
+            return std::nullopt;
+        }
+        auto queued = artwork.Take();
+        if (queued.size() != 1) {
+            error = L"JSON is not a trusted artwork completion event.";
+            return std::nullopt;
+        }
+        error.clear();
+        return std::move(queued.front());
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid trusted artwork event JSON: " +
                 std::wstring(exception.message());
         return std::nullopt;
     }

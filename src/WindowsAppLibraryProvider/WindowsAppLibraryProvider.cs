@@ -1,5 +1,6 @@
-using System.Text;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WindowsAppLibraryProvider;
@@ -165,11 +166,14 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                     WindowsAppLibraryKind.Application => AppLibraryKind.Application,
                     WindowsAppLibraryKind.Game => AppLibraryKind.Game,
                     _ => AppLibraryKind.Unknown,
-                });
+                }, ArtworkRevision(registration.RevalidationKey));
             }
             return Array.AsReadOnly(projected);
         }
     }
+
+    private static string ArtworkRevision(string revalidationKey) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revalidationKey)));
 
     public async Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken)
@@ -243,14 +247,8 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
             }
 
             var png = await _shellSta.RunAsync(
-                token => registration switch
-                {
-                    StartMenuRegistration shortcut =>
-                        _iconSource.TryRasterizePngBase64(shortcut.ShortcutPath, token),
-                    AppsFolderRegistration packaged =>
-                        _iconSource.TryRasterizeAppsFolderPngBase64(packaged.Aumid, token),
-                    _ => null,
-                }, cancellationToken).ConfigureAwait(false);
+                token => RevalidateAndRasterize(registration, token),
+                cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (png is not null)
             {
@@ -264,6 +262,29 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
             _scanGate.Release();
         }
     }
+
+    private string? RevalidateAndRasterize(
+        WindowsLaunchRegistration registration,
+        CancellationToken cancellationToken) => registration switch
+        {
+            StartMenuRegistration shortcut when
+                _startMenuSource.ReadExact(
+                    shortcut.ShortcutPath, shortcut.Scope, cancellationToken) is { } current &&
+                string.Equals(current.IdentityKey, shortcut.IdentityKey,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(current.RevalidationKey, shortcut.RevalidationKey,
+                    StringComparison.Ordinal) =>
+                _iconSource.TryRasterizePngBase64(current.ShortcutPath, cancellationToken),
+            AppsFolderRegistration packaged when
+                _appsFolderSource.ReadExact(packaged.Aumid, cancellationToken) is { } current &&
+                string.Equals(current.IdentityKey, packaged.IdentityKey,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(current.RevalidationKey, packaged.RevalidationKey,
+                    StringComparison.Ordinal) =>
+                _iconSource.TryRasterizeAppsFolderPngBase64(
+                    current.Aumid, cancellationToken),
+            _ => null,
+        };
 
     private async Task<IReadOnlyList<WindowsAppLibraryItem>> ScanAsync(
         bool force, CancellationToken cancellationToken)

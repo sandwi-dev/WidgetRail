@@ -155,7 +155,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         ConsentStore consentStore,
         IPlatformBrokerBackend backend,
         IEnumerable<string>? hostGrantedCapabilities,
-        IAppLibrarySavedIdIssuer appLibrarySavedIdIssuer)
+        IAppLibrarySavedIdIssuer appLibrarySavedIdIssuer,
+        AppLibraryArtworkRegistry.AppLibraryArtworkSession? appLibraryArtwork = null)
     {
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
@@ -176,7 +177,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _audioDomain = new AudioCapabilityDomain(_backend);
         _networkDomain = new NetworkCapabilityDomain(_backend);
         _appLibraryDomain = new AppLibraryCapabilityDomain(
-            _backend, _identity, appLibrarySavedIdIssuer);
+            _backend, _identity, appLibrarySavedIdIssuer, appLibraryArtwork);
         _mediaSpotifyDomain = new MediaSpotifyCapabilityDomain(
             _backend, _identity, AuthorizeSpotifyScopesAsync);
         _privateSecretDomain = new PrivateSecretCapabilityDomain(_backend, _identity);
@@ -832,6 +833,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             foreach (var lease in canceled) lease.MarkCanceledLocked("lifecycle_denied");
         }
         foreach (var lease in canceled) lease.SignalCancellation();
+        _appLibraryDomain.Dispose();
         return ValueTask.CompletedTask;
     }
 }

@@ -228,10 +228,12 @@ constexpr UINT32 maximumInlinePngDimension = 64;
 RemoteImageCache::RemoteImageCache(
     RemoteImageLimits limits,
     CompletionCallback completion,
-    FetchFunction fetch)
+    FetchFunction fetch,
+    ArtworkRequestFunction artworkRequest)
     : limits_(limits),
       completion_(std::move(completion)),
-      fetch_(fetch ? std::move(fetch) : FetchAndDecode) {
+      fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
+      artworkRequest_(std::move(artworkRequest)) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumDecodedBytes < 4 ||
         limits_.maximumDecodedBytes > 256U * 1024U * 1024U ||
@@ -255,6 +257,98 @@ RemoteImageRequestResult RemoteImageCache::Request(std::wstring url) {
     if (!IsAllowedImageSource(url)) return RemoteImageRequestResult::InvalidUrl;
     std::scoped_lock lock(mutex_);
     return QueueLocked(std::move(url), false);
+}
+
+RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring key) {
+    constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+    if (!key.starts_with(prefix) || key.size() > 384) return RemoteImageRequestResult::InvalidUrl;
+    if (!artworkRequest_) {
+        std::scoped_lock lock(mutex_);
+        return QueueLocked(std::move(key), false);
+    }
+    {
+        std::scoped_lock lock(mutex_);
+        if (shuttingDown_) return RemoteImageRequestResult::ShuttingDown;
+        if (const auto found = entries_.find(key); found != entries_.end()) {
+            found->second.lastUse = ++useCounter_;
+            return RemoteImageRequestResult::AlreadyTracked;
+        }
+        const auto handleSeparator = key.rfind(L'\x1f');
+        if (handleSeparator == std::wstring::npos)
+            return RemoteImageRequestResult::InvalidUrl;
+        const auto identityPrefix = key.substr(0, handleSeparator + 1);
+        for (auto iterator = entries_.begin(); iterator != entries_.end();) {
+            if (iterator->first != key && iterator->first.starts_with(identityPrefix)) {
+                if (iterator->second.image)
+                    decodedBytes_ -= iterator->second.image->premultipliedBgra.size();
+                iterator = entries_.erase(iterator);
+            } else ++iterator;
+        }
+        while (entries_.size() >= limits_.maximumEntries) {
+            if (!EvictOneLocked(key)) return RemoteImageRequestResult::CapacityExceeded;
+        }
+        entries_.emplace(key, Entry{
+            RemoteImageState::Loading, {}, {}, {}, ++useCounter_});
+    }
+    if (artworkRequest_ && artworkRequest_(key))
+        return RemoteImageRequestResult::Queued;
+    const auto widgetEnd = key.find(L'\x1f', prefix.size());
+    const auto handleStart = key.rfind(L'\x1f');
+    if (widgetEnd != std::wstring::npos && handleStart != std::wstring::npos)
+        (void)FailTrustedArtwork(
+            std::wstring_view(key).substr(prefix.size(), widgetEnd - prefix.size()),
+            std::wstring_view(key).substr(handleStart + 1));
+    return RemoteImageRequestResult::InvalidUrl;
+}
+
+bool RemoteImageCache::SupplyTrustedArtwork(
+    const std::wstring_view widgetId,
+    const std::wstring_view artworkHandle,
+    std::wstring pngBase64) {
+    if (pngBase64.empty() || pngBase64.size() > 16'384) return false;
+    std::scoped_lock lock(mutex_);
+    if (shuttingDown_) return false;
+    const auto prefix = L"gbar-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+    const auto suffix = L"\x1f" + std::wstring(artworkHandle);
+    bool supplied = false;
+    for (auto& [key, entry] : entries_) {
+        if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
+            entry.state != RemoteImageState::Loading) continue;
+        entry.pendingSource = L"data:image/png;base64," + pngBase64;
+        entry.state = RemoteImageState::Queued;
+        queue_.push_back(key);
+        supplied = true;
+    }
+    if (!supplied) return false;
+    condition_.notify_one();
+    return true;
+}
+
+bool RemoteImageCache::FailTrustedArtwork(
+    const std::wstring_view widgetId,
+    const std::wstring_view artworkHandle) {
+    CompletionCallback completion;
+    {
+        std::scoped_lock lock(mutex_);
+        if (shuttingDown_) return false;
+        const auto prefix = L"gbar-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+        const auto suffix = L"\x1f" + std::wstring(artworkHandle);
+        bool failed = false;
+        for (auto& [key, entry] : entries_) {
+            if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
+                entry.state != RemoteImageState::Loading) continue;
+            entry.state = RemoteImageState::Failed;
+            entry.error = L"Trusted artwork is unavailable.";
+            failed = true;
+        }
+        if (!failed) return false;
+        completion = completion_;
+    }
+    if (completion) {
+        try { completion(artworkHandle, RemoteImageState::Failed); }
+        catch (...) { }
+    }
+    return true;
 }
 
 RemoteImageRequestResult RemoteImageCache::Retry(std::wstring url) {
@@ -369,7 +463,7 @@ RemoteImageRequestResult RemoteImageCache::QueueLocked(std::wstring url, bool re
     while (entries_.size() >= limits_.maximumEntries) {
         if (!EvictOneLocked(url)) return RemoteImageRequestResult::CapacityExceeded;
     }
-    entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, ++useCounter_});
+    entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, {}, ++useCounter_});
     queue_.push_back(std::move(url));
     condition_.notify_one();
     return RemoteImageRequestResult::Queued;
@@ -407,7 +501,16 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
             found->second.state = RemoteImageState::Loading;
         }
 
-        auto result = fetch_(url, stopToken, limits_);
+        std::wstring source = url;
+        {
+            std::scoped_lock lock(mutex_);
+            const auto found = entries_.find(url);
+            if (found != entries_.end() && !found->second.pendingSource.empty()) {
+                source = std::move(found->second.pendingSource);
+                found->second.pendingSource.clear();
+            }
+        }
+        auto result = fetch_(source, stopToken, limits_);
         RemoteImageState finalState = RemoteImageState::Failed;
         {
             std::scoped_lock lock(mutex_);
@@ -459,7 +562,7 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
     entry.state = RemoteImageState::Failed;
 }
 
-RemoteImageFetchResult RemoteImageCache::FetchAndDecode(
+RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
     std::wstring_view url,
     std::stop_token stopToken,
     const RemoteImageLimits& limits) {

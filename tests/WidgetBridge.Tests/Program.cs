@@ -31,6 +31,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
+    ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
     ("Request dispatcher deadline quarantines cancellation-ignoring work", RequestDispatcherForcedDrainIsComplete),
@@ -106,13 +107,10 @@ return failures.Count == 0 ? 0 : 1;
 
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
-    var pipe = RequiredValue(arguments, "--widget-pipe");
     var instance = RequiredValue(arguments, "--widget-instance");
-    var maximumBytes = int.Parse(
-        RequiredValue(arguments, "--max-message-bytes"),
-        System.Globalization.CultureInfo.InvariantCulture);
-    await new WidgetWorkerServer(new BridgeTestWidget(), instance, pipe, maximumBytes).RunAsync();
-    return 0;
+    return await WidgetWorkerBootstrap.RunAsync(
+        arguments,
+        _ => new BridgeTestWidget(instance));
 }
 
 static async Task OversizedFrameIsRejected()
@@ -416,6 +414,29 @@ static Task RequestClassificationIsClosed()
     Assert.Equal("widget-a", widget.WidgetId);
     Assert.True(widget.IsKnown, "Known widget request was not classified as known.");
 
+    var artwork = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ResolveArtwork,
+        RequestId = 6,
+        Payload = BridgeJson.ToElement(new BridgeArtworkRequest(
+            "widget-a", "library.art.0123456789abcdef0123456789abcdef")),
+    });
+    Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
+    Assert.Equal<string?>(null, artwork.WidgetId);
+
+    var malformedArtwork = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ResolveArtwork,
+        RequestId = 7,
+        Payload = BridgeJson.ToElement(new
+        {
+            widgetId = "widget-a",
+            artworkHandle = "library.art.0123456789abcdef0123456789abcdef",
+            path = @"C:\\forbidden.png",
+        }),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, malformedArtwork.Kind);
+
     var global = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
         Type = BridgeMessageTypes.ListWidgets,
@@ -460,6 +481,179 @@ static Task RequestClassificationIsClosed()
     Assert.False(unknown.IsKnown,
         "Unknown request acquired an implicit scheduling convention.");
     return Task.CompletedTask;
+}
+
+static async Task TrustedArtworkDemandIsExact()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    const string png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
+        "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    using var catalogFiles = TemporaryCatalog.Create(
+        instanceId: "artwork.instance",
+        declaredCapabilities: [PlatformCapabilities.AppLibraryReadV1]);
+    using var consentFiles = new TemporaryDirectory("gba-artwork-consent");
+    var identity = new BrokerWidgetIdentity(
+        "dev.test.widget", "dev.test", "artwork.instance");
+    var consent = new ConsentStore(consentFiles.Path);
+    await consent.SetDecisionAsync(
+        identity, PlatformCapabilities.AppLibraryReadV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new AppLibraryBackendItemSummary(
+            "provider-one", "stable-one", "Artwork App", AppLibraryKind.Application,
+            "artwork-a"),
+    ]);
+    var iconStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseIcon = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.AppLibraryIconHandler = async (_, cancellationToken) =>
+    {
+        iconStarted.TrySetResult();
+        await releaseIcon.Task.WaitAsync(cancellationToken);
+        return new AppLibraryIconSummary(png);
+    };
+    var catalog = BridgeCatalog.Load(catalogFiles.Path);
+    var pipeName = $"gba-bridge-artwork-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName, catalog, 64 * 1024, consentStore: consent, platformBackend: backend);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var lifecycle = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+        Assert.True(
+            lifecycle.Type == BridgeMessageTypes.Acknowledged,
+            $"Artwork lifecycle failed with {lifecycle.Payload.GetRawText()}; " +
+            $"registrations={server.ArtworkRegistrationCount}.");
+        var snapshotResponse = await client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+            snapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
+        var firstHandle = Flatten(snapshot.Root).Single(
+            node => node.Id == "artwork.image").ArtworkHandle!;
+        Assert.True(firstHandle is { Length: 44 } &&
+            firstHandle.StartsWith("library.art.", StringComparison.Ordinal),
+            "Worker snapshot did not carry one bounded opaque artwork handle.");
+        Assert.Equal(0, backend.AppLibraryIconCalls);
+
+        var resolved = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", firstHandle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, resolved.Type);
+        await iconStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var concurrent = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(BridgeMessageTypes.Widgets, concurrent.Type);
+        releaseIcon.TrySetResult();
+        var artwork = await client.ReadEventAsync(BridgeMessageTypes.Artwork);
+        Assert.Equal(png, artwork.Payload.GetProperty("pngBase64").GetString());
+        Assert.Equal(1, backend.AppLibraryIconCalls);
+
+        var staleStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStale = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var staleFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.AppLibraryIconHandler = async (_, _) =>
+        {
+            staleStarted.TrySetResult();
+            await releaseStale.Task;
+            staleFinished.TrySetResult();
+            return new AppLibraryIconSummary(png);
+        };
+        var stale = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", firstHandle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, stale.Type);
+        await staleStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        backend.SetAppLibraryBackend([
+            new AppLibraryBackendItemSummary(
+                "provider-one", "stable-one", "Replacement", AppLibraryKind.Application,
+                "artwork-b"),
+        ]);
+        _ = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
+        _ = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+        var rotatedSnapshotResponse = await client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var rotatedSnapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+            rotatedSnapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
+        var rotatedHandle = Flatten(rotatedSnapshot.Root).Single(
+            node => node.Id == "artwork.image").ArtworkHandle!;
+        Assert.True(rotatedHandle != firstHandle,
+            "Changed trusted artwork revision reused the prior handle.");
+        releaseStale.TrySetResult();
+        await staleFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
+        Assert.Equal(2, backend.AppLibraryIconCalls);
+
+        var forged = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest(
+                "test-widget", "library.art.00000000000000000000000000000000"));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, forged.Type);
+        _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
+        Assert.Equal(2, backend.AppLibraryIconCalls);
+
+        var blockedStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseBlocked = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockedFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.AppLibraryIconHandler = async (_, _) =>
+        {
+            blockedStarted.TrySetResult();
+            await releaseBlocked.Task;
+            blockedFinished.TrySetResult();
+            return new AppLibraryIconSummary(png);
+        };
+        var blocked = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", rotatedHandle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, blocked.Type);
+        await blockedStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var whileBlocked = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(BridgeMessageTypes.Widgets, whileBlocked.Type);
+        _ = await client.RequestAsync(BridgeMessageTypes.Stop, new { });
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(4));
+        Assert.False(blockedFinished.Task.IsCompleted,
+            "Bridge shutdown waited for cancellation-ignoring artwork I/O.");
+        releaseBlocked.TrySetResult();
+        await blockedFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, backend.AppLibraryIconCalls);
+    }
+    finally
+    {
+        if (!client.IsTerminal && !serverTask.IsCompleted)
+        {
+            _ = await client.RequestAsync(BridgeMessageTypes.Stop, new { });
+            await serverTask.WaitAsync(TimeSpan.FromSeconds(4));
+        }
+        else
+        {
+            try { await serverTask.WaitAsync(TimeSpan.FromSeconds(4)); }
+            catch (EndOfStreamException) { }
+        }
+    }
+}
+
+static IEnumerable<ViewNode> Flatten(ViewNode root)
+{
+    yield return root;
+    foreach (var child in root.Children)
+        foreach (var descendant in Flatten(child))
+            yield return descendant;
 }
 
 static async Task RequestDispatcherOwnsWidgetOrdering()
@@ -2039,9 +2233,17 @@ file sealed class BridgeTestWidget : Widget
     private string _actionOrder = "none";
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, string>
         _inputOrigins = new();
+    private readonly bool _artworkFixture;
+    private WidgetAppLibraryItem? _artworkItem;
 
-    public override WidgetView Render() => new(
-        UI.Stack("root",
+    internal BridgeTestWidget(string instanceId) =>
+        _artworkFixture = string.Equals(
+            instanceId, "artwork.instance", StringComparison.Ordinal);
+
+    public override WidgetView Render()
+    {
+        var children = new List<WidgetElement>
+        {
             UI.Button("Refresh", "refresh", "button")
                 .Selected()
                 .Shortcut(ControllerButton.RightBumper).Classes("primary"),
@@ -2050,9 +2252,21 @@ file sealed class BridgeTestWidget : Widget
             UI.Button(_actionOrder == "none" ? "Saving" : _actionOrder, "busy", "busy-button")
                 .Busy().Classes("busy"),
             UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
-                "Volume", $"{_volume:P0}")),
-        "button",
-        [
+                "Volume", $"{_volume:P0}"),
+        };
+        if (_artworkFixture)
+        {
+            children.Add(UI.Button("Load artwork", "artwork.load", "artwork.load"));
+            children.Add(_artworkItem?.ArtworkHandle is { } handle
+                ? UI.Artwork(
+                    new WidgetArtworkHandle(handle), "artwork.image", "Application icon",
+                    ImageFit.Contain)
+                : UI.Icon(WidgetGlyph.Play, "artwork.image", "Application icon fallback"));
+        }
+        return new WidgetView(
+            UI.Stack("root", children.ToArray()),
+            "button",
+            [
             new WidgetQuickAction(ControllerButton.X, "refresh", "Refresh"),
             // This capability is deliberately absent from the test catalog.
             // Automation must route as an ordinary action without reaching
@@ -2064,7 +2278,24 @@ file sealed class BridgeTestWidget : Widget
                 new WidgetQuickActionCapability(
                     WidgetMediaCapabilities.Control.CapabilityId,
                     WidgetMediaCapabilities.Control.OperationId)),
-        ]);
+            ]);
+    }
+
+    protected override async ValueTask OnLifecycleStateChangedAsync(
+        WidgetLifecycleState previous,
+        WidgetLifecycleState current,
+        CancellationToken stateLifetime)
+    {
+        if (_artworkFixture && current == WidgetLifecycleState.Interactive)
+        {
+            var page = await HostServices.AppLibrary.GetPageAsync(0, 1, stateLifetime);
+            _artworkItem = page.Items.Single();
+            if (_artworkItem.ArtworkHandle is null)
+                throw new InvalidOperationException(
+                    "Artwork fixture received an item without a registered handle.");
+            Invalidate();
+        }
+    }
 
     public override ValueTask<bool> OnControllerInputAsync(
         ControllerInputEvent input,
@@ -2083,6 +2314,13 @@ file sealed class BridgeTestWidget : Widget
         {
             var origin = _inputOrigins.GetValueOrDefault(action.Sequence, "unknown");
             _actionOrder = _actionOrder == "none" ? origin : $"{_actionOrder},{origin}";
+            Invalidate();
+        }
+        else if (action.ActionId == "artwork.load" && _artworkFixture)
+        {
+            var page = await HostServices.AppLibrary.GetPageAsync(
+                0, 1, cancellationToken);
+            _artworkItem = page.Items.Single();
             Invalidate();
         }
         else if (action is { ActionId: "volume.changed", RequestedValue: { } requested })
@@ -2509,6 +2747,8 @@ file sealed class BridgeTestClient : IAsyncDisposable
     private readonly Queue<BridgeEnvelope> _events = new();
     private long _requestId;
     public int PendingEventCount => _events.Count;
+    public int PendingEventCountOfType(string type) =>
+        _events.Count(message => string.Equals(message.Type, type, StringComparison.Ordinal));
 
     private BridgeTestClient(NamedPipeClientStream pipe, BridgeFrameChannel channel)
     {

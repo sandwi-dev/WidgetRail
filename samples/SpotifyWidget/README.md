@@ -4,12 +4,22 @@ This controller-first sample consumes only `WidgetHostServices.Spotify`. It neve
 
 Configure the public Client ID for this package, register the exact redirect URI `http://127.0.0.1:43827/callback/` in Spotify's developer dashboard, then choose **Connect** in the widget. Authorization is always explicit; merely opening the widget never launches a browser.
 
-Version 0.2 adds four controller-first destinations:
+Version 0.2.14 is the current immutable Community package. It adds four
+controller-first destinations:
+
+The project imports the shared Community-package deterministic path map, so the
+same commit produces a checkout-independent managed payload and sealed archive.
 
 - **Player** keeps artwork, projected progress, transport, shuffle, and repeat responsive without increasing Spotify polling.
 - **Queue** is fetched only when selected and remains cached while the widget worker lives.
-- **Playlists** lazily loads the user's first bounded page, opens a scrollable detail page, and can start the playlist or an indexed track context.
+- **Playlists** lazily appends bounded keyed windows, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
 - **Devices** transfers to Spotify devices and exposes **This overlay** through the trusted Web Playback SDK host. Tokens and the local Spotify device ID never enter widget code.
+
+Internally, one non-partial widget owns lifecycle, provider calls, resources,
+committed state, and invalidation. Closed value-only policies classify authored
+route/actions and reconcile playback/device commands; a separate pure presenter
+accepts only one immutable snapshot. These boundaries add no provider or OAuth
+authority and preserve the package's authored IDs and controller graph.
 
 Wide surfaces use a navigation rail with a persistent player. Left from the
 inactive seek control returns to the currently selected rail destination;
@@ -36,13 +46,22 @@ expiry, and incompatible configuration still select their explicit safe state
 and clear provider-derived data. Provider exception messages and response bodies
 are never rendered.
 
-Playlist and detail collections use bounded 12-row windows with focus-edge
-pagination. Down at the final row enters the next page, Up at the first row
-restores the preceding cached page, and a short final page remains reversible.
-Repeated edge input joins one in-flight provider request; failures retain the
-last good page and require the visible Retry action. The automated 29-item
-contract covers compact and expanded 12/12/5 forward/reverse traversal for both
-playlist tiles and detail tracks. A
+Queue, playlist, and detail collections use protocol-v14 stable keys and the
+shared bounded cursor resource. Twelve-row responses append or prepend into a
+24-row retained window, so crossing a transport boundary enters the adjacent
+item instead of replacing the visible list. Evicted rows are refetched on
+reverse traversal, a short final page remains reversible, and refresh retains
+the exact URI/playlist anchor or chooses a deterministic surviving fallback.
+Media URI remains the semantic identity; repeated occurrences receive bounded
+collection-context discriminators so equal tracks or episodes keep distinct
+focus and action targets across retained pages and refresh churn.
+Repeated identical edge input joins one in-flight provider request; a genuinely
+different cursor intent remains latest-wins. Detail Play points to the first
+row and that row points back to Play; a singleton row has no self edge, while a
+multi-row first row continues forward into the list. Failures retain the last-good window
+and require the visible Retry action. The automated 29-item contract covers
+compact and expanded 12/12/5 forward/reverse traversal for both playlist tiles
+and detail tracks. A
 physical-controller retest with live Spotify data remains part of the manual
 release checklist.
 

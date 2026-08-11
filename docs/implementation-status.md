@@ -399,6 +399,94 @@ author journey, plus documentation validation across 53 Markdown files. No
 aggregate, native, Runtime, live-service, external-feed, or screenshot suite
 ran.
 
+DLV-022 migrates Spotify Queue, Playlists, and playlist detail from
+replacement-page windows to the shared protocol-v14 cursor collection. Stable
+opaque keys derive from exact playlist IDs or media URIs, never titles or
+visible ordinals. Twelve-item provider responses append/prepend within a
+24-item retained window; reverse traversal refetches evicted segments, refresh
+retains an existing anchor or selects the shared deterministic fallback, and
+empty/sparse/final/error states retain bounded last-good behavior. Identical
+cursor intents now join the exact current SDK completion and call the provider
+once, while differing cursor, direction, viewport, or refresh intents preserve
+latest-wins replacement. Playlist Play and the first detail row author one
+explicit reverse edge; the first row's forward edge continues into the list so
+controller replay cannot oscillate with the header. Focused Release evidence
+passes Widget SDK 85/85, Spotify 41/41, and first-party generic AppContainer
+conformance 6/6. The standalone command validated the authored inputs and
+packed Spotify 0.2.11 as a three-file 134,274-byte archive. No aggregate,
+provider, OAuth, public API/baseline, protocol-format, native, live-account, or
+screenshot suite ran.
+
+DLV-053 corrects the rejected DLV-022 media-occurrence assumption without
+weakening shared duplicate-key rejection. URI remains the semantic media key;
+one private matcher uses immutable item evidence and neighboring collection
+context to distinguish repeated queue and playlist occurrences, retains at
+most the 24-row collection window, and uses deterministic nearest-equivalent
+matching only for otherwise-identical rows. Action and focus IDs carry the
+exact occurrence key. Playlist Play points Down to the first row and the row
+points Up to Play, while an exactly one-row playlist now omits the former self
+Down edge. Focused Release evidence passes all 45 Spotify cases, including
+same-page and cross-page duplicates, eviction/refetch, refresh insertion and
+deletion, exact action routing, bounded reset, and the complete prior DLV-022
+collection/lifecycle matrix.
+
+DLV-055 publishes the current immutable Spotify Community package as 0.2.12
+without changing widget behavior or architecture. The supported Release
+package/install workflow validated the authored inputs, packed the expected
+three-file 146,050-byte archive, installed and explicitly selected 0.2.12,
+enabled it, and retained 0.2.11 as an inactive rollback version. The archive
+SHA-256 is
+`99d52e89f5a922fa7347db0bf3a4665e64184925a319d958cdc5dd49f257fa4b`.
+An independent install of that exact archive produced the same content-tree
+digest as the selected installed generation
+(`a946b36c8f818681de5ec39febfd00322accff14f435bfde274a6c94bd8aafef`),
+while retained 0.2.11 remained distinct
+(`abb2cd6f6340b69204489c39b60bb3cd18462010407f60c8f7c4b16ca70fa522`).
+The smallest credential-free production generic-worker fixture loaded the
+selected installed package under required AppContainer isolation and returned
+a valid first Spotify snapshot at sequence 2. The 45-case Spotify behavior
+suite, aggregate, provider, native, screenshot, and live-account verification
+did not run for this packaging-only milestone.
+
+DLV-043 replaces Spotify's four-declaration, 2,207-line logical partial widget
+with real private responsibilities. The sole non-partial 1,275-line root keeps
+all lifecycle, three cursor resources, provider calls, three task fields, two
+locks plus one semaphore, committed state, and invalidation. It reaches a
+137-line closed route/action classifier and a 140-line playback/device command
+policy only through immutable values/results; neither policy owns a provider,
+task, lock, resource, or invalidation. The 763-line presenter consumes only one
+immutable `SpotifyPresentationState` and owns no mutable authority. The root's
+34 existing state/resource/coordination fields and its singular lifecycle
+ownership are not duplicated across the boundaries. Direct deterministic
+fixtures cover repeated semantic presentation, route/action admission, and
+playback command/projection rules, while the retained route/Back, provider-event
+versus command, late result, cancellation, and Active-drain cases remain green.
+Focused Release evidence passes Spotify 48/48, Widget SDK 85/85, and generic
+AppContainer conformance 6/6. No aggregate, live account, provider, or native
+suite ran.
+
+DLV-056 makes managed Community-package payloads opt into one shared deterministic
+build input. `eng/CommunityPackage.props` retains portable PDB generation and
+maps each opted-in project directory to `/_/community/<project>` before the
+compiler emits the PE CodeView record; the Spotify project imports that input
+explicitly. The supported pack script also supplies one stable repository-root
+map as a global publish-graph property, so the Widget SDK and protocol reference
+assemblies have identical MVIDs and reference fingerprints in every checkout.
+This removes the absolute checkout path previously embedded in
+`SpotifyWidget.dll` without changing public debugging, SDK, protocol, provider,
+or widget behavior. DLV-056's clean-root proof did not cover an ordinary warm
+main checkout: its package command could reuse the default incremental
+`bin`/`obj` graph and produce a different same-length managed payload after
+integration.
+
+DLV-057 makes the supported package command own the complete generated build
+graph under its selected artifact root. Every run removes only that bounded
+script-owned graph, then passes it to `dotnet publish` through
+`--artifacts-path`; ordinary developer `bin`/`obj` outputs are neither consumed
+nor deleted. Checkout path mapping and bounded NuGet cache reuse remain intact.
+Spotify 0.2.14 is the resulting immutable Community package; the supported
+workflow retains 0.2.11, 0.2.12, and 0.2.13 as inactive rollback generations.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;
@@ -1444,8 +1532,33 @@ themes also use non-shrinking fixed regions, a thin native Slider
  position before the first paint and keyed List/Grid descendants drive the
  existing near-edge actions before focus can escape to a fixed header. Opaque
  artwork handles are parsed and preserved as bounded identities but grant no
- URL, file, network, decode, or action authority; trusted resolution remains
- separate. Deterministic managed fixtures traverse both 2,000- and 10,000-item
+ URL, file, network, decode, or action authority. DLV-018 completes the trusted
+ application-artwork route: Start Menu and AppsFolder registrations issue
+ generation-bound opaque handles. DLV-054 makes private native demand a quick
+ correlated admission followed by bounded asynchronous provider work, so input,
+ lifecycle, catalog, and snapshot traffic remains live while an icon source is
+ blocked. Completion rechecks the current worker and artwork generations. A
+ host-only digest of the provider's exact revalidation record rotates the handle
+ and per-row decoded/bitmap key when trusted icon content changes without a
+ SavedId or launch-identity change. Native demand remains lazy with deterministic
+ 32-entry / 32 MiB in-memory eviction and no disk cache; missing, malformed, stale,
+ replaced, or Steam-without-trusted-artwork registrations retain the semantic
+ fallback without changing launch, focus, membership, or warm-start identity.
+ Focused DLV-018 Release evidence passes 32 Windows app-library provider,
+ 51 broker, 56 Games & Apps, 70 production Bridge, 6 isolated first-party
+ conformance, 85 Widget SDK, 12 API-compatibility, and 53 documentation cases;
+ the native 10,000-demand cache fixture passes and the Release OverlayHost
+ target compiles.
+ DLV-054 focused evidence adds cancellation-ignoring provider stall, concurrent
+ list/lifecycle progress, bounded Stop, exact late-generation suppression, and
+ same-AppId/SavedId/stable-identity artwork-revision rotation. Release results
+ pass Windows app-library 32/32, broker 51/51, Games & Apps 56/56, Widget SDK
+ 85/85, production Bridge 70/70, documentation over 54 Markdown files, native
+ RemoteImageCache and bridge-parser cases, 4,777 renderer checks, the production
+ OverlayHost target, and the installed first-party package seam 6/6. The
+ correction is private bridge/cache behavior and does not close the broader
+ synchronous startup issue.
+ Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,
  49 native focus checks, 4,777 native renderer checks, and the native bridge
@@ -2054,7 +2167,7 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Community package 0.2.10
+  setup guidance without opening OAuth automatically. Community package 0.2.13
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the

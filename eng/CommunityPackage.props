@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Community payloads must not encode their absolute checkout root. -->
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildProjectDirectory)=/_/community/$(MSBuildProjectName)</PathMap>
+  </PropertyGroup>
+</Project>

@@ -17,6 +17,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly PlatformAppearanceService? _appearance;
     private readonly ConsentStore? _consentStore;
     private readonly IPlatformBrokerBackend? _platformBackend;
+    private readonly AppLibraryArtworkRegistry? _appLibraryArtwork;
     private readonly BridgeCatalogMonitor? _catalogMonitor;
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
@@ -47,6 +48,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _appearance = appearance;
         _consentStore = consentStore;
         _platformBackend = platformBackend;
+        _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
         _catalogMonitor = catalogMonitor;
         _registry = new BridgeClientRegistry(
             catalog ?? throw new ArgumentNullException(nameof(catalog)),
@@ -71,6 +73,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
     public int RunningWorkerCount => _registry.RunningWorkerCount;
     public WorkerResidencyBudgetSnapshot ResidencyBudget => _registry.ResidencyBudget;
+    internal int ArtworkRegistrationCount => _appLibraryArtwork?.RegistrationCount ?? 0;
 
     public async Task RunAsync(TimeSpan acceptTimeout, CancellationToken cancellationToken = default)
     {
@@ -211,6 +214,52 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 snapshotRequest.WidgetId,
                 snapshotPublication.Value,
                 cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.ResolveArtwork:
+        {
+            if (_appLibraryArtwork is null)
+                throw new BridgeProtocolException("Trusted application artwork is unavailable.");
+            var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
+            if (!AppLibraryArtworkRegistry.IsHandle(artworkRequest.ArtworkHandle))
+                throw new BridgeProtocolException("Artwork handle is invalid.");
+            ConfiguredWidget configured;
+            using (var artworkAdmission = _registry.AdmitArtwork(artworkRequest.WidgetId))
+                configured = artworkAdmission.Value;
+            var identity = new BrokerWidgetIdentity(
+                configured.PackageId, configured.PublisherId, configured.InstanceId);
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged,
+                request.RequestId,
+                new { },
+                cancellationToken).ConfigureAwait(false);
+
+            string? pngBase64 = null;
+            try
+            {
+                pngBase64 = await _appLibraryArtwork.ResolveAsync(
+                    identity, artworkRequest.ArtworkHandle, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Publish an unavailable completion only if the exact worker
+                // generation remains current. Session shutdown suppresses it.
+            }
+
+            using var artworkCompletion = _registry.TryAdmitArtwork(
+                artworkRequest.WidgetId, configured.WorkerFingerprint);
+            if (artworkCompletion is null ||
+                !_appLibraryArtwork.IsCurrent(identity, artworkRequest.ArtworkHandle)) break;
+            await SendEventAsync(
+                BridgeMessageTypes.Artwork,
+                new
+                {
+                    widgetId = artworkRequest.WidgetId,
+                    artworkHandle = artworkRequest.ArtworkHandle,
+                    pngBase64 = pngBase64 ?? string.Empty,
+                },
+                _sessionCancellation).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.RestartWidget:
@@ -495,7 +544,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             _consentStore,
             _platformBackend,
             context,
-            effect => PublishHostEffect(configured.Id, configured.WorkerFingerprint, effect));
+            artworkRegistry: _appLibraryArtwork!,
+            hostEffectSink: effect => PublishHostEffect(
+                configured.Id, configured.WorkerFingerprint, effect));
     }
 
     private void PublishHostEffect(

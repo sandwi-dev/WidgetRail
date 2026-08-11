@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -7,6 +8,7 @@ internal enum BridgeRequestKind
     ListWidgets,
     GetPlatformAppearance,
     GetSnapshot,
+    ResolveArtwork,
     RestartWidget,
     SetWidgetLifecycle,
     Action,
@@ -82,6 +84,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
+                BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
                 BridgeMessageTypes.RestartWidget => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.RestartWidget),
@@ -115,4 +118,13 @@ internal static class BridgeRequestClassifier
 
     private static BridgeRequestKey Widget(string widgetId, BridgeRequestKind kind) =>
         BridgeRequestKey.Widget(kind, widgetId);
+
+    private static BridgeRequestKey Artwork(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeArtworkRequest>(payload);
+        _ = BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, request.WidgetId);
+        if (!AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle))
+            throw new BridgeProtocolException("Artwork handle is invalid.");
+        return BridgeRequestKey.Global(BridgeRequestKind.ResolveArtwork);
+    }
 }

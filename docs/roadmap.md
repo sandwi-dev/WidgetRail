@@ -255,10 +255,18 @@ remains off until the publisher-trust gates in Phase 4.
   responsive widget can author and replay an exact seek-to-selected-navigation
   edge without native special cases. Widgets-led serialized DLV-006 is accepted
   through `9c7438f` as the distinct cursor/append collection and bounded lazy-
-  artwork foundation. DLV-022 candidate `c349bbd` proves the main Spotify cursor path but
-  remains unintegrated because URI-only keys collide for repeated media and a
-  singleton playlist row self-links. Finish DLV-018 trusted Games artwork, then
-  take DLV-053's bounded correction before DLV-043. Continue suitable
+  artwork foundation. DLV-022, DLV-018, and their accepted DLV-053/DLV-054
+  corrections are integrated through `8c1bbdf`: Spotify has bounded repeated-
+  media occurrence keys plus the singleton graph correction, while trusted Games
+  artwork no longer waits on provider I/O under the native request path and
+  exact revalidation changes rotate stale pixels. Accepted DLV-055 `efffa53`
+  publishes/installs/selects the changed Spotify source as `0.2.12`, and the
+  coherent Release is visibly running. Accepted DLV-043 `6c619e9`, integrated
+  through `d534410`, now establishes real Spotify route/action, playback, and
+  snapshot-only presentation boundaries over one retained orchestration owner.
+  DLV-057 `90cadf4` is accepted: the supported package command owns a clean
+  isolated graph and warm main, repeated main, detached root, installed content,
+  and the planner refresh are identical for selected Spotify `0.2.14`. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -281,9 +289,13 @@ remains off until the publisher-trust gates in Phase 4.
   open with feedback. Bounded current-user AppsFolder/AUMID discovery, exact
   revalidated null-argument activation, and curated Shell icons are now
   implemented beside Start Menu shortcuts. User evidence still shows the Play
-  fallback where trusted artwork is absent. DLV-018 adds bounded, lazy artwork
-  handles in the trusted provider/source adapters, including Steam, without
-  serializing large base64 images into every widget snapshot. Launcher sources,
+  fallback where trusted artwork is absent. DLV-018 plus accepted DLV-054 now
+  add bounded lazy handles for trusted Start Menu and AppsFolder artwork without
+  serializing base64 images into snapshots or holding provider I/O under native
+  control-plane progress; exact trusted revalidation rotates the handle, decoded
+  cache entry, and render bitmap. Steam remains a documented fallback. The
+  coherent post-DLV-055 Release is now running for packaged live artwork checks.
+  Launcher sources,
   authoritative game classification, history, search, source grouping,
   running-program capture, and file-picker additions remain roadmap work.
 - Capture proof and widget if Windows API tests pass
@@ -312,9 +324,12 @@ remains off until the publisher-trust gates in Phase 4.
   eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
   Do not claim public distribution while the documented five-user Development
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
-  Before expanding breadth, the DLV-022-dependent prefix must pass DLV-053's
-  duplicate-occurrence and singleton-focus correction so Queue/Playlist
-  traversal safely consumes the continuous keyed-list contract from DLV-006.
+  Accepted DLV-055 now runs the integrated DLV-022/053 Queue/Playlist traversal,
+  bounded duplicate-occurrence identity, and non-self-linking singleton header
+  graph from unique selected Spotify `0.2.12`. DLV-043's real private ownership
+  boundaries are accepted and integrated. Accepted DLV-057 now supplies an
+  isolated script-generated artifact graph and exact main-built `0.2.14`;
+  immutable `0.2.11`/`0.2.12`/`0.2.13` remain rollback generations.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,
@@ -571,6 +586,14 @@ Staged rollout:
    and partner requirements are documented. This is not a prerequisite for a
    strong installed-game launcher.
 
+**Current delivery sequence:** DLV-059 now normalizes the existing trusted
+Start Menu/AppsFolder and Steam sources behind one internal adapter contract.
+DLV-060 then ships the dedicated installed-only Game Launcher over the accepted
+cursor-grid and lazy-artwork foundations; DLV-066 adds explicit favorites and
+preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
+Host-owned query/text entry and additional store adapters remain later
+serialized stages rather than being hidden inside the first widget.
+
 Completion evidence includes deterministic adapter contract suites; 2,000 and
 10,000 item cold/refresh/search/scroll measurements; bounded memory, decoded
 artwork, disk, CPU, and hidden-idle cost; compact/standard/wide and 100-150%
@@ -611,6 +634,13 @@ and small incremental resource measurements. It does not yet ship Pin/Unpin,
 prove pointer pass-through over a real game, host protected media, or validate
 physical mixed-display behavior; the generic pinning gate below still owns
 those outcomes before YouTube playback is added.
+
+**Current delivery sequence:** Assigned DLV-058 ships the generic Pin/Unpin/
+click-through lifecycle from the accepted Win32 tool-window architecture.
+Ready DLV-068 adds controller move/resize and durable monitor-safe placement;
+DLV-069 completes input/focus/UIA and emergency-hide composition; DLV-062 then
+runs the fixed-video trusted-media feasibility gate. YouTube URL/video-ID v1 is
+not authorized until all four gates are accepted.
 
 Framework prerequisites:
 
