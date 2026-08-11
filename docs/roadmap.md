@@ -301,11 +301,14 @@ remains off until the publisher-trust gates in Phase 4.
   add bounded lazy handles for trusted Start Menu and AppsFolder artwork without
   serializing base64 images into snapshots or holding provider I/O under native
   control-plane progress; exact trusted revalidation rotates the handle, decoded
-  cache entry, and render bitmap. Steam remains a documented fallback. The
-  coherent post-DLV-055 Release is now running for packaged live artwork checks.
-  Launcher sources,
-  authoritative game classification, history, search, source grouping,
-  running-program capture, and file-picker additions remain roadmap work.
+  cache entry, and render bitmap. Steam remains a documented fallback today;
+  Ready DLV-094 owns a bounded trusted-local-cache artwork slice without network
+  access or store identity exposure. The coherent post-DLV-055 Release is now
+  running for packaged live artwork checks. Launcher sources, authoritative game
+  classification, history, search, and source grouping are implemented in the
+  normalized Game Launcher path. Ready DLV-095 adds only on-demand running-
+  program capture for exact current normalized registrations; arbitrary file-
+  picker additions remain later roadmap work.
 - Capture proof and widget if Windows API tests pass
 - Expand the implemented Spotify Community addon beyond its controller-first
   player core. The trusted provider is composed by `WidgetBridge`, the local
@@ -393,8 +396,10 @@ not irreversible API priority:
    visual/frame-time evidence before adding later product-target transitions.
 5. **Deepen Games & Apps through safe sources.** Start Menu and bounded
    AppsFolder/AUMID sources plus curated icons and a bounded Steam manifest/URI
-   adapter are implemented. Add other reviewed launcher adapters,
-   running-program capture, and a host-owned file picker.
+   adapter are implemented. Ready DLV-094 adds bounded trusted local Steam
+   artwork through the existing lazy handle path, and Ready DLV-095 adds an on-
+   demand running-program route only for exact normalized registrations. Add
+   other reviewed launcher adapters and a host-owned file picker later.
    Keep classification evidence-backed and launch identities opaque/revalidated.
 6. **Harden local providers and resource behavior.** The bounded schema-2
    process/native-counter harness now establishes independent Hidden, Visible,
@@ -941,11 +946,13 @@ polling adapters and targets:
   separate host-mediated authority and must not silently disclose credentials
   or connect to an unreviewed network.
 
-Password entry, editing/creating protected Wi-Fi profiles, captive-portal
-interaction, and exposing stored network keys are explicitly outside the
-current scope. The broker owns WLAN/network handles and returns sanitized
-state/events. Connection uses a current saved-profile-backed or open scan
-result, requires clear focus/feedback, and must
+Host-owned masked password entry and per-user temporary profile creation are now
+implemented only for current unsaved WPA2/WPA3 Personal results. Enterprise,
+hidden-network, stored-key, arbitrary profile-editing, and captive-portal flows
+remain explicitly outside the current scope. The broker owns WLAN/network
+handles and returns sanitized state/events. Connection uses a current saved-
+profile-backed, open, or supported Personal scan result, requires clear
+focus/feedback, and must
 handle adapter removal, airplane/radio state, connection failure, and Ethernet
 priority without trapping controller focus.
 
@@ -976,13 +983,13 @@ revoked states without retrying. The resulting rows use generation-bound opaque
 scan IDs that expire on the next scan/provider generation; widgets never receive
 BSSID, interface identity, raw WLAN structures, profile XML, or keys.
 
-Connection support currently accepts saved-profile-backed and unsaved open
-results. DLV-087 candidates `8c2949c`/`376e67c` implement the visible host-owned
-prompt and documented per-user Native Wi-Fi profile/connect flow, but are not
-accepted: ordinary JSON/string/frame copies are not fully zeroed and rollback
-does not yet prove it still owns the SSID-derived profile it deletes. DLV-093
-follows active Bluetooth-removal DLV-091 to close those exact boundaries before
-integration. Credentials must never enter the widget snapshot,
+Connection support accepts saved-profile-backed, unsaved open, and supported
+unsaved WPA2/WPA3 Personal results. Accepted DLV-087 plus DLV-093, integrated
+through `63ca3a2`, implement the visible host-owned prompt and documented per-
+user Native Wi-Fi flow without password-bearing JSON/string copies. Each
+temporary profile has a random attempt identity and ownership token that must
+match before deletion; failed or unprovable rollback preserves current Windows
+state. Credentials never enter the widget snapshot,
 worker process, widget-owned storage, diagnostics, logs, or post-operation
 transport buffers. Enterprise/802.1X,
 certificate, SIM, domain-credential, hidden-network, and captive-portal setup is
@@ -998,8 +1005,10 @@ discovery, controls only the software radio, and pairs one current opaque
 association endpoint through `DeviceInformationPairing.PairAsync`. Unsupported
 ceremonies and paired-device management open Windows Bluetooth Settings through
 the separate manage grant. The provider refreshes authoritative state after
-every result and never equates pairing with profile connectivity. Unpair remains
-future host-owned work and physical pairing remains unverified. No generic Bluetooth
+every result and never equates pairing with profile connectivity. Accepted
+DLV-091, integrated through `63ca3a2`, adds explicit confirmation and a separate
+destructive grant for exact current-device `UnpairAsync`; physical pairing and
+unpair/re-pair remain manually unverified. No generic Bluetooth
 device Connect/Disconnect command is
 promised: public Windows communication APIs are profile-specific (for example
 GATT services/characteristics and RFCOMM sockets), so each future functional
@@ -1015,11 +1024,10 @@ survivor without jumping to another action.
 
 Later Network Control phases add:
 
-- a host-owned WPA Personal credential flow after the implemented explicit,
-  privacy-gated available-network scans and saved/open connections; enterprise
-  authentication remains unsupported initially;
-- Bluetooth host-owned unpair and reviewed profile-specific operations after
-  the implemented radio/discovery/pair/Settings-management slice;
+- enterprise/802.1X and captive-portal handling only after the accepted host-
+  owned WPA Personal flow proves a separate safe requirement;
+- reviewed Bluetooth profile-specific operations after the implemented radio,
+  discovery, pair, Settings-management, and exact confirmed-unpair slices;
 - sanitized active-adapter state and Ethernet/Wi-Fi identity;
 - SSID and signal/link quality only through an explicit Windows privacy-access
   flow with required/denied/revoked states;
@@ -1030,21 +1038,22 @@ Later Network Control phases add:
 - safe reconnect/renew/diagnostic actions only after capability and failure-
   recovery review.
 
-Network phase dependencies through scan, saved/open connection, and Bluetooth
-association pairing are now
+Network phase dependencies through scan, saved/open/Personal connection,
+Bluetooth association pairing, and exact confirmed unpair are now
 implemented: bounded models and controller focus, separate closed grants,
 event-driven IP Helper/Native Wi-Fi, explicit scan, generation-bound IDs, and
 precise-location denial states. Remaining dependencies are the host-owned
-credential prompt, Bluetooth unpair/profile operations, hardware/privacy matrices, and
-measured diagnostic sampling. Identity/address details
+enterprise/captive exclusions, profile-specific Bluetooth operations, hardware/
+privacy matrices, and measured diagnostic sampling. Identity/address details
 and recovery commands do not enter the public contract before those reviews.
 
 The user-visible first-party reference includes explicit scans and unsaved open
 networks, software Wi-Fi/Bluetooth radio controls, association pairing, and a
-Windows-owned Bluetooth management fallback, but still excludes password
-entry and protected profile creation until DLV-087 is accepted, plus unpair and
-generic connection. The staged credential flow
-must remain host-owned and WPA Personal-only at first; it never exposes stored
+Windows-owned Bluetooth management fallback, confirmed exact unpair, and a
+host-owned WPA Personal password/profile flow, while still excluding enterprise,
+hidden, captive-portal, stored-key, and generic Bluetooth connection behavior.
+The accepted credential flow
+remains host-owned and WPA Personal-only; it never exposes stored
 keys. Captive-portal automation, enterprise/802.1X provisioning, arbitrary
 adapter configuration, and privileged troubleshooting scripts remain outside
 the initial expanded scope. Diagnostic sampling must stop outside its declared

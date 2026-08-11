@@ -1962,7 +1962,24 @@ the second launch by exact SavedId. The focused Game Launcher suite passes
 
 ### EQ-033 — P1 — Protected Wi-Fi secret and rollback ownership are not terminal
 
-**Status: Open; DLV-093 is Ready after active DLV-091.**
+**Status: Closed by DLV-093 `3ce8991`, integrated with the corrected DLV-087
+prefix through `63ca3a2`.**
+
+**Resolution.** The host now overwrites the password EDIT control before
+destruction and sends only bounded metadata in JSON; the credential itself uses
+a dedicated mutable native byte frame and managed mutable owner that are zeroed
+before reply publication and on rejection, cancellation, I/O failure, and
+exception paths. Provider command copies and the profile XML/PInvoke owner are
+also cleared, and tests compare derived sentinels rather than storing a raw
+password string. Native Wi-Fi creates a random per-attempt profile name, stores
+a 32-byte ownership token as per-profile custom user data, and funnels every
+failure/timeout/disposal delete through an exact interface/profile/token match.
+Mismatch, unavailable verification, and delete failure are explicit results and
+never delete current Windows state. Focused evidence passes provider 55/55,
+bridge 76/76, Network Controls 22/22, AppContainer 6/6, both native secret
+targets, and docs 55. The one clean checkpoint stopped later at an unrelated
+accepted Game Launcher fixture after the changed groups passed and was not
+repeated.
 
 **Evidence.** DLV-087 correctly keeps the credential out of the ordinary widget
 worker, snapshots, public capability calls, logs, and persisted overlay state.
