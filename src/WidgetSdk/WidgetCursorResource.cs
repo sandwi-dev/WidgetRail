@@ -81,8 +81,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     private readonly IReadOnlyDictionary<string, WidgetCursorViewport<TItem>> _viewports;
     private readonly WidgetOperations _operations;
     private readonly Action _invalidate;
-    private readonly Queue<string> _cursorOrder = [];
     private readonly HashSet<string> _cursorHistory = new(StringComparer.Ordinal);
+    private WidgetCursorDirection? _cursorHistoryDirection;
     private readonly LinkedList<Segment> _segments = [];
     private WidgetCursorResourceSnapshot<TItem> _snapshot = new(
         WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
@@ -250,8 +250,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 _epoch++;
                 _current = null;
                 _failed = null;
-                _cursorOrder.Clear();
                 _cursorHistory.Clear();
+                _cursorHistoryDirection = null;
                 _segments.Clear();
                 changed = SetSnapshotLocked(WidgetPagedResourceStatus.NotLoaded,
                     [], null, null, null, null, null);
@@ -297,17 +297,17 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         {
             var loaded = await _options.LoadPage(request.Intent.Cursor,
                 request.Intent.Direction, _options.PageSize, context.CancellationToken).ConfigureAwait(false);
-            var page = Normalize(loaded, request.Intent.Cursor);
+            var page = Normalize(loaded);
             lock (_gate)
             {
                 if (!CanCommit(request, context)) return;
+                ValidateTraversalProgress(request.Intent, page);
                 var merged = Merge(page, request.Intent.Cursor, request.Intent.Direction);
                 var anchor = ResolveAnchor(request.Before, merged, request.Intent.Direction);
                 var focus = ResolveFocus(page.Items, request.Intent);
                 var beforeCursor = _segments.First?.Value.Page.Before;
                 var afterCursor = _segments.Last?.Value.Page.After;
-                Remember(page.Before);
-                Remember(page.After);
+                CommitTraversalProgress(request.Intent, page);
                 _current = null;
                 _failed = null;
                 SetSnapshotLocked(WidgetPagedResourceStatus.Ready, merged,
@@ -333,8 +333,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         finally { if (!committed) Restore(request); }
     }
 
-    private WidgetCursorPage<TItem> Normalize(WidgetCursorPage<TItem>? page,
-        WidgetCollectionCursor? requested)
+    private WidgetCursorPage<TItem> Normalize(WidgetCursorPage<TItem>? page)
     {
         if (page is null || page.Items is null || page.Items.Count > _options.PageSize ||
             page.Items.Any(item => item is null))
@@ -345,9 +344,6 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             var key = KeyOf(item).Value;
             if (!keys.Add(key)) throw new InvalidOperationException("Duplicate collection item key.");
         }
-        if (requested is { } cursor &&
-            (page.Before == cursor || page.After == cursor))
-            throw new InvalidOperationException("Cursor loop.");
         if (page.Before is { } before) StableIdentifier.Validate(before.Value, nameof(page.Before));
         if (page.After is { } after) StableIdentifier.Validate(after.Value, nameof(page.After));
         return new(new ReadOnlyCollection<TItem>(page.Items.ToArray()), page.Before, page.After);
@@ -423,12 +419,43 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 throw new InvalidOperationException("Cursor viewport item keys must agree.");
         return key;
     }
-    private void Remember(WidgetCollectionCursor? cursor)
+    private void ValidateTraversalProgress(Intent intent, WidgetCursorPage<TItem> page)
     {
-        if (cursor is not { } value || !_cursorHistory.Add(value.Value)) return;
-        _cursorOrder.Enqueue(value.Value);
-        while (_cursorOrder.Count > MaximumCursorHistory)
-            _cursorHistory.Remove(_cursorOrder.Dequeue());
+        if (intent.Direction is not { } direction) return;
+        var outbound = direction == WidgetCursorDirection.Before ? page.Before : page.After;
+        if (outbound is { } next && intent.Cursor == next)
+            throw new InvalidOperationException("Cursor loop.");
+
+        var sameTraversal = _cursorHistoryDirection == direction;
+        if (sameTraversal && outbound is { } repeated &&
+            _cursorHistory.Contains(repeated.Value))
+            throw new InvalidOperationException("Cursor loop.");
+
+        var projected = sameTraversal ? _cursorHistory.Count : 0;
+        if (intent.Cursor is { } requested &&
+            (!sameTraversal || !_cursorHistory.Contains(requested.Value))) projected++;
+        if (outbound is { } candidate &&
+            (!sameTraversal || !_cursorHistory.Contains(candidate.Value))) projected++;
+        if (projected > MaximumCursorHistory)
+            throw new InvalidOperationException("Cursor traversal exceeded its bound.");
+    }
+
+    private void CommitTraversalProgress(Intent intent, WidgetCursorPage<TItem> page)
+    {
+        if (intent.Direction is not { } direction)
+        {
+            _cursorHistory.Clear();
+            _cursorHistoryDirection = null;
+            return;
+        }
+        if (_cursorHistoryDirection != direction)
+        {
+            _cursorHistory.Clear();
+            _cursorHistoryDirection = direction;
+        }
+        if (intent.Cursor is { } requested) _cursorHistory.Add(requested.Value);
+        var outbound = direction == WidgetCursorDirection.Before ? page.Before : page.After;
+        if (outbound is { } next) _cursorHistory.Add(next.Value);
     }
     private bool CanCommit(Request request, WidgetOperationContext context) =>
         request.Epoch == _epoch && ReferenceEquals(_current, request) && context.IsCurrent;
