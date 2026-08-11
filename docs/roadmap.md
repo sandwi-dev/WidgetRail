@@ -615,8 +615,10 @@ Accepted DLV-075/DLV-076/DLV-077 add host-owned controller text entry,
 full-catalog query/filter, bounded recent ordering, and explicit manual
 inclusion from trusted registrations. Accepted DLV-082 `a862ed4`, integrated
 through `ef8fbab`, carries bounded sanitized source health through the existing
-query revision and renders partial success without adapter control. DLV-083 and
-DLV-084 now own controller page switching and durable hide/restore. Additional
+query revision and renders partial success without adapter control. Accepted
+DLV-083 `f441472`, integrated through `464460c`, scopes LB/RB page switching to
+the current Game Launcher results scroll without changing native routing.
+DLV-084 now owns durable hide/restore. Additional
 store adapters remain
 behind the documented-registration admission gate; current official
 [GOG client](https://docs.gog.com/gc-client-overview/) and

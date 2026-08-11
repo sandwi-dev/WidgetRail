@@ -153,6 +153,24 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-083 — Add scoped LB/RB Game Launcher page switching
+
+**State:** Done
+**Closing commit:** `f441472` (`[DLV-083] scope Game Launcher bumper paging`)
+**Integrated on `main`:** `464460c`
+
+**Reviewer disposition:** Accepted. Game Launcher now authors LB/RB page actions
+only on its results scroll, only for a legal current Ready-state cursor
+direction. The existing cursor resource remains the sole page owner, so busy,
+boundary, repeated, and replaced input cannot admit another transition or
+publish a stale result. Multi-page results reserve bumpers for paging while
+single-page tiles retain variant-group and preference shortcuts; Recent and
+Manual rows remain fixed presentation sections outside provider cursor
+accounting. Focused evidence passes the 39-case Game Launcher suite, installed
+AppContainer conformance 6/6, and 55 documentation files after correcting two
+test-fixture assumptions; no provider, broker, SDK, protocol, or native route
+changed.
+
 ### DLV-082 — Surface isolated game-library source health
 
 **State:** Done
@@ -774,7 +792,8 @@ route/action, playback, and presentation boundaries while retaining one
   manual entries are now available on main. DLV-082 `a862ed4` is accepted and
   integrated through `ef8fbab`: bounded source-health truth now reaches Game
   Launcher without exposing adapter control or suppressing usable games.
-  DLV-083 is Assigned. DLV-084 and DLV-085 remain ordered visible Ready work;
+  DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084 is
+  Assigned and DLV-085 remains ordered visible Ready work;
   DLV-086 follows them as the bounded correction for the unrelated YT Music
   package-version drift exposed by DLV-082's one aggregate. DLV-038 remains
   deferred test-architecture debt rather than filler work.
@@ -850,8 +869,7 @@ rather than rerunning the aggregate or reopening this accepted contract.
 
 ### DLV-083 — Add scoped LB/RB Game Launcher page switching
 
-**State:** Assigned; implementation started automatically from clean DLV-082
-commit `a862ed4`
+**State:** Done; accepted as `f441472` and integrated through `464460c`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-082
 **Dependencies:** DLV-060, DLV-072, DLV-075, DLV-080, DLV-081, and DLV-082 only
@@ -901,9 +919,18 @@ aggregate, screenshot, external store, or physical controller run.
 active Game Launcher collection with existing public actions, or correctness
 requires a new native/global input contract or another cursor owner.
 
+**Reviewer disposition:** Accepted. Shortcut admission is scoped to the
+existing results-scroll action map and only current legal cursor directions;
+the cursor resource still owns movement, focus-anchor fallback, replacement,
+and stale-result rejection. Multi-page tiles no longer compete for LB/RB while
+single-page variant actions remain unchanged. Focused Game Launcher,
+installed-worker, and documentation evidence passes with no cross-lane API or
+native changes.
+
 ### DLV-084 — Add durable Game Launcher hide and restore
 
-**State:** Ready; execute automatically after committing DLV-083
+**State:** Assigned; implementation started automatically from clean DLV-083
+commit `f441472`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-083
 **Dependencies:** DLV-060, DLV-066, DLV-075, DLV-080, and DLV-083 only for
