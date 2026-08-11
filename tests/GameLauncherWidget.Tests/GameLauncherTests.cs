@@ -198,6 +198,10 @@ public sealed class GameLauncherTests
             RecentSavedIds = items.Skip(GameLauncherPrivateState.MaximumOrganizedItems)
                 .Take(GameLauncherPrivateState.MaximumRecentItems)
                 .Reverse().Select(item => item.SavedId).ToArray(),
+            ManualSavedIds = items.Skip(GameLauncherPrivateState.MaximumOrganizedItems +
+                    GameLauncherPrivateState.MaximumRecentItems)
+                .Take(GameLauncherPrivateState.MaximumManualItems)
+                .Select(item => item.SavedId).ToArray(),
         };
         var json = JsonSerializer.SerializeToUtf8Bytes(state);
 
@@ -353,7 +357,7 @@ public sealed class GameLauncherTests
     public async Task IncompatibleStateResetsWholeSchemaBeforeReconciliation()
     {
         var legacyJson = """
-            {"Version":2,"Items":[{"SavedId":"saved-stale","DisplayName":"Stale","SourceAttribution":"Old"}],"FavoriteSavedIds":["saved-stale"],"RecentSavedIds":["saved-stale"]}
+            {"Version":3,"Items":[{"SavedId":"saved-stale","DisplayName":"Stale","SourceAttribution":"Old"}],"FavoriteSavedIds":["saved-stale"],"RecentSavedIds":["saved-stale"],"ManualSavedIds":["saved-stale"]}
             """;
         var state = new WidgetTestPrivateState(legacyJson, 1);
         var page = new TaskCompletionSource<WidgetAppLibraryPage>(
@@ -372,6 +376,7 @@ public sealed class GameLauncherTests
         Assert.AreEqual(0, reset.Items.Count);
         Assert.AreEqual(0, reset.FavoriteSavedIds.Count);
         Assert.AreEqual(0, reset.RecentSavedIds.Count);
+        Assert.AreEqual(0, reset.ManualSavedIds.Count);
         Assert.IsFalse(Nodes(Snapshot(widget, 13).Root).Any(node =>
             (node.Text ?? string.Empty).Contains("Stale", StringComparison.Ordinal)));
 
@@ -383,6 +388,7 @@ public sealed class GameLauncherTests
         Assert.AreEqual(0, widget.Organization.FavoriteSavedIds.Count);
         Assert.AreEqual(0, widget.Organization.VariantGroups.Count);
         Assert.AreEqual(0, widget.Organization.RecentSavedIds.Count);
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count);
         Assert.IsFalse(Nodes(Snapshot(widget, 14).Root).Any(node =>
             (node.Text ?? string.Empty).Contains("Stale", StringComparison.Ordinal)));
         await Background(widget);
@@ -404,6 +410,186 @@ public sealed class GameLauncherTests
                     true, baseline, 1)),
                 baseline, 1, CancellationToken.None));
         Assert.AreEqual(0, baseline.FavoriteSavedIds.Count);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task AddGamesRouteShowsAllTrustedKindsAndRestoresLibraryFocus()
+    {
+        var host = new FakeHost(3)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                Kind = index switch
+                {
+                    0 => WidgetAppLibraryKind.Game,
+                    1 => WidgetAppLibraryKind.Application,
+                    _ => WidgetAppLibraryKind.Unknown,
+                },
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        await widget.OnActionAsync(new("game-launcher.add.open", "game-launcher.add.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "add-games route load");
+        Assert.IsNull(host.Queries[^1].Query.Kind);
+        var addSnapshot = Snapshot(widget, 70);
+        var addTiles = Nodes(addSnapshot.Root)
+            .Where(node => node.ActionId == "game-launcher.manual.toggle").ToArray();
+        Assert.AreEqual(3, addTiles.Length);
+        StringAssert.Contains(addTiles[0].AccessibilityLabel!, "Game");
+        StringAssert.Contains(addTiles[1].AccessibilityLabel!, "Application");
+        StringAssert.Contains(addTiles[2].AccessibilityLabel!, "Unknown");
+
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", addTiles[1].Id));
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            widget.Organization.ManualSavedIds.ToArray());
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", addTiles[1].Id));
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count);
+
+        await widget.OnActionAsync(new("game-launcher.add.back", "game-launcher.add.back"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "library route restore");
+        Assert.AreEqual("game-launcher.add.open", Snapshot(widget, 71).InitialFocusId);
+        Assert.AreEqual(WidgetAppLibraryKind.Game, host.Queries[^1].Query.Kind);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task ManualEntrySurvivesRestartButLaunchStillRevalidatesExactSavedId()
+    {
+        var state = new WidgetTestPrivateState();
+        var host = new FakeHost(2, state)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                Kind = index == 1
+                    ? WidgetAppLibraryKind.Application
+                    : WidgetAppLibraryKind.Game,
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new("game-launcher.add.open", "game-launcher.add.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "manual add route");
+        var application = Nodes(Snapshot(widget, 72).Root)
+            .Single(node => node.ActionId == "game-launcher.manual.toggle" &&
+                node.AccessibilityLabel!.Contains("Application", StringComparison.Ordinal));
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", application.Id));
+        await Background(widget);
+
+        var restartedHost = new FakeHost(1, state)
+        {
+            ResolveHandler = request => request.SavedIds.Select(_ => Item(1) with
+            {
+                AppId = "app-fresh-manual",
+                Kind = WidgetAppLibraryKind.Application,
+            }).ToArray(),
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        var manualTile = Nodes(Snapshot(restarted, 73).Root)
+            .Single(node => node.ActionId == "game-launcher.launch" &&
+                node.AccessibilityLabel!.Contains("Game 00001", StringComparison.Ordinal));
+        await restarted.OnActionAsync(new("game-launcher.launch", manualTile.Id));
+
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            restartedHost.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-fresh-manual" },
+            restartedHost.Launches.ToArray());
+        await Background(restarted);
+    }
+
+    [TestMethod]
+    public async Task ManualCasReplayPreservesFavoritesGroupsAndRecentOrder()
+    {
+        var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");
+        var b = new GameLauncherDisplayItem("saved-b", "B", "Windows");
+        var c = new GameLauncherDisplayItem("saved-c", "C", "Xbox");
+        var baseline = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [a, b])
+        {
+            FavoriteSavedIds = [a.SavedId],
+            RecentSavedIds = [b.SavedId],
+        };
+        var latest = baseline with
+        {
+            Items = [c, a, b],
+            RecentSavedIds = [c.SavedId, b.SavedId],
+        };
+        GameLauncherPrivateState? written = null;
+        var attempt = 0;
+        await GameLauncherStateStore.SaveAsync(
+            state => GameLauncherOrganizationPolicy.SetManual(state, a, true),
+            (value, _, _) =>
+            {
+                if (attempt++ == 0)
+                    return ValueTask.FromException<WidgetPrivateStateMutation>(
+                        new WidgetCapabilityException("state_conflict", "fixture"));
+                written = value;
+                return ValueTask.FromResult(new WidgetPrivateStateMutation(3));
+            },
+            _ => ValueTask.FromResult(new WidgetPrivateStateValue<GameLauncherPrivateState>(
+                true, latest, 2)), baseline, 1, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { a.SavedId }, written!.ManualSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { a.SavedId }, written.FavoriteSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { c.SavedId, b.SavedId },
+            written.RecentSavedIds.ToArray());
+    }
+
+    [TestMethod]
+    public void ManualMembershipIsBoundedAndReplacementIdentityIsIndependent()
+    {
+        var state = GameLauncherPrivateState.Empty;
+        for (var index = 0; index < GameLauncherPrivateState.MaximumManualItems; index++)
+        {
+            var display = new GameLauncherDisplayItem(
+                $"saved-{index:D5}", $"Game {index}", "Fixture");
+            var mutation = GameLauncherOrganizationPolicy.SetManual(state, display, true);
+            Assert.IsTrue(mutation.Accepted);
+            state = mutation.State;
+        }
+        var overflow = GameLauncherOrganizationPolicy.SetManual(state,
+            new("saved-overflow", "Overflow", "Fixture"), true);
+        Assert.IsFalse(overflow.Accepted);
+        Assert.AreEqual(GameLauncherPrivateState.MaximumManualItems,
+            overflow.State.ManualSavedIds.Count);
+
+        var replacement = GameLauncherOrganizationPolicy.ProjectPage(state,
+            [GameLauncherItem.From(Item(0) with { SavedId = "saved-replacement" })]);
+        Assert.IsFalse(replacement.ManualSavedIds.Contains(
+            "saved-replacement", StringComparer.Ordinal));
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task MissingManualEntryStaysVisibleButCannotAuthorizeLaunch()
+    {
+        var display = new GameLauncherDisplayItem(
+            "saved-00999", "Unavailable manual game", "Fixture");
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            ManualSavedIds = [display.SavedId],
+        };
+        var state = new WidgetTestPrivateState(JsonSerializer.Serialize(persisted), 1);
+        var host = new FakeHost(1, state) { ResolveHandler = _ => [] };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var unavailable = Nodes(Snapshot(widget, 74).Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            node.AccessibilityLabel!.Contains("Unavailable manual game",
+                StringComparison.Ordinal));
+        Assert.IsTrue(unavailable.IsDisabled);
+        await widget.OnActionAsync(new("game-launcher.launch", unavailable.Id));
+        Assert.AreEqual(0, host.Launches.Count);
+        await Background(widget);
     }
 
     [TestMethod, Timeout(30_000)]

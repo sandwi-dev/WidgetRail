@@ -17,6 +17,12 @@ internal sealed record GameLauncherDisplayItem(
     string DisplayName,
     string SourceAttribution);
 
+internal enum GameLauncherRoute
+{
+    Library,
+    AddGames,
+}
+
 internal enum GameLauncherLaunchState
 {
     RequestAccepted,

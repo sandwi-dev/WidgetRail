@@ -19,10 +19,15 @@ public sealed class GameLauncherWidget : Widget
         InstalledOnly: true,
         Kind: WidgetAppLibraryKind.Game,
         Sort: WidgetAppLibrarySortOrder.DisplayName);
+    private static readonly WidgetAppLibraryQuery InstalledRegistrations = new(
+        InstalledOnly: true,
+        Kind: null,
+        Sort: WidgetAppLibrarySortOrder.DisplayName);
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly WidgetCursorResource<GameLauncherItem> _library;
+    private readonly WidgetNavigator<GameLauncherRoute> _navigation;
     private GameLauncherPrivateState _organization = GameLauncherPrivateState.Empty;
     private long _stateRevision;
     private string? _variantSeedSavedId;
@@ -36,10 +41,13 @@ public sealed class GameLauncherWidget : Widget
     private WidgetAppLibraryQuery _query = InstalledGames;
     private bool _favoriteFilter;
     private GameLauncherRecentMode _recentMode;
+    private IReadOnlyList<GameLauncherItem> _manualResolved = [];
     private readonly SortedSet<string> _knownSources = new(StringComparer.OrdinalIgnoreCase);
 
     public GameLauncherWidget()
     {
+        _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
+            maximumDepth: 1, maximumRoutes: 2);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()
         {
             PageSize = PageSize,
@@ -78,6 +86,7 @@ public sealed class GameLauncherWidget : Widget
     public override WidgetView Render()
     {
         GameLauncherPresentationState state;
+        var navigation = _navigation.Value;
         lock (_gate)
             state = new(
                 _library.Snapshot,
@@ -90,15 +99,27 @@ public sealed class GameLauncherWidget : Widget
                 LifecycleState == WidgetLifecycleState.Interactive,
                 _query,
                 _recentMode,
-                _favoriteFilter);
-        return GameLauncherPresentation.Render(state);
+                _favoriteFilter,
+                navigation.Route,
+                _manualResolved.ToArray());
+        var view = GameLauncherPresentation.Render(state);
+        var root = _navigation.Scope(navigation, (StackElement)view.Root);
+        return view with
+        {
+            Root = root,
+            InitialFocusId = navigation.InitialFocusId ?? view.InitialFocusId,
+            ActiveInputScopeId = navigation.InputScopeId,
+        };
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        _ = _library.EnsureLoaded();
         _ = Operations.RunLatest("game-launcher.warm-state",
-            context => LoadWarmStateAsync(context.CancellationToken),
+            async context =>
+            {
+                await LoadWarmStateAsync(context.CancellationToken).ConfigureAwait(false);
+                _ = _library.EnsureLoaded();
+            },
             WidgetOperationLifetime.Active);
         return ValueTask.CompletedTask;
     }
@@ -129,6 +150,11 @@ public sealed class GameLauncherWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (_navigation.TryHandleBack(action, action.SourceElementId))
+        {
+            ReturnToLibrary();
+            return;
+        }
         if (_library.TryHandlePagination(action, out _))
         {
             Operations.Cancel("game-launcher.launch-lifecycle");
@@ -174,6 +200,31 @@ public sealed class GameLauncherWidget : Widget
                 await MutateOrganizationAsync(GameLauncherOrganizationPolicy.Clear,
                     "Organization cleared", cancellationToken).ConfigureAwait(false);
                 return;
+            case "game-launcher.add.open":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                if (_navigation.Push(GameLauncherRoute.AddGames, action.SourceElementId) ==
+                    WidgetNavigationResult.Changed)
+                {
+                    lock (_gate)
+                    {
+                        _query = InstalledRegistrations;
+                        _favoriteFilter = false;
+                        _recentMode = GameLauncherRecentMode.Off;
+                        _manualResolved = [];
+                    }
+                    ReloadQuery();
+                }
+                return;
+            case "game-launcher.add.back":
+                if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
+                    ReturnToLibrary();
+                return;
+            case "game-launcher.manual.toggle":
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    _navigation.Value.Route != GameLauncherRoute.AddGames) return;
+                await ToggleManualAsync(action.SourceElementId, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
             case "game-launcher.recent.clear":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
                 await MutateOrganizationAsync(GameLauncherOrganizationPolicy.ClearRecent,
@@ -191,13 +242,16 @@ public sealed class GameLauncherWidget : Widget
                     _favoriteFilter = false;
                     _recentMode = GameLauncherRecentMode.Off;
                 }
-                ReplaceQuery(InstalledGames, force: true);
+                ReplaceQuery(_navigation.Value.Route == GameLauncherRoute.AddGames
+                    ? InstalledRegistrations : InstalledGames, force: true);
                 return;
             case "game-launcher.filter.favorites":
+                if (_navigation.Value.Route != GameLauncherRoute.Library) return;
                 lock (_gate) _favoriteFilter = !_favoriteFilter;
                 ReloadQuery();
                 return;
             case "game-launcher.filter.recent":
+                if (_navigation.Value.Route != GameLauncherRoute.Library) return;
                 lock (_gate)
                 {
                     _recentMode = _recentMode switch
@@ -270,6 +324,18 @@ public sealed class GameLauncherWidget : Widget
         Invalidate();
     }
 
+    private void ReturnToLibrary()
+    {
+        lock (_gate)
+        {
+            _query = InstalledGames;
+            _favoriteFilter = false;
+            _recentMode = GameLauncherRecentMode.Off;
+            _manualResolved = [];
+        }
+        ReloadQuery();
+    }
+
     private WidgetAppLibraryQuery EffectiveQueryLocked()
     {
         IEnumerable<string>? savedIds = null;
@@ -337,6 +403,7 @@ public sealed class GameLauncherWidget : Widget
     {
         var requestCursor = direction is null ? null : cursor;
         WidgetAppLibraryQuery query;
+        var route = _navigation.Value.Route;
         lock (_gate) query = EffectiveQueryLocked();
         var page = await HostServices.AppLibrary.QueryAsync(
                 query,
@@ -348,19 +415,43 @@ public sealed class GameLauncherWidget : Widget
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         var items = page.Items.Select(GameLauncherItem.From).ToArray();
+        IReadOnlyList<GameLauncherItem> projectionItems = items;
+        if (route == GameLauncherRoute.Library)
+        {
+            string[] manualSavedIds;
+            lock (_gate) manualSavedIds = _organization.ManualSavedIds.ToArray();
+            var manualSet = manualSavedIds.ToHashSet(StringComparer.Ordinal);
+            var automatic = items.Where(item => !manualSet.Contains(item.Value.SavedId))
+                .ToArray();
+            if (direction is null)
+            {
+                var resolvedManual = manualSavedIds.Length == 0
+                    ? []
+                    : (await HostServices.AppLibrary.ResolveSavedAsync(
+                            manualSavedIds, cancellationToken).ConfigureAwait(false))
+                        .Where(item => MatchesManualQuery(item, query))
+                        .OrderBy(item => item, ManualSortComparer(query.Sort))
+                        .Select(GameLauncherItem.From).ToArray();
+                cancellationToken.ThrowIfCancellationRequested();
+                lock (_gate) _manualResolved = resolvedManual;
+                projectionItems = [.. automatic, .. resolvedManual];
+            }
+            else
+                projectionItems = automatic;
+        }
         lock (_gate)
             foreach (var source in page.Items.Select(item => item.SourceAttribution))
                 if (!string.IsNullOrWhiteSpace(source) &&
                     (_knownSources.Contains(source) ||
                      _knownSources.Count < MaximumKnownSources))
                     _knownSources.Add(source);
-        var projectionSaved = await PersistProjectionAsync(items, cancellationToken)
+        var projectionSaved = await PersistProjectionAsync(projectionItems, cancellationToken)
             .ConfigureAwait(false);
         lock (_gate) _status = !projectionSaved
             ? "Games loaded · organization was not saved"
-            : items.Length == 0 ? "No installed games" :
-                $"{items.Length}{(page.After is null ? string.Empty : "+")} games in the current window";
-        return new(items,
+            : projectionItems.Count == 0 ? "No installed games" :
+                $"{projectionItems.Count}{(page.After is null ? string.Empty : "+")} games in the current window";
+        return new(projectionItems,
             page.Before is null ? null : new WidgetCollectionCursor(page.Before),
             page.After is null ? null : new WidgetCollectionCursor(page.After));
     }
@@ -389,11 +480,15 @@ public sealed class GameLauncherWidget : Widget
         long collectionRevision = 0;
         try
         {
-            selected = _library.Snapshot.Items.FirstOrDefault(item => string.Equals(
+            IReadOnlyList<GameLauncherItem> manualResolved;
+            lock (_gate) manualResolved = _manualResolved;
+            selected = _library.Snapshot.Items.Concat(manualResolved).FirstOrDefault(item =>
+                string.Equals(
                 GameLauncherIdentity.FocusId("grid", item.Key), sourceElementId,
                 StringComparison.Ordinal));
             if (selected is null) return;
-            _library.SelectAnchor(selected.Key, invalidate: false);
+            if (_library.Snapshot.Items.Any(item => item.Key == selected.Key))
+                _library.SelectAnchor(selected.Key, invalidate: false);
             lock (_gate)
             {
                 _launchingSavedId = selected.Value.SavedId;
@@ -407,7 +502,7 @@ public sealed class GameLauncherWidget : Widget
                     [selected.Value.SavedId], lifetime.Token).ConfigureAwait(false);
             var current = resolved.SingleOrDefault(item => string.Equals(
                 item.SavedId, selected.Value.SavedId, StringComparison.Ordinal));
-            var stillCurrent = _library.Snapshot.Items.Any(item => item.Key == selected.Key);
+            var stillCurrent = IsCurrentResolved(selected.Key);
             if (current is null || !stillCurrent)
                 throw new WidgetCapabilityException(
                     "app_not_found", "The selected game is no longer available.");
@@ -420,7 +515,7 @@ public sealed class GameLauncherWidget : Widget
             {
                 if (generation == _launchGeneration &&
                     collectionRevision == _library.Snapshot.Revision &&
-                    _library.Snapshot.Items.Any(item => item.Key == selected.Key))
+                    IsCurrentResolved(selected.Key))
                 {
                     accepted = true;
                     SetLaunchStateLocked(selected.Value.SavedId,
@@ -445,7 +540,7 @@ public sealed class GameLauncherWidget : Widget
             {
                 if (selected is not null && generation == _launchGeneration &&
                     collectionRevision == _library.Snapshot.Revision &&
-                    _library.Snapshot.Items.Any(item => item.Key == selected.Key))
+                    IsCurrentResolved(selected.Key))
                 {
                     SetLaunchStateLocked(
                         selected.Value.SavedId, GameLauncherLaunchState.Failed);
@@ -524,6 +619,25 @@ public sealed class GameLauncherWidget : Widget
         {
             ReloadQuery();
         }
+    }
+
+    private async Task ToggleManualAsync(
+        string sourceElementId,
+        CancellationToken cancellationToken)
+    {
+        var item = _library.Snapshot.Items.FirstOrDefault(candidate => string.Equals(
+            GameLauncherIdentity.FocusId("add", candidate.Key), sourceElementId,
+            StringComparison.Ordinal));
+        if (item is null) return;
+        var display = new GameLauncherDisplayItem(item.Value.SavedId,
+            item.Value.DisplayName, item.Value.SourceAttribution);
+        bool included;
+        lock (_gate) included = _organization.ManualSavedIds.Contains(
+            display.SavedId, StringComparer.Ordinal);
+        await MutateOrganizationAsync(
+            state => GameLauncherOrganizationPolicy.SetManual(state, display, !included),
+            included ? $"Removed {display.DisplayName}" : $"Added {display.DisplayName}",
+            cancellationToken).ConfigureAwait(false);
     }
 
     private async Task ToggleVariantAsync(
@@ -695,6 +809,36 @@ public sealed class GameLauncherWidget : Widget
             .Select(item => new GameLauncherDisplayItem(
                 item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution))
             .FirstOrDefault();
+
+    private bool IsCurrentResolved(WidgetCollectionItemKey key)
+    {
+        if (_library.Snapshot.Items.Any(item => item.Key == key)) return true;
+        lock (_gate) return _manualResolved.Any(item => item.Key == key);
+    }
+
+    private static bool MatchesManualQuery(
+        WidgetAppLibraryItem item,
+        WidgetAppLibraryQuery query) =>
+        (query.SearchText is null || item.DisplayName.Contains(
+            query.SearchText, StringComparison.OrdinalIgnoreCase)) &&
+        (query.SourceAttribution is null || string.Equals(item.SourceAttribution,
+            query.SourceAttribution, StringComparison.OrdinalIgnoreCase)) &&
+        (query.FavoriteSavedIds.Count == 0 || query.FavoriteSavedIds.Contains(
+            item.SavedId, StringComparer.Ordinal));
+
+    private static IComparer<WidgetAppLibraryItem> ManualSortComparer(
+        WidgetAppLibrarySortOrder sort) => Comparer<WidgetAppLibraryItem>.Create((left, right) =>
+        {
+            var result = sort == WidgetAppLibrarySortOrder.SourceThenDisplayName
+                ? StringComparer.OrdinalIgnoreCase.Compare(
+                    left.SourceAttribution, right.SourceAttribution)
+                : 0;
+            if (result == 0)
+                result = StringComparer.OrdinalIgnoreCase.Compare(
+                    left.DisplayName, right.DisplayName);
+            if (sort == WidgetAppLibrarySortOrder.DisplayNameDescending) result = -result;
+            return result != 0 ? result : string.CompareOrdinal(left.SavedId, right.SavedId);
+        });
 
     private string StatusLocked(WidgetCursorResourceSnapshot<GameLauncherItem> snapshot) =>
         snapshot.Status switch

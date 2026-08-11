@@ -1563,6 +1563,41 @@ static async Task ExerciseControlAsync(
                 node.ActionId == "game-launcher.search.commit").TextEntryValue);
             explicitSource = Nodes(snapshot.Root).Single(node =>
                 node.ActionId == "game-launcher.launch");
+            var openAdd = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.add.open");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.add.open", openAdd.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.manual.toggle", "Conformance Game 00000");
+            var addSearch = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.search.commit");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.search.commit", addSearch.Id)
+                { CommittedText = "A Conformance Manual App" });
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.manual.toggle", "A Conformance Manual App");
+            var manual = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.manual.toggle");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.manual.toggle", manual.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.manual.toggle", "Added");
+            var back = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.add.back");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.add.back", back.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.search.commit", "Search installed games");
+            var librarySearch = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.search.commit");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.search.commit", librarySearch.Id)
+                { CommittedText = "A Conformance Manual App" });
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.launch", "A Conformance Manual App",
+                requireEnabled: true);
+            explicitSource = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.launch");
             actionId = "game-launcher.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;
@@ -1800,10 +1835,13 @@ static SimulatedPlatformBrokerBackend CreateBackend(
     if (gameLibraryCount > 2)
     {
         backend.SetAppLibraryBackend(Enumerable.Range(0, gameLibraryCount).Select(index =>
-            new AppLibraryBackendItemSummary(
-                $"game-{index:D5}", $"stable-game-{index:D5}",
-                $"Conformance Game {index:D5}", AppLibraryKind.Game,
-                ArtworkRevision: $"art-{index:D5}", SourceAttribution: "Steam")));
+                new AppLibraryBackendItemSummary(
+                    $"game-{index:D5}", $"stable-game-{index:D5}",
+                    $"Conformance Game {index:D5}", AppLibraryKind.Game,
+                    ArtworkRevision: $"art-{index:D5}", SourceAttribution: "Steam"))
+            .Prepend(new AppLibraryBackendItemSummary(
+                "manual-app", "stable-manual-app", "A Conformance Manual App",
+                AppLibraryKind.Application, SourceAttribution: "Windows")));
     }
     else
     {
@@ -1865,7 +1903,8 @@ static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
     WidgetProcessClient client,
     string actionId,
     string expectedText,
-    bool? selected = null)
+    bool? selected = null,
+    bool requireEnabled = false)
 {
     var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
     ViewSnapshot? latest = null;
@@ -1880,7 +1919,8 @@ static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
                         expectedText, StringComparison.Ordinal)) &&
                 (selected is null || (selected.Value
                     ? node.IsSelected == true
-                    : node.IsSelected is not true))))
+                    : node.IsSelected is not true)) &&
+                (!requireEnabled || node.IsDisabled is not true)))
             return latest;
         await Task.Delay(40);
     }

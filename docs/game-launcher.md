@@ -1,6 +1,6 @@
 # Game Launcher reference
 
-Status: bundled package 0.5.0 implements the installed-only controller-first
+Status: bundled package 0.6.0 implements the installed-only controller-first
 library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
@@ -45,7 +45,7 @@ Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
 bytes; the native host requests artwork lazily through the private trusted
 registry and keeps the semantic Play fallback when artwork is absent or stale.
 
-Private schema v3 contains at most 96 sanitized SavedId, display-name, and source
+Private schema v4 contains at most 96 sanitized SavedId, display-name, and source
 rows. At most 32 distinct SavedIds may participate in favorites or explicit
 variant groups; there are at most 16 groups and four members per group. It
 contains no AppId, path, command, AUMID, Steam identity, image bytes, or provider
@@ -62,6 +62,18 @@ catalog for the exact current SavedIds; neither path authorizes launch.
 Missing identities stay as non-authorizing display rows, replacement SavedIds
 remain independent, and **Clear recent** preserves favorites and variant
 groups.
+
+**Add games** opens a bounded nested route over the same trusted installed-app
+catalog and labels current Game, Application, and Unknown classifications.
+Search and source/sort controls remain provider-backed. Adding or removing a
+row stores only its opaque SavedId and sanitized display projection, up to 32
+manual entries; no path, command, AUMID, store/provider identifier, or artwork
+bytes enter private state. B or the visible Back action restores the Library
+route and prior focus. On every refresh or worker recreation, manual SavedIds
+are resolved again and merged into the bounded library window. Missing entries
+remain disabled, replacement SavedIds are independent, and activation still
+requires the same fresh exact-SavedId resolution and short-lived AppId as an
+automatic game.
 
 X toggles the focused current game as a favorite. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating

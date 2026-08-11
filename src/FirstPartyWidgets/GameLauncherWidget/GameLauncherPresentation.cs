@@ -13,7 +13,9 @@ internal sealed record GameLauncherPresentationState(
     bool Interactive,
     WidgetAppLibraryQuery Query,
     GameLauncherRecentMode RecentMode,
-    bool FavoriteFilter);
+    bool FavoriteFilter,
+    GameLauncherRoute Route,
+    IReadOnlyList<GameLauncherItem> ManualResolved);
 
 internal enum GameLauncherRecentMode
 {
@@ -41,57 +43,102 @@ internal static class GameLauncherPresentation
         var header = UI.Stack("game-launcher.header",
                 UI.Text("INSTALLED GAMES", "game-launcher.eyebrow", "Installed games")
                     .Classes("game-launcher-eyebrow"),
-                UI.Text("Game Launcher", "game-launcher.title", "Game Launcher")
+                UI.Text(state.Route == GameLauncherRoute.AddGames ? "Add games" : "Game Launcher",
+                        "game-launcher.title",
+                        state.Route == GameLauncherRoute.AddGames ? "Add games" : "Game Launcher")
                     .Classes("game-launcher-title"),
                 UI.Text(state.Status, "game-launcher.status", state.Status)
                     .Classes("game-launcher-status"))
             .Classes("game-launcher-header");
 
+        var filterControls = new List<WidgetElement>();
+        if (state.Route == GameLauncherRoute.AddGames)
+            filterControls.Add(UI.Button("Back", "game-launcher.add.back",
+                "game-launcher.add.back").Disabled(!state.Interactive));
+        else
+        {
+            filterControls.Add(UI.Button("Add games", "game-launcher.add.open",
+                    "game-launcher.add.open")
+                .Disabled(!state.Interactive));
+            filterControls.Add(UI.ToggleButton("Favorites", state.FavoriteFilter,
+                    "game-launcher.filter.favorites", "game-launcher.filter.favorites")
+                .Disabled(!state.Interactive ||
+                    state.Organization.FavoriteSavedIds.Count == 0));
+            filterControls.Add(UI.Button(state.RecentMode switch
+                {
+                    GameLauncherRecentMode.RecentFirst => "Recent: First",
+                    GameLauncherRecentMode.RecentOnly => "Recent: Only",
+                    _ => "Recent: Off",
+                }, "game-launcher.filter.recent", "game-launcher.filter.recent")
+                .Disabled(!state.Interactive ||
+                    state.Organization.RecentSavedIds.Count == 0));
+        }
+        filterControls.Add(UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
+                "game-launcher.filter.source", "game-launcher.filter.source")
+            .Disabled(!state.Interactive));
+        filterControls.Add(UI.Button("Sort: " + (state.Query.Sort switch
+            {
+                WidgetAppLibrarySortOrder.DisplayNameDescending => "Z–A",
+                WidgetAppLibrarySortOrder.SourceThenDisplayName => "Source",
+                _ => "A–Z",
+            }), "game-launcher.filter.sort", "game-launcher.filter.sort")
+            .Disabled(!state.Interactive));
+        filterControls.Add(UI.Button("Clear", "game-launcher.query.clear",
+                "game-launcher.query.clear")
+            .Disabled(!state.Interactive || !state.FavoriteFilter &&
+                state.RecentMode == GameLauncherRecentMode.Off &&
+                state.Query.SearchText is null && state.Query.SourceAttribution is null &&
+                state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName));
+
         var queryControls = UI.Stack("game-launcher.query",
             UI.TextEntry(
                     state.Query.SearchText ?? string.Empty,
-                    "Search installed games",
+                    state.Route == GameLauncherRoute.AddGames
+                        ? "Search trusted installed registrations"
+                        : "Search installed games",
                     "game-launcher.search.commit",
                     "game-launcher.search",
                     WidgetAppLibraryQuery.MaximumSearchTextLength)
                 .Disabled(!state.Interactive)
                 .Classes("game-launcher-search"),
-            UI.Row("game-launcher.filters",
-                UI.ToggleButton("Favorites", state.FavoriteFilter,
-                    "game-launcher.filter.favorites", "game-launcher.filter.favorites")
-                    .Disabled(!state.Interactive ||
-                        state.Organization.FavoriteSavedIds.Count == 0),
-                UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
-                        "game-launcher.filter.source", "game-launcher.filter.source")
-                    .Disabled(!state.Interactive),
-                UI.Button("Sort: " + (state.Query.Sort switch
-                    {
-                        WidgetAppLibrarySortOrder.DisplayNameDescending => "Z–A",
-                        WidgetAppLibrarySortOrder.SourceThenDisplayName => "Source",
-                        _ => "A–Z",
-                    }), "game-launcher.filter.sort", "game-launcher.filter.sort")
-                    .Disabled(!state.Interactive),
-                UI.Button(state.RecentMode switch
-                    {
-                        GameLauncherRecentMode.RecentFirst => "Recent: First",
-                        GameLauncherRecentMode.RecentOnly => "Recent: Only",
-                        _ => "Recent: Off",
-                    }, "game-launcher.filter.recent", "game-launcher.filter.recent")
-                    .Disabled(!state.Interactive ||
-                        state.Organization.RecentSavedIds.Count == 0),
-                UI.Button("Clear", "game-launcher.query.clear", "game-launcher.query.clear")
-                    .Disabled(!state.Interactive || !state.FavoriteFilter &&
-                        state.RecentMode == GameLauncherRecentMode.Off &&
-                        state.Query == new WidgetAppLibraryQuery(
-                        InstalledOnly: true, Kind: WidgetAppLibraryKind.Game,
-                        Sort: WidgetAppLibrarySortOrder.DisplayName)))
-            .Classes("game-launcher-filters"))
+            UI.Row("game-launcher.filters", filterControls.ToArray())
+                .Classes("game-launcher-filters"))
         .Classes("game-launcher-query");
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
-        if (snapshot.Items.Count != 0)
+        if (state.Route == GameLauncherRoute.AddGames && snapshot.Items.Count != 0)
         {
+            var tiles = snapshot.Items.Select(item => ManualTile(
+                item, state.Organization.ManualSavedIds.Contains(
+                    item.Value.SavedId, StringComparer.Ordinal),
+                state.Interactive && !state.OrganizationBusy)).ToArray();
+            var scroll = UI.VerticalScroll(ScrollId,
+                    UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, tiles)
+                        .Classes("game-launcher-grid"))
+                .Classes("game-launcher-scroll");
+            if (snapshot.HasBefore || snapshot.HasAfter)
+                scroll = scroll.Paginate(
+                    snapshot.HasBefore ? "game-launcher.library.cursor.before" : null,
+                    snapshot.HasAfter ? "game-launcher.library.cursor.after" : null, 2);
+            scroll = scroll with { CollectionAnchorKey = snapshot.Anchor?.Value };
+            content = UI.Stack("game-launcher.content",
+                    scroll,
+                    UI.Row("game-launcher.actions",
+                        UI.Button("Previous page", "game-launcher.previous",
+                                "game-launcher.previous")
+                            .Disabled(!snapshot.HasBefore || !state.Interactive),
+                        UI.Button("Next page", "game-launcher.next",
+                                "game-launcher.next")
+                            .Disabled(!snapshot.HasAfter || !state.Interactive)))
+                .Classes("game-launcher-content");
+            initialFocus ??= GameLauncherIdentity.FocusId("add", snapshot.Items[0].Key);
+        }
+        else if (snapshot.Items.Count != 0)
+        {
+            var resolvedItems = snapshot.Items.Concat(state.ManualResolved.Where(manual =>
+                    !snapshot.Items.Any(item => item.Key == manual.Key)))
+                .ToArray();
             var favorites = state.Organization.FavoriteSavedIds
                 .Select((savedId, index) => (savedId, index))
                 .ToDictionary(value => value.savedId, value => value.index,
@@ -106,7 +153,7 @@ internal static class GameLauncherPresentation
                 .Select((savedId, index) => (savedId, index))
                 .ToDictionary(value => value.savedId, value => value.index,
                     StringComparer.Ordinal);
-            var ordered = snapshot.Items.Select((item, index) => (item, index))
+            var ordered = resolvedItems.Select((item, index) => (item, index))
                 .OrderBy(value => state.RecentMode == GameLauncherRecentMode.RecentFirst &&
                     recent.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
                 .ThenBy(value => state.RecentMode == GameLauncherRecentMode.RecentFirst
@@ -131,7 +178,7 @@ internal static class GameLauncherPresentation
                 groupSize: groups.GetValueOrDefault(item.Value.SavedId)?.SavedIds.Count ?? 0,
                 state.Interactive && !state.OrganizationBusy,
                 item.Key)).ToArray();
-            var liveIds = snapshot.Items.Select(item => item.Value.SavedId)
+            var liveIds = resolvedItems.Select(item => item.Value.SavedId)
                 .ToHashSet(StringComparer.Ordinal);
             var unavailable = state.Organization.Items.Where(item =>
                     GameLauncherOrganizationPolicy.ReferencedSavedIds(state.Organization)
@@ -250,10 +297,36 @@ internal static class GameLauncherPresentation
         }
 
         var root = UI.Stack("game-launcher.root", header, queryControls, content)
-            .InputScope("game-launcher")
             .Classes("game-launcher-widget");
         return new WidgetView(root, initialFocus,
-            ActiveInputScopeId: "game-launcher", Surface: Surface);
+            Surface: Surface);
+    }
+
+    private static WidgetElement ManualTile(
+        GameLauncherItem item,
+        bool included,
+        bool interactive)
+    {
+        var kind = item.Value.Kind switch
+        {
+            WidgetAppLibraryKind.Game => "Game",
+            WidgetAppLibraryKind.Application => "Application",
+            _ => "Unknown",
+        };
+        return UI.AppTile(item.Value.DisplayName, included ? "Added" : "Available",
+                "game-launcher.manual.toggle",
+                GameLauncherIdentity.FocusId("add", item.Key),
+                subtitle: $"{kind} · {item.Value.SourceAttribution}",
+                artwork: item.Value.ArtworkHandle is { Length: > 0 }
+                    ? TileArtwork.FromHandle(new WidgetArtworkHandle(item.Value.ArtworkHandle),
+                        item.Value.DisplayName, ImageFit.Cover)
+                    : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Value.DisplayName),
+                accessibilityLabel: $"{item.Value.DisplayName}, {kind}, " +
+                    (included ? "Added, remove from library" : "Available, add to library"),
+                orientation: ActionSurfaceOrientation.Vertical)
+            .Disabled(!interactive)
+            .CollectionItem(item.Key)
+            .Classes("game-launcher-tile");
     }
 
     private static WidgetElement Tile(

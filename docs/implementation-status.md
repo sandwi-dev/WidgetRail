@@ -1693,6 +1693,18 @@ themes also use non-shrinking fixed regions, a thin native Slider
  64 KiB state ceiling have direct deterministic coverage. Focused Release
  verification passes Game Launcher 27/27 and the documentation contract across
  55 Markdown files.
+ DLV-077 advances Game Launcher to package 0.6.0 and one current private schema
+ v4 with at most 32 explicitly included opaque SavedIds. The Add games nested
+ route queries only the existing trusted installed catalog, exposes current
+ Game/Application/Unknown classification, and stores no executable, command,
+ AUMID, store/provider identity, or launch authority. Manual rows are freshly
+ resolved into the bounded Library window after restart and still require exact
+ SavedId revalidation before launch. Add/remove CAS replay preserves unrelated
+ favorites, groups, and recent ordering; missing and replacement identities
+ remain non-authorizing. Focused Release evidence covers Game Launcher 32/32,
+ Widget SDK app-library contracts, PlatformBroker exact resolution/launch,
+ generic-worker routing, an installed add/exact-launch route, direct restart,
+ remove, stale-rejection fixtures, and 55 documentation contracts.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late
