@@ -911,9 +911,11 @@ route/action, playback, and presentation boundaries while retaining one
   confirmation response is not fully validated and the native walk bounds
   accepted observations rather than windows examined. DLV-096 committed as
   `8291c53`, but review found source disposal still precedes scan/observation
-  drain and its locator-generation maps are not bounded. DLV-097 is active and
-  is not interrupted; DLV-098 follows it before this dependent prefix may
-  integrate. These visible milestones plus their bounded corrections are the
+  drain and its locator-generation maps are not bounded. DLV-097 `46d1938` is
+  accepted. DLV-098 committed as `48d19f1`, but locator retirement still occurs
+  before the source generation is accepted. DLV-099 is the final bounded
+  correction before this dependent prefix may integrate. These visible
+  milestones plus their bounded corrections are the
   complete currently safe queue: another local game-store adapter remains
   blocked on documented,
   maintainable registration/launch authority; audio endpoint selection remains
@@ -2055,7 +2057,7 @@ locator ownership.
 
 ### DLV-097 — Bound running-window inspection and validate confirmed items
 
-**State:** Assigned; implementation active from clean merge baseline `c7d893f`
+**State:** Done; accepted as `46d1938`, dependent prefix remains unintegrated
 **Lane:** widgets, correcting the rejected DLV-095 commit
 **Baseline:** clean closing commit of DLV-096, containing DLV-095 `bd270c9`
 **Dependencies:** DLV-095 candidate `bd270c9` and DLV-096's coherent closing
@@ -2115,9 +2117,18 @@ package and visibly relaunch once.
 or a continuous monitor, full SDK validation would change an already documented
 valid item contract, or correcting either gap requires a new public authority.
 
+**Reviewer disposition:** Accepted. The native observer now stops after 256
+top-level callbacks before any further eligibility/process inspection, while
+the public result cap remains 64. The SDK reuses one closed item validator for
+page, resolution, and running confirmation results; invalid opaque IDs, kind,
+display, source, or requested SavedId fail as `malformed_response`. Both widgets
+retain neighbor state and perform no CAS write on malformed confirmation.
+Focused evidence passes provider 57/57, SDK 87/87, compatibility 12/12, Games &
+Apps 59/59, Game Launcher 45/45, and 55 documentation files.
+
 ### DLV-098 — Drain every provider lane before disposal and bound lazy locators
 
-**State:** Ready; execute automatically after DLV-097 commits
+**State:** Rejected in review at `48d19f1`; correction queued as DLV-099
 **Lane:** widgets, correcting the rejected DLV-096 commit
 **Baseline:** clean closing commit of DLV-097, containing DLV-096 `8291c53`
 **Dependencies:** the DLV-094/095/096 candidates and DLV-097's coherent closing
@@ -2179,6 +2190,78 @@ visibly relaunch once.
 **Stop/escalate when:** safe timeout requires disposing a still-used source,
 locator bounding requires weakening stale-handle failure or current-handle
 stability, or correction requires a new public authority or architecture.
+
+**Reviewer disposition:** Multi-lane terminal ordering, per-lane timeout state
+retention, concurrent terminal result, 4,096-current-locator bound, retired
+generation rejection, and paused-decode publication checks are accepted in
+principle. Provider evidence passes 60/60 and documentation passes 55/55. The
+commit is not integrable yet because `WindowsSteamApplicationSource.Enumerate`
+calls `RegisterCatalog`, which retires current locator objects before
+`GameLibrarySourceBase.Refresh` performs its final cancellation/generation check
+and commits the candidate snapshot/authorities. Cancellation after enumeration
+or a losing source generation can therefore leave the retained current catalog
+with retired handles even though the candidate never became authoritative.
+DLV-099 owns only commit-coupled locator promotion/retirement and its forced-
+interleaving fixtures.
+
+### DLV-099 — Commit Steam locator retirement with the source generation
+
+**State:** Ready; execute immediately
+**Lane:** widgets, correcting the rejected DLV-098 commit
+**Baseline:** DLV-098 `48d19f1` plus the planner control-plane merge containing
+this assignment
+**Dependencies:** the complete DLV-094 through DLV-098 candidate prefix; no
+dependency on platform work
+**Owner:** Steam candidate-locator staging, source-generation commit coupling,
+forced cancellation/losing-generation fixtures, and directly affected
+implementation docs; no public API, terminal-lane, or visible design change
+**Concurrency:** Widgets only. Platform remains idle. Do not rewrite, squash,
+or rebase the dependent prefix; close it with one ordinary follow-up commit.
+
+**Visible outcome:** Canceling or replacing a Steam catalog refresh cannot make
+icons in the still-current Games & Apps or Game Launcher catalog disappear;
+only a successfully committed catalog generation may retire/replace its prior
+artwork locators.
+
+**Objective:** Make locator-map mutation atomic with the existing source
+snapshot/authority generation commit while retaining DLV-098's bound and stale-
+publication safety.
+
+**In scope:** stage candidate locator objects and registrations without retiring
+or replacing the current locator map; promote the candidate map and retire old
+locators only inside the exact `GameLibrarySourceBase` branch that accepts the
+matching latest source generation. A canceled, failed, or losing refresh drops
+its staged objects without mutating current locators. Keep at most 4,096
+committed current locators; an already-admitted old locator remains independently
+retired/fail-closed only after its replacement generation commits. Preserve
+unchanged locator object/revision identity across a successful refresh and keep
+all catalog-enumeration artwork file probes at zero.
+
+**Out of scope:** changing Steam root/manifest discovery, artwork formats,
+provider terminal ordering/deadlines, public/broker/native contracts, widget
+routes, additional caches, provider decomposition, screenshots, installed-route
+repetition, or aggregate verification.
+
+**Acceptance criteria:** force cancellation after a complete candidate locator
+set is staged but before source commit and prove the current handle still loads,
+the current locator map/count is unchanged, and no candidate locator publishes.
+Force two source generations to complete out of order and prove only the latest
+accepted generation promotes/retires locators. A successful replacement/removal
+still retires only affected old locators, retains an unchanged neighbor object
+and revision, respects the 4,096 bound, and rejects a paused old decode after
+commit. No catalog path opens artwork cache files.
+
+**Verification:** Tier 1 Windows app-library provider source-generation and
+Steam-artwork suites plus documentation validation. Reuse existing projects and
+deterministic gates; run PlatformBroker only if host-visible handle semantics
+change. Do not repeat unchanged widget/installed suites, run the aggregate, or
+capture screenshots. After acceptance, the planner integrates the complete
+DLV-094/095/096/097/098/099 prefix, fully packages main, and visibly relaunches
+once.
+
+**Stop/escalate when:** commit coupling requires exposing locator/store identity,
+weakening current/stale handle authority, changing the public API, or a broad
+source framework redesign rather than one narrow acceptance hook/transaction.
 
 ### DLV-007 — Make Spotify presentation state coherent
 

@@ -180,6 +180,18 @@ catalog generations. DLV-098 makes complete multi-lane drain a precondition for
 all teardown and binds retained locator generation state to current catalog
 ownership without reviving stale handles.
 
+DLV-097 candidate `46d1938` is accepted: inspection is bounded before native
+eligibility/process work, the SDK shares one closed app-item validator, and
+malformed confirmation cannot mutate either widget's private state. DLV-098
+candidate `48d19f1` also closes multi-lane terminal ordering and bounds the
+current locator map, but remains rejected pending DLV-099. Its
+`RegisterCatalog` retires current locator objects from inside source enumeration,
+before `GameLibrarySourceBase.Refresh` accepts the matching latest generation.
+Cancellation after enumeration or an out-of-order losing generation can thus
+invalidate artwork handles in the still-current snapshot. DLV-099 moves only
+candidate-map promotion and prior-map retirement into the existing accepted-
+generation commit point.
+
 DLV-059 `c7c354d`, corrected by DLV-071 `355a858`, is accepted and integrated
 through `6f4c642`. The provider's central Start Menu/AppsFolder/Steam discovery,
 resolve, launch, and artwork switches become private normalized source owners,
