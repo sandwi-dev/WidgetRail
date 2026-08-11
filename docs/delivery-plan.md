@@ -2444,15 +2444,22 @@ a whole-repository framework migration.
 ## Platform lane
 
 Task identity: `platform`
-Active branch: `codex/impl-platform-visible`
-Active worktree: `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`
+Active task: `019fef3b-7e94-70f0-b329-3551f8dd805b`
+Active branch: `codex/impl-platform-recovery`
+Active worktree: `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`
+Preserved interrupted branch/worktree: `codex/impl-platform-visible` at
+`C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`; do not edit,
+commit, merge, reset, stash, or discard its uncommitted DLV-016 files while
+DLV-052 is active
 Preserved blocked branch/worktree: `codex/impl-platform` at
 `C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative`; do not edit,
 commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 
 The platform queue prioritizes visible controller and geometry defects even
-while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
-not be reset or overwritten. DLV-049 is accepted and integrated as `a8bcb27`;
+while DLV-025 awaits a compositor choice. The preserved DLV-016 and DLV-025
+worktrees must not be reset or overwritten. The idle predecessor platform task
+is archived; the clean recovery task above owns DLV-052 from `f0ec63f` without
+carrying the interrupted performance patch. DLV-049 is accepted and integrated as `a8bcb27`;
 DLV-015 is accepted and integrated as `6d3b093` while the widgets lane leads
 serialized DLV-006. Newly confirmed P0 DLV-052 is now Assigned; DLV-016 follows
 it instead of displacing the visible community-addon failure. DLV-011
