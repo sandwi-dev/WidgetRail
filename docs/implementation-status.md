@@ -399,6 +399,24 @@ author journey, plus documentation validation across 53 Markdown files. No
 aggregate, native, Runtime, live-service, external-feed, or screenshot suite
 ran.
 
+DLV-022 migrates Spotify Queue, Playlists, and playlist detail from
+replacement-page windows to the shared protocol-v14 cursor collection. Stable
+opaque keys derive from exact playlist IDs or media URIs, never titles or
+visible ordinals. Twelve-item provider responses append/prepend within a
+24-item retained window; reverse traversal refetches evicted segments, refresh
+retains an existing anchor or selects the shared deterministic fallback, and
+empty/sparse/final/error states retain bounded last-good behavior. Identical
+cursor intents now join the exact current SDK completion and call the provider
+once, while differing cursor, direction, viewport, or refresh intents preserve
+latest-wins replacement. Playlist Play and the first detail row author one
+explicit reverse edge; the first row's forward edge continues into the list so
+controller replay cannot oscillate with the header. Focused Release evidence
+passes Widget SDK 85/85, Spotify 41/41, and first-party generic AppContainer
+conformance 6/6. The standalone command validated the authored inputs and
+packed Spotify 0.2.11 as a three-file 134,274-byte archive. No aggregate,
+provider, OAuth, public API/baseline, protocol-format, native, live-account, or
+screenshot suite ran.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;

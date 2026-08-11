@@ -14,7 +14,7 @@ internal sealed record SpotifyPlaylistSelection(
 
 internal sealed record SpotifyPlaylistDetailPresentation(
     SpotifyPlaylistSelection Selection,
-    WidgetPagedResourceSnapshot<WidgetSpotifyMediaItemSummary> Items);
+    WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> Items);
 
 internal readonly record struct SpotifyPresentationRevision(
     long CaptureSequence,
@@ -36,8 +36,8 @@ internal sealed record SpotifyPresentationState(
     bool ShowSetup,
     long SetupViewGeneration,
     SpotifyDestination Destination,
-    WidgetSpotifyQueueSummary? Queue,
-    WidgetPagedResourceSnapshot<WidgetSpotifyPlaylistSummary> Playlists,
+    WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> Queue,
+    WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem> Playlists,
     SpotifyPlaylistDetailPresentation? PlaylistDetail,
     WidgetSpotifyDevicesSummary? Devices,
     WidgetSpotifyLocalPlaybackSummary? LocalPlayback,

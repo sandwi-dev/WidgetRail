@@ -8,7 +8,7 @@ Version 0.2 adds four controller-first destinations:
 
 - **Player** keeps artwork, projected progress, transport, shuffle, and repeat responsive without increasing Spotify polling.
 - **Queue** is fetched only when selected and remains cached while the widget worker lives.
-- **Playlists** lazily loads the user's first bounded page, opens a scrollable detail page, and can start the playlist or an indexed track context.
+- **Playlists** lazily appends bounded keyed windows, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
 - **Devices** transfers to Spotify devices and exposes **This overlay** through the trusted Web Playback SDK host. Tokens and the local Spotify device ID never enter widget code.
 
 Wide surfaces use a navigation rail with a persistent player. Left from the
@@ -36,13 +36,19 @@ expiry, and incompatible configuration still select their explicit safe state
 and clear provider-derived data. Provider exception messages and response bodies
 are never rendered.
 
-Playlist and detail collections use bounded 12-row windows with focus-edge
-pagination. Down at the final row enters the next page, Up at the first row
-restores the preceding cached page, and a short final page remains reversible.
-Repeated edge input joins one in-flight provider request; failures retain the
-last good page and require the visible Retry action. The automated 29-item
-contract covers compact and expanded 12/12/5 forward/reverse traversal for both
-playlist tiles and detail tracks. A
+Queue, playlist, and detail collections use protocol-v14 stable keys and the
+shared bounded cursor resource. Twelve-row responses append or prepend into a
+24-row retained window, so crossing a transport boundary enters the adjacent
+item instead of replacing the visible list. Evicted rows are refetched on
+reverse traversal, a short final page remains reversible, and refresh retains
+the exact URI/playlist anchor or chooses a deterministic surviving fallback.
+Repeated identical edge input joins one in-flight provider request; a genuinely
+different cursor intent remains latest-wins. Detail Play and the first row have
+one explicit edge, while the first row's forward edge continues into the list
+and cannot oscillate back to the header. Failures retain the last-good window
+and require the visible Retry action. The automated 29-item contract covers
+compact and expanded 12/12/5 forward/reverse traversal for both playlist tiles
+and detail tracks. A
 physical-controller retest with live Spotify data remains part of the manual
 release checklist.
 

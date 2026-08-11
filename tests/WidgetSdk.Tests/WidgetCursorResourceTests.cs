@@ -11,7 +11,125 @@ internal static class WidgetCursorResourceTests
         await DirectionChangeAllowsEvictedRefetch();
         await TraversalHistoryFailsClosedAndRefreshResetsIt();
         await RejectsLateDuplicateAndLoopResults();
+        await IdenticalIntentJoinsOneLoad();
+        await DifferentIntentReplacesCurrentLoad();
+        await ResetCancelsJoinedLoadAndAllowsFreshWork();
+        await ActiveLifecycleDrainsJoinedLoad();
         ContractIsVersionedOpaqueAndBounded();
+    }
+
+    private static async Task IdenticalIntentJoinsOneLoad()
+    {
+        var started = Signal();
+        var release = Signal();
+        var calls = 0;
+        var widget = await StartAsync(Options(200, async: async (_, _, limit, token) =>
+        {
+            Interlocked.Increment(ref calls);
+            started.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return Page(0, limit, 200);
+        }));
+        var first = widget.Resource.EnsureLoaded();
+        await started.Task;
+        var joined = widget.Resource.EnsureLoaded();
+        Equal(WidgetOperationAdmission.Started, first.Admission);
+        Equal(WidgetOperationAdmission.Joined, joined.Admission);
+        True(ReferenceEquals(first.Completion, joined.Completion),
+            "An identical cursor intent did not share the exact completion.");
+        Equal(1, Volatile.Read(ref calls));
+        release.SetResult();
+        Equal(WidgetOperationStatus.Succeeded, (await first.Completion).Status);
+        Equal(WidgetOperationStatus.Succeeded, (await joined.Completion).Status);
+        Equal(1, Volatile.Read(ref calls));
+        await StopAsync(widget);
+    }
+
+    private static async Task DifferentIntentReplacesCurrentLoad()
+    {
+        var firstStarted = Signal();
+        var firstRelease = Signal();
+        var secondStarted = Signal();
+        var calls = 0;
+        var widget = await StartAsync(Options(200, async: async (_, _, limit, _) =>
+        {
+            var call = Interlocked.Increment(ref calls);
+            if (call == 1)
+            {
+                firstStarted.TrySetResult();
+                await firstRelease.Task;
+                return Page(0, limit, 200);
+            }
+            secondStarted.TrySetResult();
+            return Page(100, limit, 200);
+        }));
+        var first = widget.Resource.EnsureLoaded();
+        await firstStarted.Task;
+        var replacement = widget.Resource.Refresh();
+        Equal(WidgetOperationAdmission.Replaced, replacement.Admission);
+        firstRelease.SetResult();
+        await secondStarted.Task;
+        Equal(WidgetOperationStatus.Superseded, (await first.Completion).Status);
+        Equal(WidgetOperationStatus.Succeeded, (await replacement.Completion).Status);
+        Equal(2, Volatile.Read(ref calls));
+        Equal("item.100", widget.Resource.Snapshot.Items[0].Id);
+        await StopAsync(widget);
+    }
+
+    private static async Task ResetCancelsJoinedLoadAndAllowsFreshWork()
+    {
+        var started = Signal();
+        var canceled = Signal();
+        var calls = 0;
+        var widget = await StartAsync(Options(200, async: async (_, _, limit, token) =>
+        {
+            var call = Interlocked.Increment(ref calls);
+            if (call == 1)
+            {
+                using var registration = token.Register(() => canceled.TrySetResult());
+                started.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            }
+            return Page(0, limit, 200);
+        }));
+        var first = widget.Resource.EnsureLoaded();
+        await started.Task;
+        var joined = widget.Resource.EnsureLoaded();
+        widget.Resource.Reset(invalidate: false);
+        await canceled.Task;
+        Equal(WidgetOperationStatus.Canceled, (await first.Completion).Status);
+        Equal(WidgetOperationStatus.Canceled, (await joined.Completion).Status);
+        Equal(WidgetPagedResourceStatus.NotLoaded, widget.Resource.Snapshot.Status);
+        Equal(WidgetOperationStatus.Succeeded,
+            (await widget.Resource.EnsureLoaded().Completion).Status);
+        Equal(2, Volatile.Read(ref calls));
+        await StopAsync(widget);
+    }
+
+    private static async Task ActiveLifecycleDrainsJoinedLoad()
+    {
+        var started = Signal();
+        var canceled = Signal();
+        var calls = 0;
+        var widget = await StartAsync(Options(200, async: async (_, _, limit, token) =>
+        {
+            Interlocked.Increment(ref calls);
+            using var registration = token.Register(() => canceled.TrySetResult());
+            started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return Page(0, limit, 200);
+        }));
+        var first = widget.Resource.EnsureLoaded();
+        await started.Task;
+        var joined = widget.Resource.EnsureLoaded();
+        var background = WidgetTestHost.SetLifecycleStateAsync(
+            widget, WidgetLifecycleState.Background).AsTask();
+        await canceled.Task;
+        await background;
+        Equal(WidgetOperationStatus.Canceled, (await first.Completion).Status);
+        Equal(WidgetOperationStatus.Canceled, (await joined.Completion).Status);
+        Equal(1, Volatile.Read(ref calls));
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task TraversesTenThousandItemsWithinBound()

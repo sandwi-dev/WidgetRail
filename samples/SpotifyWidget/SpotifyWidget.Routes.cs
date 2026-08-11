@@ -34,8 +34,6 @@ public sealed partial class SpotifyWidget
             _readyInitialFocusId = sourceElementId;
             shouldLoad = destination switch
             {
-                SpotifyDestination.Queue => _queue is null ||
-                    !IsFresh(_queueCachedAt, QueueCacheLifetime),
                 SpotifyDestination.Devices => _devices is null || _localPlayback is null ||
                     !IsFresh(_devicesCachedAt, DevicesCacheLifetime),
                 _ => false,
@@ -69,16 +67,6 @@ public sealed partial class SpotifyWidget
         {
             switch (destination)
             {
-                case SpotifyDestination.Queue:
-                    var queue = await HostServices.Spotify.GetQueueAsync(cancellationToken)
-                        .ConfigureAwait(false);
-                    if (!operation.IsCurrent) return;
-                    lock (_gate)
-                    {
-                        _queue = queue;
-                        _queueCachedAt = _timeProvider.GetUtcNow();
-                    }
-                    break;
                 case SpotifyDestination.Devices:
                     var devicesTask = HostServices.Spotify.GetDevicesAsync(cancellationToken).AsTask();
                     var localTask = HostServices.Spotify.GetLocalPlaybackAsync(cancellationToken).AsTask();
@@ -133,14 +121,16 @@ public sealed partial class SpotifyWidget
         if (operation.IsCurrent) Invalidate();
     }
 
-    private void OpenPlaylist(int absoluteIndex, string sourceElementId)
+    private void OpenPlaylist(WidgetCollectionItemKey key, string sourceElementId)
     {
         var mode = sourceElementId.Contains(".compact.", StringComparison.Ordinal)
             ? "compact" : "wide";
         lock (_gate)
         {
-            if (_destination != SpotifyDestination.Playlists ||
-                !_playlists.TryGetCurrentItem(absoluteIndex, out var playlist)) return;
+            var playlist = _playlists.Snapshot.Items
+                .FirstOrDefault(item => item.Key == key)?.Value;
+            if (_destination != SpotifyDestination.Playlists || playlist is null) return;
+            _playlists.SelectAnchor(key, invalidate: false);
             _playlistItems.Reset(invalidate: false);
             var generation = checked(++_playlistSelectionGeneration);
             _pageError = null;
@@ -152,12 +142,14 @@ public sealed partial class SpotifyWidget
         }
     }
 
-    private async ValueTask<WidgetPage<WidgetSpotifyMediaItemSummary>>
-        LoadSelectedPlaylistPageAsync(
-            int offset,
+    private async ValueTask<WidgetCursorPage<SpotifyMediaCollectionItem>>
+        LoadSelectedPlaylistCursorPageAsync(
+            WidgetCollectionCursor? cursor,
+            WidgetCursorDirection? _,
             int limit,
             CancellationToken cancellationToken)
     {
+        var offset = SpotifyCollectionIdentity.Offset(cursor);
         SpotifyPlaylistSelection? selection;
         lock (_gate) selection = _playlistSelection;
         if (selection is null)
@@ -167,7 +159,9 @@ public sealed partial class SpotifyWidget
         if (!string.Equals(page.Playlist.PlaylistId, selection.Key.PlaylistId,
                 StringComparison.Ordinal))
             throw new InvalidOperationException("Spotify returned a different playlist.");
-        return new(page.Items, page.Offset, page.Limit, page.Total);
+        var items = page.Items.Select(item => new SpotifyMediaCollectionItem(
+            item, SpotifyCollectionIdentity.Media(item.Uri))).ToArray();
+        return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit, page.Total);
     }
 
     private bool IsFresh(DateTimeOffset? cachedAt, TimeSpan lifetime) =>
@@ -182,10 +176,9 @@ public sealed partial class SpotifyWidget
     {
         _playlists.Reset(invalidate: false);
         ClearPlaylistSelectionLocked();
-        _queue = null;
+        _queue.Reset(invalidate: false);
         _devices = null;
         _localPlayback = null;
-        _queueCachedAt = null;
         _devicesCachedAt = null;
         _preferredPlaybackDeviceId = null;
         _pageLoading = false;

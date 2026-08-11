@@ -88,11 +88,13 @@ public sealed partial class SpotifyWidget
         }
     }
 
-    private async Task PlayQueueItemAsync(int index, CancellationToken cancellationToken)
+    private async Task PlayQueueItemAsync(
+        WidgetCollectionItemKey key,
+        CancellationToken cancellationToken)
     {
-        WidgetSpotifyMediaItemSummary? item;
-        lock (_gate) item = ItemAt(_queue?.Items, index);
+        var item = _queue.Snapshot.Items.FirstOrDefault(candidate => candidate.Key == key)?.Value;
         if (item is null || !item.IsPlayable) return;
+        _queue.SelectAnchor(key, invalidate: false);
         await StartPlaybackAsync(new(null, [item.Uri], DeviceId: PlaybackDeviceId()),
             "Playing selected queue item",
             cancellationToken).ConfigureAwait(false);
@@ -109,7 +111,7 @@ public sealed partial class SpotifyWidget
     }
 
     private async Task PlayPlaylistTrackAsync(
-        int absoluteIndex,
+        WidgetCollectionItemKey key,
         CancellationToken cancellationToken)
     {
         WidgetSpotifyPlaylistSummary? playlist;
@@ -117,12 +119,13 @@ public sealed partial class SpotifyWidget
         lock (_gate)
         {
             playlist = _playlistSelection?.Playlist;
-            item = playlist is not null &&
-                _playlistItems.TryGetCurrentItem(absoluteIndex, out var current)
-                    ? current
-                    : null;
+            item = playlist is not null
+                ? _playlistItems.Snapshot.Items
+                    .FirstOrDefault(candidate => candidate.Key == key)?.Value
+                : null;
         }
         if (playlist is null || item is null || !item.IsPlayable) return;
+        _playlistItems.SelectAnchor(key, invalidate: false);
         await StartPlaybackAsync(new(playlist.Uri, null,
                 DeviceId: PlaybackDeviceId(), OffsetUri: item.Uri),
             $"Playing {item.Title}", cancellationToken).ConfigureAwait(false);
@@ -137,7 +140,7 @@ public sealed partial class SpotifyWidget
         {
             await HostServices.Spotify.StartPlaybackAsync(request, cancellationToken)
                 .ConfigureAwait(false);
-            lock (_gate) _queueCachedAt = null;
+            InvalidateQueueCollection();
             SetCommandStatus(successStatus);
             await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken)
                 .ConfigureAwait(false);
@@ -219,14 +222,16 @@ public sealed partial class SpotifyWidget
         {
             await HostServices.Spotify.ControlPlaybackAsync(command, cancellationToken)
                 .ConfigureAwait(false);
+            var invalidateQueue = false;
             lock (_gate)
             {
                 _pendingOperation = null;
                 _status = "Updated in Spotify";
                 if (operation is WidgetSpotifyPlaybackOperation.Next or
                     WidgetSpotifyPlaybackOperation.Previous)
-                    _queueCachedAt = null;
+                    invalidateQueue = true;
             }
+            if (invalidateQueue) InvalidateQueueCollection();
             Invalidate();
             await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken)
                 .ConfigureAwait(false);
