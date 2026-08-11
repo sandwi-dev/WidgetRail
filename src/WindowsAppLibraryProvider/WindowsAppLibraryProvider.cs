@@ -16,25 +16,18 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     internal const int MaximumApps = 512;
     internal const int MaximumDisplayNameLength = 120;
 
-    private readonly IStartMenuApplicationSource _startMenuSource;
-    private readonly IAppsFolderApplicationSource _appsFolderSource;
-    private readonly ISteamApplicationSource _steamSource;
-    private readonly IWindowsShellLauncher _shellLauncher;
-    private readonly IWindowsPackagedAppLauncher _packagedAppLauncher;
-    private readonly IWindowsSteamLauncher _steamLauncher;
-    private readonly IWindowsAppIconSource _iconSource;
+    private readonly IReadOnlyList<IGameLibrarySource> _sources;
+    private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly Dictionary<string, string> _opaqueIdsByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<WindowsAppLibraryItem>? _snapshot;
-    private Dictionary<string, WindowsLaunchRegistration> _registrationsByOpaqueId =
+    private Dictionary<string, GameLibrarySourceItem> _registrationsByOpaqueId =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
         new(StringComparer.Ordinal);
-    private IReadOnlyList<AppsFolderRegistration> _lastGoodAppsFolderRegistrations = [];
-    private IReadOnlyList<SteamRegistration> _lastGoodSteamRegistrations = [];
 
     public WindowsAppLibraryProvider() : this(
         new WindowsStartMenuApplicationSource(),
@@ -98,17 +91,30 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         IWindowsSteamLauncher steamLauncher,
         IWindowsAppIconSource iconSource,
         IShellStaExecutor shellSta)
+        : this(
+            [
+                new WindowsInstalledGameLibrarySource(
+                    startMenuSource, appsFolderSource, shellLauncher,
+                    packagedAppLauncher, iconSource),
+                new SteamGameLibrarySource(steamSource, steamLauncher),
+            ],
+            shellSta)
     {
-        _startMenuSource = startMenuSource ??
-            throw new ArgumentNullException(nameof(startMenuSource));
-        _appsFolderSource = appsFolderSource ??
-            throw new ArgumentNullException(nameof(appsFolderSource));
-        _steamSource = steamSource ?? throw new ArgumentNullException(nameof(steamSource));
-        _shellLauncher = shellLauncher ?? throw new ArgumentNullException(nameof(shellLauncher));
-        _packagedAppLauncher = packagedAppLauncher ??
-            throw new ArgumentNullException(nameof(packagedAppLauncher));
-        _steamLauncher = steamLauncher ?? throw new ArgumentNullException(nameof(steamLauncher));
-        _iconSource = iconSource ?? throw new ArgumentNullException(nameof(iconSource));
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        if (sources.Count == 0 || sources.Count > 16 ||
+            sources.Any(source => source is null) ||
+            sources.Select(source => source.SourceIdentity)
+                .Distinct(StringComparer.Ordinal).Count() != sources.Count)
+            throw new ArgumentException("Game-library sources are invalid.", nameof(sources));
+        _sources = Array.AsReadOnly(sources.ToArray());
+        _sourcesByIdentity = _sources.ToDictionary(
+            source => source.SourceIdentity, StringComparer.Ordinal);
         _shellSta = shellSta ?? throw new ArgumentNullException(nameof(shellSta));
     }
 
@@ -158,15 +164,15 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                         "invalid_backend_data", "App library snapshot is inconsistent.");
                 projected[index] = new AppLibraryBackendItemSummary(
                     app.AppId,
-                    registration.IdentityKey,
+                    registration.StableIdentity,
                     app.DisplayName,
-                    app.Kind switch
+                    registration.Kind switch
                 {
                     WindowsAppLibraryKind.Unknown => AppLibraryKind.Unknown,
                     WindowsAppLibraryKind.Application => AppLibraryKind.Application,
                     WindowsAppLibraryKind.Game => AppLibraryKind.Game,
                     _ => AppLibraryKind.Unknown,
-                }, ArtworkRevision(registration.RevalidationKey));
+                }, ArtworkRevision(registration.ArtworkRevision));
             }
             return Array.AsReadOnly(projected);
         }
@@ -184,16 +190,21 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            WindowsLaunchRegistration? registered;
+            GameLibrarySourceItem? registered;
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registered);
-            if (registered is null || !IsStructurallyValid(registered))
+            if (registered is null || !IsStructurallyValid(registered) ||
+                !_sourcesByIdentity.TryGetValue(
+                    registered.SourceIdentity, out var source))
                 throw AppUnavailable();
 
             await _shellSta.RunAsync(
                 token =>
                 {
-                    RevalidateAndLaunch(registered, token);
+                    var exact = source.ResolveExact(registered, token);
+                    token.ThrowIfCancellationRequested();
+                    if (exact is null || !IsStructurallyValid(exact)) throw AppUnavailable();
+                    source.Launch(exact, token);
                     return true;
                 }, cancellationToken).ConfigureAwait(false);
         }
@@ -234,26 +245,33 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            WindowsLaunchRegistration? registration;
+            GameLibrarySourceItem? registration;
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registration);
-            if (registration is null) return new AppLibraryIconSummary(null);
+            if (registration is null ||
+                !_sourcesByIdentity.TryGetValue(
+                    registration.SourceIdentity, out var source))
+                return new AppLibraryIconSummary(null);
 
             lock (_stateGate)
             {
                 if (_iconsByRevalidationKey.TryGetValue(
-                        registration.RevalidationKey, out var cached))
+                        registration.ArtworkRevision, out var cached))
                     return new AppLibraryIconSummary(cached);
             }
 
             var png = await _shellSta.RunAsync(
-                token => RevalidateAndRasterize(registration, token),
+                token =>
+                {
+                    var exact = source.ResolveExact(registration, token);
+                    return exact is null ? null : source.LoadArtwork(exact, token);
+                },
                 cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             if (png is not null)
             {
                 lock (_stateGate)
-                    _iconsByRevalidationKey[registration.RevalidationKey] = png;
+                    _iconsByRevalidationKey[registration.ArtworkRevision] = png;
             }
             return new AppLibraryIconSummary(png);
         }
@@ -262,29 +280,6 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
             _scanGate.Release();
         }
     }
-
-    private string? RevalidateAndRasterize(
-        WindowsLaunchRegistration registration,
-        CancellationToken cancellationToken) => registration switch
-        {
-            StartMenuRegistration shortcut when
-                _startMenuSource.ReadExact(
-                    shortcut.ShortcutPath, shortcut.Scope, cancellationToken) is { } current &&
-                string.Equals(current.IdentityKey, shortcut.IdentityKey,
-                    StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(current.RevalidationKey, shortcut.RevalidationKey,
-                    StringComparison.Ordinal) =>
-                _iconSource.TryRasterizePngBase64(current.ShortcutPath, cancellationToken),
-            AppsFolderRegistration packaged when
-                _appsFolderSource.ReadExact(packaged.Aumid, cancellationToken) is { } current &&
-                string.Equals(current.IdentityKey, packaged.IdentityKey,
-                    StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(current.RevalidationKey, packaged.RevalidationKey,
-                    StringComparison.Ordinal) =>
-                _iconSource.TryRasterizeAppsFolderPngBase64(
-                    current.Aumid, cancellationToken),
-            _ => null,
-        };
 
     private async Task<IReadOnlyList<WindowsAppLibraryItem>> ScanAsync(
         bool force, CancellationToken cancellationToken)
@@ -300,64 +295,14 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                 }
             }
 
-            var scan = await _shellSta.RunAsync(
-                token =>
-                {
-                    var startMenu = _startMenuSource.Enumerate(token);
-                    IReadOnlyList<SteamRegistration> steam;
-                    var steamAuthoritative = true;
-                    try
-                    {
-                        steam = _steamSource.Enumerate(token);
-                    }
-                    catch (Exception exception) when (exception is IOException or
-                        UnauthorizedAccessException or InvalidOperationException or
-                        System.Security.SecurityException)
-                    {
-                        steam = [];
-                        steamAuthoritative = false;
-                    }
-                    try
-                    {
-                        return new AppsFolderScan(
-                            startMenu, _appsFolderSource.Enumerate(token), steam,
-                            true, steamAuthoritative);
-                    }
-                    catch (AppsFolderEnumerationException)
-                    {
-                        return new AppsFolderScan(startMenu, [], steam,
-                            false, steamAuthoritative);
-                    }
-                }, cancellationToken).ConfigureAwait(false);
+            var snapshots = await _shellSta.RunAsync(
+                token => _sources.Select(source => source.Refresh(token)).ToArray(),
+                cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            IReadOnlyList<AppsFolderRegistration> appsFolder;
-            if (scan.AppsFolderAuthoritative)
-            {
-                appsFolder = scan.AppsFolder;
-            }
-            else
-            {
-                lock (_stateGate) appsFolder = _lastGoodAppsFolderRegistrations;
-            }
-            IReadOnlyList<SteamRegistration> steam;
-            if (scan.SteamAuthoritative)
-            {
-                steam = scan.Steam;
-            }
-            else
-            {
-                lock (_stateGate) steam = _lastGoodSteamRegistrations;
-            }
-            var registrations = scan.StartMenu
-                .Cast<WindowsLaunchRegistration>()
-                .Concat(appsFolder)
-                .Concat(steam)
+            var registrations = snapshots
+                .SelectMany(snapshot => snapshot.Items)
                 .ToArray();
-            return Commit(
-                registrations,
-                clearAppsFolderIcons: force,
-                scan.AppsFolderAuthoritative ? scan.AppsFolder : null,
-                scan.SteamAuthoritative ? scan.Steam : null);
+            return Commit(registrations, clearIcons: force);
         }
         finally
         {
@@ -366,10 +311,8 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     }
 
     private IReadOnlyList<WindowsAppLibraryItem> Commit(
-        IReadOnlyList<WindowsLaunchRegistration>? registrations,
-        bool clearAppsFolderIcons,
-        IReadOnlyList<AppsFolderRegistration>? authoritativeAppsFolder,
-        IReadOnlyList<SteamRegistration>? authoritativeSteam)
+        IReadOnlyList<GameLibrarySourceItem>? registrations,
+        bool clearIcons)
     {
         var candidates = (registrations ?? [])
             .Where(IsStructurallyValid)
@@ -377,69 +320,51 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                 registration,
                 SanitizeDisplayName(registration.DisplayName)))
             .Where(candidate => candidate.DisplayName is not null)
-            .GroupBy(candidate => candidate.Registration.IdentityKey,
+            .GroupBy(candidate => candidate.Registration.StableIdentity,
                 StringComparer.OrdinalIgnoreCase)
             .Select(group => group
-                .OrderBy(candidate => SourceOrder(candidate.Registration))
-                .ThenBy(candidate => SourceLocator(candidate.Registration),
-                    StringComparer.OrdinalIgnoreCase)
+                .OrderBy(candidate => candidate.Registration.SourceIdentity,
+                    StringComparer.Ordinal)
                 .First())
             .OrderBy(candidate => candidate.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(candidate => candidate.Registration.IdentityKey,
+            .ThenBy(candidate => candidate.Registration.StableIdentity,
                 StringComparer.OrdinalIgnoreCase)
             .Take(MaximumApps)
             .ToArray();
 
         lock (_stateGate)
         {
-            if (clearAppsFolderIcons)
-            {
-                foreach (var packaged in _registrationsByOpaqueId.Values
-                             .OfType<AppsFolderRegistration>())
-                    _iconsByRevalidationKey.Remove(packaged.RevalidationKey);
-            }
-            if (authoritativeAppsFolder is not null)
-            {
-                _lastGoodAppsFolderRegistrations = Array.AsReadOnly(
-                    authoritativeAppsFolder.Where(IsStructurallyValid).ToArray());
-            }
-            if (authoritativeSteam is not null)
-            {
-                _lastGoodSteamRegistrations = Array.AsReadOnly(
-                    authoritativeSteam.Where(IsStructurallyValid).ToArray());
-            }
+            if (clearIcons) _iconsByRevalidationKey.Clear();
             var liveIdentities = candidates
-                .Select(candidate => candidate.Registration.IdentityKey)
+                .Select(candidate => candidate.Registration.StableIdentity)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var stale in _opaqueIdsByIdentity.Keys
                          .Where(identity => !liveIdentities.Contains(identity)).ToArray())
                 _opaqueIdsByIdentity.Remove(stale);
 
             var liveRevalidationKeys = candidates
-                .Select(candidate => candidate.Registration.RevalidationKey)
+                .Select(candidate => candidate.Registration.ArtworkRevision)
                 .ToHashSet(StringComparer.Ordinal);
             foreach (var stale in _iconsByRevalidationKey.Keys
                          .Where(key => !liveRevalidationKeys.Contains(key)).ToArray())
                 _iconsByRevalidationKey.Remove(stale);
 
-            var byId = new Dictionary<string, WindowsLaunchRegistration>(StringComparer.Ordinal);
+            var byId = new Dictionary<string, GameLibrarySourceItem>(StringComparer.Ordinal);
             var snapshot = new WindowsAppLibraryItem[candidates.Length];
             for (var index = 0; index < candidates.Length; index++)
             {
                 var candidate = candidates[index];
                 if (!_opaqueIdsByIdentity.TryGetValue(
-                        candidate.Registration.IdentityKey, out var opaqueId))
+                        candidate.Registration.StableIdentity, out var opaqueId))
                 {
                     opaqueId = "app-" + Guid.NewGuid().ToString("N");
-                    _opaqueIdsByIdentity.Add(candidate.Registration.IdentityKey, opaqueId);
+                    _opaqueIdsByIdentity.Add(candidate.Registration.StableIdentity, opaqueId);
                 }
                 byId.Add(opaqueId, candidate.Registration);
                 snapshot[index] = new WindowsAppLibraryItem(
                     opaqueId,
                     candidate.DisplayName!,
-                    candidate.Registration is SteamRegistration
-                        ? WindowsAppLibraryKind.Game
-                        : WindowsAppLibraryKind.Application);
+                    candidate.Registration.Kind);
             }
 
             _registrationsByOpaqueId = byId;
@@ -448,174 +373,23 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         }
     }
 
-    internal bool TryResolveForLaunch(
-        string opaqueId, out StartMenuRegistration? registration)
-    {
-        if (string.IsNullOrWhiteSpace(opaqueId))
-        {
-            registration = null;
-            return false;
-        }
-        lock (_stateGate)
-        {
-            var found = _registrationsByOpaqueId.TryGetValue(opaqueId, out var candidate) &&
-                candidate is StartMenuRegistration;
-            registration = candidate as StartMenuRegistration;
-            return found;
-        }
-    }
-
-    internal bool TryResolvePackagedForLaunch(
-        string opaqueId, out AppsFolderRegistration? registration)
-    {
-        if (string.IsNullOrWhiteSpace(opaqueId))
-        {
-            registration = null;
-            return false;
-        }
-        lock (_stateGate)
-        {
-            var found = _registrationsByOpaqueId.TryGetValue(opaqueId, out var candidate) &&
-                candidate is AppsFolderRegistration;
-            registration = candidate as AppsFolderRegistration;
-            return found;
-        }
-    }
-
-    internal bool TryResolveSteamForLaunch(
-        string opaqueId, out SteamRegistration? registration)
-    {
-        if (string.IsNullOrWhiteSpace(opaqueId))
-        {
-            registration = null;
-            return false;
-        }
-        lock (_stateGate)
-        {
-            var found = _registrationsByOpaqueId.TryGetValue(opaqueId, out var candidate) &&
-                candidate is SteamRegistration;
-            registration = candidate as SteamRegistration;
-            return found;
-        }
-    }
-
-    private static bool IsStructurallyValid(WindowsLaunchRegistration registration) =>
+    private bool IsStructurallyValid(GameLibrarySourceItem registration) =>
         registration is not null &&
-        !string.IsNullOrWhiteSpace(registration.IdentityKey) &&
-        registration.IdentityKey.Length <= 128 &&
-        !string.IsNullOrWhiteSpace(registration.RevalidationKey) &&
-        registration.RevalidationKey.Length <= 128 &&
-        registration switch
-        {
-            StartMenuRegistration shortcut =>
-                Enum.IsDefined(shortcut.Scope) &&
-                !string.IsNullOrWhiteSpace(shortcut.ShortcutPath) &&
-                shortcut.ShortcutPath.Length <= 32_767,
-            AppsFolderRegistration packaged =>
-                WindowsAppsFolderApplicationSource.NormalizeAumid(packaged.Aumid) is { } aumid &&
-                string.Equals(aumid, packaged.Aumid, StringComparison.Ordinal),
-            SteamRegistration steam =>
-                WindowsSteamApplicationSource.IsValidAppId(steam.SteamAppId) &&
-                Path.IsPathFullyQualified(steam.ManifestPath) &&
-                Path.GetFileName(steam.ManifestPath).Equals(
-                    $"appmanifest_{steam.SteamAppId}.acf", StringComparison.OrdinalIgnoreCase),
-            _ => false,
-        };
-
-    private static int SourceOrder(WindowsLaunchRegistration registration) =>
-        registration switch
-        {
-            StartMenuRegistration { Scope: StartMenuScope.CurrentUser } => 0,
-            StartMenuRegistration => 1,
-            AppsFolderRegistration => 2,
-            SteamRegistration => 3,
-            _ => int.MaxValue,
-        };
-
-    private static string SourceLocator(WindowsLaunchRegistration registration) =>
-        registration switch
-        {
-            StartMenuRegistration shortcut => shortcut.ShortcutPath,
-            AppsFolderRegistration packaged => packaged.Aumid,
-            SteamRegistration steam => steam.ManifestPath,
-            _ => string.Empty,
-        };
-
-    private static bool IsExactLaunchRegistration(StartMenuRegistration registration)
-    {
-        try
-        {
-            return IsStructurallyValid(registration) &&
-                Path.IsPathFullyQualified(registration.ShortcutPath) &&
-                Path.GetExtension(registration.ShortcutPath)
-                    .Equals(".lnk", StringComparison.OrdinalIgnoreCase);
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
-
-    private void RevalidateAndLaunch(
-        WindowsLaunchRegistration registered,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        switch (registered)
-        {
-            case StartMenuRegistration shortcut:
-            {
-                if (!IsExactLaunchRegistration(shortcut)) throw AppUnavailable();
-                var current = _startMenuSource.ReadExact(
-                    shortcut.ShortcutPath, shortcut.Scope, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (current is null || !IsExactLaunchRegistration(current) ||
-                    current.Scope != shortcut.Scope ||
-                    !string.Equals(current.IdentityKey, shortcut.IdentityKey,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(current.ShortcutPath, shortcut.ShortcutPath,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(current.RevalidationKey, shortcut.RevalidationKey,
-                        StringComparison.Ordinal))
-                    throw AppUnavailable();
-                _shellLauncher.Launch(current.ShortcutPath, cancellationToken);
-                return;
-            }
-            case AppsFolderRegistration packaged:
-            {
-                var current = _appsFolderSource.ReadExact(packaged.Aumid, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (current is null || !IsStructurallyValid(current) ||
-                    !string.Equals(current.IdentityKey, packaged.IdentityKey,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(current.Aumid, packaged.Aumid,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(current.RevalidationKey, packaged.RevalidationKey,
-                        StringComparison.Ordinal))
-                    throw AppUnavailable();
-                _packagedAppLauncher.Launch(current.Aumid, cancellationToken);
-                return;
-            }
-            case SteamRegistration steam:
-            {
-                var current = _steamSource.ReadExact(
-                    steam.SteamAppId, steam.ManifestPath, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                if (current is null || !IsStructurallyValid(current) ||
-                    !string.Equals(current.IdentityKey, steam.IdentityKey,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(current.ManifestPath, steam.ManifestPath,
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(current.RevalidationKey, steam.RevalidationKey,
-                        StringComparison.Ordinal))
-                    throw AppUnavailable();
-                _steamLauncher.Launch(current.SteamAppId, cancellationToken);
-                return;
-            }
-            default:
-                throw AppUnavailable();
-        }
-    }
+        _sourcesByIdentity.ContainsKey(registration.SourceIdentity) &&
+        registration.SourceIdentity.Length is > 0 and <= 64 &&
+        !string.IsNullOrWhiteSpace(registration.Attribution) &&
+        registration.Attribution.Length <= 64 &&
+        SanitizeDisplayName(registration.Attribution) == registration.Attribution &&
+        !string.IsNullOrWhiteSpace(registration.StableIdentity) &&
+        registration.StableIdentity.Length <= 128 &&
+        !string.IsNullOrWhiteSpace(registration.ArtworkRevision) &&
+        registration.ArtworkRevision.Length <= 128 &&
+        registration.Installed && registration.Available &&
+        registration.SupportedActions.HasFlag(GameLibrarySourceActions.Launch) &&
+        (registration.SupportedActions &
+            ~(GameLibrarySourceActions.Launch | GameLibrarySourceActions.Artwork)) == 0 &&
+        !string.IsNullOrWhiteSpace(registration.SourceItemIdentity) &&
+        registration.SourceItemIdentity.Length <= 96;
 
     private static BrokerException AppUnavailable() =>
         new("app_not_found", "The selected app is no longer available.");
@@ -696,13 +470,6 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     }
 
     private sealed record Candidate(
-        WindowsLaunchRegistration Registration,
+        GameLibrarySourceItem Registration,
         string? DisplayName);
-
-    private sealed record AppsFolderScan(
-        IReadOnlyList<StartMenuRegistration> StartMenu,
-        IReadOnlyList<AppsFolderRegistration> AppsFolder,
-        IReadOnlyList<SteamRegistration> Steam,
-        bool AppsFolderAuthoritative,
-        bool SteamAuthoritative);
 }

@@ -1425,6 +1425,21 @@ deactivation cannot race an already-disposed source. The focused suite covers
 cancellation during retry, and the real generic-worker/AppContainer path passed
 three consecutive lifecycle conformance runs.
 
+DLV-059 replaces the provider root's Start Menu/AppsFolder/Steam discovery,
+launch, and artwork switches with two ordinary implementations of one private
+normalized source contract. The 475-line authoritative owner keeps the sole
+scan gate, immutable merged snapshot, opaque public-ID map, and icon cache. A
+564-line source-policy file owns the shared bounded generation/disposal policy
+plus the Windows-installed and Steam adapters; each adapter alone knows its raw
+resolution and launch authority. Cross-boundary mutable knowledge is limited to
+immutable normalized records carrying opaque source/record identities,
+sanitized attribution, kind, installed/available state, supported actions,
+artwork revision, health, and source version. Direct fixtures prove exact
+source-owned resolve/launch, duplicate-name separation, last-good failure
+isolation, a late generation losing to the current snapshot, and cancellation-
+driven terminal drain. The focused Release suite passes 36/36 without broker,
+widget, native, aggregate, or physical launch verification.
+
 The trusted `WindowsAppLibraryProvider` lazily merges the bounded current-user/
 all-user Start Menu Programs roots, the current user's Shell AppsFolder, and
 registered Steam libraries on one process-wide bounded STA lane. It skips
