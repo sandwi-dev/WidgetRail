@@ -153,6 +153,19 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-086 — Reconcile YT Music package version ownership
+
+**State:** Done
+**Closing commit:** `abbf54b`
+**Integrated on `main`:** `14f7451`
+
+**Reviewer disposition:** Accepted. The current immutable manifest remains
+authoritative at `0.2.7`; the companion `appVersion`, source constant, README
+commands, and validating manifest-equality test now agree. Focused YT Music
+evidence passes 55/55, including the exact pairing handshake field. No package
+version, installed immutable bytes, runtime contract, or authentication
+behavior changed.
+
 ### DLV-084 / DLV-088 / DLV-090 — Durable Game Launcher hide and restore
 
 **State:** Done
@@ -826,9 +839,9 @@ route/action, playback, and presentation boundaries while retaining one
   DLV-084/085/088/089/090 prefix is accepted and integrated through `dc1bc16`:
   Game Launcher has durable hide/restore with a green final installed route,
   and Settings clears one exact running or disabled widget's private state
-  through the singular host owners. DLV-086 is actively correcting the narrow
-  YT Music package-version drift exposed by the retained aggregate. DLV-087 is
-  the
+  through the singular host owners. DLV-086 `abbf54b` is accepted and integrated
+  through `14f7451`, closing the narrow YT Music source/handshake version drift.
+  DLV-087 is the
   next visible cross-lane milestone: protected Personal Wi-Fi connection through
   a host-owned credential prompt. DLV-038 remains deferred test-architecture
   debt rather than filler work.
@@ -1317,8 +1330,7 @@ at exact code commit `07e6d11`; evidence-only closing commit is `dc1bc16`.
 
 ### DLV-086 — Reconcile YT Music package version ownership
 
-**State:** Assigned; implementation started automatically after DLV-090 commit
-`dc1bc16`
+**State:** Done; accepted as `abbf54b` and integrated through `14f7451`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-090
 **Dependencies:** accepted package reproducibility through DLV-057 and DLV-090
@@ -1363,9 +1375,14 @@ the retained `20260811T162358Z-a68acd42` result is the originating evidence.
 would require publishing different bytes under immutable `0.2.7`, or the value
 is consumed as a compatibility contract that requires a product decision.
 
+**Reviewer disposition:** Accepted. Focused YT Music Release evidence passes
+55/55 and asserts the real pairing request's `appVersion`; the manifest and all
+current author commands remain `0.2.7`. No package bytes were republished.
+
 ### DLV-087 — Connect protected Personal Wi-Fi through a host-owned prompt
 
-**State:** Ready; execute automatically after committing DLV-086
+**State:** Assigned; implementation started automatically after DLV-086 commit
+`abbf54b`
 **Lane:** widgets, acting as the serialized cross-lane Network Controls lead
 **Baseline:** clean closing commit of DLV-086 plus accepted current `main`
 **Dependencies:** DLV-028, DLV-031, DLV-037, DLV-075, and DLV-079; DLV-086 is

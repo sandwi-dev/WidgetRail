@@ -88,7 +88,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
 | GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
-| GBA-070 | P2 | Confirmed | YT Music package metadata / companion handshake | The DLV-082 integrated Tier-3 checkpoint proved the current immutable manifest is `0.2.7` while `YtmDesktopApiClient.PackageVersion` and its companion `appVersion` remain `0.2.6`. DLV-086 is queued behind visible work to restore one current version owner without republishing the package. |
+| GBA-070 | P2 | Closed | YT Music package metadata / companion handshake | Accepted DLV-086 aligns the source constant, companion `appVersion`, README commands, and validating test with immutable manifest `0.2.7`. YT Music passes 55/55; no package bytes were republished. |
 | GBA-071 | P1 | Closed | Game Launcher Hidden route / cursor-resource readiness | Accepted DLV-088 plus DLV-090 make Restore/Back publish an enabled current row without Refresh. Final direct evidence is 43/43 and clean installed generic-worker run `20260811T175350Z-011a57cd` passes 6/6. |
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
 
@@ -2207,6 +2207,11 @@ companion handshake agree on `0.2.7`; the existing mismatch assertion remains
 effective; no new package version or different bytes under immutable `0.2.7`
 are published. Run the focused YT Music suite and metadata validation once, not
 the repository aggregate.
+
+**Closure:** DLV-086 `abbf54b`, integrated through `14f7451`, aligns every
+current source/authoring/handshake reference with `0.2.7`. Focused YT Music
+passes 55/55 and directly asserts the pairing request's `appVersion`; immutable
+installed package bytes were not replaced.
 
 ## GBA-071 — Game Launcher Restore can strand the library on unavailable rows
 

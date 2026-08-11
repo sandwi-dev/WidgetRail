@@ -26,9 +26,11 @@ provider 46/46, Game Launcher 37/37, installed AppContainer 6/6, and 55 docs.
 The one integrated aggregate stopped after 39 seconds on pre-existing YT Music
 metadata drift: `YtmDesktopApiClient.PackageVersion` is `0.2.6` while the
 current immutable package manifest is `0.2.7`. The changed SDK checks had
-passed; the aggregate was not rerun. DLV-086 owns that narrow correction behind
-the visible launcher and Settings queue. Full Release packaging succeeded and
-accepted main is visibly running as PID 30588.
+passed; the aggregate was not rerun. Accepted DLV-086 `abbf54b`, integrated
+through `14f7451`, aligns the source constant, pairing `appVersion`, README
+commands, and manifest-equality guard at `0.2.7`; YT Music passes 55/55 and no
+immutable package bytes were republished. Full Release packaging for the prior
+visible prefix succeeded and accepted main is visibly running as PID 20024.
 
 Independent review of DLV-085 candidate `e0edfb8` accepted the management
 boundary but initially rejected the complete identity behavior. Settings receives only a
