@@ -90,10 +90,13 @@ authorize implementation.
 
 - The `widgets` task works only in its Codex worktree on
   `codex/impl-widgets`. The active `platform` task works only in
-  `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative` on
-  `codex/impl-platform-visible`; the original `codex/impl-platform` worktree is
-  preserved blocked DLV-025 evidence and is not an active implementation
-  surface.
+  `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on
+  `codex/impl-platform-recovery`. The interrupted
+  `codex/impl-platform-visible` worktree is preserved with uncommitted DLV-016
+  files and is not active. The original `codex/impl-platform` branch remains at
+  `57aa2d5`, but its former DLV-025 worktree is no longer registered or present;
+  no task may reconstruct, reset, or otherwise act on that lost uncommitted
+  state without explicit user authority.
 - Tasks may continue through independent same-lane Ready work. The planner may
   integrate only an accepted contiguous prefix; later commits on the same
   branch remain unaccepted until reviewed.
@@ -2451,13 +2454,16 @@ Preserved interrupted branch/worktree: `codex/impl-platform-visible` at
 `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`; do not edit,
 commit, merge, reset, stash, or discard its uncommitted DLV-016 files while
 DLV-052 is active
-Preserved blocked branch/worktree: `codex/impl-platform` at
-`C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative`; do not edit,
-commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
+Preserved blocked branch only: `codex/impl-platform` at `57aa2d5`. Its former
+`C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative` is an empty,
+unregistered directory and the previously observed uncommitted DLV-025 files
+are not present. Do not reconstruct, reset, or otherwise act on that lost
+uncommitted state without explicit user authority.
 
 The platform queue prioritizes visible controller and geometry defects even
-while DLV-025 awaits a compositor choice. The preserved DLV-016 and DLV-025
-worktrees must not be reset or overwritten. The idle predecessor platform task
+while DLV-025 awaits a compositor choice. The preserved DLV-016 worktree must
+not be reset or overwritten; DLV-025 retains only its committed branch baseline
+and documented evidence after its former worktree disappeared. The idle predecessor platform task
 is archived; the clean recovery task above owns DLV-052 from `f0ec63f` without
 carrying the interrupted performance patch. DLV-049 is accepted and integrated as `a8bcb27`;
 DLV-015 is accepted and integrated as `6d3b093` while the widgets lane leads
@@ -2604,8 +2610,11 @@ around Games & Apps. Preserve visual continuity only when it can be delivered
 within a measured frame budget; an immediate stable switch is preferable to a
 laggy or tearing animation.
 
-**Preserved blocker evidence:** The platform worktree remains uncommitted at
-`57aa2d5`. Real populated Spotify Queue and Games & Apps first paints measured
+**Preserved blocker evidence:** The branch remains at committed planning
+baseline `57aa2d5`, and the measurements below remain recorded, but the former
+Codex worktree and its uncommitted DLV-025 files are no longer registered or
+present. Reconstruction is not authorized. Real populated Spotify Queue and
+Games & Apps first paints measured
 about 31 ms; 14 Spotify inputs produced six successful paints over 674 ms; and
 five corrected consecutive captures exposed the dark interior band at final
 geometry before list paint completed. Removing repeated extent interpolation
@@ -3007,7 +3016,7 @@ claim compatibility without measured evidence.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
-| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. | User chooses and authorizes a bounded compositor architecture milestone; planner updates DLV-025 scope and acceptance around that design before the preserved platform worktree resumes. |
+| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. Its former dirty Codex worktree has disappeared, leaving only branch `57aa2d5` and the recorded evidence. | User chooses and authorizes a bounded compositor architecture milestone and any needed reconstruction; planner updates DLV-025 scope and acceptance before a new isolated implementation surface is created. |
 | Audio Mixer default input/output endpoint selection | The roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence for a supported setter plus a bounded provider design and reversible hardware plan. |
 | Live Spotify account and Web Playback completion | Account, Premium eligibility, development allowlist, OAuth, and EME interaction. | User-authorized live account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth consent/verification and a user account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth design, verification plan, and user-authorized account. |
