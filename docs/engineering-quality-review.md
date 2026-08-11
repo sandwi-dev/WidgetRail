@@ -1744,6 +1744,123 @@ text. Finally, show that the next bridge lifecycle/catalog feature changes the
 coordinator and focused tests without editing unrelated drawing or controller
 polling regions of `main.cpp`; reduced line count alone is not closure.
 
+### EQ-031 — P1 — Text-entry commit retains stale native authority across a nested loop
+
+**Status: Closed by accepted DLV-079 commit `d702d37`; held for contiguous
+integration after DLV-080.**
+
+**Evidence.** DLV-075's `OverlayApp::OpenTextEntryModal` resolves a
+`WidgetNode` through a `const WidgetSnapshot&` stored in `widgetSnapshots_`,
+then passes control to `TextEntryModal::Show`. `Show` owns a nested
+`GetMessageW` loop. The owner continues processing timer and bridge events
+during that loop, including paths that call `RefreshWidgetSnapshot` and
+`insert_or_assign` the map value or erase/clear snapshot entries. When `Show`
+returns a value, `OpenTextEntryModal` dereferences the pre-modal node and sends
+its action using the pre-modal input scope. A worker snapshot refresh,
+replacement, removal, hide, or active-widget change can therefore leave both an
+invalid reference and stale action authority at the commit boundary.
+
+The same candidate does not yet meet its controller/responsive acceptance
+criteria. Left/Up both move one position backward and Right/Down both move one
+position forward through a single linear target list, so the keyboard is not a
+spatial controller surface. Its fixed 760 by 520 logical window is DPI-scaled
+and owner-centered but not bounded or reflowed to the monitor work area; at
+150% the requested 1140 by 780 pixels can exceed a 720-pixel work area. Existing
+native evidence proves an edit UIA provider inside an 800 by 600 owner, not
+spatial direction semantics or on-screen bounds at compact/standard/150%.
+
+**Why it matters.** The public boundary correctly withholds raw keyboard events
+and HWND authority from widgets, but the final committed action still needs
+fresh native authorization. Holding container-backed references across a
+reentrant Windows message loop is unsafe even when the modal normally completes
+quickly. The navigation/layout gaps also turn an ostensibly controller-first
+feature into a sequence that is difficult to discover and can be clipped on a
+real small or scaled display.
+
+**Required correction.** DLV-079 must capture only immutable bounded request
+values before opening the modal. After commit it must re-resolve the current
+active widget, admitted snapshot, source node/action identity, generation,
+enabled state, and active input scope, sending exactly once only when all still
+match; every replacement/removal/hide/disable/stale case must fail closed. Add
+deterministic mutations while the modal is open. Give the keyboard and action
+row true spatial 2D controller links, bound/reflow the modal to the active work
+area at compact, standard, and 150%, and retain accurate UIA names, roles,
+focus restoration, and visible bounds. Do not expand widget key/HWND authority,
+redesign the public query contract, or use screenshot capture as acceptance.
+
+**Resolution.** `d702d37` introduces one value-only admission seam. The host
+copies the bounded widget/runtime/snapshot/scope/node/action/text request before
+the nested loop and never dereferences the pre-modal snapshot or node afterward.
+Commit obtains the current descriptor and snapshot and admits one send only when
+the active interactive widget, runtime generation, snapshot sequence, input
+scope, TextEntry node, enabled/non-busy state, and exact action ID still match.
+Focused deterministic cases cover unchanged current authority, hide, active-
+widget and runtime replacement, snapshot refresh, scope change, removal,
+disablement, and action replacement. The modal now derives one DPI-aware layout
+inside the active monitor work area, exposes all edit/key/action controls through
+native UI Automation providers, and uses spatial non-wrapping directional
+selection across keyboard and action rows. The direct modal/admission fixture,
+native bridge parser, production OverlayHost Release build, and 55 documentation
+contracts pass. The commit is accepted but remains unintegrated only to preserve
+the rejected managed prefix for DLV-080's immediate correction.
+
+### EQ-032 — P1 — Launcher retained organization violates catalog-page composition
+
+**Status: DLV-080 candidate `2e38f00` closes bounded page/fixed-slice ownership;
+assigned DLV-081 closes immediate current-row promotion before integration.**
+
+**Evidence.** DLV-076 correctly persists at most 32 recent opaque SavedIds and
+uses that exact set for the provider-backed Recent: Only filter. In Recent:
+First mode, `EffectiveQueryLocked` does not change the ordinary catalog query.
+`GameLauncherPresentation.Render` then orders only `snapshot.Items`, the current
+bounded provider page, against the recent map. A game launched from page 3 can
+be recorded durably, but after restart the first A-Z provider page does not
+contain it and the game cannot be rendered near the front. The new 40-item test
+launches recent identities that are already present in one loaded snapshot, so
+it cannot detect the page-boundary failure.
+
+DLV-077 introduces the inverse composition error. `LoadPageAsync` receives as
+many as 64 provider rows, removes only manual identities already present in that
+Game query, appends up to 32 separately resolved manual rows, and returns the
+combined list through the same `WidgetCursorPage`. The shared resource's
+`Normalize` method explicitly rejects `page.Items.Count > PageSize`; Game
+Launcher configures `PageSize` to the provider maximum of 64. A full page plus
+one manually added Application can therefore fail the collection even though
+both inputs are individually valid and bounded. Its focused direct cases use
+small catalogs, while the installed fixture proves discovery/action ordering
+but not a successful full-page Library render after the add.
+
+**Why it matters.** The visible control says Recent: First and the delivery
+requirement is complete-library organization. Per-page sorting changes order
+again at every cursor boundary and makes persisted history appear ineffective
+for exactly the large libraries that require paging. Loading the whole catalog
+to compensate would regress the bounded-query architecture.
+
+**Required correction.** DLV-080 should compose bounded retained recent and
+resolved manual display sections outside the independently paged provider
+resource, deduplicate by exact SavedId, and route activation only through
+current ResolveSaved launch revalidation. The cursor loader must return no more
+than the exact requested page count under a maximum 64-row page plus maximum
+manual/recent state. Preserve normal catalog cursor behavior, filters/sorts,
+focus, manual membership, favorites, groups, and bounded CAS state; automatic
+Games should be presented as already included instead of receiving a no-op
+manual membership toggle. Evidence must combine a later-page recent cold
+restart with a full provider page plus manual entries, cross-section
+deduplication, and missing/replacement rejection. No public provider sort,
+full-library load, or process observation is warranted.
+
+**Candidate review.** `2e38f00` corrects the two structural errors: cursor
+loaders return only provider rows, fixed recent/manual slices are separately
+bounded and deduplicated, automatic Games cannot retain manual membership, and
+fixed-row launches revalidate exact SavedId authority. One live transition
+remains. Recording a successful launch while Recent: First is already active
+updates organization but not the separately resolved fixed slice. Presentation
+promotes the current-page ID, fails to consult that same current provider item,
+and falls back to stored display projection, which disables the tile until a
+query reload. DLV-081 must use the exact current page item first while preserving
+the resolved-fixed then display-only fallback once the item is no longer
+retained.
+
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 
 **Status: Implemented in commit `4450cfa`; bounded local/CI
