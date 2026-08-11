@@ -381,6 +381,23 @@ author journey, plus documentation validation across 53 Markdown files. No
 aggregate, native, Runtime, live-service, external-feed, or screenshot suite
 ran.
 
+DLV-051 corrects Spotify's authored responsive focus graph without changing
+host navigation. The inactive seek Slider now names the stable currently
+selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;
+the compact Player names `spotify.nav.compact.player`. One deterministic
+credential-free case inspects both emitted responsive branches, replays the
+single Left input through the existing controller replay, covers all four wide
+destinations plus a same-route playback refresh, and retains the prior seek
+Down and Previous/Play/Next edges. The production package builds through the
+ordinary public SDK path, with no provider/OAuth, public SDK/protocol, native,
+playlist paging, or architecture-boundary change.
+Focused stable dirty-worktree Release run `20260811T043026Z-ea419336`
+completed in 12.499 seconds and passed Spotify 40/40 plus documentation
+validation across 53 Markdown files. The separately bounded package command
+validated two authored inputs and packed the expected three-file Spotify
+0.2.10 archive at 127,106 bytes. No aggregate, provider, native, live-account,
+playlist-matrix, or screenshot suite ran.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic

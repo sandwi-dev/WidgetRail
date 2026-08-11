@@ -1,4 +1,5 @@
 using GameBarAlternative.Samples.SpotifyWidget;
+using GameBarAlternative.GbarCli;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
@@ -19,6 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
+    ("Seek Left follows the selected responsive destination", SeekLeftFollowsResponsiveDestination),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Controller edges traverse compact and expanded 12/12/5 playlist pages", ControllerPlaylistPaginationRoundTrip),
@@ -450,6 +452,68 @@ static async Task ResponsiveNavigation()
     Assert.Equal(ViewNodeKind.Scroll, compactPlayerScroll.Kind);
     Assert.NotNull(Find(compactPlayerScroll, "spotify.player.compact.play-toggle"));
     await StopAsync(widget);
+}
+
+static async Task SeekLeftFollowsResponsiveDestination()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+
+    var player = widget.RenderSnapshot("spotify.seek-focus", 1);
+    AssertSeekLeft(player, "spotify.seek.slider", "spotify.nav.wide.player");
+    AssertSeekLeft(player, "spotify.player.compact.seek.slider",
+        "spotify.nav.compact.player");
+    AssertTransportEdges(player);
+
+    var destinations = new[]
+    {
+        (Action: "spotify.nav.queue", Source: "spotify.nav.wide.queue", Token: "queue"),
+        (Action: "spotify.nav.playlists", Source: "spotify.nav.wide.playlists", Token: "playlists"),
+        (Action: "spotify.nav.devices", Source: "spotify.nav.wide.devices", Token: "devices"),
+    };
+    var sequence = 2L;
+    foreach (var destination in destinations)
+    {
+        await widget.OnActionAsync(new(destination.Action, destination.Source));
+        var snapshot = widget.RenderSnapshot("spotify.seek-focus", sequence++);
+        Assert.True(Find(snapshot.Root, destination.Source).IsSelected == true,
+            $"{destination.Source} was not the selected destination.");
+        AssertSeekLeft(snapshot, "spotify.seek.slider",
+            $"spotify.nav.wide.{destination.Token}");
+        AssertTransportEdges(snapshot);
+    }
+
+    harness.Playback = harness.Playback with { ProgressMilliseconds = 90_000 };
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
+    var refreshed = widget.RenderSnapshot("spotify.seek-focus", sequence);
+    AssertSeekLeft(refreshed, "spotify.seek.slider", "spotify.nav.wide.devices");
+    AssertTransportEdges(refreshed);
+    await StopAsync(widget);
+}
+
+static void AssertSeekLeft(ViewSnapshot snapshot, string seekId, string expectedTarget)
+{
+    var seek = Find(snapshot.Root, seekId);
+    Assert.Equal(expectedTarget, seek.Focus!.Left);
+    var steps = ControllerReplay.Run(snapshot, new InputReplay
+    {
+        InitialFocusId = seekId,
+        Events = [new ReplayInputEvent { Button = ControllerButton.DPadLeft }],
+    });
+    Assert.Equal(1, steps.Count);
+    Assert.Equal(seekId, steps[0].FocusBefore);
+    Assert.Equal(expectedTarget, steps[0].FocusAfter);
+    Assert.Equal<string?>(null, steps[0].ActionId);
+}
+
+static void AssertTransportEdges(ViewSnapshot snapshot)
+{
+    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.previous").Focus!.Right);
+    Assert.Equal("spotify.previous", Find(snapshot.Root, "spotify.play-toggle").Focus!.Left);
+    Assert.Equal("spotify.next", Find(snapshot.Root, "spotify.play-toggle").Focus!.Right);
+    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.next").Focus!.Left);
+    Assert.Equal("spotify.play-toggle", Find(snapshot.Root, "spotify.seek.slider").Focus!.Down);
 }
 
 static async Task LazyPageLoading()
