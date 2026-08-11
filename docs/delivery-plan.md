@@ -3111,12 +3111,15 @@ cursor contract unchanged.
 **Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, DLV-059, DLV-071, and
 DLV-072
 **Owner:** dedicated Game Launcher first-party widget, private user projection,
-focused broker/widget fixtures, and directly affected public documentation;
-DLV-072's normalized cursor capability and existing native VirtualizedGrid/List
-and opaque artwork contracts are consumed unchanged
-**Concurrency:** May run with platform pinning only while it requires no public
-WidgetProtocol/WidgetSdk/native change. Stop for planner serialization if an
-existing public collection or native grid contract is insufficient.
+focused broker/widget fixtures, directly affected public documentation, and the
+narrow managed `WidgetCursorResource` traversal correction described below;
+DLV-072's normalized broker capability and existing native VirtualizedGrid/List
+and opaque artwork contracts otherwise remain unchanged
+**Concurrency:** May run with platform pinning because the newly authorized
+correction is confined to the managed SDK cursor resource and focused managed
+tests. Do not change WidgetProtocol, PlatformBroker, native collection/rendering,
+or platform-lane files. Stop for planner serialization if the bounded SDK
+correction cannot close the gap by itself.
 
 **Visible outcome:** A dedicated controller-first Game Launcher presents the
 complete installed local game library from the normalized current sources,
@@ -3126,6 +3129,18 @@ navigation, real lazy artwork, source attribution, and exact launch.
 **Objective:** Prove the framework can support the first complex launcher slice
 without serializing thousands of games, duplicating provider caches/authority,
 or embedding source-specific rules in the widget.
+
+**Planner-authorized prerequisite correction:** The implementation attempt
+proved that the accepted broker pages are bounded to 64 items while the generic
+SDK resource fails closed after 128 retained traversal cursors. A 10,000-item
+library requires 157 pages, so DLV-060 cannot satisfy its existing acceptance
+criteria with the accepted public surface. Correct this narrow managed SDK
+contradiction as part of DLV-060: allow a complete 10,000-item forward/reverse
+traversal while cursor memory, retained rows, pending work, and serialized pages
+remain bounded and loop/stale/tamper failures remain closed. This authorization
+does not permit a second app-library API, provider-specific widget workaround,
+complete-library cache, broker/protocol/native change, or unrelated SDK cleanup.
+Use focused SDK plus Game Launcher evidence only; do not run the aggregate.
 
 **In scope:** dedicated bundled widget/catalog entry; installed-only normalized
 Steam and trusted Windows game records; library-revision-bound opaque cursors;
@@ -3160,9 +3175,11 @@ covering continuous grid navigation, lazy artwork, exact launch admission, and
 store, or native redesign.
 
 **Stop/escalate when:** DLV-072's accepted capability or existing collection/
-artwork contracts cannot express the product without further public/native
-changes, launch truth requires raw identity, or the widget begins owning
-discovery/cache/source policy. Preserve the exact gap for a serialized framework
+artwork contracts cannot express the product after the narrow managed cursor
+resource correction, credible bounded loop protection would require retaining
+the complete traversal, any further public/protocol/native change is required,
+launch truth requires raw identity, or the widget begins owning discovery/cache/
+source policy. Preserve the exact remaining gap for a serialized framework
 prerequisite.
 
 ### DLV-066 — Add Game Launcher favorites and preferred variants
