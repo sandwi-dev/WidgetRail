@@ -20,6 +20,7 @@ add_executable(OverlayHost WIN32
     OverlayState.cpp
     WidgetBridgeClient.cpp
     RemoteImageCache.cpp
+    ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
     NativeIcons.cpp
     NativeStyle.cpp
@@ -73,6 +74,14 @@ target_link_libraries(OverlayHost PRIVATE
 
 if(GBA_BUILD_TESTS)
     enable_testing()
+    add_executable(ScrollEvidenceProbeTests
+        ScrollEvidenceProbeTests.cpp ScrollEvidenceProbe.cpp)
+    target_compile_features(ScrollEvidenceProbeTests PRIVATE cxx_std_20)
+    target_compile_options(ScrollEvidenceProbeTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ScrollEvidenceProbeTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ScrollEvidenceProbeTests COMMAND ScrollEvidenceProbeTests)
+
     add_executable(OverlayStateTests
         OverlayStateTests.cpp
         OverlayState.cpp
@@ -234,6 +243,17 @@ if(GBA_BUILD_TESTS)
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(WidgetSwitchHostTests PRIVATE
         user32 gdi32 windowscodecs ole32)
+
+    # Real-product Audio Mixer focus/scroll coverage runs the production host
+    # against a deterministic worker built from the first-party widget.
+    add_executable(AudioMixerScrollHostTests
+        AudioMixerScrollHostTests.cpp OverlayHostTestSupport.cpp)
+    target_compile_features(AudioMixerScrollHostTests PRIVATE cxx_std_20)
+    target_compile_options(AudioMixerScrollHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AudioMixerScrollHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(AudioMixerScrollHostTests PRIVATE
+        user32 gdi32 windowscodecs ole32 oleaut32 uiautomationcore)
 
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)

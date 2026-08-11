@@ -16,6 +16,7 @@
 #include "OverlayTransition.h"
 #include "PressedInteraction.h"
 #include "RemoteImageCache.h"
+#include "ScrollEvidenceProbe.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
@@ -568,6 +569,9 @@ private:
             } else if (_wcsicmp(__wargv[i], L"--performance-diagnostics-nonce") == 0) {
                 if (!takeValue(i, performanceDiagnosticsNonce_, L"--performance-diagnostics-nonce")) return false;
                 ++i;
+            } else if (_wcsicmp(__wargv[i], L"--scroll-evidence-path") == 0) {
+                if (!takeValue(i, scrollEvidencePath_, L"--scroll-evidence-path")) return false;
+                ++i;
             }
         }
         try {
@@ -578,6 +582,9 @@ private:
             if (performanceDiagnosticsPath_)
                 performanceDiagnosticsPath_ =
                     std::filesystem::absolute(*performanceDiagnosticsPath_).wstring();
+            if (scrollEvidencePath_)
+                scrollEvidencePath_ =
+                    std::filesystem::absolute(*scrollEvidencePath_).wstring();
         } catch (const std::filesystem::filesystem_error&) {
             initializationError_ = L"A development path is invalid.";
             return false;
@@ -592,6 +599,11 @@ private:
         }
         if (developmentProbeOnly_ && !hasHandshake) {
             initializationError_ = L"A development probe requires an authenticated readiness handshake.";
+            return false;
+        }
+        if (scrollEvidencePath_ && !hasHandshake) {
+            initializationError_ =
+                L"Scroll evidence requires an authenticated development readiness handshake.";
             return false;
         }
         if (developmentReadyNonce_ &&
@@ -658,6 +670,13 @@ private:
                 initializationError_ = L"The performance diagnostics nonce is invalid.";
                 return false;
             }
+        }
+        if (scrollEvidencePath_) {
+            if (!scrollEvidenceProbe_.Enable(*scrollEvidencePath_)) {
+                initializationError_ = L"The scroll evidence destination is invalid.";
+                return false;
+            }
+            scrollEvidencePath_.reset();
         }
         return true;
     }
@@ -3009,6 +3028,8 @@ private:
         focusedElementId_ = snapshot
             ? focusMemory_.Restore(widgetId, *snapshot)
             : std::wstring{};
+        if (!focusedElementId_.empty())
+            (void)scrollEvidenceProbe_.RecordTarget(focusedElementId_, L"restore");
         (void)ReconcileResponsiveFocusPersistence();
     }
 
@@ -3326,6 +3347,7 @@ private:
         sliderInteraction_.DeactivateAll();
         (void)pressedInteraction_.Clear();
         focusedElementId_ = *target;
+        (void)scrollEvidenceProbe_.RecordTarget(*target, L"responsive");
         focusMemory_.Remember(widget, *snapshot, focusedElementId_);
         InvalidateRect(window_, nullptr, FALSE);
         return true;
@@ -3631,6 +3653,7 @@ private:
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = explicitTarget->id;
+            (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
@@ -3643,6 +3666,7 @@ private:
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = *fallback;
+            (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
@@ -4626,6 +4650,8 @@ private:
                         visibleFocus && *visibleFocus != focusedElementId_) {
                         (void)pressedInteraction_.Clear();
                         focusedElementId_ = *visibleFocus;
+                        (void)scrollEvidenceProbe_.RecordTarget(
+                            *visibleFocus, L"reconcile");
                         focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                         // The completed pass used the old focus state. Schedule one
                         // more paint so the recovered target receives its ring.
@@ -4639,6 +4665,11 @@ private:
                     ClearAccessibilityTree();
                 } else {
                     lastWidgetRenderResult_ = result;
+                }
+                if (!retainedCommittedSnapshot && renderedFocusId == focusedElementId_) {
+                    (void)scrollEvidenceProbe_.Publish(
+                        widget, *snapshot, result, renderedFocusId,
+                        options.pixelScale, options.accessibility.textScale);
                 }
                 if (!retainedCommittedSnapshot && collectAccessibility) {
                     widgetAccessibilityTree_ = gba::accessibility::BuildWidgetTree(
@@ -4716,6 +4747,8 @@ private:
     std::optional<std::wstring> performanceWidgetId_;
     std::optional<std::wstring> performanceDiagnosticsPath_;
     std::optional<std::wstring> performanceDiagnosticsNonce_;
+    std::optional<std::wstring> scrollEvidencePath_;
+    gba::ScrollEvidenceProbe scrollEvidenceProbe_;
     bool performanceCountersActive_{};
     unsigned long long performanceCounterStarted_{};
     unsigned long long performanceTimerMessages_{};

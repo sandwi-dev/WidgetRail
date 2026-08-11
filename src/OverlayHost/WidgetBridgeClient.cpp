@@ -943,6 +943,16 @@ bool WidgetBridgeClient::Launch(
                            L" --catalog " + Quote(catalog) + L" --accept-timeout-ms 10000";
     if (!installedCatalogRoot.empty()) {
         command += L" --installed-catalog-root " + Quote(installedCatalogRoot);
+        wchar_t localAppData[MAX_PATH + 1]{};
+        const DWORD length = GetEnvironmentVariableW(
+            L"LOCALAPPDATA", localAppData, MAX_PATH);
+        if (length == 0 || length > MAX_PATH) {
+            Fail(L"Development WidgetBridge launch could not resolve LOCALAPPDATA.");
+            return false;
+        }
+        const auto settingsRoot =
+            std::filesystem::path(localAppData) / L"GameBarAlternative";
+        command += L" --settings-root " + Quote(settingsRoot);
     }
     STARTUPINFOW startup{sizeof(startup)};
     PROCESS_INFORMATION process{};

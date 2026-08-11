@@ -247,6 +247,13 @@ moves, the host scrolls the nearest edge just far enough to make the complete
 control visible before painting it. A widget never receives or publishes the
 offset.
 
+Scale conversion may leave a descendant edge no more than one native raster pixel
+outside an otherwise matching rounded card clip. That bounded raster-edge
+overlap does not make a valid Scroll descendant unreachable; the host still
+clips its painted focus geometry to the card. Larger fixed-axis clipping,
+wrong-axis displacement, and controls trapped behind a non-scroll clip remain
+ineligible, because scrolling cannot make them visible.
+
 Keep the Scroll ID and descendant button IDs stable across snapshots. Offset
 memory is isolated by exact widget runtime instance, active input scope, and
 Scroll container ID, so closing/reopening a widget or nested surface restores

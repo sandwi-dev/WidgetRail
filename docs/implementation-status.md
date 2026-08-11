@@ -6,6 +6,30 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-026 restores complete bidirectional Audio Mixer controller traversal in the
+native host. The production focus graph was valid; scaled native layout placed
+each Slider edge no more than one raster pixel beyond its rounded card content
+clip, so the host incorrectly classified later offscreen targets as impossible
+to reveal even while the root Scroll retained range. The renderer now tolerates
+only that bounded raster-edge overlap while still rejecting controls hidden by
+a wrong-axis or fixed nested clip. A credential-free worker runs the real
+first-party Audio Mixer with 12 sessions, and the production-HWND fixture walks
+all 14 controls down and back to master output at preferred, constrained, and
+150% surfaces. Exact host records prove explicit target, active scope,
+revealability, presentation/navigation/UIA bounds, monotonic offsets, the true
+zero leading boundary, stable unrelated-session refresh, deterministic removed-
+focus fallback, and subsequent session addition. Screenshot acquisition is
+excluded from this functional fixture: every record marks visual evidence as
+user-validated, with no `PrintWindow`, desktop/screen fallback, or screenshot
+failure capable of interrupting the traversal.
+Fresh integrated Release visuals remain user-validated. The authenticated test-only
+`ScrollEvidenceProbe` owns path enablement, target/direction state, bounded
+serialization, UTF-8 conversion, and atomic replacement; `OverlayApp` retains
+only handshake-gated argument admission and typed focus/render calls, while the
+disabled normal path performs no probe write. D-pad and analog controller
+events continue through the same native focus-move authority, and no managed
+widget or public protocol changed.
+
 Responsive Row wrapping, protocol-v7 ActionSurface, protocol-v8 ResponsiveGrid,
 MediaTile/AppTile, Toast, semantic CodeText, independent per-edge borders, and
 the first production uses of the public Picker and Scrubber are implemented in
