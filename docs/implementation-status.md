@@ -1679,7 +1679,20 @@ themes also use non-shrinking fixed regions, a thin native Slider
  TextEntryModalTests, the native bridge parser, and the Release OverlayHost
  target. The installed generic-worker/AppContainer route passes 6/6 at
  `artifacts/verification/20260811T134904Z-ff02c207`; the clean exact-commit
- canonical verifier remains the single integration checkpoint.
+ canonical verifier `artifacts/verification/20260811T140135Z-828292b9` stopped
+ on the inherited YT Music package expectation (`0.2.6` expected, `0.2.7`
+ actual) after the SDK and API compatibility groups passed; it was not rerun.
+ DLV-076 advances Game Launcher to package 0.5.0 and one current private schema
+ v3. The widget retains at most 32 opaque SavedIds in deterministic newest-
+ accepted order, updated only by exact current Launcher-started/Running/Ended
+ evidence. Acknowledgement-only, failed, stale, replaced, and canceled outcomes
+ do not write history. Recent-first ordering and exact recent-only filtering
+ remain non-authorizing and compose with favorites/groups; bounded CAS replay
+ preserves unrelated organization and another launch's order. Missing identity,
+ replacement identity, warm restart, whole-schema reset, clear-history, and the
+ 64 KiB state ceiling have direct deterministic coverage. Focused Release
+ verification passes Game Launcher 27/27 and the documentation contract across
+ 55 Markdown files.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

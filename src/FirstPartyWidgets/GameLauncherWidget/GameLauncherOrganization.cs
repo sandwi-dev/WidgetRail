@@ -11,15 +11,17 @@ internal sealed record GameLauncherPrivateState(
     int Version,
     IReadOnlyList<GameLauncherDisplayItem> Items)
 {
-    internal const int CurrentVersion = 2;
+    internal const int CurrentVersion = 3;
     internal const int MaximumItems = 96;
     internal const int MaximumOrganizedItems = 32;
+    internal const int MaximumRecentItems = 32;
     internal const int MaximumGroups = 16;
     internal const int MaximumVariantsPerGroup = 4;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
 
     public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
     public IReadOnlyList<GameLauncherVariantGroup> VariantGroups { get; init; } = [];
+    public IReadOnlyList<string> RecentSavedIds { get; init; } = [];
 }
 
 internal sealed record GameLauncherStateMutation(
@@ -38,10 +40,11 @@ internal static class GameLauncherOrganizationPolicy
     {
         if (state is null || state.Version != GameLauncherPrivateState.CurrentVersion ||
             state.Items is null || state.FavoriteSavedIds is null ||
-            state.VariantGroups is null ||
+            state.VariantGroups is null || state.RecentSavedIds is null ||
             state.Items.Count > GameLauncherPrivateState.MaximumItems ||
             state.FavoriteSavedIds.Count > GameLauncherPrivateState.MaximumOrganizedItems ||
-            state.VariantGroups.Count > GameLauncherPrivateState.MaximumGroups)
+            state.VariantGroups.Count > GameLauncherPrivateState.MaximumGroups ||
+            state.RecentSavedIds.Count > GameLauncherPrivateState.MaximumRecentItems)
             return GameLauncherPrivateState.Empty;
 
         var display = new Dictionary<string, GameLauncherDisplayItem>(StringComparer.Ordinal);
@@ -73,6 +76,11 @@ internal static class GameLauncherOrganizationPolicy
         if (favorites.Union(grouped, StringComparer.Ordinal).Count() >
             GameLauncherPrivateState.MaximumOrganizedItems)
             return GameLauncherPrivateState.Empty;
+        var recent = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var savedId in state.RecentSavedIds)
+            if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
+                !recent.Add(savedId))
+                return GameLauncherPrivateState.Empty;
         return state with
         {
             Items = state.Items.ToArray(),
@@ -81,6 +89,7 @@ internal static class GameLauncherOrganizationPolicy
             {
                 SavedIds = group.SavedIds.ToArray(),
             }).ToArray(),
+            RecentSavedIds = state.RecentSavedIds.ToArray(),
         };
     }
 
@@ -95,6 +104,10 @@ internal static class GameLauncherOrganizationPolicy
         foreach (var item in state.Items)
             if (referenced.Contains(item.SavedId) && present.Add(item.SavedId))
                 result.Add(item);
+        for (var index = result.Count - 1;
+             index >= 0 && result.Count > GameLauncherPrivateState.MaximumItems;
+             index--)
+            if (!referenced.Contains(result[index].SavedId)) result.RemoveAt(index);
         return Normalize(state with { Items = result.ToArray() });
     }
 
@@ -111,6 +124,22 @@ internal static class GameLauncherOrganizationPolicy
         var candidate = WithDisplay(state, display) with { FavoriteSavedIds = favorites };
         return AcceptIfBounded(state, candidate);
     }
+
+    internal static GameLauncherStateMutation RecordRecent(
+        GameLauncherPrivateState state,
+        GameLauncherDisplayItem display)
+    {
+        state = WithDisplay(Normalize(state), display);
+        var recent = state.RecentSavedIds.Where(savedId =>
+                !string.Equals(savedId, display.SavedId, StringComparison.Ordinal))
+            .Prepend(display.SavedId)
+            .Take(GameLauncherPrivateState.MaximumRecentItems)
+            .ToArray();
+        return AcceptIfBounded(state, state with { RecentSavedIds = recent });
+    }
+
+    internal static GameLauncherStateMutation ClearRecent(GameLauncherPrivateState state) =>
+        GameLauncherStateMutation.Apply(Normalize(state) with { RecentSavedIds = [] });
 
     internal static GameLauncherStateMutation Pair(
         GameLauncherPrivateState state,
@@ -197,6 +226,7 @@ internal static class GameLauncherOrganizationPolicy
 
     internal static IReadOnlyList<string> ReferencedSavedIds(GameLauncherPrivateState state) =>
         state.FavoriteSavedIds.Concat(state.VariantGroups.SelectMany(group => group.SavedIds))
+            .Concat(state.RecentSavedIds)
             .Distinct(StringComparer.Ordinal).ToArray();
 
     internal static GameLauncherVariantGroup? GroupFor(

@@ -11,7 +11,16 @@ internal sealed record GameLauncherPresentationState(
     IReadOnlyDictionary<string, GameLauncherLaunchState> LaunchStates,
     bool OrganizationBusy,
     bool Interactive,
-    WidgetAppLibraryQuery Query);
+    WidgetAppLibraryQuery Query,
+    GameLauncherRecentMode RecentMode,
+    bool FavoriteFilter);
+
+internal enum GameLauncherRecentMode
+{
+    Off,
+    RecentFirst,
+    RecentOnly,
+}
 
 internal static class GameLauncherPresentation
 {
@@ -48,7 +57,7 @@ internal static class GameLauncherPresentation
                 .Disabled(!state.Interactive)
                 .Classes("game-launcher-search"),
             UI.Row("game-launcher.filters",
-                UI.ToggleButton("Favorites", state.Query.FavoriteSavedIds.Count != 0,
+                UI.ToggleButton("Favorites", state.FavoriteFilter,
                     "game-launcher.filter.favorites", "game-launcher.filter.favorites")
                     .Disabled(!state.Interactive ||
                         state.Organization.FavoriteSavedIds.Count == 0),
@@ -62,8 +71,18 @@ internal static class GameLauncherPresentation
                         _ => "A–Z",
                     }), "game-launcher.filter.sort", "game-launcher.filter.sort")
                     .Disabled(!state.Interactive),
+                UI.Button(state.RecentMode switch
+                    {
+                        GameLauncherRecentMode.RecentFirst => "Recent: First",
+                        GameLauncherRecentMode.RecentOnly => "Recent: Only",
+                        _ => "Recent: Off",
+                    }, "game-launcher.filter.recent", "game-launcher.filter.recent")
+                    .Disabled(!state.Interactive ||
+                        state.Organization.RecentSavedIds.Count == 0),
                 UI.Button("Clear", "game-launcher.query.clear", "game-launcher.query.clear")
-                    .Disabled(!state.Interactive || state.Query == new WidgetAppLibraryQuery(
+                    .Disabled(!state.Interactive || !state.FavoriteFilter &&
+                        state.RecentMode == GameLauncherRecentMode.Off &&
+                        state.Query == new WidgetAppLibraryQuery(
                         InstalledOnly: true, Kind: WidgetAppLibraryKind.Game,
                         Sort: WidgetAppLibrarySortOrder.DisplayName)))
             .Classes("game-launcher-filters"))
@@ -83,8 +102,17 @@ internal static class GameLauncherPresentation
                 .SelectMany(group => group.SavedIds.Select(savedId => (savedId, group)))
                 .ToDictionary(value => value.savedId, value => value.group,
                     StringComparer.Ordinal);
+            var recent = state.Organization.RecentSavedIds
+                .Select((savedId, index) => (savedId, index))
+                .ToDictionary(value => value.savedId, value => value.index,
+                    StringComparer.Ordinal);
             var ordered = snapshot.Items.Select((item, index) => (item, index))
-                .OrderBy(value => favorites.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
+                .OrderBy(value => state.RecentMode == GameLauncherRecentMode.RecentFirst &&
+                    recent.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
+                .ThenBy(value => state.RecentMode == GameLauncherRecentMode.RecentFirst
+                    ? recent.GetValueOrDefault(value.item.Value.SavedId, int.MaxValue)
+                    : int.MaxValue)
+                .ThenBy(value => favorites.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
                 .ThenBy(value => favorites.GetValueOrDefault(
                     value.item.Value.SavedId, int.MaxValue))
                 .ThenBy(value => preferred.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
@@ -138,7 +166,11 @@ internal static class GameLauncherPresentation
                             "game-launcher.organization.reset")
                         .Disabled(!state.Interactive || state.OrganizationBusy ||
                             state.Organization.FavoriteSavedIds.Count == 0 &&
-                            state.Organization.VariantGroups.Count == 0))
+                            state.Organization.VariantGroups.Count == 0),
+                    UI.Button("Clear recent", "game-launcher.recent.clear",
+                            "game-launcher.recent.clear")
+                        .Disabled(!state.Interactive || state.OrganizationBusy ||
+                            state.Organization.RecentSavedIds.Count == 0))
                 .Classes("game-launcher-actions");
             var hints = UI.Row("game-launcher.organization.hints",
                 UI.ControllerHint(ControllerButton.X, "Favorite", "game-launcher.hint.favorite"),

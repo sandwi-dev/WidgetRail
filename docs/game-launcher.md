@@ -1,6 +1,6 @@
 # Game Launcher reference
 
-Status: bundled package 0.4.0 implements the installed-only controller-first
+Status: bundled package 0.5.0 implements the installed-only controller-first
 library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
@@ -17,7 +17,7 @@ provider identity, infer games from titles, or cache a complete library.
   normalized committed value of at most 96 characters. A commits, B cancels
   without changing the query, X/backspace edits, Clear removes the query, and
   focus returns to the search control after the modal closes.
-- Favorites, source, and the closed A–Z/Z–A/source sorts are provider queries,
+- Favorites, recent-only, source, and the closed A–Z/Z–A/source sorts are provider queries,
   not filters over the retained widget window. Favorite filtering sends at
   most 128 opaque SavedIds; the broker resolves them against exact current
   authority-scoped identities and an empty match remains an empty result.
@@ -45,7 +45,7 @@ Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
 bytes; the native host requests artwork lazily through the private trusted
 registry and keeps the semantic Play fallback when artwork is absent or stale.
 
-Private schema v2 contains at most 96 sanitized SavedId, display-name, and source
+Private schema v3 contains at most 96 sanitized SavedId, display-name, and source
 rows. At most 32 distinct SavedIds may participate in favorites or explicit
 variant groups; there are at most 16 groups and four members per group. It
 contains no AppId, path, command, AUMID, Steam identity, image bytes, or provider
@@ -53,11 +53,22 @@ key. On worker recreation these rows appear immediately as disabled
 **Checking…** tiles. They become actionable only after a current provider page
 resolves them.
 
+The same schema retains at most 32 opaque SavedIds in newest-accepted order.
+Only an exact current **Launcher started**, **Running**, or **Ended** observation
+may move an identity to the front. Acknowledgement-only, failed, stale,
+replaced, or canceled launches do not change history. **Recent: First**
+reorders the current resolved window and **Recent: Only** asks the trusted
+catalog for the exact current SavedIds; neither path authorizes launch.
+Missing identities stay as non-authorizing display rows, replacement SavedIds
+remain independent, and **Clear recent** preserves favorites and variant
+groups.
+
 X toggles the focused current game as a favorite. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating
 the same pair removes the second tile from that group. RB marks a member of an
-existing group as preferred. Favorites sort first and preferred members sort
-first within the remaining current window, with visible and accessible labels.
+existing group as preferred. Recent-first order takes precedence while enabled;
+otherwise favorites sort first, and preferred members sort first within the
+remaining current window, with visible and accessible labels.
 Preference never redirects a different tile's launch or merges titles: every
 tile continues to resolve and launch its own exact SavedId. A disabled retained
 row preserves organization while its source is missing, and reappearance of the

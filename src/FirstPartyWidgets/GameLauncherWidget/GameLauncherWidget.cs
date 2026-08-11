@@ -34,6 +34,8 @@ public sealed class GameLauncherWidget : Widget
     private readonly LinkedList<string> _launchStateRecency = [];
     private long _launchGeneration;
     private WidgetAppLibraryQuery _query = InstalledGames;
+    private bool _favoriteFilter;
+    private GameLauncherRecentMode _recentMode;
     private readonly SortedSet<string> _knownSources = new(StringComparer.OrdinalIgnoreCase);
 
     public GameLauncherWidget()
@@ -86,7 +88,9 @@ public sealed class GameLauncherWidget : Widget
                     _launchStates, StringComparer.Ordinal),
                 _organizationBusy,
                 LifecycleState == WidgetLifecycleState.Interactive,
-                _query);
+                _query,
+                _recentMode,
+                _favoriteFilter);
         return GameLauncherPresentation.Render(state);
     }
 
@@ -125,16 +129,23 @@ public sealed class GameLauncherWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
-        if (_library.TryHandlePagination(action, out _)) return;
+        if (_library.TryHandlePagination(action, out _))
+        {
+            Operations.Cancel("game-launcher.launch-lifecycle");
+            return;
+        }
         switch (action.ActionId)
         {
             case "game-launcher.previous":
+                Operations.Cancel("game-launcher.launch-lifecycle");
                 _ = _library.Move(WidgetCursorDirection.Before, GameLauncherPresentation.ScrollId);
                 return;
             case "game-launcher.next":
+                Operations.Cancel("game-launcher.launch-lifecycle");
                 _ = _library.Move(WidgetCursorDirection.After, GameLauncherPresentation.ScrollId);
                 return;
             case "game-launcher.refresh":
+                Operations.Cancel("game-launcher.launch-lifecycle");
                 _ = _library.Refresh();
                 return;
             case "game-launcher.retry":
@@ -163,21 +174,40 @@ public sealed class GameLauncherWidget : Widget
                 await MutateOrganizationAsync(GameLauncherOrganizationPolicy.Clear,
                     "Organization cleared", cancellationToken).ConfigureAwait(false);
                 return;
+            case "game-launcher.recent.clear":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                await MutateOrganizationAsync(GameLauncherOrganizationPolicy.ClearRecent,
+                    "Recent launches cleared", cancellationToken).ConfigureAwait(false);
+                lock (_gate) _recentMode = GameLauncherRecentMode.Off;
+                ReloadQuery();
+                return;
             case "game-launcher.search.commit":
                 if (action.CommittedText is null) return;
                 ReplaceQuery(_query with { SearchText = NormalizeSearch(action.CommittedText) });
                 return;
             case "game-launcher.query.clear":
-                ReplaceQuery(InstalledGames);
+                lock (_gate)
+                {
+                    _favoriteFilter = false;
+                    _recentMode = GameLauncherRecentMode.Off;
+                }
+                ReplaceQuery(InstalledGames, force: true);
                 return;
             case "game-launcher.filter.favorites":
-                ReplaceQuery(_query with
+                lock (_gate) _favoriteFilter = !_favoriteFilter;
+                ReloadQuery();
+                return;
+            case "game-launcher.filter.recent":
+                lock (_gate)
                 {
-                    FavoriteSavedIds = _query.FavoriteSavedIds.Count == 0
-                        ? _organization.FavoriteSavedIds.Take(
-                            WidgetAppLibraryQuery.MaximumFavoriteSavedIds).ToArray()
-                        : [],
-                });
+                    _recentMode = _recentMode switch
+                    {
+                        GameLauncherRecentMode.Off => GameLauncherRecentMode.RecentFirst,
+                        GameLauncherRecentMode.RecentFirst => GameLauncherRecentMode.RecentOnly,
+                        _ => GameLauncherRecentMode.Off,
+                    };
+                }
+                ReloadQuery();
                 return;
             case "game-launcher.filter.source":
                 ReplaceQuery(_query with { SourceAttribution = NextSource() });
@@ -215,12 +245,22 @@ public sealed class GameLauncherWidget : Widget
         }
     }
 
-    private void ReplaceQuery(WidgetAppLibraryQuery query)
+    private void ReplaceQuery(WidgetAppLibraryQuery query, bool force = false)
     {
-        if (LifecycleState != WidgetLifecycleState.Interactive || query == _query) return;
+        if (LifecycleState != WidgetLifecycleState.Interactive || !force && query == _query) return;
         lock (_gate)
         {
             _query = query;
+        }
+        ReloadQuery();
+    }
+
+    private void ReloadQuery()
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        Operations.Cancel("game-launcher.launch-lifecycle");
+        lock (_gate)
+        {
             _status = "Applying library filters…";
             _launchingSavedId = null;
             _launchGeneration++;
@@ -228,6 +268,21 @@ public sealed class GameLauncherWidget : Widget
         _library.Reset(invalidate: false);
         _ = _library.EnsureLoaded();
         Invalidate();
+    }
+
+    private WidgetAppLibraryQuery EffectiveQueryLocked()
+    {
+        IEnumerable<string>? savedIds = null;
+        if (_favoriteFilter) savedIds = _organization.FavoriteSavedIds;
+        if (_recentMode == GameLauncherRecentMode.RecentOnly)
+            savedIds = savedIds is null
+                ? _organization.RecentSavedIds
+                : savedIds.Intersect(_organization.RecentSavedIds, StringComparer.Ordinal);
+        return _query with
+        {
+            FavoriteSavedIds = savedIds?.Take(
+                WidgetAppLibraryQuery.MaximumFavoriteSavedIds).ToArray() ?? [],
+        };
     }
 
     private async ValueTask LoadWarmStateAsync(CancellationToken cancellationToken)
@@ -282,7 +337,7 @@ public sealed class GameLauncherWidget : Widget
     {
         var requestCursor = direction is null ? null : cursor;
         WidgetAppLibraryQuery query;
-        lock (_gate) query = _query;
+        lock (_gate) query = EffectiveQueryLocked();
         var page = await HostServices.AppLibrary.QueryAsync(
                 query,
                 requestCursor,
@@ -360,17 +415,25 @@ public sealed class GameLauncherWidget : Widget
                     current.AppId,
                     WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
                     lifetime.Token).ConfigureAwait(false);
+            var accepted = false;
             lock (_gate)
             {
                 if (generation == _launchGeneration &&
                     collectionRevision == _library.Snapshot.Revision &&
                     _library.Snapshot.Items.Any(item => item.Key == selected.Key))
                 {
+                    accepted = true;
                     SetLaunchStateLocked(selected.Value.SavedId,
                         ToLaunchState(observation.State));
                     _status = LaunchStatus(selected.Value.DisplayName, observation.State);
                 }
             }
+            if (accepted && observation.State !=
+                WidgetAppLaunchObservationState.RequestAccepted)
+                await SaveStateAsync(state => GameLauncherOrganizationPolicy.RecordRecent(
+                        state, new GameLauncherDisplayItem(selected.Value.SavedId,
+                            selected.Value.DisplayName, selected.Value.SourceAttribution)),
+                    lifetime.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
@@ -451,7 +514,7 @@ public sealed class GameLauncherWidget : Widget
         {
             favorite = !_organization.FavoriteSavedIds.Contains(
                 display.SavedId, StringComparer.Ordinal);
-            filteringFavorites = _query.FavoriteSavedIds.Count != 0;
+            filteringFavorites = _favoriteFilter;
         }
         await MutateOrganizationAsync(
             state => GameLauncherOrganizationPolicy.SetFavorite(state, display, favorite),
@@ -459,13 +522,7 @@ public sealed class GameLauncherWidget : Widget
             cancellationToken).ConfigureAwait(false);
         if (filteringFavorites)
         {
-            WidgetAppLibraryQuery updated;
-            lock (_gate) updated = _query with
-            {
-                FavoriteSavedIds = _organization.FavoriteSavedIds.Take(
-                    WidgetAppLibraryQuery.MaximumFavoriteSavedIds).ToArray(),
-            };
-            ReplaceQuery(updated);
+            ReloadQuery();
         }
     }
 
