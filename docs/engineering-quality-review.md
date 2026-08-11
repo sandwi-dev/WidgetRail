@@ -48,6 +48,25 @@ enabled version. The local profile selects enabled Spotify `0.2.11` and YT
 Music `0.2.7`; live open confirmation remains without weakening immutable
 package integrity.
 
+The first DLV-052 planner relaunch also exposed a Release-artifact coherence
+gap: `OverlayHost.exe` was rebuilt with `-SkipPackaging`, but the changed
+WidgetBridge/Runtime outputs beside it were stale, so the old bridge rejected
+the native client's new `admitSnapshot` field. A full documented packaging
+build from accepted main removes the mismatch and the fresh startup log is
+clean. The planner launch contract now forbids `-SkipPackaging` whenever an
+accepted milestone changes a managed runtime, bridge, worker, bundled widget,
+or packaged metadata output.
+
+DLV-016 is accepted through main `fee1103`. A five-process native semantic
+sample now reports bounded snapshot/node/update churn, private resident pages,
+input-to-projection latency, repeat range, machine/source/executable provenance,
+and broad material-regression gates. A separate current production-host sample
+records real Hidden/Visible process-tree CPU, memory, process, timer, and
+Direct2D-frame observations. Both explicitly retain unavailable GPU, scheduler,
+presentation, controller, private-process-tree, and long-run metrics instead of
+converting proxies into claims. This is a credible local foundation for the
+DLV-011 pinned-surface comparison, not a universal gaming-performance sign-off.
+
 DLV-006 is accepted through `9c7438f`. Its final existing-host fixture composes
 bounded managed-format List/Grid cursor states through bridge parsing,
 Direct2D, focus pagination, HWND/UIA projection, refresh churn, error states,
@@ -1278,16 +1297,17 @@ The coordinator should make last-good retention a deliberate state transition,
 disable or qualify stale actions, retain a safe typed reason, and expose one
 controller-reachable retry or remediation action.
 
-The retained schema-2 performance baseline does not yet prove the aggregate
-contract. It launches only the trusted Settings worker, takes 31 observations
-per state in one dirty-tree run, and reports Hidden CPU p95 of 0.0977% against a
-0.1% diagnostic target—too little margin and repetition to establish a noise
-envelope. Hidden also records 31.65 Guide-compatibility timer messages per
-second. The harness correctly labels these as host messages rather than OS
-wakeups and reports GPU, scheduler, presentation, controller latency, and
-long-run trends as unavailable. Visible/Interactive aggregate working set
-reaches 203.6/214.3 MiB, but Settings' trusted control-plane exception makes
-that run unsuitable for extrapolating ordinary Community-widget cost.
+DLV-016 improves the retained performance evidence without pretending to prove
+the aggregate ecosystem contract. Five fresh Release processes repeat one
+stable native 55-node/48-semantic-node workload through 256 updates, with
+projection p95 `0.399–0.591 ms`, private working set `0.63–1.32 MiB`, exact
+source/executable hashes, and bounded variation. A separate current real-host
+observation records Hidden/Visible CPU p95 `0.09737%/0.09773%`, zero hidden
+host timer messages, and zero post-warmup Direct2D frames. The runs remain dirty
+focused local evidence; they do not cover GPU/DWM, scheduler wakeups,
+controller hardware, game-frame impact, long-run trends, or multi-widget
+accumulation. DLV-011 must use these as a comparison baseline, not extrapolate
+them into a pinned-surface or Community-ecosystem budget.
 
 **Why it matters.** A user exploring community widgets can accumulate resident
 .NET processes during a gaming session even when every individual package
@@ -3962,7 +3982,7 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Audio Mixer | Accepted DLV-029 (`9647718` plus `091ec51`, integrated through `6fc8d73`) moves complete snapshot-only presentation and closed output/input/session transitions into direct seams. Accepted DLV-042 (`37119f7` plus `0a3635a`, integrated through `f64c35a`) then moves linked lifetime, four subscription-before-snapshot paths/pumps, optional retry attempts, failure classification, and exact drain into one 484-line internal Active session. The root falls from 2,496 to roughly 1,687 lines, has no provider pump/retry semaphore/provider CTS/subscription startup, and admits only immutable observations from the exact current session. Accepted DLV-019 (`6afd60b`) adds LB/RB/X tray controls through the existing output command/reconciliation owner and exact broker gesture authority without another lifecycle, task registry, or committed-state owner. DLV-049 confirms the managed snapshot's exact Microphone-to-Master edge and closes the missing four-session production-host regression without changing managed widget state or adding a native fallback | **Cohesive exception at the accepted managed boundary:** the residual root is the single state-lock, action-admission, six host-control-call/command-task, committed-model, selection, status, and invalidation transaction owner. Keep the reverse-scroll issue Verifying until live keyboard/controller proof; do not reopen managed architecture unless that run contradicts the exact emitted edge. Treat endpoint selection as a separate supported-API/role-policy spike; do not use undocumented `PolicyConfig` behavior |
 | Windows accessibility | Commits through `9ec0374` provide real composite UIA and physical-only origin enforcement. `6a079b6` mirrors managed Back semantics across focus/no-focus, disabled/busy, ancestor, stale, and nested-scope cases using allocation-free bounded recursion. Accepted DLV-015 (`b371983`, integrated by `6d3b093`) now composes representative Settings, YT Music, and Spotify production trees through one real HWND, `ProviderHost`, `WM_GETOBJECT`, and a UI Automation client. Its 183 assertions cover names/roles/help/values/bounds/order, hidden interactive exclusion, Invoke, RangeValue, focus, loading/error/selected/busy/disabled states, and generation focus restoration; five focused native groups, the Release host, packaged YT Music host/UIA fixture, and docs pass | Retain physical Narrator/MSAA and packaged AppContainer/UIA evidence; then extend the same real-client seam to Picker/ActionSheet/Navigator traversal when those product surfaces require it. |
 | YT Music | DLV-009 (`08d44db`, integrated by `304102a`) removes three lifecycle task fields and the auto-connect flag and adopts SDK Active lanes plus one immutable presentation record. DLV-030 (`549da57`, integrated by `6b9144d`) reduces the owner from 1,365 to 677 physical lines, preserves singular lifecycle/client/state authority, and directly tests connection, confirmation/rollback, action, and pure presentation seams; retained focused evidence passes 55/55 plus SDK 84/84, worker 9/9, and docs 52 | Real companion, packaged lifecycle/controller/accessibility, and visual evidence remain; use the private seams as a reference, not yet a mandatory public framework |
-| Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while arranging lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partial files; the current aggregate remains one roughly 2,040-line class with unrestricted member access. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy. Accepted DLV-021 corrects shared Library-header measurement. Accepted DLV-051 (`dc22202`, integrated by `822d29c`) authors the inactive seek Slider Left edge to the selected wide rail destination or compact Player tab and passes exact responsive semantic/controller replay without host or provider changes. Replacement-page jumps and fixed-header oscillation remain user-confirmed | Keep GBA-056 Verifying until live confirmation. Widgets-led DLV-006/DLV-022 now own continuous collection anchoring and header/list traversal, followed by DLV-043's real encapsulation work. Keep GBA-058/GBA-061 Verifying until live recurrence testing; run live auth/playback gates only when authorized |
+| Spotify | DLV-007 (`ff706d2`) gives rendering one immutable keyed presentation revision. DLV-008 (`2f42ab8`, integrated by `80e54af`) preserves singular ownership while arranging lifecycle/action wiring, routes, playback behavior, and snapshot-only presentation into named partial files; the current aggregate remains one roughly 2,040-line class with unrestricted member access. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) adds a widget-private typed transient/fatal policy. Accepted DLV-021 corrects shared Library-header measurement. Accepted DLV-051 (`dc22202`, integrated by `822d29c`) authors the inactive seek Slider Left edge to the selected wide rail destination or compact Player tab and passes exact responsive semantic/controller replay without host or provider changes. DLV-022 candidate `c349bbd` adds the exact shared cursor-intent join and broad continuous-list coverage but is rejected: URI-only media keys collide for legitimate duplicate Spotify occurrences, and a one-row playlist receives a Down self edge | Keep GBA-056 Verifying until live confirmation. Let already-started visible DLV-018 finish, then require DLV-053's bounded occurrence identity and singleton graph correction before integrating the DLV-022-dependent prefix or taking DLV-043. Keep GBA-058/GBA-061 Verifying until live recurrence testing; run live auth/playback gates only when authorized |
 | CLI author workflow | DLV-010 (`83cc32d`, integrated by `e68b8be`) provides a cloneable offline SDK dependency, generated lifecycle/state/action snapshot exporter, bounded source build/stage/validate/pack operation, deterministic checkout-path-free package proof, and local two-version install/select/rollback/removal. Accepted DLV-046 (`84ef91b`, integrated by `06f6cc6`) adds a strict versioned text/binary manifest plus all-or-nothing validated staging/publish. Accepted DLV-047 (`7e33f45`, integrated by `7da7eaa`) adds the checked-in package/API release unit; DLV-050 (`263536f`, integrated by `7563471`) gives its new compatibility surface 12 named MSTest.Sdk 4.3.2 cases and a separate bounded updater while legacy suites remain unchanged. Accepted DLV-048 (`829e9fd`, integrated by `18d461e`) compile-tests the exact starter and eight marked external author phases. Final mixed focused evidence passes compatibility 12/12, WidgetSdk 84/84, GbarCli 55/55, and docs 53 | Externally published/versioned SDK/template release, isolated semantic scenario execution, native preview, publisher provenance/signing, and automated update/CI evidence remain. Do not schedule a repo-wide test migration. |
 | Performance | Per-worker Jobs plus aggregate admission and runtime-owned leases; active tickers are lifecycle-bound, `6fc9e01` aligns pack/install/runtime directory limits, clean retained selected exact-edge proof records 376.140 ms packing plus 2,528.883 ms through first validated render, and accepted DLV-032 bounds managed dispatch to 16 plus session drain to two seconds with manually controlled cancellation-ignoring quarantine proof; exact ACL application remains unbounded, the native client cannot use pipelining and synchronously blocks the UI, and the one-machine sample is not a production budget; hidden Guide fallback still polls at 25 ms | Enforce one full start budget and cancellable correlation-safe off-UI-thread native bridge I/O/responsiveness proof; adaptive Guide cadence with hardware latency/ETW evidence; repeated 1/8/many-widget churn and a clean GPU/wakeup gate |
 | Visual evidence | Provenance-aware offscreen widget-body capture exists. DLV-024 retains 16 current widget-body captures and seven semantic snapshots for Games continuity, including compact, 150%, and wide removal states, with zero renderer diagnostics. DLV-021 retains 16 current Games/Spotify body renders and exact five-product production-renderer bounds while disclosing the Settings worker-start capture gap. DLV-020's 44 real-HWND frames removed startup blanking in its bounded harness, but DLV-025 real temporal evidence now proves the current HWND resize path still exposes repeated dark-band frames on list-heavy product surfaces. Historical user captures show the Library/alignment defects that DLV-021 now places in Verifying; Games & Apps artwork remains missing | Choose an atomic compositor architecture for DLV-025, then repeat timestamped first-party intervals. Run the fresh packaged DLV-021 visual check; retain clean current package/state/profile plus physical full-shell/controller/DPI evidence. Offscreen body captures cannot close compositor behavior. |
@@ -4034,11 +4054,11 @@ below.
    dashboard-gesture authority. The installed production route is green; keep
    GBA-062 Verifying until the freshly launched Release overlay passes the
    physical-controller step, rapid-input, mute, failure, and reopen checks.
-3. **Execute widgets-led serialized DLV-006 now.** Continuous keyed cursor/
-   append collections, bounded retention, stable viewport anchoring, and lazy
-   artwork handles are the shared visible foundation for Spotify page jumps,
-   header/list oscillation, Games artwork, and the future game launcher. Follow
-   it with DLV-022 and DLV-018 before DLV-043 architecture cleanup.
+3. **Finish the current visible widgets sequence.** DLV-006 is accepted through
+   `9c7438f`. DLV-022 candidate `c349bbd` remains unintegrated because duplicate
+   Spotify media occurrences collide and a singleton playlist row self-links.
+   Finish the already-started DLV-018 trusted Games artwork milestone, then run
+   DLV-053 before DLV-043 architecture cleanup.
 4. **Preserve DLV-025 until the compositor decision is authorized.** The
    current HWND render-target path failed the real temporal gate. Keep its dirty
    evidence untouched while other visible work proceeds; resume only with a

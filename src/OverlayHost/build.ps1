@@ -5,7 +5,8 @@ param(
     [ValidateSet('x64')]
     [string]$Architecture = 'x64',
     [switch]$SkipTests,
-    [switch]$SkipPackaging
+    [switch]$SkipPackaging,
+    [switch]$SemanticChurnTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -108,8 +109,9 @@ $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-acc
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
+$semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -129,6 +131,43 @@ $libraryArguments = @(
 )
 $common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
     $optimization + $includeArguments
+
+function Invoke-SemanticChurnPerformanceTests {
+    $arguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'SemanticChurnPerformanceTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$semanticChurnTestObjectDirectory\",
+        "/Fe:$outputDirectory\SemanticChurnPerformanceTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib',
+        'psapi.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "SemanticChurnPerformanceTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'SemanticChurnPerformanceTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "SemanticChurnPerformanceTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+if ($SemanticChurnTestsOnly) {
+    if ($SkipTests) {
+        throw 'SemanticChurnTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-SemanticChurnPerformanceTests
+    return
+}
 
 $hostArguments = $common + @(
     (Join-Path $projectDirectory 'main.cpp'),
@@ -957,6 +996,8 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) {
         throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
     }
+
+    Invoke-SemanticChurnPerformanceTests
 
     $componentGeometryTestArguments = $common + @(
         '/DGBA_DECLARATIVE_RENDERER_TESTING',

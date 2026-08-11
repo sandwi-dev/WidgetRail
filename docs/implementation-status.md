@@ -1683,24 +1683,42 @@ Object memory ceiling and one-process limit regardless of lifecycle. Crash,
 hang, shutdown, and user-requested termination remain separate safety/
 administrative paths.
 
-### Current visible resource sample
+### Current native performance baselines
 
-One live visible-overlay sample measured `OverlayHost` at 93.2 MB,
-`WidgetBridge` at 59.1 MB, and one widget worker at 51.5 MB: **203.8 MB private
-memory** in total. Across a five-second CPU sample, `OverlayHost` accumulated
-**78.12 ms**; bridge and worker deltas were below the measurement timer's
-resolution. This is a single prototype observation, not a steady-state budget
-pass or a claim about hidden, GPU, wakeup, or multi-widget cost.
+DLV-016 combines the existing production-host process sampler with one focused
+native semantic-churn target. Current bounded host run
+`overlay-performance-20260811-063511359-b40af482` records 21 observations per
+state: Hidden CPU p95 is **0.09737%**, working set p95 **102.5 MiB**, private
+bytes p95 **49.8 MiB**, three processes, zero host timer messages, and zero
+post-warmup Direct2D frames. Visible-idle CPU p95 is **0.09773%**, working set
+p95 **219.4 MiB**, private bytes p95 **132.4 MiB**, five processes, 34.12584
+host timer messages per second, and zero post-warmup Direct2D frames. The
+bounded provider still cannot supply process-tree private working set, so that
+target remains explicitly unavailable rather than being replaced by another
+memory metric.
 
-`scripts\Measure-OverlayPerformance.ps1` provides a repeatable bounded Windows
-process-tree observation for packaged hidden and optional independently
-launched visible states. It writes versioned JSON/Markdown with machine/build
-metadata, CPU-time deltas normalized by logical processors, working/private
-memory, handles, threads, percentiles, readiness proxies, and non-gating target
-comparisons. Its deterministic helpers run under `-SelfTest` in verification.
-This CIM/performance-counter sampler is diagnostic only: it does not measure
-GPU, wakeups, presented-frame or controller latency and does not replace the
-planned ETW/PresentMon release harness.
+Repeated native run `dlv016-native-20260811T063924Z-2b5ac019` uses five fresh
+Release processes over a stable 55-node snapshot and 48-node semantic tree.
+Each process performs 256 updates; input-to-projection p95 ranges from
+**0.399–0.591 ms**, hidden CPU from **0–0.1285%**, visible-idle CPU is **0%**
+at this process-time resolution, and private working set ranges from
+**0.63 MiB** hidden through at most **1.32 MiB** after input updates.
+Each update keeps changed semantics within a four-node neighborhood; every run
+projects 12,288 nodes and retains the same 19,588-byte canonical snapshot.
+The 50 ms response and 1 MiB protocol bounds are existing contracts; 5% idle
+CPU and 128 MiB private working set are broad material-regression ceilings, not
+new product budgets.
+
+`scripts\Measure-OverlayPerformance.ps1` writes schema-2 production-host
+JSON/Markdown with machine/build metadata, process CPU/memory/handle/thread
+samples, readiness proxies, native counters, and non-gating comparisons.
+`scripts\Measure-NativeSemanticChurn.ps1` builds only the new canonical target,
+runs 3–10 deadline-bound samples, separates QPC/empty-phase overhead, and writes
+immutable sample plus aggregate evidence with exact source/executable hashes.
+Null-target semantics do not measure paint, GPU, DWM, controller hardware, or
+game-frame cost; neither harness measures scheduler wakeups or long-run/many-
+widget trends. Those limits remain explicit and the dirty runs are focused
+implementation evidence, not release or marketing proof.
 
 ### Test coverage
 
