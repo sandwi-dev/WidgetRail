@@ -3820,7 +3820,8 @@ second renderer/focus/lifecycle authority, or materially grows the aggregate.
 
 ### DLV-062 — Gate one trusted fixed-video media surface
 
-**State:** Assigned
+**State:** Blocked at the documented material resource-cost stop condition;
+planner/user product decision required before WebView2 optimization or YouTube v1
 **Lane:** platform
 **Baseline:** accepted DLV-073 integration `eef3162`; merge current local main
 at the clean platform boundary, then merge the preserved DLV-062 checkpoint
@@ -3837,6 +3838,15 @@ pauses/stops when no visible pinned surface remains.
 
 **Objective:** Prove or reject the narrow trusted WebView2/IFrame Player
 architecture and resource envelope before authorizing YouTube v1.
+
+**Gate result:** The preserved prototype passes 13/13 offline protocol, origin,
+policy, lease, and process-lifecycle cases. A bounded public fixed-video run
+initializes in 880 ms and tears down, but its eight-process tree measures about
+348.7 MiB private memory, 589.1 MiB working set, and 4% paused-idle CPU. That is
+materially above DLV-016's 128 MiB product gate, and user-gesture playback is not
+yet proven. Preserve the branch as a non-integrable feasibility checkpoint; do
+not spend an open-ended implementation cycle tuning WebView2 or authorize a
+YouTube widget unless the planner receives a product decision on this cost.
 
 **In scope:** reuse the SpotifyPlaybackHost process-containment lessons; one
 typed `MediaSurfaceSession` prototype for load/cue/play/pause/seek/volume and
