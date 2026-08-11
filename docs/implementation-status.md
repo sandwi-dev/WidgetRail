@@ -1682,6 +1682,14 @@ themes also use non-shrinking fixed regions, a thin native Slider
  canonical verifier `artifacts/verification/20260811T140135Z-828292b9` stopped
  on the inherited YT Music package expectation (`0.2.6` expected, `0.2.7`
  actual) after the SDK and API compatibility groups passed; it was not rerun.
+ DLV-079 replaces DLV-075's modal-loop reference retention with one immutable
+ bounded text-entry request and a fresh post-modal current-authority resolution.
+ Snapshot refresh, runtime or active-widget replacement, removal, hide,
+ input-scope/action replacement, and disabled/busy sources all fail closed
+ before the bridge action send. TextEntryModal now uses work-area-bounded DPI
+ geometry and true spatial row navigation without wraparound. Focused Release
+ evidence passes TextEntryModal admission/layout/UIA/controller tests, the
+ existing native bridge text-entry parser, and the production OverlayHost target.
  DLV-076 advances Game Launcher to package 0.5.0 and one current private schema
  v3. The widget retains at most 32 opaque SavedIds in deterministic newest-
  accepted order, updated only by exact current Launcher-started/Running/Ended

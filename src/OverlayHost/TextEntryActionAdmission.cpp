@@ -1,0 +1,61 @@
+#include "TextEntryActionAdmission.h"
+
+#include "TextEntryModal.h"
+#include "WidgetSurfaceFocus.h"
+
+namespace gba::input {
+
+std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
+    const std::wstring_view widgetId,
+    const std::wstring_view runtimeGeneration,
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view nodeId) {
+    const auto* node = FindNodeInInputScope(
+        snapshot, nodeId, snapshot.activeInputScopeId);
+    if (widgetId.empty() || runtimeGeneration.empty() || !node ||
+        !node->isTextEntry || node->isDisabled || node->isBusy ||
+        node->actionId.empty() || node->textEntryMaximumLength == 0 ||
+        node->textEntryMaximumLength > TextEntryModal::MaximumLength ||
+        node->textEntryValue.size() > node->textEntryMaximumLength ||
+        node->textEntryPlaceholder.size() > TextEntryModal::MaximumLength) {
+        return std::nullopt;
+    }
+    return TextEntryActionRequest{
+        std::wstring(widgetId),
+        std::wstring(runtimeGeneration),
+        snapshot.sequence,
+        node->id,
+        node->actionId,
+        snapshot.activeInputScopeId,
+        node->textEntryValue,
+        node->textEntryPlaceholder,
+        node->textEntryMaximumLength,
+    };
+}
+
+std::optional<TextEntryActionTarget> ResolveTextEntryActionTarget(
+    const TextEntryActionRequest& request,
+    const bool currentInteractiveSurface,
+    const std::wstring_view activeWidgetId,
+    const std::wstring_view runtimeGeneration,
+    const WidgetSnapshot& snapshot) {
+    if (!currentInteractiveSurface || activeWidgetId != request.widgetId ||
+        runtimeGeneration != request.runtimeGeneration ||
+        snapshot.sequence != request.snapshotSequence ||
+        snapshot.activeInputScopeId != request.activeInputScopeId) {
+        return std::nullopt;
+    }
+    const auto* node = FindNodeInInputScope(
+        snapshot, request.nodeId, snapshot.activeInputScopeId);
+    if (!node || !node->isTextEntry || node->isDisabled || node->isBusy ||
+        node->id != request.nodeId || node->actionId != request.actionId) {
+        return std::nullopt;
+    }
+    return TextEntryActionTarget{
+        node->actionId,
+        node->id,
+        snapshot.activeInputScopeId,
+    };
+}
+
+} // namespace gba::input

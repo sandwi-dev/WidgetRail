@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -9,6 +10,21 @@
 #include <vector>
 
 namespace gba::input {
+
+inline constexpr std::size_t TextEntryCharacterCount = 39;
+inline constexpr std::size_t TextEntryActionCount = 4;
+
+struct TextEntryModalLayout final {
+    RECT windowBounds{};
+    RECT editBounds{};
+    std::array<RECT, TextEntryCharacterCount> characterBounds{};
+    std::array<RECT, TextEntryActionCount> actionBounds{};
+    double scale{1.0};
+};
+
+[[nodiscard]] TextEntryModalLayout CalculateTextEntryModalLayout(
+    RECT workArea,
+    UINT dpi) noexcept;
 
 class TextEntryModal final {
 public:
@@ -30,25 +46,28 @@ public:
     [[nodiscard]] bool PostController(std::wstring_view button) noexcept;
 
 private:
+    enum class Direction { Left, Right, Up, Down };
+    struct FocusTarget final { HWND window{}; RECT bounds{}; };
+
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void CreateControls();
     void Append(wchar_t value);
     void Backspace();
     void Complete(bool commit);
-    void MoveFocus(int delta);
-    [[nodiscard]] int Scale(int value) const noexcept;
+    void MoveFocus(Direction direction);
 
     HINSTANCE instance_{};
     HWND owner_{};
     HWND window_{};
     HWND edit_{};
-    std::vector<HWND> focusTargets_;
+    std::vector<FocusTarget> focusTargets_;
     std::wstring initialValue_;
     std::wstring placeholder_;
     std::optional<std::wstring> result_;
     std::size_t maximumLength_{};
     UINT dpi_{96};
+    TextEntryModalLayout layout_{};
     std::size_t focusIndex_{};
     bool completed_{};
 };

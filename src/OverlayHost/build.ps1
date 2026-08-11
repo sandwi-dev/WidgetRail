@@ -273,7 +273,9 @@ function Invoke-WidgetBridgeCatalogTests {
 function Invoke-TextEntryModalTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'TextEntryModalTests.cpp'),
+        (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
         (Join-Path $projectDirectory 'TextEntryModal.cpp'),
+        (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
         "/Fo:$textEntryModalTestObjectDirectory\",
         "/Fe:$outputDirectory\TextEntryModalTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -397,6 +399,8 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
+    (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
+    (Join-Path $projectDirectory 'TextEntryModal.cpp'),
     (Join-Path $projectDirectory 'FocusNavigation.cpp'),
     (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
     (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),

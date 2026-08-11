@@ -25,6 +25,7 @@
 #include "WidgetSurfaceFocus.h"
 #include "SliderInteraction.h"
 #include "TextEntryModal.h"
+#include "TextEntryActionAdmission.h"
 #include "TrayLayout.h"
 
 #include <Windows.h>
@@ -4476,22 +4477,52 @@ private:
         const auto* node = gba::input::FindNodeInInputScope(
             snapshot, nodeId, snapshot.activeInputScopeId);
         if (!node || !node->isTextEntry) return false;
-        if (node->isDisabled || node->isBusy || node->actionId.empty()) return true;
+        const auto descriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [&](const gba::WidgetDescriptor& candidate) {
+                return candidate.id == widget;
+            });
+        if (descriptor == widgetDescriptors_.end()) return true;
+        const auto request = gba::input::CaptureTextEntryActionRequest(
+            widget, descriptor->runtimeGeneration, snapshot, nodeId);
+        if (!request) return true;
 
         sliderInteraction_.DeactivateAll();
         (void)pressedInteraction_.Clear();
-        focusedElementId_ = node->id;
+        focusedElementId_ = request->nodeId;
         focusMemory_.Remember(widget, snapshot, focusedElementId_);
         const auto committed = textEntryModal_.Show(
-            instance_, window_, node->textEntryValue,
-            node->textEntryPlaceholder, node->textEntryMaximumLength);
+            instance_, window_, request->value,
+            request->placeholder, request->maximumLength);
         if (committed) {
-            const auto handled = bridge_.SendAction(
-                widget, node->actionId, node->id,
-                snapshot.activeInputScopeId, *committed);
-            if (handled && *handled)
-                RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
+            const auto currentDescriptor = std::find_if(
+                widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                [&](const gba::WidgetDescriptor& candidate) {
+                    return candidate.id == request->widgetId;
+                });
+            const auto* currentSnapshot = SnapshotFor(request->widgetId);
+            const auto target = currentDescriptor != widgetDescriptors_.end() && currentSnapshot
+                ? gba::input::ResolveTextEntryActionTarget(
+                    *request,
+                    state_.surface() == gba::Surface::Widget &&
+                        state_.focusRegion() == gba::FocusRegion::Widget,
+                    state_.activeWidget(),
+                    currentDescriptor->runtimeGeneration, *currentSnapshot)
+                : std::nullopt;
+            if (target) {
+                const auto handled = bridge_.SendAction(
+                    request->widgetId, target->actionId, target->sourceElementId,
+                    target->activeInputScopeId, *committed);
+                if (handled && *handled) {
+                    RefreshAndApplyPresentation([&] {
+                        RefreshWidgetSnapshot(request->widgetId);
+                    });
+                }
+            }
         }
+        if (state_.surface() == gba::Surface::Widget)
+            RestoreFocusForActiveSurface(state_.activeWidget());
+        (void)SetFocus(window_);
         InvalidateRect(window_, nullptr, FALSE);
         return true;
     }
