@@ -302,11 +302,14 @@ Then repeat the loop.
 - Widgets implementation uses an isolated Codex worktree and
   `codex/impl-widgets`.
 - Active platform implementation uses the clean isolated worktree
-  `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative` on
-  `codex/impl-platform-visible` while visible work proceeds. The original
-  `codex/impl-platform` worktree remains preserved with uncommitted DLV-025
-  compositor evidence and is not an active implementation surface until the
-  user authorizes that architecture milestone.
+  `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on
+  `codex/impl-platform-recovery` while visible work proceeds. The interrupted
+  `codex/impl-platform-visible` worktree remains preserved with uncommitted
+  DLV-016 files and is not an active implementation surface. The original
+  `codex/impl-platform` branch remains at its last committed DLV-025 planning
+  baseline, but its former Codex worktree and uncommitted compositor files are
+  no longer registered or present; do not claim they are preserved and do not
+  attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.

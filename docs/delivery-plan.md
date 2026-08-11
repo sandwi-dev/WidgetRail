@@ -90,10 +90,13 @@ authorize implementation.
 
 - The `widgets` task works only in its Codex worktree on
   `codex/impl-widgets`. The active `platform` task works only in
-  `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative` on
-  `codex/impl-platform-visible`; the original `codex/impl-platform` worktree is
-  preserved blocked DLV-025 evidence and is not an active implementation
-  surface.
+  `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on
+  `codex/impl-platform-recovery`. The interrupted
+  `codex/impl-platform-visible` worktree is preserved with uncommitted DLV-016
+  files and is not active. The original `codex/impl-platform` branch remains at
+  `57aa2d5`, but its former DLV-025 worktree is no longer registered or present;
+  no task may reconstruct, reset, or otherwise act on that lost uncommitted
+  state without explicit user authority.
 - Tasks may continue through independent same-lane Ready work. The planner may
   integrate only an accepted contiguous prefix; later commits on the same
   branch remain unaccepted until reviewed.
@@ -146,6 +149,23 @@ check. Capture-tool implementation requires its own explicit assignment.
   not displace visible product work.
 
 ## Recently completed
+
+### DLV-015 — Add deterministic real-host accessibility proof
+
+**State:** Done
+**Closing commit:** `b371983` (`[DLV-015] compose real-host accessibility proof`)
+**Integrated on `main`:** `6d3b093`
+
+**Reviewer disposition:** Accepted. One real HWND now hosts the production
+declarative tree and `ProviderHost`, publishes it through `WM_GETOBJECT`, and is
+queried through the UI Automation client path. The retained fixture covers
+Settings, YT Music, and Spotify names, roles, values, bounds, order, hidden-node
+exclusion, Invoke, RangeValue, focus, loading/error, selected/busy/disabled,
+and generation focus restoration with 183 composed assertions. Five focused
+native accessibility groups, the Release host build, the packaged YT Music
+host/UIA fixture, and 52 documentation contracts pass. This closes the missing
+deterministic real-host proof, not physical Narrator/MSAA or packaged
+AppContainer/UIA evidence, which remain in the manual verification queue.
 
 ### DLV-001 — Finish the paused authority-recovery operator surface
 
@@ -622,10 +642,10 @@ Branch: `codex/impl-widgets`
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
-`main`. DLV-006 is now the widgets-led serialized cross-lane assignment on that
-accepted baseline. It owns the shared cursor/append collection contract and its
-native adoption as one checkpoint; the platform task must not duplicate that
-surface while it completes DLV-015. DLV-022 and DLV-018 are the ordered visible
+`main`. DLV-006's public/native implementation prefix and bounded cursor-cycle
+correction are accepted and integrated through `679a73b`; the assignment stays
+Assigned only for the previously frozen DLV-015 production-host composition
+proof on the current main baseline. DLV-022 and DLV-018 are the ordered visible
 consumers, followed by DLV-043's already-dispositioned Spotify architecture
 work. DLV-038 remains deferred test-architecture debt rather than filler work.
 
@@ -2036,11 +2056,11 @@ controller/keyboard confirmation remains in the verification queue.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Assigned
+**State:** Assigned final production-host composition correction
 **Lane:** widgets, acting as the serialized cross-lane protocol lead
-**Baseline:** accepted local `main` through `822d29c` plus the reviewer commit
-containing this assignment; consume that main baseline at the current clean
-widgets boundary before editing
+**Baseline:** accepted local `main` through integrated implementation correction
+`679a73b` plus the reviewer commit recording this final gate; consume that main
+baseline at the current clean widgets boundary before editing
 **Dependencies:** DLV-004, DLV-005, DLV-021, DLV-049, and DLV-051
 **Owner:** public WidgetProtocol/WidgetSdk cursor-append collection semantics,
 their bounded managed test utilities, native declarative collection/focus/scroll
@@ -2108,9 +2128,42 @@ projection overlap with active DLV-015, an incompatible public behavior beyond
 the documented pre-release collection contract, or cannot keep the 10,000-item
 case within explicit bounded native/snapshot/resource limits.
 
+**Accepted implementation prefix:** Source commits `1d214d9` and correction
+`d8dfd8b` are integrated on `main` as `65e4942` and `679a73b`. The prefix adds
+protocol-v14 keyed cursor collections, bounded append/prepend retention, native
+anchor reconciliation and List/Grid edge handling, opaque inert artwork
+handles, authoring/preview contracts, and deterministic 2,000/10,000-item
+proof. Review rejected the first candidate's self-loop-only cursor check;
+`d8dfd8b` adds direction-scoped multi-hop cycle rejection after eviction while
+preserving reverse traversal and evicted-page refetch, plus empty, sparse/
+partial-final, last-good error, and documentation corrections. Focused evidence
+passes Widget SDK 85/85 and 53 documentation files. The single canonical run
+`20260811T052531Z-3eae8cce` passes all 42 steps from clean exact candidate
+commit `1d214d9` with stable eligible provenance; it is retained as integration
+evidence and must not be rerun merely for the bounded correction.
+
+**Final correction scope:** Use the now-accepted DLV-015 production-host fixture
+to compose the real managed cursor snapshot through bridge parsing, native
+renderer/anchor state, focus-edge pagination, and UI Automation semantics. One
+bounded fixture must cover List and responsive Grid, a fixed header action,
+forward and reverse boundary loads, refresh/insertion/deletion churn, stable
+focus and viewport anchor, empty/sparse/partial-final/error state, and proof
+that 2,000/10,000 logical items never become an unbounded host tree. Document
+that one same-direction traversal admits at most 128 distinct cursor identities
+before failing closed; direction change or refresh starts a new bounded
+traversal and legitimate evicted-page refetch remains supported. Add no new
+harness or build manifest, do not alter collection implementation unless this
+composed proof exposes a concrete defect, and do not run Tier 3 again.
+
+**Final correction verification:** Tier 1 only: the smallest existing DLV-015
+production-host/UIA target, directly affected native cursor renderer/focus
+groups, Widget SDK cursor group if production changes are required, and
+documentation validation. No aggregate, screenshot, Spotify migration, broad
+native matrix, or unrelated suite.
+
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Ready after DLV-006
+**State:** Ready after final DLV-006 production-host acceptance
 **Baseline:** closing commit of DLV-006
 **Dependencies:** DLV-006, DLV-021, and DLV-051
 **Owner:** Spotify Queue, Playlists, and playlist-detail collection state and
@@ -2427,17 +2480,28 @@ a whole-repository framework migration.
 ## Platform lane
 
 Task identity: `platform`
-Active branch: `codex/impl-platform-visible`
-Active worktree: `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`
-Preserved blocked branch/worktree: `codex/impl-platform` at
-`C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative`; do not edit,
-commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
+Active task: `019fef3b-7e94-70f0-b329-3551f8dd805b`
+Active branch: `codex/impl-platform-recovery`
+Active worktree: `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`
+Preserved interrupted branch/worktree: `codex/impl-platform-visible` at
+`C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`; do not edit,
+commit, merge, reset, stash, or discard its uncommitted DLV-016 files while
+DLV-052 is active
+Preserved blocked branch only: `codex/impl-platform` at `57aa2d5`. Its former
+`C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative` is an empty,
+unregistered directory and the previously observed uncommitted DLV-025 files
+are not present. Do not reconstruct, reset, or otherwise act on that lost
+uncommitted state without explicit user authority.
 
 The platform queue prioritizes visible controller and geometry defects even
-while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
-not be reset or overwritten. DLV-049 is accepted and integrated as `a8bcb27`;
-DLV-015 is now Assigned on its clean source baseline while the widgets lane leads
-serialized DLV-006. DLV-016 remains the next independent Ready item. DLV-011
+while DLV-025 awaits a compositor choice. The preserved DLV-016 worktree must
+not be reset or overwritten; DLV-025 retains only its committed branch baseline
+and documented evidence after its former worktree disappeared. The idle predecessor platform task
+is archived; the clean recovery task above owns DLV-052 from `f0ec63f` without
+carrying the interrupted performance patch. DLV-049 is accepted and integrated as `a8bcb27`;
+DLV-015 is accepted and integrated as `6d3b093` while the widgets lane leads
+serialized DLV-006. Newly confirmed P0 DLV-052 is now Assigned; DLV-016 follows
+it instead of displacing the visible community-addon failure. DLV-011
 awaits accepted DLV-006 integration, DLV-033 awaits the compositor decision, and
 DLV-025 remains user-decision blocked. No third safe platform Ready item is
 manufactured while those explicit cross-lane and architecture dependencies
@@ -2579,8 +2643,11 @@ around Games & Apps. Preserve visual continuity only when it can be delivered
 within a measured frame budget; an immediate stable switch is preferable to a
 laggy or tearing animation.
 
-**Preserved blocker evidence:** The platform worktree remains uncommitted at
-`57aa2d5`. Real populated Spotify Queue and Games & Apps first paints measured
+**Preserved blocker evidence:** The branch remains at committed planning
+baseline `57aa2d5`, and the measurements below remain recorded, but the former
+Codex worktree and its uncommitted DLV-025 files are no longer registered or
+present. Reconstruction is not authorized. Real populated Spotify Queue and
+Games & Apps first paints measured
 about 31 ms; 14 Spotify inputs produced six successful paints over 674 ms; and
 five corrected consecutive captures exposed the dark interior band at final
 geometry before list paint completed. Removing repeated extent interpolation
@@ -2809,7 +2876,7 @@ GBA-003.
 
 ### DLV-015 — Add deterministic real-host accessibility proof
 
-**State:** Assigned on platform source commit `32af19b`
+**State:** Done; accepted source commit `b371983`, integrated as `6d3b093`
 **Baseline:** accepted DLV-049 source commit `32af19b`, integrated on `main` as
 `a8bcb27`
 **Owner:** native accessibility adapter, host harness, and retained evidence
@@ -2837,10 +2904,84 @@ manual evidence.
 **Stop/escalate when:** reliable proof requires user desktop control, physical
 assistive technology, or widgets-lane source changes.
 
+### DLV-052 — Restore current community addons after a Release relaunch
+
+**State:** Assigned after accepted DLV-015
+**Baseline:** accepted integration `6d3b093` plus the reviewer control-plane
+commit containing this assignment
+**Owner:** platform lane over community package build/deployment discipline,
+generic installed-worker load diagnostics, WidgetBridge lifecycle/snapshot
+ordering, OverlayHost failure presentation, and the smallest real installed
+Spotify/YT Music fixture
+**Concurrency:** May run while widgets DLV-006 changes only its assigned
+collection/SDK/protocol/native collection surface. Do not edit DLV-006 files,
+public Widget SDK/protocol behavior, Spotify/YT Music feature logic, or shared
+native build/test manifests being modified by DLV-006. Stop for planner
+serialization if the exact fix overlaps those boundaries.
+
+**Visible outcome:** The freshly relaunched accepted Release opens both Spotify
+and YT Music instead of showing `Widget worker connection failed` or `A hidden
+suspended widget has no cached snapshot`. A real worker-start failure produces
+one accurate safe status and Retry can recover without restarting the overlay.
+
+**Reproduction evidence:** The 2026-08-10 21:52-21:54 live overlay log records
+both community workers repeatedly exiting with code 2 before connecting. YT
+Music then receives a snapshot request after its Visible lifecycle transition
+failed and exposes the secondary hidden-cache exception. The selected installed
+Spotify `0.2.10` DLL hash differs from the current same-version package artifact,
+and installed YT Music is `0.2.5` while source is `0.2.6`. Treat package freshness
+and failure-state ordering as two required parts of one product recovery, not as
+widget-provider failures.
+
+**In scope:** determine and retain the exact bounded safe loader failure code;
+rebuild/stage/validate/pack/install/select current Spotify and YT Music through
+the supported generic Community path; establish version/content discipline so
+a visible Release refresh cannot silently exercise an older same-version
+payload; allow an intentional pre-release state reset or package version bump
+instead of legacy compatibility; make lifecycle establishment and initial
+snapshot admission one coherent result; retain the prior admitted presentation
+or one accurate actionable failure; bounded retry with exactly one fresh worker
+generation; rapid Spotify/YT Music cycling, overlay close/reopen, worker crash,
+and failed/successful retry.
+
+**Out of scope:** OAuth/Premium or companion credentials, provider feature
+changes, permissive public same-version overwrite, weakening digest/AppContainer/
+capability admission, broad installer redesign, public SDK/protocol changes,
+DLV-006 collection work, compositor/animation work, or preserving obsolete
+pre-release installed state.
+
+**Acceptance criteria:** from a clean bounded test profile, the exact current
+source packages receive content-unique versions, validate, pack, install,
+select, and start through the production generic AppContainer worker path; the
+selected installed payload digest equals the package that was just built. A
+latest-Release relaunch cannot select an older payload under the same version.
+Spotify and YT Music each complete lifecycle establishment and publish a first
+snapshot. Forced load/connect/lifecycle failures expose one bounded safe reason,
+never request a contradictory hidden snapshot, never reveal a path/credential/
+exception/provider body, and never leave a half-current lifecycle record. One
+Retry starts one fresh generation and can recover; stale completion from the
+failed generation cannot publish. Existing first-party worker startup and
+suspend/unload behavior remain unchanged.
+
+**Verification:** one bounded installed-package fixture covering both exact
+current addons through build/stage/validate/pack/install/select/start/first
+snapshot, plus the smallest WidgetWorkerHost, WidgetRuntime, WidgetBridge, and
+OverlayHost lifecycle/failure Release groups. Use metadata/digests and safe
+diagnostic codes rather than executing package assemblies in the planner or
+capturing screenshots. Build the production OverlayHost. No aggregate unless a
+canonical manifest changes. After integration, refresh the exact community
+packages in the user's local profile through the supported tool, rebuild main
+Release, and visibly relaunch it for immediate testing.
+
+**Stop/escalate when:** correction requires public SDK/protocol behavior while
+DLV-006 is active, weakens installed-package isolation/integrity, needs external
+credentials, requires destructive package/state recovery outside an explicit
+pre-release reset, or overlaps the preserved DLV-025 worktree.
+
 ### DLV-016 — Establish native idle and semantic-churn baselines
 
-**State:** Ready after DLV-015
-**Baseline:** closing commit of DLV-015
+**State:** Ready after DLV-052
+**Baseline:** closing commit of DLV-052
 **Owner:** OverlayHost/native renderer measurement harness and budgets
 
 **Objective:** Add reproducible bounded measurements for hidden/idle host cost
@@ -2908,7 +3049,7 @@ claim compatibility without measured evidence.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
-| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. | User chooses and authorizes a bounded compositor architecture milestone; planner updates DLV-025 scope and acceptance around that design before the preserved platform worktree resumes. |
+| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. Its former dirty Codex worktree has disappeared, leaving only branch `57aa2d5` and the recorded evidence. | User chooses and authorizes a bounded compositor architecture milestone and any needed reconstruction; planner updates DLV-025 scope and acceptance before a new isolated implementation surface is created. |
 | Audio Mixer default input/output endpoint selection | The roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence for a supported setter plus a bounded provider design and reversible hardware plan. |
 | Live Spotify account and Web Playback completion | Account, Premium eligibility, development allowlist, OAuth, and EME interaction. | User-authorized live account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth consent/verification and a user account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth design, verification plan, and user-authorized account. |

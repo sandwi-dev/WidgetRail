@@ -327,7 +327,14 @@ These items can advance on an isolated Windows machine while Spotify and
 Discord external gates are unavailable. Order reflects current product impact,
 not irreversible API priority:
 
-1. **Continue the visible regression evidence.** Exercise GBA-036 through GBA-042
+1. **Restore the installed community addons used by the visible Release.**
+   GBA-068/DLV-052 must make the built, validated, selected Spotify and YT Music
+   payloads content-current and uniquely versioned, then compose lifecycle
+   failure with snapshot admission so one worker-start failure cannot become a
+   misleading hidden-cache error. Prove both addons through the generic
+   AppContainer install/start/first-snapshot path without credentials, then
+   rebuild and visibly relaunch the accepted product.
+2. **Continue the visible regression evidence.** Exercise GBA-036 through GBA-042
    across compact/standard/wide viewports, 100–150% text/interface scale,
    reduced transparency, high contrast, long/error content, controller Back,
    first/last Scroll reachability, and foreground-activation denial. Confirm
@@ -336,13 +343,13 @@ not irreversible API priority:
    package/standalone-widget-body captures for the covered GBA-038/GBA-042
    paths; retain the recorded Settings activation gap and add the uncaptured/
    error/manual cases without broadening what that run proves.
-2. **Finish the manual YT Music Community-addon proof.** The isolated auth-free
+3. **Finish the manual YT Music Community-addon proof.** The isolated auth-free
    workflow now covers clean pack/install/review/consent/enable,
    dashboard/open-widget input, lifecycle/crash/force-reload recovery,
    content-bound update/rollback, disable, and uninstall without a trusted
    worker or direct Credential Manager/socket workaround. Run real companion
    pairing and packaged physical-controller/shell verification next.
-3. **Fill the public component gaps before more one-off UI.** `SettingsRow`,
+4. **Fill the public component gaps before more one-off UI.** `SettingsRow`,
    bounded nested `ActionSheet`, and the single-select `Picker` contracts are
    public. Settings now adopts Picker, Spotify adopts the public controller
    Scrubber, responsive Row wrapping, lifecycle-owned Toast, and protocol-v7

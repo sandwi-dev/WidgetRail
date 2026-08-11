@@ -32,6 +32,17 @@ updates are quantized and coalesced latest-wins per Slider. A real
 `IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
 geometry, patterns, and stale-generation rejection.
 
+A composed real-HWND contract now sends representative production-shaped
+Settings, YT Music, and Spotify trees through the same `BuildWidgetTree`,
+`BuildOpenWidgetTree`, `ProviderHost`, `WM_GETOBJECT`, and Windows UI Automation
+client path. Compact 100%, standard 100%, and standard 150% profiles verify
+preorder reachability, unique identities, exact names/roles/help values,
+physical bounds, Invoke, RangeValue, disabled/busy/selected copy, loading-to-
+error replacement, hidden-control exclusion, and focus restoration across
+unrelated widget generations. The retained manifest contains fixed public
+semantic IDs and states only; it records no paths, provider responses, or
+screenshots.
+
 Controller slider adjustments resolve one host-owned presented-value map before
 rendering. The renderer and accessibility-tree builder consume that same map,
 and its monotonic presentation revision participates in projection cadence.
@@ -100,8 +111,8 @@ the revalidated ordinary open-widget action path, but cannot mint or carry the
 physical-controller-only dashboard gesture authority; bridge, runtime, and SDK
 checks enforce that rule independently. The worker creates no automation-origin
 gesture context, and denied broker activation carries no gesture metadata.
-Typed choice semantics, legacy MSAA, a
-packaged Narrator smoke test, and packaged AppContainer/UIA evidence remain
+Typed choice semantics, legacy MSAA, a physical Narrator smoke test, and
+packaged AppContainer/UIA evidence remain
 pending. Until those close, treat
 UIA as an implemented preview and keep deterministic semantic snapshots as the
 primary accessibility contract.
