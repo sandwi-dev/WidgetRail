@@ -797,11 +797,14 @@ route/action, playback, and presentation boundaries while retaining one
   Restore/Back path can remain on disabled warm rows. DLV-085 candidate
   `e0edfb8` is also committed but not accepted: its disabled-package fallback
   derives a synthetic private-state instance instead of the exact production
-  installed-version identity. DLV-088 is actively correcting DLV-084 without
-  interruption; DLV-089 is its next ordered Ready item and owns the narrow
-  DLV-085 identity correction. DLV-086 follows as the bounded correction for
-  the unrelated YT Music package-version drift exposed by the retained
-  aggregate. DLV-087 is the
+  installed-version identity. DLV-088 candidate `8295983` now passes its direct
+  43-case suite,
+  but its only installed-worker run still reproduced the original unavailable-
+  row failure before the final route-token change. DLV-089 is actively
+  correcting DLV-085; DLV-090 is its next ordered Ready item and owns one clean
+  final installed-route proof for DLV-088. DLV-086 follows as the bounded
+  correction for the unrelated YT Music package-version drift exposed by the
+  retained aggregate. DLV-087 is the
   next visible cross-lane milestone: protected Personal Wi-Fi connection through
   a host-owned credential prompt. DLV-038 remains deferred test-architecture
   debt rather than filler work.
@@ -1089,8 +1092,9 @@ the aggregate or reopen the accepted worker-replacement design.
 
 ### DLV-088 — Complete Game Launcher Restore-to-library readiness
 
-**State:** Assigned; implementation started automatically after candidate
-DLV-085 commit `e0edfb8` and clean merge of current `main`
+**State:** Candidate `8295983` rejected pending DLV-090 final installed-route
+proof; DLV-089 was already in progress when review completed and must not be
+interrupted
 **Lane:** widgets
 **Baseline:** candidate DLV-085 commit `e0edfb8`, retaining candidate DLV-084
 `6511dc9`, plus reviewer control-plane merge `dc46f87`
@@ -1142,9 +1146,21 @@ aggregate, screenshot, external store, or physical-game run.
 contract, public action serialization, provider authority, or accepting manual
 Refresh as intended product behavior.
 
+**Reviewer disposition:** Not accepted yet. The final direct Release suite
+passes 43/43 and proves immediate Restore/Back readiness, enabled launch
+authority, restored-row focus, and cancellation-ignoring Hidden-generation
+rejection. The single assigned installed run
+`20260811T174504Z-9a7a377a`, however, passes only 5/6 and reproduces the original
+failure: after Restore/Back, all 64 games plus the manual row remain disabled
+`Unavailable`. That run preceded the final route-token correction and was not
+repeated, so it is honest retained evidence but cannot prove the final commit on
+the exact seam that invalidated DLV-084. DLV-090 owns one clean final installed
+route after DLV-089; do not rerun the direct suite or broaden the correction.
+
 ### DLV-089 — Preserve exact private-state identity after widget disable
 
-**State:** Ready; execute automatically after committing DLV-088
+**State:** Assigned; implementation started automatically after candidate
+DLV-088 commit `8295983` and clean merge of current `main`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-088, retaining candidate DLV-085
 `e0edfb8`
@@ -1200,12 +1216,66 @@ removal.
 exposing private-state contents, changing a public contract, migrating unrelated
 state, or altering package enablement/removal semantics.
 
-### DLV-086 — Reconcile YT Music package version ownership
+### DLV-090 — Prove final Game Launcher Restore route in the installed worker
 
 **State:** Ready; execute automatically after committing DLV-089
 **Lane:** widgets
-**Baseline:** clean closing commit of DLV-089
-**Dependencies:** accepted package reproducibility through DLV-057 and DLV-089
+**Baseline:** clean closing commit of DLV-089, retaining candidate DLV-084
+`6511dc9` and candidate DLV-088 `8295983`
+**Dependencies:** candidate DLV-084, candidate DLV-088, and DLV-089 only for
+contiguous lane order
+**Owner:** final Game Launcher Restore-to-Library route token/readiness and the
+single installed generic-worker conformance case; no other product surface
+**Concurrency:** Managed Game Launcher and its existing installed conformance
+fixture only. Do not change DLV-089's management boundary, provider/broker/SDK,
+native host, unrelated conformance packages, or reviewer-owned files.
+
+**Visible outcome:** The exact final packaged worker behavior—not only the
+direct widget fixture—returns from Hidden Restore to a launchable current game
+without manual Refresh.
+
+**Objective:** Close the one missing acceptance proof for DLV-088 after its
+only installed run reproduced the old failure before the final route-token
+change. Run the final committed behavior through the same generic AppContainer
+path that caught DLV-084.
+
+**In scope:** one clean production-shaped installed Game Launcher sequence:
+Hide, Hidden, Restore, Back, exact restored enabled launch action, useful focus,
+and no manual Refresh. If that final path is still red, fix only the exact
+route-token/readiness seam named by the retained output, add or adjust one
+deterministic direct regression only when necessary, and rerun the changed
+installed case once.
+
+**Out of scope:** another organization feature, public API/protocol or cursor
+contract change, provider/broker/SDK/native work, arbitrary delay/timeout
+increase, broad conformance cleanup, screenshot analysis, package metadata,
+aggregate verification, external stores, or physical game launch.
+
+**Acceptance criteria:** the clean final installed-worker fixture reaches the
+restored SavedId as an enabled `game-launcher.launch` action without Refresh;
+all catalog rows are not left as warm `Unavailable` projections; focus names
+the restored or a current nearest actionable row. The final evidence belongs to
+the exact candidate prefix being accepted. A red result remains a product
+failure and cannot be replaced by the already-green direct suite.
+
+**Verification:** Run only the Game Launcher case in the existing installed
+generic-worker conformance group if the harness supports exact case selection;
+otherwise run that one six-case executable once from the clean final commit.
+If and only if product code changes after a red run, run the affected direct
+Game Launcher case and one final installed route once. No aggregate,
+documentation suite, unrelated package investigation, screenshot, or manual
+Refresh.
+
+**Stop/escalate when:** the final installed path remains red for a cause outside
+Game Launcher route/readiness ownership, or correction requires changing a
+shared public/native boundary.
+
+### DLV-086 — Reconcile YT Music package version ownership
+
+**State:** Ready; execute automatically after committing DLV-090
+**Lane:** widgets
+**Baseline:** clean closing commit of DLV-090
+**Dependencies:** accepted package reproducibility through DLV-057 and DLV-090
 only for contiguous lane order
 **Owner:** YT Music package-version value ownership, its directly affected
 credential-free test, and implementation-status documentation; no runtime,

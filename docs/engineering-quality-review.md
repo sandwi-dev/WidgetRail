@@ -45,6 +45,18 @@ queued after active visible DLV-088 to establish one internal derivation owner
 and add the missing real transition fixture; the canonical aggregate is not
 rerun.
 
+DLV-088 candidate `8295983` also demonstrates why direct managed tests are not
+sufficient acceptance for this product seam. Its final Game Launcher suite
+passes 43/43 with coherent Restore/Back readiness, focus, and late-generation
+rejection. The only installed generic-worker run
+`20260811T174504Z-9a7a377a` still returned every game as disabled
+`Unavailable`, exactly matching the DLV-084 rejection; it ran before the final
+route-token correction and was honestly retained rather than repeated. Because
+that later edit has no production-shaped evidence, the candidate remains
+unintegrated. DLV-090 schedules one clean final installed route after DLV-089,
+without rerunning the green direct suite or expanding into provider, SDK, or
+native work.
+
 DLV-078 `6d30f5e`, integrated through `a072d6f`, closes the independently
 reproduced cold-worker presentation-ordering defect without pretending to solve
 DLV-025's compositor problem. A widget-to-widget transition now revokes old
