@@ -30,6 +30,34 @@ disabled normal path performs no probe write. D-pad and analog controller
 events continue through the same native focus-move authority, and no managed
 widget or public protocol changed.
 
+DLV-021 consolidates shared text and component geometry without adding widget-
+specific offsets. The new narrow `NativeTextLayout` owner creates the one
+DirectWrite plan used by intrinsic measurement and paint: text transform, font,
+weight, uniform line spacing, font-derived baseline, letter spacing, wrapping,
+ellipsis, and positive vertical ink overhang can no longer diverge between
+those phases.
+Intrinsic extents round outward to the active native-pixel grid before layout,
+so later raster snapping cannot turn a tight one-line control label into a
+clipped second line. `DeclarativeLayout` remains the flex owner and now
+remeasures a non-wrapping Row's cross size at its final distributed child
+widths; a SectionHeader trailing action therefore cannot preserve an obsolete
+one-line text-stack height. `DeclarativeRenderer` consumes those two owners for
+Button, ActionSurface, SectionHeader, and ordinary text placement and retains
+only a small test-only painted-line-count seam. A separate focused component
+fixture covers Games & Apps, Spotify `LIBRARY` and `Check configuration`, Now
+Playing, Settings, and SDK Gallery at compact, standard, wide/150%, and high-
+contrast/reduced-transparency profiles, including stable selected/busy/disabled
+Button geometry. Final focused Release checks pass NativeTextLayout 25,
+DeclarativeLayout 250, DeclarativeRenderer 4,769, and shared component geometry
+589 checks, with NativeStyle green and the production OverlayHost compiling.
+The verified deterministic bundle at
+`artifacts/evidence/dlv021/20260811T040500Z/manifest.json` retains 16 Games &
+Apps/Spotify standalone widget-body renders from seven authoritative snapshots
+across 30 exact files with zero renderer diagnostics. Its exporter records the
+existing Settings worker-start gap; Now Playing, Settings, and SDK Gallery are
+therefore claimed by the direct production-renderer component matrix rather
+than by unavailable semantic PNGs.
+
 Responsive Row wrapping, protocol-v7 ActionSurface, protocol-v8 ResponsiveGrid,
 MediaTile/AppTile, Toast, semantic CodeText, independent per-edge borders, and
 the first production uses of the public Picker and Scrubber are implemented in

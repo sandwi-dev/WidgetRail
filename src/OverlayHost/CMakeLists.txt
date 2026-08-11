@@ -23,6 +23,7 @@ add_executable(OverlayHost WIN32
     ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
     NativeIcons.cpp
+    NativeTextLayout.cpp
     NativeStyle.cpp
     OverlayChrome.cpp
     DeclarativeMotion.cpp
@@ -107,6 +108,15 @@ if(GBA_BUILD_TESTS)
     target_compile_options(NativeStyleTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(NativeStyleTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME NativeStyleTests COMMAND NativeStyleTests)
+
+    add_executable(NativeTextLayoutTests
+        NativeTextLayoutTests.cpp NativeTextLayout.cpp NativeStyle.cpp)
+    target_compile_features(NativeTextLayoutTests PRIVATE cxx_std_20)
+    target_compile_options(NativeTextLayoutTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(NativeTextLayoutTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(NativeTextLayoutTests PRIVATE dwrite ole32)
+    add_test(NAME NativeTextLayoutTests COMMAND NativeTextLayoutTests)
 
     add_executable(DeclarativeMotionTests
         DeclarativeMotionTests.cpp DeclarativeMotion.cpp)
@@ -277,11 +287,22 @@ if(GBA_BUILD_TESTS)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
-        NativeStyle.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(DeclarativeRendererTests PRIVATE
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
+
+    add_executable(SharedComponentGeometryTests
+        SharedComponentGeometryTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(SharedComponentGeometryTests PRIVATE cxx_std_20)
+    target_compile_options(SharedComponentGeometryTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(SharedComponentGeometryTests PRIVATE
+        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(SharedComponentGeometryTests PRIVATE
+        d2d1 dwrite winhttp windowscodecs ole32)
+    add_test(NAME SharedComponentGeometryTests COMMAND SharedComponentGeometryTests)
 endif()

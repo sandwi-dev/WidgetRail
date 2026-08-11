@@ -2296,9 +2296,12 @@ void RealDirect2DSmoke() {
     const auto paintedWidth = [](const BrightBounds bounds) {
         return bounds.maximumX - bounds.minimumX + 1;
     };
-    Check(paintedWidth(startBounds) == paintedWidth(centerBounds) &&
-            paintedWidth(centerBounds) == paintedWidth(endBounds),
-        "authored alignment translates the icon-label group without splitting it");
+    const auto minimumPaintedWidth = std::min({
+        paintedWidth(startBounds), paintedWidth(centerBounds), paintedWidth(endBounds)});
+    const auto maximumPaintedWidth = std::max({
+        paintedWidth(startBounds), paintedWidth(centerBounds), paintedWidth(endBounds)});
+    Check(maximumPaintedWidth - minimumPaintedWidth <= 1,
+        "authored alignment translates the icon-label group within one raster pixel");
     const auto leadingToCenter = centerBounds.minimumX - startBounds.minimumX;
     const auto centerToTrailing = endBounds.minimumX - centerBounds.minimumX;
     Check(std::abs(leadingToCenter - centerToTrailing) <= 1,

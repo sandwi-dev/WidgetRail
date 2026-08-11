@@ -473,6 +473,14 @@ content width and then added back to the border box. This makes a bounded
 centered title, detail paragraph, or labeled action grow to its wrapped line
 count instead of being measured as one wide line and clipped after layout.
 
+Measurement and paint use one host-owned DirectWrite plan for transform, font,
+weight, baseline, line and character spacing, wrapping, ellipsis, and visible
+vertical ink overhang. The host rounds an intrinsic text extent outward to the
+effective native-pixel grid before component layout, so subsequent raster
+snapping cannot make a natural label fractionally smaller and reflow it during
+paint. Authors should not add a one-pixel width, baseline, or padding
+compensation.
+
 `min-height` remains a lower bound, not a single-line height override. Use an
 explicit `height` only when a deliberately fixed/clipped box is part of the
 design. `max-lines` still caps layout and paint, while surfaces whose complete
@@ -490,6 +498,13 @@ content-alignment property and takes precedence; existing shared component
 recipes that use `justify: start|center|end` on a Button leaf resolve through the
 same placement rule. Widgets should use semantic `.Icon(...)`, label, and state
 instead of compensating with private padding or spacer nodes.
+
+A non-wrapping Row computes its height after flex has assigned the final child
+widths. This is particularly important for `UI.SectionHeader(...)`: a trailing
+action may reduce the text-stack width and cause its title or description to
+wrap, but it cannot retain the earlier one-line Row height and clip `eyebrow`,
+title, or description. Keep header copy and trailing content in the shared
+helper instead of adding local fixed heights.
 
 Image fit is `Contain`, `Cover` (default), or `Fill`. General image sources must
 be absolute HTTPS URLs with a host and no embedded credentials. A trusted

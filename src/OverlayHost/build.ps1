@@ -77,6 +77,7 @@ $imageTestObjectDirectory = Join-Path $outputDirectory 'obj\image-tests'
 $layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
 $iconTestObjectDirectory = Join-Path $outputDirectory 'obj\icon-tests'
 $styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
+$textLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\text-layout-tests'
 $motionTestObjectDirectory = Join-Path $outputDirectory 'obj\motion-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
@@ -106,7 +107,8 @@ $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-acc
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+$componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -136,6 +138,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
     (Join-Path $projectDirectory 'NativeStyle.cpp'),
+    (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
     (Join-Path $projectDirectory 'OverlayChrome.cpp'),
     (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
@@ -439,6 +442,23 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'NativeStyleTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "NativeStyleTests failed with exit code $LASTEXITCODE."
+    }
+
+    $textLayoutTestArguments = $common + @(
+        (Join-Path $projectDirectory 'NativeTextLayoutTests.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        "/Fo:$textLayoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\NativeTextLayoutTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('dwrite.lib', 'ole32.lib')
+    & $cl $textLayoutTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeTextLayoutTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'NativeTextLayoutTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeTextLayoutTests failed with exit code $LASTEXITCODE."
     }
 
     $motionTestArguments = $common + @(
@@ -884,6 +904,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
@@ -900,6 +921,31 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+
+    $componentGeometryTestArguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'SharedComponentGeometryTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$componentGeometryTestObjectDirectory\",
+        "/Fe:$outputDirectory\SharedComponentGeometryTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $componentGeometryTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "SharedComponentGeometryTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'SharedComponentGeometryTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "SharedComponentGeometryTests failed with exit code $LASTEXITCODE."
     }
 }
 
