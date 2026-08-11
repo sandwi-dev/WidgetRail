@@ -3434,7 +3434,9 @@ Pin/Unpin lifecycle. DLV-070 `c61a49d` is accepted and integrated through
 `0b21384`; one production owner now receives authenticated bounded Show
 activation from later launches. DLV-068 `b83b3f7` is accepted and integrated
 through `9e795ac`; durable controller/pointer/UIA placement is now available.
-DLV-069 is active for accessibility/input composition, followed by DLV-062 for
+DLV-069 candidate `ea2691c` is rejected pending DLV-073 because its Click-through
+paint path hides the admitted widget behind an opaque placeholder. DLV-073 is
+the active visible correction; DLV-062 remains Ready behind that correction for
 the fixed-video trusted-rich-media feasibility gate. This visible sequence is
 independent of the blocked animated-resize compositor and may run beside widgets
 DLV-072 under the explicit file boundaries below.
@@ -3638,9 +3640,10 @@ composition and strengthened real-HWND display-reconciliation proof.
 
 ### DLV-069 — Complete pinned-surface input and accessibility composition
 
-**State:** Assigned
+**State:** Rejected; correction assigned as DLV-073
 **Lane:** platform
 **Baseline:** accepted DLV-068 source `b83b3f7`, integrated through `9e795ac`
+**Closing candidate:** `ea2691c` (`[DLV-069] complete pinned input composition`)
 **Dependencies:** DLV-058, DLV-070, and DLV-068
 **Owner:** pinned-surface controller/pointer focus composition, emergency
 visibility authority, UI Automation tree/actions, help, and production-host
@@ -3678,12 +3681,100 @@ Launch after integration.
 **Stop/escalate when:** behavior requires elevated/global hooks, physical-only
 policy choice, or duplicates existing OverlayHost input authority.
 
+**Reviewer disposition:** Rejected as a complete visible pinning milestone.
+The controller route, generation-bound input queue, pointer/UIA action
+composition, emergency hide, high-contrast policy, monitor reconciliation, and
+focused 306/76-check evidence are credible. However
+`WidgetSurfaceCoordinator::Paint` renders the admitted widget and then, for
+Click-through mode, paints an opaque background over the complete widget
+viewport and replaces it with `Click-through preview`. Hiding the main overlay
+forces every surviving pin into that mode, so the widget content disappears at
+the exact moment pinning is meant to preserve it. That contradicts DLV-058's
+visible pinned-surface outcome and makes DLV-062's visible fixed-video successor
+impossible. The candidate also grows the logical coordinator from about 964 to
+1,416 physical lines; DLV-073 must supply the final responsibility map and a
+bounded hotspot disposition rather than silently extending the prior exception.
+Keep `ea2691c` and its clean accepted-main merge intact; do not integrate the
+candidate without DLV-073.
+
+### DLV-073 — Keep pinned content visible in Click-through mode
+
+**State:** Assigned
+**Lane:** platform
+**Baseline:** clean branch commit `e4bb73d`, which retains rejected DLV-069
+candidate `ea2691c` and merges accepted main `96fbd85`
+**Dependencies:** DLV-058, DLV-068, and rejected DLV-069 candidate `ea2691c`
+**Owner:** pinned-surface visual/interaction mode composition, coordinator paint
+and accessibility projection, the smallest real-HWND fixture, and directly
+affected pinning documentation; no media/WebView2 or public widget API work
+**Concurrency:** May run with widgets DLV-072 under the existing disjoint file
+boundary. Do not edit managed app-library/SDK capability files or reviewer-owned
+documents.
+
+**Visible outcome:** A pinned widget remains visibly rendered and current after
+the main overlay closes or the pin becomes Click-through. Pointer, controller,
+and UI Automation actions are inert/hidden in that mode, but the content is not
+replaced by a placeholder.
+
+**Objective:** Separate visual persistence from interaction authority so
+Click-through changes hit testing, focus, action admission, and semantic
+exposure without covering or substituting the admitted widget presentation.
+
+**In scope:** preserve the current admitted declarative render in Interactive
+and Click-through modes; remove the opaque viewport-cover/placeholder behavior;
+keep host chrome visually non-actionable when Click-through; retain
+`WS_EX_NOACTIVATE|WS_EX_TRANSPARENT`, transparent hit testing, mouse-activation
+denial, controller-focus exit, empty pending input, and host-only noninteractive
+UIA semantics; prove snapshot replacement continues to repaint while the main
+overlay is hidden; mode change, hide/reopen, stale generation, worker removal,
+emergency hide, and teardown; one deterministic paint/presentation trace or
+equivalent production-render result that distinguishes admitted widget content
+from a placeholder without using screenshots. Report the coordinator's
+before/after aggregate size, retained responsibilities, coordination state, and
+mutable dependencies. Do not add another state/lifecycle/focus owner or grow
+the coordinator for a new concern; if the correction needs additional mode
+policy, put that decision behind one small pure value seam and justify either a
+conditional cohesive exception or a later bounded extraction.
+
+**Out of scope:** DLV-062 fixed video, WebView2, YouTube, media controls, new
+public protocol/SDK behavior, compositor/animation work, changing placement
+semantics, screenshot/capture work, decorative transition effects, or broad
+native-host decomposition.
+
+**Acceptance criteria:** the same sentinel widget content is present in the
+production render result before and after Interactive-to-Click-through and main
+overlay hide, and a current hidden-pin snapshot update replaces it without
+requiring reopen. Click-through publishes no widget or actionable host UIA
+descendants, accepts no pointer/controller/accessibility widget action, owns no
+controller focus, and leaves no queued input, while the HWND remains visible,
+topmost, nonactivating, and transparent to pointer hit testing. Reopening and
+explicitly entering Interactive restores the current keyed focus and action
+route. Removal, stale generation, Close, emergency hide, and host exit retain
+exact teardown. The closing responsibility map gives the approximately
+1,416-line coordinator an explicit credible disposition and introduces no
+second authority.
+
+**Verification:** Tier 1 only: the directly affected production coordinator/
+real-HWND fixture, the smallest click-through/focus/UIA policy checks, and a
+production OverlayHost Release build. Use deterministic paint/render state and
+semantic/action evidence; no screenshots, capture harness, aggregate, broad
+native matrix, media process, network, or physical controller/display run.
+After accepted integration, rebuild the native main Release and visibly launch
+it for immediate user testing.
+
+**Stop/escalate when:** admitted widget rendering cannot remain visible without
+a compositor/window-technology change, correction requires public API or media
+authority, or separating visual and interaction state would create another
+lifecycle/focus/renderer owner. Preserve the exact evidence rather than hiding
+content or beginning DLV-062.
+
 ### DLV-062 — Gate one trusted fixed-video media surface
 
 **State:** Ready
 **Lane:** platform
-**Baseline:** closing commit of DLV-069
-**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, and DLV-069
+**Baseline:** closing commit of DLV-073
+**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, DLV-069, and
+DLV-073
 **Owner:** trusted rich-media process/session feasibility, fixed-video host
 composition, resource measurement, policy evidence, and focused process/native
 fixtures; no public YouTube widget or account integration
