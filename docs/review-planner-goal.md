@@ -54,6 +54,10 @@ You own:
 - Refreshing and launching the visible local Release overlay after every
   accepted implementation milestone is integrated so the user can test the
   latest accepted product state.
+- The user explicitly authorizes gracefully closing the planner-launched
+  accepted OverlayHost instance when necessary to replace it with the newly
+  integrated Release instance. This authority applies after every accepted
+  visible milestone; it does not authorize force-killing an unrelated process.
 - Scheduling and maintaining the 30-minute planner heartbeat.
 
 You do not:
@@ -265,7 +269,12 @@ After every accepted implementation milestone is integrated into local `main`:
 
    `.\src\OverlayHost\out\Release\OverlayHost.exe --show`
 
-5. Leave the overlay running so the user can test it. Report the integrated
+5. If the previously planner-launched accepted OverlayHost instance must exit
+   before replacement, request its documented graceful close and wait for that
+   exact executable instance to exit. The user has explicitly approved this
+   relaunch step after every accepted visible milestone. Do not force-kill an
+   unrelated or user-owned process.
+6. Leave the overlay running so the user can test it. Report the integrated
    commit and whether launch succeeded.
 
 Do not launch rejected, partial, dirty, or unintegrated implementation work. Do
