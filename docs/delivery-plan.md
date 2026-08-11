@@ -749,9 +749,11 @@ route/action, playback, and presentation boundaries while retaining one
   preserves current launch authority during immediate Recent: First promotion.
   Game Launcher search/filter, complete-library recent ordering, and trusted
   manual entries are now available on main. DLV-082 is Assigned as the next
-  visible multi-store framework outcome; DLV-083 is Ready behind it so the lane
-  continues automatically at the clean commit boundary. DLV-038 remains
-  deferred test-architecture debt rather than filler work.
+  visible multi-store framework outcome. DLV-083, DLV-084, and DLV-085 are
+  ordered Ready work behind it so the lane continues through controller paging,
+  launcher exclusions, and a bounded Settings reset action at clean commit
+  boundaries. DLV-038 remains deferred test-architecture debt rather than
+  filler work.
 
 ### DLV-082 — Surface isolated game-library source health
 
@@ -867,6 +869,130 @@ aggregate, screenshot, external store, or physical controller run.
 **Stop/escalate when:** window-wide bumper ownership cannot be scoped to the
 active Game Launcher collection with existing public actions, or correctness
 requires a new native/global input contract or another cursor owner.
+
+### DLV-084 — Add durable Game Launcher hide and restore
+
+**State:** Ready; execute automatically after committing DLV-083
+**Lane:** widgets
+**Baseline:** clean closing commit of DLV-083
+**Dependencies:** DLV-060, DLV-066, DLV-075, DLV-080, and DLV-083 only for
+contiguous lane order
+**Owner:** Game Launcher private organization policy, presentation/actions,
+and focused managed fixtures; no provider or public capability changes
+**Concurrency:** Managed Game Launcher only. Do not change native UI, trusted
+source discovery, launch authority, broker/SDK contracts, or reviewer-owned
+files.
+
+**Visible outcome:** A controller user can hide an unwanted installed game from
+the normal Game Launcher library, review hidden games, and restore one without
+losing favorites, groups, recent order, manual entries, or focus. A hidden game
+does not silently reappear after refresh or overlay restart.
+
+**Objective:** Add explicit durable exclusions above replaceable source records
+through the existing bounded private organization state, without asking the
+provider to suppress data or using title/source heuristics.
+
+**In scope:** one explicit Hide action on an exact current SavedId; a bounded
+Hidden filter/route with Restore; schema-v5 whole-state reset for incompatible
+pre-release data; at most 32 excluded opaque SavedIds with sanitized display
+projection; current query/filter interaction; source disappearance,
+reappearance, replacement, reclassification, refresh, restart, CAS conflict/
+failure, and deterministic focus fallback; coexistence with favorites, recent,
+manual, and preferred variants.
+
+**Out of scope:** deleting games, uninstalling store content, provider-side
+filter state, hiding by title or source name, raw store identity, account sync,
+new adapters, public API/protocol changes, native work, screenshots, or broad
+Game Launcher redesign.
+
+**Acceptance criteria:** only an explicit action on an exact current SavedId
+creates an exclusion; refresh/restart cannot re-add it to ordinary results, and
+Restore removes only that exclusion. Hidden state contains no launch authority
+and cannot authorize a stale row. One mutation preserves all unrelated
+organization fields through one CAS replay/failure, missing and replacement
+identities remain independent, bounds are enforced, and incompatible prior
+state resets atomically rather than partially migrating. Every Hide/Hidden/
+Restore action is controller and accessibility reachable with stable IDs and
+non-color state text.
+
+**Verification:** Tier 1 Game Launcher/private-state Release suite with hide,
+restore, refresh, restart, disappearance/reappearance, replacement, query/
+filter, favorites/groups/recent/manual coexistence, CAS conflict/failure,
+maximum bound, and schema reset cases plus directly affected docs. Run the
+smallest installed generic-worker route only if action serialization changes.
+No provider, broker, SDK, native, aggregate, screenshot, external store, or
+physical-game run.
+
+**Stop/escalate when:** durable exclusion requires provider-side authority, raw
+source identity, an unbounded list, another committed-state owner, or a public
+contract change.
+
+### DLV-085 — Clear selected widget private state from Settings
+
+**State:** Ready; execute automatically after committing DLV-084
+**Lane:** widgets, acting as serialized managed widget-management lead
+**Baseline:** clean closing commit of DLV-084
+**Dependencies:** DLV-001, DLV-017, DLV-044, DLV-058, and DLV-084 only for
+contiguous lane order
+**Owner:** trusted Settings installed-widget management UI, exact installed
+widget identity mapping, host-owned private-state management operation, worker
+restart/reconciliation, focused managed fixtures, and directly affected user
+documentation; no native host ownership
+**Concurrency:** This is a serialized managed management-boundary change. The
+platform lane must not change widget lifecycle/catalog/private-state contracts
+while it runs.
+
+**Visible outcome:** Installed Widget details in Settings offers a confirmed
+Clear local data action. On success only that widget's overlay-owned private
+state is cleared, its current worker generation is replaced, and it returns in
+its clean current-schema state. Other widgets and settings remain unchanged.
+
+**Objective:** Complete the roadmap's per-widget reset workflow using one exact
+trusted management authority rather than exposing another widget's private
+state to Settings or deleting files directly from widget code.
+
+**In scope:** exact current installed publisher/package/widget identity;
+read-only indication that local private state exists where safely available;
+one nested confirmation scope with explicit destructive copy; bounded
+management request; retire/stop the selected worker generation before clear;
+clear only `HostServices.PrivateState` for the exact authority; restart and
+authoritative current-schema reconciliation; success, no-state, busy, stale
+selection/version replacement, disable/remove, clear failure, restart failure,
+retry, Settings deactivation, and cancellation-ignoring completion; built-in
+and Community behavior where both use the same store.
+
+**Out of scope:** credentials, OAuth tokens, companion secrets, provider/store
+data, installed packages or versions, themes, global overlay preferences,
+geometry, artwork caches, logs, user files, recursive profile deletion, an
+ordinary widget capability for clearing another widget, security hardening, or
+a Reset everything action.
+
+**Acceptance criteria:** Settings never receives or renders the selected
+widget's private-state document and cannot address an identity absent from the
+current catalog. Confirmation is required immediately before one exact current
+operation. The old worker generation is unable to republish or rewrite state
+after clear; a successful restart observes no prior document and reconciles
+from current authoritative providers. Failure leaves an accurate bounded status
+and does not report success or affect another identity. Repeated/canceled/stale
+requests are bounded and idempotent. The Settings root retains its documented
+cohesive lifecycle/effect-adapter exception: report the before/after
+responsibility map and do not move state-management authority or another
+coordination owner into the widget.
+
+**Verification:** Tier 1 Settings installed-widget policy/presentation,
+WidgetCatalog identity/version, private-state store, Runtime/Bridge exact-worker
+replacement, and documentation Release suites with deterministic two-widget,
+stale-generation, failure, and cancellation fixtures. Tier 2 smallest installed
+generic-worker path proving exact clear, old-generation retirement, restart,
+and unaffected neighbor state. Because this adds a cross-process management
+operation, run the canonical Tier-3 verifier once from the clean exact closing
+commit. No native, screenshot, credential, external provider, package removal,
+or broad security suite.
+
+**Stop/escalate when:** exact clear cannot be composed without exposing another
+widget's document, deleting unowned files, broadening ordinary widget
+authority, changing the threat model materially, or requiring a global profile
+reset. Preserve the current state and return the design decision instead.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
