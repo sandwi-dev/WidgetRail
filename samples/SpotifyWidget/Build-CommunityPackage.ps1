@@ -36,6 +36,7 @@ $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gb
 $cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
 $widgetProject = Join-Path $sampleRoot 'SpotifyWidget.csproj'
 $publishRoot = Join-Path $artifactsRoot 'publish'
+$deterministicPathMap = "$repositoryRoot=/_/"
 
 function Assert-ChildPath {
     param(
@@ -93,6 +94,8 @@ Assert-NoReparsePoint -Path $publishRoot
     --configuration $Configuration `
     --no-self-contained `
     --nologo `
+    --property:ContinuousIntegrationBuild=true `
+    --property:PathMap=$deterministicPathMap `
     --property:UseSharedCompilation=false `
     --property:BuildInParallel=false `
     --output $publishRoot

@@ -465,6 +465,18 @@ Focused Release evidence passes Spotify 48/48, Widget SDK 85/85, and generic
 AppContainer conformance 6/6. No aggregate, live account, provider, or native
 suite ran.
 
+DLV-056 makes managed Community-package payloads opt into one shared deterministic
+build input. `eng/CommunityPackage.props` retains portable PDB generation and
+maps each opted-in project directory to `/_/community/<project>` before the
+compiler emits the PE CodeView record; the Spotify project imports that input
+explicitly. The supported pack script also supplies one stable repository-root
+map as a global publish-graph property, so the Widget SDK and protocol reference
+assemblies have identical MVIDs and reference fingerprints in every checkout.
+This removes the absolute checkout path previously embedded in
+`SpotifyWidget.dll` without changing public debugging, SDK, protocol, provider,
+or widget behavior. Spotify 0.2.13 is the post-DLV-043 immutable package; the
+supported workflow retains 0.2.11 and 0.2.12 as inactive rollback generations.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;
@@ -2145,7 +2157,7 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Community package 0.2.12
+  setup guidance without opening OAuth automatically. Community package 0.2.13
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the

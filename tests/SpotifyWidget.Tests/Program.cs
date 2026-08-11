@@ -1814,7 +1814,7 @@ static Task ManifestContract()
         WidgetSpotifyCapabilities.LocalPlaybackCapabilityId), "Local playback must remain optional.");
     Assert.True(manifest.OptionalPermissions.Contains(
         WidgetSpotifyCapabilities.PlaylistsReadCapabilityId), "Playlist reading must remain optional.");
-    Assert.Equal("0.2.12", manifest.Version);
+    Assert.Equal("0.2.13", manifest.Version);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
     return Task.CompletedTask;
