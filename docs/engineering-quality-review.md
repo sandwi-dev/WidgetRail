@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `3d8f486`; prior retained
+Last reassessed: 2026-08-11 against integrated `main` `a072d6f`; prior retained
 evidence remains scoped to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
@@ -13,6 +13,22 @@ The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
 
 ### Current review delta — installed Game Launcher product slice
+
+DLV-078 `6d30f5e`, integrated through `a072d6f`, closes the independently
+reproduced cold-worker presentation-ordering defect without pretending to solve
+DLV-025's compositor problem. A widget-to-widget transition now revokes old
+lifecycle, input, focus, and actionable UI Automation authority, commits the
+prior admitted snapshot once as inert visual-only content, and starts the cold
+destination from the already-posted refresh. Only the destination's first
+admitted snapshot replaces that retained content. The correction adds no public
+contract, per-widget branch, timer, frame loop, or extra bridge request. Its
+isolated production-host fixture uses authenticated readiness plus renderer
+identity/sequence diagnostics rather than screenshot pixels and covers delayed
+Spotify/Games starts, reversal, and same-identity restart. Focused results pass
+the exact host fixture, 54 targeting checks, 56 transition checks, and the
+Release host build. Live packaged cycling remains the acceptance boundary; the
+real HWND resize/dark-band issue is still blocked at DLV-025's atomic-compositor
+decision.
 
 DLV-060 `8ca0859`, DLV-066 `8a5ec7f`, public-contract correction DLV-074
 `d0a1014`, and launch-lifecycle milestone DLV-067 `ddf7626` are accepted and

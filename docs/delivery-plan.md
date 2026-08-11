@@ -748,8 +748,125 @@ route/action, playback, and presentation boundaries while retaining one
   recent/manual sections outside provider cursor pages, and DLV-081 `b2596e1`
   preserves current launch authority during immediate Recent: First promotion.
   Game Launcher search/filter, complete-library recent ordering, and trusted
-  manual entries are now available on main. DLV-038 remains deferred test-
-  architecture debt rather than filler work.
+  manual entries are now available on main. DLV-082 is Assigned as the next
+  visible multi-store framework outcome; DLV-083 is Ready behind it so the lane
+  continues automatically at the clean commit boundary. DLV-038 remains
+  deferred test-architecture debt rather than filler work.
+
+### DLV-082 — Surface isolated game-library source health
+
+**State:** Assigned; merge accepted `main` through the reviewer control-plane
+commit containing this assignment before implementation
+**Lane:** widgets, acting as serialized managed app-library contract lead
+**Baseline:** accepted DLV-078 integration `a072d6f` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-059, DLV-071, DLV-072, and the accepted Game Launcher
+prefix through DLV-081
+**Owner:** normalized app-library source observation, bounded broker/SDK query
+result metadata, Game Launcher presentation/policy, focused managed fixtures,
+and directly affected public feature documentation; no native host ownership
+**Concurrency:** Platform has no Ready work and must not change managed
+app-library/provider/broker/SDK contracts while this assignment runs.
+
+**Visible outcome:** Game Launcher names each currently relevant installed
+source and shows Healthy, Degraded, Unavailable, or Refreshing state without
+replacing usable games from healthy sources. A controller user can refresh and
+understand a partial result instead of seeing a silently incomplete library or
+an all-or-nothing error.
+
+**Objective:** Carry bounded sanitized source-health truth from the existing
+normalized source owner through the app-library query boundary and present it
+as one controller-first, partial-success-aware Game Launcher status surface.
+This is the framework proof required before adding another local store adapter.
+
+**In scope:** value-only source identifier/display label, closed health value,
+source revision, and bounded safe status code; at most the provider's configured
+source count and never raw paths/registry keys/store IDs/account data; immutable
+query-result revision association; healthy-plus-failed partial results; initial
+load, refresh, stale/cancellation-ignoring completion, source recovery,
+disappearance, and provider-wide failure; compact/standard/wide presentation;
+stable focus and one existing Refresh action; public contract/version and
+author guidance if the data crosses WidgetSdk.
+
+**Out of scope:** a new Epic/GOG/EA/Ubisoft/Battle.net adapter, undocumented
+store manifests, authentication, remote catalog data, install/update actions,
+per-source credentials, native changes, notification polling, screenshots,
+source-specific widget branches, or a second refresh pipeline.
+
+**Acceptance criteria:** one source failure cannot suppress healthy-source
+games; source observations belong to the exact immutable library/query revision
+and stale results cannot overwrite current status. Status fields and counts are
+strictly bounded and sanitized, no launch authority is added, and widgets cannot
+address or control an adapter directly. Game Launcher exposes accurate
+non-color text status, keeps every healthy row actionable, retains valid focus,
+and uses the existing bounded refresh ownership. A recovered source rejoins on
+the next admitted revision without restarting the widget.
+
+**Verification:** Tier 1 normalized provider source-isolation, broker mapping,
+WidgetSdk/API compatibility, Game Launcher partial/recovery/stale-generation,
+installed generic-worker, and documentation Release suites. Use deterministic
+healthy/degraded/unavailable fake sources. Run each affected suite once with
+bounded timeouts. Because this changes a public cross-process app-library
+contract, run the canonical Tier-3 verifier once from the clean exact closing
+commit. No native, screenshot, physical controller, external store, or account
+run.
+
+**Stop/escalate when:** accurate health requires exposing raw adapter identity
+or filesystem/store authority, the provider has no singular immutable source
+observation to map, the public change materially expands the threat model, or
+another source adapter is required to prove the contract.
+
+### DLV-083 — Add scoped LB/RB Game Launcher page switching
+
+**State:** Ready; execute automatically after committing DLV-082
+**Lane:** widgets
+**Baseline:** clean closing commit of DLV-082
+**Dependencies:** DLV-060, DLV-072, DLV-075, DLV-080, DLV-081, and DLV-082 only
+for contiguous lane order
+**Owner:** Game Launcher action/presentation policy and focused managed input
+replay; no native routing or public protocol change
+**Concurrency:** Managed Game Launcher only. Do not change native controller
+routing, app-library provider/broker/SDK contracts, or reviewer-owned files.
+
+**Visible outcome:** While focus is in the Game Launcher results collection,
+LB moves to the previous available catalog page and RB moves to the next one.
+The current query, filters, fixed Recent/Manual sections, and a useful stable
+focus anchor remain intact; bumpers outside that scope keep their existing
+meaning.
+
+**Objective:** Give the large-library widget the controller page-switching
+behavior requested for the OneGameLauncher-style experience by composing the
+existing window-wide action mechanism with the existing bounded cursor
+resource, not by adding another paging state machine.
+
+**In scope:** scoped LB/RB actions for current result pages; exact disabled
+state at first/last boundary; loading/busy suppression; repeated input and
+late-page completion; query/filter/refresh replacement; fixed-section and
+provider-page focus fallback; empty/one-page/multi-page/reverse traversal;
+accurate action hints and accessible labels.
+
+**Out of scope:** trigger/bumper remapping in OverlayHost, analog navigation,
+page-number random access, loading the full catalog, changing cursor bounds,
+provider/broker/SDK changes, list animations, screenshots, or unrelated visual
+redesign.
+
+**Acceptance criteria:** each admitted bumper action requests at most one legal
+existing Before/After cursor transition and cannot cross a boundary or publish
+a stale completion. Focus resolves to the same exact SavedId when present or a
+deterministic nearest current result; fixed Recent/Manual rows remain outside
+cursor accounting and do not duplicate provider rows. Ordinary D-pad traversal,
+search/filter actions, tile activation, and tray-level controller ownership are
+unchanged.
+
+**Verification:** Tier 1 Game Launcher Release suite with exact action maps and
+controller replay for first/middle/final/reverse, busy, stale, replacement,
+fixed-section, and single-page cases. Run the smallest installed generic-worker
+route only if serialized action shape changes. No provider, broker, SDK, native,
+aggregate, screenshot, external store, or physical controller run.
+
+**Stop/escalate when:** window-wide bumper ownership cannot be scoped to the
+active Game Launcher collection with existing public actions, or correctness
+requires a new native/global input contract or another cursor owner.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -4038,11 +4155,16 @@ the blocked resize/compositor question: worker startup replaced the prior
 admitted content with a transient surface. DLV-078 owns that presentation-
 ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/
 DLV-080/DLV-081 prefix released the shared native input/build boundary through
-`d116f0d`. DLV-078 is now Assigned as the top visible platform correction.
+`d116f0d`. DLV-078 `6d30f5e` is accepted and integrated through `a072d6f`.
+The cold-worker ordering defect is corrected without consuming DLV-025's
+blocked compositor decision. No later platform item is Ready: DLV-025 and
+DLV-062 remain at their explicit decision gates, while endpoint selection still
+lacks a supported setter. The planner will not manufacture backend filler.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Assigned; execute on accepted integration `d116f0d`
+**State:** Done; accepted as `6d30f5e`, integrated through `a072d6f`
+**Closing commit:** `6d30f5e` (`[DLV-078] Retain admitted content through cold start`)
 **Lane:** platform
 **Baseline:** accepted DLV-075 through DLV-081 integration `d116f0d` plus the
 reviewer control-plane commit that records this assignment
@@ -4102,6 +4224,21 @@ oracle, physical display, DLV-025 compositor experiment, or unrelated host suite
 compositor/window technology decision, public protocol change, widget-specific
 branch, or overlap with active DLV-075. Preserve the deterministic failure and
 return the architecture decision rather than widening scope.
+
+**Reviewer disposition:** Accepted. A widget-to-widget cold switch now
+backgrounds the prior worker and clears focus, actionable UI Automation, and
+input authority before synchronously painting the prior admitted snapshot as
+inert visual-only content. The already-posted snapshot refresh then establishes
+the destination worker and atomically replaces retained content only after its
+first valid snapshot is admitted. No public protocol, compositor, timer, frame
+loop, or extra bridge request was added. Same-identity restart follows the same
+retained/inert rule. The production-host fixture no longer uses screenshot
+pixels; an isolated process profile and authenticated readiness handshake prove
+retained then admitted renderer identity/sequence for delayed Spotify and Games
+starts, rapid reversal, and Games reload. Focused evidence passes
+`WidgetSwitchHostTests`, 54 targeting checks, 56 transition checks, and the
+Release host build. The separate real HWND resize/flicker defect remains owned
+and blocked by DLV-025 pending an atomic compositor decision.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 

@@ -216,12 +216,14 @@ remains off until the publisher-trust gates in Phase 4.
   interface, and exposes large gray/black regions. DLV-025 now measures the
   UI-thread resize/redraw/bridge cadence and must deliver an atomic smooth path
   or replace live extent animation with an immediate/composition-only switch.
-  A separate accepted-main production-host failure is now isolated from that
-  compositor decision: `WidgetSwitchHostTests` reports that worker startup
-  replaced the prior admitted content with a transient surface. Queued DLV-078
-  will correct retained-content/first-snapshot ordering after DLV-075 releases
-  the shared native boundary; it may not broaden into animated resize or add
-  screenshot/timing retries.
+  A separate accepted-main production-host failure was isolated from that
+  compositor decision: worker startup replaced the prior admitted content with
+  a transient surface. Accepted DLV-078 `6d30f5e`, integrated through
+  `a072d6f`, now retains the prior admitted snapshot as inert visual-only
+  content until the cold destination snapshot is admitted, while immediately
+  revoking stale input/focus/UIA authority. Its functional host fixture uses
+  renderer identity/sequence evidence rather than screenshot pixels. This does
+  not close DLV-025's real animated-resize dark-band/compositor defect.
   Do not add widget-specific animation.
   Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
@@ -437,9 +439,11 @@ not irreversible API priority:
    focused SDK 84/84, worker 9/9, and Games 49/49 evidence. DLV-018 owns trusted
    lazy artwork. User testing subsequently exposed a remove-one/Back Library
    disappearance plus unstable Add applications visibility and low surface
-   density; DLV-024 is the bounded managed-widget correction before the warm-
-   start issue can close. These concerns must not be buried in presentation
-   offsets or base64 row payloads.
+   density. Accepted DLV-024 `d80d9ec`, integrated through `6f401ea`, makes
+   mutation commit-before-publish, preserves last-good Library continuity with
+   one stable Add action, and raises the bounded preferred height to 600 DIP.
+   Fresh packaged user confirmation remains. These concerns must not be buried
+   in presentation offsets or base64 row payloads.
 3. **Select input and output devices from Audio Mixer.** Add controller-first
    pickers that show the current defaults and change the intended Windows audio
    endpoint and role with explicit pending, success, denial, disappearance, and

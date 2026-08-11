@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
-| GBA-004 | P1 | Split: DLV-078 queued; DLV-025 blocked | OverlayHost UI thread / presentation / composition | Accepted-main `WidgetSwitchHostTests` now deterministically proves worker startup can replace prior admitted content with a transient surface; DLV-078 owns that logical retention/admission correction after DLV-075. The separate real Games & Apps extent-animation gray/black-band defect remains blocked in DLV-025 pending an atomic compositor decision. |
+| GBA-004 | P1 | Split: cold-start fix Verifying; DLV-025 blocked | OverlayHost UI thread / presentation / composition | Accepted DLV-078 `6d30f5e`, integrated through `a072d6f`, retains inert last-good pixels until the cold destination snapshot is admitted while revoking stale authority immediately. The separate real Games & Apps extent-animation gray/black-band defect remains blocked in DLV-025 pending an atomic compositor decision. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -83,8 +83,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
 | GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
 | GBA-064 | P0 | Verifying | Spotify list/header focus / native navigation | DLV-053 `7f5c2fd` is integrated through `8c1bbdf` and removes the singleton row's Down self edge while retaining Play Down to row and row Up to Play. Accepted DLV-055 runs that source as selected `0.2.12`; live closure remains. |
-| GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
-| GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
+| GBA-065 | P0 | Verifying | Games & Apps mutation / private-state projection | Accepted DLV-024 `d80d9ec`, integrated through `6f401ea`, makes removal commit-before-publish and preserves unrelated rows through Back, restart, provider failure, and CAS conflict. Fresh packaged user confirmation remains. |
+| GBA-066 | P1 | Verifying | Games & Apps presentation / surface hints | Accepted DLV-024 `d80d9ec`, integrated through `6f401ea`, keeps one stable Add applications action over last-good Library content and raises preferred height to 600 DIP. Fresh packaged user confirmation remains; native switching is separate. |
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
 | GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
@@ -267,6 +267,19 @@ resize/compositor decision. Queued DLV-078 owns retained-content versus first-
 snapshot admission ordering only; it starts after DLV-075 releases the shared
 native host/build boundary and must pass the existing fixture without retries or
 screenshot-based diagnosis.
+
+DLV-078 `6d30f5e`, integrated through `a072d6f`, corrects that narrower
+ordering defect. The host now backgrounds the prior worker and clears its
+focus, input, and actionable UI Automation authority before synchronously
+painting the prior admitted snapshot as inert visual-only content. The posted
+refresh establishes the cold destination and replaces retained content only
+after its first valid snapshot is admitted. The isolated production-host
+fixture proves retained then admitted renderer identity/sequence for delayed
+Spotify and Games starts, rapid reversal, and same-identity Games reload; it no
+longer interprets capture pixels. Focused evidence passes the exact host fixture
+plus 54 targeting and 56 transition checks. Keep this sub-fix Verifying until
+the freshly relaunched packaged overlay passes live widget cycling. DLV-025's
+separate HWND resize/compositor tearing remains blocked and is not claimed fixed.
 
 **Acceptance:**
 
