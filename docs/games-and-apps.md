@@ -234,6 +234,10 @@ The current provider merges three bounded trusted Windows sources: current-user/
 all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
 namespace, and registered Steam libraries. It:
 
+- treats Windows-installed and Steam libraries as ordinary implementations of
+  one private source contract, with source-owned discovery, exact resolution,
+  launch, artwork, health, and version behavior rather than a central
+  source-specific switch;
 - enumerates at most 4,096 `.lnk` candidates, to a maximum directory depth of
   16, without following reparse points;
 - accepts bounded shortcuts whose resolved target is an `.exe` or `.com`;
@@ -313,6 +317,8 @@ GBSS contracts. Provider tests cover
 lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,
 on-demand icon caching and bounds, exact shortcut/AUMID revalidation,
 constrained Shell/packaged/Steam activation, STA queue cancellation,
+direct normalized adapter contracts, duplicate-name separation, independently
+retained last-good source state, stale-generation rejection, terminal drain,
 source-failure isolation, sanitized errors, and non-mutating real Start Menu,
 AppsFolder, and Steam scans. Broker, SDK, bridge, Settings, and first-party conformance suites
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
