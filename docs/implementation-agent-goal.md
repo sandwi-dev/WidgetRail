@@ -372,7 +372,13 @@ For every retained product capture:
   validated full-frame capture with consistent geometry and state evidence.
 
 Do not weaken this rule by abandoning captures. A valid capture is product
-evidence; an invalid capture is test-infrastructure evidence.
+evidence; an invalid capture is test-infrastructure evidence. Investigating
+capture output remains part of the assignment: when an image fails validation,
+inspect and correct the window selection, bounds, timing/presentation,
+DPI/scale, or capture mechanism as appropriate, then recapture and validate the
+replacement. Do not stop capture work merely because the first artifact is
+invalid. Once a valid capture exists, continue into production code when the
+reported defect remains visible in that evidence.
 
 When a test fails:
 

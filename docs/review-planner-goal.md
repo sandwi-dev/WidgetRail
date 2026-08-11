@@ -213,7 +213,10 @@ Check:
   wrong-window, or prematurely captured image as a capture-harness defect or
   invalid artifact first, not as evidence of missing product UI. Require the
   implementation task to correct or explicitly exclude invalid captures before
-  investigating production layout/rendering code from them.
+  investigating production layout/rendering code from them. Do not use an
+  invalid initial capture to stop or waive capture investigation: require a
+  bounded harness diagnosis, corrected recapture, and validation, then continue
+  product-code diagnosis if the defect persists in the valid evidence.
 - Documentation accuracy and absence of unrelated/reviewer-owned changes.
 - Full diff quality: duplication, dead code, giant responsibilities, AI-like
   boilerplate, speculative abstraction, debug artifacts, and whitespace.

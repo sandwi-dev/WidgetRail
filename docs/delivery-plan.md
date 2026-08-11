@@ -126,7 +126,10 @@ observation and host state show the complete overlay while an image is cropped,
 stale, premature, or missing expected extents, correct or exclude the capture
 artifact before investigating product layout/rendering code. This gate preserves
 capture-based review; it prevents invalid captures from generating product
-changes.
+changes. It does not stop capture investigation: the assigned agent must first
+diagnose the capture path, produce and validate corrected output, and then use
+that valid output to decide whether production-code investigation remains
+necessary.
 
 ## Recently completed
 
