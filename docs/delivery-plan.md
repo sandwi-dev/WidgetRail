@@ -153,6 +153,29 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-082 — Surface isolated game-library source health
+
+**State:** Done
+**Closing commit:** `a862ed4` (`[DLV-082] surface bounded game-library source
+health`)
+**Integrated on `main`:** `ef8fbab`
+
+**Reviewer disposition:** Accepted. The normalized provider now publishes at
+most 16 immutable, sanitized, observation-only source rows with closed health,
+source revision, and safe status code on the exact library page revision. The
+broker and SDK reject malformed, duplicate, over-bound, or authority-bearing
+metadata, and expose no adapter selection, per-source refresh, raw store
+identity, or launch authority. Game Launcher renders explicit Healthy,
+Degraded, Unavailable, and transient Refreshing text while keeping usable and
+last-good game rows actionable; current-generation checks prevent stale source
+status from replacing the accepted query. Focused Release evidence passes SDK
+87/87, API compatibility 12/12, broker 52/52, provider 46/46, Game Launcher
+37/37, installed AppContainer conformance 6/6, and 55 documentation files. The
+single integrated Tier-3 run stopped on inherited YT Music package-version
+drift (`0.2.6` client constant versus `0.2.7` manifest) after the changed SDK
+checks passed; it was retained and not rerun. Full Release packaging then
+succeeded and accepted main was visibly launched as PID 30588.
+
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
 **State:** Done
@@ -748,17 +771,17 @@ route/action, playback, and presentation boundaries while retaining one
   recent/manual sections outside provider cursor pages, and DLV-081 `b2596e1`
   preserves current launch authority during immediate Recent: First promotion.
   Game Launcher search/filter, complete-library recent ordering, and trusted
-  manual entries are now available on main. DLV-082 is Assigned as the next
-  visible multi-store framework outcome. DLV-083, DLV-084, and DLV-085 are
-  ordered Ready work behind it so the lane continues through controller paging,
-  launcher exclusions, and a bounded Settings reset action at clean commit
-  boundaries. DLV-038 remains deferred test-architecture debt rather than
-  filler work.
+  manual entries are now available on main. DLV-082 `a862ed4` is accepted and
+  integrated through `ef8fbab`: bounded source-health truth now reaches Game
+  Launcher without exposing adapter control or suppressing usable games.
+  DLV-083 is Assigned. DLV-084 and DLV-085 remain ordered visible Ready work;
+  DLV-086 follows them as the bounded correction for the unrelated YT Music
+  package-version drift exposed by DLV-082's one aggregate. DLV-038 remains
+  deferred test-architecture debt rather than filler work.
 
 ### DLV-082 — Surface isolated game-library source health
 
-**State:** Assigned; merge accepted `main` through the reviewer control-plane
-commit containing this assignment before implementation
+**State:** Done; accepted as `a862ed4` and integrated through `ef8fbab`
 **Lane:** widgets, acting as serialized managed app-library contract lead
 **Baseline:** accepted DLV-078 integration `a072d6f` plus the reviewer
 control-plane commit containing this assignment
@@ -818,9 +841,17 @@ or filesystem/store authority, the provider has no singular immutable source
 observation to map, the public change materially expands the threat model, or
 another source adapter is required to prove the contract.
 
+**Reviewer disposition:** Accepted. Focused evidence passes SDK 87/87, API
+compatibility 12/12, broker 52/52, provider 46/46, Game Launcher 37/37,
+installed AppContainer conformance 6/6, and 55 documentation files. The single
+Tier-3 attempt stopped on unrelated YT Music `0.2.6`/`0.2.7` package-version
+drift after the changed SDK checks passed; retain that evidence under DLV-086
+rather than rerunning the aggregate or reopening this accepted contract.
+
 ### DLV-083 — Add scoped LB/RB Game Launcher page switching
 
-**State:** Ready; execute automatically after committing DLV-082
+**State:** Assigned; implementation started automatically from clean DLV-082
+commit `a862ed4`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-082
 **Dependencies:** DLV-060, DLV-072, DLV-075, DLV-080, DLV-081, and DLV-082 only
@@ -993,6 +1024,53 @@ or broad security suite.
 widget's document, deleting unowned files, broadening ordinary widget
 authority, changing the threat model materially, or requiring a global profile
 reset. Preserve the current state and return the design decision instead.
+
+### DLV-086 — Reconcile YT Music package version ownership
+
+**State:** Ready; execute automatically after committing DLV-085
+**Lane:** widgets
+**Baseline:** clean closing commit of DLV-085
+**Dependencies:** accepted package reproducibility through DLV-057 and DLV-085
+only for contiguous lane order
+**Owner:** YT Music package-version value ownership, its directly affected
+credential-free test, and implementation-status documentation; no runtime,
+broker, native, or packaging redesign
+**Concurrency:** YT Music managed sample/package metadata only. Do not change
+the package installer, immutable package rules, worker lifecycle, public SDK,
+or reviewer-owned files.
+
+**Visible outcome:** YT Music reports the same current pre-release version to
+its local companion that the installed manifest declares, so diagnostics and
+compatibility reporting no longer identify a `0.2.7` package as `0.2.6`.
+
+**Objective:** Restore one authoritative current package version after the
+DLV-082 Tier-3 checkpoint proved `YtmDesktopApiClient.PackageVersion` remains
+`0.2.6` while the shipped manifest is `0.2.7`. Correct the stale owner without
+republishing another version or weakening the validating test.
+
+**In scope:** choose the existing current manifest/release metadata as the
+authority; update the exact stale client constant or derive it from an existing
+bounded build-time owner when that is already available; preserve the manifest
+equality assertion; directly affected documentation; verify the packaged
+manifest and companion handshake payload agree.
+
+**Out of scope:** a new package version, installer/cache cleanup, legacy package
+support, companion authentication, widget behavior/UI changes, broad metadata
+centralization, aggregate verification, screenshots, or unrelated YT Music
+tests/refactoring.
+
+**Acceptance criteria:** source, built test asset, packaged manifest, and
+companion `appVersion` agree on `0.2.7`; the test continues to fail on an
+intentional mismatch; no immutable installed package is replaced with different
+bytes and no runtime/public contract changes.
+
+**Verification:** Tier 1 YT Music Release suite once plus the smallest package
+metadata/manifest validation command. Do not rerun the canonical aggregate;
+the retained `20260811T162358Z-a68acd42` result is the originating evidence.
+
+**Stop/escalate when:** the current package version is ambiguous, correcting it
+would require publishing different bytes under immutable `0.2.7`, or the value
+is consumed as a compatibility contract that requires a product decision.
 
 ### DLV-007 — Make Spotify presentation state coherent
 

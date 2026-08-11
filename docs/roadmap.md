@@ -611,9 +611,13 @@ retains non-authorizing warm display state, and provides durable favorites plus
 explicit preferred variants. Accepted DLV-067 `ddf7626`, integrated through
 `3d8f486`, adds only adapter-provable launch lifecycle, gates overlay close on
 stronger-than-acknowledgement evidence, and retains at most 32 per-game results.
-Assigned DLV-075 adds host-owned controller text entry and full-catalog query/
-filter; DLV-076 and DLV-077 then add bounded recent ordering and explicit manual
-inclusion from trusted registrations. Additional store adapters remain
+Accepted DLV-075/DLV-076/DLV-077 add host-owned controller text entry,
+full-catalog query/filter, bounded recent ordering, and explicit manual
+inclusion from trusted registrations. Accepted DLV-082 `a862ed4`, integrated
+through `ef8fbab`, carries bounded sanitized source health through the existing
+query revision and renders partial success without adapter control. DLV-083 and
+DLV-084 now own controller page switching and durable hide/restore. Additional
+store adapters remain
 behind the documented-registration admission gate; current official
 [GOG client](https://docs.gog.com/gc-client-overview/) and
 [SDK](https://docs.gog.com/sdk/) material describes game-side/client integration

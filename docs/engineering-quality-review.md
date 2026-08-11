@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `a072d6f`; prior retained
+Last reassessed: 2026-08-11 against integrated `main` `ef8fbab`; prior retained
 evidence remains scoped to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
@@ -13,6 +13,22 @@ The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
 
 ### Current review delta — installed Game Launcher product slice
+
+DLV-082 `a862ed4`, integrated through `ef8fbab`, adds the first explicit
+multi-source partial-health surface without expanding adapter or launch
+authority. One provider-owned immutable observation maps at most 16 sanitized
+source rows through broker and SDK validation; Game Launcher renders non-color
+Healthy, Degraded, Unavailable, and Refreshing text while retaining healthy and
+last-good launchable rows. The SDK API addition is reviewed and additive, source
+IDs are hashed observation tokens, and widgets cannot select or refresh an
+adapter. Focused evidence passes SDK 87/87, compatibility 12/12, broker 52/52,
+provider 46/46, Game Launcher 37/37, installed AppContainer 6/6, and 55 docs.
+The one integrated aggregate stopped after 39 seconds on pre-existing YT Music
+metadata drift: `YtmDesktopApiClient.PackageVersion` is `0.2.6` while the
+current immutable package manifest is `0.2.7`. The changed SDK checks had
+passed; the aggregate was not rerun. DLV-086 owns that narrow correction behind
+the visible launcher and Settings queue. Full Release packaging succeeded and
+accepted main is visibly running as PID 30588.
 
 DLV-078 `6d30f5e`, integrated through `a072d6f`, closes the independently
 reproduced cold-worker presentation-ordering defect without pretending to solve
