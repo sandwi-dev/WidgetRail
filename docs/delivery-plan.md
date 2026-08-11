@@ -3255,10 +3255,12 @@ accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
 DLV-025 remains user-decision blocked. DLV-058 now turns DLV-011's accepted
 tool-window architecture into the first visible generic Pin/Unpin lifecycle.
-DLV-068 and DLV-069 complete placement and accessibility/input composition,
-then DLV-062 runs the fixed-video trusted-rich-media feasibility gate. This
-visible sequence is independent of the blocked animated-resize compositor and
-may run beside widgets DLV-059 under the explicit file boundaries below.
+DLV-070 then restores one authoritative host across ordinary and `--show`
+launches before DLV-068 and DLV-069 complete placement and accessibility/input
+composition, then DLV-062 runs the fixed-video trusted-rich-media feasibility
+gate. This visible sequence is independent of the blocked animated-resize
+compositor and may run beside widgets DLV-059 under the explicit file
+boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
@@ -3320,12 +3322,72 @@ raw widget window authority, a public threat-model change, a substantial
 conflict with preserved platform work, or physical-only evidence to choose the
 architecture. Do not borrow the blocked main-panel resize path.
 
-### DLV-068 — Add controller placement and durable pin geometry
+### DLV-070 — Enforce one OverlayHost owner and forward `--show`
 
 **State:** Ready
 **Lane:** platform
 **Baseline:** closing commit of DLV-058
-**Dependencies:** DLV-011, DLV-016, and DLV-058
+**Dependencies:** accepted main through DLV-057; ordered after DLV-058 so the
+active milestone is not interrupted
+**Owner:** OverlayHost process ownership, bounded local activation transport,
+startup/shutdown logging, and focused production-host process fixtures
+
+**Visible outcome:** Running the documented Release command while the overlay
+is already resident brings that exact host forward and exits the launcher;
+Task Manager never accumulates a hidden second OverlayHost.
+
+**Reproduction evidence:** On accepted main `94d4ee0`, PID 27684 was a healthy
+resident OverlayHost with no visible main-window handle. Invoking
+`.\src\OverlayHost\out\Release\OverlayHost.exe --show` at 02:46 created healthy
+PID 17952 with a visible window while PID 27684 remained resident. A bounded
+`CloseMainWindow` request correctly could not close the handle-less older
+process. Do not force-kill or reinterpret that process as valid singleton
+behavior.
+
+**Objective:** Give one per-user OverlayHost process authoritative ownership
+and make later launches bounded activation clients, including while the owner
+is hidden and has no current HWND.
+
+**In scope:** race-safe per-user owner election; a least-authority local show
+request independent of the current main-window handle; ordinary launch and
+`--show`; simultaneous launches; hidden/visible owner; bounded acknowledgement
+and safe exit status; stale/crashed owner recovery; orderly shutdown; explicit
+owner/client logs; unique fixture/profile isolation so tests may run beside the
+development overlay without addressing it.
+
+**Out of scope:** force-terminating another host, a background Windows service,
+external/global activation, broad diagnostics-transport redesign, widget
+worker lifecycle, pinned-surface semantics, compositor/animation work, or
+changing the dashboard toggle model.
+
+**Acceptance criteria:** at most one production owner is resident for one user
+and profile under sequential or simultaneous launches; a later `--show` sends
+exactly one authenticated/bounded local activation to the hidden or visible
+owner, receives an acknowledgement, and exits; it never initializes another
+bridge, worker catalog, controller lease, or HWND. A crashed owner cannot leave
+a permanent lease, a stale/spoofed client cannot activate another user's host,
+and shutdown releases all ownership/transport resources exactly once.
+
+**Verification:** Tier 1 focused process-owner/activation Release tests over
+hidden owner, visible owner, simultaneous launch, stale owner, rejected client,
+timeout, and orderly exit, plus the production OverlayHost build. Tier 2 one
+bounded exact-executable fixture proving the second invocation exits and the
+first process receives Show without a second bridge/controller initialization.
+No aggregate, screenshot, widget-provider, or force-kill run. After integration,
+refresh the coherent main Release and visibly invoke `--show` twice while
+retaining one PID.
+
+**Stop/escalate when:** a safe fix requires a privileged/global service,
+weakens per-user process/transport isolation, conflicts substantially with the
+active pinned-surface lifecycle, or needs destructive cleanup of the current
+resident processes.
+
+### DLV-068 — Add controller placement and durable pin geometry
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-070
+**Dependencies:** DLV-011, DLV-016, DLV-058, and DLV-070
 **Owner:** pinned-surface placement/resize state machine, monitor/DPI persistence,
 host chrome/actions, focused native/UIA fixtures, and public pinning docs
 
@@ -3366,7 +3428,7 @@ authority.
 **State:** Ready
 **Lane:** platform
 **Baseline:** closing commit of DLV-068
-**Dependencies:** DLV-058 and DLV-068
+**Dependencies:** DLV-058, DLV-070, and DLV-068
 **Owner:** pinned-surface controller/pointer focus composition, emergency
 visibility authority, UI Automation tree/actions, help, and production-host
 fixtures
@@ -3408,7 +3470,7 @@ policy choice, or duplicates existing OverlayHost input authority.
 **State:** Ready
 **Lane:** platform
 **Baseline:** closing commit of DLV-069
-**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-068, and DLV-069
+**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, and DLV-069
 **Owner:** trusted rich-media process/session feasibility, fixed-video host
 composition, resource measurement, policy evidence, and focused process/native
 fixtures; no public YouTube widget or account integration
