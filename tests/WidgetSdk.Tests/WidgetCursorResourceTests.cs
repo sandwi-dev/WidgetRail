@@ -9,6 +9,7 @@ internal static class WidgetCursorResourceTests
         await HandlesEmptySparseFinalAndLastGoodError();
         await PreservesAnchorAcrossAppendPrependAndRefresh();
         await DirectionChangeAllowsEvictedRefetch();
+        await TraversalHistoryFailsClosedAndRefreshResetsIt();
         await RejectsLateDuplicateAndLoopResults();
         ContractIsVersionedOpaqueAndBounded();
     }
@@ -244,6 +245,48 @@ internal static class WidgetCursorResourceTests
             (await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
         Equal("item.2", widget.Resource.Snapshot.Items[0].Id);
         Equal("item.5", widget.Resource.Snapshot.Items[^1].Id);
+        await StopAsync(widget);
+    }
+
+    private static async Task TraversalHistoryFailsClosedAndRefreshResetsIt()
+    {
+        var widget = await StartAsync(new()
+        {
+            PageSize = 1,
+            MaximumRetainedItems = 2,
+            Viewports = [Viewport()],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (cursor, _, limit, _) =>
+            {
+                var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
+                return ValueTask.FromResult(Page(start, limit, 1_000));
+            },
+        });
+        await widget.Resource.EnsureLoaded().Completion;
+        for (var index = 1; index <= 127; index++)
+            Equal(WidgetOperationStatus.Succeeded,
+                (await widget.Resource.Move(
+                    WidgetCursorDirection.After, "items.list").Completion).Status);
+
+        Equal(WidgetCursorResource<Item>.MaximumCursorHistory,
+            widget.Resource.RetainedCursorCount);
+        var lastGood = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray();
+        Equal(WidgetOperationStatus.Failed,
+            (await widget.Resource.Move(
+                WidgetCursorDirection.After, "items.list").Completion).Status);
+        Equal(lastGood.Length, widget.Resource.Snapshot.Items.Count);
+        for (var index = 0; index < lastGood.Length; index++)
+            Equal(lastGood[index], widget.Resource.Snapshot.Items[index].Id);
+
+        Equal(WidgetOperationStatus.Succeeded,
+            (await widget.Resource.Refresh().Completion).Status);
+        Equal(0, widget.Resource.RetainedCursorCount);
+        Equal(WidgetOperationStatus.Succeeded,
+            (await widget.Resource.Move(
+                WidgetCursorDirection.After, "items.list").Completion).Status);
+        True(widget.Resource.RetainedCursorCount <=
+                WidgetCursorResource<Item>.MaximumCursorHistory,
+            "A refreshed traversal escaped the cursor-history bound.");
         await StopAsync(widget);
     }
 

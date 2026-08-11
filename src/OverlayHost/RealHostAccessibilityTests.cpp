@@ -1,20 +1,25 @@
 #include "AccessibilityProvider.h"
 #include "AccessibilityTree.h"
+#include "DeclarativeRenderer.h"
+#include "FocusNavigation.h"
 #include "HostAccessibility.h"
 #include "TrayLayout.h"
 
 #include <Windows.h>
 #include <ole2.h>
 #include <UIAutomation.h>
+#include <wincodec.h>
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <future>
 #include <iostream>
 #include <map>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -222,6 +227,128 @@ Fixture SpotifyFixture(const Profile& profile) {
         L"spotify.nav.wide.player", 301);
 }
 
+enum class CursorLayout { List, Grid };
+
+struct CursorFrame final {
+    gba::WidgetSnapshot snapshot;
+    gba::RenderResult render;
+    gba::accessibility::Tree tree;
+};
+
+std::string CursorSnapshotResponse(
+    const CursorLayout layout,
+    const long long sequence,
+    const std::vector<std::string>& itemKeys,
+    const std::string_view before,
+    const std::string_view after,
+    const std::string_view anchor,
+    const std::size_t logicalCount,
+    const std::string_view state = {}) {
+    const auto instance = layout == CursorLayout::List
+        ? "cursor.list.fixture" : "cursor.grid.fixture";
+    std::ostringstream stream;
+    stream << R"json({"snapshot":{"sequence":)json" << sequence
+           << R"json(,"widgetInstanceId":")json" << instance
+           << R"json(","activeInputScopeId":"cursor.root","initialFocusId":")json";
+    if (!itemKeys.empty()) stream << "cursor.item." << itemKeys.front();
+    else stream << "cursor.header";
+    stream << R"json(","root":{"id":"cursor.root","kind":"stack","inputScopeId":"cursor.root","children":[)json"
+           << R"json({"id":"cursor.header","kind":"button","text":"Library","accessibilityLabel":"Library header action","actionId":"cursor.header"},)json"
+           << R"json({"id":"cursor.scroll","kind":"scroll","scrollAxis":"vertical","scrollPaginationThreshold":1)json";
+    if (!before.empty())
+        stream << R"json(,"scrollNearStartActionId":"cursor.before")json";
+    if (!after.empty())
+        stream << R"json(,"scrollNearEndActionId":"cursor.after")json";
+    if (!anchor.empty())
+        stream << R"json(,"collectionAnchorKey":")json" << anchor << '"';
+    stream << R"json(,"children":[)json";
+    if (layout == CursorLayout::Grid)
+        stream << R"json({"id":"cursor.grid","kind":"grid","gridMinimumColumnWidth":120,"gridMaximumColumns":3,"children":[)json";
+    for (std::size_t index = 0; index < itemKeys.size(); ++index) {
+        if (index) stream << ',';
+        stream << R"json({"id":"cursor.item.)json" << itemKeys[index]
+               << R"json(","kind":"button","text":"Item )json" << itemKeys[index]
+               << R"json(","accessibilityLabel":"Library item )json" << itemKeys[index]
+               << " of " << logicalCount
+               << R"json(","actionId":"cursor.select","collectionItemKey":"item.)json"
+               << itemKeys[index] << R"json("})json";
+    }
+    if (layout == CursorLayout::Grid) stream << "]}";
+    stream << "]}";
+    if (state == "empty")
+        stream << R"json(,{"id":"cursor.empty","kind":"text","text":"No items","accessibilityLabel":"No library items"})json";
+    else if (state == "error")
+        stream << R"json(,{"id":"cursor.error","kind":"text","text":"Library unavailable","accessibilityLabel":"Library unavailable; showing saved items"})json";
+    stream << R"json(]}},"renderStyles":{)json"
+           << R"json("cursor.header":{"base":{"height":{"kind":"length","text":"44px","number":44,"unit":"px"},"min-height":{"kind":"length","text":"44px","number":44,"unit":"px"},"flex-shrink":{"kind":"number","text":"0","number":0,"unit":null}}},)json"
+           << R"json("cursor.scroll":{"base":{"flex-grow":{"kind":"number","text":"1","number":1,"unit":null},"min-height":{"kind":"length","text":"0px","number":0,"unit":"px"}}})json";
+    for (const auto& key : itemKeys) {
+        stream << R"json(,"cursor.item.)json" << key
+               << R"json(":{"base":{"height":{"kind":"length","text":"44px","number":44,"unit":"px"},"min-height":{"kind":"length","text":"44px","number":44,"unit":"px"},"flex-shrink":{"kind":"number","text":"0","number":0,"unit":null}}})json";
+    }
+    stream << "}}";
+    return stream.str();
+}
+
+std::size_t SnapshotNodeCount(const gba::WidgetNode& node) {
+    std::size_t count = 1;
+    for (const auto& child : node.children) count += SnapshotNodeCount(child);
+    return count;
+}
+
+CursorFrame RenderCursorFrame(
+    gba::DeclarativeRenderer& renderer,
+    ID2D1RenderTarget* target,
+    const Profile& profile,
+    const std::string& response,
+    const std::wstring_view focusedId) {
+    std::wstring error;
+    auto snapshot = gba::testing::ParseWidgetSnapshotResponse(response, error);
+    Check(snapshot.has_value() && error.empty(),
+          "managed cursor response crosses the production bridge parser");
+    gba::DeclarativeRenderOptions options;
+    options.collectAccessibility = true;
+    options.pixelScale = static_cast<float>(profile.scale);
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1.0F));
+    auto render = renderer.Render(
+        target, *snapshot, focusedId, {0, 0, profile.width, profile.height}, options);
+    Check(SUCCEEDED(target->EndDraw()),
+          "cursor fixture completes its real Direct2D frame");
+    if (!render.succeeded) {
+        std::string detail{"parsed cursor snapshot failed production rendering"};
+        for (const auto& diagnostic : render.diagnostics) {
+            detail += ": ";
+            for (const auto value : diagnostic.code)
+                detail += static_cast<char>(value);
+            detail += "@";
+            for (const auto value : diagnostic.nodeId)
+                detail += static_cast<char>(value);
+        }
+        throw std::runtime_error(detail);
+    }
+    ++checks;
+    auto widgetTree = gba::accessibility::BuildWidgetTree(
+        L"cursor", L"cursor-generation", *snapshot, render, focusedId);
+    const std::vector<gba::accessibility::TrayItem> trayItems{{L"cursor", L"Library"}};
+    const auto tray = gba::shell::ComputeTrayLayout(
+        profile.width, profile.height, trayItems.size(), 0);
+    Check(tray.has_value(), "cursor fixture has a valid host tray layout");
+    const gba::accessibility::OpenWidgetSemantics open{
+        L"Library", gba::accessibility::HostAction::BackToTray,
+        snapshot->activeInputScopeId,
+        {profile.width - 196.0F, profile.height - 80.0F, 80.0F, 32.0F},
+        {profile.width - 108.0F, profile.height - 80.0F, 88.0F, 32.0F},
+        L"A Select  B Back", {20.0F, profile.height - 80.0F, 260.0F, 32.0F},
+        L"", {20.0F, profile.height - 80.0F, 260.0F, 32.0F},
+    };
+    return {
+        std::move(*snapshot), std::move(render),
+        gba::accessibility::BuildOpenWidgetTree(
+            std::move(widgetTree), trayItems, *tray, 0, false, open),
+    };
+}
+
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     auto* host = reinterpret_cast<gba::accessibility::ProviderHost*>(
         GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -285,6 +412,229 @@ CONTROLTYPEID ControlType(const gba::accessibility::Role role) {
     case gba::accessibility::Role::Text: return UIA_TextControlTypeId;
     }
     return UIA_CustomControlTypeId;
+}
+
+std::vector<std::string> CursorKeys(const int first, const int count) {
+    std::vector<std::string> result;
+    result.reserve(static_cast<std::size_t>(count));
+    for (int index = 0; index < count; ++index)
+        result.push_back(std::to_string(first + index));
+    return result;
+}
+
+void PublishCursorTree(
+    gba::accessibility::ProviderHost& host,
+    IUIAutomation* client,
+    IUIAutomationElement* root,
+    const CursorFrame& frame,
+    const Profile& profile,
+    const std::vector<std::wstring>& expected,
+    const std::vector<std::wstring>& absent = {}) {
+    host.Publish(frame.tree, {
+        80.0, 120.0, profile.scale,
+        profile.width * profile.scale, profile.height * profile.scale,
+    });
+    host.RaisePendingEvents();
+    for (const auto& id : expected) {
+        auto element = FindById(client, root, L"widget:" + id);
+        Check(static_cast<bool>(element),
+              "cursor collection semantic item reaches the real UIA provider");
+    }
+    for (const auto& id : absent)
+        Check(!FindById(client, root, L"widget:" + id),
+              "cursor collection omits stale UIA semantics");
+}
+
+void VerifyCursorCollectionComposition(
+    gba::accessibility::ProviderHost& host,
+    IUIAutomation* client,
+    IUIAutomationElement* root) {
+    const Profile profile{"cursor-standard-100", 520, 176, 1.0};
+
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+              D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+          "cursor fixture creates the production Direct2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+              DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+              reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+          "cursor fixture creates the production DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+              CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+              IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+          "cursor fixture creates the WIC factory");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+              520, 300, GUID_WICPixelFormat32bppPBGRA,
+              WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+          "cursor fixture creates a bounded raster canvas");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+              canvas.Get(), D2D1::RenderTargetProperties(),
+              target.ReleaseAndGetAddressOf())),
+          "cursor fixture creates the production render target");
+
+    gba::DeclarativeRenderer listRenderer{d2d.Get(), write.Get(), nullptr};
+    auto initial = RenderCursorFrame(
+        listRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 401, CursorKeys(0, 6), "", "c6", "item.2", 2'000),
+        L"cursor.item.2");
+    Check(SnapshotNodeCount(initial.snapshot.root) == 9,
+          "managed List snapshot retains only header scroll and one bounded page");
+    const auto listForward = gba::input::FindScrollPaginationAction(
+        initial.snapshot.root, L"cursor.item.5", gba::input::NavigationDirection::Down);
+    Check(listForward && listForward->actionId == L"cursor.after" &&
+              listForward->sourceElementId == L"cursor.scroll",
+          "List trailing edge resolves the forward cursor action");
+    PublishCursorTree(
+        host, client, root, initial, profile,
+        {L"cursor.header", L"cursor.item.2"});
+
+    auto appended = RenderCursorFrame(
+        listRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 402, CursorKeys(0, 10), "", "c10", "item.5", 2'000),
+        L"cursor.item.6");
+    Check(appended.render.focusRects.contains(L"cursor.item.6") &&
+              appended.render.focusRects.at(L"cursor.item.6").y >=
+                  appended.render.focusRects.at(L"cursor.item.5").y,
+          "forward append enters the adjacent keyed item instead of wrapping to the top");
+
+    auto evicted = RenderCursorFrame(
+        listRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 403, CursorKeys(4, 6), "c0", "c10", "item.4", 2'000),
+        L"cursor.item.4");
+    const auto listReverse = gba::input::FindScrollPaginationAction(
+        evicted.snapshot.root, L"cursor.item.4", gba::input::NavigationDirection::Up);
+    Check(listReverse && listReverse->actionId == L"cursor.before" &&
+              evicted.snapshot.root.children.front().id == L"cursor.header",
+          "reverse List edge paginates before the fixed header can capture focus");
+    const auto evictedAnchorY = evicted.render.focusRects.at(L"cursor.item.4").y;
+    auto prepended = RenderCursorFrame(
+        listRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 404, CursorKeys(0, 10), "", "c10", "item.4", 2'000),
+        L"cursor.item.4");
+    Check(std::abs(prepended.render.focusRects.at(L"cursor.item.4").y - evictedAnchorY) < 1.0F,
+          "reverse prepend preserves the keyed List viewport anchor after eviction");
+
+    auto insertedKeys = CursorKeys(4, 6);
+    insertedKeys.insert(insertedKeys.begin(), "inserted");
+    auto inserted = RenderCursorFrame(
+        listRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 405, insertedKeys, "c0", "c10", "item.4", 2'000),
+        L"cursor.item.4");
+    Check(std::abs(inserted.render.focusRects.at(L"cursor.item.4").y -
+              prepended.render.focusRects.at(L"cursor.item.4").y) < 1.0F,
+          "refresh insertion preserves the authored List anchor");
+    auto deletedKeys = CursorKeys(5, 5);
+    auto deleted = RenderCursorFrame(
+        listRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 406, deletedKeys, "c0", "c10", "item.5", 2'000),
+        L"cursor.item.5");
+    Check(deleted.render.focusRects.contains(L"cursor.item.5") &&
+              !deleted.render.focusRects.contains(L"cursor.item.4"),
+          "refresh deletion selects the authored nearest surviving key");
+
+    gba::DeclarativeRenderer gridRenderer{d2d.Get(), write.Get(), nullptr};
+    auto gridInitial = RenderCursorFrame(
+        gridRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::Grid, 501, CursorKeys(0, 9), "", "c9", "item.4", 10'000),
+        L"cursor.item.4");
+    const auto gridForward = gba::input::FindScrollPaginationAction(
+        gridInitial.snapshot.root, L"cursor.item.8", gba::input::NavigationDirection::Down);
+    Check(gridForward && gridForward->actionId == L"cursor.after",
+          "responsive Grid descendant resolves the forward cursor action");
+    auto gridEvicted = RenderCursorFrame(
+        gridRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::Grid, 502, CursorKeys(6, 9), "c0", "c15", "item.6", 10'000),
+        L"cursor.item.6");
+    const auto gridReverse = gba::input::FindScrollPaginationAction(
+        gridEvicted.snapshot.root, L"cursor.item.6", gba::input::NavigationDirection::Up);
+    Check(gridReverse && gridReverse->actionId == L"cursor.before",
+          "responsive Grid descendant resolves reverse before fixed-header focus");
+    const auto gridAnchorY = gridEvicted.render.focusRects.at(L"cursor.item.6").y;
+    auto gridPrepended = RenderCursorFrame(
+        gridRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::Grid, 503, CursorKeys(0, 15), "", "c15", "item.6", 10'000),
+        L"cursor.item.6");
+    const auto gridPrependedAnchorY =
+        gridPrepended.render.focusRects.at(L"cursor.item.6").y;
+    if (std::abs(gridPrependedAnchorY - gridAnchorY) >= 1.0F)
+        throw std::runtime_error(
+            "responsive Grid anchor moved from " + std::to_string(gridAnchorY) +
+            " to " + std::to_string(gridPrependedAnchorY) +
+            " at offset " + std::to_string(
+                gridPrepended.render.scrollOffsets.at(L"cursor.scroll")));
+    ++checks;
+    PublishCursorTree(
+        host, client, root, gridPrepended, profile,
+        {L"cursor.header", L"cursor.item.6"});
+
+    gba::DeclarativeRenderer stateRenderer{d2d.Get(), write.Get(), nullptr};
+    auto empty = RenderCursorFrame(
+        stateRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 601, {}, "", "", "", 2'000, "empty"),
+        L"cursor.header");
+    PublishCursorTree(
+        host, client, root, empty, profile,
+        {L"cursor.header", L"cursor.empty"}, {L"cursor.item.0"});
+    auto sparse = RenderCursorFrame(
+        stateRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 602, {"0"}, "", "c1", "item.0", 2'000),
+        L"cursor.item.0");
+    Check(gba::input::FindScrollPaginationAction(
+              sparse.snapshot.root, L"cursor.item.0",
+              gba::input::NavigationDirection::Down).has_value(),
+          "sparse non-final page retains its forward boundary");
+    auto partialFinal = RenderCursorFrame(
+        stateRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 603, CursorKeys(0, 3), "", "", "item.1", 2'000),
+        L"cursor.item.1");
+    Check(!gba::input::FindScrollPaginationAction(
+              partialFinal.snapshot.root, L"cursor.item.2",
+              gba::input::NavigationDirection::Down),
+          "partial final page exposes no phantom forward boundary");
+    auto lastGoodError = RenderCursorFrame(
+        stateRenderer, target.Get(), profile,
+        CursorSnapshotResponse(
+            CursorLayout::List, 604, CursorKeys(0, 3), "", "", "item.1", 2'000, "error"),
+        L"cursor.item.1");
+    PublishCursorTree(
+        host, client, root, lastGoodError, profile,
+        {L"cursor.item.0", L"cursor.item.1", L"cursor.item.2", L"cursor.error"},
+        {L"cursor.empty"});
+
+    for (const auto [layout, logicalCount] : {
+             std::pair{CursorLayout::List, std::size_t{2'000}},
+             std::pair{CursorLayout::Grid, std::size_t{10'000}}}) {
+        gba::DeclarativeRenderer boundedRenderer{d2d.Get(), write.Get(), nullptr};
+        const auto first = static_cast<int>(logicalCount - 8);
+        auto bounded = RenderCursorFrame(
+            boundedRenderer, target.Get(), profile,
+            CursorSnapshotResponse(
+                layout, static_cast<long long>(logicalCount), CursorKeys(first, 8),
+                "previous", "", "item." + std::to_string(first), logicalCount),
+            L"cursor.item." + std::to_wstring(first));
+        const auto widgetSemantics = std::ranges::count_if(
+            bounded.tree.nodes, [](const auto& node) {
+                return node.domain == gba::accessibility::ElementDomain::Widget;
+            });
+        Check(SnapshotNodeCount(bounded.snapshot.root) <= 12 && widgetSemantics <= 9,
+              "large logical collection crosses the host as one bounded snapshot and UIA tree");
+    }
 }
 
 void VerifyFixture(
@@ -437,12 +787,14 @@ void WriteEvidence(const fs::path& root, const std::vector<Profile>& profiles) {
     std::ofstream stream(root / L"manifest.json", std::ios::binary | std::ios::trunc);
     Check(static_cast<bool>(stream), "retained accessibility evidence path is writable");
     stream << "{\n  \"contract\":\"dlv015-real-host-accessibility-v1\",\n"
-              "  \"widgets\":[\"settings\",\"ytmusic\",\"spotify\"],\n"
+              "  \"widgets\":[\"settings\",\"ytmusic\",\"spotify\",\"cursor\"],\n"
               "  \"profiles\":[";
     for (std::size_t index = 0; index < profiles.size(); ++index) {
         if (index) stream << ',';
         stream << "\"" << profiles[index].name << "\"";
     }
+    if (!profiles.empty()) stream << ',';
+    stream << "\"cursor-standard-100\"";
     stream << "],\n  \"screenshots\":false,\n"
               "  \"fixtures\":[\n"
               "    {\"widget\":\"settings\",\"profile\":\"compact-100\","
@@ -450,11 +802,15 @@ void WriteEvidence(const fs::path& root, const std::vector<Profile>& profiles) {
               "    {\"widget\":\"ytmusic\",\"profile\":\"standard-100\","
               "\"states\":[\"error\",\"busy\",\"range-value\"]},\n"
               "    {\"widget\":\"spotify\",\"profile\":\"standard-150\","
-              "\"states\":[\"selected\",\"busy\",\"range-value\"]}\n"
+              "\"states\":[\"selected\",\"busy\",\"range-value\"]},\n"
+              "    {\"widget\":\"cursor\",\"profile\":\"cursor-standard-100\","
+              "\"states\":[\"list\",\"grid\",\"empty\",\"sparse\","
+              "\"partial-final\",\"last-good-error\",\"refresh-churn\"]}\n"
               "  ],\n"
               "  \"contracts\":[\"names\",\"roles\",\"values\",\"bounds\","
               "\"order\",\"invoke\",\"range-value\",\"focus\","
-              "\"focus-restoration\",\"hidden-exclusion\"],\n"
+              "\"focus-restoration\",\"hidden-exclusion\",\"cursor-anchor\","
+              "\"cursor-pagination\",\"bounded-collection\"],\n"
               "  \"physicalNarrator\":\"manual-pending\",\n"
               "  \"sanitized\":true\n}\n";
     Check(static_cast<bool>(stream), "retained accessibility evidence is complete");
@@ -569,6 +925,8 @@ int wmain(const int argc, wchar_t** argv) {
         Check(pendingSpotify &&
                   SUCCEEDED(pendingSpotify->get_CurrentIsEnabled(&enabled)) && !enabled,
               "Spotify busy playback action reaches UIA as unavailable");
+
+        VerifyCursorCollectionComposition(host, client.Get(), root.Get());
 
         // Re-publish the compact Settings tree after two unrelated widget
         // generations. Exact semantic identity, not stale provider position,

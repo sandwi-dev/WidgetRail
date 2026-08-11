@@ -1451,6 +1451,17 @@ themes also use non-shrinking fixed regions, a thin native Slider
  49 native focus checks, 4,777 native renderer checks, and the native bridge
  parser; the clean exact-commit aggregate remains the named integration
  checkpoint rather than evidence inherited from this dirty worktree.
+ The final composed production-host fixture now drives bounded managed-format
+ List and responsive-Grid frames through the production bridge parser, real
+ Direct2D renderer, keyed anchor reconciliation, focus-edge pagination,
+ accessibility adapter, HWND provider, and UIA client. Its default 271 checks
+ (274 with retained evidence-manifest validation) cover a
+ fixed header, forward/reverse boundaries, eviction, insertion/deletion churn,
+ empty/sparse/partial-final/last-good-error states, and eight-item host/UIA
+ windows over 2,000- and 10,000-item logical collections. Focused Release
+ evidence also retains 85/85 Widget SDK cases, 49 native focus checks, and
+ 4,777 native renderer checks; the earlier single clean aggregate remains the
+ only Tier-3 run.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late
