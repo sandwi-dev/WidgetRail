@@ -2179,7 +2179,8 @@ canonical result remains the sole Tier-3 run.
 recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
 **Owner:** Spotify Queue, Playlists, and playlist-detail collection state and
-presentation, shared cursor/append consumption, exact focus fixtures, and
+presentation, shared cursor/append consumption, the exact shared SDK cursor-
+admission correction exposed by this first consumer, exact focus fixtures, and
 directly affected Spotify documentation; no provider, public protocol, or native
 collection implementation changes
 **Visible outcome:** Queue and Playlist traversal stays continuous across loads;
@@ -2194,12 +2195,20 @@ the accepted DLV-051 Player focus edge.
 12/12/5 and sparse/final pages; stable keyed anchors; refresh, cache eviction,
 rapid route changes, Back/return, cancellation, stale completion, header action,
 compact/expanded identity, and safe partial/error presentation; deletion of
-superseded widget-local page-window state.
+superseded widget-local page-window state. After deterministic consumer proof
+showed repeated near-edge input replaces an identical pending cursor request,
+also make `WidgetCursorResource` join the exact current identical intent, as
+`WidgetPagedResource` already does, while preserving latest-wins replacement
+for a genuinely different cursor, direction, viewport, or refresh intent. This
+correction may change only the shared resource implementation and its focused
+existing SDK tests; it adds no public member or wire behavior.
 
 **Out of scope:** Spotify OAuth/Premium/Web Playback/provider changes, search,
 new product screens, custom page caches, ordinal/title focus IDs, native
-collection exceptions, DLV-051 changes, DLV-043 decomposition, shared geometry
-offsets, screenshots, or live credentials.
+collection exceptions, public SDK signatures or protocol revisions, changing
+non-identical cursor intents from their existing latest-wins policy, DLV-051
+changes, DLV-043 decomposition, shared geometry offsets, screenshots, or live
+credentials.
 
 **Acceptance criteria:** crossing every forward/reverse transport boundary moves
 to the adjacent keyed item without top/bottom teleport; existing keys retain
@@ -2208,18 +2217,34 @@ after deletion. The Play/header action participates in one explicit authored
 edge and cannot alternate with the first row on snapshot replacement. Route and
 Back restoration, selected responsive destination, accepted seek navigation,
 bounded retention, loading/error copy, and Active-lifetime cancellation remain
-exact.
+exact. Repeating the same pagination action while its exact cursor intent is
+pending returns `Joined`, shares the same completion, and invokes `LoadPage`
+once; a different intent still replaces/cancels through the established bounded
+latest-wins lane, and Reset/lifecycle termination drains both paths.
 
-**Verification:** Tier 1 Spotify and shared collection Release suites plus the
-smallest controller replay/production-host semantic fixture covering forward,
-reverse, header, refresh, and route return. Validate the package and affected
-docs. No aggregate, provider, live account, broad screenshot matrix, or native
-collection redesign.
+**Verification:** Tier 1 Spotify and shared collection Release suites,
+including direct no-sleep identical-join, different-intent replacement,
+Reset, and lifecycle-drain cursor-resource cases, plus the smallest controller
+replay/production-host semantic fixture covering forward, reverse, header,
+refresh, and route return. Validate the package and affected docs. No aggregate,
+provider, live account, broad screenshot matrix, or native collection redesign.
 
 **Stop/escalate when:** DLV-006 cannot express a required keyed anchor/edge,
-the native host ignores a valid shared collection state, or correction requires
-provider/auth behavior, a public contract revision, or a material Spotify UX
-decision. Report the shared defect instead of adding a widget-local workaround.
+the native host ignores a valid shared collection state, or the bounded
+identical-intent correction requires a public signature/protocol revision,
+changes non-identical intent policy, provider/auth behavior, or a material
+Spotify UX decision. Report any broader shared defect instead of adding a
+widget-local workaround.
+
+**Planner scope correction:** The first consumer run passes 40/41 focused
+Spotify cases, including forward/reverse traversal, third-page eviction and
+reverse restoration, stable refresh anchoring, and the authored Play/header
+edge. The remaining deterministic case proves two provider calls for the same
+near-edge action while its exact cursor intent is pending. The shared cursor
+resource creates a replacement request unconditionally, whereas the established
+paged resource first joins an equal current intent. The bounded parity fix above
+is therefore an immediate prerequisite of the visible DLV-022 outcome and is
+authorized inside this milestone; a Spotify-local busy flag remains prohibited.
 
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
