@@ -1629,6 +1629,21 @@ themes also use non-shrinking fixed regions, a thin native Slider
  PlatformBroker 52/52, Windows app-library provider 43/43, Game Launcher 10/10,
  WidgetCatalog 35/35, and the documentation contract across 55 Markdown files.
  The separately bounded installed generic-worker/AppContainer suite passes 6/6.
+ DLV-066 advances Game Launcher to package 0.2.0 with one current schema-v2
+ organization policy. X toggles favorites, LB explicitly groups or ungroups
+ selected SavedIds, and RB chooses a preferred group member. No title heuristic
+ establishes identity or redirects launch: preference changes bounded ordering
+ and labels while every tile retains exact fresh SavedId resolution. The schema
+ retains at most 96 display rows, 32 organized identities, 16 groups, and four
+ variants per group, and remains below the 64 KiB private-state limit at those
+ maxima. One two-attempt CAS store reapplies only the requested delta after a
+ conflict, preserving unrelated favorite order and groups. Missing sources keep
+ disabled organization tombstones; exact SavedId reappearance restores the
+ choice, while replacement identity remains independent. Invalid/unsupported
+ pre-release state is atomically reset to empty v2 before current reconciliation.
+ Focused Release verification
+ `artifacts/verification/20260811T123312Z-b54b995b` passes Game Launcher 15/15
+ and the documentation contract across 55 Markdown files.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

@@ -80,7 +80,8 @@ guarantees that are available now.
   launch, controller UX, and current source/icon/classification limits.
 - [Game Launcher reference](game-launcher.md) — complete installed-only game
   library over bounded opaque cursors, responsive virtualized grid semantics,
-  lazy artwork, display-only warm state, and fresh exact launch admission.
+  lazy artwork, favorites, explicit preferred-variant groups, display-only warm
+  state, and fresh exact launch admission.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.

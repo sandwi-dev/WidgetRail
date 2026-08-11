@@ -19,8 +19,12 @@ public sealed class GameLauncherWidget : Widget
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _launchGate = new(1, 1);
+    private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly WidgetCursorResource<GameLauncherItem> _library;
-    private IReadOnlyList<GameLauncherDisplayItem> _warmItems = [];
+    private GameLauncherPrivateState _organization = GameLauncherPrivateState.Empty;
+    private long _stateRevision;
+    private string? _variantSeedSavedId;
+    private bool _organizationBusy;
     private string _status = "Game Launcher loads when visible";
     private string? _launchingSavedId;
 
@@ -46,7 +50,11 @@ public sealed class GameLauncherWidget : Widget
     internal int RetainedCursorCount => _library.RetainedCursorCount;
     internal IReadOnlyList<GameLauncherDisplayItem> WarmItems
     {
-        get { lock (_gate) return _warmItems.ToArray(); }
+        get { lock (_gate) return _organization.Items.ToArray(); }
+    }
+    internal GameLauncherPrivateState Organization
+    {
+        get { lock (_gate) return _organization; }
     }
     internal Task WhenLibraryIdleAsync(CancellationToken cancellationToken = default) =>
         _library.WhenIdleAsync(cancellationToken);
@@ -59,9 +67,10 @@ public sealed class GameLauncherWidget : Widget
         lock (_gate)
             state = new(
                 _library.Snapshot,
-                _warmItems.ToArray(),
+                _organization,
                 StatusLocked(_library.Snapshot),
                 _launchingSavedId,
+                _organizationBusy,
                 LifecycleState == WidgetLifecycleState.Interactive);
         return GameLauncherPresentation.Render(state);
     }
@@ -81,6 +90,8 @@ public sealed class GameLauncherWidget : Widget
         lock (_gate)
         {
             _launchingSavedId = null;
+            _variantSeedSavedId = null;
+            _organizationBusy = false;
             _status = "Game Launcher is paused";
         }
         Invalidate();
@@ -116,20 +127,53 @@ public sealed class GameLauncherWidget : Widget
             case "game-launcher.launch":
                 await LaunchAsync(action.SourceElementId, cancellationToken).ConfigureAwait(false);
                 return;
+            case "game-launcher.favorite":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                await ToggleFavoriteAsync(action.SourceElementId, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case "game-launcher.variant":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                await ToggleVariantAsync(action.SourceElementId, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case "game-launcher.prefer":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                await PreferVariantAsync(action.SourceElementId, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case "game-launcher.organization.reset":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                await MutateOrganizationAsync(GameLauncherOrganizationPolicy.Clear,
+                    "Organization cleared", cancellationToken).ConfigureAwait(false);
+                return;
         }
     }
 
     private async ValueTask LoadWarmStateAsync(CancellationToken cancellationToken)
     {
+        await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var stored = await HostServices.PrivateState.ReadAsync<GameLauncherPrivateState>(
                     cancellationToken: cancellationToken).ConfigureAwait(false);
-            var normalized = GameLauncherPrivateState.Normalize(
+            var normalized = GameLauncherOrganizationPolicy.Normalize(
                 stored.Exists ? stored.Value : null);
+            var revision = stored.Revision;
+            if (stored.Exists && ReferenceEquals(
+                    normalized, GameLauncherPrivateState.Empty))
+            {
+                var reset = await HostServices.PrivateState.WriteAsync(
+                        GameLauncherPrivateState.Empty,
+                        stored.Revision,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                revision = reset.Revision;
+            }
             lock (_gate)
             {
-                _warmItems = normalized.Items;
+                _organization = normalized;
+                _stateRevision = revision;
                 _status = normalized.Items.Count == 0
                     ? "Loading installed games…"
                     : $"Checking {normalized.Items.Count} saved display rows…";
@@ -142,7 +186,11 @@ public sealed class GameLauncherWidget : Widget
         }
         catch (Exception)
         {
-            lock (_gate) _warmItems = [];
+            lock (_gate) _organization = GameLauncherPrivateState.Empty;
+        }
+        finally
+        {
+            _stateGate.Release();
         }
     }
 
@@ -163,17 +211,12 @@ public sealed class GameLauncherWidget : Widget
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         var items = page.Items.Select(GameLauncherItem.From).ToArray();
-        var display = GameLauncherPrivateState.FromPage(items);
-        await HostServices.PrivateState.WriteAsync(
-                display, cancellationToken: cancellationToken)
+        var projectionSaved = await PersistProjectionAsync(items, cancellationToken)
             .ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
-            _warmItems = display.Items;
-            _status = items.Length == 0 ? "No installed games" :
+        lock (_gate) _status = !projectionSaved
+            ? "Games loaded · organization was not saved"
+            : items.Length == 0 ? "No installed games" :
                 $"{items.Length}{(page.After is null ? string.Empty : "+")} games in the current window";
-        }
         return new(items,
             page.Before is null ? null : new WidgetCollectionCursor(page.Before),
             page.After is null ? null : new WidgetCollectionCursor(page.After));
@@ -229,10 +272,195 @@ public sealed class GameLauncherWidget : Widget
         }
     }
 
+    private async Task ToggleFavoriteAsync(
+        string sourceElementId,
+        CancellationToken cancellationToken)
+    {
+        var display = DisplayForSource(sourceElementId);
+        if (display is null) return;
+        bool favorite;
+        lock (_gate) favorite = !_organization.FavoriteSavedIds.Contains(
+            display.SavedId, StringComparer.Ordinal);
+        await MutateOrganizationAsync(
+            state => GameLauncherOrganizationPolicy.SetFavorite(state, display, favorite),
+            favorite ? $"Favorited {display.DisplayName}" : $"Removed {display.DisplayName} from favorites",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ToggleVariantAsync(
+        string sourceElementId,
+        CancellationToken cancellationToken)
+    {
+        var current = DisplayForSource(sourceElementId);
+        if (current is null) return;
+        GameLauncherDisplayItem? first;
+        GameLauncherVariantGroup? existing;
+        var started = false;
+        lock (_gate)
+        {
+            if (_variantSeedSavedId is null)
+            {
+                _variantSeedSavedId = current.SavedId;
+                _status = $"Variant selection started with {current.DisplayName}";
+                started = true;
+            }
+            if (started)
+            {
+                first = null;
+                existing = null;
+            }
+            else
+            {
+                first = DisplayForSavedLocked(_variantSeedSavedId!);
+                existing = first is null ? null : _organization.VariantGroups.FirstOrDefault(group =>
+                    group.SavedIds.Contains(first.SavedId, StringComparer.Ordinal) &&
+                    group.SavedIds.Contains(current.SavedId, StringComparer.Ordinal));
+                _variantSeedSavedId = null;
+            }
+        }
+        if (started) { Invalidate(); return; }
+        if (first is null || first.SavedId == current.SavedId)
+        {
+            lock (_gate) _status = "Choose two distinct variants";
+            Invalidate();
+            return;
+        }
+        await MutateOrganizationAsync(
+            existing is null
+                ? state => GameLauncherOrganizationPolicy.Pair(state, first, current)
+                : state => GameLauncherOrganizationPolicy.Unmerge(
+                    state, existing.Id, current.SavedId),
+            existing is null
+                ? $"Grouped {first.DisplayName} with {current.DisplayName}"
+                : $"Removed {current.DisplayName} from its variant group",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task PreferVariantAsync(
+        string sourceElementId,
+        CancellationToken cancellationToken)
+    {
+        var display = DisplayForSource(sourceElementId);
+        if (display is null) return;
+        GameLauncherVariantGroup? group;
+        lock (_gate) group = GameLauncherOrganizationPolicy.GroupFor(
+            _organization, display.SavedId);
+        if (group is null)
+        {
+            lock (_gate) _status = "Group variants before choosing a preferred launch";
+            Invalidate();
+            return;
+        }
+        await MutateOrganizationAsync(
+            state => GameLauncherOrganizationPolicy.Prefer(state, group.Id, display.SavedId),
+            $"Preferred variant: {display.DisplayName}", cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<bool> PersistProjectionAsync(
+        IReadOnlyList<GameLauncherItem> items,
+        CancellationToken cancellationToken) => await SaveStateAsync(
+            state => GameLauncherStateMutation.Apply(
+                GameLauncherOrganizationPolicy.ProjectPage(state, items)),
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task MutateOrganizationAsync(
+        Func<GameLauncherPrivateState, GameLauncherStateMutation> apply,
+        string success,
+        CancellationToken cancellationToken)
+    {
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        lock (_gate) _organizationBusy = true;
+        Invalidate();
+        var saved = false;
+        try
+        {
+            saved = await SaveStateAsync(apply, lifetime.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested) throw;
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                _organizationBusy = false;
+                if (LifecycleState is WidgetLifecycleState.Visible or
+                    WidgetLifecycleState.Interactive)
+                    _status = saved ? success : "Organization change was not saved";
+            }
+            Invalidate();
+        }
+    }
+
+    private async Task<bool> SaveStateAsync(
+        Func<GameLauncherPrivateState, GameLauncherStateMutation> apply,
+        CancellationToken cancellationToken)
+    {
+        await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            GameLauncherPrivateState baseline;
+            long revision;
+            lock (_gate)
+            {
+                baseline = _organization;
+                revision = _stateRevision;
+            }
+            var saved = await GameLauncherStateStore.SaveAsync(
+                    apply,
+                    (state, expected, token) => HostServices.PrivateState.WriteAsync(
+                        state, expected, cancellationToken: token),
+                    token => HostServices.PrivateState.ReadAsync<GameLauncherPrivateState>(
+                        cancellationToken: token),
+                    baseline,
+                    revision,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                _organization = saved.State;
+                _stateRevision = saved.Revision;
+            }
+            return saved.Saved;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        finally
+        {
+            _stateGate.Release();
+        }
+    }
+
+    private GameLauncherDisplayItem? DisplayForSource(string sourceElementId)
+    {
+        var item = _library.Snapshot.Items.FirstOrDefault(candidate => string.Equals(
+            GameLauncherIdentity.FocusId("grid", candidate.Key), sourceElementId,
+            StringComparison.Ordinal));
+        return item is null ? null : new(
+            item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution);
+    }
+
+    private GameLauncherDisplayItem? DisplayForSavedLocked(string savedId) =>
+        _organization.Items.FirstOrDefault(item => item.SavedId == savedId) ??
+        _library.Snapshot.Items.Where(item => item.Value.SavedId == savedId)
+            .Select(item => new GameLauncherDisplayItem(
+                item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution))
+            .FirstOrDefault();
+
     private string StatusLocked(WidgetCursorResourceSnapshot<GameLauncherItem> snapshot) =>
         snapshot.Status switch
         {
-            WidgetPagedResourceStatus.Loading when _warmItems.Count == 0 =>
+            WidgetPagedResourceStatus.Loading when _organization.Items.Count == 0 =>
                 "Loading installed games…",
             WidgetPagedResourceStatus.Refreshing => "Refreshing installed games…",
             WidgetPagedResourceStatus.LoadingAdjacent => "Loading more games…",

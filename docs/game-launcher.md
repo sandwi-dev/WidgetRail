@@ -1,6 +1,7 @@
 # Game Launcher reference
 
-Status: the installed-only controller-first library is bundled and uses the
+Status: bundled package 0.2.0 implements the installed-only controller-first
+library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
 
@@ -33,11 +34,32 @@ Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
 bytes; the native host requests artwork lazily through the private trusted
 registry and keeps the semantic Play fallback when artwork is absent or stale.
 
-Private state contains at most 96 sanitized SavedId, display-name, and source
-rows. It contains no AppId, path, command, AUMID, Steam identity, image bytes, or
-provider key. On worker recreation these rows appear immediately as disabled
+Private schema v2 contains at most 96 sanitized SavedId, display-name, and source
+rows. At most 32 distinct SavedIds may participate in favorites or explicit
+variant groups; there are at most 16 groups and four members per group. It
+contains no AppId, path, command, AUMID, Steam identity, image bytes, or provider
+key. On worker recreation these rows appear immediately as disabled
 **Checking…** tiles. They become actionable only after a current provider page
 resolves them.
+
+X toggles the focused current game as a favorite. LB starts an explicit variant
+selection and a second LB on another current tile creates the group; repeating
+the same pair removes the second tile from that group. RB marks a member of an
+existing group as preferred. Favorites sort first and preferred members sort
+first within the remaining current window, with visible and accessible labels.
+Preference never redirects a different tile's launch or merges titles: every
+tile continues to resolve and launch its own exact SavedId. A disabled retained
+row preserves organization while its source is missing, and reappearance of the
+same SavedId restores the choice. A replacement SavedId is independent.
+
+Organization mutations use one bounded two-attempt compare-and-swap store. On a
+conflict, only the requested favorite/group/preference delta is reapplied to the
+newer valid state, preserving unrelated favorite order and groups. A rejected or
+failed write leaves the committed state unchanged. The visible **Reset
+organization** action clears favorites and groups without deleting external
+provider data. Unsupported or invalid pre-release launcher schemas reset
+atomically as a whole before current authoritative reconciliation; stale rows
+cannot partially survive or authorize launch.
 
 Activation of a current tile resolves its exact SavedId again, verifies that
 the keyed row is still in the current retained window, and sends only the newly
@@ -56,6 +78,9 @@ late pages cannot republish after reset.
 Focused managed coverage includes 2,000- and 10,000-item forward/reverse
 traversal, bounded rows/cursors/snapshot nodes, display-only warm state, fresh
 SavedId revalidation, unavailable launch rejection, retained-window errors,
-lazy artwork semantics, and cancellation-ignoring lifecycle completion. The
+lazy artwork semantics, explicit favorite/group/preference mutations, CAS
+conflicts and failures, restart, full source disappearance/reappearance,
+same-identity refresh, identity replacement, incompatible reset, and
+cancellation-ignoring lifecycle completion. The
 installed generic-worker fixture covers the bundled manifest/catalog route,
 10,000-row broker source, adjacent grid focus, artwork handle, and exact launch.
