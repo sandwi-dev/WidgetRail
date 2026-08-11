@@ -167,6 +167,19 @@ can be examined first. DLV-097 reuses the existing validation contract, counts
 every enumerated top-level window before filtering, and adds only the boundary
 fixtures needed to close those two gaps.
 
+Independent review rejects DLV-096 candidate `8291c53` pending DLV-098, without
+interrupting active DLV-097. The lazy registration no longer opens artwork-cache
+files during catalog enumeration, and cancellation-ignoring artwork work now
+produces a bounded shared terminal failure. However, after acquiring artwork
+capacity, `CompleteDisposalAsync` starts source disposal tasks before it acquires
+the scan and observation gates. A later drain timeout can therefore coexist with
+disposed sources and cleared state while admitted work still runs; inherited
+tests currently assert this unsafe order. The new roots/generation/observed-
+revision locator dictionaries also have no prune or capacity policy across
+catalog generations. DLV-098 makes complete multi-lane drain a precondition for
+all teardown and binds retained locator generation state to current catalog
+ownership without reviving stale handles.
+
 DLV-059 `c7c354d`, corrected by DLV-071 `355a858`, is accepted and integrated
 through `6f4c642`. The provider's central Start Menu/AppsFolder/Steam discovery,
 resolve, launch, and artwork switches become private normalized source owners,

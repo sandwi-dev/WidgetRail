@@ -77,7 +77,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-056 | P1 | Verifying | Spotify widget focus composition | Accepted DLV-051 (`dc22202`, integrated as `822d29c`) authors the inactive seek Slider's Left edge to the selected wide rail destination or compact Player tab and passes exact semantic/controller replay. Fresh live confirmation remains. |
 | GBA-057 | P0 | Verifying | Widget SDK cursor resources / Spotify focus | DLV-022/053 are accepted and integrated through `8c1bbdf`; accepted DLV-055 `efffa53` installs/selects/enables the latest source as `0.2.12`, and the coherent Release is visibly running for live traversal. |
 | GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
-| GBA-059 | P1 | Implementing; DLV-094 rejected, DLV-096 queued after active DLV-095 | App-library provider / artwork / Games & Apps / Game Launcher / native bridge/cache | DLV-094 candidate `3fdbc19` resolves bounded local Steam artwork, but independent review found catalog enumeration still opens candidate artwork files synchronously and provider disposal does not join admitted artwork work. DLV-096 makes discovery demand-only and terminal cleanup bounded before the dependent prefix can integrate. |
+| GBA-059 | P1 | Implementing; DLV-096 rejected, DLV-098 queued after active DLV-097 | App-library provider / artwork / Games & Apps / Game Launcher / native bridge/cache | DLV-096 candidate `8291c53` makes Steam artwork discovery demand-only and joins cancellation-ignoring artwork work, but independent review found source disposal still begins before scan/observation drain and lazy locator-generation maps grow across catalog generations. DLV-098 closes terminal order and bounded locator ownership before the dependent prefix integrates. |
 | GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
@@ -1894,15 +1894,18 @@ DLV-054's exact-generation/revision registry, and a bounded native artwork
 request owner that does not block the UI. This is not a widget-authored URL/file
 escape or permission to redesign the whole bridge.
 
-**Current assignment:** DLV-094 candidate `3fdbc19` resolves bounded regular
-PNG/JPEG cache files beneath the current trusted Steam root and rotates the
-host-only artwork revision when bytes change, but it is not accepted. Catalog
-enumeration still opens candidate artwork files synchronously, and terminal
-cleanup does not join the separately admitted artwork lane. DLV-095 continues
-without interruption; queued DLV-096 must make discovery entirely demand-only
-and give terminal cleanup one bounded shared result before the dependent prefix
-integrates. Neither milestone may fetch from Steam, expose app IDs/paths, scan
-unrelated image trees, or weaken the semantic fallback.
+**Current assignment:** DLV-096 candidate `8291c53` now leaves catalog
+enumeration at path-normalization-only registration, performs cache/file
+discovery on explicit demand, rotates only a changed/removed row after demand
+and refresh, and returns one shared failure when artwork work ignores terminal
+cancellation. It is not accepted: terminal cleanup starts source disposal before
+scan and observation gates drain, then can clear state despite a later drain
+timeout; its three locator-generation maps also never prune or cap entries
+across changing catalogs. DLV-097 continues without interruption; queued
+DLV-098 must drain every admitted source-using lane before disposal and bind
+locator state to named current-catalog ownership. No correction may fetch from
+Steam, expose app IDs/paths, scan unrelated image trees, or weaken semantic
+fallback/stale-handle behavior.
 
 **Acceptance:** Supported sources resolve bounded artwork lazily through opaque
 handles, validate identity/format/dimensions/bytes, cap decode/cache/transport
