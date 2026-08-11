@@ -36,6 +36,16 @@ constexpr std::size_t kMaximumPayloadBytes = 64 * 1'024;
         rect.width >= 0.0F && rect.height >= 0.0F;
 }
 
+[[nodiscard]] const WidgetNode* FindNode(
+    const WidgetNode& node,
+    const std::wstring_view id) noexcept {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = FindNode(child, id)) return found;
+    }
+    return nullptr;
+}
+
 void AppendRect(
     std::wstring& payload,
     const std::wstring_view key,
@@ -131,6 +141,10 @@ ScrollEvidencePublishResult ScrollEvidenceProbe::Publish(
     if (!enabled()) return ScrollEvidencePublishResult::Disabled;
     const auto navigation = result.navigationRects.find(renderedFocusId);
     const auto presentation = result.focusRects.find(renderedFocusId);
+    const auto* focusedNode = FindNode(snapshot.root, renderedFocusId);
+    const auto upTarget = focusedNode
+        ? std::wstring_view(focusedNode->focusUp) : std::wstring_view{};
+    const auto upNavigation = result.navigationRects.find(upTarget);
     const auto target = explicitTarget_.empty()
         ? renderedFocusId : std::wstring_view(explicitTarget_);
     if (!SafeField(widgetId, kMaximumFieldCharacters) ||
@@ -167,6 +181,13 @@ ScrollEvidencePublishResult ScrollEvidenceProbe::Publish(
         L"\n";
     AppendRect(payload, L"navigation", navigation->second);
     AppendRect(payload, L"presentation", presentation->second);
+    if (!upTarget.empty() && SafeField(upTarget, kMaximumFieldCharacters) &&
+        upNavigation != result.navigationRects.end() &&
+        FiniteRect(upNavigation->second)) {
+        payload += L"upTarget=" + std::wstring(upTarget) + L"\nupRevealable=" +
+            (result.revealableFocusIds.contains(upTarget) ? L"true" : L"false") + L"\n";
+        AppendRect(payload, L"upNavigation", upNavigation->second);
+    }
     for (const auto& [id, offset] : result.scrollOffsets)
         payload += L"scroll=" + id + L"," + std::to_wstring(offset) + L"\n";
 

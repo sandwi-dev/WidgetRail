@@ -6,6 +6,27 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-049 locks the user-reported four-session Audio Mixer reverse-scroll state
+to the corrected shared-geometry baseline from DLV-021. The emitted production
+snapshot retains the exact `audio.input.volume.slider` Up edge to
+`audio.master.volume.slider`; no host fallback, managed Audio Mixer change, or
+public protocol change was needed. A test-only provider state now stages four
+real Audio Mixer sessions, and the focused production-HWND/UIA fixture begins
+at Microphone with Master already above the viewport after retained offset,
+content-extent, and host-extent reconciliation. Authenticated host evidence
+records the authored Up target before input, its offscreen logical bounds and
+native revealability, the finite `296.6 / 298.2` root offset/maximum, and the
+single Up result at Master and offset zero. Full-motion settling and reopen keep
+that state canonical, and `overlay.log` contains no `value_clamped [audio.root]`
+normalization. The same native focus-move authority serves keyboard and
+controller commands; the production fixture drives its deterministic HWND key
+mapping rather than claiming physical-controller hardware evidence. A focused
+renderer case independently replaces a larger retained session surface with
+four sessions while focused at Microphone. Release verification passes
+DeclarativeRenderer 4,774 checks, ScrollEvidenceProbe 35 checks, the single
+AudioMixerScrollHost production fixture, and a fresh OverlayHost build. The
+fixture retains no screenshots; visual validation remains user-owned.
+
 DLV-026 restores complete bidirectional Audio Mixer controller traversal in the
 native host. The production focus graph was valid; scaled native layout placed
 each Slider edge no more than one raster pixel beyond its rounded card content

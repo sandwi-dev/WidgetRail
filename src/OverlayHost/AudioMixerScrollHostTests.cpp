@@ -25,14 +25,16 @@ namespace {
 
 constexpr DWORD kStartupTimeoutMilliseconds = 20'000;
 constexpr DWORD kStepTimeoutMilliseconds = 5'000;
-constexpr std::size_t kExpectedFocusTargets = 14;
 constexpr wchar_t kTrayAutomationId[] = L"tray:tray.audio-mixer";
 constexpr wchar_t kMasterAutomationId[] = L"widget:audio.master.volume.slider";
+constexpr wchar_t kMicrophoneAutomationId[] = L"widget:audio.input.volume.slider";
+constexpr wchar_t kLastSessionName[] =
+    L"Application 03 volume, audible. Press A to mute";
 constexpr wchar_t kOpenCloseAutomationId[] = L"host:host.open.close";
 constexpr wchar_t kDevelopmentNonce[] =
-    L"0260260260260260260260260260260260260260260260260260260260260260";
+    L"0490490490490490490490490490490490490490490490490490490490490490";
 constexpr char kDevelopmentNonceUtf8[] =
-    "0260260260260260260260260260260260260260260260260260260260260260";
+    "0490490490490490490490490490490490490490490490490490490490490490";
 
 struct Arguments final {
     fs::path installation;
@@ -99,7 +101,7 @@ public:
         snapshotPath_ = root_ / L"fixture-snapshot.json";
         readyPath_ = root_ / L"host-ready.txt";
         scrollEvidencePath_ = root_ / L"scroll-evidence.txt";
-        WriteUtf8(controlPath_, "full\n");
+        WriteUtf8(controlPath_, "live-four\n");
 
         std::ostringstream settings;
         settings << "{\"schemaVersion\":1,\"appearance\":{"
@@ -107,7 +109,7 @@ public:
                  << "\"themeVersion\":\"1.0.0\","
                  << "\"interfaceScale\":" << interfaceScale << ','
                  << "\"textScale\":" << textScale << ','
-                 << "\"backdropOpacity\":0.64,\"motion\":\"reduced\"}}\n";
+                 << "\"backdropOpacity\":0.64,\"motion\":\"full\"}}\n";
         WriteUtf8(
             localAppData_ / L"GameBarAlternative" / L"platform-settings.json",
             settings.str());
@@ -185,17 +187,18 @@ ComPtr<IUIAutomationElement> RootForWindow(IUIAutomation* automation, HWND windo
     return root;
 }
 
-ComPtr<IUIAutomationElement> FindByAutomationId(
+ComPtr<IUIAutomationElement> FindByProperty(
     IUIAutomation* automation,
     IUIAutomationElement* root,
-    const std::wstring_view automationId) {
+    const PROPERTYID property,
+    const std::wstring_view expected) {
     VARIANT value{};
     V_VT(&value) = VT_BSTR;
     V_BSTR(&value) = SysAllocStringLen(
-        automationId.data(), static_cast<UINT>(automationId.size()));
+        expected.data(), static_cast<UINT>(expected.size()));
     ComPtr<IUIAutomationCondition> condition;
     if (!V_BSTR(&value) || FAILED(automation->CreatePropertyCondition(
-            UIA_AutomationIdPropertyId, value, condition.GetAddressOf()))) {
+            property, value, condition.GetAddressOf()))) {
         VariantClear(&value);
         return {};
     }
@@ -204,6 +207,14 @@ ComPtr<IUIAutomationElement> FindByAutomationId(
     if (FAILED(root->FindFirst(
             TreeScope_Descendants, condition.Get(), result.GetAddressOf()))) return {};
     return result;
+}
+
+ComPtr<IUIAutomationElement> FindByAutomationId(
+    IUIAutomation* automation,
+    IUIAutomationElement* root,
+    const std::wstring_view automationId) {
+    return FindByProperty(
+        automation, root, UIA_AutomationIdPropertyId, automationId);
 }
 
 std::optional<std::wstring> FocusedWidgetAutomationId(
@@ -248,6 +259,9 @@ struct ScrollEvidence final {
     float textScale{};
     std::array<float, 4> navigation{};
     std::array<float, 4> presentation{};
+    std::wstring upTarget;
+    bool upRevealable{};
+    std::array<float, 4> upNavigation{};
 };
 
 std::optional<std::array<float, 4>> ParseRect(const std::string_view value) {
@@ -295,6 +309,8 @@ std::optional<ScrollEvidence> ParseScrollEvidence(const std::string_view payload
             else if (key == "pixelScale") result.pixelScale = std::stof(value);
             else if (key == "textScale") result.textScale = std::stof(value);
             else if (key == "revealable") result.revealable = value == "true";
+            else if (key == "upTarget") result.upTarget = widen(value);
+            else if (key == "upRevealable") result.upRevealable = value == "true";
             else if (key == "navigation") {
                 if (const auto parsed = ParseRect(value)) {
                     result.navigation = *parsed;
@@ -305,6 +321,8 @@ std::optional<ScrollEvidence> ParseScrollEvidence(const std::string_view payload
                     result.presentation = *parsed;
                     hasPresentation = true;
                 }
+            } else if (key == "upNavigation") {
+                if (const auto parsed = ParseRect(value)) result.upNavigation = *parsed;
             } else if (key == "scroll" && value.starts_with("audio.root,")) {
                 result.rootOffset = std::stof(value.substr(11));
                 hasOffset = true;
@@ -333,6 +351,7 @@ public:
         const std::size_t step,
         const std::wstring_view focus,
         const ScrollEvidence& scroll,
+        const float rootMaximum,
         const RECT& bounds,
         HWND window) {
         if (!root_) return;
@@ -359,10 +378,10 @@ public:
                 inner.right <= outer.right && inner.bottom <= outer.bottom;
         };
         Require(contains(clientBounds, bounds),
-                "Focused UIA presentation bounds escaped the captured client.");
+                "Focused UIA presentation bounds escaped the host client.");
         auto root = RootForWindow(automation_, window);
         Require(static_cast<bool>(root),
-                "Production UIA root disappeared during capture validation.");
+                "Production UIA root disappeared during geometry validation.");
         RECT rootBounds{};
         Require(SUCCEEDED(root->get_CurrentBoundingRectangle(&rootBounds)),
                 "Production UIA root bounds were unavailable.");
@@ -371,14 +390,14 @@ public:
                     rootBounds.top <= clientBounds.top + 1 &&
                     rootBounds.right >= clientBounds.right - 1 &&
                     rootBounds.bottom >= clientBounds.bottom - 1,
-                "Production UIA root did not cover the captured client.");
+                "Production UIA root did not cover the host client.");
         auto tray = FindByAutomationId(automation_, root.Get(), kTrayAutomationId);
         RECT trayBounds{};
         Require(tray && SUCCEEDED(tray->get_CurrentBoundingRectangle(&trayBounds)),
-                "Production tray bounds were unavailable during capture validation.");
+                "Production tray bounds were unavailable during geometry validation.");
         Require(contains(clientBounds, trayBounds) &&
                     trayBounds.top >= clientBounds.top + clientHeight * 2 / 3,
-                "Production tray was outside the expected captured lower extent.");
+                "Production tray was outside the expected host lower extent.");
         const auto footerBoundsFor = [&](const wchar_t* automationId,
                                          const char* label) {
             const auto element = FindByAutomationId(
@@ -387,15 +406,12 @@ public:
             Require(element && SUCCEEDED(
                         element->get_CurrentBoundingRectangle(&footerBounds)),
                     std::string("Production ") + label +
-                        " footer bounds were unavailable during capture validation.");
+                        " footer bounds were unavailable during geometry validation.");
             Require(contains(clientBounds, footerBounds),
-                    "Production footer landmark escaped the captured client.");
+                    "Production footer landmark escaped the host client.");
             return footerBounds;
         };
         const auto closeBounds = footerBoundsFor(kOpenCloseAutomationId, "Close");
-        constexpr std::string_view captureStatus =
-            "excluded-user-visual-validation-policy";
-        ++excludedCaptureCount_;
         records_ << "    {\"scenario\":\"" << JsonEscape(scenario)
                  << "\",\"phase\":\"" << JsonEscape(phase)
                  << "\",\"step\":" << step
@@ -404,9 +420,17 @@ public:
                  << "\",\"direction\":\"" << JsonEscape(scroll.direction)
                  << "\",\"activeInputScope\":\"" << JsonEscape(scroll.scope)
                  << "\",\"scrollOffset\":" << scroll.rootOffset
+                 << ",\"scrollMaximum\":" << rootMaximum
                  << ",\"pixelScale\":" << scroll.pixelScale
                  << ",\"textScale\":" << scroll.textScale
                  << ",\"revealable\":" << (scroll.revealable ? "true" : "false")
+                 << ",\"upTarget\":\"" << JsonEscape(scroll.upTarget)
+                 << "\",\"upRevealable\":"
+                 << (scroll.upRevealable ? "true" : "false")
+                 << ",\"upNavigationBounds\":{\"x\":" << scroll.upNavigation[0]
+                 << ",\"y\":" << scroll.upNavigation[1]
+                 << ",\"width\":" << scroll.upNavigation[2]
+                 << ",\"height\":" << scroll.upNavigation[3] << "}"
                  << ",\"presentationBounds\":{\"x\":" << scroll.presentation[0]
                  << ",\"y\":" << scroll.presentation[1]
                  << ",\"width\":" << scroll.presentation[2]
@@ -437,8 +461,7 @@ public:
                  << "},\"closeBounds\":{\"left\":" << closeBounds.left
                  << ",\"top\":" << closeBounds.top << ",\"width\":"
                  << closeBounds.right - closeBounds.left << ",\"height\":"
-                 << closeBounds.bottom - closeBounds.top
-                 << "},\"captureStatus\":\"" << captureStatus << "\"},\n";
+                 << closeBounds.bottom - closeBounds.top << "}},\n";
     }
 
     void Semantic(
@@ -460,11 +483,7 @@ public:
         auto records = records_.str();
         if (records.size() >= 2) records.erase(records.size() - 2);
         WriteUtf8(*root_ / L"manifest.json",
-            "{\n  \"contract\":\"dlv026-audio-mixer-scroll-v1\",\n"
-            "  \"capturePolicy\":\"excluded-user-visual-validation\",\n"
-            "  \"retainedCaptureCount\":0,\n"
-            "  \"excludedCaptureCount\":" +
-                std::to_string(excludedCaptureCount_) + ",\n"
+            "{\n  \"contract\":\"dlv049-audio-mixer-reverse-scroll-v1\",\n"
             "  \"focusRecords\":[\n" + records + "\n  ]\n}\n");
     }
 
@@ -472,7 +491,6 @@ private:
     std::optional<fs::path> root_;
     IUIAutomation* automation_{};
     std::ostringstream records_;
-    std::size_t excludedCaptureCount_{};
 };
 
 std::wstring WaitForFocus(
@@ -500,10 +518,48 @@ void WaitForSemantic(
             }), "Production Audio Mixer semantic sidecar did not reach the requested state.");
 }
 
+void RequireMicrophoneUpEdge(const std::string_view json) {
+    constexpr std::string_view microphone =
+        "\"Id\": \"audio.input.volume.slider\"";
+    constexpr std::string_view masterEdge =
+        "\"Up\": \"audio.master.volume.slider\"";
+    const auto microphoneAt = json.find(microphone);
+    Require(microphoneAt != std::string_view::npos,
+            "Four-session snapshot omitted the Microphone slider.");
+    const auto nextNode = json.find("\"Id\":", microphoneAt + microphone.size());
+    const auto edgeAt = json.find(masterEdge, microphoneAt + microphone.size());
+    Require(edgeAt != std::string_view::npos &&
+                (nextNode == std::string_view::npos || edgeAt < nextNode),
+            "Emitted Microphone.Up edge did not target Master.");
+}
+
+std::wstring FocusElementDirectly(
+    IUIAutomation* automation,
+    HWND window,
+    const PROPERTYID property,
+    const std::wstring_view value,
+    RECT& bounds) {
+    auto root = RootForWindow(automation, window);
+    Require(static_cast<bool>(root), "Production UIA root disappeared.");
+    auto element = FindByProperty(automation, root.Get(), property, value);
+    Require(static_cast<bool>(element), "Requested production UIA focus target was absent.");
+    Require(SUCCEEDED(element->SetFocus()),
+            "Production UIA provider rejected direct focus setup.");
+    std::wstring expected;
+    if (property == UIA_AutomationIdPropertyId) expected = value;
+    else {
+        const auto id = StringProperty(element.Get(), UIA_AutomationIdPropertyId);
+        Require(id.has_value(), "Direct focus target omitted its AutomationId.");
+        expected = *id;
+    }
+    return WaitForFocus(automation, window, expected, bounds);
+}
+
 ScrollEvidence WaitForScrollEvidence(
     const fs::path& path,
     const std::wstring_view expectedFocus,
-    const long long minimumSequence = 0) {
+    const long long minimumSequence = 0,
+    const bool requireExplicitTarget = true) {
     std::optional<ScrollEvidence> result;
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
                 result = ParseScrollEvidence(ReadUtf8(path));
@@ -512,86 +568,138 @@ ScrollEvidence WaitForScrollEvidence(
             }), "Host scroll evidence did not reach the focused production control.");
     Require(result->scope == L"audio-mixer",
             "Host scroll evidence escaped the Audio Mixer input scope.");
-    Require(result->explicitTarget == expectedFocus,
+    Require(!requireExplicitTarget || result->explicitTarget == expectedFocus,
             "Host scroll evidence did not retain the explicit focus target.");
     Require(result->revealable,
             "Focused production control was not retained as revealable.");
     return *result;
 }
 
-void ResizeConstrained(HWND window) {
-    RECT bounds{};
-    Require(GetWindowRect(window, &bounds), Win32Error("GetWindowRect"));
-    const int width = bounds.right - bounds.left;
-    const int currentHeight = bounds.bottom - bounds.top;
-    const int constrainedHeight = std::max(420, currentHeight * 3 / 4);
-    Require(SetWindowPos(
-                window, nullptr, 0, 0, width, constrainedHeight,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE),
-            Win32Error("SetWindowPos(constrained)"));
-    Require(UpdateWindow(window), Win32Error("UpdateWindow(constrained)"));
-}
-
-std::vector<std::wstring> Traverse(
+void ExerciseLiveFourReverseEdge(
     IUIAutomation* automation,
     HWND window,
-    const std::wstring_view scenario,
+    const fs::path& controlPath,
+    const fs::path& semanticPath,
     const fs::path& scrollEvidencePath,
     Evidence& evidence) {
     RECT bounds{};
-    auto focused = WaitForFocus(automation, window, kMasterAutomationId, bounds);
-    std::vector<std::wstring> order{focused};
-    auto scroll = WaitForScrollEvidence(
-        scrollEvidencePath, std::wstring_view(focused).substr(7));
-    float priorOffset = scroll.rootOffset;
-    evidence.Record(scenario, L"down", 0, focused, scroll, bounds, window);
-    for (std::size_t step = 1; step < kExpectedFocusTargets; ++step) {
-        const auto previous = focused;
-        SendKey(window, VK_DOWN);
-        Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
-                    const auto current = FocusedWidgetAutomationId(automation, window, &bounds);
-                    if (!current || *current == previous) return false;
-                    focused = *current;
-                    return true;
-                }), "Down did not move to the next production Audio Mixer control.");
-        order.push_back(focused);
-        scroll = WaitForScrollEvidence(
-            scrollEvidencePath, std::wstring_view(focused).substr(7));
-        Require(scroll.rootOffset + 0.01F >= priorOffset,
-                "Down traversal moved the Audio Mixer root offset backward.");
-        priorOffset = scroll.rootOffset;
-        evidence.Record(scenario, L"down", step, focused, scroll, bounds, window);
-    }
+    const auto semantic = ReadUtf8(semanticPath);
+    RequireMicrophoneUpEdge(semantic);
 
-    for (std::size_t reverse = 1; reverse < order.size(); ++reverse) {
-        const auto expected = std::wstring_view(order[order.size() - reverse - 1]);
-        SendKey(window, VK_UP);
-        focused = WaitForFocus(automation, window, expected, bounds);
-        scroll = WaitForScrollEvidence(
-            scrollEvidencePath, std::wstring_view(focused).substr(7));
-        Require(scroll.rootOffset <= priorOffset + 0.01F,
-                "Reverse traversal increased the Audio Mixer root offset.");
-        priorOffset = scroll.rootOffset;
-        evidence.Record(scenario, L"up", reverse, focused, scroll, bounds, window);
-    }
-    Require(focused == kMasterAutomationId,
-            "Reverse traversal did not restore the true leading Audio Mixer control.");
-    Require(std::abs(priorOffset) <= 0.01F,
-            "Reverse traversal did not restore the true leading scroll boundary.");
-    return order;
+    RECT originalWindow{};
+    Require(GetWindowRect(window, &originalWindow),
+            Win32Error("GetWindowRect(live-four setup)"));
+    const int originalWidth = originalWindow.right - originalWindow.left;
+    const int originalHeight = originalWindow.bottom - originalWindow.top;
+    Require(SetWindowPos(
+                window, nullptr, 0, 0, originalWidth, originalHeight + 600,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) && UpdateWindow(window),
+            Win32Error("SetWindowPos(expanded live-four setup)"));
+    const auto lastSession = FocusElementDirectly(
+        automation, window, UIA_NamePropertyId, kLastSessionName, bounds);
+    auto scroll = WaitForScrollEvidence(
+        scrollEvidencePath, std::wstring_view(lastSession).substr(7), 0, false);
+    Require(SetWindowPos(
+                window, nullptr, 0, 0, originalWidth, originalHeight,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) && UpdateWindow(window),
+            Win32Error("SetWindowPos(restored live-four setup)"));
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+                const auto current = ParseScrollEvidence(ReadUtf8(scrollEvidencePath));
+                if (!current || current->focus != std::wstring_view(lastSession).substr(7) ||
+                    current->rootOffset <= 0.01F) return false;
+                scroll = *current;
+                return true;
+            }), "Restored four-session extent did not retain the trailing root offset.");
+    (void)WaitForFocus(automation, window, lastSession, bounds);
+    Require(scroll.rootOffset > 0.01F,
+            "Fourth session did not establish a retained nonzero root offset.");
+    const float trailingOffset = scroll.rootOffset;
+    Require(std::isfinite(trailingOffset),
+            "Four-session trailing root maximum was not finite.");
+    evidence.Record(L"live-four", L"seed-last-session", 0,
+                    lastSession, scroll, trailingOffset, bounds, window);
+
+    const auto microphone = FocusElementDirectly(
+        automation, window, UIA_AutomationIdPropertyId,
+        kMicrophoneAutomationId, bounds);
+    scroll = WaitForScrollEvidence(
+        scrollEvidencePath, std::wstring_view(microphone).substr(7), 0, false);
+
+    const auto fourSequence = scroll.sequence;
+    WriteUtf8(controlPath, "full\n");
+    WaitForSemantic(semanticPath, "Application 11");
+    scroll = WaitForScrollEvidence(
+        scrollEvidencePath, L"audio.input.volume.slider", fourSequence + 1, false);
+    WriteUtf8(controlPath, "live-four\n");
+    WaitForSemantic(semanticPath, "Application 03", "Application 04");
+    scroll = WaitForScrollEvidence(
+        scrollEvidencePath, L"audio.input.volume.slider", scroll.sequence + 1, false);
+    (void)WaitForFocus(automation, window, kMicrophoneAutomationId, bounds);
+    Require(scroll.rootOffset > 0.01F &&
+                scroll.rootOffset <= trailingOffset + 0.01F,
+            "Microphone setup did not retain the live nonzero scroll state.");
+    Require(std::isfinite(scroll.rootOffset),
+            "Microphone retained a non-finite root offset.");
+    const float microphoneOffset = scroll.rootOffset;
+    Require(scroll.upTarget == L"audio.master.volume.slider" &&
+                scroll.upRevealable,
+            "Emitted Microphone.Up target was not natively revealable before input.");
+    Require(scroll.upNavigation[1] + scroll.upNavigation[3] <= 0.01F,
+            "Master was not already above the rendered viewport before Up.");
+    evidence.Record(L"live-four", L"microphone-before-up", 1,
+                    microphone, scroll, trailingOffset, bounds, window);
+
+    const auto stableSince = GetTickCount64();
+    Require(WaitUntil(500, [&] {
+                const auto current = ParseScrollEvidence(ReadUtf8(scrollEvidencePath));
+                return GetTickCount64() - stableSince >= 200 && current &&
+                    current->focus == L"audio.input.volume.slider" &&
+                    std::abs(current->rootOffset - microphoneOffset) <= 0.01F;
+            }), "Microphone retained state did not settle after full-motion transition.");
+
+    SendKey(window, VK_UP);
+    const auto focusedMaster = WaitForFocus(
+        automation, window, kMasterAutomationId, bounds);
+    scroll = WaitForScrollEvidence(
+        scrollEvidencePath, std::wstring_view(focusedMaster).substr(7));
+    Require(scroll.direction == L"up" &&
+                scroll.explicitTarget == L"audio.master.volume.slider",
+            "Native host did not consume the exact emitted Microphone.Up edge.");
+    Require(scroll.rootOffset + 0.01F < microphoneOffset,
+            "One Up did not decrease the retained Audio Mixer root offset.");
+    Require(std::abs(scroll.rootOffset) <= 0.01F,
+            "One Up did not restore the true leading Audio Mixer boundary.");
+    Require(std::isfinite(scroll.rootOffset) &&
+                scroll.rootOffset <= trailingOffset + 0.01F,
+            "One Up left root offset outside the four-session safe range.");
+    evidence.Record(L"live-four", L"master-after-up", 2,
+                    focusedMaster, scroll, trailingOffset, bounds, window);
+
+    // Reopen the same stable worker/snapshot. This path used to normalize the
+    // broken offset; it must now preserve an already-correct leading boundary.
+    SendKey(window, VK_ESCAPE);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+                auto currentRoot = RootForWindow(automation, window);
+                return currentRoot && FindByAutomationId(
+                    automation, currentRoot.Get(), kTrayAutomationId);
+            }), "Audio Mixer did not return to its dashboard tray item.");
+    SendKey(window, VK_RETURN);
+    const auto reopenedMaster = WaitForFocus(
+        automation, window, kMasterAutomationId, bounds);
+    scroll = WaitForScrollEvidence(
+        scrollEvidencePath, std::wstring_view(reopenedMaster).substr(7));
+    Require(std::abs(scroll.rootOffset) <= 0.01F,
+            "Reopening Audio Mixer changed its canonical leading offset.");
+    evidence.Record(L"live-four", L"master-after-reopen", 3,
+                    reopenedMaster, scroll, trailingOffset, bounds, window);
 }
 
 void RunScenario(
     const Arguments& arguments,
-    const std::wstring_view name,
-    const float interfaceScale,
-    const float textScale,
-    const bool constrained,
-    const bool churn,
     IUIAutomation* automation,
     Evidence& evidence) {
     TemporaryInstallation installation(
-        arguments.installation, arguments.fixtureWorker, interfaceScale, textScale);
+        arguments.installation, arguments.fixtureWorker, 1.0F, 1.0F);
     const auto quoted = [](const fs::path& path) {
         return L"\"" + path.wstring() + L"\"";
     };
@@ -619,81 +727,43 @@ void RunScenario(
                     automation, root.Get(), kTrayAutomationId);
             }), "Audio Mixer did not appear in the production dashboard.");
     SendKey(window, VK_RETURN);
-    WaitForSemantic(installation.SnapshotPath(), "Application 11");
+    WaitForSemantic(installation.SnapshotPath(), "Application 03", "Application 04");
     RECT initialBounds{};
     const auto initialFocus = WaitForFocus(
         automation, window, kMasterAutomationId, initialBounds);
     const auto appliedScale = WaitForScrollEvidence(
         installation.ScrollEvidencePath(), std::wstring_view(initialFocus).substr(7));
     const float expectedPixelScale =
-        static_cast<float>(std::max(1U, GetDpiForWindow(window))) / 96.0F *
-        interfaceScale;
+        static_cast<float>(std::max(1U, GetDpiForWindow(window))) / 96.0F;
     Require(std::abs(appliedScale.pixelScale - expectedPixelScale) <= 0.01F,
             "Production host applied pixel scale " +
                 std::to_string(appliedScale.pixelScale) + " instead of " +
                 std::to_string(expectedPixelScale) + ".");
-    Require(std::abs(appliedScale.textScale - textScale) <= 0.01F,
+    Require(std::abs(appliedScale.textScale - 1.0F) <= 0.01F,
             "Production host applied text scale " +
-                std::to_string(appliedScale.textScale) + " instead of " +
-                std::to_string(textScale) + ".");
-    if (constrained) ResizeConstrained(window);
-    std::vector<std::wstring> order;
+                std::to_string(appliedScale.textScale) + " instead of 1.0.");
     try {
-        order = Traverse(
-            automation, window, name, installation.ScrollEvidencePath(), evidence);
+        ExerciseLiveFourReverseEdge(
+            automation, window, installation.ControlPath(),
+            installation.SnapshotPath(),
+            installation.ScrollEvidencePath(), evidence);
     } catch (...) {
         evidence.Diagnostic(
-            name,
+            L"live-four-scroll", ReadUtf8(installation.ScrollEvidencePath()));
+        evidence.Diagnostic(
+            L"live-four",
             ReadUtf8(installation.LocalAppData() /
                 L"GameBarAlternative" / L"overlay.log"));
         throw;
     }
-    evidence.Semantic(name, L"full", ReadUtf8(installation.SnapshotPath()));
+    evidence.Semantic(
+        L"live-four", L"emitted", ReadUtf8(installation.SnapshotPath()));
+    const auto overlayLog = ReadUtf8(
+        installation.LocalAppData() / L"GameBarAlternative" / L"overlay.log");
+    Require(overlayLog.find("value_clamped [audio.root]") == std::string::npos,
+            "Audio Mixer cycling still normalized a stale retained root offset.");
     evidence.Diagnostic(
-        name,
-        ReadUtf8(installation.LocalAppData() /
-            L"GameBarAlternative" / L"overlay.log"));
-
-    if (churn) {
-        RECT bounds{};
-        for (std::size_t step = 1; step <= 7; ++step) {
-            SendKey(window, VK_DOWN);
-            (void)WaitForFocus(
-                automation, window, std::wstring_view(order[step]), bounds);
-        }
-        const auto stableFocus = WaitForFocus(
-            automation, window, std::wstring_view(order[7]), bounds);
-        auto scroll = WaitForScrollEvidence(
-            installation.ScrollEvidencePath(), std::wstring_view(stableFocus).substr(7));
-        const auto fullSequence = scroll.sequence;
-        WriteUtf8(installation.ControlPath(), "remove-unrelated\n");
-        WaitForSemantic(installation.SnapshotPath(), "Application 10", "Application 11");
-        (void)WaitForFocus(automation, window, std::wstring_view(stableFocus), bounds);
-        scroll = WaitForScrollEvidence(
-            installation.ScrollEvidencePath(), std::wstring_view(stableFocus).substr(7),
-            fullSequence + 1);
-        evidence.Record(name, L"remove-unrelated", 0, stableFocus, scroll, bounds, window);
-        evidence.Semantic(name, L"remove-unrelated", ReadUtf8(installation.SnapshotPath()));
-
-        WriteUtf8(installation.ControlPath(), "remove-focused\n");
-        WaitForSemantic(installation.SnapshotPath(), "Application 06", "Application 05");
-        const auto fallback = WaitForFocus(
-            automation, window, std::wstring_view(order[8]), bounds);
-        scroll = WaitForScrollEvidence(
-            installation.ScrollEvidencePath(), std::wstring_view(fallback).substr(7),
-            scroll.sequence + 1);
-        evidence.Record(name, L"remove-focused", 0, fallback, scroll, bounds, window);
-        evidence.Semantic(name, L"remove-focused", ReadUtf8(installation.SnapshotPath()));
-
-        WriteUtf8(installation.ControlPath(), "added\n");
-        WaitForSemantic(installation.SnapshotPath(), "Application 12");
-        (void)WaitForFocus(automation, window, std::wstring_view(fallback), bounds);
-        scroll = WaitForScrollEvidence(
-            installation.ScrollEvidencePath(), std::wstring_view(fallback).substr(7),
-            scroll.sequence + 1);
-        evidence.Record(name, L"added", 0, fallback, scroll, bounds, window);
-        evidence.Semantic(name, L"added", ReadUtf8(installation.SnapshotPath()));
-    }
+        L"live-four", overlayLog);
 
     Require(PostMessageW(window, WM_CLOSE, 0, 0), Win32Error("PostMessageW(WM_CLOSE)"));
     Require(WaitForSingleObject(host.Process(), kStepTimeoutMilliseconds) == WAIT_OBJECT_0,
@@ -707,12 +777,7 @@ void Run(const Arguments& arguments) {
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
             "Windows UI Automation client is unavailable.");
     Evidence evidence(arguments.evidenceRoot, automation.Get());
-    RunScenario(arguments, L"preferred-100", 1.0F, 1.0F, false, true,
-                automation.Get(), evidence);
-    RunScenario(arguments, L"constrained-100", 1.0F, 1.0F, true, false,
-                automation.Get(), evidence);
-    RunScenario(arguments, L"preferred-150", 1.25F, 1.5F, false, false,
-                automation.Get(), evidence);
+    RunScenario(arguments, automation.Get(), evidence);
     evidence.Commit();
 }
 

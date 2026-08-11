@@ -231,6 +231,8 @@ internal static class Program
         {
             IEnumerable<int> indices = state switch
             {
+                // Exact provider-shaped state used by the DLV-049 native host fixture.
+                "live-four" => Enumerable.Range(0, 4),
                 "full" => Enumerable.Range(0, 12),
                 "remove-unrelated" => Enumerable.Range(0, 11),
                 "remove-focused" => Enumerable.Range(0, 12).Where(index => index != 5),

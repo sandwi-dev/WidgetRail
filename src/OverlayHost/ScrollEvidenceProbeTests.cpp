@@ -189,6 +189,42 @@ void AtomicReplacementSerializesCurrentTarget() {
           "target and direction updates are replacement-owned");
 }
 
+void AuthoredUpTargetSerializesBeforeInput() {
+    TemporaryDirectory temporary;
+    const auto destination = temporary.path() / L"edge.txt";
+    gba::ScrollEvidenceProbe probe;
+    Check(probe.Enable(destination), "edge evidence destination enables probe");
+    auto snapshot = Snapshot();
+    snapshot.root.id = L"audio.root";
+    snapshot.root.kind = L"scroll";
+    gba::WidgetNode microphone;
+    microphone.id = L"audio.input.volume.slider";
+    microphone.kind = L"slider";
+    microphone.focusUp = L"audio.master.volume.slider";
+    gba::WidgetNode master;
+    master.id = L"audio.master.volume.slider";
+    master.kind = L"slider";
+    snapshot.root.children = {master, microphone};
+    auto result = Result(microphone.id, 4.0F);
+    result.navigationRects.emplace(
+        master.id, gba::declarative::Rect{4.0F, -52.0F, 44.0F, 44.0F});
+    result.navigationEnabled.emplace(master.id, true);
+    result.revealableFocusIds.emplace(master.id);
+    Check(probe.Publish(
+              L"audio-mixer", snapshot, result, microphone.id, 1.25F, 1.0F) ==
+              gba::ScrollEvidencePublishResult::Published,
+          "authored edge frame publishes before input");
+    const auto payload = ReadUtf8(destination);
+    Check(payload.find("upTarget=audio.master.volume.slider\n") !=
+              std::string::npos,
+          "authored Up target is serialized exactly");
+    Check(payload.find("upRevealable=true\n") != std::string::npos,
+          "authored Up target retains native revealability");
+    Check(payload.find("upNavigation=4.000000,-52.000000,44.000000,44.000000\n") !=
+              std::string::npos,
+          "authored Up target retains offscreen logical geometry");
+}
+
 } // namespace
 
 int main() {
@@ -196,6 +232,7 @@ int main() {
         DisabledProbeDoesNotWrite();
         InvalidAndUnavailableFramesFailClosed();
         AtomicReplacementSerializesCurrentTarget();
+        AuthoredUpTargetSerializesBeforeInput();
         std::cout << "ScrollEvidenceProbeTests passed (" << checks << " checks)\n";
         return 0;
     } catch (const std::exception& error) {

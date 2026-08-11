@@ -1202,6 +1202,8 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
 
     auto master = FixedButton(L"audio.master.volume.slider");
     auto input = FixedButton(L"audio.input.volume.slider");
+    master.focusDown = input.id;
+    input.focusUp = master.id;
     auto sessions = Node(L"audio.sessions.list", L"stack");
     sessions.baseStyle = {
         {L"gap", Length(6)},
@@ -1277,6 +1279,33 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
         Near(priorOffset, 0.0F,
              "reverse audio traversal restores the true audio leading edge");
     }
+
+    // The live failure arrived after a larger retained session surface had
+    // reconciled to four sessions. Begin with a trailing retained offset,
+    // replace the content extent, and render directly at Microphone: Master
+    // must remain an admissible authored Up target before any cycle/reopen.
+    DeclarativeRenderer retained{nullptr, nullptr, nullptr};
+    const auto trailing = retained.Render(
+        nullptr, snapshot, focusOrder.back(), {0.0F, 0.0F, 520.0F, 464.0F});
+    Check(trailing.scrollOffsets.at(L"audio.root") > 0.0F,
+          "large audio surface seeds a retained trailing offset");
+    auto liveFour = snapshot;
+    liveFour.root.children[5].children.resize(4);
+    const auto microphone = retained.Render(
+        nullptr, liveFour, focusOrder[1], {0.0F, 0.0F, 520.0F, 464.0F});
+    Check(microphone.revealableFocusIds.contains(focusOrder[0]),
+          "four-session Microphone retains offscreen Master revealability");
+    Check(microphone.focusRects.contains(focusOrder[1]) &&
+              microphone.scrollOffsets.at(L"audio.root") > 0.0F,
+          "four-session Microphone begins at a retained nonzero offset");
+    Check(std::none_of(
+              microphone.diagnostics.begin(), microphone.diagnostics.end(),
+              [](const auto& item) { return item.code == L"value_clamped"; }),
+          "four-session reconciliation publishes only canonical retained state");
+    const auto leading = retained.Render(
+        nullptr, liveFour, focusOrder[0], {0.0F, 0.0F, 520.0F, 464.0F});
+    Near(leading.scrollOffsets.at(L"audio.root"), 0.0F,
+         "one authored Up target restores the true four-session leading boundary");
 }
 
 void SegmentedTabsSurviveConstrainedNetworkSurfaces() {
