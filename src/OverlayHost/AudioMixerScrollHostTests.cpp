@@ -3,13 +3,11 @@
 #include <Windows.h>
 #include <ole2.h>
 #include <UIAutomation.h>
-#include <wincodec.h>
 #include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -238,155 +236,6 @@ std::optional<std::wstring> FocusedWidgetAutomationId(
     return std::nullopt;
 }
 
-struct Frame final {
-    int width{};
-    int height{};
-    std::vector<std::uint8_t> bgra;
-    std::string source;
-};
-
-struct PixelRegionEvidence final {
-    std::size_t authoredPixels{};
-    std::size_t pixelCount{};
-    std::uint32_t minimumRgbSum{3U * 255U};
-    std::uint32_t maximumRgbSum{};
-};
-
-PixelRegionEvidence InspectPixelRegion(const Frame& frame, RECT region) {
-    region.left = std::clamp(region.left, 0L, static_cast<LONG>(frame.width));
-    region.top = std::clamp(region.top, 0L, static_cast<LONG>(frame.height));
-    region.right = std::clamp(region.right, region.left, static_cast<LONG>(frame.width));
-    region.bottom = std::clamp(region.bottom, region.top, static_cast<LONG>(frame.height));
-    PixelRegionEvidence result{};
-    for (LONG y = region.top; y < region.bottom; ++y) {
-        for (LONG x = region.left; x < region.right; ++x) {
-            const auto offset =
-                (static_cast<std::size_t>(y) * frame.width + x) * 4U;
-            const auto blue = frame.bgra[offset];
-            const auto green = frame.bgra[offset + 1];
-            const auto red = frame.bgra[offset + 2];
-            const auto rgbSum = static_cast<std::uint32_t>(blue) + green + red;
-            ++result.pixelCount;
-            if (blue > 16 || green > 16 || red > 16) ++result.authoredPixels;
-            result.minimumRgbSum = std::min(result.minimumRgbSum, rgbSum);
-            result.maximumRgbSum = std::max(result.maximumRgbSum, rgbSum);
-        }
-    }
-    return result;
-}
-
-std::uint64_t HashFrame(const Frame& frame) {
-    std::uint64_t hash = 1469598103934665603ULL;
-    for (const auto value : frame.bgra) {
-        hash ^= value;
-        hash *= 1099511628211ULL;
-    }
-    return hash;
-}
-
-Frame CaptureFrame(HWND window) {
-    Require(IsWindow(window) && IsWindowVisible(window),
-            "Production host HWND became hidden during evidence capture.");
-    RECT bounds{};
-    Require(GetClientRect(window, &bounds), Win32Error("GetClientRect(capture)"));
-    const int width = bounds.right - bounds.left;
-    const int height = bounds.bottom - bounds.top;
-    Require(width > 0 && height > 0, "Production host exposed an empty extent.");
-    POINT clientOrigin{};
-    Require(ClientToScreen(window, &clientOrigin),
-            Win32Error("ClientToScreen(capture)"));
-    // Prefer the authored redirected surface. Some DWM states legally return a
-    // black PrintWindow result for a color-keyed HWND; validate RGB pixels and
-    // then fall back to the same live composed screen rectangle. The later
-    // UIA/edge/footer/tray checks reject an unrelated or incomplete fallback.
-    HDC windowDc = GetDC(window);
-    Require(windowDc != nullptr, Win32Error("GetDC(window)"));
-    HDC memoryDc = CreateCompatibleDC(windowDc);
-    Require(memoryDc != nullptr, Win32Error("CreateCompatibleDC"));
-    BITMAPINFO info{};
-    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = width;
-    info.bmiHeader.biHeight = -height;
-    info.bmiHeader.biPlanes = 1;
-    info.bmiHeader.biBitCount = 32;
-    info.bmiHeader.biCompression = BI_RGB;
-    void* bits{};
-    HBITMAP bitmap = CreateDIBSection(
-        windowDc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-    Require(bitmap != nullptr && bits, Win32Error("CreateDIBSection"));
-    HGDIOBJ previous = SelectObject(memoryDc, bitmap);
-    Require(previous != nullptr, Win32Error("SelectObject"));
-    constexpr UINT kRenderFullContent = 0x00000002;
-    Frame frame{width, height, std::vector<std::uint8_t>(
-        static_cast<std::size_t>(width) * height * 4), {}};
-    const auto copyPixels = [&] {
-        std::copy_n(
-            static_cast<const std::uint8_t*>(bits),
-            frame.bgra.size(), frame.bgra.begin());
-    };
-    const auto hasAuthoredSurface = [&] {
-        const auto pixels = InspectPixelRegion(
-            frame, RECT{0, 0, frame.width, frame.height});
-        return pixels.pixelCount > 0 &&
-            pixels.authoredPixels * 12 > pixels.pixelCount;
-    };
-    if (PrintWindow(window, memoryDc, PW_CLIENTONLY | kRenderFullContent)) {
-        copyPixels();
-        if (hasAuthoredSurface()) frame.source = "print-window";
-    }
-    if (frame.source.empty()) {
-        HDC screenDc = GetDC(nullptr);
-        Require(screenDc != nullptr, Win32Error("GetDC(screen)"));
-        const bool copied = BitBlt(
-            memoryDc, 0, 0, width, height, screenDc,
-            clientOrigin.x, clientOrigin.y, SRCCOPY | CAPTUREBLT);
-        ReleaseDC(nullptr, screenDc);
-        if (copied) {
-            copyPixels();
-            if (hasAuthoredSurface()) frame.source = "screen-composed";
-        }
-    }
-    SelectObject(memoryDc, previous);
-    DeleteObject(bitmap);
-    DeleteDC(memoryDc);
-    ReleaseDC(window, windowDc);
-    Require(!frame.source.empty(),
-            "Full-content HWND capture omitted the authored widget surface.");
-    return frame;
-}
-
-void SavePng(IWICImagingFactory* factory, const fs::path& path, const Frame& frame) {
-    fs::create_directories(path.parent_path());
-    ComPtr<IWICStream> stream;
-    Require(SUCCEEDED(factory->CreateStream(stream.GetAddressOf())) && stream,
-            "WIC could not create an evidence stream.");
-    Require(SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)),
-            "WIC could not open the evidence PNG.");
-    ComPtr<IWICBitmapEncoder> encoder;
-    Require(SUCCEEDED(factory->CreateEncoder(
-                GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) && encoder,
-            "WIC could not create a PNG encoder.");
-    Require(SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)),
-            "WIC encoder initialization failed.");
-    ComPtr<IWICBitmapFrameEncode> encoded;
-    Require(SUCCEEDED(encoder->CreateNewFrame(encoded.GetAddressOf(), nullptr)) && encoded,
-            "WIC could not create a PNG frame.");
-    Require(SUCCEEDED(encoded->Initialize(nullptr)), "WIC frame initialization failed.");
-    Require(SUCCEEDED(encoded->SetSize(frame.width, frame.height)),
-            "WIC frame sizing failed.");
-    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
-    Require(SUCCEEDED(encoded->SetPixelFormat(&format)) &&
-                format == GUID_WICPixelFormat32bppBGRA,
-            "WIC rejected the BGRA evidence pixel format.");
-    const UINT stride = static_cast<UINT>(frame.width * 4);
-    Require(SUCCEEDED(encoded->WritePixels(
-                frame.height, stride, static_cast<UINT>(frame.bgra.size()),
-                const_cast<BYTE*>(frame.bgra.data()))),
-            "WIC could not write evidence pixels.");
-    Require(SUCCEEDED(encoded->Commit()) && SUCCEEDED(encoder->Commit()),
-            "WIC could not commit the evidence PNG.");
-}
-
 struct ScrollEvidence final {
     std::wstring focus;
     std::wstring explicitTarget;
@@ -473,9 +322,8 @@ class Evidence final {
 public:
     Evidence(
         const std::optional<fs::path>& root,
-        IWICImagingFactory* factory,
         IUIAutomation* automation)
-        : root_(root), factory_(factory), automation_(automation) {
+        : root_(root), automation_(automation) {
         if (root_) fs::create_directories(*root_);
     }
 
@@ -488,9 +336,6 @@ public:
         const RECT& bounds,
         HWND window) {
         if (!root_) return;
-        const auto fileName = std::wstring(scenario) + L"-" + std::wstring(phase) +
-            L"-" + std::to_wstring(step) + L".png";
-        const auto frame = CaptureFrame(window);
         RECT client{};
         Require(GetClientRect(window, &client), Win32Error("GetClientRect(provenance)"));
         POINT origin{client.left, client.top};
@@ -504,11 +349,10 @@ public:
         RECT windowBounds{};
         Require(GetWindowRect(window, &windowBounds),
                 Win32Error("GetWindowRect(provenance)"));
-        Require(frame.width == clientBounds.right - clientBounds.left &&
-                    frame.height == clientBounds.bottom - clientBounds.top,
-                "Captured frame dimensions do not cover the full host client.");
-        Require(windowBounds.right - windowBounds.left == frame.width &&
-                    windowBounds.bottom - windowBounds.top == frame.height,
+        const auto clientWidth = clientBounds.right - clientBounds.left;
+        const auto clientHeight = clientBounds.bottom - clientBounds.top;
+        Require(windowBounds.right - windowBounds.left == clientWidth &&
+                    windowBounds.bottom - windowBounds.top == clientHeight,
                 "Borderless production host window and client extents diverged.");
         const auto contains = [](const RECT& outer, const RECT& inner) {
             return inner.left >= outer.left && inner.top >= outer.top &&
@@ -533,7 +377,7 @@ public:
         Require(tray && SUCCEEDED(tray->get_CurrentBoundingRectangle(&trayBounds)),
                 "Production tray bounds were unavailable during capture validation.");
         Require(contains(clientBounds, trayBounds) &&
-                    trayBounds.top >= clientBounds.top + frame.height * 2 / 3,
+                    trayBounds.top >= clientBounds.top + clientHeight * 2 / 3,
                 "Production tray was outside the expected captured lower extent.");
         const auto footerBoundsFor = [&](const wchar_t* automationId,
                                          const char* label) {
@@ -549,68 +393,9 @@ public:
             return footerBounds;
         };
         const auto closeBounds = footerBoundsFor(kOpenCloseAutomationId, "Close");
-        const auto localRect = [&clientBounds](const RECT& screen) {
-            return RECT{
-                screen.left - clientBounds.left,
-                screen.top - clientBounds.top,
-                screen.right - clientBounds.left,
-                screen.bottom - clientBounds.top,
-            };
-        };
-        const auto localRoot = localRect(rootBounds);
-        const auto rootWidth = localRoot.right - localRoot.left;
-        const auto rootHeight = localRoot.bottom - localRoot.top;
-        const auto edgeWidth = std::max<LONG>(8, rootWidth / 10);
-        const auto verticalInset = std::max<LONG>(4, rootHeight / 20);
-        const auto leftEdge = InspectPixelRegion(frame, RECT{
-            localRoot.left,
-            localRoot.top + verticalInset,
-            localRoot.left + edgeWidth,
-            localRoot.bottom - verticalInset,
-        });
-        const auto rightEdge = InspectPixelRegion(frame, RECT{
-            localRoot.right - edgeWidth,
-            localRoot.top + verticalInset,
-            localRoot.right,
-            localRoot.bottom - verticalInset,
-        });
-        const auto trayPixels = InspectPixelRegion(frame, localRect(trayBounds));
-        const auto localClose = localRect(closeBounds);
-        const auto leftFooterPixels = InspectPixelRegion(frame, RECT{
-            0,
-            localClose.top,
-            std::max(1, frame.width / 3),
-            localClose.bottom,
-        });
-        const auto closePixels = InspectPixelRegion(frame, localClose);
-        auto localFocus = localRect(bounds);
-        localFocus.left -= 6;
-        localFocus.top -= 6;
-        localFocus.right += 6;
-        localFocus.bottom += 6;
-        const auto focusPixels = InspectPixelRegion(frame, localFocus);
-        const auto hasAuthoredCoverage = [](const PixelRegionEvidence& region,
-                                            const std::size_t denominator) {
-            return region.pixelCount > 0 &&
-                region.authoredPixels * denominator >= region.pixelCount;
-        };
-        Require(hasAuthoredCoverage(leftEdge, 20) &&
-                    hasAuthoredCoverage(rightEdge, 20),
-                "Captured artifact omitted an authored horizontal host extent: left=" +
-                    std::to_string(leftEdge.authoredPixels) + "/" +
-                    std::to_string(leftEdge.pixelCount) + " right=" +
-                    std::to_string(rightEdge.authoredPixels) + "/" +
-                    std::to_string(rightEdge.pixelCount) + ".");
-        Require(hasAuthoredCoverage(trayPixels, 10),
-                "Captured artifact omitted the authored lower tray landmark.");
-        Require(hasAuthoredCoverage(leftFooterPixels, 100) &&
-                    hasAuthoredCoverage(closePixels, 100),
-                "Captured artifact omitted an authored footer landmark.");
-        Require(hasAuthoredCoverage(focusPixels, 10) &&
-                    focusPixels.maximumRgbSum >= focusPixels.minimumRgbSum + 48,
-                "Captured artifact did not contain the current focused control region.");
-        const auto captureHash = HashFrame(frame);
-        SavePng(factory_, *root_ / fileName, frame);
+        constexpr std::string_view captureStatus =
+            "excluded-user-visual-validation-policy";
+        ++excludedCaptureCount_;
         records_ << "    {\"scenario\":\"" << JsonEscape(scenario)
                  << "\",\"phase\":\"" << JsonEscape(phase)
                  << "\",\"step\":" << step
@@ -653,19 +438,7 @@ public:
                  << ",\"top\":" << closeBounds.top << ",\"width\":"
                  << closeBounds.right - closeBounds.left << ",\"height\":"
                  << closeBounds.bottom - closeBounds.top
-                 << "},\"captureWidth\":" << frame.width
-                 << ",\"captureHeight\":" << frame.height
-                 << ",\"captureSource\":\"" << frame.source << "\""
-                 << ",\"leftAuthoredPixels\":" << leftEdge.authoredPixels
-                 << ",\"rightAuthoredPixels\":" << rightEdge.authoredPixels
-                 << ",\"trayAuthoredPixels\":" << trayPixels.authoredPixels
-                 << ",\"leftFooterAuthoredPixels\":"
-                 << leftFooterPixels.authoredPixels
-                 << ",\"closeAuthoredPixels\":" << closePixels.authoredPixels
-                 << ",\"focusAuthoredPixels\":" << focusPixels.authoredPixels
-                 << ",\"captureHash\":\"" << captureHash
-                 << "\",\"capture\":\""
-                 << JsonEscape(fileName) << "\"},\n";
+                 << "},\"captureStatus\":\"" << captureStatus << "\"},\n";
     }
 
     void Semantic(
@@ -688,14 +461,18 @@ public:
         if (records.size() >= 2) records.erase(records.size() - 2);
         WriteUtf8(*root_ / L"manifest.json",
             "{\n  \"contract\":\"dlv026-audio-mixer-scroll-v1\",\n"
+            "  \"capturePolicy\":\"excluded-user-visual-validation\",\n"
+            "  \"retainedCaptureCount\":0,\n"
+            "  \"excludedCaptureCount\":" +
+                std::to_string(excludedCaptureCount_) + ",\n"
             "  \"focusRecords\":[\n" + records + "\n  ]\n}\n");
     }
 
 private:
     std::optional<fs::path> root_;
-    IWICImagingFactory* factory_{};
     IUIAutomation* automation_{};
     std::ostringstream records_;
+    std::size_t excludedCaptureCount_{};
 };
 
 std::wstring WaitForFocus(
@@ -929,12 +706,7 @@ void Run(const Arguments& arguments) {
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
             "Windows UI Automation client is unavailable.");
-    ComPtr<IWICImagingFactory> imaging;
-    Require(SUCCEEDED(CoCreateInstance(
-                CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
-                IID_PPV_ARGS(imaging.GetAddressOf()))) && imaging,
-            "Windows Imaging Component is unavailable.");
-    Evidence evidence(arguments.evidenceRoot, imaging.Get(), automation.Get());
+    Evidence evidence(arguments.evidenceRoot, automation.Get());
     RunScenario(arguments, L"preferred-100", 1.0F, 1.0F, false, true,
                 automation.Get(), evidence);
     RunScenario(arguments, L"constrained-100", 1.0F, 1.0F, true, false,

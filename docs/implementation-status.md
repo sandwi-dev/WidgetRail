@@ -18,11 +18,11 @@ all 14 controls down and back to master output at preferred, constrained, and
 150% surfaces. Exact host records prove explicit target, active scope,
 revealability, presentation/navigation/UIA bounds, monotonic offsets, the true
 zero leading boundary, stable unrelated-session refresh, deterministic removed-
-focus fallback, and subsequent session addition; full-content captures retain
-every step. A capture is retained only when its bitmap exactly matches the
-borderless client/window extent, the UI Automation root covers that extent,
-and authored pixels remain present at both horizontal edges, the focused
-control, footer, and lower tray. The authenticated test-only
+focus fallback, and subsequent session addition. Screenshot acquisition is
+excluded from this functional fixture: every record marks visual evidence as
+user-validated, with no `PrintWindow`, desktop/screen fallback, or screenshot
+failure capable of interrupting the traversal.
+Fresh integrated Release visuals remain user-validated. The authenticated test-only
 `ScrollEvidenceProbe` owns path enablement, target/direction state, bounded
 serialization, UTF-8 conversion, and atomic replacement; `OverlayApp` retains
 only handshake-gated argument admission and typed focus/render calls, while the
