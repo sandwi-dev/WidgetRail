@@ -575,13 +575,13 @@ suite ran.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
-**State:** Done
+**State:** Integrated candidate; product acceptance withdrawn after live failure
 **Closing commits:** `979de24`, `68efc70`, corrected by `9cc633a`
 **Integrated on `main`:** `4957101`
 
-**Reviewer disposition:** Accepted at deterministic functional and freshly
-packaged Release level; live controller/visual confirmation remains with the
-user. The production focus graph was valid, but scale conversion could place a
+**Reviewer disposition:** Rejected as a complete product fix after the user
+reproduced the reverse dead end with both keyboard and controller in the freshly
+packaged Release. The candidate addressed one real scale-conversion boundary: a
 Slider edge no more than one native raster pixel beyond its otherwise matching
 card clip, causing the host to reject later offscreen controls as irrevealable.
 One scale-aware native-pixel tolerance now applies to that fixed-edge test while
@@ -592,8 +592,13 @@ traversal at preferred, constrained, and 150% surfaces, zero leading offset on
 return to master output, plus unrelated removal, focused removal with nearest
 fallback, and session addition. Direct renderer boundary coverage and the
 authenticated production-HWND/UIA fixture passed; invalid capture artifacts
-are not acceptance evidence. Main Release rebuilt successfully with tests
-skipped after review and is running from `4957101` for the user's live check.
+are not acceptance evidence. That fixture begins with a fully populated healthy
+12-session snapshot and did not reproduce the user's live four-session state.
+When cycling away and back, the product becomes navigable after moving upward
+slightly; the live log records `value_clamped [audio.root] scrollOffset ...
+outside its safe range` on return. DLV-049 owns the missing live-edge and retained-
+state diagnosis and correction. The integrated tolerance remains candidate code,
+not evidence that GBA-003 is fixed.
 
 ## Widgets lane
 
@@ -2058,12 +2063,12 @@ commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
-not be reset or overwritten. DLV-026 is accepted and integrated; DLV-021 is
-Assigned on its closing commit and is the active visible geometry milestone. A
+not be reset or overwritten. DLV-026 is integrated but failed live product
+acceptance; DLV-021 remains Assigned and must reach its coherent commit, then
+DLV-049 is the next correction before any earlier Ready item. A
 blocked compositor milestone does not authorize idling the platform lane or
 switching both lanes to backend refactors. DLV-015 and DLV-016 are the two safe
-independent Ready items currently available; a third is deliberately not
-manufactured because DLV-006 is the higher-priority serialized visible
+independent later items; DLV-006 is the higher-priority serialized visible
 checkpoint after DLV-021, DLV-011 awaits that shared baseline, and DLV-025
 remains user-decision blocked.
 
@@ -2253,7 +2258,8 @@ real-product temporal evidence before escalating.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
-**State:** Done; accepted and integrated as `4957101`
+**State:** Integrated as `4957101`; acceptance withdrawn after live keyboard and
+controller failure; correction assigned as DLV-049
 **Baseline:** accepted visible-priority main commit `8028b83`
 **Closing commits:** `979de24`, `68efc70`, corrected by `9cc633a`
 **Dependencies:** DLV-003 and DLV-029; independent of blocked DLV-025
@@ -2336,6 +2342,68 @@ capture matrix. No aggregate.
 
 **Stop/escalate when:** the defect is proven to be product-specific composition
 with no shared geometry cause, or correction changes a public layout contract.
+
+### DLV-049 — Correct the live Audio Mixer reverse-scroll state
+
+**State:** Ready immediately after DLV-021; execute before DLV-015
+**Baseline:** closing commit of DLV-021 plus integrated DLV-026 candidate
+`4957101`
+**Dependencies:** DLV-021 only for same-lane order; independent of blocked
+DLV-025
+**Owner:** platform lane over emitted-snapshot inspection, native focus target
+admission, retained scroll state, layout/extent reconciliation, and the smallest
+production-host Audio Mixer fixture; managed widget source remains widgets-owned
+
+**Visible outcome:** Without cycling away and back, Up from the focused
+Microphone Slider returns through the device section to Master output and the
+viewport follows it in the user's four-session Audio Mixer state. Returning to
+the widget must not be required to repair navigation or unexpectedly normalize
+an invalid offset.
+
+**Objective:** Reproduce the exact live failure that DLV-026's healthy static
+12-session fixture missed, prove whether the emitted `audio.input.volume.slider`
+Up edge names the intended target, and correct the owning native retained-state/
+reveal path when that edge is valid.
+
+**In scope:** start from the real staged Audio Mixer worker/provider-shaped
+snapshot with four application sessions; retain the live sequence where the
+Microphone Slider is at the leading visible edge and Master is above the
+viewport; record the emitted explicit Up target before host processing, current
+focus ID, active scope, root offset and maximum, viewport/target bounds, and
+revealability before and after one Up; reproduce without screenshots; compare
+the same state before and after cycling away/back; reconcile offsets and focus
+admission across snapshot arrival, content-extent change, and widget extent
+transition; remove or supersede DLV-026 fixture assumptions that cannot detect
+this state.
+
+**Out of scope:** controller-versus-keyboard routing changes, capture/screenshot
+harness work, generic scroll redesign, per-widget pixel offsets, provider or
+audio-capability behavior, managed Audio Mixer edits without planner
+reassignment, DLV-021 geometry work, or another broad traversal matrix.
+
+**Acceptance criteria:** the retained live-shaped evidence first states whether
+`Microphone.Up` is present and exact in the emitted snapshot. If it is valid,
+the host admits Master as revealable, moves focus on the first Up, decreases the
+root offset toward the true leading boundary, and reaches Master without a
+widget cycle under stable content and after the reproduced extent/snapshot
+transition. The stored offset is always finite and within the current measured
+maximum; cycling away/back does not produce `value_clamped` for `audio.root` or
+change navigation viability. Keyboard and controller use the same corrected
+focus result. Other scroll surfaces retain their current behavior.
+
+**Verification:** one bounded live-shaped production-HWND/UIA regression plus
+the smallest directly affected renderer/focus/scroll-state Release tests and a
+production OverlayHost Release build. Begin the regression in the broken
+Microphone/offscreen-Master state; do not derive expected reverse order by first
+walking forward from Master. No screenshots, capture work, aggregate, broad
+scale matrix, unrelated widget suite, or repeated full traversal run. After
+integration, launch the fresh main Release for the user's immediate functional
+check.
+
+**Stop/escalate when:** the emitted live snapshot lacks or misstates the Up edge;
+preserve the exact snapshot/evidence and report it for an immediate widgets-lane
+correction instead of adding a native fallback. Also stop for public protocol
+changes or a defect inseparable from the blocked compositor architecture.
 
 ### DLV-015 — Add deterministic real-host accessibility proof
 
