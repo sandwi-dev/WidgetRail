@@ -56,6 +56,35 @@ internal static class RunningAppScenarios
         await disposal.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
+    internal static Task NativeWindowVisitsAreBoundedBeforeEligibility()
+    {
+        if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+        var bound = WindowsRunningAppObserver.MaximumTopLevelWindowVisits;
+        foreach (var count in new[] { bound - 1, bound, bound + 1 })
+        {
+            var ineligible = new WindowReader(count, eligible: false);
+            var observations = new WindowsRunningAppObserver(ineligible)
+                .Observe(CancellationToken.None);
+            Assert.Equal(Math.Min(count, bound), ineligible.Visited);
+            Assert.Equal(0, ineligible.ProcessOpenAttempts);
+            Assert.Equal(0, observations.Count);
+        }
+
+        var eligible = new WindowReader(bound + 1, eligible: true);
+        _ = new WindowsRunningAppObserver(eligible).Observe(CancellationToken.None);
+        Assert.Equal(bound, eligible.Visited);
+        Assert.Equal(bound, eligible.ProcessOpenAttempts);
+
+        var lateCandidate = new WindowReader(bound + 1, eligible: true,
+            candidateWindow: bound + 1);
+        var late = new WindowsRunningAppObserver(lateCandidate)
+            .Observe(CancellationToken.None);
+        Assert.Equal(bound, lateCandidate.Visited);
+        Assert.Equal(bound, lateCandidate.ProcessOpenAttempts);
+        Assert.Equal(0, late.Count);
+        return Task.CompletedTask;
+    }
+
     private sealed class Observer(IReadOnlyList<WindowsRunningAppObservation> values) :
         IWindowsRunningAppObserver
     {
@@ -79,6 +108,33 @@ internal static class RunningAppScenarios
             Started.TrySetResult();
             Release.Wait();
             return [];
+        }
+    }
+
+    private sealed class WindowReader(
+        int count,
+        bool eligible,
+        int? candidateWindow = null) : IWindowsRunningWindowReader
+    {
+        internal int Visited { get; private set; }
+        internal int ProcessOpenAttempts { get; private set; }
+
+        public void Enumerate(Func<IntPtr, bool> visitor)
+        {
+            for (var index = 1; index <= count; index++)
+            {
+                Visited++;
+                if (!visitor((IntPtr)index)) break;
+            }
+        }
+
+        public WindowsRunningAppObservation? Inspect(IntPtr window)
+        {
+            if (!eligible) return null;
+            ProcessOpenAttempts++;
+            return window.ToInt32() == candidateWindow
+                ? new("stable-late", "instance-late")
+                : null;
         }
     }
 

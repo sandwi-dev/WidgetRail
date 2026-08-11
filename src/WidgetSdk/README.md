@@ -273,8 +273,12 @@ refresh operation rather than creating a per-source refresh pipeline.
 `system.apps.running.read.v1` grant. It returns at most 64 sanitized candidates
 that the trusted host mapped exactly to current installed SavedIds plus one
 short-lived revision. Call `ConfirmRunningAsync(savedId, revision)` before a
-durable add. Neither method exposes process/window/path identity or grants
-launch authority, and ordinary catalog access remains independently consented.
+durable add. A non-null confirmation is accepted only when its SavedId exactly
+matches the request and its AppId, SavedId, kind, display name, and source label
+pass the same closed validation as paged/resolved app-library items; otherwise
+the SDK throws `WidgetCapabilityException` with `malformed_response`. Neither
+method exposes process/window/path identity or grants launch authority, and
+ordinary catalog access remains independently consented.
 
 Protocol v14 also supplies `WidgetArtworkHandle`, `UI.Artwork`, and
 `ButtonElement.LeadingArtwork`. Handles are bounded opaque identities—not URLs

@@ -102,12 +102,15 @@ automatic game.
 **Add running app** is a separate optional-consent route. It performs one
 bounded observation only when opened or refreshed and shows only visible
 programs that map one-to-one to a current normalized registration. Duplicate
-windows collapse to one row. Automatic games and identities already retained
+windows collapse to one row; the host visits at most 256 top-level windows and
+returns at most 64 candidates. Automatic games and identities already retained
 as recent, hidden, or manual rows are disabled rather than duplicated. Adding
 an Application rechecks the short-lived observation revision and exact current
-SavedId before reusing the same 32-row manual CAS policy. Process/window/path
-identity never enters the worker, private state, or launch path, and a denied or
-unavailable observation does not disable the normal complete-library route.
+SavedId, then applies the complete app-library item validator before reusing the
+same 32-row manual CAS policy. A malformed confirmation cannot change any
+neighbor or private state. Process/window/path identity never enters the worker,
+private state, or launch path, and a denied or unavailable observation does not
+disable the normal complete-library route.
 
 Y hides the focused current game by its exact opaque SavedId. **Hidden** opens a
 bounded nested route containing at most 32 exclusions, each with an explicit

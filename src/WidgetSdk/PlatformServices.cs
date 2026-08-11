@@ -1300,25 +1300,9 @@ public sealed class WidgetAppLibraryService
         var lastPosition = -1;
         foreach (var item in response.Items)
         {
-            if (item is null)
-                throw MalformedResolution();
-            try
-            {
-                ValidateOpaqueId(item.AppId, nameof(response));
-                ValidateOpaqueId(item.SavedId, nameof(response));
-            }
-            catch (ArgumentException)
-            {
-                throw MalformedResolution();
-            }
-            if (!requestedPositions.TryGetValue(item.SavedId, out var position) ||
-                position <= lastPosition || !seen.Add(item.SavedId) ||
-                string.IsNullOrWhiteSpace(item.DisplayName) ||
-                item.DisplayName.Length > 160 || item.DisplayName.Any(char.IsControl) ||
-                string.IsNullOrWhiteSpace(item.SourceAttribution) ||
-                item.SourceAttribution.Length > 64 ||
-                item.SourceAttribution.Any(char.IsControl) ||
-                !Enum.IsDefined(item.Kind))
+            if (!IsValidAppLibraryItem(item) ||
+                !requestedPositions.TryGetValue(item!.SavedId, out var position) ||
+                position <= lastPosition || !seen.Add(item.SavedId))
                 throw MalformedResolution();
             lastPosition = position;
         }
@@ -1361,7 +1345,8 @@ public sealed class WidgetAppLibraryService
             cancellationToken).ConfigureAwait(false);
         if (response is null) throw MalformedRunningObservation();
         if (response.Item is null) return null;
-        if (!string.Equals(response.Item.SavedId, savedId, StringComparison.Ordinal))
+        if (!IsValidAppLibraryItem(response.Item) ||
+            !string.Equals(response.Item.SavedId, savedId, StringComparison.Ordinal))
             throw MalformedRunningObservation();
         return response.Item;
     }
@@ -1404,24 +1389,26 @@ public sealed class WidgetAppLibraryService
         var savedIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in items)
         {
-            if (item is null || !Enum.IsDefined(item.Kind) ||
-                string.IsNullOrWhiteSpace(item.DisplayName) ||
-                item.DisplayName.Length > 160 || item.DisplayName.Any(char.IsControl) ||
-                string.IsNullOrWhiteSpace(item.SourceAttribution) ||
-                item.SourceAttribution.Length > 64 ||
-                item.SourceAttribution.Any(char.IsControl))
+            if (!IsValidAppLibraryItem(item) ||
+                !appIds.Add(item!.AppId) || !savedIds.Add(item.SavedId))
                 throw MalformedPage();
-            try
-            {
-                ValidateOpaqueId(item.AppId, nameof(items));
-                ValidateOpaqueId(item.SavedId, nameof(items));
-            }
-            catch (ArgumentException)
-            {
-                throw MalformedPage();
-            }
-            if (!appIds.Add(item.AppId) || !savedIds.Add(item.SavedId))
-                throw MalformedPage();
+        }
+    }
+
+    private static bool IsValidAppLibraryItem(WidgetAppLibraryItem? item)
+    {
+        if (item is null || !Enum.IsDefined(item.Kind) ||
+            !IsDisplayValue(item.DisplayName, 160) ||
+            !IsDisplayValue(item.SourceAttribution, 64)) return false;
+        try
+        {
+            ValidateOpaqueId(item.AppId, nameof(item));
+            ValidateOpaqueId(item.SavedId, nameof(item));
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 

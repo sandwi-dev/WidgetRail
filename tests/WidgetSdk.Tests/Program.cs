@@ -350,6 +350,39 @@ static async Task AppLibraryPlatformService()
     var confirmed = await widget.AppLibrary.ConfirmRunningAsync(
         running.Items[0].SavedId, running.Revision);
     Assert.Equal("app-current", confirmed?.AppId);
+    var validConfirmation = new WidgetAppLibraryItem(
+        "app-current", "Visible app", WidgetAppLibraryKind.Application)
+    {
+        SavedId = "saved-running",
+        SourceAttribution = "Windows",
+    };
+    var malformedConfirmations = new[]
+    {
+        validConfirmation with { AppId = "bad/app" },
+        validConfirmation with { SavedId = "saved-other" },
+        validConfirmation with { Kind = (WidgetAppLibraryKind)999 },
+        validConfirmation with { DisplayName = "" },
+        validConfirmation with { DisplayName = new string('D', 161) },
+        validConfirmation with { DisplayName = "bad\nname" },
+        validConfirmation with { SourceAttribution = "" },
+        validConfirmation with { SourceAttribution = new string('S', 65) },
+        validConfirmation with { SourceAttribution = "bad\rsource" },
+    };
+    foreach (var malformedConfirmation in malformedConfirmations)
+    {
+        var malformedConfirmationHost = WidgetTestHost.Attach(
+            new CapabilityWidget(),
+            new WidgetTestHostServicesBuilder()
+                .WithResponse(
+                    WidgetAppLibraryCapabilities.ConfirmRunning,
+                    new ConfirmWidgetRunningAppResponse(malformedConfirmation))
+                .Build());
+        var malformedConfirmationError = Assert.Throws<WidgetCapabilityException>(() =>
+            malformedConfirmationHost.AppLibrary.ConfirmRunningAsync(
+                    "saved-running", "running-revision")
+                .GetAwaiter().GetResult());
+        Assert.Equal("malformed_response", malformedConfirmationError.ErrorCode);
+    }
     await widget.AppLibrary.LaunchAsync("app-opaque");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());

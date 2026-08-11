@@ -210,9 +210,13 @@ app** performs one on-demand observation and returns only visible programs that
 the trusted host maps exactly to one current installed registration. The widget
 receives a sanitized name, kind/source label, opaque SavedId, and short-lived
 revision—never a PID, HWND, path, command, AUMID, package identity, or retained
-process handle. Adding rechecks both the observation revision and current
-registration before the existing bounded SavedId CAS mutation; denial leaves
-the ordinary Catalog usable.
+process handle. The host visits at most 256 top-level windows before all
+eligibility filters and returns at most 64 deduplicated candidates. Adding
+rechecks both the observation revision and current registration, and validates
+the complete confirmed item with the ordinary app-library rules before the
+existing bounded SavedId CAS mutation; malformed confirmation leaves every
+existing row and the durable store unchanged. Denial leaves the ordinary
+Catalog usable.
 
 `QueryAsync` accepts a bounded installed/kind/source/sort query, an optional
 opaque cursor with its direction, and a page size of 1–64. It returns

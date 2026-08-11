@@ -14,9 +14,15 @@ internal interface IWindowsRunningAppObserver
     IReadOnlyList<WindowsRunningAppObservation> Observe(CancellationToken cancellationToken);
 }
 
+internal interface IWindowsRunningWindowReader
+{
+    void Enumerate(Func<IntPtr, bool> visitor);
+    WindowsRunningAppObservation? Inspect(IntPtr window);
+}
+
 internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
 {
-    internal const int MaximumWindows = 256;
+    internal const int MaximumTopLevelWindowVisits = 256;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint TokenQuery = 0x0008;
     private const int TokenElevation = 20;
@@ -26,6 +32,12 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private static readonly HashSet<string> ExcludedProcesses = new(
         ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "gbar.exe"],
         StringComparer.OrdinalIgnoreCase);
+    private readonly IWindowsRunningWindowReader _windows;
+
+    internal WindowsRunningAppObserver() : this(new NativeWindowReader()) { }
+
+    internal WindowsRunningAppObserver(IWindowsRunningWindowReader windows) =>
+        _windows = windows ?? throw new ArgumentNullException(nameof(windows));
 
     public IReadOnlyList<WindowsRunningAppObservation> Observe(
         CancellationToken cancellationToken)
@@ -33,31 +45,37 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         if (!OperatingSystem.IsWindows()) return [];
         var observations = new List<WindowsRunningAppObservation>();
         var canceled = false;
-        EnumWindows((window, parameter) =>
+        var visits = 0;
+        _windows.Enumerate(window =>
         {
-            if (observations.Count >= MaximumWindows) return false;
+            visits++;
             if (cancellationToken.IsCancellationRequested)
             {
                 canceled = true;
                 return false;
             }
-            if (!IsWindowVisible(window) || GetWindow(window, GwOwner) != IntPtr.Zero ||
-                IsCloaked(window) || GetWindowThreadProcessId(window, out var processId) == 0 ||
-                processId == 0 || processId == Environment.ProcessId)
-                return true;
-            using var process = OpenProcess(
-                ProcessQueryLimitedInformation, false, processId);
-            if (process.IsInvalid || IsElevated(process)) return true;
-            var identity = PackagedIdentity(process) ?? ExecutableIdentity(process);
-            if (identity is null) return true;
-            if (!GetProcessTimes(process, out var created, out _, out _, out _)) return true;
-            var instance = Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(
-                $"{processId:X8}:{created:X16}:{identity}")));
-            observations.Add(new(identity, instance));
-            return true;
-        }, IntPtr.Zero);
+            if (_windows.Inspect(window) is { } observation)
+                observations.Add(observation);
+            return visits < MaximumTopLevelWindowVisits;
+        });
         if (canceled) cancellationToken.ThrowIfCancellationRequested();
         return observations;
+    }
+
+    private static WindowsRunningAppObservation? InspectWindow(IntPtr window)
+    {
+        if (!IsWindowVisible(window) || GetWindow(window, GwOwner) != IntPtr.Zero ||
+            IsCloaked(window) || GetWindowThreadProcessId(window, out var processId) == 0 ||
+            processId == 0 || processId == Environment.ProcessId)
+            return null;
+        using var process = OpenProcess(ProcessQueryLimitedInformation, false, processId);
+        if (process.IsInvalid || IsElevated(process)) return null;
+        var identity = PackagedIdentity(process) ?? ExecutableIdentity(process);
+        if (identity is null ||
+            !GetProcessTimes(process, out var created, out _, out _, out _)) return null;
+        var instance = Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(
+            $"{processId:X8}:{created:X16}:{identity}")));
+        return new(identity, instance);
     }
 
     private static string? PackagedIdentity(SafeProcessHandle process)
@@ -99,6 +117,18 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         cloaked != 0;
 
     private delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
+
+    private sealed class NativeWindowReader : IWindowsRunningWindowReader
+    {
+        public void Enumerate(Func<IntPtr, bool> visitor)
+        {
+            ArgumentNullException.ThrowIfNull(visitor);
+            _ = EnumWindows((window, _) => visitor(window), IntPtr.Zero);
+        }
+
+        public WindowsRunningAppObservation? Inspect(IntPtr window) =>
+            InspectWindow(window);
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct TokenElevationInfo { internal int TokenIsElevated; }

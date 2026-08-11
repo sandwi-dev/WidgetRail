@@ -32,6 +32,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
     ("Running app route confirms current opaque identity before durable add",
         RunningAppRouteConfirmsCurrentIdentity),
+    ("Malformed running confirmation cannot mutate the durable library",
+        MalformedRunningConfirmationPreservesLibrary),
     ("Catalog removal preserves unrelated rows through restart failure and CAS", CatalogRemovalPreservesLibraryContinuity),
     ("Failed durable removal rolls back the whole Library mutation", FailedRemovalRollsBack),
     ("Removing a focused app selects the nearest surviving row", RemovalSelectsNearestRow),
@@ -137,6 +139,54 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
         item.SavedId == "saved-running"));
     Assert.Equal("app-current", widget.CuratedItems.Single(item =>
         item.SavedId == "saved-running").AppId);
+    await Background(widget);
+}
+
+static async Task MalformedRunningConfirmationPreservesLibrary()
+{
+    var state = new WidgetTestPrivateState();
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = state,
+        Pages =
+        {
+            [0] = Page([App("neighbor", "Neighbor", WidgetAppLibraryKind.Game)], null),
+        },
+        RunningObservation = new([
+            new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
+                "Windows"),
+        ], "running-revision"),
+        ConfirmRunningHandler = request => new WidgetAppLibraryItem(
+            "bad/app", "Visible app", WidgetAppLibraryKind.Application)
+        {
+            SavedId = request.SavedId,
+            SourceAttribution = "Windows",
+        },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+    var revision = state.Revision;
+    var retained = widget.CuratedItems.Select(item => item.SavedId).ToArray();
+
+    await widget.OnActionAsync(new("games.open-running", "games.open-running"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
+        widget.ViewState == GamesAppsViewState.Ready);
+    var tile = ActionSurfaces(Snapshot(widget, 900).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation");
+    WidgetCapabilityException? failure = null;
+    try
+    {
+        await widget.OnActionAsync(new("games.toggle-curation", tile.Id));
+    }
+    catch (WidgetCapabilityException exception)
+    {
+        failure = exception;
+    }
+
+    Assert.Equal("malformed_response", failure?.ErrorCode);
+    Assert.Equal(revision, state.Revision);
+    Assert.SequenceEqual(retained, widget.CuratedItems.Select(item => item.SavedId));
     await Background(widget);
 }
 

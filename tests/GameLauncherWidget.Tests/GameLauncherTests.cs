@@ -911,6 +911,54 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task MalformedRunningConfirmationCannotMutateOrganization()
+    {
+        var state = new WidgetTestPrivateState();
+        var host = new FakeHost(1, state)
+        {
+            RunningObservation = new([
+                new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
+                    "Windows"),
+            ], "running-revision"),
+            ConfirmRunningHandler = request => new WidgetAppLibraryItem(
+                "app-current-running", "Visible app", WidgetAppLibraryKind.Application)
+            {
+                SavedId = request.SavedId,
+                SourceAttribution = "bad\nsource",
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var revision = state.Revision;
+        var retained = widget.Organization.Items
+            .Select(item => item.SavedId).ToArray();
+
+        await widget.OnActionAsync(new(
+            "game-launcher.running.open", "game-launcher.running.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "running route load");
+        var available = Nodes(Snapshot(widget, 700).Root).Single(node =>
+            node.ActionId == "game-launcher.manual.toggle");
+        WidgetCapabilityException? failure = null;
+        try
+        {
+            await widget.OnActionAsync(new(
+                "game-launcher.manual.toggle", available.Id));
+        }
+        catch (WidgetCapabilityException exception)
+        {
+            failure = exception;
+        }
+
+        Assert.AreEqual("malformed_response", failure?.ErrorCode);
+        Assert.AreEqual(revision, state.Revision);
+        CollectionAssert.AreEqual(retained,
+            widget.Organization.Items.Select(item => item.SavedId).ToArray());
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ManualEntrySurvivesRestartButLaunchStillRevalidatesExactSavedId()
     {
         var state = new WidgetTestPrivateState();

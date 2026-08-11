@@ -1851,19 +1851,24 @@ themes also use non-shrinking fixed regions, a thin native Slider
  not reported as a passing AppContainer acceptance result.
  DLV-095 adds a separate optional `system.apps.running.read.v1` grant and an
  explicit **Add running app** route to Games & Apps and Game Launcher. The
- trusted Windows provider observes only visible owned top-level windows on
- demand, excludes inaccessible/elevated/overlay processes, and maps packaged
- or canonical executable identity one-to-one to a current normalized
- registration. Broker and SDK payloads contain only a sanitized name, closed
- kind/source, authority-scoped SavedId, and short-lived revision; PID, HWND,
- path, command, AUMID, package identity, and provider evidence remain host-only.
- Add confirms the current observation and registration before reusing each
- widget's existing bounded SavedId CAS policy, while ordinary catalog access
- remains independently usable. Focused Release evidence passes Widget SDK
- 87/87, API compatibility 12/12, PlatformBroker 54/54, Windows app-library
- provider 54/54, Games & Apps 58/58, and Game Launcher 44/44. A narrow
- credential-free generic-AppContainer worker route also passes exact running
- observation, confirmation, and durable manual add.
+ trusted Windows provider observes visible unowned top-level application windows
+ on demand, excludes owned/cloaked/background/inaccessible/elevated/overlay/
+ worker/tool windows, and maps packaged or canonical executable identity
+ one-to-one to a current normalized registration. DLV-097 bounds native work
+ before eligibility filtering: at most 256 top-level callbacks and therefore at
+ most 256 process-open attempts occur per observation, while duplicate collapse
+ and the lower public result cap remain 64. Broker and SDK payloads contain only
+ a sanitized name, closed kind/source, authority-scoped SavedId, and short-lived
+ revision; PID, HWND, path, command, AUMID, package identity, and provider
+ evidence remain host-only. Add confirms the current observation and
+ registration before reusing each widget's existing bounded SavedId CAS policy.
+ The SDK now applies the same closed AppId/SavedId/kind/display/source validation
+ used by pages and resolution to every non-null confirmation response; malformed
+ data returns `malformed_response` before either widget can project or persist
+ it. Focused Release evidence passes Widget SDK 87/87, API compatibility 12/12,
+ Windows app-library provider 57/57, Games & Apps 59/59, and Game Launcher 45/45.
+ The prior credential-free generic-AppContainer route remains the packaged
+ DLV-095 evidence; no aggregate or screenshot verification ran for DLV-097.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

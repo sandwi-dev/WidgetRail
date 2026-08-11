@@ -59,6 +59,8 @@ var tests = new (string Name, Func<Task> Run)[]
         RunningAppScenarios.MapsOnlyExactCurrentRegistrations),
     ("Running app observation collapses windows and stays bounded",
         RunningAppScenarios.CollapsesDuplicatesAndBoundsResults),
+    ("Running window visits and process inspection stop at the native bound",
+        RunningAppScenarios.NativeWindowVisitsAreBoundedBeforeEligibility),
     ("Running app observation cancels and drains before provider disposal",
         RunningAppScenarios.CancellationIgnoringObservationCannotPublish),
     ("Composite shutdown disposes provider-owned normalized sources",
