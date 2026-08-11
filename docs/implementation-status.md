@@ -1733,6 +1733,29 @@ game-frame cost; neither harness measures scheduler wakeups or long-run/many-
 widget trends. Those limits remain explicit and the dirty runs are focused
 implementation evidence, not release or marketing proof.
 
+DLV-011 now selects a bounded host-owned Win32 tool-window architecture for
+further pinned-surface work without exposing a pinning feature or public
+protocol. `PinnedSurfacePolicy` owns a data-only surface descriptor, explicit
+click-through/focusable modes, one cleanup state for unpin/exit/crash recovery,
+and work-area-contained DIP placement with primary-monitor fallback. The real
+HWND fixture verifies `WS_EX_TOOLWINDOW`/topmost/taskbar/Alt-Tab policy,
+nonactivating transparent hit testing, explicit focusable transition, UI
+Automation ownership, survival after the main-overlay window hides/closes, and
+paired HWND/semantic teardown. A widget cannot provide an HWND, renderer,
+provider, process, or compositor handle.
+
+Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
+302 checks per retained sample. Incremental private working set is
+**0.684-0.707 MiB**, normalized 750 ms idle CPU is **0%**, and the two-node host
+semantic projection p95 is **0.0003-0.0005 ms** over 256 updates. These are
+bounded increments against DLV-016's material gates, not substitutes for its
+larger semantic or real production-process measurements. Windows App SDK
+`CompactOverlayPresenter` remains a documented comparison only: adopting its
+new runtime/deployment dependency crosses the assignment's architecture stop
+condition. Physical borderless-game, mixed-display/hot-plug, HDR, exclusive-
+fullscreen, GPU/DWM, and hardware-input claims remain unverified. See
+[host-owned pinned-surface feasibility](pinned-surfaces.md).
+
 ### Test coverage
 
 The repository verification script builds and runs managed suites for the SDK,

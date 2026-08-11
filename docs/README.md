@@ -54,6 +54,10 @@ guarantees that are available now.
 - [Performance](performance.md) — engineering budgets, implemented
   low-overhead rules, widget lifecycle guidance, bounded Windows process
   observations, current measurements, and remaining ETW/PresentMon evidence.
+- [Host-owned pinned-surface feasibility](pinned-surfaces.md) — bounded Win32
+  tool-window selection, focus/input/lifecycle and monitor/DPI policy, measured
+  DLV-016 comparison, and explicit physical-evidence limits. This is an
+  architecture gate, not a public pinning feature.
 - [Controller input model](controller-input.md) — Guide/Home ownership,
   dashboard quick actions, open-widget routing, and B behavior.
 - [Widget capabilities](capabilities.md) — typed audio/network/Bluetooth/recent-

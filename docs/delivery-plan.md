@@ -150,6 +150,27 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-011 — Feasibility gate for host-owned pinned surfaces
+
+**State:** Done
+**Closing commit:** `9af2a76` (`[DLV-011] Gate host-owned pinned surface
+architecture`)
+**Integrated on `main`:** `35df08c`
+
+**Reviewer disposition:** Accepted as an architecture gate, not a shipping
+pinning feature. The selected host-owned Win32 tool-window candidate keeps
+native window, focus, z-order, lifecycle, placement, and accessibility
+authority in OverlayHost; widget input remains a data-only descriptor. A real
+HWND fixture covers click-through/focusable policies, independent main-overlay
+hide/close lifetime, paired teardown, bounded mixed-DPI/monitor fallback, and
+the production UI Automation provider. The focused reviewer rerun passed 299
+checks. Five retained Release processes measured a `0.684-0.707 MiB`
+incremental private working-set delta, 0% normalized 750 ms idle CPU, and
+`0.0003-0.0005 ms` p95 for the deliberately small two-node semantic
+projection. This does not prove cross-game pointer behavior, physical display
+transitions, GPU/DWM cost, protected media, or YouTube playback; those remain
+future bounded gates.
+
 ### DLV-016 — Establish native idle and semantic-churn baselines
 
 **State:** Done
@@ -668,9 +689,12 @@ production-host/UIA composition proof are accepted and integrated through
 `9c7438f`. DLV-022 produced candidate `c349bbd`, but independent review rejected
 that prefix because URI-only media keys cannot represent legitimate duplicate
 queue/playlist occurrences and the single-row playlist graph authors a self
-edge. DLV-018 was already started and remains the Assigned visible milestone;
-DLV-053 is the next bounded correction before DLV-043. DLV-038 remains deferred
-test-architecture debt rather than filler work.
+edge. DLV-018 candidate `039b7b8` adds the trusted artwork path but is rejected
+pending DLV-054 because slow artwork demand serializes the native UI behind the
+same synchronous bridge client and same-identity icon changes do not invalidate
+the retained native cache. DLV-053 is already Assigned and continues without
+interruption; DLV-054 is next before DLV-043. DLV-038 remains deferred test-
+architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2285,8 +2309,8 @@ the self edge. Per the asynchronous review rule, DLV-018 continues first.
 
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
-**State:** Assigned on top of the unaccepted DLV-022 candidate; finish and commit
-before taking DLV-053
+**State:** Candidate `039b7b8` rejected; correction queued as DLV-054 after the
+already-started DLV-053 milestone
 **Baseline:** unaccepted DLV-022 candidate `c349bbd`
 **Dependencies:** DLV-006 and DLV-017
 **Owner:** trusted app-library artwork registration/projection, brokered opaque
@@ -2333,9 +2357,28 @@ resolution cannot stay identity/generation bound, native cache changes overlap
 active platform work, or a new public authority/protocol beyond DLV-006 is
 required.
 
+**Reviewer disposition:** Rejected. Candidate `039b7b8` correctly replaces
+eager inline icon pixels with opaque lazy handles, revalidates supported source
+registrations before rasterization, bounds broker registrations and the native
+decode cache, composes Games & Apps through the public SDK, and retains focused
+provider/broker/bridge/native evidence. However the image-cache worker calls
+the synchronous `WidgetBridgeClient::ResolveArtwork` while holding the same new
+recursive request mutex that every UI-thread bridge operation acquires. A slow
+or cancellation-ignoring provider lookup can therefore delay event pumping,
+input/lifecycle requests, catalog work, and Stop for the broker request
+deadline, so moving work to the image thread does not make the UI path
+nonblocking. The candidate also preserves a handle when provider AppId and
+stable identity are unchanged, but neither that handle nor the native bitmap
+key includes the trusted registration revalidation revision. When an icon
+changes in place, the provider refreshes its private icon cache while the
+renderer can retain the old decoded bitmap indefinitely. Current tests cover
+different-identity replacement, not these two cases. Keep `039b7b8` and its
+dependent commits unintegrated until DLV-054 closes both visible reliability
+gaps without broadening widget authority.
+
 ### DLV-053 — Correct Spotify occurrence identity and singleton focus
 
-**State:** Ready after DLV-018
+**State:** Assigned after DLV-018 candidate `039b7b8`
 **Baseline:** closing commit of DLV-018, including unaccepted candidate
 `c349bbd`; retain the complete prefix for correction and review
 **Dependencies:** DLV-006, DLV-022 candidate `c349bbd`, and DLV-018
@@ -2394,10 +2437,80 @@ duplicate-key failure, or a product choice about which non-equivalent Spotify
 item should play. Preserve exact provider evidence rather than substituting a
 title/global-ordinal key.
 
-### DLV-043 — Replace Spotify partial-file organization with real boundaries
+### DLV-054 — Keep trusted artwork current without blocking the overlay
 
 **State:** Ready after DLV-053
-**Baseline:** closing commit of DLV-053
+**Baseline:** closing commit of DLV-053, including rejected DLV-018 candidate
+`039b7b8`; retain the complete prefix for correction and review
+**Dependencies:** DLV-006, DLV-018 candidate `039b7b8`, and DLV-053 only for
+serialized lane order
+**Owner:** widgets lane as the serialized cross-lane lead over trusted app-
+library artwork revision/generation admission, native bridge demand ownership,
+bounded decode/cache invalidation, direct host fixtures, and affected public
+artwork documentation; no new widget authority or unrelated bridge redesign
+**Concurrency:** Platform remains idle while this correction owns the shared
+WidgetBridgeClient, renderer, cache, and broker artwork files. Do not touch
+DLV-025 compositor evidence or reviewer-owned files.
+**Visible outcome:** Games & Apps loads and refreshes the exact current trusted
+icons without freezing controller/keyboard interaction, widget switching,
+event pumping, or overlay shutdown when icon resolution is slow or fails.
+
+**Objective:** Preserve DLV-018's opaque lazy artwork path while making demand
+nonblocking with respect to native UI/control-plane work and making an in-place
+trusted registration/icon change invalidate the old handle, decoded image, and
+render-target bitmap deterministically.
+
+**In scope:** map `WidgetBridgeClient` responsibility and threading before and
+after; one bounded artwork request owner that never holds the UI caller behind
+provider I/O; exact correlation, current widget/runtime generation, request
+count, queue, timeout, cancellation, shutdown, and late-reply rules; current-
+generation publication admission before and after provider completion; a
+trusted host-only artwork revision derived from the exact registration
+revalidation key without exposing source identity; handle rotation or explicit
+cache invalidation when that revision changes; stale-handle, same-identity icon
+replacement, removal/reappearance, worker restart before first new list,
+provider stall/failure, rapid switch, and cache eviction/refetch fixtures;
+deletion of superseded broad bridge locking or cache state.
+
+**Out of scope:** embedding pixels in snapshots, arbitrary file/URL/network
+access, a generic community media service, public SDK/protocol revision,
+provider launch-identity changes, Steam remote artwork, DLV-025 composition,
+the full DLV-033 session-coordinator refactor, per-widget timing branches, or
+accepting a two-second UI pause as a bound.
+
+**Acceptance criteria:** a manually blocked artwork provider can consume its
+bounded request deadline without delaying native event pumping, an unrelated
+snapshot/action/lifecycle request, B/Guide/Close processing, or Stop; no
+artwork task or frame read survives shutdown or widget-generation retirement,
+and a late old-generation reply cannot populate cache or paint. Replacing icon
+content/revalidation data while preserving provider AppId, SavedId, and stable
+launch identity produces a new artwork revision and the next render decodes
+the new pixels; the old handle and bitmap cannot reappear after refresh,
+worker restart, eviction, or route return. Existing 512-registration,
+32-entry/32-MiB native cache, 12-KiB/64-pixel decode, 2,000/10,000 logical
+demand, semantic fallback, focus, membership, warm-state, and launch-authority
+bounds remain exact. The completion report gives the required before/after
+`WidgetBridgeClient` threading/responsibility map and does not claim EQ-020's
+broader synchronous startup problem is closed.
+
+**Verification:** Tier 1 provider, broker registry, bridge, Widget SDK, Games &
+Apps, RemoteImageCache, renderer, and documentation Release suites. Tier 2 one
+production-host fixture with manually controlled slow artwork, concurrent
+control-plane/UI progress, generation replacement, and same-identity icon
+revision. Build and validate the Games & Apps package and production
+OverlayHost. No aggregate, screenshot, live store, broad bridge coordinator,
+or physical controller run.
+
+**Stop/escalate when:** a safe correction requires a public protocol/authority
+change, a second native bridge process or broad session coordinator, cannot
+separate artwork I/O from UI/control-plane progress without material
+architecture choice, or overlaps active platform work. Preserve the exact
+blocked-provider trace rather than accepting serialized UI latency.
+
+### DLV-043 — Replace Spotify partial-file organization with real boundaries
+
+**State:** Ready after DLV-054
+**Baseline:** closing commit of DLV-054
 **Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
@@ -2636,11 +2749,12 @@ clean recovery task, not an integration source. DLV-025 retains only its
 committed branch baseline and documented evidence after its former worktree
 disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
-`56f6908`; DLV-016 is accepted and integrated as `fee1103`. DLV-011 is now
-Assigned on the accepted collection and measurement foundations, DLV-033 awaits
-the compositor decision, and DLV-025 remains user-decision blocked. No third
-safe platform Ready item is manufactured while those explicit architecture
-dependencies remain.
+`56f6908`; DLV-016 is accepted and integrated as `fee1103`; DLV-011 is accepted
+and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
+DLV-025 remains user-decision blocked. The platform task remains at a clean
+idle boundary while DLV-018 owns shared native/bridge files in the widgets
+lane. No conflicting or fabricated Ready item is manufactured while those
+explicit architecture and file-ownership dependencies remain.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -3175,7 +3289,8 @@ capture path, or elevated tracing changed.
 
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 
-**State:** Assigned after accepted DLV-016
+**State:** Done; accepted and integrated as `35df08c`
+**Closing commit:** `9af2a76`
 **Baseline:** accepted DLV-016 integration `fee1103` plus the reviewer commit
 advancing this assignment
 **Dependencies:** DLV-006 and DLV-016
@@ -3249,8 +3364,9 @@ presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
 
-DLV-011 moved to the platform lane as the Ready consumer of accepted DLV-006
-and the DLV-016 performance baseline.
+DLV-011 completed the bounded architecture gate on accepted DLV-006 and
+DLV-016 foundations. Shipping pinning, rich media, and physical game/display
+compatibility remain separate future assignments.
 
 ## Blocked work
 
