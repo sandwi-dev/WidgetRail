@@ -86,7 +86,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
 | GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
-| GBA-068 | P0 | Implementing | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | DLV-056 candidate `2737852` removes checkout paths and matches across clean roots, but the required ordinary warm-main refresh produced a different managed DLL/archive from the same commit. Active DLV-057 must isolate/rebuild script-owned intermediates and publish exact selected Spotify `0.2.14` before relaunch. YT Music remains current at `0.2.7`; the supplied 21:54 startup-failure screenshots predate the accepted DLV-052 recovery and are not a current recurrence. |
+| GBA-068 | P0 | Verifying | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. PID 27684 is visibly running with no new startup/lifecycle error. The supplied 21:54 startup-failure screenshots predate DLV-052 and are not a current recurrence; direct opening of both widgets remains the user's final live check. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2101,10 +2101,14 @@ root archive/content hashes, and publishes the exact main artifact as unique
 `0.2.13`. DLV-056 candidate `2737852` then matched three clean proof builds, but
 the required ordinary warm-main refresh at integration `e694316` produced
 archive SHA `e0000c3b...25f` and DLL SHA `540d3309...c26` instead of retained
-proof archive `9c4de014...3da` and DLL `1752c820...74`. Active DLV-057 owns this
-prior-build-state contamination, publishes unique immutable `0.2.14`, and must
-prove warm main, repeated main, and a clean detached root are identical before
-the planner relaunches it. Do not delete or overwrite any rollback generation.
+proof archive `9c4de014...3da` and DLL `1752c820...74`. Accepted DLV-057
+`90cadf4` closes both prior-build-state and caller-artifact-root influence. Warm
+main, repeated main, detached root, installed content, and the planner's
+ordinary post-integration main refresh now share archive `66d85242...270`, DLL
+`fea3f92d...485`, and sealed digest `21b8e00d...028`. Spotify `0.2.14` is
+selected/enabled; `0.2.11` through `0.2.13` remain distinct inactive rollback
+generations. PID 27684 was visibly launched from clean accepted main with no
+new startup/lifecycle error; direct opening remains the final user check.
 
 The first post-integration relaunch rebuilt only the native executable and left
 the older packaged bridge in `out\Release\runtime`, so the new

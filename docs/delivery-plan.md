@@ -702,10 +702,13 @@ route/action, playback, and presentation boundaries while retaining one
   orchestration owner. DLV-056 candidate `2737852`, integrated through
   `e694316`, proved identical clean-root output but failed the required ordinary
   warm-main refresh: main rebuilt a different DLL/archive from the same commit.
-  DLV-057 is therefore the active visible release correction and must make the
-  supported Community package command independent of prior `bin`/`obj` state,
-  publish immutable `0.2.14`, and relaunch that exact selected payload. DLV-038
-  remains deferred test-architecture debt rather than filler work.
+  DLV-057 commit `90cadf4` is accepted and integrated: warm main, repeated
+  main, detached-root, installed content, and the planner's post-integration
+  main refresh now match exactly at immutable `0.2.14`, and PID 27684 is visibly
+  running. DLV-059 is the active immediate prerequisite for the requested
+  dedicated Game Launcher; DLV-060, DLV-066, and DLV-067 form its ordered
+  visible queue. DLV-038 remains deferred test-architecture debt rather than
+  filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2776,7 +2779,8 @@ No latest-payload launch is claimed from DLV-056.
 
 ### DLV-057 — Make Community packaging independent of prior build state
 
-**State:** Assigned
+**State:** Done; accepted and integrated as `90cadf4`
+**Closing commit:** `90cadf4` (`[DLV-057] isolate Community package build state`)
 **Baseline:** integrated DLV-056 candidate `e694316` plus the reviewer
 control-plane commit containing this assignment
 **Dependencies:** DLV-056; no platform-lane dependency
@@ -2833,6 +2837,223 @@ the exact selected payload for immediate user testing.
 changing repository-wide debug semantics, weakening immutable catalog or
 AppContainer rules, or the exact package starts failing for a reason outside
 build-state ownership. Preserve all evidence and installed generations.
+
+**Reviewer disposition:** Accepted. The supported package command deletes and
+rebuilds only a verified script-owned `build-graph` beneath the selected
+artifact root, passes that graph through `dotnet publish --artifacts-path`, and
+maps both the graph and repository to fixed virtual compiler paths. It neither
+consumes nor deletes ordinary developer `bin`/`obj`. Warm main, repeated main,
+and a detached checkout at the exact closing commit all produce the same
+57,075-byte archive SHA-256
+`66d85242ef7993c0bbf277591c010d40c1e69494fec648c2cd326d289b33b270`,
+the same 137,728-byte DLL SHA-256
+`fea3f92d5aacb6902c77a35a2d50f2ec729dd516311fdc79693dbf1b0912e485`,
+and installed content digest
+`21b8e00d692a14bd53ea37aa640581d1e5be2b7d108610483d2d3a5b880c4028`.
+Spotify `0.2.14` is selected/enabled, `0.2.11` through `0.2.13` remain distinct
+inactive rollbacks, the required AppContainer first snapshot is sequence 2,
+and 54 documentation contracts pass. Planner main rebuilt the same hashes,
+gracefully replaced the prior host, and visibly launched PID 27684. The agent
+rewrote failed local candidate `3de1a3f` before planner clarification, contrary
+to the no-rewrite contract; no accepted history was lost, `90cadf4` was not
+rewritten, and future failed evidence must append a correction commit.
+
+### DLV-059 — Normalize trusted installed-game source ownership
+
+**State:** Assigned
+**Lane:** widgets
+**Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-002, DLV-017, DLV-018, and DLV-054
+**Owner:** trusted Windows app-library provider internals, existing Start Menu/
+AppsFolder and Steam source adapters, focused provider fixtures, and directly
+affected provider documentation; no widget, public capability/protocol, broker,
+native-host, or reviewer-owned files
+**Concurrency:** May run with platform DLV-058. Do not touch WidgetProtocol,
+WidgetSdk, package manifests, OverlayHost, shared native build files, or pinning
+documentation.
+
+**Visible successor:** DLV-060's dedicated installed-game Game Launcher. This
+internal prerequisite is scheduled only because the requested visible widget
+must not accumulate source-specific discovery and launch switches.
+
+**Objective:** Put current Start Menu/AppsFolder and Steam installed-game
+discovery, exact resolve, launch, change observation, health, and source-version
+behavior behind one internal trusted `IGameLibrarySource`-style contract while
+retaining one normalized authoritative library owner.
+
+**In scope:** before/after responsibility and authority map; independently
+bounded source discovery and exact resolve/launch inputs/results; normalized
+host-only records with stable opaque source identity, sanitized attribution,
+installed/available state, supported actions, artwork revision/handle source,
+and source health/version; per-source cancellation, failure isolation, refresh,
+duplicate-name, replacement, disappearance/reappearance, and stale-result
+fixtures; deletion of duplicated source switch logic only when covered.
+
+**Out of scope:** a Game Launcher UI, new stores, account libraries, raw path/
+command/AUMID/Steam-ID exposure, title-based merging, public API/protocol or
+broker changes, new persistence, artwork transport changes, native UI, or
+unrelated provider refactoring.
+
+**Acceptance criteria:** Start Menu/AppsFolder and Steam are ordinary bounded
+implementations of one internal contract; one source can fail, refresh, or be
+disabled without replacing another source's last-good records; exact resolve
+and launch remain source-owned and cannot be selected by title; normalized
+records reveal no raw launch authority to consumers; source generations reject
+late results and drain on disposal; one source can be added or changed without
+editing a central source-specific discovery/launch switch. The completion
+report maps responsibilities, caches, locks/tasks, generations, and mutable
+cross-source knowledge before and after and introduces no new hotspot.
+
+**Verification:** Tier 1 Windows app-library provider Release suite with direct
+adapter-contract, failure-isolation, stale-result, exact-resolve/launch, and
+duplicate-name cases plus affected documentation. No broker, widget, native,
+aggregate, screenshot, live store, or physical launch suite.
+
+**Stop/escalate when:** meaningful normalization changes public capability or
+launch authority, requires undocumented store data, cannot keep exact source
+identity private, or overlaps platform pinning files. Preserve the current
+provider behavior and report rather than adding a facade over the existing
+switches.
+
+### DLV-060 — Ship an installed-only Game Launcher library
+
+**State:** Ready
+**Lane:** widgets, acting as serialized managed capability/widget lead
+**Baseline:** closing commit of DLV-059
+**Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, and DLV-059
+**Owner:** normalized trusted game-library query/cursor capability, dedicated
+Game Launcher first-party widget, private user projection, focused broker/widget
+fixtures, and directly affected public documentation; existing native
+VirtualizedGrid/List and opaque artwork contracts are consumed unchanged
+**Concurrency:** May run with platform pinning only while it requires no public
+WidgetProtocol/WidgetSdk/native change. Stop for planner serialization if an
+existing public collection or native grid contract is insufficient.
+
+**Visible outcome:** A dedicated controller-first Game Launcher presents the
+complete installed local game library from the normalized current sources,
+separate from the lightweight curated Games & Apps tray, with continuous grid
+navigation, real lazy artwork, source attribution, and exact launch.
+
+**Objective:** Prove the framework can support the first complex launcher slice
+without serializing thousands of games, duplicating provider caches/authority,
+or embedding source-specific rules in the widget.
+
+**In scope:** dedicated bundled widget/catalog entry; installed-only normalized
+Steam and trusted Windows game records; library-revision-bound opaque cursors;
+stable item/focus IDs; existing `VirtualizedGrid`/cursor append-prepend window,
+bounded prefetch/eviction and page-jump actions; lazy artwork/fallback; loading,
+partial-source, empty, unavailable, and safe error rows; exact current launch
+revalidation; compact/standard/wide and 100-150% semantic states; 2,000/10,000-
+item fake libraries; bounded current-schema display projection for warm start
+without persisting launch IDs or raw source identity.
+
+**Out of scope:** Epic/GOG/EA/Ubisoft/Battle.net/Xbox adapters, account-owned or
+uninstalled games, installs/updates, search/text entry (DLV-061), favorites or
+variant preferences (DLV-066), running-process truth (DLV-067), remote artwork,
+title-based merging, raw launch authority, public plugin trust, native
+collection redesign, screenshots as acceptance, or credentials.
+
+**Acceptance criteria:** Games & Apps and Game Launcher consume one trusted
+library/cache and the same opaque launch authority while keeping independent
+presentation/user projection; no 2,000/10,000-item snapshot or native tree is
+created; crossing cursor boundaries preserves the adjacent keyed focus and
+viewport; source failure degrades only its rows; same-title variants remain
+separate; stale/unavailable records cannot launch; current exact records launch
+only after revalidation; warm projection appears first but remains visibly
+non-authorizing until resolved; every essential action is reachable across the
+named surface/scale envelope.
+
+**Verification:** Tier 1 Game Launcher, normalized provider, broker mapping,
+Widget SDK cursor/grid, private-state, catalog, and documentation Release
+suites. Tier 2 smallest installed generic-worker/production-host semantic route
+covering continuous grid navigation, lazy artwork, exact launch admission, and
+2,000/10,000-item bounds. No aggregate, screenshot, physical launch, external
+store, or native redesign.
+
+**Stop/escalate when:** the accepted collection/artwork contracts cannot express
+the product without public/native changes, launch truth requires raw identity,
+or the widget begins owning discovery/cache/source policy. Preserve the exact
+gap for a serialized framework prerequisite.
+
+### DLV-066 — Add Game Launcher favorites and preferred variants
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-060
+**Dependencies:** DLV-059 and DLV-060
+**Owner:** Game Launcher private durable organization policy, presentation, and
+credential-free fixtures; no provider discovery, native host, or public
+protocol changes
+
+**Visible outcome:** Users can favorite games and choose a preferred launch
+variant for duplicate titles without title heuristics silently merging launch
+authority; choices survive overlay/source refresh and temporarily missing
+stores.
+
+**Objective:** Add durable user organization above replaceable normalized
+source records using opaque stable identities and one current pre-release schema.
+
+**In scope:** favorites, explicit variant grouping/preference, unavailable
+retention, deterministic unmerge/reset, source revision replacement, CAS/
+persistence failure, warm projection, focus/order retention, and whole-schema
+reset for incompatible overlay-owned state.
+
+**Out of scope:** automatic title matching, raw store IDs, account sync,
+metadata services, cloud persistence, provider changes, or launch lifecycle.
+
+**Acceptance criteria:** only explicit user grouping can establish a preferred
+variant; source disappearance/reappearance and identity replacement preserve or
+invalidate choices deterministically without authorizing stale launch; one
+mutation cannot erase unrelated favorites/order/grouping; incompatible local
+state resets atomically; all state is bounded and contains no raw authority.
+
+**Verification:** Tier 1 Game Launcher/private-state Release suite with exact
+mutation, CAS failure, restart, disappearance/reappearance, and duplicate-title
+cases plus docs. No aggregate, native, screenshot, or external store run.
+
+**Stop/escalate when:** durable preference cannot survive without exposing raw
+source identity or requires provider/public protocol changes.
+
+### DLV-067 — Present honest Game Launcher launch lifecycle
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-066
+**Dependencies:** DLV-059, DLV-060, and DLV-066
+**Owner:** trusted launch-result/lifecycle policy, Game Launcher projection,
+and deterministic adapter/widget fixtures; no generic process authority
+
+**Visible outcome:** Launching a game shows accurate Pending, Launcher started,
+Running, Failed, and Ended states only when the selected adapter can prove them,
+instead of treating store acknowledgement as successful game execution.
+
+**Objective:** Separate accepted launch requests from observable running truth
+without leaking PID/HWND/path data or adding ambient process monitoring.
+
+**In scope:** typed host-only launch observations, per-adapter supported-state
+declaration, bounded timeout/cancellation, already-running, intermediary
+launcher, stale entry, adapter refresh/update, failure and ended projection,
+overlay-close signal, exact current-generation admission, and safe fallback to
+`Request accepted` when stronger truth is unavailable.
+
+**Out of scope:** arbitrary process scanning, raw PID/HWND exposure, game-time
+tracking, achievements, installs/updates, remote launch, macros, or undocumented
+store hooks.
+
+**Acceptance criteria:** every displayed lifecycle state has adapter evidence;
+unsupported adapters never claim Running/Ended; late observations from stale
+launch/source generations cannot change the current row; one launch cannot
+overwrite another variant's state; all observations drain and remain bounded;
+logs/snapshots expose no process or command identity.
+
+**Verification:** Tier 1 provider launch-policy, broker mapping, Game Launcher,
+and docs Release suites with manually controlled adapter observations. Tier 2
+smallest generic-worker exact-launch route. No physical game, aggregate,
+screenshot, or external store run.
+
+**Stop/escalate when:** honest state requires undocumented process/store hooks,
+generic process authority, or a public protocol change not already assigned.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
@@ -3023,7 +3244,7 @@ unregistered directory and the previously observed uncommitted DLV-025 files
 are not present. Do not reconstruct, reset, or otherwise act on that lost
 uncommitted state without explicit user authority.
 
-The platform queue prioritizes visible controller and geometry defects even
+The platform queue prioritizes visible controller and surface features even
 while DLV-025 awaits a compositor choice. The preserved DLV-016 worktree must
 not be reset or overwritten; its files are read-only reference material for the
 clean recovery task, not an integration source. DLV-025 retains only its
@@ -3032,10 +3253,205 @@ disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 `56f6908`; DLV-016 is accepted and integrated as `fee1103`; DLV-011 is accepted
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
-DLV-025 remains user-decision blocked. The platform task remains at a clean
-idle boundary while DLV-018 owns shared native/bridge files in the widgets
-lane. No conflicting or fabricated Ready item is manufactured while those
-explicit architecture and file-ownership dependencies remain.
+DLV-025 remains user-decision blocked. DLV-058 now turns DLV-011's accepted
+tool-window architecture into the first visible generic Pin/Unpin lifecycle.
+DLV-068 and DLV-069 complete placement and accessibility/input composition,
+then DLV-062 runs the fixed-video trusted-rich-media feasibility gate. This
+visible sequence is independent of the blocked animated-resize compositor and
+may run beside widgets DLV-059 under the explicit file boundaries below.
+
+### DLV-058 — Ship generic pinned-surface lifecycle
+
+**State:** Assigned
+**Lane:** platform, acting as serialized public-manifest/native lead
+**Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-011 and DLV-016; independent of blocked DLV-025
+**Owner:** public manifest/presentation-state declarations, native pinned-surface
+coordinator, host chrome/lifecycle, focused protocol/native/host fixtures, and
+directly affected public pinning documentation
+**Concurrency:** May run with widgets DLV-059, which may not touch public
+WidgetProtocol/WidgetSdk, package manifests, OverlayHost, native build files, or
+pinning docs. Stop for planner serialization if another lane reaches those files.
+
+**Visible outcome:** A declarative test widget that explicitly supports pinning
+can be pinned, left visibly topmost when the main overlay closes, switched
+between Interactive and click-through, reopened, unpinned, and closed without
+stealing game input or leaving an orphaned window.
+
+**Objective:** Productize DLV-011's selected host-owned Win32 tool-window
+architecture as one bounded generic surface lifecycle before any YouTube or
+community rich-media widget owns it.
+
+**In scope:** manifest-declared `pinningSupported` default false; one native
+`WidgetSurfaceCoordinator`-style owner for stable surface identity, HWND,
+generation, visibility, pin state, z-order, focus/input mode, and teardown;
+host-owned Pin/Unpin/Close/click-through chrome and help/UIA labels; Overlay,
+PinnedInteractive, PinnedClickThrough, and Hidden presentation state without raw
+HWND/z-order authority; cap simultaneous pins; exact removal/restart/crash/
+host-exit cleanup; overlay close/reopen; stale generation; inaccessible or
+non-supporting widget rejection; unchanged unpinned widget behavior.
+
+**Out of scope:** move/resize/persistence (DLV-068), final controller/UIA input
+composition and emergency hide (DLV-069), YouTube/WebView2/media playback,
+arbitrary community HWNDs, animated main-panel resize/compositor work, pointer
+game matrix, public raw window handles, opacity, or screenshots as acceptance.
+
+**Acceptance criteria:** only a current admitted supporting widget can create
+one host-owned pinned surface; main-overlay hide/close does not destroy it;
+click-through forwards pointer activity and exposes no interactive-looking
+controls; controller actions stay with the main overlay unless the pinned
+surface is explicitly Interactive; reopen restores one valid focus owner;
+unpin, widget removal/restart/crash, host exit, stale generation, and coordinator
+disposal converge to exact-once teardown with no orphan/task/resource leak;
+bounded surface count and safe failure copy are enforced; widgets receive only
+typed presentation state.
+
+**Verification:** Tier 1 WidgetProtocol/manifest, native surface lifecycle,
+focus/input/chrome, UIA semantics, placement smoke, and production OverlayHost
+Release suites. Tier 2 smallest real-HWND declarative pinned-widget fixture over
+pin, overlay close/reopen, click-through, stale restart, removal, and teardown,
+plus DLV-016 resource-delta comparison. No aggregate, YouTube, screenshot,
+physical game/controller/display, or DLV-025 compositor run. After integration,
+refresh and visibly launch main for direct user testing.
+
+**Stop/escalate when:** implementation requires Windows App SDK/new compositor,
+raw widget window authority, a public threat-model change, a substantial
+conflict with preserved platform work, or physical-only evidence to choose the
+architecture. Do not borrow the blocked main-panel resize path.
+
+### DLV-068 — Add controller placement and durable pin geometry
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-058
+**Dependencies:** DLV-011, DLV-016, and DLV-058
+**Owner:** pinned-surface placement/resize state machine, monitor/DPI persistence,
+host chrome/actions, focused native/UIA fixtures, and public pinning docs
+
+**Visible outcome:** A pinned widget has an explicit controller move/resize mode:
+D-pad/stick moves, a bounded resize gesture changes size, A commits, B cancels,
+and restart/monitor changes restore it fully on-screen at a usable size.
+
+**Objective:** Give the generic pinned surface one host-owned placement and
+persistence policy shared by controller, pointer, and accessibility actions.
+
+**In scope:** logical size, normalized work-area anchor, bounded monitor
+affinity, minimum/maximum/safe-area constraints, move/resize focus isolation,
+A commit/B cancel, pointer and UIA parity, atomic overlay-owned persistence,
+invalid/incompatible state reset, runtime DPI/work-area/orientation/topology/
+monitor-loss reconciliation, interrupted gesture, rapid changes, and restart.
+
+**Out of scope:** YouTube-specific 200x200 policy beyond an injected minimum,
+rich media, main-panel transitions, snap-layout integration, unrestricted
+offscreen placement, or preserving obsolete pre-release geometry schemas.
+
+**Acceptance criteria:** every input route reaches one state machine; cancel
+restores the exact prior committed placement; commit persists atomically;
+invalid or incompatible state resets as a whole; every restore/reflow is finite,
+within current work area, at or above declared minimum, and focus-valid; stale
+surface generations cannot write placement; hidden/idle cost remains unchanged.
+
+**Verification:** Tier 1 native placement/input/persistence/UIA/host Release
+suites over mixed logical DPI/work areas and invalid state plus one real-HWND
+restart/monitor-loss fixture. No aggregate, screenshot, physical hot-plug, or
+rich-media run. Launch after integration.
+
+**Stop/escalate when:** credible behavior needs physical display evidence to
+choose between policies, new window/compositor technology, or public raw monitor
+authority.
+
+### DLV-069 — Complete pinned-surface input and accessibility composition
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-068
+**Dependencies:** DLV-058 and DLV-068
+**Owner:** pinned-surface controller/pointer focus composition, emergency
+visibility authority, UI Automation tree/actions, help, and production-host
+fixtures
+
+**Visible outcome:** Pinned widgets never trap controller focus or steal hidden-
+overlay input, expose accurate Pin/Move/Close/click-through accessibility, and
+have one global emergency action that hides all pins safely.
+
+**Objective:** Finish the generic pinning gate's input/accessibility behavior
+before trusted remote media is introduced.
+
+**In scope:** deterministic controller entry/exit and B/Guide/Close semantics;
+Overlay versus pinned Interactive focus restoration; click-through pointer and
+control visibility; emergency hide/unpin authority; accelerator/pointer-capture
+cancellation; UIA names, roles, states, bounds, order, Invoke/Move/Resize/Close
+actions and live failure feedback; widget hide/restart/removal during focus;
+reduced motion/high contrast; no hidden input forwarding.
+
+**Out of scope:** WebView2/browser focus, YouTube controls, physical Narrator or
+game compatibility, main-panel compositor changes, or a second input authority.
+
+**Acceptance criteria:** exactly one surface owns controller focus; closing the
+main overlay leaves click-through pins non-interactive; reopened overlay can
+explicitly enter one valid pin and B exits predictably; emergency action is
+host-owned, bounded, accessible, and always releases interaction; removal,
+restart, mode change, and monitor reconciliation choose deterministic focus;
+the real UIA tree contains no hidden interactive controls or duplicate actions.
+
+**Verification:** Tier 1 controller/focus/pointer/UIA/host Release suites plus
+one production real-HWND/UIA pinned-widget composition fixture. Physical
+controller/Narrator/game proof remains manual. No aggregate or screenshot run.
+Launch after integration.
+
+**Stop/escalate when:** behavior requires elevated/global hooks, physical-only
+policy choice, or duplicates existing OverlayHost input authority.
+
+### DLV-062 — Gate one trusted fixed-video media surface
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-069
+**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-068, and DLV-069
+**Owner:** trusted rich-media process/session feasibility, fixed-video host
+composition, resource measurement, policy evidence, and focused process/native
+fixtures; no public YouTube widget or account integration
+
+**Visible outcome:** One fixed embeddable public YouTube video can play in the
+accepted pinned surface with user-initiated audio and standard controls, and it
+pauses/stops when no visible pinned surface remains.
+
+**Objective:** Prove or reject the narrow trusted WebView2/IFrame Player
+architecture and resource envelope before authorizing YouTube v1.
+
+**In scope:** reuse the SpotifyPlaybackHost process-containment lessons; one
+typed `MediaSurfaceSession` prototype for load/cue/play/pause/seek/volume and
+state/error events; fixed allowlisted video/https origin/referrer; WebView2 host
+objects off; navigation/frame/popup/download/permission/certificate/external-
+browser policy; user gesture/autoplay blocked; errors 5/100/101/150/153;
+ProcessFailed recovery; one environment/user-data lifecycle; visible-pinned
+lease and hidden/minimized/unpinned pause/stop; process/memory/CPU/GPU-where-
+available/startup/idle measurements; kill-switch/policy checklist.
+
+**Out of scope:** URL input/search, Google OAuth/API key, recent library,
+multiple videos/surfaces, generic community WebView, stream extraction,
+background audio, ad/control suppression, public media API, or claiming
+universal game/anti-cheat compatibility.
+
+**Acceptance criteria:** remote content receives no shell/widget broker/native
+object authority; only allowlisted typed messages and origins are admitted;
+standard YouTube controls/captions/links/ads remain; user-visible pin state owns
+the playback lease; hidden/minimized/unpinned state cannot continue playback;
+crash/teardown releases controller/environment/process resources; measured
+incremental cost and unsupported GPU/game evidence are explicit; failure of the
+gate leaves generic pinning intact and does not authorize YouTube v1.
+
+**Verification:** Tier 1 offline typed-protocol/origin/policy/process-lifecycle
+fixtures and DLV-016 resource comparison. Tier 2 one bounded fixed public-video
+manual/automated hybrid run when network/WebView2 is available; record external
+unavailability honestly without using credentials. No aggregate, screenshots as
+closure, account, search, or physical-game claim.
+
+**Stop/escalate when:** a new runtime dependency is required, compliant
+origin/referrer/standard-player behavior cannot be retained, EME/composition or
+resource cost materially fails the gate, or physical representative-game choice
+is needed for the architecture decision.
 
 ### DLV-003 — Correct shared button-content geometry
 

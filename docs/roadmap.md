@@ -264,10 +264,9 @@ remains off until the publisher-trust gates in Phase 4.
   coherent Release is visibly running. Accepted DLV-043 `6c619e9`, integrated
   through `d534410`, now establishes real Spotify route/action, playback, and
   snapshot-only presentation boundaries over one retained orchestration owner.
-  DLV-056 candidate `2737852` removes checkout paths and matches clean roots, but
-  its ordinary warm-main integration refresh rebuilt a different managed DLL.
-  Active DLV-057 must make the supported package command independent of prior
-  build state and publish exact selected `0.2.14`. Continue suitable
+  DLV-057 `90cadf4` is accepted: the supported package command owns a clean
+  isolated graph and warm main, repeated main, detached root, installed content,
+  and the planner refresh are identical for selected Spotify `0.2.14`. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -328,11 +327,9 @@ remains off until the publisher-trust gates in Phase 4.
   Accepted DLV-055 now runs the integrated DLV-022/053 Queue/Playlist traversal,
   bounded duplicate-occurrence identity, and non-self-linking singleton header
   graph from unique selected Spotify `0.2.12`. DLV-043's real private ownership
-  boundaries are accepted and integrated. DLV-056's clean-root proof is not
-  sufficient because ordinary warm main produced a different DLL; active
-  DLV-057 now owns an isolated script-generated artifact graph and exact
-  main-built `0.2.14`. Immutable `0.2.11`/`0.2.12`/`0.2.13` remain rollback
-  generations.
+  boundaries are accepted and integrated. Accepted DLV-057 now supplies an
+  isolated script-generated artifact graph and exact main-built `0.2.14`;
+  immutable `0.2.11`/`0.2.12`/`0.2.13` remain rollback generations.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,
@@ -589,6 +586,14 @@ Staged rollout:
    and partner requirements are documented. This is not a prerequisite for a
    strong installed-game launcher.
 
+**Current delivery sequence:** DLV-059 now normalizes the existing trusted
+Start Menu/AppsFolder and Steam sources behind one internal adapter contract.
+DLV-060 then ships the dedicated installed-only Game Launcher over the accepted
+cursor-grid and lazy-artwork foundations; DLV-066 adds explicit favorites and
+preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
+Host-owned query/text entry and additional store adapters remain later
+serialized stages rather than being hidden inside the first widget.
+
 Completion evidence includes deterministic adapter contract suites; 2,000 and
 10,000 item cold/refresh/search/scroll measurements; bounded memory, decoded
 artwork, disk, CPU, and hidden-idle cost; compact/standard/wide and 100-150%
@@ -629,6 +634,13 @@ and small incremental resource measurements. It does not yet ship Pin/Unpin,
 prove pointer pass-through over a real game, host protected media, or validate
 physical mixed-display behavior; the generic pinning gate below still owns
 those outcomes before YouTube playback is added.
+
+**Current delivery sequence:** Assigned DLV-058 ships the generic Pin/Unpin/
+click-through lifecycle from the accepted Win32 tool-window architecture.
+Ready DLV-068 adds controller move/resize and durable monitor-safe placement;
+DLV-069 completes input/focus/UIA and emergency-hide composition; DLV-062 then
+runs the fixed-video trusted-media feasibility gate. YouTube URL/video-ID v1 is
+not authorized until all four gates are accepted.
 
 Framework prerequisites:
 
