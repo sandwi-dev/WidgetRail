@@ -253,10 +253,13 @@ remains off until the publisher-trust gates in Phase 4.
   controller/view owner remains application-composition evidence rather than a
   reason to create a universal base class. Accepted DLV-051 now proves a
   responsive widget can author and replay an exact seek-to-selected-navigation
-  edge without native special cases. Widgets-led serialized DLV-006 is assigned
-  next to add the distinct cursor/append collection and bounded lazy-artwork
-  foundation; DLV-022 and DLV-018 consume it for Spotify continuity and trusted
-  Games artwork. Continue suitable command/resource/navigation migrations,
+  edge without native special cases. Widgets-led serialized DLV-006 is accepted
+  through `9c7438f` as the distinct cursor/append collection and bounded lazy-
+  artwork foundation. DLV-022 candidate `c349bbd` proves the main Spotify cursor path but
+  remains unintegrated because URI-only keys collide for repeated media and a
+  singleton playlist row self-links. Finish DLV-018 trusted Games artwork, then
+  take DLV-053's bounded correction before DLV-043. Continue suitable
+  command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
   merge, retry, or confirmation policy.
@@ -309,9 +312,10 @@ remains off until the publisher-trust gates in Phase 4.
   eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
   Do not claim public distribution while the documented five-user Development
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
-  Before expanding breadth, DLV-022 must repair the explicit responsive focus
-  graph and migrate Queue/Playlist traversal onto the continuous keyed-list
-  contract from DLV-006. Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
+  Before expanding breadth, the DLV-022-dependent prefix must pass DLV-053's
+  duplicate-occurrence and singleton-focus correction so Queue/Playlist
+  traversal safely consumes the continuous keyed-list contract from DLV-006.
+  Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,
   permission, and authentication states; live recurrence testing remains.
@@ -598,6 +602,15 @@ plain host-owned tool window and `AppWindow` compact overlay for focus, taskbar,
 click-through, DPI, monitor migration, protected media, borderless games, and
 resource cost. Keep the public pin/presentation contract independent of the
 chosen Windows backend.
+
+DLV-011 has completed that first bounded comparison and selected a host-owned
+Win32 tool window for the next pinning gate. The accepted fixture establishes
+host-only HWND/UIA authority, explicit click-through and focusable modes,
+independent main-overlay hide/close lifetime, bounded monitor/DPI placement,
+and small incremental resource measurements. It does not yet ship Pin/Unpin,
+prove pointer pass-through over a real game, host protected media, or validate
+physical mixed-display behavior; the generic pinning gate below still owns
+those outcomes before YouTube playback is added.
 
 Framework prerequisites:
 
