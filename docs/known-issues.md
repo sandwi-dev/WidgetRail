@@ -91,6 +91,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-070 | P2 | Closed | YT Music package metadata / companion handshake | Accepted DLV-086 aligns the source constant, companion `appVersion`, README commands, and validating test with immutable manifest `0.2.7`. YT Music passes 55/55; no package bytes were republished. |
 | GBA-071 | P1 | Closed | Game Launcher Hidden route / cursor-resource readiness | Accepted DLV-088 plus DLV-090 make Restore/Back publish an enabled current row without Refresh. Final direct evidence is 43/43 and clean installed generic-worker run `20260811T175350Z-011a57cd` passes 6/6. |
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
+| GBA-073 | P1 | Confirmed; DLV-093 Ready after active DLV-091 | Protected Wi-Fi host transport / Native Wi-Fi rollback | DLV-087's retained candidate keeps the password out of the widget, snapshot, logs, and persistence, but ordinary native JSON/UTF strings plus managed frame/`JsonElement`/`string` copies are not zeroed. Failure rollback also deletes by the shared SSID-derived profile name without proving the current profile is still the exact attempt-owned generation. Do not integrate the candidate before DLV-093. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2276,6 +2277,45 @@ management paths share one derivation owner.
 `InstalledWidgetInstanceIdentity` owner. Final Bridge 73/73 proves the real
 enabled-to-disabled stale/clear/re-enable transition, no disabled worker
 creation, and an unchanged neighbor.
+
+## GBA-073 — Protected Wi-Fi retains secret copies and rollback ownership is not exact
+
+**Evidence:** DLV-087 candidate `8c2949c` collects a masked password in the
+native host and correctly bypasses the ordinary AppContainer widget. The send
+path nevertheless calls `JsonValue::CreateStringValue`, `JsonObject::Stringify`,
+and `winrt::to_string`, leaving ordinary immutable/native JSON and UTF buffers.
+`BridgeFrameChannel.ReadAsync` reads the complete request into a managed
+`byte[]` that is never cleared and deserializes it into a `JsonElement`; the
+classifier and request handler each deserialize `BridgeProtectedWifiRequest`,
+creating separate immutable `Secret` strings. Clearing only the later `char[]`
+and profile XML cannot satisfy the assigned post-operation zeroization
+contract. The standard password EDIT control is destroyed without first
+overwriting its text.
+
+The same candidate creates a per-user profile named directly from the SSID and
+records only interface, profile name, and a `CreatedProfile` Boolean. Terminal
+failure, timeout, adapter disposal, and provider disposal call
+`WlanDeleteProfile` by that common name. `bOverwrite = FALSE` protects state
+present at creation time, but nothing proves that the profile still stored
+under that name is the attempt-owned generation when rollback runs. A
+neighboring process can replace it after creation and before the asynchronous
+terminal event, allowing rollback to delete newer state.
+
+**Ownership:** DLV-093 follows already-active visible DLV-091. It owns one
+mutable, explicitly zeroed trusted transport from the modal through native and
+managed framing into the provider, plus an attempt-unique profile identity and
+conditional exact rollback. It does not reopen widget UX, add credential
+persistence, encrypt the current-user authenticated pipe without evidence, or
+expand supported Wi-Fi modes.
+
+**Acceptance:** Every terminal path clears the EDIT control and every native/
+managed transport, command, P/Invoke, and XML buffer; no immutable password
+string or retained raw-password test artifact is created. A profile that
+predates the attempt or is created/replaced by a neighbor is never changed or
+deleted. Failed rollback is reported explicitly, and only the exact still-
+current attempt-owned profile can be removed. Focused buffer/race evidence, one
+installed production-host route, and one clean exact-commit aggregate pass
+before DLV-087 is integrated and the Release is relaunched.
 
 ## Closed issues
 

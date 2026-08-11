@@ -2,8 +2,9 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `dc1bc16`; prior retained
-evidence remains scoped to the commits named in each finding<br>
+Last reassessed: 2026-08-11 against integrated `main` `64e3586` and unintegrated
+DLV-087 candidates `8c2949c`/`376e67c`; prior retained evidence remains scoped
+to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -11,6 +12,36 @@ verification credibility, UI/UX foundations, and product readiness
 
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
+
+### Current review delta — protected Wi-Fi candidate
+
+DLV-087 candidate `8c2949c` plus native-link correction `376e67c` is not
+accepted. Its product boundary is directionally strong: the Network Controls
+worker receives only a text-entry action and closed result, the trusted native
+host owns the masked prompt, current widget/action/scope/generation authority is
+revalidated after the nested loop, the provider uses documented per-user Native
+Wi-Fi APIs with overwrite disabled, and focused suites are green. The single
+exact-commit aggregate stopped once on missing `oleaut32` linkage in the
+canonical native path; the append-only correction closes that build parity and
+the aggregate was not repeated.
+
+The credential lifetime does not meet the assignment. Native code first puts
+the password in WinRT JSON values and ordinary UTF-16/UTF-8 strings. The bridge
+then retains the request in an uncleared managed byte array and `JsonElement`;
+classification and handling deserialize the full request twice, producing two
+immutable password strings. Clearing downstream `char[]` and XML buffers does
+not erase those copies, and the password EDIT control is destroyed without
+overwriting its text. This is a boundary-design failure, not a request for
+general transport hardening.
+
+Rollback ownership is also too weak. The candidate names the temporary profile
+from the SSID and later deletes by interface plus that common profile name. It
+refuses a profile already present during `WlanSetProfile`, but an independent
+actor can replace the profile before asynchronous failure, timeout, or disposal;
+the candidate would then delete state it no longer owns. DLV-093 is queued after
+already-active visible DLV-091 to add one zeroed mutable secret path and an
+attempt-unique, conditionally verified rollback identity. DLV-087 remains
+unintegrated until that correction passes.
 
 ### Current review delta — installed Game Launcher product slice
 
@@ -1928,6 +1959,50 @@ display/source/artwork and enabled state without reloading, deduplicates the
 promoted identity, selects a remaining current catalog anchor, and revalidates
 the second launch by exact SavedId. The focused Game Launcher suite passes
 36/36; the corrected prefix is integrated through `d116f0d`.
+
+### EQ-033 — P1 — Protected Wi-Fi secret and rollback ownership are not terminal
+
+**Status: Open; DLV-093 is Ready after active DLV-091.**
+
+**Evidence.** DLV-087 correctly keeps the credential out of the ordinary widget
+worker, snapshots, public capability calls, logs, and persisted overlay state.
+It does not keep the credential inside zeroizable owners. The native client
+creates a WinRT JSON string, stringifies the envelope, and converts it to an
+ordinary UTF-8 `std::string`. The managed `BridgeFrameChannel` allocates a
+request `byte[]`, deserializes a retained `JsonElement`, and never clears that
+frame. `BridgeRequestClassifier` and `WidgetBridgeServer` each deserialize a
+`BridgeProtectedWifiRequest`, so the same secret becomes two immutable managed
+strings before the later mutable copies are cleared. The masked EDIT control's
+text is not overwritten before destruction. Tests assert later `char[]` and XML
+clearing but do not observe these actual transport owners.
+
+The Native Wi-Fi half records a protected pending connection as native key,
+interface GUID, SSID-derived profile name, and `CreatedProfile = true`.
+Failure, timeout, and terminal cleanup delete whatever current profile has that
+name. `WlanSetProfile(..., bOverwrite: false)` prevents an existing profile from
+being overwritten at creation time; it does not establish ownership of a later
+profile still stored under the same name. The direct rollback fixture tests
+pre-existing rejection and ordinary success/failure, but not replacement
+between creation and asynchronous terminal handling.
+
+**Why it matters.** Password collection creates a stronger obligation than an
+ordinary authenticated bridge message: process memory and crash artifacts
+should not retain avoidable plaintext copies after the operation. Rollback is a
+data-loss boundary. Deleting by a common SSID-derived name after an unbounded
+external mutation window can remove a valid Windows profile created or replaced
+by another actor.
+
+**Required correction.** DLV-093 must use one bounded mutable transport payload
+whose native serialization, pipe buffer, managed parsing, command, P/Invoke,
+and XML owners are explicitly cleared on every terminal path, without duplicate
+full-request deserialization or raw-password test strings. Clear the EDIT text
+before window destruction. Give each created profile an attempt-unique identity,
+retain exact interface/profile/generation ownership, conditionally verify it
+before deletion where supported, and report rollback failure rather than
+claiming clean failure. Cover creation/replacement/delete races and run one
+production-shaped route plus one exact-commit checkpoint. Do not expand into
+pipe encryption, credential persistence, additional Wi-Fi modes, or broad
+bridge refactoring without a new demonstrated requirement.
 
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 

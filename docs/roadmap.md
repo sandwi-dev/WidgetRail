@@ -977,10 +977,14 @@ scan IDs that expire on the next scan/provider generation; widgets never receive
 BSSID, interface identity, raw WLAN structures, profile XML, or keys.
 
 Connection support currently accepts saved-profile-backed and unsaved open
-results. DLV-087 is queued to add a host-owned credential prompt and exact
-per-user Native Wi-Fi profile/connect flow for supported WPA2/WPA3 Personal
-networks. Credentials never enter the widget snapshot,
-worker process, widget-owned storage, diagnostics, or logs. Enterprise/802.1X,
+results. DLV-087 candidates `8c2949c`/`376e67c` implement the visible host-owned
+prompt and documented per-user Native Wi-Fi profile/connect flow, but are not
+accepted: ordinary JSON/string/frame copies are not fully zeroed and rollback
+does not yet prove it still owns the SSID-derived profile it deletes. DLV-093
+follows active Bluetooth-removal DLV-091 to close those exact boundaries before
+integration. Credentials must never enter the widget snapshot,
+worker process, widget-owned storage, diagnostics, logs, or post-operation
+transport buffers. Enterprise/802.1X,
 certificate, SIM, domain-credential, hidden-network, and captive-portal setup is
 unsupported initially. `WlanConnect` remains asynchronous and authoritative
 ACM events determine success/failure. `WlanSetInterface` with
