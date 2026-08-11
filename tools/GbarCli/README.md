@@ -58,6 +58,11 @@ gbar theme list
   a clean directory without a platform checkout or machine-specific project
   reference. The generated executable test drives lifecycle, state, and
   actions and exports the snapshot consumed by the replay example.
+  `eng/WidgetSdkRelease.props` supplies the shared pre-release version and
+  supported template version stamped into the CLI and SDK. The generated
+  package adds a deterministic content suffix and the project references that
+  exact package version; mismatched CLI/SDK/template release units fail before
+  publication.
 - `validate` checks strict manifest JSON and every GBSS file in a widget
   directory. GBSS validation uses the shared `WidgetStyling` parser/compiler,
   enforces typed bounded properties, and blocks scripts, expressions, URLs,

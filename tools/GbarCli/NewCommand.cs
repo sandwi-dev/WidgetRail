@@ -37,6 +37,7 @@ internal static partial class NewCommand
             ["{{WidgetName}}"] = name,
             ["{{WidgetId}}"] = id,
             ["{{Publisher}}"] = publisher,
+            ["{{SdkPackageId}}"] = sdkPackage.PackageId,
             ["{{SdkVersion}}"] = sdkPackage.Version,
         };
 

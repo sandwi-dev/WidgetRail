@@ -20,6 +20,9 @@ guarantees that are available now.
   bounded scenario declarations, render trusted code, replay, and run a
   controller widget through the isolated `gbar dev` watch loop with
   authenticated readiness and last-good recovery.
+- [Widget SDK compatibility and release unit](widget-sdk-compatibility.md) —
+  checked-in public API baseline, exact CLI/template/package version contract,
+  and the intentional pre-release addition or breaking-reset workflow.
 - [Widget lifecycle and process residency](widget-residency.md) — lifecycle
   callbacks, versioned manifest policy, safe suspension, bounded idle unload,
   cached views, lazy resume, and legacy migration.

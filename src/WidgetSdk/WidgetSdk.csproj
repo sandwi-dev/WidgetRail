@@ -1,10 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\eng\WidgetSdkRelease.props" />
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Version>$(WidgetSdkReleaseVersion)</Version>
+    <PackageId>$(WidgetSdkPackageId)</PackageId>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="WidgetSdkReleaseVersion" Value="$(WidgetSdkReleaseVersion)" />
+    <AssemblyMetadata Include="WidgetSdkPackageId" Value="$(WidgetSdkPackageId)" />
+    <AssemblyMetadata Include="ControllerWidgetTemplateVersion" Value="$(ControllerWidgetTemplateVersion)" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" />
   </ItemGroup>
