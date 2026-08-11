@@ -30,6 +30,7 @@ internal static class BridgeMessageTypes
     public const string Action = "action";
     public const string QuickAction = "quick-action";
     public const string ControllerInput = "controller-input";
+    public const string ConnectProtectedWifi = "connect-protected-wifi";
     public const string ControllerInputResult = "controller-input-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidation = "widget-invalidated";
@@ -57,6 +58,11 @@ internal sealed record BridgeWidgetLifecycleRequest(
 internal sealed record BridgeActionRequest(string WidgetId, GameBarAlternative.WidgetSdk.WidgetActionEvent Action);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(string WidgetId, GameBarAlternative.WidgetSdk.ControllerInputEvent Input);
+internal sealed record BridgeProtectedWifiRequest(
+    string WidgetId,
+    string RuntimeGeneration,
+    string SourceElementId,
+    string Secret);
 internal sealed record BridgeInvalidation(string WidgetId, long Revision);
 internal sealed record BridgeHostEffect(
     string WidgetId,

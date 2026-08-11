@@ -1456,6 +1456,15 @@ static async Task RunCatalogAsync(
             firstRenderObserved?.Invoke(activationStopwatch.Elapsed);
             Assert.True(client.IsRunning,
                 $"{package.Manifest.Name} {route} worker exited after render.");
+            if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+            {
+                var protectedEntry = Nodes(snapshot.Root).Single(node =>
+                    node.Kind == ViewNodeKind.TextEntry &&
+                    string.Equals(node.ActionId, "wifi.connect.protected",
+                        StringComparison.Ordinal));
+                Assert.Equal(string.Empty, protectedEntry.TextEntryValue);
+                Assert.Equal(63, protectedEntry.TextEntryMaximumLength);
+            }
 
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
             await ExerciseControlAsync(package, client, snapshot, backend, route);
@@ -1898,7 +1907,7 @@ static SimulatedPlatformBrokerBackend CreateBackend(
     [
         new AvailableWifiNetworkSummary(
             "wifi-current", "Conformance Wi-Fi", 87, WifiSecurityKind.Personal,
-            false, true, true),
+            true, false, false),
     ]);
     backend.SetBluetoothDevices(
         [new BluetoothDeviceSummary("bt-one", "Conformance Controller", true, true, true)]);

@@ -32,8 +32,9 @@ The initial surface is intentionally narrow:
   while the widget is Interactive;
 - render currently visible networks with sanitized name, signal, security,
   credential-required, connected, and saved-profile state; and
-- connect an exact visible saved-profile or unsaved open network by its opaque
-  scan ID while Interactive;
+- connect an exact visible saved-profile, unsaved open network, or supported
+  WPA2/WPA3 Personal network by its opaque scan ID while Interactive; protected
+  connections use a masked host-owned prompt that bypasses the widget worker;
 - present Wi-Fi and Bluetooth as separate controller views rather than one
   overlong mixed list; and
 - switch those views with LB/RB or a focused segmented-tab A action while
@@ -46,9 +47,12 @@ tab names the visible section, while connected/paired/radio-On state comes only
 from the provider snapshot. Completing these semantics under scan/device churn
 is tracked as [GBA-034](known-issues.md).
 
-The bundled surface does **not** prompt for or store a password, create/edit/
-delete protected profiles, read profile XML or key material, expose BSSID/MAC/
-  IP/DNS/gateway values, open captive portals, change airplane mode,
+The bundled surface never prompts inside the widget process or stores a
+password. The trusted host may create one exact per-user WPA2/WPA3 Personal
+profile without overwrite, connect it, and remove only that newly created
+profile on terminal failure. It does not read profile XML or key material,
+edit/delete pre-existing profiles, expose BSSID/MAC/IP/DNS/gateway values,
+open captive portals, change airplane mode,
 disconnect, or silently reorder Windows profile preference. It does not shell
 out to `netsh`, edit the registry, install a service/driver, or elevate.
 
@@ -97,8 +101,8 @@ Settings consent descriptions, first-party widget, and deterministic tests.
 Software Wi-Fi radio read/control, Bluetooth radio/discovery, explicit
 association pairing, and a Windows-owned management fallback are also
 implemented behind separate closed grants. Remaining work is deliberately
-separate: host-owned protected-network credential entry, enterprise
-provisioning, Bluetooth unpair, and profile-specific Bluetooth communication.
+separate: enterprise provisioning, Bluetooth unpair, and profile-specific
+Bluetooth communication.
 Unknown future capability names continue to fail closed.
 
 The implemented Wi-Fi contract is:
@@ -112,9 +116,15 @@ The implemented Wi-Fi contract is:
    for that scan/provider generation and must never be persisted, logged, or
    treated as the SSID/BSSID/interface identity.
 3. An exact current result may start a connection when it has a saved Windows
-   profile or is an unsaved open network. New WPA/WPA2/WPA3 Personal networks
-   return `credential_required`; the future prompt must be host-owned, and the
-   worker must never receive the credential.
+   profile or is an unsaved open network. Supported unsaved WPA2/WPA3 Personal
+   rows open a masked native modal only for the exact current Interactive
+   Network Controls generation. The host revalidates authority after the modal
+   closes and sends the mutable password directly to the trusted provider; it
+   never dispatches the password or profile XML through the widget worker.
+   The provider creates one `WLAN_PROFILE_USER` profile with overwrite disabled,
+   starts one `WlanConnect`, and trusts only the matching ACM completion. Failure
+   or cancellation rolls back only the profile generation created by that try;
+   success retains the Windows-owned profile.
 4. Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially. Stored Windows keys
    are never read or exposed.
@@ -227,6 +237,11 @@ details automatically: those fields remain `PrivacyRestricted` and omitted.
 Nearby-network access begins only from the separate explicit scan action.
 Opening the overlay, selecting its tray item, or entering the widget does not
 scan, prompt, or retry.
+
+The protected prompt uses native password semantics, exposes no accessibility
+value, rejects clipboard copy/cut/paste and context-menu transfer, and clears
+its mutable host/provider password and profile-XML buffers after the attempt.
+Cancel or stale widget/snapshot authority performs no profile or connect call.
 
 ## Public data model
 

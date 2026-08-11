@@ -48,7 +48,7 @@ eventual widgets:
 | `system.network.read.v1` | Read sanitized connectivity/saved-profile state and subscribe to bounded network-change events. |
 | `system.network.saved-profile.switch.v1` | Connect one opaque already-saved profile while Interactive; no profile creation or secrets. |
 | `system.network.wifi.read.v1` | Read the cached available-network snapshot, explicitly request one scan while Interactive, and subscribe to bounded scan snapshots. |
-| `system.network.wifi.connect.v1` | Connect one current generation-bound saved/open scan result while Interactive; no credential entry. |
+| `system.network.wifi.connect.v1` | Connect one current generation-bound saved/open scan result while Interactive. Bundled Network Controls may additionally use its trusted masked host prompt for one supported WPA2/WPA3 Personal result; the secret and profile XML bypass the worker/public SDK. |
 | `system.network.wifi.radio.read.v1` | Read/watch effective software/hardware/policy Wi-Fi radio state. |
 | `system.network.wifi.radio.control.v1` | Request software Wi-Fi radio On/Off while Interactive; hardware/policy remains authoritative. |
 | `system.network.bluetooth.read.v1` | Read/watch sanitized Bluetooth radio/discovery/device state; no native IDs. |

@@ -290,18 +290,50 @@ internal static class NetworkControlsPresentation
             var isPending = string.Equals(network.NetworkId, pendingId, StringComparison.Ordinal);
             var (state, detail) = NetworkMetadata(network, isPending);
             var actionLabel = NetworkActionLabel(network);
-            var button = UI.Button(network.DisplayName, "wifi.connect.item", id)
-                .Icon(network.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi,
-                    $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}")
-                .Disabled(!interactive || controlBusy || network.IsConnected)
-                .Shortcut(ControllerButton.X, actionId: "wifi.connect.item")
-                .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
-                .FocusLeft(id)
-                .FocusRight(id)
-                .Classes("network-profile-button",
-                    network.IsConnected ? "is-connected" : "is-available",
-                    isPending ? "is-pending" : "is-ready");
-            if (index < networks.Count - 1) button = button.FocusDown(ids[index + 1]);
+            WidgetElement button;
+            if (network.CredentialRequired &&
+                network.Security == WidgetWifiSecurityKind.Personal)
+            {
+                var protectedEntry = UI.TextEntry(
+                    string.Empty,
+                    network.DisplayName,
+                    "wifi.connect.protected",
+                    id,
+                    maximumLength: 63) with
+                {
+                    AccessibilityLabel =
+                        $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}",
+                    StyleClasses = [
+                        "network-profile-button",
+                        network.IsConnected ? "is-connected" : "is-available",
+                        isPending ? "is-pending" : "is-ready",
+                    ],
+                };
+                protectedEntry = protectedEntry
+                    .Disabled(!interactive || controlBusy || network.IsConnected)
+                    .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
+                    .FocusLeft(id)
+                    .FocusRight(id);
+                if (index < networks.Count - 1)
+                    protectedEntry = protectedEntry.FocusDown(ids[index + 1]);
+                button = protectedEntry;
+            }
+            else
+            {
+                var ordinary = UI.Button(network.DisplayName, "wifi.connect.item", id)
+                    .Icon(network.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi,
+                        $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}")
+                    .Disabled(!interactive || controlBusy || network.IsConnected)
+                    .Shortcut(ControllerButton.X, actionId: "wifi.connect.item")
+                    .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
+                    .FocusLeft(id)
+                    .FocusRight(id)
+                    .Classes("network-profile-button",
+                        network.IsConnected ? "is-connected" : "is-available",
+                        isPending ? "is-pending" : "is-ready");
+                if (index < networks.Count - 1) ordinary = ordinary.FocusDown(ids[index + 1]);
+                button = ordinary;
+            }
             rows[index] = UI.Stack($"{id}.row",
                     button,
                     UI.Row($"{id}.meta",
@@ -452,7 +484,9 @@ internal static class NetworkControlsPresentation
     {
         if (network.IsConnected) return "Connected";
         if (network.CredentialRequired)
-            return "Use Windows Quick Settings to enter the password";
+            return network.Security == WidgetWifiSecurityKind.Personal
+                ? "Press A to enter the password securely"
+                : "Use Windows network settings for this authentication method";
         if ((network.Security is WidgetWifiSecurityKind.Enterprise or
                 WidgetWifiSecurityKind.Unknown) && !network.HasSavedProfile)
             return "Use Windows network settings for this authentication method";

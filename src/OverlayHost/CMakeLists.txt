@@ -229,7 +229,7 @@ if(GBA_BUILD_TESTS)
     target_compile_options(TextEntryModalTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(TextEntryModalTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(TextEntryModalTests PRIVATE user32 gdi32 ole32 uiautomationcore)
+    target_link_libraries(TextEntryModalTests PRIVATE user32 gdi32 ole32 oleaut32 uiautomationcore)
     add_test(NAME TextEntryModalTests COMMAND TextEntryModalTests)
 
     add_executable(PressedInteractionTests PressedInteractionTests.cpp)

@@ -1265,7 +1265,11 @@ Available-network broker/SDK contracts and the explicit, event-driven Native
 Wi-Fi scan/connect provider are declared and rendered by the bundled widget.
 They use generation-bound opaque IDs and cover saved-profile-backed and
 unsaved-open connection starts with dedicated broker/provider/widget tests.
-Host-owned WPA Personal credential entry remains staged. Software Wi-Fi radio
+Host-owned WPA2/WPA3 Personal credential entry is implemented for the exact
+current bundled Network Controls generation. The masked native modal bypasses
+the worker; the provider creates one per-user profile without overwrite,
+correlates the existing ACM completion, and removes only its newly created
+profile on terminal failure. Software Wi-Fi radio
 read/control, Bluetooth radio/discovery, explicit pairing, and a separately
 consented Windows Settings management fallback are implemented behind granular
 grants. Unpair and generic Bluetooth Connect/Disconnect remain outside the
@@ -2592,11 +2596,13 @@ with C++ installed:
   measured throughput/latency/loss diagnostics, and reviewed recovery actions.
   The implemented reference includes precise-location-gated explicit
   available-network scans and current saved/open result connections; it
-  excludes password entry, profile creation, and automatic current SSID/signal
-  access. Software Wi-Fi radio control plus separately capability-gated
+  includes host-owned masked WPA2/WPA3 Personal entry and exact per-user profile
+  creation without exposing secret/profile XML to the worker, but excludes
+  enterprise/legacy provisioning and automatic current SSID/signal access.
+  Software Wi-Fi radio control plus separately capability-gated
   Bluetooth radio/discovery and explicit association pairing are implemented.
-  Staged roadmap work adds a host-owned WPA Personal credential prompt and
-  unpair/profile-specific Bluetooth operations. Enterprise Wi-Fi and generic Bluetooth
+  Remaining roadmap work includes unpair/profile-specific Bluetooth operations.
+  Enterprise Wi-Fi and generic Bluetooth
   Connect/Disconnect are not promised. See
   [widget capabilities](capabilities.md) and [Windows provider
   architecture](windows-provider-architecture.md) and [Network Controls

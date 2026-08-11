@@ -32,6 +32,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
+    ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
@@ -234,6 +235,49 @@ static Task CatalogMemoryPolicyIsTrusted()
     return Task.CompletedTask;
 }
 
+static Task ProtectedWifiHostAdmissionIsExact()
+{
+    var trusted = new ConfiguredWidget
+    {
+        Id = "network-controls",
+        PackageId = "org.gbar.firstparty.network-controls",
+        PublisherId = "org.gbar.firstparty",
+        Name = "Network Controls",
+        InstanceId = "network-controls",
+        WorkerExecutable = Environment.ProcessPath!,
+        WorkerFingerprint = new string('A', 64),
+        CatalogFingerprint = new string('B', 64),
+        DeclaredCapabilities = [PlatformCapabilities.NetworkWifiConnectV1],
+    };
+    Assert.True(trusted.PublicDescriptor().ProtectedWifiPromptSupported,
+        "Exact first-party Network Controls did not receive trusted prompt admission.");
+    Assert.False((trusted with { PackageId = "dev.example.network-controls" })
+        .PublicDescriptor().ProtectedWifiPromptSupported,
+        "A package spoof received trusted prompt admission.");
+    Assert.False((trusted with { PublisherId = "dev.example" })
+        .PublicDescriptor().ProtectedWifiPromptSupported,
+        "A publisher spoof received trusted prompt admission.");
+    Assert.False((trusted with { DeclaredCapabilities = [] })
+        .PublicDescriptor().ProtectedWifiPromptSupported,
+        "A capability-free worker received trusted prompt admission.");
+
+    Assert.True(NetworkControlsHostPolicy.TryParseNetworkId(
+        "network.wifi.item.wifi_0123456789ABCDEF", out var networkId),
+        "A bounded opaque Wi-Fi source was rejected.");
+    Assert.Equal("wifi_0123456789ABCDEF", networkId);
+    foreach (var source in new[]
+    {
+        "network.wifi.item.profile_secret",
+        "network.wifi.item.wifi_../secret",
+        "network.wifi.item.wifi-secret",
+        "network.wifi.item.",
+        "network.wifi.item.wifi_" + new string('A', 129),
+    })
+        Assert.False(NetworkControlsHostPolicy.TryParseNetworkId(source, out _),
+            $"Unsafe protected Wi-Fi source was admitted: {source}");
+    return Task.CompletedTask;
+}
+
 static async Task DiagnosticsAreSettingsOnly()
 {
     var exact = DiagnosticCandidate();
@@ -316,7 +360,7 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "pinningSupported", "presentationGeneration", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
@@ -326,6 +370,8 @@ static async Task EnumerationIsLazy()
     Assert.Equal("music", descriptor.GetProperty("icon").GetString());
     Assert.False(descriptor.GetProperty("pinningSupported").GetBoolean(),
         "Omitted manifest pinning support must project closed.");
+    Assert.False(descriptor.GetProperty("protectedWifiPromptSupported").GetBoolean(),
+        "Community descriptors cannot declare the trusted protected Wi-Fi prompt.");
     var quickAction = descriptor.GetProperty("quickActions")[0];
     Assert.SequenceEqual(["actionId", "controllerButton", "id", "label", "sourceElementId"],
         quickAction.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));

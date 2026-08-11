@@ -13,6 +13,7 @@ internal enum BridgeRequestKind
     SetWidgetLifecycle,
     Action,
     ControllerInput,
+    ConnectProtectedWifi,
     QuickAction,
     Stop,
     Malformed,
@@ -39,6 +40,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
+            BridgeRequestKind.ConnectProtectedWifi or
             BridgeRequestKind.QuickAction)
             throw new ArgumentOutOfRangeException(nameof(kind));
         return new BridgeRequestKey(kind, null);
@@ -51,6 +53,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
+            BridgeRequestKind.ConnectProtectedWifi or
             BridgeRequestKind.QuickAction))
             throw new ArgumentOutOfRangeException(nameof(kind));
         if (!IsIdentifier(widgetId))
@@ -97,6 +100,9 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.ControllerInput => Widget(
                     BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.ControllerInput),
+                BridgeMessageTypes.ConnectProtectedWifi => Widget(
+                    BridgeJson.FromElement<BridgeProtectedWifiRequest>(request.Payload).WidgetId,
+                    BridgeRequestKind.ConnectProtectedWifi),
                 BridgeMessageTypes.QuickAction => Widget(
                     BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.QuickAction),

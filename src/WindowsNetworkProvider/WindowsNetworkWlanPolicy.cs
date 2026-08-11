@@ -114,7 +114,8 @@ internal sealed class WindowsNetworkWlanPolicy
                 nativeProfileKey,
                 target.InterfaceId,
                 target.ProfileName,
-                []);
+                [],
+                false);
             return true;
         }
         throw new Win32Exception(
@@ -173,7 +174,9 @@ internal sealed class WindowsNetworkWlanPolicy
                     item.BssType,
                     hasProfile ? item.ProfileName : null,
                     security,
-                    credentialRequired));
+                    credentialRequired,
+                    item.AuthenticationAlgorithm,
+                    item.CipherAlgorithm));
                 networks.Add(new(
                     nativeKey,
                     DecodeSsid(item.Ssid),
@@ -271,11 +274,64 @@ internal sealed class WindowsNetworkWlanPolicy
             nativeNetworkKey,
             target.InterfaceId,
             target.ProfileName,
-            target.Ssid.ToArray());
+            target.Ssid.ToArray(),
+            false);
         return NativeWifiConnectStartResult.Started;
     }
 
-    public NativeWlanNotificationProjection ProcessNotification(ref WlanNotificationData data)
+    public NativeProtectedWifiConnectStartResult TryConnectProtectedNetwork(
+        IWindowsNetworkNativeCalls calls,
+        IntPtr handle,
+        string nativeNetworkKey,
+        ReadOnlySpan<char> secret)
+    {
+        if (handle == IntPtr.Zero) return NativeProtectedWifiConnectStartResult.Unavailable;
+        if (!_connectableNetworks.TryGetValue(nativeNetworkKey, out var target))
+            return NativeProtectedWifiConnectStartResult.NotFound;
+        if (!target.CredentialRequired || target.ProfileName is not null)
+            return NativeProtectedWifiConnectStartResult.NotFound;
+        if (target.AuthenticationAlgorithm is not (7u or 9u) || target.CipherAlgorithm != 4u)
+            return NativeProtectedWifiConnectStartResult.UnsupportedAuthentication;
+        if (!ProtectedWifiProfile.TryCreate(
+                target.Ssid,
+                target.AuthenticationAlgorithm,
+                target.CipherAlgorithm,
+                secret,
+                out var profile))
+            return NativeProtectedWifiConnectStartResult.InvalidCredential;
+        using (profile)
+        {
+            var setResult = calls.SetWlanProfile(
+                handle, target.InterfaceId, profile!.Xml, out _);
+            if (setResult == 183u)
+                return NativeProtectedWifiConnectStartResult.ProfileAlreadyExists;
+            if (setResult != ErrorSuccess)
+                return setResult == ErrorAccessDenied
+                    ? NativeProtectedWifiConnectStartResult.Unavailable
+                    : NativeProtectedWifiConnectStartResult.UnsupportedAuthentication;
+            var connectResult = calls.ConnectWlan(
+                handle,
+                target.InterfaceId,
+                new(WlanConnectionModeProfile, profile.Name, null, Dot11BssTypeAny));
+            if (connectResult != ErrorSuccess)
+            {
+                _ = calls.DeleteWlanProfile(handle, target.InterfaceId, profile.Name);
+                return NativeProtectedWifiConnectStartResult.Unavailable;
+            }
+            _pendingConnection = new(
+                nativeNetworkKey,
+                target.InterfaceId,
+                profile.Name,
+                target.Ssid.ToArray(),
+                true);
+            return NativeProtectedWifiConnectStartResult.Started;
+        }
+    }
+
+    public NativeWlanNotificationProjection ProcessNotification(
+        IWindowsNetworkNativeCalls calls,
+        IntPtr handle,
+        ref WlanNotificationData data)
     {
         if (data.NotificationSource == WlanNotificationSourceAcm &&
             data.NotificationCode is WlanNotificationAcmScanComplete or
@@ -333,6 +389,11 @@ internal sealed class WindowsNetworkWlanPolicy
                             StringComparison.Ordinal),
                     })
                     .ToArray();
+            if (matchedPending is { CreatedProfile: true } &&
+                data.NotificationCode == WlanNotificationAcmConnectionAttemptFail &&
+                matchedPending.ProfileName is { Length: > 0 })
+                _ = calls.DeleteWlanProfile(
+                    handle, matchedPending.InterfaceId, matchedPending.ProfileName);
             if (matchedPending is not null || !string.IsNullOrEmpty(profileName))
             {
                 outcome = new(
@@ -353,6 +414,29 @@ internal sealed class WindowsNetworkWlanPolicy
         _pendingConnection = null;
         _cachedAvailableGeneration = -1;
         _cachedAvailableNetworks = [];
+    }
+
+    public void RollbackPendingProtected(
+        IWindowsNetworkNativeCalls calls,
+        IntPtr handle)
+    {
+        if (_pendingConnection is not { CreatedProfile: true, ProfileName: { Length: > 0 } } pending)
+            return;
+        _pendingConnection = null;
+        _ = calls.DeleteWlanProfile(handle, pending.InterfaceId, pending.ProfileName);
+    }
+
+    public void RollbackProtected(
+        IWindowsNetworkNativeCalls calls,
+        IntPtr handle,
+        string nativeNetworkKey)
+    {
+        if (_pendingConnection is not
+            { CreatedProfile: true, ProfileName: { Length: > 0 } } pending ||
+            !string.Equals(pending.NativeKey, nativeNetworkKey, StringComparison.Ordinal))
+            return;
+        _pendingConnection = null;
+        _ = calls.DeleteWlanProfile(handle, pending.InterfaceId, pending.ProfileName);
     }
 
     internal static bool ShouldExposeAvailableNetwork(
@@ -491,8 +575,8 @@ internal sealed class WindowsNetworkWlanPolicy
         if (!enabled) return WifiSecurityKind.Open;
         return authentication switch
         {
-            4 or 7 or 10 or 11 => WifiSecurityKind.Personal,
-            3 or 6 or 8 or 12 or 13 or 14 => WifiSecurityKind.Enterprise,
+            4 or 7 or 9 => WifiSecurityKind.Personal,
+            3 or 6 or 8 or 11 => WifiSecurityKind.Enterprise,
             _ => WifiSecurityKind.Unknown,
         };
     }
@@ -512,14 +596,17 @@ internal sealed class WindowsNetworkWlanPolicy
         string NativeKey,
         Guid InterfaceId,
         string? ProfileName,
-        byte[] Ssid);
+        byte[] Ssid,
+        bool CreatedProfile);
     private sealed record NativeAvailableNetworkTarget(
         Guid InterfaceId,
         byte[] Ssid,
         int BssType,
         string? ProfileName,
         WifiSecurityKind Security,
-        bool CredentialRequired);
+        bool CredentialRequired,
+        uint AuthenticationAlgorithm,
+        uint CipherAlgorithm);
     private sealed record AvailableNetworkData(
         string ProfileName,
         byte[] Ssid,

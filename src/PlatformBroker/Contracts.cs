@@ -175,6 +175,20 @@ public sealed record AvailableWifiNetworksSummary(
 public sealed record ConnectAvailableWifiNetworkRequest(
     [property: JsonRequired] string NetworkId);
 
+/// <summary>
+/// Closed trusted-host result for a protected Personal Wi-Fi attempt. This
+/// contract is not exposed through widget capability dispatch.
+/// </summary>
+public enum ProtectedWifiConnectionStatus
+{
+    Connecting,
+    Rejected,
+}
+
+public sealed record ProtectedWifiConnectionResult(
+    ProtectedWifiConnectionStatus Status,
+    string Code);
+
 public sealed record AudioSessionsChangedEvent(
     IReadOnlyList<AudioSessionSummary> Sessions,
     bool IsAvailable = true);
@@ -826,6 +840,18 @@ public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
     Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken);
     Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken);
     Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Least-authority trusted-host path for a credential collected outside every
+/// widget worker. Implementations must not retain <paramref name="secret"/>.
+/// </summary>
+public interface IProtectedWifiHostBackend
+{
+    Task<ProtectedWifiConnectionResult> ConnectProtectedWifiAsync(
+        string networkId,
+        char[] secret,
+        CancellationToken cancellationToken);
 }
 
 public interface IActivityPlatformBrokerBackend : IPlatformBrokerEventSource

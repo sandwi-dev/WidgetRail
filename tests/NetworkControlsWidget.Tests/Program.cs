@@ -123,7 +123,13 @@ static async Task AvailableNetworksRender()
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
     var snapshot = Snapshot(widget, 1);
     var rows = NetworkButtons(snapshot.Root).ToArray();
-    Assert.SequenceEqual(["Home 5G", "Office", "Cafe", "Neighbor"], rows.Select(row => row.Text!));
+    Assert.SequenceEqual(["Home 5G", "Office", "Cafe", "Neighbor"], rows.Select(row =>
+    {
+        if (row.Kind != ViewNodeKind.TextEntry) return row.Text!;
+        var label = row.AccessibilityLabel ??
+            throw new InvalidOperationException("Protected network label is missing.");
+        return label[..label.IndexOf('.', StringComparison.Ordinal)];
+    }));
     Assert.Equal("CONNECTED", NetworkState(snapshot.Root, "Home 5G").Text);
     Assert.Equal("SAVED", NetworkState(snapshot.Root, "Office").Text);
     Assert.Equal("OPEN", NetworkState(snapshot.Root, "Cafe").Text);
@@ -183,8 +189,11 @@ static async Task ControllerFocusGraph()
     {
         Assert.Equal(row.Id, row.Focus!.Left);
         Assert.Equal(row.Id, row.Focus.Right);
-        Assert.True(row.Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.X && shortcut.ActionId == "wifi.connect.item"));
+        if (row.Kind == ViewNodeKind.Button)
+            Assert.True(row.Shortcuts.Any(shortcut =>
+                shortcut.Button == ControllerButton.X && shortcut.ActionId == "wifi.connect.item"));
+        else
+            Assert.Equal("wifi.connect.protected", row.ActionId);
     }
     Assert.True(!await Route(widget, snapshot, ControllerButton.B,
         ControllerInputContext.OpenWidget, rows[1].Id),
@@ -225,7 +234,14 @@ static async Task StableOpaqueSelection()
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
     var initial = Snapshot(widget, 1);
-    await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(initial.Root, "Beta").Id));
+    await widget.OnControllerInputAsync(new(
+        ControllerButton.A,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: NetworkButton(initial.Root, "Beta").Id,
+        Sequence: 8,
+        ActiveInputScopeId: initial.ActiveInputScopeId,
+        SnapshotSequence: initial.Sequence));
     Assert.Equal("opaque-b", widget.SelectedNetworkId);
     Assert.Equal(0, fake.ConnectCalls);
 
@@ -308,17 +324,27 @@ static async Task CredentialsStayOutOfWorker()
     await WaitUntil(() => widget.ViewState == NetworkControlsViewState.Ready);
 
     var snapshot = Snapshot(widget, 1);
-    await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(snapshot.Root, "Locked").Id));
+    var protectedEntry = NetworkButton(snapshot.Root, "Locked");
+    Assert.Equal(ViewNodeKind.TextEntry, protectedEntry.Kind);
+    Assert.Equal("wifi.connect.protected", protectedEntry.ActionId);
+    Assert.Equal(string.Empty, protectedEntry.TextEntryValue);
+    Assert.Equal(63, protectedEntry.TextEntryMaximumLength);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "wifi.connect.protected",
+        protectedEntry.Id)
+    {
+        CommittedText = "must-never-reach-worker",
+    });
     Assert.Equal(0, fake.ConnectCalls);
-    Assert.Contains("Windows Quick Settings", Text(Snapshot(widget, 2).Root, "network.status").Text!);
+    Assert.True(!widget.ControlBusy);
 
     await widget.OnActionAsync(new("wifi.connect.item", NetworkButton(Snapshot(widget, 3).Root, "Enterprise").Id));
     Assert.Equal(0, fake.ConnectCalls);
     Assert.Contains("Windows network settings", Text(Snapshot(widget, 4).Root, "network.status").Text!);
     Assert.True(!Nodes(Snapshot(widget, 5).Root).Any(node =>
-            node.Id.Contains("password", StringComparison.OrdinalIgnoreCase) ||
-            node.ActionId?.Contains("credential", StringComparison.OrdinalIgnoreCase) == true),
-        "The worker rendered a secret-entry route.");
+            node.TextEntryValue?.Contains("must-never", StringComparison.Ordinal) == true ||
+            node.AccessibilityValue?.Contains("must-never", StringComparison.Ordinal) == true),
+        "The worker retained committed secret material.");
     await Background(widget);
 }
 
@@ -1044,7 +1070,11 @@ static async ValueTask<bool> Route(
 static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
 {
     var snapshot = widget.RenderSnapshot("network.test", sequence);
-    Assert.Equal(ProtocolConstants.ScrollContainerVersion, snapshot.ProtocolVersion);
+    Assert.Equal(
+        Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.TextEntry)
+            ? ProtocolConstants.TextEntryVersion
+            : ProtocolConstants.ScrollContainerVersion,
+        snapshot.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(560D, snapshot.Surface.PreferredWidth);
     Assert.Equal(700D, snapshot.Surface.PreferredHeight);
@@ -1065,10 +1095,13 @@ static IEnumerable<ViewNode> Buttons(ViewNode root) =>
     Nodes(root).Where(node => node.Kind == ViewNodeKind.Button);
 
 static IEnumerable<ViewNode> NetworkButtons(ViewNode root) =>
-    Buttons(root).Where(node => node.ActionId == "wifi.connect.item");
+    Nodes(root).Where(node =>
+        node.ActionId is "wifi.connect.item" or "wifi.connect.protected");
 
 static ViewNode NetworkButton(ViewNode root, string name) =>
-    NetworkButtons(root).Single(node => node.Text == name);
+    NetworkButtons(root).Single(node =>
+        node.Text == name ||
+        node.AccessibilityLabel?.StartsWith($"{name}.", StringComparison.Ordinal) == true);
 
 static ViewNode NetworkState(ViewNode root, string name)
 {

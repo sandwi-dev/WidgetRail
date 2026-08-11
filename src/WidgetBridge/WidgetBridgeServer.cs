@@ -347,6 +347,36 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     new { handled }, cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.ConnectProtectedWifi:
+        {
+            var protectedRequest = BridgeJson.FromElement<BridgeProtectedWifiRequest>(request.Payload);
+            if (_platformBackend is not IProtectedWifiHostBackend protectedWifi)
+                throw new BridgeProtocolException("Protected Wi-Fi service is unavailable.");
+            if (!NetworkControlsHostPolicy.TryParseNetworkId(
+                    protectedRequest.SourceElementId, out var networkId) ||
+                protectedRequest.Secret.Length is < 8 or > 63 ||
+                protectedRequest.Secret.Any(character => character is < (char)32 or > (char)126))
+                throw new BridgeProtocolException("Protected Wi-Fi request is invalid.");
+            using var protectedPublication = _registry.AdmitProtectedWifi(
+                protectedRequest.WidgetId, protectedRequest.RuntimeGeneration);
+            var secret = protectedRequest.Secret.ToCharArray();
+            ProtectedWifiConnectionResult result;
+            try
+            {
+                result = await protectedWifi.ConnectProtectedWifiAsync(
+                    networkId, secret, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                Array.Clear(secret);
+            }
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged,
+                request.RequestId,
+                new { status = result.Status, code = result.Code },
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.QuickAction:
         {
             var quickRequest = BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload);

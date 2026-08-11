@@ -31,6 +31,7 @@ struct WidgetDescriptor final {
     std::wstring presentationGeneration;
     std::wstring icon{L"connection"};
     bool pinningSupported{};
+    bool protectedWifiPromptSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
 
@@ -360,6 +361,11 @@ public:
         std::wstring_view sourceElementId,
         std::wstring_view inputScopeId,
         std::optional<std::wstring_view> committedText = std::nullopt);
+    [[nodiscard]] std::optional<std::wstring> ConnectProtectedWifi(
+        std::wstring_view widgetId,
+        std::wstring_view runtimeGeneration,
+        std::wstring_view sourceElementId,
+        std::wstring_view secret);
     [[nodiscard]] std::wstring lastError() const;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();

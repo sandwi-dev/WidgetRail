@@ -29,6 +29,11 @@ public sealed record BridgeWidgetDescriptor
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
     public bool PinningSupported { get; init; }
+    /// <summary>
+    /// Trusted host policy for the bundled Network Controls credential prompt.
+    /// This is derived by the bridge and cannot be declared by a widget package.
+    /// </summary>
+    public bool ProtectedWifiPromptSupported { get; init; }
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
 }
 
@@ -93,6 +98,11 @@ internal sealed record ConfiguredWidget
         PresentationGeneration = CatalogFingerprint[..32].ToLowerInvariant(),
         Icon = Icon,
         PinningSupported = PinningSupported,
+        ProtectedWifiPromptSupported =
+            string.Equals(PackageId, "org.gbar.firstparty.network-controls", StringComparison.Ordinal) &&
+            string.Equals(PublisherId, "org.gbar.firstparty", StringComparison.Ordinal) &&
+            DeclaredCapabilities.Contains(
+                PlatformCapabilities.NetworkWifiConnectV1, StringComparer.Ordinal),
         QuickActions = QuickActions,
     };
 }

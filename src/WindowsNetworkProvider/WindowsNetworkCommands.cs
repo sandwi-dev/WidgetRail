@@ -44,6 +44,17 @@ internal sealed record ConnectAvailableWifiCommand(
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
+internal sealed record ConnectProtectedWifiCommand(
+    string NetworkId,
+    char[] Secret,
+    CancellationToken CancellationToken) : NetworkCommand, IDisposable
+{
+    public TaskCompletionSource<ProtectedWifiConnectionResult> Completion { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public void Dispose() => Array.Clear(Secret);
+}
+
 internal sealed record SetWifiRadioCommand(bool Enabled, CancellationToken CancellationToken)
     : NetworkCommand
 {
@@ -102,6 +113,28 @@ internal static class WindowsNetworkCommandPolicy
                 "platform_unavailable", "Windows Wi-Fi connection control is unavailable."),
             _ => new BrokerException(
                 "platform_unavailable", "Windows returned an invalid Wi-Fi connection state."),
+        };
+    }
+
+    public static void StartProtectedWifiConnection(
+        IWindowsNetworkNativeAdapter adapter,
+        string nativeKey,
+        ReadOnlySpan<char> secret)
+    {
+        var result = adapter.TryConnectProtectedWifiNetwork(nativeKey, secret);
+        if (result == NativeProtectedWifiConnectStartResult.Started) return;
+        throw result switch
+        {
+            NativeProtectedWifiConnectStartResult.InvalidCredential => new BrokerException(
+                "invalid_credential", "The Wi-Fi password must contain 8 to 63 printable characters."),
+            NativeProtectedWifiConnectStartResult.UnsupportedAuthentication => new BrokerException(
+                "unsupported_authentication", "This Wi-Fi authentication method is unsupported."),
+            NativeProtectedWifiConnectStartResult.ProfileAlreadyExists => new BrokerException(
+                "profile_exists", "Windows already has a profile for this network."),
+            NativeProtectedWifiConnectStartResult.NotFound => new BrokerException(
+                "resource_not_found", "The visible Wi-Fi network is no longer available."),
+            _ => new BrokerException(
+                "platform_unavailable", "Windows Wi-Fi connection control is unavailable."),
         };
     }
 

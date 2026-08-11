@@ -39,7 +39,8 @@ public:
         HWND owner,
         std::wstring_view value,
         std::wstring_view placeholder,
-        std::size_t maximumLength);
+        std::size_t maximumLength,
+        bool password = false);
 
     [[nodiscard]] bool active() const noexcept { return window_ != nullptr; }
     void HandleController(std::wstring_view button) noexcept;
@@ -50,6 +51,7 @@ private:
     struct FocusTarget final { HWND window{}; RECT bounds{}; };
 
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK EditWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     void CreateControls();
     void Append(wchar_t value);
@@ -61,6 +63,7 @@ private:
     HWND owner_{};
     HWND window_{};
     HWND edit_{};
+    WNDPROC priorEditWindowProc_{};
     std::vector<FocusTarget> focusTargets_;
     std::wstring initialValue_;
     std::wstring placeholder_;
@@ -70,6 +73,7 @@ private:
     TextEntryModalLayout layout_{};
     std::size_t focusIndex_{};
     bool completed_{};
+    bool password_{};
 };
 
 } // namespace gba::input

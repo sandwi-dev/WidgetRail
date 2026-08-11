@@ -1,7 +1,8 @@
 namespace GameBarAlternative.PlatformBroker;
 
 /// <summary>Joins independently owned host providers without exposing either one to widgets.</summary>
-public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAsyncDisposable
+public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
+    IProtectedWifiHostBackend, IAsyncDisposable
 {
     private readonly IAudioPlatformBrokerBackend _audio;
     private readonly INetworkPlatformBrokerBackend _network;
@@ -99,6 +100,15 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
     public Task ConnectAvailableWifiNetworkAsync(
         string networkId, CancellationToken cancellationToken) =>
         _network.ConnectAvailableWifiNetworkAsync(networkId, cancellationToken);
+
+    public Task<ProtectedWifiConnectionResult> ConnectProtectedWifiAsync(
+        string networkId,
+        char[] secret,
+        CancellationToken cancellationToken) =>
+        _network is IProtectedWifiHostBackend protectedWifi
+            ? protectedWifi.ConnectProtectedWifiAsync(networkId, secret, cancellationToken)
+            : Task.FromException<ProtectedWifiConnectionResult>(new BrokerException(
+                "platform_unavailable", "Protected Wi-Fi connection is unavailable."));
 
     public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken) =>
         _network.GetWifiRadioAsync(cancellationToken);

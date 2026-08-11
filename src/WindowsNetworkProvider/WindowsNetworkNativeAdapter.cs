@@ -192,6 +192,29 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         }
     }
 
+    public NativeProtectedWifiConnectStartResult TryConnectProtectedWifiNetwork(
+        string nativeNetworkKey,
+        ReadOnlySpan<char> secret)
+    {
+        ThrowIfDisposed();
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            return _wlan.TryConnectProtectedNetwork(
+                _calls, _wlanHandle, nativeNetworkKey, secret);
+        }
+    }
+
+    public void RollbackProtectedWifiConnection(string nativeNetworkKey)
+    {
+        ThrowIfDisposed();
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            _wlan.RollbackProtected(_calls, _wlanHandle, nativeNetworkKey);
+        }
+    }
+
     public NativeWifiRadioSnapshot ReadWifiRadio()
     {
         ThrowIfDisposed();
@@ -295,7 +318,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         lock (_lifetimeGate)
         {
             if (_lifetimeState != LifetimeActive) return;
-            projection = _wlan.ProcessNotification(ref data);
+            projection = _wlan.ProcessNotification(_calls, _wlanHandle, ref data);
         }
         RaiseChanged(projection.ConnectionOutcome, projection.ScanOutcome);
     }
@@ -381,6 +404,7 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             }
             if (_wlanHandle != IntPtr.Zero)
             {
+                _wlan.RollbackPendingProtected(_calls, _wlanHandle);
                 if (_wlanNotificationsRegistered)
                     _ = _calls.RegisterWlanNotification(
                         _wlanHandle,

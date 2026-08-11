@@ -268,7 +268,7 @@ internal static class WindowsNetworkNativeAdapterScenarios
             NotificationCode = 7,
             InterfaceGuid = interfaces[0].InterfaceId,
         };
-        _ = wlan.ProcessNotification(ref scan);
+        _ = wlan.ProcessNotification(calls, calls.WlanHandle, ref scan);
         var available = wlan.ReadAvailableSnapshot(calls, calls.WlanHandle);
         Assert.Equal(0, available.Networks.Count);
         Assert.Equal(0, calls.OutstandingAllocations);
@@ -324,6 +324,63 @@ internal static class WindowsNetworkNativeAdapterScenarios
         calls.FireConnectionComplete(calls.InterfaceId, "", Encoding.UTF8.GetBytes("Cafe"));
         Assert.Equal(network.NativeNetworkKey, published[^1].ConnectionOutcome?.NativeProfileKey);
         Assert.Equal(73L, published[^1].Generation);
+        Assert.Equal(0, calls.OutstandingAllocations);
+        return Task.CompletedTask;
+    }
+
+    public static Task ProtectedProfileRollbackIsExact()
+    {
+        using var calls = ControlledNetworkNativeCalls.CreateDefault();
+        using var adapter = new WindowsNetworkNativeAdapter(91, calls);
+        Assert.Equal(NativeWifiScanStartResult.Started, adapter.TryStartWifiScan());
+        calls.FireScanComplete(calls.InterfaceId);
+        calls.AvailableNetworks =
+        [
+            ControlledNetworkNativeCalls.AvailableNetwork(
+                "", Encoding.UTF8.GetBytes("Home"), 4,
+                securityEnabled: true, authentication: 7, cipher: 4),
+        ];
+        var network = Assert.Single(adapter.ReadAvailableWifiSnapshot().Networks);
+        calls.SetProfileResults.Enqueue(183);
+        var conflictingSecret = "correct horse".ToCharArray();
+        Assert.Equal(NativeProtectedWifiConnectStartResult.ProfileAlreadyExists,
+            adapter.TryConnectProtectedWifiNetwork(network.NativeNetworkKey, conflictingSecret));
+        Array.Clear(conflictingSecret);
+        Assert.Equal(0, calls.ConnectRequests.Count);
+        Assert.Equal(0, calls.DeleteProfileRequests.Count);
+
+        var secret = "correct horse".ToCharArray();
+        Assert.Equal(NativeProtectedWifiConnectStartResult.Started,
+            adapter.TryConnectProtectedWifiNetwork(network.NativeNetworkKey, secret));
+        Array.Clear(secret);
+        Assert.Equal(2, calls.SetProfileRequests.Count);
+        var profile = calls.SetProfileRequests[^1];
+        Assert.Equal(calls.InterfaceId, profile.InterfaceId);
+        Assert.True(new string(profile.Xml).Contains("<authentication>WPA2PSK</authentication>",
+            StringComparison.Ordinal));
+        Assert.Equal("Home", calls.ConnectRequests[^1].Request.Profile);
+        calls.FireConnectionAttemptFail(
+            calls.InterfaceId, "Home", Encoding.UTF8.GetBytes("Home"));
+        Assert.Equal((calls.InterfaceId, "Home"), Assert.Single(calls.DeleteProfileRequests));
+
+        Assert.Equal(NativeWifiScanStartResult.Started, adapter.TryStartWifiScan());
+        calls.FireScanComplete(calls.InterfaceId);
+        calls.AvailableNetworks =
+        [
+            ControlledNetworkNativeCalls.AvailableNetwork(
+                "", Encoding.UTF8.GetBytes("Office"), 6,
+                securityEnabled: true, authentication: 9, cipher: 4),
+        ];
+        var successful = Assert.Single(adapter.ReadAvailableWifiSnapshot().Networks);
+        var successfulSecret = "another correct horse".ToCharArray();
+        Assert.Equal(NativeProtectedWifiConnectStartResult.Started,
+            adapter.TryConnectProtectedWifiNetwork(successful.NativeNetworkKey, successfulSecret));
+        Array.Clear(successfulSecret);
+        calls.FireConnectionComplete(
+            calls.InterfaceId, "Office", Encoding.UTF8.GetBytes("Office"));
+        Assert.Equal(1, calls.DeleteProfileRequests.Count);
+        Assert.True(new string(calls.SetProfileRequests[^1].Xml)
+            .Contains("<authentication>WPA3SAE</authentication>", StringComparison.Ordinal));
         Assert.Equal(0, calls.OutstandingAllocations);
         return Task.CompletedTask;
     }
@@ -396,6 +453,9 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     public IReadOnlyList<WlanAvailableNetwork> AvailableNetworks { get; set; } = [];
     public IReadOnlyList<WlanPhyRadioState> RadioStates { get; set; } = [];
     public List<(Guid InterfaceId, WlanConnectRequest Request)> ConnectRequests { get; } = [];
+    public Queue<uint> SetProfileResults { get; } = [];
+    public List<(Guid InterfaceId, char[] Xml)> SetProfileRequests { get; } = [];
+    public List<(Guid InterfaceId, string ProfileName)> DeleteProfileRequests { get; } = [];
     public List<(Guid InterfaceId, WlanPhyRadioState State)> SetRadioRequests { get; } = [];
     public NativeWifiNotificationCallback? WlanCallback { get; private set; }
     public IpInterfaceChangeCallback? IpCallback { get; private set; }
@@ -428,7 +488,10 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     public static WlanAvailableNetwork AvailableNetwork(
         string profileName,
         byte[] ssid,
-        uint ssidLength) => new()
+        uint ssidLength,
+        bool securityEnabled = false,
+        uint authentication = 1,
+        uint cipher = 0) => new()
     {
         ProfileName = profileName,
         Dot11Ssid = new()
@@ -439,7 +502,9 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
         BssType = 3,
         NetworkConnectable = 1,
         SignalQuality = 80,
-        SecurityEnabled = 0,
+        SecurityEnabled = securityEnabled ? 1 : 0,
+        DefaultAuthenticationAlgorithm = authentication,
+        DefaultCipherAlgorithm = cipher,
         PhyTypes = new int[8],
     };
 
@@ -546,6 +611,25 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
         return ErrorSuccess;
     }
 
+    public uint SetWlanProfile(
+        IntPtr handle,
+        Guid interfaceId,
+        char[] profileXml,
+        out uint reasonCode)
+    {
+        Assert.Equal(WlanHandle, handle);
+        reasonCode = 0;
+        SetProfileRequests.Add((interfaceId, profileXml.ToArray()));
+        return Next(SetProfileResults);
+    }
+
+    public uint DeleteWlanProfile(IntPtr handle, Guid interfaceId, string profileName)
+    {
+        Assert.Equal(WlanHandle, handle);
+        DeleteProfileRequests.Add((interfaceId, profileName));
+        return ErrorSuccess;
+    }
+
     public void FreeWlanMemory(IntPtr memory)
     {
         Assert.True(_allocations.Remove(memory));
@@ -627,7 +711,17 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
         WlanCallback?.Invoke(ref data, IntPtr.Zero);
     }
 
-    public void FireConnectionComplete(Guid interfaceId, string profileName, byte[] ssid)
+    public void FireConnectionComplete(Guid interfaceId, string profileName, byte[] ssid) =>
+        FireConnection(interfaceId, profileName, ssid, 10);
+
+    public void FireConnectionAttemptFail(Guid interfaceId, string profileName, byte[] ssid) =>
+        FireConnection(interfaceId, profileName, ssid, 11);
+
+    private void FireConnection(
+        Guid interfaceId,
+        string profileName,
+        byte[] ssid,
+        uint notificationCode)
     {
         var ssidSize = Marshal.SizeOf<Dot11Ssid>();
         var pointer = Marshal.AllocHGlobal(516 + ssidSize);
@@ -644,7 +738,7 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
             var data = new WlanNotificationData
             {
                 NotificationSource = 0x00000008,
-                NotificationCode = 10,
+                NotificationCode = notificationCode,
                 InterfaceGuid = interfaceId,
                 DataSize = checked((uint)(516 + ssidSize)),
                 DataPointer = pointer,

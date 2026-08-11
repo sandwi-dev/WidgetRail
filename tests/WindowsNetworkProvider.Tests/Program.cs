@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Failed WLAN open recovers without a duplicate handle", WindowsNetworkNativeAdapterScenarios.FailedOpenRecoversWithoutDuplicateHandle),
     ("Connectivity and native buffers remain bounded", WindowsNetworkNativeAdapterScenarios.ConnectivityAndNativeBuffersAreBounded),
     ("Scan and connect callbacks retain the adapter generation", WindowsNetworkNativeAdapterScenarios.ScanAndConnectCallbacksAreGenerationBound),
+    ("Protected native profile creation rolls back only its failed generation", WindowsNetworkNativeAdapterScenarios.ProtectedProfileRollbackIsExact),
     ("Radio rollback uses one injected native transaction", WindowsNetworkNativeAdapterScenarios.RadioRollbackUsesOneInjectedTransaction),
     ("Command policy owns typed native operation results", WindowsNetworkPolicyScenarios.CommandResultsAreClosed),
     ("Operation policy serializes deadlines and provider outcomes", WindowsNetworkPolicyScenarios.OperationOrderingIsDeterministic),
@@ -45,6 +46,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Saved and open visible Wi-Fi connections start through opaque IDs", AvailableWifiSavedAndOpenConnectionsStart),
     ("Available Wi-Fi outcomes correlate private native keys to opaque attempts", AvailableWifiOutcomesCorrelateOpaqueAttempts),
     ("Available Wi-Fi connection prerequisites return typed errors", AvailableWifiConnectionErrorsAreTyped),
+    ("Protected Wi-Fi profiles admit only bounded WPA2 and WPA3 Personal", ProtectedWifiProfilesAreClosedAndZeroed),
+    ("Protected Wi-Fi connection runs on the provider owner and stays opaque", ProtectedWifiConnectionIsOwnerBound),
     ("Available Wi-Fi scan timeout completes without polling", AvailableWifiScanTimeoutIsEventDriven),
     ("Cancelled queued Wi-Fi commands never reach Native Wi-Fi", CancelledWifiCommandsDoNotExecute),
     ("Switch accepts only currently enumerated opaque saved IDs", SwitchOnlyAcceptsEnumeratedOpaqueIds),
@@ -941,6 +944,75 @@ static async Task<NetworkStatusSummary> ReadUntilAsync(
     }
 }
 
+static Task ProtectedWifiProfilesAreClosedAndZeroed()
+{
+    var secret = "correct horse".AsSpan();
+    Assert.True(ProtectedWifiProfile.TryCreate(
+        "Home"u8.ToArray(), 7, 4, secret, out var wpa2));
+    var wpa2Buffer = wpa2!.Xml;
+    Assert.True(new string(wpa2Buffer).Contains("<authentication>WPA2PSK</authentication>",
+        StringComparison.Ordinal));
+    Assert.True(new string(wpa2Buffer).Contains("<keyMaterial>correct horse</keyMaterial>",
+        StringComparison.Ordinal));
+    wpa2.Dispose();
+    Assert.True(wpa2Buffer.All(character => character == '\0'));
+
+    Assert.True(ProtectedWifiProfile.TryCreate(
+        "Home"u8.ToArray(), 9, 4, secret, out var wpa3));
+    var wpa3Buffer = wpa3!.Xml;
+    Assert.True(new string(wpa3Buffer).Contains("<authentication>WPA3SAE</authentication>",
+        StringComparison.Ordinal));
+    wpa3.Dispose();
+    Assert.True(wpa3Buffer.All(character => character == '\0'));
+
+    Assert.False(ProtectedWifiProfile.TryCreate(
+        "Home"u8.ToArray(), 4, 4, secret, out _));
+    Assert.False(ProtectedWifiProfile.TryCreate(
+        "Home"u8.ToArray(), 10, 4, secret, out _));
+    Assert.False(ProtectedWifiProfile.TryCreate(
+        "Home"u8.ToArray(), 7, 2, secret, out _));
+    Assert.False(ProtectedWifiProfile.TryCreate(
+        "Home"u8.ToArray(), 7, 4, "short".AsSpan(), out _));
+    return Task.CompletedTask;
+}
+
+static async Task ProtectedWifiConnectionIsOwnerBound()
+{
+    var native = Snapshot() with
+    {
+        Connectivity = NetworkConnectivity.None,
+        ActiveMedium = NativeNetworkMedium.WiFi,
+    };
+    var adapter = new FakeNativeAdapter(native);
+    adapter.SetAvailableWifiSnapshot(new(4, NativeWifiScanState.Ready,
+    [
+        new("protected-native", "Home", 80, WifiSecurityKind.Personal,
+            true, false, false),
+    ]));
+    await using var backend = new WindowsNetworkPlatformBackend(new FakeFactory(adapter),
+        TimeSpan.FromSeconds(5), new ManualNetworkDeadlineScheduler());
+    var wifiEvents = WifiEventChannel(backend);
+    await backend.RequestWifiScanAsync(CancellationToken.None);
+    adapter.SetAvailableWifiSnapshot(new(4, NativeWifiScanState.Ready,
+    [
+        new("protected-native", "Home", 80, WifiSecurityKind.Personal,
+            true, false, false),
+    ]));
+    adapter.RaiseWifiScanOutcome(NativeWifiScanOutcome.Completed);
+    var visible = await ReadWifiUntilAsync(
+        wifiEvents.Reader, snapshot => snapshot.Networks.Count == 1);
+    var target = Assert.Single(visible.Networks);
+    var callerSecret = "correct horse".ToCharArray();
+    var result = await backend.ConnectProtectedWifiAsync(
+        target.NetworkId, callerSecret, CancellationToken.None);
+    Assert.Equal(ProtectedWifiConnectionStatus.Connecting, result.Status);
+    Assert.Equal("connecting", result.Code);
+    Assert.Equal("protected-native", Assert.Single(adapter.ProtectedWifiNativeKeys));
+    Assert.Equal("correct horse", adapter.LastProtectedSecret);
+    Assert.True(adapter.NativeCallThreadIds.All(id => id != Environment.CurrentManagedThreadId));
+    Array.Clear(callerSecret);
+}
+
 static async Task WaitUntilAsync(Func<bool> condition)
 {
     var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(2);
@@ -984,6 +1056,8 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
     private NativeAvailableWifiSnapshot _availableWifi = new(0, NativeWifiScanState.NotScanned, []);
     private NativeWifiScanStartResult _scanStartResult = NativeWifiScanStartResult.Started;
     private NativeWifiConnectStartResult _wifiConnectStartResult = NativeWifiConnectStartResult.Started;
+    private NativeProtectedWifiConnectStartResult _protectedWifiConnectStartResult =
+        NativeProtectedWifiConnectStartResult.Started;
     private NativeWifiRadioSnapshot _wifiRadio = new(NativeWifiRadioState.On, true);
     private NativeWifiRadioSetResult _wifiRadioSetResult = NativeWifiRadioSetResult.Succeeded;
     private NativeWifiRadioSnapshot? _wifiRadioMutation;
@@ -1000,6 +1074,8 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
     public int WifiRadioReadCalls { get; private set; }
     public List<string> ConnectedNativeKeys { get; } = [];
     public List<string> ConnectedAvailableWifiNativeKeys { get; } = [];
+    public List<string> ProtectedWifiNativeKeys { get; } = [];
+    public string? LastProtectedSecret { get; private set; }
     public List<int> NativeCallThreadIds { get; } = [];
     public ManualResetEventSlim ReadEntered { get; } = new(false);
     public ManualResetEventSlim AllowRead { get; } = new(false);
@@ -1093,6 +1169,16 @@ sealed class FakeNativeAdapter(NativeNetworkSnapshot initial) : IWindowsNetworkN
         AvailableWifiConnectCalls++;
         ConnectedAvailableWifiNativeKeys.Add(nativeNetworkKey);
         return _wifiConnectStartResult;
+    }
+
+    public NativeProtectedWifiConnectStartResult TryConnectProtectedWifiNetwork(
+        string nativeNetworkKey,
+        ReadOnlySpan<char> secret)
+    {
+        NativeCallThreadIds.Add(Environment.CurrentManagedThreadId);
+        ProtectedWifiNativeKeys.Add(nativeNetworkKey);
+        LastProtectedSecret = secret.ToString();
+        return _protectedWifiConnectStartResult;
     }
 
     public NativeWifiRadioSnapshot ReadWifiRadio()

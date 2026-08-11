@@ -219,6 +219,15 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
             }
             descriptor.pinningSupported = source.GetNamedBoolean(L"pinningSupported");
         }
+        if (source.HasKey(L"protectedWifiPromptSupported")) {
+            if (source.GetNamedValue(L"protectedWifiPromptSupported").ValueType() !=
+                JsonValueType::Boolean) {
+                error = L"Widget descriptor property 'protectedWifiPromptSupported' must be a boolean.";
+                return std::nullopt;
+            }
+            descriptor.protectedWifiPromptSupported =
+                source.GetNamedBoolean(L"protectedWifiPromptSupported");
+        }
         if (!widgetIds.emplace(descriptor.id).second) {
             error = L"WidgetBridge returned duplicate widget ID '" + descriptor.id + L"'.";
             return std::nullopt;
@@ -1758,6 +1767,76 @@ std::optional<bool> WidgetBridgeClient::SendAction(
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge action JSON: " + std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
+    const std::wstring_view widgetId,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view sourceElementId,
+    const std::wstring_view secret) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || !IsIdentifier(widgetId) ||
+        !IsIdentifier(runtimeGeneration) || !IsIdentifier(sourceElementId) ||
+        secret.size() < 8 || secret.size() > 63 ||
+        std::any_of(secret.begin(), secret.end(), [](const wchar_t character) {
+            return character < 32 || character > 126;
+        })) {
+        if (pipe_ != INVALID_HANDLE_VALUE) Fail(L"Protected Wi-Fi request is invalid.");
+        return std::nullopt;
+    }
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        payload.Insert(L"runtimeGeneration",
+            JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
+        payload.Insert(L"sourceElementId",
+            JsonValue::CreateStringValue(winrt::hstring(sourceElementId)));
+        payload.Insert(L"secret", JsonValue::CreateStringValue(winrt::hstring(secret)));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"connect-protected-wifi"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId)) {
+                Fail(L"WidgetBridge returned an invalid protected Wi-Fi request ID.");
+                return std::nullopt;
+            }
+            const auto type = response.GetNamedString(L"type");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                continue;
+            }
+            if (responseId != requestId || type != L"acknowledged") {
+                if (type == L"error") Fail(SafeBridgeError(response));
+                else Fail(L"WidgetBridge returned an unexpected protected Wi-Fi response.");
+                return std::nullopt;
+            }
+            const auto result = response.GetNamedObject(L"payload");
+            const auto code = OptionalString(result, L"code");
+            if (!IsIdentifier(code)) {
+                Fail(L"WidgetBridge returned an invalid protected Wi-Fi result.");
+                return std::nullopt;
+            }
+            lastError_.clear();
+            return code;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge protected Wi-Fi JSON: " +
+            std::wstring(error.message()));
     }
     return std::nullopt;
 }
