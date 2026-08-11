@@ -34,6 +34,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Failed durable removal rolls back the whole Library mutation", FailedRemovalRollsBack),
     ("Removing a focused app selects the nearest surviving row", RemovalSelectsNearestRow),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
+    ("Launch revalidates a rotated opaque app ID from the selected SavedId", LaunchRevalidatesRotatedAppId),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
@@ -50,7 +51,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog pages stay bounded and restore focus in both directions", LoadsMore),
     ("Catalog navigation policy owns bounded forward and reverse transitions", CatalogPolicyOwnsNavigation),
     ("Rapid repeated load more is one busy controller command", LoadMoreIsSingleFlight),
-    ("Pagination stops exactly at the bounded catalog maximum", PaginationStopsAtMaximum),
+    ("Large cursor catalogs retain only one bounded semantic page", LargeCatalogRetainsOneBoundedPage),
     ("Rapid repeated launch cannot duplicate a Shell launch", LaunchIsSingleFlight),
     ("Leaving the widget cancels in-flight page work", BackgroundCancelsPageWork),
     ("Denied optional launch keeps the readable library usable", LaunchDenialKeepsLibrary),
@@ -423,10 +424,18 @@ static async Task ReclassificationPreservesOptIn()
             SavedId = "saved-application",
         },
     ], null);
+    fake.ReadHandler = (request, _) =>
+    {
+        Assert.Equal(WidgetAppLibraryKind.Game, request.Query.Kind);
+        return ValueTask.FromResult(Page([], null));
+    };
     await widget.OnActionAsync(new("games.retry", "games.root"));
     Assert.SequenceEqual(["application-now-unknown"],
         widget.CuratedItems.Select(item => item.AppId));
+    Assert.SequenceEqual(["saved-game", "saved-application"],
+        fake.ResolveRequests[^1]);
 
+    fake.ReadHandler = null;
     await AddFromCatalog(widget, "Game");
     await BackToLibrary(widget);
     Assert.SequenceEqual(["game-now-app", "application-now-unknown"],
@@ -529,6 +538,13 @@ static async Task ConcurrentDisplayRemovalWins()
                 App("fresh-game", "Game") with { SavedId = "saved-game" },
             ], null));
         },
+        ResolveHandler = (request, _) => ValueTask.FromResult(
+            new ResolveSavedWidgetAppLibraryItemsResponse([
+                App("fresh-game", "Game") with
+                {
+                    SavedId = request.SavedIds.Single(),
+                },
+            ])),
     };
     var widget = Create(fake);
     await Interactive(widget);
@@ -1204,6 +1220,33 @@ static async Task LaunchesSelectedApp()
     await Background(widget);
 }
 
+static async Task LaunchRevalidatesRotatedAppId()
+{
+    var original = App("opaque-old", "Alpha") with { SavedId = "saved-alpha" };
+    var current = original with { AppId = "opaque-current" };
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([original], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await AddFromCatalog(widget, "Alpha");
+    await BackToLibrary(widget);
+    fake.ResolveHandler = (request, _) => ValueTask.FromResult(
+        new ResolveSavedWidgetAppLibraryItemsResponse(
+            request.SavedIds.Contains("saved-alpha", StringComparer.Ordinal)
+                ? [current]
+                : []));
+
+    var alpha = ActionSurfaces(Snapshot(widget, 240).Root)
+        .Single(tile => TileTitle(tile) == "Alpha");
+    await widget.OnActionAsync(new("games.launch", alpha.Id));
+
+    Assert.SequenceEqual(["saved-alpha"], fake.ResolveRequests[^1]);
+    Assert.SequenceEqual(["opaque-current"], fake.LaunchedIds);
+    await Background(widget);
+}
+
 static async Task SuccessfulLaunchOrdersRecentFirst()
 {
     var fake = new FakeAppLibraryHost
@@ -1672,7 +1715,7 @@ static async Task LoadsMore()
     await widget.OnActionAsync(new("games.load-more", "games.load-more"));
     Assert.Equal(2, widget.Items.Count);
     Assert.Equal("three", widget.SelectedAppId);
-    Assert.Equal<int?>(null, widget.NextOffset);
+    Assert.False(widget.HasNextPage);
     var snapshot = Snapshot(widget, 7);
     Assert.True(!Buttons(snapshot.Root).Any(button => button.Id == "games.load-more"));
     Assert.Equal(2, ActionSurfaces(snapshot.Root)
@@ -1705,7 +1748,7 @@ static async Task LoadMoreIsSingleFlight()
     {
         ReadHandler = (request, cancellationToken) => !browsing
             ? ValueTask.FromResult(Page([], null))
-            : request.Offset == 0
+            : CursorOffset(request) == 0
             ? ValueTask.FromResult(Page([App("one", "One")], 32))
             : new ValueTask<WidgetAppLibraryPage>(
                 AwaitPage(release.Task, started, cancellationToken)),
@@ -1734,7 +1777,7 @@ static async Task LoadMoreIsSingleFlight()
     await Background(widget);
 }
 
-static async Task PaginationStopsAtMaximum()
+static async Task LargeCatalogRetainsOneBoundedPage()
 {
     var browsing = false;
     var fake = new FakeAppLibraryHost
@@ -1742,10 +1785,17 @@ static async Task PaginationStopsAtMaximum()
         ReadHandler = (request, _) =>
         {
             if (!browsing) return ValueTask.FromResult(Page([], null));
-            var items = Enumerable.Range(request.Offset, GamesAppsWidget.PageSize)
+            var offset = CursorOffset(request);
+            var items = Enumerable.Range(offset, GamesAppsWidget.PageSize)
                 .Select(index => App($"opaque-{index}", $"Application {index}"))
                 .ToArray();
-            return ValueTask.FromResult(Page(items, request.Offset + GamesAppsWidget.PageSize));
+            return ValueTask.FromResult(Page(
+                items, offset + GamesAppsWidget.PageSize) with
+                {
+                    Before = offset > 0
+                        ? Cursor(Math.Max(0, offset - GamesAppsWidget.PageSize))
+                        : null,
+                });
         },
     };
     var widget = Create(fake);
@@ -1754,12 +1804,12 @@ static async Task PaginationStopsAtMaximum()
     browsing = true;
     fake.PageRequests.Clear();
     await OpenCatalog(widget);
-    while (widget.NextOffset is not null)
+    for (var page = 1; page < 20; page++)
         await widget.OnActionAsync(new("games.load-more", "games.load-more"));
 
     Assert.Equal(GamesAppsWidget.PageSize, widget.Items.Count);
-    Assert.Equal(16, fake.PageRequests.Count);
-    Assert.Equal<int?>(null, widget.NextOffset);
+    Assert.Equal(20, fake.PageRequests.Count);
+    Assert.True(widget.HasNextPage);
     var maximumPage = Snapshot(widget, 238);
     Assert.Equal(GamesAppsWidget.PageSize, ActionSurfaces(maximumPage.Root)
         .Count(tile => tile.ActionId == "games.toggle-curation"));
@@ -1813,7 +1863,7 @@ static async Task BackgroundCancelsPageWork()
     var canceled = NewSignal();
     var fake = new FakeAppLibraryHost
     {
-        ReadHandler = (request, cancellationToken) => request.Offset == 0
+        ReadHandler = (request, cancellationToken) => CursorOffset(request) == 0
             ? ValueTask.FromResult(Page([App("one", "One")], 32))
             : new ValueTask<WidgetAppLibraryPage>(
                 WaitForCancellation(started, canceled, cancellationToken)),
@@ -2086,31 +2136,24 @@ static Task CatalogPolicyOwnsNavigation()
         GamesAppsCatalogState.Empty,
         Page(first, GamesAppsWidget.PageSize),
         GamesAppsCatalogPageTransition.Initial,
-        0,
-        GamesAppsWidget.PageSize,
-        GamesAppsWidget.MaximumItems);
+        GamesAppsWidget.PageSize);
     Assert.False(initial.EmptyInitial);
     Assert.False(initial.State.CanLoadPrevious);
-    Assert.Equal(GamesAppsWidget.PageSize, initial.State.NextOffset);
+    Assert.Equal(Cursor(GamesAppsWidget.PageSize), initial.State.After?.Value);
 
     var next = GamesAppsCatalogPolicy.ApplyPage(
         initial.State,
-        Page(second, GamesAppsWidget.PageSize * 2),
+        Page(second, GamesAppsWidget.PageSize * 2) with { Before = Cursor(0) },
         GamesAppsCatalogPageTransition.Next,
-        GamesAppsWidget.PageSize,
-        GamesAppsWidget.PageSize,
-        GamesAppsWidget.MaximumItems);
+        GamesAppsWidget.PageSize);
     Assert.True(next.State.CanLoadPrevious);
-    Assert.SequenceEqual([0], next.State.BackOffsets);
     Assert.Equal("saved-second-0", next.State.Items[0].SavedId);
 
     var previous = GamesAppsCatalogPolicy.ApplyPage(
         next.State,
         Page(first, GamesAppsWidget.PageSize),
         GamesAppsCatalogPageTransition.Previous,
-        0,
-        GamesAppsWidget.PageSize,
-        GamesAppsWidget.MaximumItems);
+        GamesAppsWidget.PageSize);
     Assert.False(previous.State.CanLoadPrevious);
     Assert.Equal("saved-first-0", previous.State.Items[0].SavedId);
     return Task.CompletedTask;
@@ -2175,7 +2218,7 @@ static Task ResponsibilitySplitContract()
         LaunchingAppId: null,
         LoadingMore: false,
         LibraryMutationBusy: false,
-        NextOffset: null,
+        HasNextPage: false,
         CanLoadPrevious: false,
         WidgetLifecycleState.Interactive,
         Toast: null));
@@ -2197,7 +2240,7 @@ static Task PurePresentationIsDeterministic()
         LaunchingAppId: null,
         LoadingMore: false,
         LibraryMutationBusy: false,
-        NextOffset: null,
+        HasNextPage: false,
         CanLoadPrevious: false,
         WidgetLifecycleState.Interactive,
         Toast: null);
@@ -2257,10 +2300,18 @@ static WidgetAppLibraryItem App(
     {
         SavedId = "saved-" + id,
         ArtworkHandle = artworkHandle,
+        SourceAttribution = kind == WidgetAppLibraryKind.Game ? "Steam" : "Windows",
     };
 
 static WidgetAppLibraryPage Page(IReadOnlyList<WidgetAppLibraryItem> items, int? next) =>
-    new(items, next);
+    new(items, null, next is null ? null : Cursor(next.Value), "test-revision");
+
+static string Cursor(int offset) => $"test.cursor.{offset}";
+
+static int CursorOffset(WidgetAppLibraryCursorRequest request) =>
+    request.Cursor is null ? 0 : int.Parse(
+        request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),
+        System.Globalization.CultureInfo.InvariantCulture);
 
 static WidgetTestPrivateState SavedState(params string[] savedIds)
 {
@@ -2458,7 +2509,7 @@ file sealed class FakeAppLibraryHost
     public Exception? ReadException { get; set; }
     public Exception? ResolveException { get; set; }
     public Exception? LaunchException { get; set; }
-    public Func<WidgetAppLibraryPageRequest, CancellationToken,
+    public Func<WidgetAppLibraryCursorRequest, CancellationToken,
         ValueTask<WidgetAppLibraryPage>>? ReadHandler { get; set; }
     public Func<ResolveSavedWidgetAppLibraryItemsRequest, CancellationToken,
         ValueTask<ResolveSavedWidgetAppLibraryItemsResponse>>? ResolveHandler { get; set; }
@@ -2491,18 +2542,27 @@ file sealed class FakeAppLibraryHost
     }
 
     private ValueTask<WidgetAppLibraryPage> GetPage(
-        WidgetAppLibraryPageRequest request,
+        WidgetAppLibraryCursorRequest request,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        PageRequests.Add((request.Offset, request.Limit));
+        var offset = OffsetOf(request);
+        PageRequests.Add((offset, request.Limit));
         if (ReadException is not null)
             return ValueTask.FromException<WidgetAppLibraryPage>(ReadException);
         if (ReadHandler is not null) return ReadHandler(request, cancellationToken);
-        return ValueTask.FromResult(Pages.TryGetValue(request.Offset, out var page)
-            ? page
-            : new WidgetAppLibraryPage([], null));
+        if (!Pages.TryGetValue(offset, out var page))
+            page = new WidgetAppLibraryPage([], null, null, "test-revision");
+        var before = offset > 0 ? CursorFor(Math.Max(0, offset - request.Limit)) : null;
+        return ValueTask.FromResult(page with { Before = before });
     }
+
+    private static string CursorFor(int offset) => $"test.cursor.{offset}";
+
+    private static int OffsetOf(WidgetAppLibraryCursorRequest request) =>
+        request.Cursor is null ? 0 : int.Parse(
+            request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),
+            System.Globalization.CultureInfo.InvariantCulture);
 
     private ValueTask<WidgetCapabilityAcknowledgement> Launch(
         LaunchWidgetAppLibraryItemRequest request,

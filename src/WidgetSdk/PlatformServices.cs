@@ -374,15 +374,31 @@ public sealed record WidgetAppLibraryItem(
     /// image bytes, provider identity, or launch authority.
     /// </summary>
     public string? ArtworkHandle { get; init; }
+
+    [JsonRequired]
+    public string SourceAttribution { get; init; } = string.Empty;
 }
 
-public sealed record WidgetAppLibraryPageRequest(
-    [property: JsonRequired] int Offset,
-    [property: JsonRequired] int Limit);
+public enum WidgetAppLibrarySortOrder { DisplayName }
+
+public sealed record WidgetAppLibraryQuery(
+    bool InstalledOnly = true,
+    WidgetAppLibraryKind? Kind = null,
+    string? SourceAttribution = null,
+    WidgetAppLibrarySortOrder Sort = WidgetAppLibrarySortOrder.DisplayName);
+
+public sealed record WidgetAppLibraryCursorRequest(
+    [property: JsonRequired] WidgetAppLibraryQuery Query,
+    string? Cursor,
+    WidgetCursorDirection? Direction,
+    [property: JsonRequired] int Limit,
+    bool Refresh = false);
 
 public sealed record WidgetAppLibraryPage(
     [property: JsonRequired] IReadOnlyList<WidgetAppLibraryItem> Items,
-    [property: JsonRequired] int? NextOffset);
+    string? Before,
+    string? After,
+    [property: JsonRequired] string Revision);
 
 public sealed record ResolveSavedWidgetAppLibraryItemsRequest(
     [property: JsonRequired] IReadOnlyList<string> SavedIds);
@@ -572,7 +588,7 @@ public static class WidgetRecentActivityCapabilities
 /// <summary>Typed, read-only launchable Start Menu library contract.</summary>
 public static class WidgetAppLibraryCapabilities
 {
-    public static WidgetCapabilityOperation<WidgetAppLibraryPageRequest, WidgetAppLibraryPage>
+    public static WidgetCapabilityOperation<WidgetAppLibraryCursorRequest, WidgetAppLibraryPage>
         GetPage { get; } = new("system.apps.library.read.v1", "apps.library.list");
 
     public static WidgetCapabilityOperation<ResolveSavedWidgetAppLibraryItemsRequest,
@@ -955,7 +971,6 @@ public sealed class WidgetRecentActivityService
 
 public sealed class WidgetAppLibraryService
 {
-    public const int MaximumItems = 512;
     public const int MaximumPageSize = 64;
     public const int MaximumSavedItems = 64;
     private const int MaximumOpaqueIdLength = 128;
@@ -964,23 +979,49 @@ public sealed class WidgetAppLibraryService
     internal WidgetAppLibraryService(IWidgetCapabilityClient client) => _client = client;
 
     /// <summary>
-    /// Reads one page. Offset zero starts a reconciled host snapshot; nonzero
-    /// offsets continue that immutable snapshot so paging cannot skip or
-    /// duplicate apps while the Start Menu changes.
+    /// Reads one bounded page. Cursors are opaque and bound to the exact query,
+    /// provider revision, direction, and page size.
     /// </summary>
-    public ValueTask<WidgetAppLibraryPage> GetPageAsync(
-        int offset = 0,
+    public async ValueTask<WidgetAppLibraryPage> QueryAsync(
+        WidgetAppLibraryQuery query,
+        WidgetCollectionCursor? cursor = null,
+        WidgetCursorDirection? direction = null,
         int limit = MaximumPageSize,
+        bool refresh = false,
         CancellationToken cancellationToken = default)
     {
-        if (offset is < 0 or > MaximumItems)
-            throw new ArgumentOutOfRangeException(nameof(offset));
+        ArgumentNullException.ThrowIfNull(query);
+        if (!Enum.IsDefined(query.Sort) ||
+            query.Kind is { } kind && !Enum.IsDefined(kind) ||
+            query.SourceAttribution is { } source &&
+                (string.IsNullOrWhiteSpace(source) || source.Length > 64 ||
+                    source.Any(char.IsControl)))
+            throw new ArgumentException("The app-library query is invalid.", nameof(query));
+        if ((cursor is null) != (direction is null))
+            throw new ArgumentException(
+                "A cursor and direction must be supplied together.", nameof(cursor));
         if (limit is < 1 or > MaximumPageSize)
             throw new ArgumentOutOfRangeException(nameof(limit));
-        return _client.InvokeAsync(
+        var page = await _client.InvokeAsync(
             WidgetAppLibraryCapabilities.GetPage,
-            new WidgetAppLibraryPageRequest(offset, limit),
-            cancellationToken);
+            new WidgetAppLibraryCursorRequest(
+                query, cursor?.Value, direction, limit, refresh),
+            cancellationToken).ConfigureAwait(false);
+        if (page?.Items is null || page.Items.Count > limit ||
+            page.Revision is not { Length: > 0 and <= 128 } ||
+            page.Before is { Length: > 128 } || page.After is { Length: > 128 })
+            throw MalformedPage();
+        ValidatePageItems(page.Items);
+        try
+        {
+            if (page.Before is not null) _ = new WidgetCollectionCursor(page.Before);
+            if (page.After is not null) _ = new WidgetCollectionCursor(page.After);
+        }
+        catch (ArgumentException)
+        {
+            throw MalformedPage();
+        }
+        return page;
     }
 
     public ValueTask LaunchAsync(
@@ -1061,6 +1102,9 @@ public sealed class WidgetAppLibraryService
                 position <= lastPosition || !seen.Add(item.SavedId) ||
                 string.IsNullOrWhiteSpace(item.DisplayName) ||
                 item.DisplayName.Length > 160 || item.DisplayName.Any(char.IsControl) ||
+                string.IsNullOrWhiteSpace(item.SourceAttribution) ||
+                item.SourceAttribution.Length > 64 ||
+                item.SourceAttribution.Any(char.IsControl) ||
                 !Enum.IsDefined(item.Kind))
                 throw MalformedResolution();
             lastPosition = position;
@@ -1070,6 +1114,36 @@ public sealed class WidgetAppLibraryService
 
     private static WidgetCapabilityException MalformedResolution() => new(
         "malformed_response", "The app library provider returned an invalid resolution.");
+
+    private static WidgetCapabilityException MalformedPage() => new(
+        "malformed_response", "The app library provider returned an invalid cursor page.");
+
+    private static void ValidatePageItems(IReadOnlyList<WidgetAppLibraryItem> items)
+    {
+        var appIds = new HashSet<string>(StringComparer.Ordinal);
+        var savedIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in items)
+        {
+            if (item is null || !Enum.IsDefined(item.Kind) ||
+                string.IsNullOrWhiteSpace(item.DisplayName) ||
+                item.DisplayName.Length > 160 || item.DisplayName.Any(char.IsControl) ||
+                string.IsNullOrWhiteSpace(item.SourceAttribution) ||
+                item.SourceAttribution.Length > 64 ||
+                item.SourceAttribution.Any(char.IsControl))
+                throw MalformedPage();
+            try
+            {
+                ValidateOpaqueId(item.AppId, nameof(items));
+                ValidateOpaqueId(item.SavedId, nameof(items));
+            }
+            catch (ArgumentException)
+            {
+                throw MalformedPage();
+            }
+            if (!appIds.Add(item.AppId) || !savedIds.Add(item.SavedId))
+                throw MalformedPage();
+        }
+    }
 
     private static void ValidateOpaqueId(string value, string parameterName)
     {

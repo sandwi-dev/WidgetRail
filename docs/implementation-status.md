@@ -580,10 +580,11 @@ healthy-empty, and failure states now share the same bounded responsive
 hierarchy and the public SectionHeader, StatusBadge, Card, EmptyState, Alert,
 AppTile, and Toast components retain their shared style classes. Catalog
 navigation keeps only one 32-row page in a semantic snapshot while preserving
-bounded Next/Previous offsets through the 512-entry provider envelope. Render
+bounded opaque Next/Previous cursors through the current provider revision. Render
 no longer publishes a mutable element-to-app lookup; actions revalidate the
-current route and stable SavedId-derived element before using the current
-short-lived AppId. Back preserves a curated selection, and removal chooses the
+current route and stable SavedId-derived element, then resolve that SavedId once
+more before using the newly issued short-lived AppId. Back preserves a curated
+selection, and removal chooses the
 nearest surviving row. Focused Release coverage includes shared loading/empty/
 error surfaces, a 64-entry long-name Library, maximum Catalog traversal,
 bidirectional focus, mutation, lifecycle, and GBSS flex contracts. Retained
@@ -1468,6 +1469,19 @@ bounded inline PNG; broad Catalog discovery stays text-only. Additional
 launcher libraries and classification sources remain open. Recent Apps remains only as a read-only
 foreground-activity API/test reference and is not packaged in the current
 overlay. See [Games & Apps](games-and-apps.md).
+
+DLV-072 replaces the pre-release 512-entry offset snapshot with one managed
+app-library cursor contract. The normalized provider alone owns the complete
+catalog (bounded at 10,000 records); broker and SDK responses contain at most 64
+sanitized rows, opaque revision/query/page-size/direction-bound cursors, and one
+sanitized source label per row. The capability domain retains at most 256
+current launch IDs and artwork registrations, invalidates them on provider
+revision change, and projects only requested matches after a bounded SavedId
+scan so resolution cannot evict its own fresh launch authority. Games & Apps now
+uses the same forward/reverse cursor service while retaining only its current
+32-row Catalog page and bounded curated state. The old public offset request,
+central 512-row broker snapshot, and compatibility facade are removed; this is
+an intentional breaking pre-release WidgetSdk baseline update.
 
 Now Playing is the public-SDK media-session reference. It uses only the typed
 `HostServices.Media` surface over the authenticated broker and the event-driven

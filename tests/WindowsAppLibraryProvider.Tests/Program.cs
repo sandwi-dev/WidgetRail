@@ -50,6 +50,10 @@ var tests = new (string Name, Func<Task> Run)[]
         ProviderLifetimeScenarios.CancellationIgnoringCompletionCannotPublish),
     ("Uncooperative source work reaches the bounded terminal outcome",
         ProviderLifetimeScenarios.UncooperativeWorkTimesOutSafely),
+    ("Cursor queries traverse ten thousand records with bounded pages",
+        AppLibraryCursorScenarios.TraversesTenThousandWithoutFullPages),
+    ("Cursor queries reject tamper wrong query direction and stale refresh",
+        AppLibraryCursorScenarios.CursorsRejectTamperQueryAndRefreshChurn),
     ("Shell sources execute on the bounded STA lane", SourcesUseStaLane),
     ("Real AppsFolder scan is read-only bounded and sanitized", NativeAppsFolderSmoke),
     ("Real Start Menu scan is read-only bounded and sanitized", NativeReadOnlySmoke),
@@ -72,6 +76,14 @@ foreach (var (name, run) in tests)
 }
 if (failures != 0) Environment.Exit(1);
 Console.WriteLine($"WindowsAppLibraryProvider.Tests passed ({tests.Length} tests)");
+
+static async Task<IReadOnlyList<AppLibraryBackendItemSummary>> QueryFirst(
+    IAppLibraryPlatformBrokerBackend backend,
+    bool refresh = false) =>
+    (await backend.QueryAppLibraryAsync(
+        new AppLibraryBackendCursorRequest(
+            new AppLibraryBackendQuery(), null, null, 64, refresh),
+        CancellationToken.None)).Items;
 
 static async Task LazyAndRefreshable()
 {
@@ -147,7 +159,7 @@ static async Task AppsFolderPayloadIsOpaque()
 
     IAppLibraryPlatformBrokerBackend backend = provider;
     var brokerJson = JsonSerializer.Serialize(
-        await backend.GetAppLibraryAsync(CancellationToken.None));
+        await QueryFirst(backend));
     Assert.False(brokerJson.Contains(aumid, StringComparison.OrdinalIgnoreCase));
     Assert.False(brokerJson.Contains("SecretApplication", StringComparison.OrdinalIgnoreCase));
 }
@@ -201,7 +213,7 @@ static async Task SteamCatalogIsOpaque()
     Assert.False(item.AppId.Contains("440", StringComparison.Ordinal));
 
     var broker = ((IAppLibraryPlatformBrokerBackend)provider);
-    var projected = (await broker.GetAppLibraryAsync(CancellationToken.None)).Single();
+    var projected = (await QueryFirst(broker)).Single();
     var json = JsonSerializer.Serialize(projected);
     Assert.False(json.Contains("440", StringComparison.Ordinal));
     Assert.False(json.Contains("appmanifest", StringComparison.OrdinalIgnoreCase));
@@ -210,8 +222,8 @@ static async Task SteamCatalogIsOpaque()
     Assert.False(projected.ArtworkRevision.Contains("acf-one", StringComparison.Ordinal));
 
     steam.Items = [steam.Items.Single() with { RevalidationKey = "acf-two" }];
-    var refreshed = (await ((IAppLibraryPlatformBrokerBackend)provider)
-        .RefreshAppLibraryAsync(CancellationToken.None)).Single();
+    var refreshed = (await QueryFirst(
+        (IAppLibraryPlatformBrokerBackend)provider, refresh: true)).Single();
     Assert.Equal(projected.ProviderAppId, refreshed.ProviderAppId);
     Assert.Equal(projected.StableProviderIdentity, refreshed.StableProviderIdentity);
     Assert.True(projected.ArtworkRevision != refreshed.ArtworkRevision);
@@ -345,7 +357,7 @@ static async Task BrokerProjectionSeparatesIdentities()
         Reg("trusted-private-identity", "Visible Game", StartMenuScope.CurrentUser, privatePath)));
     IAppLibraryPlatformBrokerBackend backend = provider;
 
-    var projected = await backend.GetAppLibraryAsync(CancellationToken.None);
+    var projected = await QueryFirst(backend);
     var item = projected.Single();
     Assert.Equal("Visible Game", item.DisplayName);
     Assert.Equal(AppLibraryKind.Application, item.Kind);
@@ -357,7 +369,7 @@ static async Task BrokerProjectionSeparatesIdentities()
     Assert.False(serialized.Contains("trusted-private-identity", StringComparison.Ordinal));
     Assert.False(serialized.Contains(item.ProviderAppId, StringComparison.Ordinal));
 
-    var refreshed = await backend.RefreshAppLibraryAsync(CancellationToken.None);
+    var refreshed = await QueryFirst(backend, refresh: true);
     Assert.Equal(item.ProviderAppId, refreshed.Single().ProviderAppId);
     Assert.Equal(item.StableProviderIdentity, refreshed.Single().StableProviderIdentity);
 }

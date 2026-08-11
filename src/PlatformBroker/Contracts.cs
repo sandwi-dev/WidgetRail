@@ -317,6 +317,10 @@ public sealed record AppLibraryItemSummary(
     /// URL, provider identity, launch token, or persisted image payload.
     /// </summary>
     public string? ArtworkHandle { get; init; }
+
+    /// <summary>Sanitized source label such as Windows or Steam.</summary>
+    [JsonRequired]
+    public string SourceAttribution { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -329,7 +333,30 @@ public sealed record AppLibraryBackendItemSummary(
     [property: JsonIgnore] string StableProviderIdentity,
     string DisplayName,
     AppLibraryKind Kind,
-    [property: JsonIgnore] string ArtworkRevision = "");
+    [property: JsonIgnore] string ArtworkRevision = "",
+    string SourceAttribution = "Windows");
+
+public enum AppLibrarySortOrder { DisplayName }
+public enum AppLibraryCursorDirection { Before, After }
+
+public sealed record AppLibraryBackendQuery(
+    bool InstalledOnly = true,
+    AppLibraryKind? Kind = null,
+    string? SourceAttribution = null,
+    AppLibrarySortOrder Sort = AppLibrarySortOrder.DisplayName);
+
+public sealed record AppLibraryBackendCursorRequest(
+    AppLibraryBackendQuery Query,
+    string? Cursor,
+    AppLibraryCursorDirection? Direction,
+    int Limit,
+    bool Refresh = false);
+
+public sealed record AppLibraryBackendCursorPage(
+    IReadOnlyList<AppLibraryBackendItemSummary> Items,
+    string? Before,
+    string? After,
+    string Revision);
 
 /// <summary>Trusted backend icon result; the broker validates every byte.</summary>
 public sealed record AppLibraryIconSummary(string? PngBase64);
@@ -340,13 +367,24 @@ public static class AppLibraryImageLimits
     public const int MaximumPixelDimension = 64;
 }
 
-public sealed record AppLibraryPageRequest(
-    [property: JsonRequired] int Offset,
-    [property: JsonRequired] int Limit);
+public sealed record AppLibraryQuery(
+    bool InstalledOnly = true,
+    AppLibraryKind? Kind = null,
+    string? SourceAttribution = null,
+    AppLibrarySortOrder Sort = AppLibrarySortOrder.DisplayName);
 
-public sealed record AppLibraryPageSummary(
+public sealed record AppLibraryCursorRequest(
+    [property: JsonRequired] AppLibraryQuery Query,
+    string? Cursor,
+    AppLibraryCursorDirection? Direction,
+    [property: JsonRequired] int Limit,
+    bool Refresh = false);
+
+public sealed record AppLibraryCursorPageSummary(
     [property: JsonRequired] IReadOnlyList<AppLibraryItemSummary> Items,
-    [property: JsonRequired] int? NextOffset);
+    string? Before,
+    string? After,
+    [property: JsonRequired] string Revision);
 
 public sealed record ResolveSavedAppLibraryItemsRequest(
     [property: JsonRequired] IReadOnlyList<string> SavedIds);
@@ -741,20 +779,11 @@ public interface IActivityPlatformBrokerBackend : IPlatformBrokerEventSource
 
 public interface IAppLibraryPlatformBrokerBackend
 {
-    Task<IReadOnlyList<AppLibraryBackendItemSummary>> GetAppLibraryAsync(
+    Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+        AppLibraryBackendCursorRequest request,
         CancellationToken cancellationToken) =>
-        Task.FromException<IReadOnlyList<AppLibraryBackendItemSummary>>(
+        Task.FromException<AppLibraryBackendCursorPage>(
             new BrokerException("platform_unavailable", "App library is unavailable."));
-
-    /// <summary>
-    /// Reconciles the provider snapshot with the operating system. The broker
-    /// calls this only at a first-page boundary and keeps its own immutable
-    /// snapshot for later pages, so refresh cannot make an in-flight page walk
-    /// skip or duplicate entries.
-    /// </summary>
-    Task<IReadOnlyList<AppLibraryBackendItemSummary>> RefreshAppLibraryAsync(
-        CancellationToken cancellationToken) =>
-        GetAppLibraryAsync(cancellationToken);
 
     Task LaunchAppLibraryItemAsync(
         string appId,
