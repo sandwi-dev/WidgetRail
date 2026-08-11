@@ -620,17 +620,15 @@ not evidence that GBA-003 is fixed.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The widgets lane follows the non-idling and visible-outcome gates. DLV-040 and
-DLV-046 are accepted and integrated on `main`. DLV-047 and DLV-048 are committed
-as `7e33f45` and `829e9fd` but remain unaccepted as one contiguous prefix because
-DLV-047's newly created managed test project predates and violates the
-`MSTest.Sdk` 4.3.2 policy. DLV-050 is now the active bounded correction; none of
-that candidate prefix enters `main` until DLV-050 is independently accepted. No
-third safe widgets-only Ready item is manufactured: DLV-006 is the next
-serialized visible foundation after the active corrections, and it unlocks Spotify
-focus fixes, Games artwork, and the game launcher. DLV-043 and DLV-038 remain
-dependency-ordered architecture debt rather than filler work. Platform DLV-049
-continues to supply the required visible-product lane.
+The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
+DLV-046, DLV-047, DLV-048, and DLV-050 are accepted and integrated on `main`.
+DLV-051 is the current independent visible correction: it fixes the reported
+Spotify seek-bar Left edge without waiting for or duplicating DLV-006's shared
+continuous-list contract. No third safe widgets-only Ready item is manufactured:
+DLV-006 is the next serialized visible foundation after the active corrections
+and unlocks Spotify list focus, Games artwork, and the game launcher. DLV-043
+and DLV-038 remain dependency-ordered architecture debt rather than filler work.
+Platform DLV-049 continues to supply the second visible-product lane.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1793,9 +1791,9 @@ protocol, native, or runtime authority changed.
 
 ### DLV-047 — Establish a checked-in widget SDK compatibility baseline
 
-**State:** Completed as `7e33f45`; reviewer correction required by DLV-050;
-not accepted or integrated
+**State:** Done; accepted and integrated on `main` as `7da7eaa`
 **Baseline:** closing commit of DLV-046
+**Closing commit:** `7e33f45` (`[DLV-047] Check WidgetSdk compatibility release unit`)
 **Dependencies:** DLV-010 and DLV-046
 **Owner:** public WidgetSdk package surface, package metadata/validation, CLI
 release-unit checks, and directly affected author documentation
@@ -1834,21 +1832,19 @@ external feed.
 promise, changing public protocol semantics, external publication, or retaining
 an obsolete API solely for legacy support.
 
-**Reviewer disposition:** The release-unit contract, bounded deterministic API
-baseline, exact symbol diagnostics, and retained focused evidence are otherwise
-credible: WidgetSdk passes 84/84, the compatibility command passes over 2,400
-symbols, GbarCli passes 55/55, and docs pass 53/53. Acceptance is withheld only
-because the newly created `WidgetSdk.Compatibility.Tests` project uses another
-handwritten executable runner and lets that test executable mutate the reviewed
-baseline. Current planner policy requires new managed test projects to use
-`MSTest.Sdk` 4.3.2 while leaving existing executable suites unchanged. DLV-050
-owns that bounded correction after the already-started DLV-048 milestone.
+**Reviewer disposition:** Accepted with DLV-050 as the required closing
+correction. The release-unit contract, bounded deterministic 2,400-symbol API
+baseline, exact addition/removal/signature diagnostics, matching CLI/template/
+SDK metadata, and portable package checks are credible. DLV-050 replaces the
+candidate handwritten test runner with 12 named `MSTest.Sdk` 4.3.2 cases and
+moves mutation to a separate bounded tool without changing the reviewed API
+baseline or any legacy suite. Final focused evidence is recorded under DLV-050.
 
 ### DLV-048 — Compile-test the canonical widget authoring path
 
-**State:** Completed as `829e9fd`; retained in the unaccepted DLV-047/DLV-048
-prefix until the separate DLV-050 correction is reviewed
+**State:** Done; accepted and integrated on `main` as `18d461e`
 **Baseline:** closing commit of DLV-047
+**Closing commit:** `829e9fd` (`[DLV-048] Compile-test canonical author journey`)
 **Dependencies:** DLV-010, DLV-046, and DLV-047
 **Owner:** canonical public C# examples, generated starter verification,
 documentation contracts, and focused author-journey fixtures
@@ -1884,9 +1880,8 @@ suite.
 **Stop/escalate when:** proof requires external publication/credentials, a new
 public API, or broad documentation restructuring beyond the canonical path.
 
-**Reviewer disposition:** Accepted at code and focused-evidence level, but not
-yet integrated because it is a descendant of the DLV-047 compatibility
-candidate awaiting DLV-050. The exact generated `VolumeControl.cs` is the only
+**Reviewer disposition:** Accepted and integrated. The exact generated
+`VolumeControl.cs` is the only
 canonical starter source and is compared byte-for-normalized-byte to the
 scaffolded file before that file builds and executes outside the checkout. Eight
 marked quickstart blocks bind create/build/test, validate, render, replay,
@@ -1895,15 +1890,16 @@ external fixture. The fixture also proves actionable invalid-GBSS failure,
 three replay actions, byte-identical portable packages, two installed versions,
 rollback, and complete uninstall. Retained focused Release evidence
 `20260811T040047Z-d8e6fe07` passes GbarCli/scaffold 55/55 and documentation
-validation across 53 Markdown files in 39.912 seconds. DLV-050 may correct only
-the preceding compatibility-test framework/verifier boundary; it must not
-rewrite this accepted author journey.
+validation across 53 Markdown files in 39.912 seconds. DLV-050 changed only the
+preceding compatibility-test framework/verifier boundary and did not rewrite
+this author journey.
 
 ### DLV-050 — Adopt MSTest.Sdk 4.3.2 for the new SDK compatibility tests
 
-**State:** Assigned; execute before any later widgets work
+**State:** Done; accepted and integrated on `main` as `7563471`
 **Baseline:** closing commit of DLV-048, including unaccepted DLV-047 candidate
 `7e33f45`
+**Closing commit:** `263536f` (`[DLV-050] Adopt MSTest for SDK compatibility checks`)
 **Dependencies:** DLV-047 and DLV-048 only for contiguous lane order
 **Owner:** the newly created WidgetSdk compatibility test project, its bounded
 baseline-update tool path, focused verifier entry, and directly affected
@@ -1951,6 +1947,81 @@ managed suite, native suite, or screenshot work.
 .NET SDK without a broader framework/toolchain decision, the correction would
 change the public WidgetSdk surface/release unit, or baseline mutation cannot be
 separated without adding a broad new build framework.
+
+**Reviewer disposition:** Accepted. Only the new compatibility project adopts
+`MSTest.Sdk/4.3.2`; every pre-existing executable suite keeps its project SDK,
+case names, exit semantics, and `dotnet run` command. Twelve independently named
+cases cover the current baseline, bounded deterministic generation, release-unit
+metadata, additions, removals, signature changes, malformed/missing/oversized/
+path-bearing input, bounded updater behavior, and read-only ordinary execution.
+The reviewed `PublicApi.txt` did not change. A separate ordinary
+`WidgetSdkApiBaseline` tool owns atomic intentional updates. The verifier opts
+the new project into Microsoft Testing Platform, retains named cases in JUnit,
+and keeps helper fixtures outside discoverable-test inventory. Stable dirty
+focused run `20260811T041316Z-596d7304` passes the verifier self-test, SDK build,
+new compatibility 12/12, unchanged WidgetSdk 84/84, unchanged GbarCli 55/55,
+and 53 documentation files in 61.527 seconds. No aggregate or legacy migration
+ran.
+
+### DLV-051 — Correct Spotify seek-bar Left navigation
+
+**State:** Assigned
+**Lane:** widgets
+**Baseline:** widgets branch `263536f`, whose accepted implementation content is
+integrated on `main` through `7563471`; consume the planner assignment commit at
+the clean boundary before editing
+**Dependencies:** DLV-007, DLV-008, and DLV-021; independent of DLV-006's
+continuous-list contract
+**Owner:** Spotify managed responsive focus graph, exact semantic fixtures, and
+directly affected Spotify documentation; no native host or public SDK/protocol
+files
+**Concurrency:** May run while platform owns DLV-049. Do not touch Audio Mixer,
+native focus/scroll/layout, shared component geometry, provider/OAuth, or
+reviewer-owned files.
+
+**Visible outcome:** In expanded Spotify Player, pressing Left from the inactive
+seek Slider moves to the selected navigation-rail destination to its left, not
+to Previous track. Compact Spotify moves to the spatially corresponding selected
+navigation tab. Right and vertical transport navigation remain predictable.
+
+**Objective:** Correct the reported responsive spatial edge in the widget's
+authored focus graph without adding a native spatial exception or coupling it to
+playlist paging.
+
+**In scope:** inspect the exact compact and expanded Player snapshots before host
+processing; identify the stable selected destination/tab IDs; author explicit
+seek Slider Left edges for both responsive compositions; preserve activation-
+first Slider behavior, transport-row Left/Right order, route/Back focus, selected
+destination persistence, disabled/busy states, and stable IDs across playback,
+device, and responsive snapshot refresh; deterministic compact/expanded semantic
+and controller-replay cases beginning on the inactive seek Slider.
+
+**Out of scope:** DLV-006 cursor/append collections, page-window anchoring,
+playlist header/first-row oscillation, native focus heuristics, per-widget pixel
+offsets, Spotify provider/auth/playback behavior, route redesign, public SDK or
+protocol changes, live credentials, screenshots, or Spotify architecture
+decomposition.
+
+**Acceptance criteria:** in every supported expanded Player state, one Left from
+the inactive seek Slider names and reaches the currently selected rail
+destination; in compact mode it names and reaches the selected tab. The edge is
+explicit in the emitted snapshot and uses stable authored IDs rather than titles
+or ordinal parsing. Previous/Play/Next traversal and Slider activation/value
+behavior remain unchanged; responsive reflow and a current-route snapshot
+replacement preserve a valid corresponding focus target; no native or public
+contract special case appears.
+
+**Verification:** Tier 1 Spotify Release suite with exact emitted compact and
+expanded focus-link assertions plus the smallest existing controller/navigation
+replay that proves one Left step and unchanged transport edges. Build the
+Spotify package and validate directly affected docs. No aggregate, provider,
+live account, native suite, screenshot, or broad playlist matrix.
+
+**Stop/escalate when:** the selected rail/tab identity is absent from the emitted
+snapshot, the host ignores a valid explicit edge, correction requires public
+responsive-focus semantics, or current Spotify composition cannot express one
+stable corresponding target without a route/product decision. Preserve the
+exact snapshot and report instead of adding a widget-local ordinal/native hack.
 
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
@@ -2610,7 +2681,7 @@ one Assigned on an accepted integrated baseline.
 ### DLV-006 — Prove virtualized game-library collection foundations
 
 **State:** Highest-priority serialized visible foundation after DLV-049 and
-DLV-050; awaiting planner-selected lead/baseline
+DLV-051; awaiting planner-selected lead/baseline
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 
@@ -2656,19 +2727,17 @@ presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
 
-### DLV-022 — Repair Spotify spatial and continuous-list focus
+### DLV-022 — Repair Spotify continuous-list focus
 
 **State:** Awaiting DLV-006 and DLV-021 acceptance
 **Intended lead:** widgets lane on an accepted shared collection/geometry baseline
 **Dependencies:** DLV-006, DLV-021
 
 Migrate Spotify playlists and playlist items to the shared continuous
-cursor/append collection and correct the explicit responsive focus graph. In
-expanded mode, Left from the inactive seek Slider must enter the selected
-navigation-rail destination rather than Previous track; compact mode must use
-the spatially corresponding navigation tab. Reverse traversal from the first
-playlist item must move to the Play/header action only once when intended and
-must never oscillate during load/snapshot replacement. Queue/list traversal,
+cursor/append collection and consume DLV-051's accepted responsive Player edge
+without changing it. Reverse traversal from the first playlist item must move
+to the Play/header action only once when intended and must never oscillate during
+load/snapshot replacement. Queue/list traversal,
 12/12/5 and sparse pages, forward/reverse cache transitions, Back/return focus,
 rapid refresh, compact/expanded responsive identity, and the clipped `LIBRARY`
 header must have composed host/renderer/controller evidence. Do not add
