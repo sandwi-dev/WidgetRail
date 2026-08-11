@@ -594,13 +594,16 @@ Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040 and
-DLV-046 are accepted and integrated on `main`; DLV-047 is the current cleanly
-bounded developer-experience assignment and DLV-048 is its independent Ready
-successor. No third safe widgets-only Ready item is manufactured: DLV-006 is
-the next serialized visible foundation once DLV-021 is accepted, and it unlocks
-Spotify focus fixes, Games artwork, and the game launcher. DLV-043 and DLV-038
-remain dependency-ordered architecture debt rather than filler work. Platform
-DLV-021/DLV-049 continue to supply the required visible-product lane.
+DLV-046 are accepted and integrated on `main`. DLV-047 is committed but remains
+unaccepted because its newly created managed test project predates and violates
+the `MSTest.Sdk` 4.3.2 policy. The agent had already started DLV-048, so DLV-048
+remains the current assignment and bounded DLV-050 is the immediate correction
+after it; neither candidate enters `main` until the correction is accepted. No
+third safe widgets-only Ready item is manufactured: DLV-006 is the next
+serialized visible foundation once DLV-021 is accepted, and it unlocks Spotify
+focus fixes, Games artwork, and the game launcher. DLV-043 and DLV-038 remain
+dependency-ordered architecture debt rather than filler work. Platform DLV-021/
+DLV-049 continue to supply the required visible-product lane.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1763,7 +1766,8 @@ protocol, native, or runtime authority changed.
 
 ### DLV-047 — Establish a checked-in widget SDK compatibility baseline
 
-**State:** Assigned
+**State:** Completed as `7e33f45`; reviewer correction required by DLV-050;
+not accepted or integrated
 **Baseline:** closing commit of DLV-046
 **Dependencies:** DLV-010 and DLV-046
 **Owner:** public WidgetSdk package surface, package metadata/validation, CLI
@@ -1803,9 +1807,20 @@ external feed.
 promise, changing public protocol semantics, external publication, or retaining
 an obsolete API solely for legacy support.
 
+**Reviewer disposition:** The release-unit contract, bounded deterministic API
+baseline, exact symbol diagnostics, and retained focused evidence are otherwise
+credible: WidgetSdk passes 84/84, the compatibility command passes over 2,400
+symbols, GbarCli passes 55/55, and docs pass 53/53. Acceptance is withheld only
+because the newly created `WidgetSdk.Compatibility.Tests` project uses another
+handwritten executable runner and lets that test executable mutate the reviewed
+baseline. Current planner policy requires new managed test projects to use
+`MSTest.Sdk` 4.3.2 while leaving existing executable suites unchanged. DLV-050
+owns that bounded correction after the already-started DLV-048 milestone.
+
 ### DLV-048 — Compile-test the canonical widget authoring path
 
-**State:** Ready after DLV-047
+**State:** Assigned on the unaccepted DLV-047 candidate; finish the coherent
+milestone before DLV-050 and do not mix the correction into this commit
 **Baseline:** closing commit of DLV-047
 **Dependencies:** DLV-010, DLV-046, and DLV-047
 **Owner:** canonical public C# examples, generated starter verification,
@@ -1841,6 +1856,60 @@ suite.
 
 **Stop/escalate when:** proof requires external publication/credentials, a new
 public API, or broad documentation restructuring beyond the canonical path.
+
+### DLV-050 — Adopt MSTest.Sdk 4.3.2 for the new SDK compatibility tests
+
+**State:** Ready immediately after DLV-048; execute before any later widgets
+work
+**Baseline:** closing commit of DLV-048, including unaccepted DLV-047 candidate
+`7e33f45`
+**Dependencies:** DLV-047 and DLV-048 only for contiguous lane order
+**Owner:** the newly created WidgetSdk compatibility test project, its bounded
+baseline-update tool path, focused verifier entry, and directly affected
+contributor documentation
+**Concurrency:** Managed test/tooling correction only; do not migrate any
+existing executable suite, change WidgetSdk public API, alter runtime protocol,
+or touch native/reviewer-owned files
+
+**Objective:** Bring DLV-047's new test surface into the incremental framework
+policy: discoverable compatibility/release-unit assertions use `MSTest.Sdk`
+4.3.2, while intentional baseline mutation belongs to a bounded ordinary tool
+command and every pre-existing executable suite remains unchanged.
+
+**In scope:** change only `WidgetSdk.Compatibility.Tests` to
+`MSTest.Sdk/4.3.2`; express deterministic API generation, additions/removals/
+signature classification, release-unit consistency, missing/oversized/malformed
+baseline, checkout-path rejection, and unchanged-current-surface behavior as
+named MSTest cases; move `--update` behavior out of the test process into the
+smallest existing contributor-tool owner or one narrow ordinary executable;
+make the verifier invoke the MSTest/Microsoft Testing Platform project alongside
+unchanged legacy `dotnet run` suites; update the exact contributor command and
+retained evidence.
+
+**Out of scope:** converting GbarCli.Tests, WidgetSdk.Tests, or any other legacy
+runner; a repository-wide test migration; rewriting the API renderer without a
+demonstrated defect; changing the accepted API baseline or release version;
+external packages beyond MSTest.Sdk 4.3.2; aggregate verification; product or
+runtime changes.
+
+**Acceptance criteria:** the new compatibility project declares exactly
+`MSTest.Sdk` 4.3.2 and exposes independently named discoverable cases; ordinary
+test execution is read-only and cannot update `PublicApi.txt`; the documented
+intentional update command changes only that baseline and remains bounded;
+removal/signature/addition fixtures report exact symbols; one focused verifier
+selection runs the new MSTest project and representative unchanged legacy
+WidgetSdk/GbarCli executable suites without changing their case names, exit
+semantics, or project SDKs.
+
+**Verification:** Tier 1 new MSTest compatibility cases plus the unchanged
+WidgetSdk and GbarCli focused executable suites and documentation contracts.
+Exercise the verifier's mixed-runner selection once. No aggregate, unrelated
+managed suite, native suite, or screenshot work.
+
+**Stop/escalate when:** MSTest.Sdk 4.3.2 cannot run under the repository's pinned
+.NET SDK without a broader framework/toolchain decision, the correction would
+change the public WidgetSdk surface/release unit, or baseline mutation cannot be
+separated without adding a broad new build framework.
 
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
