@@ -109,6 +109,7 @@ public static class PlatformCapabilities
     public const string AppLibraryList = "apps.library.list";
     public const string AppLibraryResolveSaved = "apps.library.resolve-saved";
     public const string AppLibraryLaunch = "apps.library.launch";
+    internal const string AppLibraryLaunchObserved = "apps.library.launch-observed";
     public const string MediaSessionsGet = "media.sessions.get";
     public const string MediaSessionControl = "media.session.control";
     public const string SpotifyConfigurationGet = "spotify.configuration.get";
@@ -194,7 +195,8 @@ public static class PlatformCapabilities
                 BrokerCapabilityKind.Read,
                 Set(AppLibraryList, AppLibraryResolveSaved), Set()),
             [AppLibraryLaunchV1] = new(AppLibraryLaunchV1, 1,
-                BrokerCapabilityKind.Control, Set(AppLibraryLaunch), Set(),
+                BrokerCapabilityKind.Control,
+                Set(AppLibraryLaunch, AppLibraryLaunchObserved), Set(),
                 AllowsDashboardGesture: false),
             [MediaSessionsReadV1] = new(MediaSessionsReadV1, 1,
                 BrokerCapabilityKind.Read, Set(MediaSessionsGet), Set(MediaSessionsChanged)),

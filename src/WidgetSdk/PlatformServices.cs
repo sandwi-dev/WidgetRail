@@ -418,6 +418,19 @@ public enum WidgetAppLaunchOverlayBehavior
     CloseOnConfirmedSuccess,
 }
 
+internal enum WidgetAppLaunchObservationState
+{
+    RequestAccepted,
+    LauncherStarted,
+    Running,
+    Ended,
+}
+
+internal sealed record WidgetAppLaunchObservation(
+    [property: JsonRequired] WidgetAppLaunchObservationState State,
+    [property: JsonRequired] bool SupportsRunning,
+    [property: JsonRequired] bool SupportsEnded);
+
 public enum WidgetMediaPlaybackStatus
 {
     Closed,
@@ -598,6 +611,10 @@ public static class WidgetAppLibraryCapabilities
     public static WidgetCapabilityOperation<LaunchWidgetAppLibraryItemRequest,
         WidgetCapabilityAcknowledgement> Launch { get; } =
         new("system.apps.library.launch.v1", "apps.library.launch");
+
+    internal static WidgetCapabilityOperation<LaunchWidgetAppLibraryItemRequest,
+        WidgetAppLaunchObservation> LaunchObserved { get; } =
+        new("system.apps.library.launch.v1", "apps.library.launch-observed");
 }
 
 /// <summary>Typed, sanitized Windows system-media-session contracts.</summary>
@@ -1048,6 +1065,31 @@ public sealed class WidgetAppLibraryService
         if (response is null || !response.Acknowledged)
             throw new WidgetCapabilityException(
                 "malformed_response", "The app library provider returned an invalid acknowledgement.");
+    }
+
+    internal async ValueTask<WidgetAppLaunchObservation> LaunchObservedAsync(
+        string appId,
+        WidgetAppLaunchOverlayBehavior overlayBehavior,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOpaqueId(appId, nameof(appId));
+        if (!Enum.IsDefined(overlayBehavior))
+            throw new ArgumentOutOfRangeException(nameof(overlayBehavior));
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.LaunchObserved,
+            new LaunchWidgetAppLibraryItemRequest(appId)
+            {
+                CloseOverlayOnSuccess =
+                    overlayBehavior == WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
+            }, cancellationToken).ConfigureAwait(false);
+        if (response is null || !Enum.IsDefined(response.State) ||
+            response.State == WidgetAppLaunchObservationState.Running &&
+                !response.SupportsRunning ||
+            response.State == WidgetAppLaunchObservationState.Ended &&
+                !response.SupportsEnded)
+            throw new WidgetCapabilityException(
+                "malformed_response", "The app library provider returned invalid launch evidence.");
+        return response;
     }
 
     /// <summary>

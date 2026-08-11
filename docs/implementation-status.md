@@ -1649,6 +1649,22 @@ themes also use non-shrinking fixed regions, a thin native Slider
  Focused Release verification
  `artifacts/verification/20260811T123312Z-b54b995b` passes Game Launcher 15/15
  and the documentation contract across 55 Markdown files.
+ DLV-067 advances Game Launcher to package 0.3.0 and separates launch request
+ acknowledgement from adapter evidence. The first-party-only broker route
+ returns only Request accepted, Launcher started, Running, or Ended plus bounded
+ supported-state flags; failures remain sanitized. Current Windows and Steam
+ adapters prove Launcher started only. The widget projects Pending/Failed and
+ exact per-SavedId results, rejects late deactivated generations, and requests
+ overlay close only when evidence is stronger than acknowledgement. No process,
+ window, path, command, or store identity crosses the widget boundary.
+ Focused Release verification
+ `artifacts/verification/20260811T125214Z-2c2150ad` passes Windows app-library
+ provider 45/45 and PlatformBroker 52/52. The final affected-suite run
+ `artifacts/verification/20260811T125525Z-325c9d53` passes Game Launcher 20/20
+ and the documentation contract across 55 Markdown files. The smallest installed
+ generic-worker route
+ `artifacts/verification/20260811T125249Z-fa9ce5d8` passes 6/6, including the
+ exact current Game Launcher launch path.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

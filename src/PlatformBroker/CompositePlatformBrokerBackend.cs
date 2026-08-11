@@ -133,6 +133,10 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend, IAs
         string appId, CancellationToken cancellationToken) =>
         _appLibrary.LaunchAppLibraryItemAsync(appId, cancellationToken);
 
+    public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        string appId, CancellationToken cancellationToken) =>
+        _appLibrary.LaunchAppLibraryItemObservedAsync(appId, cancellationToken);
+
     public Task<IReadOnlyList<MediaSessionSummary>> GetMediaSessionsAsync(
         CancellationToken cancellationToken) =>
         _media.GetMediaSessionsAsync(cancellationToken);

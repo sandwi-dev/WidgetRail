@@ -157,9 +157,13 @@ internal static class ProviderLifetimeScenarios
             return item;
         }
 
-        public void Launch(
-            GameLibrarySourceItem exactItem, CancellationToken cancellationToken) =>
+        public GameLibraryLaunchResult Launch(
+            GameLibrarySourceItem exactItem, CancellationToken cancellationToken)
+        {
             cancellationToken.ThrowIfCancellationRequested();
+            return new(AppLibraryLaunchObservationState.RequestAccepted,
+                GameLibraryLaunchEvidence.None);
+        }
 
         public string? LoadArtwork(
             GameLibrarySourceItem exactItem, CancellationToken cancellationToken)

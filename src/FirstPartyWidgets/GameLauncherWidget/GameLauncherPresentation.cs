@@ -8,6 +8,7 @@ internal sealed record GameLauncherPresentationState(
     GameLauncherPrivateState Organization,
     string Status,
     string? LaunchingSavedId,
+    IReadOnlyDictionary<string, GameLauncherLaunchState> LaunchStates,
     bool OrganizationBusy,
     bool Interactive);
 
@@ -63,6 +64,7 @@ internal static class GameLauncherPresentation
                 item.Value.SavedId,
                 item.Value.ArtworkHandle,
                 state.LaunchingSavedId,
+                state.LaunchStates.GetValueOrDefault(item.Value.SavedId),
                 resolved: true,
                 favorite: favorites.ContainsKey(item.Value.SavedId),
                 preferred: preferred.ContainsKey(item.Value.SavedId),
@@ -77,10 +79,11 @@ internal static class GameLauncherPresentation
                     !liveIds.Contains(item.SavedId))
                 .Select(item => Tile(item.DisplayName, item.SourceAttribution,
                     item.SavedId, null, null, resolved: false,
+                    launchState: null,
                     favorite: favorites.ContainsKey(item.SavedId),
                     preferred: preferred.ContainsKey(item.SavedId),
                     groupSize: groups.GetValueOrDefault(item.SavedId)?.SavedIds.Count ?? 0,
-                    interactive: false, GameLauncherIdentity.Key(item.SavedId)))
+                    interactive: false, key: GameLauncherIdentity.Key(item.SavedId)))
                 .ToArray();
             tiles = [.. tiles, .. unavailable];
             var grid = UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, tiles)
@@ -133,13 +136,14 @@ internal static class GameLauncherPresentation
             var warm = state.Organization.Items.Select(item => Tile(
                 item.DisplayName, item.SourceAttribution, item.SavedId, null,
                 null, resolved: false,
+                launchState: null,
                 favorite: state.Organization.FavoriteSavedIds.Contains(
                     item.SavedId, StringComparer.Ordinal),
                 preferred: state.Organization.VariantGroups.Any(group =>
                     group.PreferredSavedId == item.SavedId),
                 groupSize: GameLauncherOrganizationPolicy.GroupFor(
                     state.Organization, item.SavedId)?.SavedIds.Count ?? 0,
-                interactive: false, GameLauncherIdentity.Key(item.SavedId))).ToArray();
+                interactive: false, key: GameLauncherIdentity.Key(item.SavedId))).ToArray();
             var warmScroll = UI.VerticalScroll(ScrollId,
                     UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, warm)
                         .Classes("game-launcher-grid")) with
@@ -194,6 +198,7 @@ internal static class GameLauncherPresentation
         string savedId,
         string? artworkHandle,
         string? launchingSavedId,
+        GameLauncherLaunchState? launchState,
         bool resolved,
         bool favorite,
         bool preferred,
@@ -206,7 +211,15 @@ internal static class GameLauncherPresentation
         var artwork = artworkHandle is { Length: > 0 }
             ? TileArtwork.FromHandle(new WidgetArtworkHandle(artworkHandle), title, ImageFit.Cover)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, title);
-        var state = launching ? "Opening…" : resolved ? interactive ? "Ready" : "Paused" : "Unavailable";
+        var state = launching ? "Pending" : launchState switch
+        {
+            GameLauncherLaunchState.RequestAccepted => "Request accepted",
+            GameLauncherLaunchState.LauncherStarted => "Launcher started",
+            GameLauncherLaunchState.Running => "Running",
+            GameLauncherLaunchState.Failed => "Failed",
+            GameLauncherLaunchState.Ended => "Ended",
+            _ => resolved ? interactive ? "Ready" : "Paused" : "Unavailable",
+        };
         var traits = new List<string>(3);
         if (favorite) traits.Add("Favorite");
         if (preferred) traits.Add("Preferred variant");

@@ -17,6 +17,15 @@ internal sealed record GameLauncherDisplayItem(
     string DisplayName,
     string SourceAttribution);
 
+internal enum GameLauncherLaunchState
+{
+    RequestAccepted,
+    LauncherStarted,
+    Running,
+    Failed,
+    Ended,
+}
+
 internal static class GameLauncherIdentity
 {
     internal static WidgetCollectionItemKey Key(string savedId) =>

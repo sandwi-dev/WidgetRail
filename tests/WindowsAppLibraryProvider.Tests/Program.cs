@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing application icons degrade to an empty optional result", MissingIconFallsBack),
     ("Application icon PNG encoder is bounded and structurally valid", IconPngIsBounded),
     ("Launch revalidates the exact current shortcut before invoking Shell", LaunchRevalidatesExactShortcut),
+    ("Launch adapters report only evidence they can prove", LaunchEvidenceIsAdapterBound),
     ("Packaged launch exactly revalidates AUMID before activation", PackagedLaunchRevalidatesExactAumid),
     ("Shell launch settings contain no arguments elevation or window delegation", ShellLaunchIsConstrained),
     ("Shell failures expose only sanitized broker errors", ShellFailureIsSanitized),
@@ -54,6 +55,8 @@ var tests = new (string Name, Func<Task> Run)[]
         AppLibraryCursorScenarios.TraversesTenThousandWithoutFullPages),
     ("Cursor queries reject tamper wrong query direction and stale refresh",
         AppLibraryCursorScenarios.CursorsRejectTamperQueryAndRefreshChurn),
+    ("Controlled adapters preserve bounded Running and Ended evidence",
+        AppLibraryCursorScenarios.ControlledLaunchEvidenceIsPreserved),
     ("Shell sources execute on the bounded STA lane", SourcesUseStaLane),
     ("Real AppsFolder scan is read-only bounded and sanitized", NativeAppsFolderSmoke),
     ("Real Start Menu scan is read-only bounded and sanitized", NativeReadOnlySmoke),
@@ -111,6 +114,24 @@ static async Task DeduplicatesByInternalIdentity()
     Assert.Equal("My Name", item.DisplayName);
     await provider.LaunchAppLibraryItemAsync(item.AppId, CancellationToken.None);
     Assert.Equal(@"C:\User\Same.lnk", launcher.Paths.Single());
+}
+
+static async Task LaunchEvidenceIsAdapterBound()
+{
+    var source = new FakeSource(
+        Reg("evidence", "Evidence", StartMenuScope.CurrentUser,
+            @"C:\Menu\Evidence.lnk"));
+    var launcher = new FakeShellLauncher();
+    await using var provider = new WindowsAppLibraryProvider(source, launcher);
+    var app = (await provider.GetAppsAsync()).Single();
+
+    var result = await provider.LaunchAppLibraryItemObservedAsync(
+        app.AppId, CancellationToken.None);
+
+    Assert.Equal(AppLibraryLaunchObservationState.LauncherStarted, result.State);
+    Assert.True(!result.SupportsRunning);
+    Assert.True(!result.SupportsEnded);
+    Assert.Equal(@"C:\Menu\Evidence.lnk", launcher.Paths.Single());
 }
 
 static async Task PreservesNameCollisions()

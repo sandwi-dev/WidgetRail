@@ -12,13 +12,13 @@ public sealed class GameLauncherWidget : Widget
 {
     public const int PageSize = WidgetAppLibraryService.MaximumPageSize;
     public const int MaximumRetainedItems = 192;
+    internal const int MaximumRetainedLaunchStates = 32;
     private static readonly WidgetAppLibraryQuery InstalledGames = new(
         InstalledOnly: true,
         Kind: WidgetAppLibraryKind.Game,
         Sort: WidgetAppLibrarySortOrder.DisplayName);
 
     private readonly object _gate = new();
-    private readonly SemaphoreSlim _launchGate = new(1, 1);
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly WidgetCursorResource<GameLauncherItem> _library;
     private GameLauncherPrivateState _organization = GameLauncherPrivateState.Empty;
@@ -27,6 +27,10 @@ public sealed class GameLauncherWidget : Widget
     private bool _organizationBusy;
     private string _status = "Game Launcher loads when visible";
     private string? _launchingSavedId;
+    private readonly Dictionary<string, GameLauncherLaunchState> _launchStates =
+        new(StringComparer.Ordinal);
+    private readonly LinkedList<string> _launchStateRecency = [];
+    private long _launchGeneration;
 
     public GameLauncherWidget()
     {
@@ -56,6 +60,10 @@ public sealed class GameLauncherWidget : Widget
     {
         get { lock (_gate) return _organization; }
     }
+    internal int RetainedLaunchStateCount
+    {
+        get { lock (_gate) return _launchStates.Count; }
+    }
     internal Task WhenLibraryIdleAsync(CancellationToken cancellationToken = default) =>
         _library.WhenIdleAsync(cancellationToken);
     internal Task WhenWarmStateIdleAsync(CancellationToken cancellationToken = default) =>
@@ -70,6 +78,8 @@ public sealed class GameLauncherWidget : Widget
                 _organization,
                 StatusLocked(_library.Snapshot),
                 _launchingSavedId,
+                new Dictionary<string, GameLauncherLaunchState>(
+                    _launchStates, StringComparer.Ordinal),
                 _organizationBusy,
                 LifecycleState == WidgetLifecycleState.Interactive);
         return GameLauncherPresentation.Render(state);
@@ -90,6 +100,7 @@ public sealed class GameLauncherWidget : Widget
         lock (_gate)
         {
             _launchingSavedId = null;
+            _launchGeneration++;
             _variantSeedSavedId = null;
             _organizationBusy = false;
             _status = "Game Launcher is paused";
@@ -224,11 +235,26 @@ public sealed class GameLauncherWidget : Widget
 
     private async Task LaunchAsync(string sourceElementId, CancellationToken cancellationToken)
     {
+        var handle = Operations.RunSingleFlight(
+            "game-launcher.launch-lifecycle",
+            context => new ValueTask(LaunchCoreAsync(
+                sourceElementId, context.CancellationToken, cancellationToken)),
+            WidgetOperationLifetime.Active);
+        if (!handle.IsAccepted) return;
+        await handle.Completion.ConfigureAwait(false);
+    }
+
+    private async Task LaunchCoreAsync(
+        string sourceElementId,
+        CancellationToken activeLifetime,
+        CancellationToken requestCancellation)
+    {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken, ActiveCancellationToken);
-        if (!await _launchGate.WaitAsync(0, lifetime.Token).ConfigureAwait(false)) return;
+            requestCancellation, activeLifetime);
         GameLauncherItem? selected = null;
+        long generation = 0;
+        long collectionRevision = 0;
         try
         {
             selected = _library.Snapshot.Items.FirstOrDefault(item => string.Equals(
@@ -239,8 +265,11 @@ public sealed class GameLauncherWidget : Widget
             lock (_gate)
             {
                 _launchingSavedId = selected.Value.SavedId;
-                _status = $"Opening {selected.Value.DisplayName}…";
+                generation = ++_launchGeneration;
+                RemoveLaunchStateLocked(selected.Value.SavedId);
+                _status = $"Pending · {selected.Value.DisplayName}";
             }
+            collectionRevision = _library.Snapshot.Revision;
             Invalidate();
             var resolved = await HostServices.AppLibrary.ResolveSavedAsync(
                     [selected.Value.SavedId], lifetime.Token).ConfigureAwait(false);
@@ -250,27 +279,88 @@ public sealed class GameLauncherWidget : Widget
             if (current is null || !stillCurrent)
                 throw new WidgetCapabilityException(
                     "app_not_found", "The selected game is no longer available.");
-            await HostServices.AppLibrary.LaunchAsync(
+            var observation = await HostServices.AppLibrary.LaunchObservedAsync(
                     current.AppId,
                     WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
                     lifetime.Token).ConfigureAwait(false);
-            lock (_gate) _status = $"Opened {selected.Value.DisplayName}";
+            lock (_gate)
+            {
+                if (generation == _launchGeneration &&
+                    collectionRevision == _library.Snapshot.Revision &&
+                    _library.Snapshot.Items.Any(item => item.Key == selected.Key))
+                {
+                    SetLaunchStateLocked(selected.Value.SavedId,
+                        ToLaunchState(observation.State));
+                    _status = LaunchStatus(selected.Value.DisplayName, observation.State);
+                }
+            }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
-            if (cancellationToken.IsCancellationRequested) throw;
+            if (requestCancellation.IsCancellationRequested) throw;
         }
         catch (Exception exception)
         {
-            lock (_gate) _status = LaunchError(exception);
+            lock (_gate)
+            {
+                if (selected is not null && generation == _launchGeneration &&
+                    collectionRevision == _library.Snapshot.Revision &&
+                    _library.Snapshot.Items.Any(item => item.Key == selected.Key))
+                {
+                    SetLaunchStateLocked(
+                        selected.Value.SavedId, GameLauncherLaunchState.Failed);
+                    _status = $"Failed · {LaunchError(exception)}";
+                }
+            }
         }
         finally
         {
-            lock (_gate) _launchingSavedId = null;
-            _launchGate.Release();
+            lock (_gate)
+                if (generation == _launchGeneration) _launchingSavedId = null;
             Invalidate();
         }
     }
+
+    private void SetLaunchStateLocked(string savedId, GameLauncherLaunchState state)
+    {
+        RemoveLaunchStateLocked(savedId);
+        _launchStates[savedId] = state;
+        _launchStateRecency.AddLast(savedId);
+        while (_launchStates.Count > MaximumRetainedLaunchStates)
+            RemoveLaunchStateLocked(_launchStateRecency.First!.Value);
+    }
+
+    private void RemoveLaunchStateLocked(string savedId)
+    {
+        _launchStates.Remove(savedId);
+        var node = _launchStateRecency.Find(savedId);
+        if (node is not null) _launchStateRecency.Remove(node);
+    }
+
+    private static GameLauncherLaunchState ToLaunchState(
+        WidgetAppLaunchObservationState state) => state switch
+        {
+            WidgetAppLaunchObservationState.RequestAccepted =>
+                GameLauncherLaunchState.RequestAccepted,
+            WidgetAppLaunchObservationState.LauncherStarted =>
+                GameLauncherLaunchState.LauncherStarted,
+            WidgetAppLaunchObservationState.Running => GameLauncherLaunchState.Running,
+            WidgetAppLaunchObservationState.Ended => GameLauncherLaunchState.Ended,
+            _ => GameLauncherLaunchState.RequestAccepted,
+        };
+
+    private static string LaunchStatus(
+        string displayName,
+        WidgetAppLaunchObservationState state) => state switch
+        {
+            WidgetAppLaunchObservationState.RequestAccepted =>
+                $"Request accepted · {displayName}",
+            WidgetAppLaunchObservationState.LauncherStarted =>
+                $"Launcher started · {displayName}",
+            WidgetAppLaunchObservationState.Running => $"Running · {displayName}",
+            WidgetAppLaunchObservationState.Ended => $"Ended · {displayName}",
+            _ => $"Request accepted · {displayName}",
+        };
 
     private async Task ToggleFavoriteAsync(
         string sourceElementId,

@@ -528,7 +528,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             _ = BrokerJson.SerializeResponse(response);
             await SendAsync(BrokerPipeMessageTypes.Response, correlationId, response, _lifetime.Token)
                 .ConfigureAwait(false);
-            if (response.Succeeded) PublishConfirmedHostEffect(requestBytes);
+            if (response.Succeeded) PublishConfirmedHostEffect(requestBytes, response);
         }
         catch (OperationCanceledException)
         {
@@ -542,13 +542,22 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         }
     }
 
-    private void PublishConfirmedHostEffect(byte[] requestBytes)
+    private void PublishConfirmedHostEffect(
+        byte[] requestBytes,
+        BrokerResponseEnvelope response)
     {
         if (_hostEffectSink is null) return;
         var request = BrokerJson.ParseRequest(requestBytes);
-        if (request.Operation != PlatformCapabilities.AppLibraryLaunch) return;
+        if (request.Operation is not (PlatformCapabilities.AppLibraryLaunch or
+            PlatformCapabilities.AppLibraryLaunchObserved)) return;
         var launch = BrokerJson.ParsePayload<LaunchAppLibraryItemRequest>(request.Payload);
         if (!launch.CloseOverlayOnSuccess) return;
+        if (request.Operation == PlatformCapabilities.AppLibraryLaunchObserved)
+        {
+            if (response.Payload is not { } payload) return;
+            var observation = BrokerJson.ParsePayload<AppLibraryLaunchObservationSummary>(payload);
+            if (observation.State == AppLibraryLaunchObservationState.RequestAccepted) return;
+        }
         try
         {
             _hostEffectSink(new BrokerHostEffect(
