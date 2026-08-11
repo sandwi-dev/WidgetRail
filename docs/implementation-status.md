@@ -1842,16 +1842,56 @@ game-frame cost; neither harness measures scheduler wakeups or long-run/many-
 widget trends. Those limits remain explicit and the dirty runs are focused
 implementation evidence, not release or marketing proof.
 
-DLV-011 now selects a bounded host-owned Win32 tool-window architecture for
-further pinned-surface work without exposing a pinning feature or public
-protocol. `PinnedSurfacePolicy` owns a data-only surface descriptor, explicit
-click-through/focusable modes, one cleanup state for unpin/exit/crash recovery,
-and work-area-contained DIP placement with primary-monitor fallback. The real
-HWND fixture verifies `WS_EX_TOOLWINDOW`/topmost/taskbar/Alt-Tab policy,
-nonactivating transparent hit testing, explicit focusable transition, UI
-Automation ownership, survival after the main-overlay window hides/closes, and
-paired HWND/semantic teardown. A widget cannot provide an HWND, renderer,
-provider, process, or compositor handle.
+DLV-011 selected a bounded host-owned Win32 tool-window architecture. DLV-058
+now supplies the first generic declarative product lifecycle. The strict
+optional public-manifest `pinningSupported` boolean defaults false; the bridge
+projects it as data, while `WidgetSurfaceCoordinator` alone owns exact catalog
+and package generations, the real HWND, native declarative rendering,
+topmost/focus/input policy, host chrome/status semantics, one-surface admission,
+live snapshot updates, and exact teardown. `PinnedSurfacePolicy` retains the
+closed click-through/focusable modes and work-area-contained default placement.
+The real-HWND fixtures verify the window-style contract, nonactivating hit
+testing, explicit focusable transition, UI Automation ownership, survival after
+the main overlay hides, and paired HWND/semantic teardown. A widget cannot
+provide an HWND, renderer, provider, process, compositor, or z-order handle.
+New pins begin click-through; explicit `P` toggles interaction, `U` unpins, and
+removal, generation replacement, worker restart/loss, close, or host exit clean
+up exactly once. The focused DLV-058 fixture passed 33 checks with a
+10,264,576-byte incremental private-working-set observation, below DLV-016's
+material gate. Final composed input/accessibility remains DLV-069.
+
+DLV-070 moves process ownership ahead of every `OverlayApp` initialization.
+One race-safe global per-user/profile mutex elects the owner; later ordinary or
+`--show` launches become bounded clients of a user-only, remote-rejecting named
+pipe. The owner validates the connected token SID before accepting the closed
+version-1 Show frame. A client receives one acknowledgement and exits before
+bridge, catalog, controller, or HWND initialization. The transport queues Show
+even while the owner has no HWND, binds it when initialization completes, and
+releases the mutex, pipe thread, events, and notification target exactly once.
+Abandoned mutex ownership recovers after a crash; a claimed endpoint, malformed
+client, wrong profile, or missing acknowledgement fails closed without killing
+another process. The focused Release fixture passes 20 hidden/visible,
+simultaneous, malformed, squatted-endpoint, timeout, abandoned-owner, and
+orderly-exit checks. The isolated exact-executable probe confirms the no-HWND
+owner receives Show and both processes exit 0 without initializing `OverlayApp`
+in the probe owner or client.
+
+DLV-068 adds one generation-bound `PlacementSession` and schema-1 durable
+geometry store to the same coordinator. Placement records contain only widget
+ID, stable monitor ID, normalized work-area anchors, and logical DIP size;
+atomic replacement is bounded to 64 records and malformed/incompatible state
+resets closed. Controller Menu/View, keyboard M/R, host pointer chrome, and UIA
+Move/Resize all enter the same Move/Resize preview. Directional input changes a
+work-area-constrained rectangle, A/Enter commits, and B/Escape/capture loss or
+overlay close restores the exact original rectangle. Commit revalidates runtime
+and presentation generations before writing. DPI, work-area, orientation,
+topology, and monitor loss resolve the last logical placement through one
+normalized-anchor policy; a work area below the host-injected minimum fails
+closed. The focused Release evidence passes 16 pure placement/persistence
+checks and 41 real-HWND lifecycle/placement/UIA checks. The latter observed a
+10,833,920-byte incremental private-working-set delta, below DLV-016's material
+gate. Placement adds no hidden/idle timer. Final focus/emergency/UIA composition
+remains DLV-069.
 
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is

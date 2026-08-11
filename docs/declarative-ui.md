@@ -32,6 +32,14 @@ updates are quantized and coalesced latest-wins per Slider. A real
 `IUIAutomation` client test covers `WM_GETOBJECT`, fragment traversal, names,
 geometry, patterns, and stale-generation rejection.
 
+Supporting manifests may also set `pinningSupported: true`. The host can then
+render the same validated immutable snapshot in one host-owned peer tool window.
+That projection does not add a declarative node kind or expose an HWND: catalog
+identity and exact runtime/presentation generations remain the admission seam.
+The pinned projection starts click-through, stays alive when the main overlay
+closes, and is torn down on unpin, close, worker/package replacement, removal,
+or host exit. See [Host-owned pinned surfaces](pinned-surfaces.md).
+
 A composed real-HWND contract now sends representative production-shaped
 Settings, YT Music, and Spotify trees through the same `BuildWidgetTree`,
 `BuildOpenWidgetTree`, `ProviderHost`, `WM_GETOBJECT`, and Windows UI Automation

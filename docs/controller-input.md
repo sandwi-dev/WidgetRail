@@ -290,6 +290,19 @@ firmware, controller mode, transport, Steam configuration, and other software
 that owns Guide. Use the input probe and the real target configuration when
 making compatibility claims.
 
+## Pinned-surface placement mode
+
+With the main overlay visible and the same pinned widget open, Menu enters Move
+and View enters Resize. This host interception applies only to that explicit
+placement context; it does not turn those buttons into widget actions. D-pad or
+left-stick repeat changes the bounded preview, A commits atomically, and B
+cancels to the exact pre-gesture rectangle. Hiding the overlay, capture loss,
+package/runtime replacement, or display reconciliation also cancels unfinished
+placement. Keyboard (`M`/`R`, arrows, Enter/Escape), host pointer chrome, and UI
+Automation actions use the same generation-bound state machine. This is a
+logical mapping verified by focused fixtures, not physical-controller or game
+compatibility evidence.
+
 ## Foreground ownership and containment limitation
 
 While visible, the host requests `GameInputEnableBackgroundInput` and

@@ -1,8 +1,10 @@
-# Host-owned pinned-surface feasibility
+# Host-owned pinned surfaces
 
-Status: DLV-011 selects a bounded Win32 tool-window architecture for further
-host work. It does **not** expose a pin command, public widget API, arbitrary
-HWND path, or media/browser implementation.
+Status: DLV-058 implements the first bounded generic lifecycle on the Win32
+tool-window architecture selected by DLV-011. A widget opts in with the
+data-only `pinningSupported` manifest flag. The host alone creates, renders,
+orders, focuses, and destroys the native surface; no HWND or native authority
+is exposed to widget code.
 
 ## Decision
 
@@ -33,12 +35,42 @@ cross-process mechanism; explicit mouse-activation denial completes the
 candidate policy. See [DWM performance considerations](https://learn.microsoft.com/windows/win32/dwm/bestpractices-ovw)
 and [`WM_NCHITTEST`](https://learn.microsoft.com/windows/win32/inputdev/wm-nchittest).
 
-The feasibility fixture uses one data-only declarative descriptor containing a
-stable ID, accessible name, static ARGB color, and reduced-motion preference.
-It cannot contain a native window, renderer, process, provider, or compositor
-handle. The fixture paints that deterministic color/status surface in a real
-top-level window and publishes a two-node host-domain UI Automation tree
-through the existing native provider. There is no ambient timer or animation.
+The product coordinator admits only the current catalog ID, package instance,
+runtime generation, presentation generation, display name, opt-in flag, and a
+validated immutable declarative snapshot. It cannot admit a native window,
+renderer, process, provider, compositor, or z-order handle. It renders that
+snapshot with the existing native declarative renderer and publishes separate
+host-owned heading and mode status semantics through the existing UI Automation
+provider.
+
+## User lifecycle
+
+Only one surface may be pinned in this first bounded release:
+
+1. open a supporting widget and press `P`; the new peer surface starts in
+   nonactivating click-through mode and the main overlay keeps controller focus;
+2. while that widget remains open in the main overlay, press `P` again to toggle
+   the pinned surface between Interactive and Click-through;
+3. press `U`, use the pinned Interactive chrome, close the pinned window, remove
+   or replace its package generation, restart its worker, or exit the host to
+   perform one exact paired HWND/semantic teardown;
+4. closing the main overlay preserves the surface but always returns it to
+   click-through. Reopen the main overlay before explicitly restoring
+   Interactive mode.
+
+Interactive placement uses one host state machine across input routes. With the
+same widget open, controller `Menu` starts Move and `View` starts Resize;
+D-pad/left stick changes the preview, `A` commits, and `B` restores the exact
+pre-gesture rectangle. Keyboard uses `M`/`R`, arrows, Enter, and Escape.
+Dragging the host-owned Move or Resize chrome commits on pointer release, and
+UI Automation exposes the same Move/Resize then Commit/Cancel actions. Closing
+the main overlay or losing input capture cancels an unfinished gesture.
+
+Unsupported widgets retain their existing behavior. Omitted
+`pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
+and admission failures produce bounded host diagnostics rather than a fallback
+window. Worker loss, stale runtime or presentation generations, catalog
+removal, and host exit cannot leave an orphaned surface.
 
 ## Candidate comparison
 
@@ -56,23 +88,33 @@ its own deployment/runtime contract; adopting it requires planner authority.
 
 ## Placement and display lifecycle
 
-Persisted placement is data, not window authority: monitor stable ID plus
-left/top/width/height in DIPs. Resolution follows one deterministic rule:
+Persisted placement is data, not window authority: schema version, monitor
+stable ID, normalized work-area X/Y anchors, and logical width/height in DIPs.
+The host atomically replaces
+`%LOCALAPPDATA%\GameBarAlternative\pinned-surface-placement.ini`; at most 64
+bounded widget records are accepted. Resolution follows one deterministic rule:
 
 1. use the recorded monitor only when its work area and effective DPI are
    valid;
 2. otherwise use the valid primary monitor, or the first valid monitor;
-3. scale DIPs at the selected monitor DPI, clamp size to 240x135 through
-   960x540 DIPs and then to the physical work area;
-4. fully clamp the rectangle to the work area; malformed values, monitor loss,
-   or an absent monitor ID use the 480x270-DIP top-right default with a 16-DIP
-   margin;
-5. when no valid monitor exists, fail closed and create no HWND.
+3. scale logical size at the selected effective DPI, with the generic 240x135
+   through 960x540-DIP limits (a trusted host surface may inject a stricter
+   minimum; widgets cannot);
+4. resolve normalized anchors over the remaining work-area travel and fully
+   clamp the rectangle; malformed/incompatible state resets as a whole;
+5. monitor loss falls back to the valid primary/first monitor, re-normalizes,
+   and atomically records that fallback; a first/default pin uses 480x270 DIPs
+   at the top-right with a 16-DIP safe margin;
+6. if no work area can contain the declared minimum, fail closed rather than
+   creating an offscreen or undersized HWND.
 
 The rule covers work-area shrink, taskbar movement, rotation, mixed DPI,
-negative virtual-screen coordinates, and hot-plug fallback as math. A future
-product adapter would call the same reconciliation from the host's existing
-`WM_DPICHANGED`, `WM_DISPLAYCHANGE`, and `WM_SETTINGCHANGE` paths. Windows
+negative virtual-screen coordinates, hot-plug fallback, interrupted gestures,
+and rapid display notifications through the same resolver. `WM_DPICHANGED`,
+`WM_DISPLAYCHANGE`, and work-area changes cancel any preview and reapply the
+last committed logical placement. Runtime and presentation generations are
+captured when a gesture begins; a stale generation cannot write placement.
+No placement timer runs while hidden or idle. Windows
 documents that `WM_DPICHANGED` supplies a new DPI and suggested rectangle, and
 that monitor APIs resolve rectangles in virtual-screen coordinates:
 [WM_DPICHANGED](https://learn.microsoft.com/windows/win32/hidpi/wm-dpichanged),
@@ -100,10 +142,26 @@ process, not the production process-tree total. The two-node semantic workload
 is deliberately smaller than DLV-016, so only gates and direction are compared;
 the timings are not interchangeable product benchmarks.
 
+`src\OverlayHost\build.ps1 -Configuration Release
+-WidgetSurfaceTestsOnly` builds the production coordinator with its focused
+real-HWND fixture. After DLV-068 it passes 41 admission, closed-state, style,
+real-window, UI Automation, generation, live-update, placement/cancel/commit,
+durable-repin, overlay-hide, cap, and exact-teardown checks. Its current
+incremental pinned private-working-set observation is 10,833,920 bytes, below
+DLV-016's 128 MiB material gate.
+
+`src\OverlayHost\build.ps1 -Configuration Release
+-PinnedPlacementTestsOnly` runs the 16-check pure normalized placement,
+mixed-DPI, monitor-loss, generation, constraint, minimum, and atomic-persistence
+fixture. Neither short single-process fixture is a production process-tree,
+GPU, idle-CPU, physical-display, or long-run benchmark.
+
 ## Explicit limitations
 
-- This is an architecture gate and test harness, not a user-visible pinning
-  feature. No public protocol or community-widget authority was added.
+- This is a generic declarative host surface, not an arbitrary-window or public
+  native-window API. The only public opt-in is `pinningSupported`.
+- Final one-owner controller focus, emergency hide, and complete widget/UIA
+  interaction composition remain DLV-069.
 - No WebView2, YouTube, authentication, playback, new compositor, Windows App
   SDK dependency, game hook, or elevated hook was implemented.
 - No screenshot, GPU, DWM, presentation, game-frame, hardware-input, or

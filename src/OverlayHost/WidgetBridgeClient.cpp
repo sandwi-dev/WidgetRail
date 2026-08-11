@@ -211,6 +211,14 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
                 return std::nullopt;
             }
         }
+        if (source.HasKey(L"pinningSupported")) {
+            if (source.GetNamedValue(L"pinningSupported").ValueType() !=
+                JsonValueType::Boolean) {
+                error = L"Widget descriptor property 'pinningSupported' must be a boolean.";
+                return std::nullopt;
+            }
+            descriptor.pinningSupported = source.GetNamedBoolean(L"pinningSupported");
+        }
         if (!widgetIds.emplace(descriptor.id).second) {
             error = L"WidgetBridge returned duplicate widget ID '" + descriptor.id + L"'.";
             return std::nullopt;

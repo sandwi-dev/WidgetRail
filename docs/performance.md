@@ -233,6 +233,23 @@ benchmarks. The fixture's private pages are also not a production process-tree
 total. See [host-owned pinned-surface feasibility](pinned-surfaces.md) for the
 window-policy decision and complete evidence limits.
 
+DLV-058's focused production-coordinator fixture adds one validated immutable
+declarative snapshot, native renderer, and host semantic projection to the real
+tool window. Its current Release run passed 33 lifecycle and teardown checks and
+observed a 10,264,576-byte incremental private-working-set delta, below the same
+128 MiB material gate. The 750 ms single-process observation does not establish
+production process-tree totals, idle CPU, GPU/DWM cost, long-run behavior, or a
+physical-game claim.
+
+DLV-068 adds no hidden or idle placement timer. Its 16-check pure fixture covers
+normalized mixed-DPI restore, invalid-state reset, monitor loss, declared-minimum
+failure, generation rejection, constraints, cancel/commit, and atomic storage.
+The 41-check real-HWND coordinator fixture includes move/resize, exact cancel,
+durable repin, and a real UI Automation Move invocation; its incremental pinned
+private-working-set observation was 10,833,920 bytes, below the existing 128 MiB
+material gate. This is still a short fixture-process observation, not a
+production process-tree, display-hot-plug, GPU, or long-run measurement.
+
 ## Verification and remaining tooling
 
 Run functional/regression gates with:

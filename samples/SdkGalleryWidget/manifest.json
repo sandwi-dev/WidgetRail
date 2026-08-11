@@ -4,6 +4,7 @@
   "publisher": "org.gbar.samples",
   "name": "SDK Gallery",
   "version": "0.1.2",
+  "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

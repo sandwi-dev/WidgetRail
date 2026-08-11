@@ -12,6 +12,7 @@
 #include "NativeStyle.h"
 #include "OverlayChrome.h"
 #include "OverlayPlacement.h"
+#include "OverlayProcessOwner.h"
 #include "OverlayTargeting.h"
 #include "OverlayTransition.h"
 #include "PressedInteraction.h"
@@ -20,6 +21,7 @@
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
+#include "WidgetSurfaceCoordinator.h"
 #include "WidgetSurfaceFocus.h"
 #include "SliderInteraction.h"
 #include "TrayLayout.h"
@@ -36,6 +38,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <climits>
 #include <filesystem>
@@ -68,6 +71,7 @@ constexpr UINT_PTR kZOrderSettleTimer = 3;
 constexpr UINT_PTR kCatalogRetryTimer = 4;
 constexpr UINT_PTR kForegroundLossTimer = 5;
 constexpr UINT_PTR kActionFeedbackTimer = 6;
+constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT kGuideMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
@@ -78,6 +82,8 @@ constexpr UINT kDisplayRefreshMessage = WM_APP + 7;
 constexpr UINT kPerformanceResetMessage = WM_APP + 8;
 constexpr UINT kGuideCompatibilityDeviceMessage = WM_APP + 9;
 constexpr UINT kAccessibilityActionMessage = WM_APP + 10;
+constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
+constexpr UINT kProcessActivationMessage = WM_APP + 12;
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
@@ -459,6 +465,14 @@ public:
             });
         declarativeRenderer_ = std::make_unique<gba::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
+        std::wstring pinnedSurfaceError;
+        if (!pinnedSurfaceCoordinator_.Initialize(
+                instance_, window_, kPinnedSurfaceChangedMessage,
+                d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get(),
+                pinnedSurfaceError)) {
+            initializationError_ = std::move(pinnedSurfaceError);
+            return false;
+        }
         if (!developmentProbeOnly_) {
             RegisterHotKey(window_, kDeveloperHotkey, MOD_NOREPEAT, VK_F1);
             InitializeGameInput();
@@ -533,6 +547,10 @@ public:
             DispatchMessageW(&message);
         }
         return static_cast<int>(message.wParam);
+    }
+
+    void BindProcessActivation(gba::process::OverlayProcessOwner& owner) noexcept {
+        owner.BindNotificationWindow(window_, kProcessActivationMessage);
     }
 
 private:
@@ -723,8 +741,8 @@ private:
         const auto expected = *performanceState_ == L"interactive"
             ? gba::WidgetLifecycleState::Interactive
             : gba::WidgetLifecycleState::Visible;
-        if (!lifecycleBridgeState_ || *lifecycleBridgeState_ != expected ||
-            lifecycleBridgeWidget_ != *performanceWidgetId_) {
+        const auto lifecycle = lifecycleBridgeStates_.find(*performanceWidgetId_);
+        if (lifecycle == lifecycleBridgeStates_.end() || lifecycle->second != expected) {
             initializationError_ =
                 L"The requested performance lifecycle could not be established.";
             return false;
@@ -1090,7 +1108,8 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage: {
-            if (state_.surface() == gba::Surface::Hidden) {
+            if (state_.surface() == gba::Surface::Hidden &&
+                !pinnedSurfaceCoordinator_.pinned()) {
                 KillTimer(window_, kCatalogRetryTimer);
                 bridge_.AbandonWidgetCatalogChangedRevision();
                 catalogRetryAttempts_ = 0;
@@ -1106,7 +1125,8 @@ private:
                 }
             });
             if (!refreshed && bridge_.HasWidgetCatalogChangedRevisionInFlight() &&
-                       state_.surface() != gba::Surface::Hidden &&
+                       (state_.surface() != gba::Surface::Hidden ||
+                        pinnedSurfaceCoordinator_.pinned()) &&
                        catalogRetryAttempts_ < 3) {
                 const UINT delay = 250U << catalogRetryAttempts_++;
                 SetTimer(window_, kCatalogRetryTimer, delay, nullptr);
@@ -1117,7 +1137,8 @@ private:
             return 0;
         }
         case kSnapshotRefreshMessage:
-            if (state_.surface() == gba::Surface::Hidden) return 0;
+            if (state_.surface() == gba::Surface::Hidden &&
+                !pinnedSurfaceCoordinator_.pinned()) return 0;
             RefreshAndApplyPresentation([&] { RefreshCurrentBridgeSnapshot(); });
             return 0;
         case kForegroundChangedMessage:
@@ -1151,6 +1172,26 @@ private:
             return 0;
         case kAccessibilityActionMessage:
             HandleAccessibilityActions();
+            return 0;
+        case kPinnedSurfaceChangedMessage:
+            if (state_.surface() == gba::Surface::Hidden) {
+                if (pinnedSurfaceCoordinator_.pinned())
+                    SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
+                else
+                    KillTimer(window_, kPinnedSurfaceTimer);
+            }
+            SyncWidgetActivity();
+            InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        case kProcessActivationMessage:
+            AppendDiagnostic(L"Resident process received an authenticated Show activation");
+            if (state_.surface() == gba::Surface::Hidden) {
+                Dispatch(gba::Command::ToggleOverlay);
+            } else {
+                (void)ShowOverlay();
+                (void)AcquireOverlayForegroundInput();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
             return 0;
         case WM_SETFOCUS:
             accessibilityProvider_.SetWindowFocused(true);
@@ -1193,16 +1234,18 @@ private:
                     ++performanceGuideCompatibilityTimerMessages_;
                 }
             }
-            if (wParam == kControllerTimer) {
+            if (wParam == kControllerTimer || wParam == kPinnedSurfaceTimer) {
+                const bool controllerTick = wParam == kControllerTimer;
                 const auto now = GetTickCount64();
                 // The dedicated deadline timer owns normal expiry. This cheap
                 // state check also closes the race if Win32 timer creation is
                 // temporarily unavailable; it never repaints unless state changed.
-                actionFailureFeedback_.OnControllerTimer();
-                if (overlayTransition_.active() || extentTransition_.active()) {
+                if (controllerTick) actionFailureFeedback_.OnControllerTimer();
+                if (controllerTick &&
+                    (overlayTransition_.active() || extentTransition_.active())) {
                     AdvanceOverlayTransition(now);
                 }
-                if (awaitingSuccessfulOpenPaint_ &&
+                if (controllerTick && awaitingSuccessfulOpenPaint_ &&
                     now >= nextOpenPaintRetryAt_) {
                     nextOpenPaintRetryAt_ = now + 100;
                     InvalidateRect(window_, nullptr, FALSE);
@@ -1211,13 +1254,15 @@ private:
                 // controller timer is retained only long enough to finish the
                 // bounded physical fade; no input or worker work runs behind
                 // the hidden surface.
-                if (state_.surface() == gba::Surface::Hidden) return 0;
+                if (state_.surface() == gba::Surface::Hidden &&
+                    !pinnedSurfaceCoordinator_.pinned()) return 0;
                 // A newly shown or device-lost HWND is deliberately alpha-zero
                 // until D2D commits a complete frame. Do not let an invisible
                 // surface consume navigation or advance its worker meanwhile;
                 // Guide/F1 continue to arrive through their dedicated paths.
                 if (awaitingSuccessfulOpenPaint_) return 0;
-                PollController();
+                if (controllerTick && state_.surface() != gba::Surface::Hidden)
+                    PollController();
                 (void)bridge_.PumpEvents();
                 for (auto& artwork : bridge_.TakeArtworkResults()) {
                     if (artwork.pngBase64.empty())
@@ -1244,8 +1289,11 @@ private:
                     const auto currentWidget = state_.surface() == gba::Surface::Widget
                         ? state_.activeWidget()
                         : state_.selectedWidget();
-                    if (state_.surface() != gba::Surface::Hidden &&
-                        currentWidget == invalidatedWidget) {
+                    const bool pinnedInvalidation =
+                        pinnedSurfaceCoordinator_.pinned() &&
+                        pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
+                    if ((state_.surface() != gba::Surface::Hidden &&
+                         currentWidget == invalidatedWidget) || pinnedInvalidation) {
                         RefreshAndApplyPresentation([&] {
                             RefreshWidgetSnapshot(invalidatedWidget);
                         });
@@ -1494,18 +1542,19 @@ private:
     }
 
     void Shutdown() {
+        pinnedSurfaceCoordinator_.Dispose();
         declarativeRenderer_.reset();
         if (imageCache_) {
             imageCache_->Shutdown();
             imageCache_.reset();
         }
-        if (!lifecycleBridgeWidget_.empty()) {
+        for (const auto& [widgetId, state] : lifecycleBridgeStates_) {
+            (void)state;
             (void)bridge_.SetWidgetLifecycle(
-                lifecycleBridgeWidget_,
+                widgetId,
                 gba::WidgetLifecycleProtocolValue(gba::WidgetLifecycleState::Background));
-            lifecycleBridgeWidget_.clear();
-            lifecycleBridgeState_.reset();
         }
+        lifecycleBridgeStates_.clear();
         actionFailureFeedback_.Stop();
         bridge_.Stop();
         if (window_) {
@@ -1516,6 +1565,7 @@ private:
             KillTimer(window_, kCatalogRetryTimer);
             KillTimer(window_, kForegroundLossTimer);
             KillTimer(window_, kActionFeedbackTimer);
+            KillTimer(window_, kPinnedSurfaceTimer);
             UnregisterHotKey(window_, kDeveloperHotkey);
         }
         guideCompatibility_.Shutdown();
@@ -1922,6 +1972,7 @@ private:
 
     void ApplyPendingDisplayEnvironmentRefresh() {
         const auto plan = displayRefresh_.Take();
+        pinnedSurfaceCoordinator_.ReconcileDisplayEnvironment();
         if (state_.surface() == gba::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
 
@@ -1953,6 +2004,7 @@ private:
             return false;
         }
         auto previousDescriptors = std::exchange(widgetDescriptors_, std::move(*descriptors));
+        pinnedSurfaceCoordinator_.ReconcileCatalog(widgetDescriptors_);
         if (!actionFailureFeedback_.ReconcileCatalog(widgetDescriptors_)) {
             AppendDiagnostic(L"Widget action feedback rejected an invalid catalog projection");
         }
@@ -2033,9 +2085,10 @@ private:
                     runtimeChanged(state_.activeWidget())
                 ? std::wstring(state_.activeWidget())
                 : std::wstring{};
-        if (!lifecycleBridgeWidget_.empty() && runtimeChanged(lifecycleBridgeWidget_)) {
-            lifecycleBridgeWidget_.clear();
-            lifecycleBridgeState_.reset();
+        std::erase_if(lifecycleBridgeStates_, [&](const auto& entry) {
+            return runtimeChanged(entry.first);
+        });
+        if (runtimeChanged(state_.activeWidget())) {
             focusedElementId_.clear();
             lastWidgetRenderResult_ = {};
         }
@@ -2092,65 +2145,100 @@ private:
         widgetSnapshots_.insert_or_assign(
             std::wstring(widgetId), std::move(snapshot));
         widgetStartupFailures_.erase(std::wstring(widgetId));
+        if (const auto* current = SnapshotFor(widgetId);
+            current && pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+            (void)pinnedSurfaceCoordinator_.UpdateSnapshot(
+                widgetId, pinnedSurfaceCoordinator_.runtimeGeneration(), *current);
+        }
         return true;
     }
 
     void SyncWidgetActivity() {
-        const auto desired = gba::DesiredWidgetLifecycle(
+        std::unordered_map<std::wstring, gba::WidgetLifecycleState> desiredStates;
+        const auto overlayDesired = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
             IsBridgeWidget(state_.activeWidget()));
-        if (desired && desired->widgetId == lifecycleBridgeWidget_ &&
-            lifecycleBridgeState_ == desired->state) {
-            return;
+        if (overlayDesired) {
+            desiredStates.insert_or_assign(overlayDesired->widgetId, overlayDesired->state);
+        }
+        if (pinnedSurfaceCoordinator_.pinned()) {
+            const std::wstring pinnedId(pinnedSurfaceCoordinator_.widgetId());
+            const auto pinnedState =
+                pinnedSurfaceCoordinator_.interactionMode() ==
+                        gba::pinned::InteractionMode::Focusable
+                    ? gba::WidgetLifecycleState::Interactive
+                    : gba::WidgetLifecycleState::Visible;
+            const auto existing = desiredStates.find(pinnedId);
+            if (existing == desiredStates.end() ||
+                (existing->second == gba::WidgetLifecycleState::Visible &&
+                 pinnedState == gba::WidgetLifecycleState::Interactive)) {
+                desiredStates.insert_or_assign(pinnedId, pinnedState);
+            }
         }
 
-        if (!lifecycleBridgeWidget_.empty() &&
-            (!desired || desired->widgetId != lifecycleBridgeWidget_)) {
+        for (auto current = lifecycleBridgeStates_.begin();
+             current != lifecycleBridgeStates_.end();) {
+            if (desiredStates.contains(current->first)) {
+                ++current;
+                continue;
+            }
             // Never restart the bridge or an unselected worker merely to send
             // Background. A tracked widget has already crossed the lazy-start
             // boundary, so this is best-effort cleanup on the existing pipe.
             if (!bridge_.SetWidgetLifecycle(
-                    lifecycleBridgeWidget_,
+                    current->first,
                     gba::WidgetLifecycleProtocolValue(gba::WidgetLifecycleState::Background))) {
-                AppendDiagnostic(L"Widget background transition failed for " + lifecycleBridgeWidget_ +
+                AppendDiagnostic(L"Widget background transition failed for " + current->first +
                                  L": " + bridge_.lastError());
             }
-            lifecycleBridgeWidget_.clear();
-            lifecycleBridgeState_.reset();
+            current = lifecycleBridgeStates_.erase(current);
         }
-        if (!desired) return;
-        if (!bridge_.EnsureStarted(
-                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
-            AppendDiagnostic(L"Widget lifecycle bridge unavailable: " + bridge_.lastError());
-            RecordWidgetStartupFailure(desired->widgetId, bridge_.lastError());
-            return;
-        }
-        if (!SnapshotFor(desired->widgetId)) {
-            auto snapshot = bridge_.EstablishWidgetPresentation(
-                desired->widgetId,
-                gba::WidgetLifecycleProtocolValue(desired->state));
-            if (!snapshot) {
-                RecordWidgetStartupFailure(desired->widgetId, bridge_.lastError());
-                return;
+        for (const auto& [widgetId, desiredState] : desiredStates) {
+            const auto current = lifecycleBridgeStates_.find(widgetId);
+            if (current != lifecycleBridgeStates_.end() &&
+                current->second == desiredState) {
+                continue;
             }
-            if (!StoreEstablishedWidgetSnapshot(
-                    desired->widgetId, std::move(*snapshot))) return;
-            lifecycleBridgeWidget_ = desired->widgetId;
-            lifecycleBridgeState_ = desired->state;
-            return;
+            const auto failPinned = [&] {
+                if (pinnedSurfaceCoordinator_.pinned() &&
+                    pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+                    (void)pinnedSurfaceCoordinator_.Unpin(
+                        gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
+                }
+            };
+            if (!bridge_.EnsureStarted(
+                    installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
+                AppendDiagnostic(L"Widget lifecycle bridge unavailable: " + bridge_.lastError());
+                RecordWidgetStartupFailure(widgetId, bridge_.lastError());
+                failPinned();
+                continue;
+            }
+            if (!SnapshotFor(widgetId)) {
+                auto snapshot = bridge_.EstablishWidgetPresentation(
+                    widgetId, gba::WidgetLifecycleProtocolValue(desiredState));
+                if (!snapshot) {
+                    RecordWidgetStartupFailure(widgetId, bridge_.lastError());
+                    failPinned();
+                    continue;
+                }
+                if (!StoreEstablishedWidgetSnapshot(widgetId, std::move(*snapshot))) {
+                    failPinned();
+                    continue;
+                }
+            } else if (!bridge_.SetWidgetLifecycle(
+                           widgetId, gba::WidgetLifecycleProtocolValue(desiredState))) {
+                AppendDiagnostic(L"Widget lifecycle transition failed for " + widgetId +
+                                 L": " + bridge_.lastError());
+                RecordWidgetStartupFailure(widgetId, bridge_.lastError());
+                failPinned();
+                continue;
+            }
+            widgetStartupFailures_.erase(widgetId);
+            lifecycleBridgeStates_.insert_or_assign(widgetId, desiredState);
         }
-        if (!bridge_.SetWidgetLifecycle(
-                desired->widgetId, gba::WidgetLifecycleProtocolValue(desired->state))) {
-            AppendDiagnostic(L"Widget lifecycle transition failed for " + desired->widgetId +
-                             L": " + bridge_.lastError());
-            RecordWidgetStartupFailure(desired->widgetId, bridge_.lastError());
-            return;
-        }
-        widgetStartupFailures_.erase(desired->widgetId);
-        lifecycleBridgeWidget_ = desired->widgetId;
-        lifecycleBridgeState_ = desired->state;
     }
 
     std::wstring_view DisplayWidgetName(const std::wstring_view id) const noexcept {
@@ -2374,14 +2462,21 @@ private:
             // repeated foreground-steal loop.
             (void)AcquireOverlayForegroundInput();
             actionFailureFeedback_.Show();
+            KillTimer(window_, kPinnedSurfaceTimer);
             SetTimer(window_, kControllerTimer, 16, nullptr);
             PrimeControllerState();
         }
+        pinnedSurfaceCoordinator_.OnOverlayShown();
         return OverlayShowResult::Shown;
     }
 
     void HideOverlay() {
+        (void)pinnedSurfaceCoordinator_.CancelPlacement();
+        pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
+        KillTimer(window_, kPinnedSurfaceTimer);
+        if (pinnedSurfaceCoordinator_.pinned())
+            SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
         trayYGesture_.Reset();
         actionFailureFeedback_.Hide();
         ClearAccessibilityTree();
@@ -2703,11 +2798,147 @@ private:
         }
     }
 
+    void ToggleCurrentPinnedSurface() {
+        if (pinnedSurfaceCoordinator_.pinned()) {
+            const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
+            if (state_.surface() != gba::Surface::Widget ||
+                state_.activeWidget() != widgetId) {
+                lastActionWidgetId_ = widgetId;
+                lastActionMessage_ = L"Only one pinned surface is currently supported. Press U to unpin it.";
+                lastActionExpiresAt_ = GetTickCount64() + 4000;
+                InvalidateRect(window_, nullptr, FALSE);
+                return;
+            }
+            if (pinnedSurfaceCoordinator_.ToggleInteractionMode()) {
+                lastActionWidgetId_ = widgetId;
+                lastActionMessage_ =
+                    pinnedSurfaceCoordinator_.interactionMode() ==
+                            gba::pinned::InteractionMode::Focusable
+                        ? L"Pinned surface is interactive"
+                        : L"Pinned surface is click-through";
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+                SyncWidgetActivity();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
+        if (state_.surface() != gba::Surface::Widget) {
+            lastActionWidgetId_.clear();
+            lastActionMessage_ = L"Open a pinnable widget before pressing P";
+            lastActionExpiresAt_ = GetTickCount64() + 3000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        const std::wstring widgetId(state_.activeWidget());
+        const auto descriptor = std::find_if(
+            widgetDescriptors_.begin(), widgetDescriptors_.end(),
+            [&](const gba::WidgetDescriptor& candidate) {
+                return candidate.id == widgetId;
+            });
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (descriptor == widgetDescriptors_.end() ||
+            !descriptor->pinningSupported || !snapshot) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = descriptor != widgetDescriptors_.end() &&
+                    descriptor->pinningSupported
+                ? L"Pinned surface unavailable until the widget has loaded"
+                : L"This widget does not support pinned surfaces";
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        std::wstring error;
+        if (!pinnedSurfaceCoordinator_.Pin({
+                descriptor->id,
+                descriptor->instanceId,
+                descriptor->runtimeGeneration,
+                descriptor->presentationGeneration,
+                descriptor->name,
+                descriptor->pinningSupported,
+                *snapshot,
+            }, error)) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = error;
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(L"Pinned surface rejected for " + widgetId + L": " + error);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        lastActionWidgetId_ = widgetId;
+        lastActionMessage_ = L"Pinned click-through surface created. Press P to interact or U to unpin.";
+        lastActionExpiresAt_ = GetTickCount64() + 5000;
+        SyncWidgetActivity();
+        AppendDiagnostic(L"Pinned surface created for " + widgetId);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
     void HandleKey(const UINT key, const bool repeated) {
         if (state_.surface() == gba::Surface::Hidden) return;
+        if (pinnedSurfaceCoordinator_.placementMode() !=
+            gba::pinned::PlacementMode::None) {
+            bool changed = false;
+            if (key == VK_LEFT)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Left);
+            else if (key == VK_RIGHT)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Right);
+            else if (key == VK_UP)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Up);
+            else if (key == VK_DOWN)
+                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Down);
+            else if (!repeated && key == VK_RETURN) {
+                std::wstring error;
+                changed = pinnedSurfaceCoordinator_.CommitPlacement(error);
+                lastActionMessage_ = changed ? L"Pinned placement saved" : error;
+                lastActionExpiresAt_ = GetTickCount64() + 3000;
+            } else if (!repeated && key == VK_ESCAPE) {
+                changed = pinnedSurfaceCoordinator_.CancelPlacement();
+                lastActionMessage_ = L"Pinned placement canceled";
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+            }
+            if (changed) InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        if (!repeated && (key == 'M' || key == 'R') &&
+            pinnedSurfaceCoordinator_.pinned() &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId()) {
+            const auto mode = key == 'M'
+                ? gba::pinned::PlacementMode::Move
+                : gba::pinned::PlacementMode::Resize;
+            if (pinnedSurfaceCoordinator_.BeginPlacement(mode)) {
+                (void)pressedInteraction_.Clear();
+                lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
+                lastActionMessage_ = key == 'M'
+                    ? L"Move pinned surface: arrows, Enter commit, Esc cancel"
+                    : L"Resize pinned surface: arrows, Enter commit, Esc cancel";
+                lastActionExpiresAt_ = GetTickCount64() + 5000;
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
         const auto phase = repeated
             ? gba::input::NavigationEventPhase::Repeated
             : gba::input::NavigationEventPhase::Pressed;
+        if (key == 'P') {
+            if (!repeated) ToggleCurrentPinnedSurface();
+            return;
+        }
+        if (key == 'U') {
+            if (!repeated && pinnedSurfaceCoordinator_.pinned()) {
+                const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
+                (void)pinnedSurfaceCoordinator_.Unpin(
+                    gba::pinned::WidgetSurfaceStopReason::Unpin);
+                lastActionWidgetId_ = widgetId;
+                lastActionMessage_ = L"Pinned surface removed";
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+                SyncWidgetActivity();
+            }
+            return;
+        }
         if (key == VK_F5) {
             if (!repeated) RestartCurrentWidget();
             return;
@@ -2968,6 +3199,76 @@ private:
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
         if (recoveryChordDown && !reloadChordHeld_) RestartCurrentWidget();
         reloadChordHeld_ = recoveryChordDown;
+
+        const auto stepPinnedPlacement = [&](const gba::input::StickNavigationEvent& event) {
+            using gba::input::NavigationDirection;
+            switch (event.direction) {
+            case NavigationDirection::Left:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Left);
+                break;
+            case NavigationDirection::Right:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Right);
+                break;
+            case NavigationDirection::Up:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Up);
+                break;
+            case NavigationDirection::Down:
+                (void)pinnedSurfaceCoordinator_.StepPlacement(
+                    gba::pinned::PlacementDirection::Down);
+                break;
+            default: break;
+            }
+        };
+        if (pinnedSurfaceCoordinator_.placementMode() !=
+            gba::pinned::PlacementMode::None) {
+            if (const auto direction = stickNavigator_.UpdateEvent(
+                    connected ? controller.Gamepad.sThumbLX : 0,
+                    connected ? controller.Gamepad.sThumbLY : 0, now))
+                stepPinnedPlacement(*direction);
+            if (const auto direction = dpadNavigator_.UpdateEvent(
+                    gba::input::DigitalNavigationAxis(
+                        buttons, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_RIGHT),
+                    gba::input::DigitalNavigationAxis(
+                        buttons, XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_UP), now))
+                stepPinnedPlacement(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0) {
+                std::wstring error;
+                const bool committed = pinnedSurfaceCoordinator_.CommitPlacement(error);
+                lastActionMessage_ = committed ? L"Pinned placement saved" : error;
+                lastActionExpiresAt_ = now + 3000;
+            } else if ((pressed & XINPUT_GAMEPAD_B) != 0) {
+                (void)pinnedSurfaceCoordinator_.CancelPlacement();
+                lastActionMessage_ = L"Pinned placement canceled";
+                lastActionExpiresAt_ = now + 2400;
+            }
+            leftTriggerPressed_ = connected && controller.Gamepad.bLeftTrigger >= 30;
+            rightTriggerPressed_ = connected && controller.Gamepad.bRightTrigger >= 30;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        const bool placementEligible = !recoveryChordDown &&
+            pinnedSurfaceCoordinator_.pinned() &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId();
+        gba::pinned::PlacementMode requestedPlacement = gba::pinned::PlacementMode::None;
+        if (placementEligible && (pressed & XINPUT_GAMEPAD_START) != 0)
+            requestedPlacement = gba::pinned::PlacementMode::Move;
+        else if (placementEligible && (pressed & XINPUT_GAMEPAD_BACK) != 0)
+            requestedPlacement = gba::pinned::PlacementMode::Resize;
+        if (requestedPlacement != gba::pinned::PlacementMode::None &&
+            pinnedSurfaceCoordinator_.BeginPlacement(requestedPlacement)) {
+            (void)pressedInteraction_.Clear();
+            lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
+            lastActionMessage_ = requestedPlacement == gba::pinned::PlacementMode::Move
+                ? L"Move pinned surface: D-pad/stick, A commit, B cancel"
+                : L"Resize pinned surface: D-pad/stick, A commit, B cancel";
+            lastActionExpiresAt_ = now + 5000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
 
         const auto releaseButton = [&](const WORD mask, const std::wstring_view protocolButton) {
             if ((released & mask) != 0 && pressedInteraction_.Release(protocolButton))
@@ -3538,8 +3839,11 @@ private:
     }
 
     void RefreshCurrentBridgeSnapshot() {
-        if (state_.surface() == gba::Surface::Hidden) return;
-        const std::wstring_view widgetId = state_.surface() == gba::Surface::Widget
+        if (state_.surface() == gba::Surface::Hidden &&
+            !pinnedSurfaceCoordinator_.pinned()) return;
+        const std::wstring_view widgetId = state_.surface() == gba::Surface::Hidden
+            ? pinnedSurfaceCoordinator_.widgetId()
+            : state_.surface() == gba::Surface::Widget
             ? state_.activeWidget()
             : state_.selectedWidget();
         if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
@@ -3573,6 +3877,11 @@ private:
             state_.focusRegion() == gba::FocusRegion::Tray,
             state_.selectedWidget(), state_.activeWidget())};
         if (!IsBridgeWidget(widgetId)) return;
+        if (pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+            (void)pinnedSurfaceCoordinator_.Unpin(
+                gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
+        }
         if (!bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             RecordWidgetStartupFailure(widgetId, bridge_.lastError());
@@ -3603,8 +3912,7 @@ private:
             return;
         }
 
-        lifecycleBridgeWidget_.clear();
-        lifecycleBridgeState_.reset();
+        lifecycleBridgeStates_.erase(widgetId);
         RefreshAndApplyPresentation([&] { SyncWidgetActivity(); });
         if (!SnapshotFor(widgetId)) {
             pendingContentRevealWidget_.clear();
@@ -3621,6 +3929,12 @@ private:
 
     void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
         if (!IsBridgeWidget(widgetId)) return;
+        const auto stopPinned = [&](const gba::pinned::WidgetSurfaceStopReason reason) {
+            if (pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+                (void)pinnedSurfaceCoordinator_.Unpin(reason);
+            }
+        };
         // A failed admission owns the presentation until an explicit retry.
         // Fetching a snapshot from the still-background registration would
         // replace the actionable startup diagnostic with a missing-cache error.
@@ -3632,6 +3946,7 @@ private:
                                  L" unavailable: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
             AppendDiagnostic(lastActionMessage_);
+            stopPinned(gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
             return;
         }
         auto snapshot = bridge_.GetSnapshot(widgetId);
@@ -3641,6 +3956,7 @@ private:
                                  L" failed: " + bridge_.lastError();
             lastActionExpiresAt_ = GetTickCount64() + 4000;
             AppendDiagnostic(lastActionMessage_);
+            stopPinned(gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
             return;
         }
         const auto descriptor = std::find_if(
@@ -3654,6 +3970,7 @@ private:
                                  L" returned a mismatched widget instance";
             lastActionExpiresAt_ = GetTickCount64() + 4000;
             AppendDiagnostic(lastActionMessage_);
+            stopPinned(gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
             return;
         }
         const auto currentWidget = state_.surface() == gba::Surface::Widget
@@ -3661,6 +3978,12 @@ private:
             : state_.selectedWidget();
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
         widgetSnapshots_.insert_or_assign(std::wstring(widgetId), std::move(*snapshot));
+        if (const auto* current = SnapshotFor(widgetId);
+            current && pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+            (void)pinnedSurfaceCoordinator_.UpdateSnapshot(
+                widgetId, pinnedSurfaceCoordinator_.runtimeGeneration(), *current);
+        }
         if (currentWidget == widgetId) CommitAdmittedWidgetPresentation(widgetId);
         if (currentWidget == widgetId &&
             pendingContentRevealWidget_ == widgetId) {
@@ -4917,10 +5240,10 @@ private:
     float trayItemCornerRadius_{16.0F};
     float focusOutlineWidth_{2.0F};
     std::vector<gba::WidgetDescriptor> widgetDescriptors_;
-    std::wstring lifecycleBridgeWidget_;
-    std::optional<gba::WidgetLifecycleState> lifecycleBridgeState_;
+    std::unordered_map<std::wstring, gba::WidgetLifecycleState> lifecycleBridgeStates_;
     std::unique_ptr<gba::RemoteImageCache> imageCache_;
     std::unique_ptr<gba::DeclarativeRenderer> declarativeRenderer_;
+    gba::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
@@ -4974,6 +5297,40 @@ private:
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    std::wstring processProfile = L"production";
+    bool processOwnerProbe = false;
+    for (int index = 1; index < __argc; ++index) {
+        if (_wcsicmp(__wargv[index], L"--process-profile") == 0 &&
+            index + 1 < __argc) {
+            processProfile = __wargv[++index];
+        } else if (_wcsicmp(__wargv[index], L"--process-owner-probe") == 0) {
+            processOwnerProbe = true;
+        }
+    }
+    gba::process::OverlayProcessOwner processOwner;
+    std::wstring ownershipError;
+    const auto ownership = processOwner.Begin(
+        processProfile, std::chrono::milliseconds(3000), ownershipError);
+    if (ownership == gba::process::OwnershipResult::ClientAcknowledged) {
+        AppendDiagnostic(
+            L"Activation client forwarded Show and exited profile=" + processProfile +
+            L" pid=" + std::to_wstring(GetCurrentProcessId()));
+        return EXIT_SUCCESS;
+    }
+    if (ownership != gba::process::OwnershipResult::Owner) {
+        AppendDiagnostic(L"Activation client failed: " + ownershipError);
+        return EXIT_FAILURE;
+    }
+    AppendDiagnostic(
+        L"OverlayHost process owner elected profile=" + processProfile +
+        L" pid=" + std::to_wstring(GetCurrentProcessId()));
+    if (processOwnerProbe) {
+        const bool received = processOwner.WaitForShow(std::chrono::seconds(10));
+        AppendDiagnostic(received
+            ? L"Process-owner probe received Show without initializing OverlayApp"
+            : L"Process-owner probe timed out");
+        return received ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     OverlayApp app;
     if (!app.Initialize(instance, showCommand)) {
         const std::wstring message = L"OverlayHost failed to initialize.\n\n" +
@@ -4983,5 +5340,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
                     L"Game Bar Alternative", MB_OK | MB_ICONERROR);
         return EXIT_FAILURE;
     }
+    app.BindProcessActivation(processOwner);
     return app.Run();
 }

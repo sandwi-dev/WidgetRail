@@ -426,6 +426,12 @@ reference](network-controls.md) for the full privacy and test contract.
 - Build with `src/OverlayHost/build.ps1`; CMake/MSBuild metadata may lag the
   primary prototype script.
 - Run the host with `--show` to bypass Guide discovery during diagnostics.
+- OverlayHost is one owner per Windows user and production profile. If a hidden
+  or visible owner is already resident, a later ordinary launch or `--show`
+  invocation authenticates to that owner, queues one bounded Show request, and
+  exits before initializing another bridge, controller lease, or HWND. The
+  startup log distinguishes `process owner elected`, `activation client`, and
+  rejected/timed-out activation paths.
 - F1 is the developer visibility fallback.
 - Read `%LOCALAPPDATA%\GameBarAlternative\startup-error.log` for the latest
   initialization failure.

@@ -588,18 +588,18 @@ Staged rollout:
    and partner requirements are documented. This is not a prerequisite for a
    strong installed-game launcher.
 
-**Current delivery sequence:** DLV-059 candidate `c7c354d` normalizes the
-existing trusted Start Menu/AppsFolder and Steam sources behind one internal
-adapter contract; DLV-071 closes the candidate's missing production disposal/
-drain owner before integration. DLV-060 then correctly stopped before edits
-because the current public capability materializes and caps the library at 512
-items. DLV-072 replaces that obsolete pre-release path with bounded opaque
-cursor queries and migrates Games & Apps; DLV-060 then ships the dedicated
-installed-only Game Launcher over those queries plus the accepted cursor-grid
-and lazy-artwork foundations. DLV-066 adds explicit favorites and preferred
-variants, and DLV-067 adds only adapter-provable launch lifecycle. Host-owned
-query/text entry and additional store adapters remain later serialized stages
-rather than being hidden inside the first widget.
+**Current delivery sequence:** DLV-059 `c7c354d`, corrected by DLV-071
+`355a858`, is accepted and integrated through `6f4c642`; the trusted Start
+Menu/AppsFolder and Steam sources now sit behind one normalized internal
+contract with a real production terminal owner. DLV-060 correctly stopped
+before edits because the current public capability materializes and caps the
+library at 512 items. Assigned DLV-072 replaces that obsolete pre-release path
+with bounded opaque cursor queries and migrates Games & Apps; DLV-060 then ships
+the dedicated installed-only Game Launcher over those queries plus the accepted
+cursor-grid and lazy-artwork foundations. DLV-066 adds explicit favorites and
+preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
+Host-owned query/text entry and additional store adapters remain later
+serialized stages rather than being hidden inside the first widget.
 
 Completion evidence includes deterministic adapter contract suites; 2,000 and
 10,000 item cold/refresh/search/scroll measurements; bounded memory, decoded
@@ -633,21 +633,23 @@ click-through, DPI, monitor migration, protected media, borderless games, and
 resource cost. Keep the public pin/presentation contract independent of the
 chosen Windows backend.
 
-DLV-011 has completed that first bounded comparison and selected a host-owned
-Win32 tool window for the next pinning gate. The accepted fixture establishes
-host-only HWND/UIA authority, explicit click-through and focusable modes,
-independent main-overlay hide/close lifetime, bounded monitor/DPI placement,
-and small incremental resource measurements. It does not yet ship Pin/Unpin,
-prove pointer pass-through over a real game, host protected media, or validate
-physical mixed-display behavior; the generic pinning gate below still owns
-those outcomes before YouTube playback is added.
+DLV-011 completed the bounded comparison and selected a host-owned Win32 tool
+window. Accepted DLV-058 (`e160690`, integrated through `ae34f9a`) now ships the
+first generic declarative Pin/Unpin/click-through lifecycle with a closed-by-
+default manifest opt-in, one host-owned surface coordinator, live snapshot
+updates, generation-bound teardown, and no widget HWND or z-order authority.
+Physical game click-through, final controller/UIA composition, protected media,
+and physical mixed-display behavior remain later gates. Durable logical
+placement is accepted through DLV-068.
 
-**Current delivery sequence:** Assigned DLV-058 ships the generic Pin/Unpin/
-click-through lifecycle from the accepted Win32 tool-window architecture.
-Ready DLV-068 adds controller move/resize and durable monitor-safe placement;
-DLV-069 completes input/focus/UIA and emergency-hide composition; DLV-062 then
-runs the fixed-video trusted-media feasibility gate. YouTube URL/video-ID v1 is
-not authorized until all four gates are accepted.
+**Current delivery sequence:** Accepted DLV-070 `c61a49d`, integrated through
+`0b21384`, restores one authoritative OverlayHost across ordinary and `--show`
+launches. Accepted DLV-068 `b83b3f7`, integrated through `9e795ac`, adds one
+controller/pointer/UIA move-resize state machine with atomic monitor-safe
+placement. Assigned DLV-069 completes input/focus/UIA and emergency-hide
+composition; DLV-062 then runs the fixed-video trusted-media feasibility gate.
+YouTube URL/video-ID v1 is not authorized until those remaining gates are
+accepted.
 
 Framework prerequisites:
 
