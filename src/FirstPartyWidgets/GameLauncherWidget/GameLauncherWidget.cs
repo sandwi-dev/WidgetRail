@@ -44,6 +44,8 @@ public sealed class GameLauncherWidget : Widget
     private GameLauncherFixedRows _fixedRows = GameLauncherFixedRows.Empty;
     private IReadOnlyList<WidgetAppLibrarySource> _sourceObservations = [];
     private long _fixedRowsRevision;
+    private string? _pendingRestoredSavedId;
+    private bool _preferLibraryContentFocus;
     private readonly SortedSet<string> _knownSources = new(StringComparer.OrdinalIgnoreCase);
 
     public GameLauncherWidget()
@@ -88,8 +90,10 @@ public sealed class GameLauncherWidget : Widget
     public override WidgetView Render()
     {
         GameLauncherPresentationState state;
+        bool preferLibraryContentFocus;
         var navigation = _navigation.Value;
         lock (_gate)
+        {
             state = new(
                 _library.Snapshot,
                 _organization,
@@ -105,12 +109,16 @@ public sealed class GameLauncherWidget : Widget
                 navigation.Route,
                 _fixedRows,
                 _sourceObservations);
+            preferLibraryContentFocus = _preferLibraryContentFocus;
+        }
         var view = GameLauncherPresentation.Render(state);
         var root = _navigation.Scope(navigation, (StackElement)view.Root);
         return view with
         {
             Root = root,
-            InitialFocusId = navigation.InitialFocusId ?? view.InitialFocusId,
+            InitialFocusId = preferLibraryContentFocus
+                ? view.InitialFocusId
+                : navigation.InitialFocusId ?? view.InitialFocusId,
             ActiveInputScopeId = navigation.InputScopeId,
         };
     }
@@ -158,7 +166,7 @@ public sealed class GameLauncherWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         if (_navigation.TryHandleBack(action, action.SourceElementId))
         {
-            ReturnToLibrary();
+            await ReturnToLibraryAsync().ConfigureAwait(false);
             return;
         }
         if (_library.TryHandlePagination(action, out _))
@@ -228,13 +236,15 @@ public sealed class GameLauncherWidget : Widget
                         _recentMode = GameLauncherRecentMode.Off;
                         _fixedRows = GameLauncherFixedRows.Empty;
                         _fixedRowsRevision++;
+                        _pendingRestoredSavedId = null;
+                        _preferLibraryContentFocus = false;
                     }
                     ReloadQuery();
                 }
                 return;
             case "game-launcher.add.back":
                 if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
-                    ReturnToLibrary();
+                    await ReturnToLibraryAsync().ConfigureAwait(false);
                 return;
             case "game-launcher.hidden.open":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -248,13 +258,15 @@ public sealed class GameLauncherWidget : Widget
                         _recentMode = GameLauncherRecentMode.Off;
                         _fixedRows = GameLauncherFixedRows.Empty;
                         _fixedRowsRevision++;
+                        _pendingRestoredSavedId = null;
+                        _preferLibraryContentFocus = false;
                     }
                     ReloadQuery();
                 }
                 return;
             case "game-launcher.hidden.back":
                 if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
-                    ReturnToLibrary();
+                    await ReturnToLibraryAsync().ConfigureAwait(false);
                 return;
             case "game-launcher.manual.toggle":
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -366,9 +378,9 @@ public sealed class GameLauncherWidget : Widget
         ReloadQuery();
     }
 
-    private void ReloadQuery()
+    private WidgetOperationHandle? ReloadQuery()
     {
-        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        if (LifecycleState != WidgetLifecycleState.Interactive) return null;
         Operations.Cancel("game-launcher.launch-lifecycle");
         lock (_gate)
         {
@@ -377,13 +389,22 @@ public sealed class GameLauncherWidget : Widget
             _launchGeneration++;
             _fixedRows = GameLauncherFixedRows.Empty;
             _fixedRowsRevision++;
+            _preferLibraryContentFocus = false;
         }
         _library.Reset(invalidate: false);
-        _ = _library.EnsureLoaded();
+        var operation = _library.EnsureLoaded();
         Invalidate();
+        return operation;
     }
 
-    private void ReturnToLibrary()
+    private async Task ReloadQueryAsync()
+    {
+        var operation = ReloadQuery();
+        if (operation is { } admitted)
+            await admitted.Completion.ConfigureAwait(false);
+    }
+
+    private async Task ReturnToLibraryAsync()
     {
         lock (_gate)
         {
@@ -393,7 +414,20 @@ public sealed class GameLauncherWidget : Widget
             _fixedRows = GameLauncherFixedRows.Empty;
             _fixedRowsRevision++;
         }
-        ReloadQuery();
+        await ReloadQueryAsync().ConfigureAwait(false);
+        string? restoredSavedId;
+        lock (_gate)
+        {
+            restoredSavedId = _pendingRestoredSavedId;
+            _pendingRestoredSavedId = null;
+        }
+        var restored = restoredSavedId is null ? null : _library.Snapshot.Items
+            .FirstOrDefault(item => string.Equals(
+                item.Value.SavedId, restoredSavedId, StringComparison.Ordinal));
+        if (restored is not null)
+            _library.SelectAnchor(restored.Key, invalidate: false);
+        lock (_gate) _preferLibraryContentFocus = restoredSavedId is not null;
+        Invalidate();
     }
 
     private WidgetAppLibraryQuery EffectiveQueryLocked(GameLauncherRoute route)
@@ -780,7 +814,12 @@ public sealed class GameLauncherWidget : Widget
         lock (_gate)
             applied = _organization.ExcludedSavedIds.Contains(
                 display.SavedId, StringComparer.Ordinal) == hidden;
-        if (applied) ReloadQuery();
+        if (applied)
+        {
+            if (!hidden)
+                lock (_gate) _pendingRestoredSavedId = display.SavedId;
+            await ReloadQueryAsync().ConfigureAwait(false);
+        }
     }
 
     private async Task ToggleManualAsync(

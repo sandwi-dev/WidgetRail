@@ -1626,12 +1626,6 @@ static async Task ExerciseControlAsync(
                 node.Id == "game-launcher.hidden.empty.action");
             await client.SendActionAsync(new WidgetActionEvent(
                 "game-launcher.hidden.back", hiddenBack.Id));
-            snapshot = await WaitForNodeTextSnapshotAsync(
-                client, "game-launcher.title", "Game Launcher");
-            var restoredRefresh = Nodes(snapshot.Root).First(node =>
-                node.ActionId is "game-launcher.refresh" or "game-launcher.retry");
-            await client.SendActionAsync(new WidgetActionEvent(
-                restoredRefresh.ActionId!, restoredRefresh.Id));
             snapshot = await WaitForActionSnapshotAsync(
                 client, "game-launcher.launch", "Conformance Game 00000",
                 requireEnabled: true);

@@ -412,7 +412,6 @@ public sealed class GameLauncherTests
         Assert.AreEqual(0, restartedHost.Launches.Count,
             "A display-only hidden row must not authorize launch.");
         await restarted.OnActionAsync(new("game-launcher.restore", hidden.Id));
-        await Bounded(restarted.WhenLibraryIdleAsync(), "restored hidden route refresh");
         Assert.AreEqual(0, restarted.Organization.ExcludedSavedIds.Count);
         CollectionAssert.AreEqual(new[] { "saved-00000" },
             restarted.Organization.FavoriteSavedIds.ToArray());
@@ -420,10 +419,79 @@ public sealed class GameLauncherTests
             node.Id == "game-launcher.hidden.empty.action"));
         await restarted.OnActionAsync(new(
             "game-launcher.hidden.back", "game-launcher.hidden.empty.action"));
-        await Bounded(restarted.WhenLibraryIdleAsync(), "restored library load");
-        Assert.IsTrue(Nodes(Snapshot(restarted, 306).Root).Any(node =>
-            node.ActionId == "game-launcher.launch" && node.Id == first.Id));
+        var restoredLibrary = Snapshot(restarted, 306);
+        Assert.IsTrue(Nodes(restoredLibrary.Root).Any(node =>
+            node.ActionId == "game-launcher.launch" && node.Id == first.Id &&
+            node.IsDisabled is not true));
         await Background(restarted);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RestoreSupersedesCancellationIgnoringHiddenLoadBeforeBack()
+    {
+        var display = new GameLauncherDisplayItem("saved-00000", "Game 00000", "Steam");
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            ExcludedSavedIds = [display.SavedId],
+        };
+        var host = new FakeHost(1, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var hiddenLoadStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHiddenLoad = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var queryCount = 0;
+        host.QueryHandler = (_, _) =>
+        {
+            if (Interlocked.Increment(ref queryCount) == 1)
+            {
+                hiddenLoadStarted.TrySetResult();
+                return new(releaseHiddenLoad.Task);
+            }
+            return ValueTask.FromResult(new WidgetAppLibraryPage(
+                [Item(0)], null, null, "current-library"));
+        };
+
+        await widget.OnActionAsync(new(
+            "game-launcher.hidden.open", "game-launcher.hidden.open"));
+        await Bounded(hiddenLoadStarted.Task, "cancellation-ignoring hidden load admission");
+        var hidden = Nodes(Snapshot(widget, 307).Root).Single(node =>
+            node.ActionId == "game-launcher.restore");
+        var restore = widget.OnActionAsync(new(
+            "game-launcher.restore", hidden.Id)).AsTask();
+        Assert.IsFalse(restore.IsCompleted,
+            "Restore must drain the replaced Hidden generation before reporting readiness.");
+        releaseHiddenLoad.TrySetResult(new(
+            [Item(0)], null, null, "late-hidden"));
+        await Bounded(restore, "cancellation-ignoring Hidden replacement drain");
+        Assert.IsTrue(Nodes(Snapshot(widget, 3071).Root).Any(node =>
+            node.Id == "game-launcher.hidden.empty.action"));
+
+        using var canceledRoute = new CancellationTokenSource();
+        canceledRoute.Cancel();
+        await widget.OnActionAsync(new(
+            "game-launcher.hidden.back", "game-launcher.hidden.empty.action"),
+            canceledRoute.Token);
+        var current = Snapshot(widget, 308);
+        var launch = Nodes(current.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                display.DisplayName, StringComparison.Ordinal));
+        Assert.IsTrue(launch.IsDisabled is not true);
+        Assert.IsNotNull(current.InitialFocusId);
+        Assert.IsTrue(Nodes(current.Root).Any(node =>
+            node.Id == current.InitialFocusId &&
+            node.ActionId == "game-launcher.launch" && node.IsDisabled is not true));
+
+        var afterLateCompletion = Snapshot(widget, 309);
+        Assert.IsTrue(Nodes(afterLateCompletion.Root).Any(node =>
+            node.Id == launch.Id && node.ActionId == "game-launcher.launch" &&
+            node.IsDisabled is not true));
+        await Background(widget);
     }
 
     [TestMethod, Timeout(30_000)]
