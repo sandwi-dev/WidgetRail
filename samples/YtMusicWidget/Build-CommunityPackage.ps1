@@ -152,15 +152,34 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 }
 
 if ($Install) {
+    $catalogRoot = if ([string]::IsNullOrWhiteSpace($Catalog)) {
+        Join-Path ([Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::LocalApplicationData)) 'GameBarAlternative\widgets'
+    } else {
+        [System.IO.Path]::GetFullPath($Catalog)
+    }
     $catalogArguments = if ([string]::IsNullOrWhiteSpace($Catalog)) {
         @()
     } else {
-        @('--catalog', [System.IO.Path]::GetFullPath($Catalog))
+        @('--catalog', $catalogRoot)
+    }
+    $installedPackageRoot = Join-Path (Join-Path $catalogRoot 'packages') $manifest.id
+    if (Test-Path -LiteralPath $installedPackageRoot -PathType Container) {
+        & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
+            disable $manifest.id @catalogArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "gbar disable failed for the installed $($manifest.id) update."
+        }
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         install $packagePath @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "gbar install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
+    }
+    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
+        version select $manifest.id $manifest.version @catalogArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "gbar version select failed for $($manifest.id) $($manifest.version)."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         enable $manifest.id @catalogArguments
