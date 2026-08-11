@@ -6,7 +6,9 @@ internal static class WidgetCursorResourceTests
     public static async Task Run()
     {
         await TraversesTenThousandItemsWithinBound();
+        await HandlesEmptySparseFinalAndLastGoodError();
         await PreservesAnchorAcrossAppendPrependAndRefresh();
+        await DirectionChangeAllowsEvictedRefetch();
         await RejectsLateDuplicateAndLoopResults();
         ContractIsVersionedOpaqueAndBounded();
     }
@@ -70,6 +72,67 @@ internal static class WidgetCursorResourceTests
         await StopAsync(widget);
     }
 
+    private static async Task HandlesEmptySparseFinalAndLastGoodError()
+    {
+        var empty = await StartAsync(new()
+        {
+            PageSize = 4,
+            MaximumRetainedItems = 8,
+            Viewports = [Viewport()],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (_, _, _, _) => ValueTask.FromResult(
+                new WidgetCursorPage<Item>([], null, null)),
+        });
+        Equal(WidgetOperationStatus.Succeeded,
+            (await empty.Resource.EnsureLoaded().Completion).Status);
+        Equal(WidgetPagedResourceStatus.Ready, empty.Resource.Snapshot.Status);
+        Equal(0, empty.Resource.Snapshot.Items.Count);
+        True(!empty.Resource.Snapshot.HasBefore && !empty.Resource.Snapshot.HasAfter,
+            "An empty final page exposed a transport boundary.");
+        True(empty.Resource.Snapshot.Anchor is null,
+            "An empty final page retained a phantom anchor.");
+        await StopAsync(empty);
+
+        var calls = 0;
+        var sparse = await StartAsync(new()
+        {
+            PageSize = 4,
+            MaximumRetainedItems = 8,
+            Viewports = [Viewport()],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (_, _, _, _) => ++calls switch
+            {
+                1 => ValueTask.FromResult(new WidgetCursorPage<Item>(
+                    [new("sparse.0")], null, new("sparse.next"))),
+                2 => ValueTask.FromResult(new WidgetCursorPage<Item>(
+                    [new("sparse.1"), new("sparse.2")], new("sparse.previous"), null)),
+                _ => ValueTask.FromException<WidgetCursorPage<Item>>(
+                    new InvalidOperationException("fixture unavailable")),
+            },
+        });
+        await sparse.Resource.EnsureLoaded().Completion;
+        Equal(WidgetOperationStatus.Succeeded,
+            (await sparse.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
+        Equal(3, sparse.Resource.Snapshot.Items.Count);
+        Equal("sparse.0", sparse.Resource.Snapshot.Items[0].Id);
+        Equal("sparse.2", sparse.Resource.Snapshot.Items[^1].Id);
+        True(!sparse.Resource.Snapshot.HasAfter,
+            "A partial final page exposed another forward cursor.");
+        var lastGood = sparse.Resource.Snapshot;
+
+        Equal(WidgetOperationStatus.Failed,
+            (await sparse.Resource.Refresh().Completion).Status);
+        Equal(WidgetPagedResourceStatus.Error, sparse.Resource.Snapshot.Status);
+        Equal(lastGood.Items.Count, sparse.Resource.Snapshot.Items.Count);
+        for (var index = 0; index < lastGood.Items.Count; index++)
+            Equal(lastGood.Items[index].Id, sparse.Resource.Snapshot.Items[index].Id);
+        Equal(lastGood.Before, sparse.Resource.Snapshot.Before);
+        Equal(lastGood.After, sparse.Resource.Snapshot.After);
+        Equal(lastGood.Anchor, sparse.Resource.Snapshot.Anchor);
+        Equal(WidgetResourceError.InvalidPage, sparse.Resource.Snapshot.Error);
+        await StopAsync(sparse);
+    }
+
     private static async Task RejectsLateDuplicateAndLoopResults()
     {
         var first = Signal();
@@ -122,7 +185,70 @@ internal static class WidgetCursorResourceTests
             (await loop.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
         Equal("a", loop.Resource.Snapshot.Items[0].Id);
         await StopAsync(loop);
+
+        var cycle = await StartAsync(new()
+        {
+            PageSize = 2,
+            MaximumRetainedItems = 4,
+            Viewports = [Viewport()],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (cursor, _, _, _) => cursor?.Value switch
+            {
+                null => ValueTask.FromResult(CyclePage(0, "A")),
+                "A" => ValueTask.FromResult(CyclePage(2, "B")),
+                "B" => ValueTask.FromResult(CyclePage(4, "C")),
+                "C" => ValueTask.FromResult(CyclePage(6, "A")),
+                _ => throw new InvalidOperationException("Unexpected cursor."),
+            },
+        });
+        await cycle.Resource.EnsureLoaded().Completion;
+        await cycle.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        await cycle.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        Equal("cycle.2", cycle.Resource.Snapshot.Items[0].Id);
+        Equal("cycle.5", cycle.Resource.Snapshot.Items[^1].Id);
+        Equal(WidgetOperationStatus.Failed,
+            (await cycle.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
+        Equal(WidgetPagedResourceStatus.Error, cycle.Resource.Snapshot.Status);
+        Equal("cycle.2", cycle.Resource.Snapshot.Items[0].Id);
+        Equal("cycle.5", cycle.Resource.Snapshot.Items[^1].Id);
+        True(cycle.Resource.Snapshot.Items.All(item => item.Id != "cycle.6"),
+            "A multi-hop cycle partially changed the retained window.");
+        True(cycle.Resource.RetainedCursorCount <= WidgetCursorResource<Item>.MaximumCursorHistory,
+            "Cycle detection escaped the cursor-history bound.");
+        await StopAsync(cycle);
     }
+
+    private static async Task DirectionChangeAllowsEvictedRefetch()
+    {
+        var widget = await StartAsync(new()
+        {
+            PageSize = 2,
+            MaximumRetainedItems = 4,
+            Viewports = [Viewport()],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (cursor, _, limit, _) =>
+            {
+                var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
+                return ValueTask.FromResult(Page(start, limit, 8));
+            },
+        });
+        await widget.Resource.EnsureLoaded().Completion;
+        await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        Equal("item.2", widget.Resource.Snapshot.Items[0].Id);
+
+        Equal(WidgetOperationStatus.Succeeded,
+            (await widget.Resource.Move(WidgetCursorDirection.Before, "items.list").Completion).Status);
+        Equal("item.0", widget.Resource.Snapshot.Items[0].Id);
+        Equal(WidgetOperationStatus.Succeeded,
+            (await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
+        Equal("item.2", widget.Resource.Snapshot.Items[0].Id);
+        Equal("item.5", widget.Resource.Snapshot.Items[^1].Id);
+        await StopAsync(widget);
+    }
+
+    private static WidgetCursorPage<Item> CyclePage(int start, string after) => new(
+        [new($"cycle.{start}"), new($"cycle.{start + 1}")], null, new(after));
 
     private static void ContractIsVersionedOpaqueAndBounded()
     {

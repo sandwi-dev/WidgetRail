@@ -86,8 +86,8 @@ A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
 v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
-focus persistence v13; cursor collections and opaque artwork handles v14;
-and explicit focus persistence v13. Combining features selects the highest
+explicit focus persistence v13; cursor collections and opaque artwork handles v14.
+Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
 
