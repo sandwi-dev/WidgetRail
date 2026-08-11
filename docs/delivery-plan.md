@@ -153,6 +153,36 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-084 / DLV-088 / DLV-090 — Durable Game Launcher hide and restore
+
+**State:** Done
+**Implementation commits:** `6511dc9`, corrected by `8295983`
+**Acceptance proof and integrated `main`:** `dc1bc16`
+
+**Reviewer disposition:** Accepted. Game Launcher persists at most 32 explicit
+SavedId exclusions and exposes controller-reachable Hidden/Restore actions
+without disturbing favorites, groups, recent order, or manual entries. Restore
+and Back now form one coherent current-library transition, reject late Hidden
+generations, restore actionable focus, and require no manual Refresh. Final
+direct evidence passes 43/43. Clean generic AppContainer run
+`20260811T175350Z-011a57cd` passes 6/6, including the exact Hide, Hidden,
+Restore, Back, and enabled launch route that rejected the earlier candidates.
+
+### DLV-085 / DLV-089 — Clear selected widget private state from Settings
+
+**State:** Done
+**Implementation commits:** `e0edfb8`, corrected by `022ffc4`
+**Integrated on `main`:** `dc1bc16`
+
+**Reviewer disposition:** Accepted. Trusted Settings receives only sanitized
+existence/status and a revision-bound confirmation token; it never receives the
+private document. The bridge registry retires a running exact worker before
+clear and publishes one fresh generation, while disabled packages reuse the
+same canonical version-derived installed identity without starting a worker.
+Final focused evidence includes Runtime 74/74, private state 10/10, Settings
+54/54, diagnostics 16/16, catalog 35/35, Bridge 73/73, and the production-shaped
+enabled-to-disabled exact-identity transition.
+
 ### DLV-083 — Add scoped LB/RB Game Launcher page switching
 
 **State:** Done
@@ -792,19 +822,13 @@ route/action, playback, and presentation boundaries while retaining one
   manual entries are now available on main. DLV-082 `a862ed4` is accepted and
   integrated through `ef8fbab`: bounded source-health truth now reaches Game
   Launcher without exposing adapter control or suppressing usable games.
-  DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084
-  candidate `6511dc9` is committed but not accepted: its installed-worker
-  Restore/Back path can remain on disabled warm rows. DLV-085 candidate
-  `e0edfb8` is also committed but not accepted: its disabled-package fallback
-  derives a synthetic private-state instance instead of the exact production
-  installed-version identity. DLV-088 candidate `8295983` now passes its direct
-  43-case suite,
-  but its only installed-worker run still reproduced the original unavailable-
-  row failure before the final route-token change. DLV-089 is actively
-  correcting DLV-085; DLV-090 is its next ordered Ready item and owns one clean
-  final installed-route proof for DLV-088. DLV-086 follows as the bounded
-  correction for the unrelated YT Music package-version drift exposed by the
-  retained aggregate. DLV-087 is the
+  DLV-083 `f441472` is accepted and integrated through `464460c`. The complete
+  DLV-084/085/088/089/090 prefix is accepted and integrated through `dc1bc16`:
+  Game Launcher has durable hide/restore with a green final installed route,
+  and Settings clears one exact running or disabled widget's private state
+  through the singular host owners. DLV-086 is actively correcting the narrow
+  YT Music package-version drift exposed by the retained aggregate. DLV-087 is
+  the
   next visible cross-lane milestone: protected Personal Wi-Fi connection through
   a host-owned credential prompt. DLV-038 remains deferred test-architecture
   debt rather than filler work.
@@ -940,8 +964,8 @@ native changes.
 
 ### DLV-084 — Add durable Game Launcher hide and restore
 
-**State:** Candidate `6511dc9` rejected pending DLV-088 correction; DLV-085 was
-already in progress when review completed and must not be interrupted
+**State:** Done; candidate `6511dc9` corrected by DLV-088 `8295983` and accepted
+through final installed proof `dc1bc16`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-083
 **Dependencies:** DLV-060, DLV-066, DLV-075, DLV-080, and DLV-083 only for
@@ -1007,10 +1031,15 @@ route actions while the installed path exercises ordinary serialized actions.
 DLV-088 owns one bounded readiness/reload correction and a single retained
 installed-route rerun. Do not repeat the unchanged fixture or broaden the work.
 
+**Final reviewer disposition:** Accepted after DLV-088 and DLV-090. The final
+direct suite passes 43/43, and clean installed run
+`20260811T175350Z-011a57cd` passes 6/6 with an enabled restored launch action and
+no manual Refresh. Integrated on `main` through `dc1bc16`.
+
 ### DLV-085 — Clear selected widget private state from Settings
 
-**State:** Candidate `e0edfb8` rejected pending DLV-089 correction; DLV-088 was
-already in progress when review completed and must not be interrupted
+**State:** Done; candidate `e0edfb8` corrected by DLV-089 `022ffc4` and
+integrated through `dc1bc16`
 **Lane:** widgets, acting as serialized managed widget-management lead
 **Baseline:** clean closing commit of DLV-084
 **Dependencies:** DLV-001, DLV-017, DLV-044, DLV-058, and DLV-084 only for
@@ -1090,11 +1119,14 @@ assignment's exact-identity and disable acceptance. DLV-089 owns only that
 identity correction and one retained enabled-to-disabled fixture; do not rerun
 the aggregate or reopen the accepted worker-replacement design.
 
+**Final reviewer disposition:** Accepted after DLV-089 established one
+canonical installed package/version identity for running and disabled paths.
+Bridge 73/73 and the production-shaped enabled-to-disabled transition are
+green; integrated on `main` through `dc1bc16`.
+
 ### DLV-088 — Complete Game Launcher Restore-to-library readiness
 
-**State:** Candidate `8295983` rejected pending DLV-090 final installed-route
-proof; DLV-089 was already in progress when review completed and must not be
-interrupted
+**State:** Done; candidate `8295983` accepted through DLV-090 proof `dc1bc16`
 **Lane:** widgets
 **Baseline:** candidate DLV-085 commit `e0edfb8`, retaining candidate DLV-084
 `6511dc9`, plus reviewer control-plane merge `dc46f87`
@@ -1157,10 +1189,13 @@ repeated, so it is honest retained evidence but cannot prove the final commit on
 the exact seam that invalidated DLV-084. DLV-090 owns one clean final installed
 route after DLV-089; do not rerun the direct suite or broaden the correction.
 
+**Final reviewer disposition:** Accepted. Clean exact-prefix installed run
+`20260811T175350Z-011a57cd` passes 6/6 without manual Refresh; integrated on
+`main` through `dc1bc16`.
+
 ### DLV-089 — Preserve exact private-state identity after widget disable
 
-**State:** Assigned; implementation started automatically after candidate
-DLV-088 commit `8295983` and clean merge of current `main`
+**State:** Done; accepted as `022ffc4` and integrated through `dc1bc16`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-088, retaining candidate DLV-085
 `e0edfb8`
@@ -1216,9 +1251,15 @@ removal.
 exposing private-state contents, changing a public contract, migrating unrelated
 state, or altering package enablement/removal semantics.
 
+**Reviewer disposition:** Accepted. Production and disabled management paths
+share `InstalledWidgetInstanceIdentity`; the real enabled-to-disabled fixture
+rejects stale confirmation, clears without creating a worker, preserves a
+neighbor, and re-enables cleanly. Final Bridge passes 73/73.
+
 ### DLV-090 — Prove final Game Launcher Restore route in the installed worker
 
-**State:** Ready; execute automatically after committing DLV-089
+**State:** Done; clean installed proof committed as `dc1bc16` and integrated on
+`main`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-089, retaining candidate DLV-084
 `6511dc9` and candidate DLV-088 `8295983`
@@ -1270,9 +1311,14 @@ Refresh.
 Game Launcher route/readiness ownership, or correction requires changing a
 shared public/native boundary.
 
+**Reviewer disposition:** Accepted. No additional product edit was required.
+Clean run `20260811T175350Z-011a57cd` passes the generic AppContainer group 6/6
+at exact code commit `07e6d11`; evidence-only closing commit is `dc1bc16`.
+
 ### DLV-086 — Reconcile YT Music package version ownership
 
-**State:** Ready; execute automatically after committing DLV-090
+**State:** Assigned; implementation started automatically after DLV-090 commit
+`dc1bc16`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-090
 **Dependencies:** accepted package reproducibility through DLV-057 and DLV-090

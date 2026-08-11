@@ -89,8 +89,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
 | GBA-070 | P2 | Confirmed | YT Music package metadata / companion handshake | The DLV-082 integrated Tier-3 checkpoint proved the current immutable manifest is `0.2.7` while `YtmDesktopApiClient.PackageVersion` and its companion `appVersion` remain `0.2.6`. DLV-086 is queued behind visible work to restore one current version owner without republishing the package. |
-| GBA-071 | P1 | Implementing | Game Launcher Hidden route / cursor-resource readiness | Candidate DLV-088 passes its final direct suite 43/43, but its only installed run still reproduced all disabled warm rows before the final route-token change. DLV-090 is queued after active DLV-089 for one clean final installed-route proof; the candidate is not accepted from direct tests alone. |
-| GBA-072 | P1 | Ready | Settings local-data reset / installed identity | Candidate DLV-085 proves running-worker retirement and exact clear, but its disabled-package fallback uses `<widget-id>.disabled` instead of the production version-derived installed instance. DLV-089 is queued immediately after active DLV-088 so disabled widgets clear the real prior state without interrupting visible work. |
+| GBA-071 | P1 | Closed | Game Launcher Hidden route / cursor-resource readiness | Accepted DLV-088 plus DLV-090 make Restore/Back publish an enabled current row without Refresh. Final direct evidence is 43/43 and clean installed generic-worker run `20260811T175350Z-011a57cd` passes 6/6. |
+| GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2236,6 +2236,11 @@ Focused slow/cancellation coverage passes, and one clean installed-route run
 from the final candidate prefix passes. The earlier red run remains retained;
 unchanged direct fixtures are not rerun repeatedly.
 
+**Closure:** DLV-088 `8295983` plus DLV-090 evidence commit `dc1bc16`, integrated
+through `dc1bc16`, satisfy the final product seam. Direct Game Launcher passes
+43/43 and clean installed run `20260811T175350Z-011a57cd` passes 6/6 with no
+manual Refresh.
+
 ## GBA-072 — Disabled widget local-data reset targets a synthetic identity
 
 **Evidence:** Candidate DLV-085 `e0edfb8` correctly keeps the private document
@@ -2261,6 +2266,11 @@ starting a worker, then re-enable and observe clean state. A removed or replaced
 package and stale confirmation fail closed; a neighboring identity is
 unchanged. No `.disabled` state surrogate remains, and production plus
 management paths share one derivation owner.
+
+**Closure:** DLV-089 `022ffc4`, integrated through `dc1bc16`, establishes one
+`InstalledWidgetInstanceIdentity` owner. Final Bridge 73/73 proves the real
+enabled-to-disabled stale/clear/re-enable transition, no disabled worker
+creation, and an unchanged neighbor.
 
 ## Closed issues
 
