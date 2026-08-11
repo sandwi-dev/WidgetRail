@@ -89,7 +89,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
 | GBA-070 | P2 | Confirmed | YT Music package metadata / companion handshake | The DLV-082 integrated Tier-3 checkpoint proved the current immutable manifest is `0.2.7` while `YtmDesktopApiClient.PackageVersion` and its companion `appVersion` remain `0.2.6`. DLV-086 is queued behind visible work to restore one current version owner without republishing the package. |
-| GBA-071 | P1 | Implementing | Game Launcher Hidden route / cursor-resource readiness | Candidate DLV-084 passes its direct state suite, but the installed worker can return from Restore/Back with every library row disabled as a warm projection, even after Refresh. DLV-088 is queued immediately after active DLV-085 for one bounded ordering correction and retained installed-route rerun. |
+| GBA-071 | P1 | Implementing | Game Launcher Hidden route / cursor-resource readiness | Candidate DLV-084 passes its direct state suite, but the installed worker can return from Restore/Back with every library row disabled as a warm projection, even after Refresh. DLV-088 is active from the clean post-DLV-085 boundary with one bounded ordering correction and retained installed-route rerun. |
+| GBA-072 | P1 | Ready | Settings local-data reset / installed identity | Candidate DLV-085 proves running-worker retirement and exact clear, but its disabled-package fallback uses `<widget-id>.disabled` instead of the production version-derived installed instance. DLV-089 is queued immediately after active DLV-088 so disabled widgets clear the real prior state without interrupting visible work. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2230,6 +2231,32 @@ manual Refresh. Premature empty-Hidden state cannot admit route actions that
 allow a late or canceled resource generation to restore old warm-only rows.
 Focused slow/cancellation coverage and one installed-route run pass; unchanged
 fixtures are not rerun repeatedly.
+
+## GBA-072 — Disabled widget local-data reset targets a synthetic identity
+
+**Evidence:** Candidate DLV-085 `e0edfb8` correctly keeps the private document
+inside the host, retires a running selected worker before clear, publishes one
+fresh generation, and preserves a neighbor. Its disabled-package fallback,
+however, constructs `InstanceId = $"{manifest.Id}.disabled"`.
+`BridgeCatalog.LoadWithInstalledAsync` configures that same package/version as
+`installed.<SHA256(widget-id@version)>`. Private state written while enabled is
+therefore absent from the synthetic lookup and survives a reported disabled
+widget reset. The focused tests cover running configured identities and an
+already-disabled catalog entry without first writing through the production
+enabled identity; they do not close the transition case required by DLV-085.
+
+**Ownership:** DLV-089 owns one canonical host-internal installed-instance
+identity derivation and the enabled-to-disabled production-shaped fixture. It
+follows active DLV-088 so review does not interrupt the implementation lane.
+Private-state schemas, package removal, global reset, public SDK/protocol,
+native host behavior, and broad catalog refactoring are outside the correction.
+
+**Acceptance:** Write exact package/version state while enabled, disable the
+real installed package, inspect and clear that same state from Settings without
+starting a worker, then re-enable and observe clean state. A removed or replaced
+package and stale confirmation fail closed; a neighboring identity is
+unchanged. No `.disabled` state surrogate remains, and production plus
+management paths share one derivation owner.
 
 ## Closed issues
 

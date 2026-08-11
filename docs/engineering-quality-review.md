@@ -30,6 +30,21 @@ passed; the aggregate was not rerun. DLV-086 owns that narrow correction behind
 the visible launcher and Settings queue. Full Release packaging succeeded and
 accepted main is visibly running as PID 30588.
 
+Independent review of DLV-085 candidate `e0edfb8` accepts the management
+boundary but not the complete identity behavior. Settings receives only a
+sanitized existence/token projection; the bridge registry remains the singular
+worker-generation owner; and the private-state backend remains the document
+owner. Focused evidence passes Runtime 74/74, private state 10/10, Settings
+54/54, diagnostics 16/16, catalog 35/35, Bridge 73/73, and the installed
+two-widget clear fixture. The candidate nevertheless duplicates production
+installed-instance derivation for disabled packages as `<widget-id>.disabled`
+instead of `BridgeCatalog`'s version-derived `installed.<hash>`. That is a
+correctness and maintainability failure: one logical authority has two identity
+owners, and enabled-to-disabled state can survive a reset unnoticed. DLV-089 is
+queued after active visible DLV-088 to establish one internal derivation owner
+and add the missing real transition fixture; the canonical aggregate is not
+rerun.
+
 DLV-078 `6d30f5e`, integrated through `a072d6f`, closes the independently
 reproduced cold-worker presentation-ordering defect without pretending to solve
 DLV-025's compositor problem. A widget-to-widget transition now revokes old
