@@ -1858,7 +1858,7 @@ New pins begin click-through; explicit `P` toggles interaction, `U` unpins, and
 removal, generation replacement, worker restart/loss, close, or host exit clean
 up exactly once. The focused DLV-058 fixture passed 33 checks with a
 10,264,576-byte incremental private-working-set observation, below DLV-016's
-material gate. Final composed input/accessibility remains DLV-069.
+material gate.
 
 DLV-070 moves process ownership ahead of every `OverlayApp` initialization.
 One race-safe global per-user/profile mutex elects the owner; later ordinary or
@@ -1890,8 +1890,39 @@ normalized-anchor policy; a work area below the host-injected minimum fails
 closed. The focused Release evidence passes 16 pure placement/persistence
 checks and 41 real-HWND lifecycle/placement/UIA checks. The latter observed a
 10,833,920-byte incremental private-working-set delta, below DLV-016's material
-gate. Placement adds no hidden/idle timer. Final focus/emergency/UIA composition
-remains DLV-069.
+gate. Placement adds no hidden/idle timer.
+
+DLV-069 completes generic pin input and accessibility composition in the same
+coordinator. Interactive pins own one explicit controller focus entered by
+right-stick click; shared authored/geometric navigation moves it, A uses one
+bounded generation/snapshot/scope queue, and B/right-stick returns to the
+overlay and restores Click-through. Guide closes through the existing global
+authority, X closes the focused pin, and LB+RB+X or Ctrl+Shift+H performs one
+host-owned emergency unpin. Pointer capture loss cancels activation. Interactive
+UIA composes current widget semantics after bounded host Enter/Exit, Move,
+Resize, Click-through, Unpin, Close, and Emergency actions; Click-through omits
+all interactive descendants. Safe failures are assertive live status, Windows
+high contrast supplies system colors, and reduced motion remains immediate.
+Focused Release evidence passes 306 policy/real-HWND checks and 76 production-
+coordinator checks, including actual coordinator monitor-loss reconciliation,
+focus-valid on-screen recovery, and Move/Resize/Commit/Cancel bounds inside the
+minimum surface. The latter observed an 11,026,432-byte incremental private-
+working-set delta below the DLV-016 gate, with no hidden/idle timer added.
+
+DLV-073 corrects the rejected Click-through paint branch without changing
+interaction authority: the coordinator no longer covers the admitted widget
+viewport with an opaque placeholder after rendering it. The existing renderer
+continues to present current snapshots while Click-through still exits focus,
+rejects hit testing and input, empties pending requests, and publishes only
+nonactionable host semantics. The 308-check pure host-policy run and 80-check
+focused real-HWND run include a
+stateless production-paint trace proving sentinel sequence 1 survives the mode
+and hidden-overlay sequence 3 repaints before reopen; its incremental private-
+working-set delta is 11,370,496 bytes. The coordinator remains 1,416 aggregate
+physical lines before and after (1,203 + 213 versus 1,188 + 228), with the same
+single admission/HWND/render/focus/input/placement/UIA/teardown owner and no new
+mutable dependency, state machine, timer, public API, media authority, or
+compositor.
 
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is

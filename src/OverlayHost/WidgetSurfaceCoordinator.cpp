@@ -1,9 +1,14 @@
 #include "WidgetSurfaceCoordinator.h"
 
+#include "AccessibilityTree.h"
+#include "FocusNavigation.h"
+#include "WidgetSurfaceFocus.h"
+
 #include <ShellScalingApi.h>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <utility>
 
 namespace gba::pinned {
@@ -12,8 +17,10 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"GameBarAlternativePinnedSurface";
 constexpr wchar_t kWindowTitle[] = L"Game Bar Alternative pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
-constexpr float kChromeHeightDip = 44.0F;
+constexpr float kChromeHeightDip = 72.0F;
 constexpr float kSideInsetDip = 14.0F;
+constexpr std::size_t kMaximumPendingInputRequests = 16;
+constexpr std::size_t kMaximumFeedbackCharacters = 160;
 
 [[nodiscard]] std::filesystem::path DefaultPlacementPath() {
     std::array<wchar_t, 32768> localAppData{};
@@ -139,6 +146,11 @@ bool WidgetSurfaceCoordinator::Pin(
     }
     placementLimits_ = admission.placementLimits;
     admission_ = std::move(admission);
+    focusedElementId_ = admission_->snapshot.initialFocusId;
+    inputRequests_.clear();
+    actionFeedback_.clear();
+    actionFeedbackFailure_ = false;
+    controllerFocused_ = false;
     if (!CreateWindowForAdmission(error)) {
         admission_.reset();
         policy_.Stop(StopReason::Unpin);
@@ -159,6 +171,10 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         return false;
     }
     admission_->snapshot = snapshot;
+    inputRequests_.clear();
+    actionFeedback_.clear();
+    actionFeedbackFailure_ = false;
+    if (focusedElementId_.empty()) focusedElementId_ = snapshot.initialFocusId;
     if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     if (window_) InvalidateRect(window_, nullptr, FALSE);
     return true;
@@ -166,6 +182,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
 
 bool WidgetSurfaceCoordinator::SetInteractionMode(const InteractionMode mode) {
     if (!pinned() || policy_.interactionMode() == mode) return false;
+    if (mode == InteractionMode::ClickThrough) (void)ExitControllerFocus();
     policy_.SetInteractionMode(mode);
     ApplyWindowPolicy();
     PublishAccessibility();
@@ -178,6 +195,141 @@ bool WidgetSurfaceCoordinator::ToggleInteractionMode() {
     return SetInteractionMode(policy_.interactionMode() == InteractionMode::Focusable
         ? InteractionMode::ClickThrough
         : InteractionMode::Focusable);
+}
+
+bool WidgetSurfaceCoordinator::EnterControllerFocus() {
+    if (!pinned() || !overlayVisible_ ||
+        policy_.interactionMode() != InteractionMode::Focusable) return false;
+    if (const auto visible = input::ResolveVisibleFocusTarget(
+            focusedElementId_, admission_->snapshot.activeInputScopeId,
+            lastRenderResult_)) {
+        focusedElementId_ = *visible;
+    } else if (focusedElementId_.empty()) {
+        focusedElementId_ = admission_->snapshot.initialFocusId;
+    }
+    controllerFocused_ = true;
+    if (window_) {
+        (void)SetActiveWindow(window_);
+        (void)SetFocus(window_);
+    }
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
+    if (!controllerFocused_) return false;
+    if (placementSession_) (void)CancelPlacement();
+    controllerFocused_ = false;
+    if (overlayVisible_ && notificationWindow_ && IsWindow(notificationWindow_))
+        (void)SetFocus(notificationWindow_);
+    PublishAccessibility();
+    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::MoveControllerFocus(
+    const input::NavigationDirection direction) {
+    if (!controllerFocused_ || direction == input::NavigationDirection::None ||
+        !pinned()) return false;
+    const auto activeScope = std::wstring_view(admission_->snapshot.activeInputScopeId);
+    const auto visible = input::ResolveVisibleFocusTarget(
+        focusedElementId_, activeScope, lastRenderResult_);
+    if (!visible) return false;
+    if (*visible != focusedElementId_) {
+        focusedElementId_ = *visible;
+        PublishAccessibility();
+        InvalidateRect(window_, nullptr, FALSE);
+        return true;
+    }
+    const auto* focused = input::FindNodeInInputScope(
+        admission_->snapshot, focusedElementId_, activeScope);
+    if (!focused) return false;
+    const std::wstring* authored{};
+    switch (direction) {
+    case input::NavigationDirection::Left: authored = &focused->focusLeft; break;
+    case input::NavigationDirection::Right: authored = &focused->focusRight; break;
+    case input::NavigationDirection::Up: authored = &focused->focusUp; break;
+    case input::NavigationDirection::Down: authored = &focused->focusDown; break;
+    case input::NavigationDirection::None: break;
+    }
+    const auto* explicitTarget = authored && !authored->empty()
+        ? input::FindNodeInInputScope(admission_->snapshot, *authored, activeScope)
+        : nullptr;
+    if (explicitTarget && input::IsDistinctFocusMove(
+            focusedElementId_, explicitTarget->id,
+            input::IsEnabledFocusTarget(explicitTarget->id, lastRenderResult_))) {
+        focusedElementId_ = explicitTarget->id;
+    } else if (const auto geometric = input::FindGeometricFocusTarget(
+                   focusedElementId_, direction, lastRenderResult_)) {
+        focusedElementId_ = *geometric;
+    } else {
+        return false;
+    }
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    return true;
+}
+
+void WidgetSurfaceCoordinator::QueueResolvedInput(
+    std::wstring nodeId,
+    std::wstring protocolButton,
+    const ControllerInputOrigin origin,
+    const std::optional<double> requestedValue) {
+    if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
+        nodeId.empty() || protocolButton.empty()) return;
+    if (inputRequests_.size() >= kMaximumPendingInputRequests) {
+        SetActionFeedback(L"Pinned input queue is busy. Try again.", true);
+        return;
+    }
+    inputRequests_.push_back({
+        admission_->widgetId,
+        admission_->runtimeGeneration,
+        admission_->snapshot.sequence,
+        admission_->snapshot.activeInputScopeId,
+        std::move(nodeId),
+        std::move(protocolButton),
+        requestedValue,
+        origin,
+    });
+    NotifyOwner();
+}
+
+bool WidgetSurfaceCoordinator::QueueFocusedInput(
+    const std::wstring_view protocolButton,
+    const ControllerInputOrigin origin,
+    const std::optional<double> requestedValue) {
+    if (!controllerFocused_ || focusedElementId_.empty()) return false;
+    const auto* node = input::FindNodeInInputScope(
+        admission_->snapshot, focusedElementId_,
+        admission_->snapshot.activeInputScopeId);
+    if (!node || node->isDisabled || node->isBusy) return false;
+    QueueResolvedInput(focusedElementId_, std::wstring(protocolButton), origin,
+                       requestedValue);
+    return true;
+}
+
+std::vector<WidgetSurfaceInputRequest>
+WidgetSurfaceCoordinator::TakeInputRequests() noexcept {
+    std::vector<WidgetSurfaceInputRequest> result;
+    result.swap(inputRequests_);
+    return result;
+}
+
+void WidgetSurfaceCoordinator::SetActionFeedback(
+    std::wstring message, const bool failure) {
+    if (message.size() > kMaximumFeedbackCharacters)
+        message.resize(kMaximumFeedbackCharacters);
+    actionFeedback_ = std::move(message);
+    actionFeedbackFailure_ = failure;
+    PublishAccessibility();
+    if (window_) InvalidateRect(window_, nullptr, FALSE);
+}
+
+bool WidgetSurfaceCoordinator::EmergencyHideAll() noexcept {
+    return Unpin(WidgetSurfaceStopReason::EmergencyHide);
 }
 
 bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
@@ -280,10 +432,15 @@ bool WidgetSurfaceCoordinator::CancelPlacement() noexcept {
 }
 
 void WidgetSurfaceCoordinator::ReconcileDisplayEnvironment() noexcept {
+    ReconcileDisplayEnvironment(CurrentMonitorWorkAreas());
+}
+
+void WidgetSurfaceCoordinator::ReconcileDisplayEnvironment(
+    const std::vector<MonitorWorkArea>& monitors) noexcept {
     if (!pinned()) return;
     if (placementSession_) (void)CancelPlacement();
     const auto resolved = ResolveDurablePlacement(
-        CurrentMonitorWorkAreas(), committedPlacement_, placementLimits_);
+        monitors, committedPlacement_, placementLimits_);
     if (!resolved) {
         (void)Unpin(WidgetSurfaceStopReason::DisplayUnavailable);
         return;
@@ -302,11 +459,40 @@ void WidgetSurfaceCoordinator::ReconcileDisplayEnvironment() noexcept {
     PublishAccessibility();
 }
 
+#ifdef GBA_WIDGET_SURFACE_COORDINATOR_TESTING
+void WidgetSurfaceCoordinator::ReconcileDisplayEnvironmentForTesting(
+    const std::vector<MonitorWorkArea>& monitors) noexcept {
+    ReconcileDisplayEnvironment(monitors);
+}
+
+std::optional<POINT> WidgetSurfaceCoordinator::PointerPointForTesting(
+    const std::wstring_view nodeId) const noexcept {
+    const auto region = std::ranges::find_if(
+        lastRenderResult_.hitRegions,
+        [&](const auto& candidate) { return candidate.nodeId == nodeId; });
+    if (region == lastRenderResult_.hitRegions.end()) return std::nullopt;
+    const float scale = window_
+        ? static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F
+        : 1.0F;
+    return POINT{
+        static_cast<LONG>(std::lround(
+            (region->rect.x + region->rect.width * 0.5F) * scale)),
+        static_cast<LONG>(std::lround(
+            (region->rect.y + region->rect.height * 0.5F) * scale)),
+    };
+}
+#endif
+
 bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexcept {
     if (!pinned() && !window_) return false;
     lastStopReason_ = reason;
     placementSession_.reset();
+    controllerFocused_ = false;
+    overlayVisible_ = false;
     pointerPlacement_ = false;
+    pointerActionNode_.clear();
+    inputRequests_.clear();
+    actionFeedback_.clear();
     if (GetCapture() == window_) ReleaseCapture();
     const HWND retiring = window_;
     tearingDown_ = true;
@@ -318,6 +504,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     ReleaseGraphicsResources();
     admission_.reset();
     committedPlacement_.reset();
+    focusedElementId_.clear();
+    lastRenderResult_ = {};
     policy_.Stop(reason == WidgetSurfaceStopReason::HostExit ||
                          reason == WidgetSurfaceStopReason::CoordinatorDisposed
                      ? StopReason::HostExit
@@ -328,12 +516,15 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
 }
 
 void WidgetSurfaceCoordinator::OnOverlayHidden() noexcept {
+    overlayVisible_ = false;
+    (void)ExitControllerFocus();
     policy_.OnMainOverlayHidden();
     if (pinned() && policy_.interactionMode() == InteractionMode::Focusable)
         (void)SetInteractionMode(InteractionMode::ClickThrough);
 }
 
 void WidgetSurfaceCoordinator::OnOverlayShown() noexcept {
+    overlayVisible_ = true;
     if (pinned()) NotifyOwner();
 }
 
@@ -423,6 +614,16 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             : MA_ACTIVATE;
     case WM_GETOBJECT:
         return accessibilityProvider_.HandleWmGetObject(wParam, lParam);
+    case WM_SETFOCUS:
+        accessibilityProvider_.SetWindowFocused(true);
+        PublishAccessibility();
+        return 0;
+    case WM_KILLFOCUS:
+        accessibilityProvider_.SetWindowFocused(false);
+        if (pointerPlacement_) (void)CancelPlacement();
+        pointerActionNode_.clear();
+        if (GetCapture() == window_) ReleaseCapture();
+        return 0;
     case kAccessibilityActionMessage:
         HandleAccessibilityActions();
         return 0;
@@ -447,6 +648,20 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 GetCursorPos(&pointerStart_);
                 pointerStartBounds_ = placementSession_->current;
                 SetCapture(window_);
+                return 0;
+            }
+            const float scale =
+                static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+            if (const auto hit = input::FindPointerHitTarget(
+                    static_cast<float>(x) / scale,
+                    static_cast<float>(y) / scale,
+                    admission_->snapshot.activeInputScopeId,
+                    lastRenderResult_)) {
+                focusedElementId_ = hit->id;
+                pointerActionNode_ = hit->enabled ? hit->id : std::wstring{};
+                SetCapture(window_);
+                PublishAccessibility();
+                InvalidateRect(window_, nullptr, FALSE);
             }
         }
         return 0;
@@ -481,6 +696,23 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             if (!CommitPlacement(ignored)) (void)CancelPlacement();
             return 0;
         }
+        if (!pointerActionNode_.empty()) {
+            const std::wstring pressed = std::move(pointerActionNode_);
+            pointerActionNode_.clear();
+            if (GetCapture() == window_) ReleaseCapture();
+            const float scale =
+                static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+            const auto hit = input::FindPointerHitTarget(
+                static_cast<float>(static_cast<short>(LOWORD(lParam))) / scale,
+                static_cast<float>(static_cast<short>(HIWORD(lParam))) / scale,
+                admission_->snapshot.activeInputScopeId,
+                lastRenderResult_);
+            if (hit && hit->enabled && hit->id == pressed)
+                QueueResolvedInput(
+                    std::move(pressed), L"a",
+                    ControllerInputOrigin::PhysicalController, std::nullopt);
+            return 0;
+        }
         if (policy_.interactionMode() == InteractionMode::Focusable) {
             RECT client{};
             GetClientRect(window_, &client);
@@ -502,6 +734,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         return 0;
     case WM_CAPTURECHANGED:
         if (pointerPlacement_) (void)CancelPlacement();
+        pointerActionNode_.clear();
         return 0;
     case WM_KEYDOWN:
         if (placementSession_) {
@@ -513,9 +746,28 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 std::wstring ignored;
                 (void)CommitPlacement(ignored);
             } else if (wParam == VK_ESCAPE) (void)CancelPlacement();
+        } else if (controllerFocused_ &&
+                   (wParam == VK_LEFT || wParam == VK_RIGHT ||
+                    wParam == VK_UP || wParam == VK_DOWN)) {
+            input::NavigationDirection direction = input::NavigationDirection::None;
+            if (wParam == VK_LEFT) direction = input::NavigationDirection::Left;
+            else if (wParam == VK_RIGHT) direction = input::NavigationDirection::Right;
+            else if (wParam == VK_UP) direction = input::NavigationDirection::Up;
+            else if (wParam == VK_DOWN) direction = input::NavigationDirection::Down;
+            (void)MoveControllerFocus(direction);
+        } else if (controllerFocused_ && wParam == VK_RETURN) {
+            (void)QueueFocusedInput(
+                L"a", ControllerInputOrigin::AccessibilityAutomation);
+        } else if (wParam == VK_ESCAPE && controllerFocused_) {
+            (void)ExitControllerFocus();
+            (void)SetInteractionMode(InteractionMode::ClickThrough);
         } else if (wParam == 'M') (void)BeginPlacement(PlacementMode::Move);
         else if (wParam == 'R') (void)BeginPlacement(PlacementMode::Resize);
-        else if (wParam == 'P') (void)ToggleInteractionMode();
+        else if (wParam == 'P') {
+            if (ToggleInteractionMode() &&
+                policy_.interactionMode() == InteractionMode::Focusable)
+                (void)EnterControllerFocus();
+        }
         else if (wParam == 'U') (void)Unpin(WidgetSurfaceStopReason::Unpin);
         return 0;
     case WM_DPICHANGED:
@@ -548,12 +800,37 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
 void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
     if (!pinned()) return;
     for (const auto& request : accessibilityProvider_.TakeActions()) {
-        if (request.kind != accessibility::ActionKind::Invoke ||
-            request.domain != accessibility::ElementDomain::HostShell ||
-            request.widgetId != admission_->widgetId ||
+        if (request.widgetId != admission_->widgetId ||
             request.runtimeGeneration != admission_->runtimeGeneration ||
-            request.snapshotSequence != admission_->snapshot.sequence) continue;
-        if (request.actionId == L"pinned.move")
+            request.snapshotSequence != admission_->snapshot.sequence ||
+            request.activeInputScopeId != admission_->snapshot.activeInputScopeId)
+            continue;
+        if (request.domain == accessibility::ElementDomain::Widget) {
+            const auto resolved = accessibility::ResolveActionRequest(
+                request, admission_->widgetId, admission_->runtimeGeneration,
+                admission_->snapshot);
+            if (!resolved || policy_.interactionMode() != InteractionMode::Focusable)
+                continue;
+            if (resolved->kind == accessibility::ActionKind::Focus) {
+                focusedElementId_ = resolved->nodeId;
+                PublishAccessibility();
+                InvalidateRect(window_, nullptr, FALSE);
+            } else {
+                QueueResolvedInput(
+                    resolved->nodeId, resolved->protocolButton,
+                    ControllerInputOrigin::AccessibilityAutomation,
+                    resolved->requestedValue);
+            }
+            continue;
+        }
+        if (request.kind != accessibility::ActionKind::Invoke ||
+            request.domain != accessibility::ElementDomain::HostShell)
+            continue;
+        if (request.actionId == L"pinned.enter") {
+            (void)EnterControllerFocus();
+        } else if (request.actionId == L"pinned.exit") {
+            (void)ExitControllerFocus();
+        } else if (request.actionId == L"pinned.move")
             (void)BeginPlacement(PlacementMode::Move);
         else if (request.actionId == L"pinned.resize")
             (void)BeginPlacement(PlacementMode::Resize);
@@ -562,7 +839,17 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             (void)CommitPlacement(ignored);
         } else if (request.actionId == L"pinned.cancel")
             (void)CancelPlacement();
+        else if (request.actionId == L"pinned.clickthrough")
+            (void)SetInteractionMode(InteractionMode::ClickThrough);
+        else if (request.actionId == L"pinned.unpin")
+            (void)Unpin(WidgetSurfaceStopReason::Unpin);
+        else if (request.actionId == L"pinned.close")
+            (void)Unpin(WidgetSurfaceStopReason::Close);
+        else if (request.actionId == L"pinned.emergency")
+            (void)EmergencyHideAll();
+        if (!pinned()) break;
     }
+    accessibilityProvider_.RaisePendingEvents();
 }
 
 bool WidgetSurfaceCoordinator::CreateWindowForAdmission(std::wstring& error) {
@@ -615,14 +902,38 @@ bool WidgetSurfaceCoordinator::EnsureGraphicsResources() {
             D2D1::RenderTargetProperties(),
             D2D1::HwndRenderTargetProperties(window_, size),
             renderTarget_.ReleaseAndGetAddressOf()))) return false;
+    HIGHCONTRASTW highContrast{sizeof(highContrast)};
+    const bool systemHighContrast =
+        SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(highContrast),
+                              &highContrast, 0) &&
+        (highContrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+    const auto fromSystem = [](const int index) {
+        const COLORREF color = GetSysColor(index);
+        return D2D1::ColorF(
+            static_cast<float>(GetRValue(color)) / 255.0F,
+            static_cast<float>(GetGValue(color)) / 255.0F,
+            static_cast<float>(GetBValue(color)) / 255.0F);
+    };
+    const auto background = systemHighContrast
+        ? fromSystem(COLOR_WINDOW)
+        : D2D1::ColorF(0x16212E);
+    const auto chrome = systemHighContrast
+        ? fromSystem(COLOR_HIGHLIGHT)
+        : D2D1::ColorF(0x24384D);
+    const auto text = systemHighContrast
+        ? fromSystem(COLOR_WINDOWTEXT)
+        : D2D1::ColorF(0xFFFFFF);
+    const auto secondary = systemHighContrast
+        ? fromSystem(COLOR_HIGHLIGHTTEXT)
+        : D2D1::ColorF(0xAFC4D8);
     if (FAILED(renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0x16212E), backgroundBrush_.ReleaseAndGetAddressOf())) ||
+            background, backgroundBrush_.ReleaseAndGetAddressOf())) ||
         FAILED(renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0x24384D), chromeBrush_.ReleaseAndGetAddressOf())) ||
+            chrome, chromeBrush_.ReleaseAndGetAddressOf())) ||
         FAILED(renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(D2D1::ColorF::White), textBrush_.ReleaseAndGetAddressOf())) ||
+            text, textBrush_.ReleaseAndGetAddressOf())) ||
         FAILED(renderTarget_->CreateSolidColorBrush(
-            D2D1::ColorF(0xAFC4D8), secondaryBrush_.ReleaseAndGetAddressOf()))) return false;
+            secondary, secondaryBrush_.ReleaseAndGetAddressOf()))) return false;
     if (FAILED(writeFactory_->CreateTextFormat(
             L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
             DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 16.0F, L"en-us",
@@ -671,7 +982,8 @@ void WidgetSurfaceCoordinator::Paint() {
         secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     DeclarativeRenderOptions options;
     options.pixelScale = dpiScale;
-    options.collectAccessibility = false;
+    options.collectAccessibility = ResolveSurfacePresentationPolicy(
+        policy_.interactionMode()).exposeInteractiveSemantics;
     options.responsiveViewport = {widthDip, heightDip};
     options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
     options.accessibility.reducedMotion = true;
@@ -680,24 +992,31 @@ void WidgetSurfaceCoordinator::Paint() {
         std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
         std::max(1.0F, heightDip - kChromeHeightDip - 24.0F),
     };
-    (void)renderer_->Render(
+    lastRenderResult_ = renderer_->Render(
         renderTarget_.Get(), admission_->snapshot,
-        policy_.interactionMode() == InteractionMode::Focusable
-            ? std::wstring_view{admission_->snapshot.initialFocusId}
+        controllerFocused_
+            ? std::wstring_view{focusedElementId_}
             : std::wstring_view{},
         viewport, options);
     const HRESULT result = renderTarget_->EndDraw();
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
+    else PublishAccessibility();
     EndPaint(window_, &paint);
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
     if (!pinned()) return;
-    accessibility::Tree tree;
-    tree.widgetId = admission_->widgetId;
-    tree.runtimeGeneration = admission_->runtimeGeneration;
-    tree.snapshotSequence = admission_->snapshot.sequence;
-    tree.activeInputScopeId = L"pinned.host";
+    RECT client{};
+    GetClientRect(window_, &client);
+    const float scale =
+        static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float widthDip = static_cast<float>(client.right - client.left) / scale;
+    accessibility::Tree tree{
+        admission_->widgetId,
+        admission_->runtimeGeneration,
+        admission_->snapshot.sequence,
+        admission_->snapshot.activeInputScopeId,
+    };
     tree.name = admission_->name + L" pinned surface";
     accessibility::Node heading;
     heading.id = L"pinned.heading";
@@ -705,7 +1024,9 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     heading.domain = accessibility::ElementDomain::HostShell;
     heading.role = accessibility::Role::Heading;
     heading.keyboardFocusable = false;
-    heading.bounds = {kSideInsetDip, 8.0F, 125.0F, 28.0F};
+    heading.bounds = {
+        kSideInsetDip, 6.0F,
+        std::max(1.0F, widthDip * 0.28F - kSideInsetDip), 26.0F};
     tree.nodes.push_back(std::move(heading));
     accessibility::Node state;
     state.id = L"pinned.mode";
@@ -722,41 +1043,106 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     state.domain = accessibility::ElementDomain::HostShell;
     state.role = accessibility::Role::Status;
     state.keyboardFocusable = false;
-    state.bounds = {145.0F, 8.0F, 145.0F, 28.0F};
+    state.bounds = {
+        widthDip * 0.30F, 6.0F,
+        std::max(1.0F, widthDip * 0.31F), 26.0F};
     tree.nodes.push_back(std::move(state));
-    const auto addAction = [&](std::wstring id, std::wstring name,
-                               std::wstring actionId, const float x) {
-        accessibility::Node action;
-        action.id = std::move(id);
-        action.name = std::move(name);
-        action.actionId = std::move(actionId);
-        action.domain = accessibility::ElementDomain::HostShell;
-        action.role = accessibility::Role::Button;
-        action.enabled = policy_.interactionMode() == InteractionMode::Focusable;
-        action.keyboardFocusable = action.enabled;
-        action.bounds = {x, 8.0F, 70.0F, 28.0F};
-        tree.nodes.push_back(std::move(action));
+    if (!actionFeedback_.empty()) {
+        accessibility::Node feedback;
+        feedback.id = L"pinned.feedback";
+        feedback.name = actionFeedbackFailure_
+            ? L"Pinned action failed"
+            : L"Pinned action status";
+        feedback.value = actionFeedback_;
+        feedback.domain = accessibility::ElementDomain::HostShell;
+        feedback.role = accessibility::Role::Status;
+        feedback.liveSetting = actionFeedbackFailure_
+            ? accessibility::LiveSetting::Assertive
+            : accessibility::LiveSetting::Polite;
+        feedback.keyboardFocusable = false;
+        feedback.bounds = {
+            widthDip * 0.63F, 6.0F,
+            std::max(1.0F, widthDip * 0.37F - kSideInsetDip), 26.0F};
+        tree.nodes.push_back(std::move(feedback));
+    }
+
+    struct HostActionSpec final {
+        std::wstring id;
+        std::wstring name;
+        std::wstring actionId;
     };
+    std::vector<HostActionSpec> actions;
     if (policy_.interactionMode() == InteractionMode::Focusable) {
         if (placementSession_) {
-            addAction(L"pinned.commit", L"Commit placement", L"pinned.commit", 300.0F);
-            addAction(L"pinned.cancel", L"Cancel placement", L"pinned.cancel", 375.0F);
+            actions.push_back({L"pinned.commit", L"Commit placement", L"pinned.commit"});
+            actions.push_back({L"pinned.cancel", L"Cancel placement", L"pinned.cancel"});
         } else {
-            addAction(L"pinned.move", L"Move pinned surface", L"pinned.move", 300.0F);
-            addAction(L"pinned.resize", L"Resize pinned surface", L"pinned.resize", 375.0F);
+            actions.push_back({controllerFocused_ ? L"pinned.exit" : L"pinned.enter",
+                               controllerFocused_ ? L"Return focus to overlay"
+                                                  : L"Enter pinned surface",
+                               controllerFocused_ ? L"pinned.exit" : L"pinned.enter"});
+            actions.push_back({L"pinned.move", L"Move pinned surface", L"pinned.move"});
+            actions.push_back({L"pinned.resize", L"Resize pinned surface", L"pinned.resize"});
         }
+        actions.push_back({L"pinned.clickthrough", L"Make click-through",
+                           L"pinned.clickthrough"});
+        actions.push_back({L"pinned.unpin", L"Unpin surface", L"pinned.unpin"});
+        actions.push_back({L"pinned.close", L"Close pinned surface", L"pinned.close"});
+        actions.push_back({L"pinned.emergency", L"Emergency hide all pinned surfaces",
+                           L"pinned.emergency"});
+    }
+    const float actionWidth = actions.empty()
+        ? 0.0F
+        : std::max(28.0F, (widthDip - kSideInsetDip * 2.0F) /
+                              static_cast<float>(actions.size()));
+    const auto addAction = [&](HostActionSpec spec, const std::size_t index) {
+        accessibility::Node action;
+        action.id = std::move(spec.id);
+        action.name = std::move(spec.name);
+        action.actionId = std::move(spec.actionId);
+        action.domain = accessibility::ElementDomain::HostShell;
+        action.role = accessibility::Role::Button;
+        action.enabled = true;
+        action.keyboardFocusable = true;
+        action.bounds = {
+            kSideInsetDip + actionWidth * static_cast<float>(index),
+            38.0F,
+            actionWidth,
+            26.0F,
+        };
+        tree.nodes.push_back(std::move(action));
+    };
+    for (std::size_t index = 0; index < actions.size(); ++index)
+        addAction(std::move(actions[index]), index);
+
+    if (policy_.interactionMode() == InteractionMode::Focusable &&
+        lastRenderResult_.succeeded) {
+        auto widgetTree = accessibility::BuildWidgetTree(
+            admission_->widgetId, admission_->runtimeGeneration,
+            admission_->snapshot, lastRenderResult_,
+            controllerFocused_ ? std::wstring_view{focusedElementId_}
+                               : std::wstring_view{});
+        const std::size_t offset = tree.nodes.size();
+        for (auto& node : widgetTree.nodes) {
+            if (node.parent) *node.parent += offset;
+            for (auto& child : node.children) child += offset;
+            tree.nodes.push_back(std::move(node));
+        }
+        if (widgetTree.focusedNode) tree.focusedNode = *widgetTree.focusedNode + offset;
     }
     RECT bounds{};
     GetWindowRect(window_, &bounds);
-    const double scale = static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
+    const double screenScale =
+        static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
     accessibilityProvider_.Publish(
         std::move(tree),
-        {static_cast<double>(bounds.left), static_cast<double>(bounds.top), scale,
+        {static_cast<double>(bounds.left), static_cast<double>(bounds.top), screenScale,
          static_cast<double>(bounds.right - bounds.left),
          static_cast<double>(bounds.bottom - bounds.top)});
     accessibilityProvider_.SetWindowVisible(true);
     accessibilityProvider_.SetWindowFocused(
         policy_.interactionMode() == InteractionMode::Focusable && GetFocus() == window_);
+    accessibilityProvider_.RaisePendingEvents();
 }
 
 void WidgetSurfaceCoordinator::ApplyWindowPolicy() {
@@ -788,6 +1174,9 @@ void WidgetSurfaceCoordinator::OnWindowDestroyed() noexcept {
     ReleaseGraphicsResources();
     if (!tearingDown_ && admission_) {
         accessibilityProvider_.Detach();
+        controllerFocused_ = false;
+        inputRequests_.clear();
+        focusedElementId_.clear();
         admission_.reset();
         policy_.Stop(StopReason::Unpin);
         ++teardownCount_;
