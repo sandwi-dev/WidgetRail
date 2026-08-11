@@ -42,10 +42,13 @@ shared bounded cursor resource. Twelve-row responses append or prepend into a
 item instead of replacing the visible list. Evicted rows are refetched on
 reverse traversal, a short final page remains reversible, and refresh retains
 the exact URI/playlist anchor or chooses a deterministic surviving fallback.
+Media URI remains the semantic identity; repeated occurrences receive bounded
+collection-context discriminators so equal tracks or episodes keep distinct
+focus and action targets across retained pages and refresh churn.
 Repeated identical edge input joins one in-flight provider request; a genuinely
-different cursor intent remains latest-wins. Detail Play and the first row have
-one explicit edge, while the first row's forward edge continues into the list
-and cannot oscillate back to the header. Failures retain the last-good window
+different cursor intent remains latest-wins. Detail Play points to the first
+row and that row points back to Play; a singleton row has no self edge, while a
+multi-row first row continues forward into the list. Failures retain the last-good window
 and require the visible Retry action. The automated 29-item contract covers
 compact and expanded 12/12/5 forward/reverse traversal for both playlist tiles
 and detail tracks. A

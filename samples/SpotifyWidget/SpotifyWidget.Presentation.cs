@@ -510,9 +510,9 @@ public sealed partial class SpotifyWidget
             return PageFailure("Playlist unavailable", itemError.Message, mode);
         var rows = items.Items.Select((item, index) => PlaylistTrackRow(
                 item, mode, index == 0 && !items.HasBefore,
-                index == 0 && !items.HasBefore
+                index == 0 && !items.HasBefore && items.Items.Count > 1
                     ? SpotifyCollectionIdentity.FocusId("spotify.playlist.track", mode,
-                        items.Items.Count > 1 ? items.Items[1].Key : item.Key)
+                        items.Items[1].Key)
                     : null))
             .ToList<WidgetElement>();
         var scroll = PresentCursor(
@@ -661,8 +661,11 @@ public sealed partial class SpotifyWidget
     {
         var row = MediaRow(item.Value, $"spotify.playlist.track.{item.Key.Value}",
             SpotifyCollectionIdentity.FocusId("spotify.playlist.track", mode, item.Key));
-        if (first) row = row.FocusUp($"spotify.playlist.play.{mode}")
-            .FocusDown(firstDown!);
+        if (first)
+        {
+            row = row.FocusUp($"spotify.playlist.play.{mode}");
+            if (firstDown is not null) row = row.FocusDown(firstDown);
+        }
         return row.CollectionItem(item.Key);
     }
 

@@ -27,6 +27,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Controller edges traverse compact and expanded 12/12/5 playlist pages", ControllerPlaylistPaginationRoundTrip),
     ("Continuous playlist detail preserves keyed refresh and one header edge", ContinuousPlaylistDetailAnchorAndHeader),
+    ("Duplicate queue occurrences keep unique exact actions", DuplicateQueueOccurrencesRouteExactly),
+    ("Duplicate playlist occurrences survive paging churn and eviction", DuplicatePlaylistOccurrencesStayKeyed),
+    ("Occurrence identity retention is bounded by the collection window", OccurrenceIdentityIsBounded),
+    ("Single-track playlist has no self focus edge", SingleTrackPlaylistHasNoSelfEdge),
     ("Paged playlist Back restores the opened item", PagedPlaylistBackRestoresOpenedItem),
     ("Adjacent playlist failures remain visible and retryable", AdjacentPlaylistFailureRetry),
     ("Sparse Spotify pages remain controller-navigable", SparsePlaylistPage),
@@ -1268,6 +1272,241 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
     await StopAsync(widget);
 }
 
+static async Task DuplicateQueueOccurrencesRouteExactly()
+{
+    const string repeatedUri = "spotify:track:repeated-queue";
+    var repeated = new WidgetSpotifyMediaItemSummary(
+        WidgetSpotifyPlaybackItemType.Track, "Repeated", "Same artist",
+        180_000, null, repeatedUri,
+        "https://open.spotify.com/track/repeated-queue", true);
+    var harness = SpotifyHarness.Ready();
+    harness.Queue = new(harness.Queue.CurrentlyPlaying,
+    [
+        repeated,
+        new WidgetSpotifyMediaItemSummary(
+            WidgetSpotifyPlaybackItemType.Track, "Middle", "Other artist",
+            181_000, null, "spotify:track:middle-queue",
+            "https://open.spotify.com/track/middle-queue", true),
+        repeated,
+    ], false);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
+    await WaitUntil(() => harness.QueueCalls >= 1);
+
+    var snapshot = widget.RenderSnapshot("spotify.queue.duplicates", 1);
+    var rows = Find(snapshot.Root, "spotify.queue.scroll.wide").Children.ToArray();
+    Assert.Equal(3, rows.Length);
+    Assert.Equal(3, rows.Select(row => row.CollectionItemKey).Distinct().Count());
+    Assert.Equal(3, rows.Select(row => row.Id).Distinct().Count());
+    Assert.Equal(3, rows.Select(row => row.ActionId).Distinct().Count());
+    var selected = rows[2];
+    await widget.OnActionAsync(new(selected.ActionId!, selected.Id));
+    Assert.Equal(repeatedUri, harness.StartedPlayback.Single().ItemUris!.Single());
+    Assert.Equal(selected.CollectionItemKey,
+        Find(widget.RenderSnapshot("spotify.queue.selected-duplicate", 2).Root,
+            "spotify.queue.scroll.wide").CollectionAnchorKey);
+    await StopAsync(widget);
+}
+
+static async Task DuplicatePlaylistOccurrencesStayKeyed()
+{
+    const string repeatedUri = "spotify:track:repeated-playlist";
+    var repeated = new WidgetSpotifyMediaItemSummary(
+        WidgetSpotifyPlaybackItemType.Track, "Repeated", "Same artist",
+        180_000, null, repeatedUri,
+        "https://open.spotify.com/track/repeated-playlist", true);
+    var tracks = Enumerable.Range(0, 29)
+        .Select(index => new WidgetSpotifyMediaItemSummary(
+            WidgetSpotifyPlaybackItemType.Track, $"Track {index}", $"Artist {index}",
+            180_000 + index, null, $"spotify:track:occurrence-{index}",
+            $"https://open.spotify.com/track/occurrence-{index}", true))
+        .ToArray();
+    tracks[1] = repeated;
+    tracks[3] = repeated;
+    tracks[13] = repeated;
+    var harness = SpotifyHarness.Ready();
+    harness.PlaylistDetail = new(
+        harness.Playlists.Items[0], tracks, 0, 12, tracks.Length);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new(PlaylistOpen("playlist-one"),
+        PlaylistFocus("wide", "playlist-one")));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+
+    var initial = PlaylistDetailRows(widget, 1);
+    var samePageKeys = new[]
+    {
+        initial[1].CollectionItemKey!,
+        initial[3].CollectionItemKey!,
+    };
+    Assert.Equal(2, samePageKeys.Distinct().Count());
+    await widget.OnActionAsync(new(
+        "spotify.playlist.items.cursor.after",
+        "spotify.playlist.detail.scroll.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 2);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.second-page-wait", 2).Root,
+        TrackFocus("wide", "spotify:track:occurrence-12")), "second page did not commit");
+    var firstWindow = PlaylistDetailRows(widget, 2);
+    var originalKeys = firstWindow
+        .Where(row => row.ActionId?.Contains(
+            CollectionToken(repeatedUri), StringComparison.Ordinal) == true)
+        .Select(row => row.CollectionItemKey!)
+        .ToArray();
+    Assert.Equal(3, originalKeys.Length);
+    Assert.Equal(3, originalKeys.Distinct().Count());
+
+    await widget.OnActionAsync(new(
+        "spotify.playlist.items.cursor.after",
+        "spotify.playlist.detail.scroll.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 3);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.third-page-wait", 3).Root,
+        TrackFocus("wide", "spotify:track:occurrence-24")), "third page did not commit");
+    await widget.OnActionAsync(new(
+        "spotify.playlist.items.cursor.before",
+        "spotify.playlist.detail.scroll.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 4);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.reverse-wait", 3).Root,
+        TrackFocus("wide", "spotify:track:occurrence-0")), "reverse page did not commit");
+    Assert.Equal(
+        string.Join(',', originalKeys.Order(StringComparer.Ordinal)),
+        string.Join(',', PlaylistDuplicateKeys(widget, 3, repeatedUri)));
+    var refreshAnchor = PlaylistDetailRows(widget, 3)
+        .Single(row => row.CollectionItemKey == originalKeys[0]);
+    await widget.OnActionAsync(new(refreshAnchor.ActionId!, refreshAnchor.Id));
+    harness.StartedPlayback.Clear();
+
+    var inserted = tracks.Prepend(new WidgetSpotifyMediaItemSummary(
+        WidgetSpotifyPlaybackItemType.Track, "Inserted", "New artist", 179_000,
+        null, "spotify:track:inserted-before-duplicates",
+        "https://open.spotify.com/track/inserted-before-duplicates", true)).ToArray();
+    harness.PlaylistDetail = new(
+        harness.Playlists.Items[0], inserted, 0, 12, inserted.Length);
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 5);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.insert-refresh-wait", 4).Root,
+        TrackFocus("wide", "spotify:track:inserted-before-duplicates")),
+        "insert refresh did not commit");
+    await widget.OnActionAsync(new(
+        "spotify.playlist.items.cursor.after",
+        "spotify.playlist.detail.scroll.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 6);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.insert-second-page-wait", 4).Root,
+        TrackFocus("wide", "spotify:track:occurrence-12")),
+        "inserted second page did not commit");
+    Assert.Equal(
+        string.Join(',', originalKeys.Order(StringComparer.Ordinal)),
+        string.Join(',', PlaylistDuplicateKeys(widget, 4, repeatedUri)));
+
+    harness.PlaylistDetail = new(
+        harness.Playlists.Items[0], inserted[..^1], 0, 12, inserted.Length - 1);
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 7);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.delete-refresh-wait", 5).Root,
+        TrackFocus("wide", "spotify:track:inserted-before-duplicates")),
+        "delete refresh did not commit");
+    await widget.OnActionAsync(new(
+        "spotify.playlist.items.cursor.after",
+        "spotify.playlist.detail.scroll.wide"));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 8);
+    await WaitUntil(() => ContainsId(
+        widget.RenderSnapshot("spotify.playlist.delete-second-page-wait", 5).Root,
+        TrackFocus("wide", "spotify:track:occurrence-12")),
+        "deleted second page did not commit");
+    var finalRows = PlaylistDetailRows(widget, 5);
+    Assert.Equal(
+        string.Join(',', originalKeys.Order(StringComparer.Ordinal)),
+        string.Join(',', finalRows.Where(row => row.ActionId?.Contains(
+                CollectionToken(repeatedUri), StringComparison.Ordinal) == true)
+            .Select(row => row.CollectionItemKey!)
+            .Order(StringComparer.Ordinal)
+            .ToArray()));
+    var selected = finalRows.Single(row => row.CollectionItemKey == originalKeys[2]);
+    await widget.OnActionAsync(new(selected.ActionId!, selected.Id));
+    Assert.Equal(repeatedUri, harness.StartedPlayback.Single().OffsetUri);
+    Assert.Equal(selected.CollectionItemKey,
+        Find(widget.RenderSnapshot("spotify.playlist.duplicate-selected", 6).Root,
+            "spotify.playlist.detail.scroll.wide").CollectionAnchorKey);
+    await StopAsync(widget);
+}
+
+static async Task SingleTrackPlaylistHasNoSelfEdge()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
+    await widget.OnActionAsync(new(PlaylistOpen("playlist-one"),
+        PlaylistFocus("wide", "playlist-one")));
+    await WaitUntil(() => harness.PlaylistDetailCalls == 1);
+    var snapshot = widget.RenderSnapshot("spotify.playlist.singleton", 1);
+    var row = Find(snapshot.Root, TrackFocus("wide", "spotify:track:next"));
+    var play = Find(snapshot.Root, "spotify.playlist.play.wide");
+    Assert.Equal(row.Id, play.Focus?.Down);
+    Assert.Equal(play.Id, row.Focus?.Up);
+    Assert.Equal<string?>(null, row.Focus?.Down);
+    await StopAsync(widget);
+}
+
+static Task OccurrenceIdentityIsBounded()
+{
+    const int retainedLimit = 24;
+    var policy = new SpotifyMediaOccurrencePolicy(retainedLimit);
+    var repeated = new WidgetSpotifyMediaItemSummary(
+        WidgetSpotifyPlaybackItemType.Track, "Repeated", "Same artist",
+        180_000, null, "spotify:track:bounded-occurrence",
+        "https://open.spotify.com/track/bounded-occurrence", true);
+    var retained = new List<WidgetCollectionItemKey>();
+    for (var page = 0; page < 100; page++)
+    {
+        var request = policy.BeginPage(
+            "bounded-playlist", page * 12, WidgetCursorDirection.After);
+        var normalized = policy.NormalizePage(
+            request,
+            Enumerable.Repeat(repeated, 12).ToArray(),
+            retained);
+        var keys = normalized.Select(item => item.Key).ToArray();
+        Assert.Equal(12, keys.Distinct().Count());
+        Assert.True(!keys.Any(retained.Contains),
+            "A new retained page reused an active duplicate occurrence key.");
+        retained.AddRange(keys);
+        if (retained.Count > retainedLimit)
+            retained.RemoveRange(0, retained.Count - retainedLimit);
+        Assert.True(policy.RetainedCount <= retainedLimit,
+            "Occurrence identity outgrew the collection retention window.");
+    }
+    var stale = policy.BeginPage("bounded-playlist", 1_200, WidgetCursorDirection.After);
+    var current = policy.BeginPage("bounded-playlist", 1_212, WidgetCursorDirection.After);
+    _ = policy.NormalizePage(stale, [repeated], retained);
+    Assert.Equal(retainedLimit, policy.RetainedCount);
+    _ = policy.NormalizePage(current, [repeated], retained);
+    Assert.True(policy.RetainedCount <= retainedLimit,
+        "Current completion exceeded the collection retention window.");
+    policy.Reset();
+    Assert.Equal(0, policy.RetainedCount);
+    return Task.CompletedTask;
+}
+
+static ViewNode[] PlaylistDetailRows(SpotifyWidget widget, long sequence) =>
+    Find(widget.RenderSnapshot("spotify.playlist.occurrences", sequence).Root,
+        "spotify.playlist.detail.scroll.wide").Children.ToArray();
+
+static string[] PlaylistDuplicateKeys(
+    SpotifyWidget widget,
+    long sequence,
+    string uri) => PlaylistDetailRows(widget, sequence)
+    .Where(row => row.ActionId?.Contains(CollectionToken(uri), StringComparison.Ordinal) == true)
+    .Select(row => row.CollectionItemKey!)
+    .Order(StringComparer.Ordinal)
+    .ToArray();
+
 static async Task<(string Focus, long Sequence, bool Paginated)>
     PressPagedDirectionAsync(
         SpotifyWidget widget,
@@ -1649,10 +1888,17 @@ static async Task StopAsync(SpotifyWidget widget)
     await WidgetTestHost.DestroyAsync(widget);
 }
 
-static async Task WaitUntil(Func<bool> predicate)
+static async Task WaitUntil(Func<bool> predicate, string? failure = null)
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-    while (!predicate()) await Task.Delay(10, timeout.Token);
+    try
+    {
+        while (!predicate()) await Task.Delay(10, timeout.Token);
+    }
+    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+    {
+        throw new InvalidOperationException(failure ?? "Condition did not become true.");
+    }
 }
 
 static Task WaitForNode(SpotifyWidget widget, string id) => WaitUntil(() =>

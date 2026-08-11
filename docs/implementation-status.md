@@ -417,6 +417,19 @@ packed Spotify 0.2.11 as a three-file 134,274-byte archive. No aggregate,
 provider, OAuth, public API/baseline, protocol-format, native, live-account, or
 screenshot suite ran.
 
+DLV-053 corrects the rejected DLV-022 media-occurrence assumption without
+weakening shared duplicate-key rejection. URI remains the semantic media key;
+one private matcher uses immutable item evidence and neighboring collection
+context to distinguish repeated queue and playlist occurrences, retains at
+most the 24-row collection window, and uses deterministic nearest-equivalent
+matching only for otherwise-identical rows. Action and focus IDs carry the
+exact occurrence key. Playlist Play points Down to the first row and the row
+points Up to Play, while an exactly one-row playlist now omits the former self
+Down edge. Focused Release evidence passes all 45 Spotify cases, including
+same-page and cross-page duplicates, eviction/refetch, refresh insertion and
+deletion, exact action routing, bounded reset, and the complete prior DLV-022
+collection/lifecycle matrix.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;

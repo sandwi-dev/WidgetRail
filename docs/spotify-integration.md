@@ -204,6 +204,14 @@ nested SDK input scopes; it is not a WebView or a replacement audio client. Each
 surface restores its own stable focus/Scroll position and B returns exactly one
 level.
 
+Queue and playlist-detail actions keep the Spotify media URI as semantic
+identity. Because Spotify may return the same track or episode more than once,
+the widget adds only a bounded collection-context occurrence discriminator for
+focus and action routing. Distinguishable occurrences retain their key through
+refresh and page churn; otherwise-identical occurrences use the deterministic
+nearest equivalent inside the 24-row retained window. This does not alter which
+URI Spotify plays or create a provider identity outside the current collection.
+
 | Stage | Nested surface | Current OpenAPI endpoints |
 | ---: | --- | --- |
 | 1 | Player / Now Playing | `GET /me/player`, `GET /me/player/currently-playing`; `PUT /me/player/play`, `PUT /me/player/pause`, `PUT /me/player/seek`, `PUT /me/player/repeat`, `PUT /me/player/volume`, `PUT /me/player/shuffle`; `POST /me/player/previous`, `POST /me/player/next`; `GET /me/library/contains`, `PUT /me/library`, and `DELETE /me/library` for current-item saved state |

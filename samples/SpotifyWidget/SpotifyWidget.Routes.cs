@@ -132,6 +132,7 @@ public sealed partial class SpotifyWidget
             if (_destination != SpotifyDestination.Playlists || playlist is null) return;
             _playlists.SelectAnchor(key, invalidate: false);
             _playlistItems.Reset(invalidate: false);
+            _playlistOccurrences.Reset();
             var generation = checked(++_playlistSelectionGeneration);
             _pageError = null;
             _playlistSelection = new(
@@ -145,7 +146,7 @@ public sealed partial class SpotifyWidget
     private async ValueTask<WidgetCursorPage<SpotifyMediaCollectionItem>>
         LoadSelectedPlaylistCursorPageAsync(
             WidgetCollectionCursor? cursor,
-            WidgetCursorDirection? _,
+            WidgetCursorDirection? direction,
             int limit,
             CancellationToken cancellationToken)
     {
@@ -154,13 +155,17 @@ public sealed partial class SpotifyWidget
         lock (_gate) selection = _playlistSelection;
         if (selection is null)
             throw new InvalidOperationException("No Spotify playlist is selected.");
+        var occurrenceRequest = _playlistOccurrences.BeginPage(
+            selection.Key.PlaylistId, offset, direction);
         var page = await HostServices.Spotify.GetPlaylistItemsAsync(
             selection.Key.PlaylistId, offset, limit, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(page.Playlist.PlaylistId, selection.Key.PlaylistId,
                 StringComparison.Ordinal))
             throw new InvalidOperationException("Spotify returned a different playlist.");
-        var items = page.Items.Select(item => new SpotifyMediaCollectionItem(
-            item, SpotifyCollectionIdentity.Media(item.Uri))).ToArray();
+        var items = _playlistOccurrences.NormalizePage(
+            occurrenceRequest,
+            page.Items,
+            _playlistItems.Snapshot.Items.Select(item => item.Key).ToArray());
         return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit, page.Total);
     }
 
@@ -177,6 +182,7 @@ public sealed partial class SpotifyWidget
         _playlists.Reset(invalidate: false);
         ClearPlaylistSelectionLocked();
         _queue.Reset(invalidate: false);
+        _queueOccurrences.Reset();
         _devices = null;
         _localPlayback = null;
         _devicesCachedAt = null;
@@ -188,6 +194,7 @@ public sealed partial class SpotifyWidget
     private void ClearPlaylistSelectionLocked()
     {
         _playlistItems.Reset(invalidate: false);
+        _playlistOccurrences.Reset();
         _playlistSelection = null;
         _playlistItemsSelectionGeneration = null;
     }

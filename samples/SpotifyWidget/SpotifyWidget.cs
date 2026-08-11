@@ -72,6 +72,10 @@ public sealed partial class SpotifyWidget : Widget
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _queue;
     private readonly WidgetCursorResource<SpotifyPlaylistCollectionItem> _playlists;
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _playlistItems;
+    private readonly SpotifyMediaOccurrencePolicy _queueOccurrences =
+        new(QueuePageSize * 2);
+    private readonly SpotifyMediaOccurrencePolicy _playlistOccurrences =
+        new(MaximumRetainedCollectionItems);
     private WidgetSpotifyDevicesSummary? _devices;
     private WidgetSpotifyLocalPlaybackSummary? _localPlayback;
     private string? _preferredPlaybackDeviceId;
@@ -106,9 +110,10 @@ public sealed partial class SpotifyWidget : Widget
             {
                 if (cursor is not null || direction is not null)
                     throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
+                var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
                 var queue = await HostServices.Spotify.GetQueueAsync(token).ConfigureAwait(false);
-                var items = queue.Items.Select(item => new SpotifyMediaCollectionItem(
-                    item, SpotifyCollectionIdentity.Media(item.Uri))).ToArray();
+                var items = _queueOccurrences.NormalizePage(
+                    occurrenceRequest, queue.Items, []);
                 return new(items, null, null);
             },
             MapError = SpotifyResourceError,
