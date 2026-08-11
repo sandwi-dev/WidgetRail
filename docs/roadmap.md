@@ -615,8 +615,10 @@ Accepted DLV-075/DLV-076/DLV-077 add host-owned controller text entry,
 full-catalog query/filter, bounded recent ordering, and explicit manual
 inclusion from trusted registrations. Accepted DLV-082 `a862ed4`, integrated
 through `ef8fbab`, carries bounded sanitized source health through the existing
-query revision and renders partial success without adapter control. DLV-083 and
-DLV-084 now own controller page switching and durable hide/restore. Additional
+query revision and renders partial success without adapter control. Accepted
+DLV-083 `f441472`, integrated through `464460c`, scopes LB/RB page switching to
+the current Game Launcher results scroll without changing native routing.
+DLV-084 now owns durable hide/restore. Additional
 store adapters remain
 behind the documented-registration admission gate; current official
 [GOG client](https://docs.gog.com/gc-client-overview/) and
@@ -975,8 +977,9 @@ scan IDs that expire on the next scan/provider generation; widgets never receive
 BSSID, interface identity, raw WLAN structures, profile XML, or keys.
 
 Connection support currently accepts saved-profile-backed and unsaved open
-results. The next step is a host-owned credential prompt for new WPA/WPA2/WPA3
-Personal networks. Credentials never enter the widget snapshot,
+results. DLV-087 is queued to add a host-owned credential prompt and exact
+per-user Native Wi-Fi profile/connect flow for supported WPA2/WPA3 Personal
+networks. Credentials never enter the widget snapshot,
 worker process, widget-owned storage, diagnostics, or logs. Enterprise/802.1X,
 certificate, SIM, domain-credential, hidden-network, and captive-portal setup is
 unsupported initially. `WlanConnect` remains asynchronous and authoritative
@@ -1035,7 +1038,8 @@ and recovery commands do not enter the public contract before those reviews.
 The user-visible first-party reference includes explicit scans and unsaved open
 networks, software Wi-Fi/Bluetooth radio controls, association pairing, and a
 Windows-owned Bluetooth management fallback, but still excludes password
-entry, protected profile creation/editing, unpair, and generic connection. The staged credential flow
+entry and protected profile creation until DLV-087 is accepted, plus unpair and
+generic connection. The staged credential flow
 must remain host-owned and WPA Personal-only at first; it never exposes stored
 keys. Captive-portal automation, enterprise/802.1X provisioning, arbitrary
 adapter configuration, and privileged troubleshooting scripts remain outside

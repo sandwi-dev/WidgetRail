@@ -153,6 +153,24 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-083 — Add scoped LB/RB Game Launcher page switching
+
+**State:** Done
+**Closing commit:** `f441472` (`[DLV-083] scope Game Launcher bumper paging`)
+**Integrated on `main`:** `464460c`
+
+**Reviewer disposition:** Accepted. Game Launcher now authors LB/RB page actions
+only on its results scroll, only for a legal current Ready-state cursor
+direction. The existing cursor resource remains the sole page owner, so busy,
+boundary, repeated, and replaced input cannot admit another transition or
+publish a stale result. Multi-page results reserve bumpers for paging while
+single-page tiles retain variant-group and preference shortcuts; Recent and
+Manual rows remain fixed presentation sections outside provider cursor
+accounting. Focused evidence passes the 39-case Game Launcher suite, installed
+AppContainer conformance 6/6, and 55 documentation files after correcting two
+test-fixture assumptions; no provider, broker, SDK, protocol, or native route
+changed.
+
 ### DLV-082 — Surface isolated game-library source health
 
 **State:** Done
@@ -774,10 +792,13 @@ route/action, playback, and presentation boundaries while retaining one
   manual entries are now available on main. DLV-082 `a862ed4` is accepted and
   integrated through `ef8fbab`: bounded source-health truth now reaches Game
   Launcher without exposing adapter control or suppressing usable games.
-  DLV-083 is Assigned. DLV-084 and DLV-085 remain ordered visible Ready work;
-  DLV-086 follows them as the bounded correction for the unrelated YT Music
-  package-version drift exposed by DLV-082's one aggregate. DLV-038 remains
-  deferred test-architecture debt rather than filler work.
+  DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084 is
+  Assigned and DLV-085 remains ordered visible Ready work;
+  DLV-086 follows as the bounded correction for the unrelated YT Music
+  package-version drift exposed by DLV-082's one aggregate. DLV-087 is the
+  next visible cross-lane milestone: protected Personal Wi-Fi connection through
+  a host-owned credential prompt. DLV-038 remains deferred test-architecture
+  debt rather than filler work.
 
 ### DLV-082 — Surface isolated game-library source health
 
@@ -850,8 +871,7 @@ rather than rerunning the aggregate or reopening this accepted contract.
 
 ### DLV-083 — Add scoped LB/RB Game Launcher page switching
 
-**State:** Assigned; implementation started automatically from clean DLV-082
-commit `a862ed4`
+**State:** Done; accepted as `f441472` and integrated through `464460c`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-082
 **Dependencies:** DLV-060, DLV-072, DLV-075, DLV-080, DLV-081, and DLV-082 only
@@ -901,9 +921,18 @@ aggregate, screenshot, external store, or physical controller run.
 active Game Launcher collection with existing public actions, or correctness
 requires a new native/global input contract or another cursor owner.
 
+**Reviewer disposition:** Accepted. Shortcut admission is scoped to the
+existing results-scroll action map and only current legal cursor directions;
+the cursor resource still owns movement, focus-anchor fallback, replacement,
+and stale-result rejection. Multi-page tiles no longer compete for LB/RB while
+single-page variant actions remain unchanged. Focused Game Launcher,
+installed-worker, and documentation evidence passes with no cross-lane API or
+native changes.
+
 ### DLV-084 — Add durable Game Launcher hide and restore
 
-**State:** Ready; execute automatically after committing DLV-083
+**State:** Assigned; implementation started automatically from clean DLV-083
+commit `f441472`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-083
 **Dependencies:** DLV-060, DLV-066, DLV-075, DLV-080, and DLV-083 only for
@@ -1071,6 +1100,91 @@ the retained `20260811T162358Z-a68acd42` result is the originating evidence.
 **Stop/escalate when:** the current package version is ambiguous, correcting it
 would require publishing different bytes under immutable `0.2.7`, or the value
 is consumed as a compatibility contract that requires a product decision.
+
+### DLV-087 — Connect protected Personal Wi-Fi through a host-owned prompt
+
+**State:** Ready; execute automatically after committing DLV-086
+**Lane:** widgets, acting as the serialized cross-lane Network Controls lead
+**Baseline:** clean closing commit of DLV-086 plus accepted current `main`
+**Dependencies:** DLV-028, DLV-031, DLV-037, DLV-075, and DLV-079; DLV-086 is
+only contiguous lane order
+**Owner:** Network Controls protected-network UX, one host-owned secret-entry
+surface, authenticated host-to-broker secret transport, trusted Native Wi-Fi
+profile/connect policy, focused cross-process fixtures, and directly affected
+public documentation; no compositor, media, or unrelated widget ownership
+**Concurrency:** This is a serialized public capability/native-input boundary.
+The platform lane remains idle and must not change OverlayHost input, Native
+Wi-Fi, network broker, WidgetBridgeClient, or shared native build manifests
+while it runs. Do not touch blocked DLV-025/DLV-062 work or reviewer-owned files.
+
+**Visible outcome:** Selecting a current unsaved WPA2-Personal or supported
+WPA3-Personal network in Network Controls opens a masked controller-first
+password prompt. Commit attempts one exact current connection and shows
+Connecting, Connected, or a bounded actionable failure; cancel returns to the
+same row without changing Windows network state.
+
+**Objective:** Complete the roadmap's first protected-network slice using the
+documented Native Wi-Fi profile/connect APIs while ensuring the credential is
+owned by the trusted host/provider path and never enters an ordinary widget
+process, semantic snapshot, overlay state, diagnostic, or log.
+
+**In scope:** exact current generation-bound opaque scan target; closed
+provider-owned authentication/cipher classification; masked host-owned
+keyboard/controller entry with A commit, B cancel, clear/backspace, stable
+focus, work-area/DPI bounds, password UI Automation semantics, and no clipboard
+or accessibility value exposure; bounded secret length/encoding; one
+authenticated least-authority host request that bypasses the widget worker;
+per-user `WLAN_PROFILE_USER` creation with `WlanSetProfile`, no overwrite of an
+existing profile, asynchronous `WlanConnect` completion through existing ACM
+events, and rollback of only an exact newly created profile on terminal
+failure/cancellation; explicit zeroing/disposal of mutable secret and XML
+buffers; wrong credential, unsupported/enterprise/legacy security, profile
+race, adapter/service loss, location denial, stale scan/generation, hide,
+replacement, timeout, cancellation-ignoring completion, retry, and successful
+authoritative reconciliation; accurate safe copy and directly affected
+capability/consent guidance.
+
+**Out of scope:** exposing a credential or profile XML to the widget/SDK model;
+reading/exporting stored keys; all-user profiles; overwriting/deleting an
+existing profile; enterprise/802.1X, certificate, SIM, domain, hidden-network,
+WEP, captive-portal, or arbitrary network provisioning; automatic retries,
+background scans, Shell/netsh/registry automation, credential persistence in
+the overlay, screenshots, physical-router acceptance, or unrelated network UI.
+
+**Acceptance criteria:** the widget can request only one exact current opaque
+network target and receives only closed pending/result codes; it never receives
+the secret, profile XML, interface identity, BSSID, or raw WLAN reason body.
+The host admits the prompt only for the current Interactive widget/action/scope
+and revalidates all authority after its nested loop. Cancel, stale authority,
+replacement, hide, removal, unsupported security, or invalid input performs no
+profile/connect call. Commit creates at most one per-user profile without
+overwriting existing state, begins at most one connection, and trusts only the
+matching current ACM terminal event. A failed attempt removes only the exact
+profile generation it created; success retains the Windows-owned profile and
+publishes authoritative Connected state. Secret material is absent from
+snapshots, worker frames, persisted overlay state, diagnostics, logs, exception
+text, test artifacts, and post-operation retained buffers. Other saved/open
+network, radio, Ethernet, and Bluetooth behavior remains unchanged.
+
+**Verification:** Tier 1 Network Controls, Native Wi-Fi provider/adapter,
+PlatformBroker, WidgetBridge/Runtime, native secure-modal/input/focus/UIA, and
+documentation Release suites with deterministic fake WLAN/profile/ACM and
+secret-redaction cases. Tier 2 one production-host plus generic-AppContainer
+fixture proving worker request, host prompt authority, direct trusted secret
+delivery, profile/connect completion, rollback, stale rejection, and unaffected
+neighbor widget state. Because this adds a public cross-process capability and
+credential boundary, run the canonical Tier-3 verifier exactly once from the
+clean closing commit. After accepted integration, perform full Release
+packaging and visibly relaunch; real protected-router confirmation remains in
+the manual verification queue.
+
+**Stop/escalate when:** the provider lacks exact current authentication/cipher
+truth needed to construct a supported profile, the credential cannot be kept
+out of worker/snapshot/log/persistence paths, correctness would overwrite or
+delete pre-existing Windows profile state, a documented API cannot support the
+selected Personal mode, or a material threat-model/native architecture choice
+is required. Preserve the bounded evidence rather than falling back to Shell,
+netsh, registry, or undocumented APIs.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
