@@ -1746,8 +1746,8 @@ polling regions of `main.cpp`; reduced line count alone is not closure.
 
 ### EQ-031 — P1 — Text-entry commit retains stale native authority across a nested loop
 
-**Status: Open in rejected DLV-075 candidate `9e754f0`; assigned to DLV-079
-after active DLV-076.**
+**Status: Closed by accepted DLV-079 commit `d702d37`; held for contiguous
+integration after DLV-080.**
 
 **Evidence.** DLV-075's `OverlayApp::OpenTextEntryModal` resolves a
 `WidgetNode` through a `const WidgetSnapshot&` stored in `widgetSnapshots_`,
@@ -1787,6 +1787,22 @@ row true spatial 2D controller links, bound/reflow the modal to the active work
 area at compact, standard, and 150%, and retain accurate UIA names, roles,
 focus restoration, and visible bounds. Do not expand widget key/HWND authority,
 redesign the public query contract, or use screenshot capture as acceptance.
+
+**Resolution.** `d702d37` introduces one value-only admission seam. The host
+copies the bounded widget/runtime/snapshot/scope/node/action/text request before
+the nested loop and never dereferences the pre-modal snapshot or node afterward.
+Commit obtains the current descriptor and snapshot and admits one send only when
+the active interactive widget, runtime generation, snapshot sequence, input
+scope, TextEntry node, enabled/non-busy state, and exact action ID still match.
+Focused deterministic cases cover unchanged current authority, hide, active-
+widget and runtime replacement, snapshot refresh, scope change, removal,
+disablement, and action replacement. The modal now derives one DPI-aware layout
+inside the active monitor work area, exposes all edit/key/action controls through
+native UI Automation providers, and uses spatial non-wrapping directional
+selection across keyboard and action rows. The direct modal/admission fixture,
+native bridge parser, production OverlayHost Release build, and 55 documentation
+contracts pass. The commit is accepted but remains unintegrated only to preserve
+the rejected managed prefix for DLV-080's immediate correction.
 
 ### EQ-032 — P1 — Launcher retained organization violates catalog-page composition
 

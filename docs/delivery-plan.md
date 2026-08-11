@@ -745,7 +745,11 @@ route/action, playback, and presentation boundaries while retaining one
   reorders only the current provider page. DLV-077 candidate `f4745ad` is also
   rejected pending DLV-080 because it injects resolved manual rows into the
   provider cursor result and can exceed the resource's requested page size.
-  DLV-079 is Assigned; DLV-080 then corrects the retained managed prefix before
+  DLV-079 `d702d37` is accepted but held with that unintegrated prefix: native
+  text entry now copies bounded request values across the modal loop and freshly
+  revalidates the complete current action authority before send, while work-area
+  geometry and spatial controller navigation satisfy the assigned host gate.
+  DLV-080 is Assigned and must correct the retained managed prefix before any
   integration. DLV-038 remains deferred test-architecture debt rather than
   filler work.
 
@@ -3513,7 +3517,8 @@ the full library or weakening exact launch revalidation.
 
 ### DLV-079 — Revalidate and bound host-owned text entry
 
-**State:** Assigned; began after DLV-077 commit `f4745ad`
+**State:** Done; accepted as `d702d37`, held for contiguous DLV-080 correction
+**Closing commit:** `d702d37` (`[DLV-079] Revalidate and bound host text entry`)
 **Lane:** widgets, acting as serialized cross-lane native correction lead
 **Baseline:** closing commit of DLV-077, retaining DLV-075 candidate `9e754f0`
 and DLV-076 candidate `79848f6` unchanged in branch history
@@ -3576,9 +3581,28 @@ external store, or live account.
 protocol change, the nested loop must be replaced by a materially different
 window architecture, or responsive bounds require compositor ownership.
 
+**Reviewer disposition:** Accepted. `OpenTextEntryModal` now copies only bounded
+widget ID, runtime generation, snapshot sequence, input scope, node/action ID,
+value, placeholder, and maximum length before entering the nested message loop.
+After commit it obtains the current descriptor and snapshot again and sends only
+when the active interactive widget, runtime generation, snapshot sequence,
+scope, enabled/non-busy TextEntry node, and exact action identity still match;
+no pre-modal node or snapshot reference is reused. A pure admission seam covers
+unchanged, hidden, active-widget replacement, runtime replacement, snapshot
+refresh, scope replacement, removal, disablement, and action replacement.
+The modal is centered and downscaled within the active monitor work area, all
+44 native controls retain UI Automation providers and on-screen bounds, and
+geometric Left/Right/Up/Down navigation reaches the keyboard and action row
+without linear wrap. Retained focused evidence passes the direct modal/admission
+fixture, native bridge text-entry parser, production OverlayHost Release build,
+and documentation across 55 files. No aggregate or screenshot work ran. The
+commit remains unintegrated only because DLV-080 must close the rejected
+DLV-076/DLV-077 managed prefix immediately after it.
+
 ### DLV-080 — Make recent-first ordering complete-library correct
 
-**State:** Ready; execute immediately after DLV-079 and before any new feature
+**State:** Assigned; began immediately after accepted DLV-079 and before any new
+feature
 **Lane:** widgets
 **Baseline:** closing commit of DLV-079, retaining DLV-076 candidate `79848f6`
 and DLV-077 candidate `f4745ad` unchanged in branch history
@@ -3938,8 +3962,8 @@ remains idle until then.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Blocked by active DLV-079 plus queued DLV-080 correction ownership;
-assign to platform after the corrected
+**State:** Blocked by active DLV-080 correction ownership; assign to platform
+after the corrected
 DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix is accepted
 **Lane:** platform
 **Baseline:** accepted DLV-080 integration plus the reviewer control-plane commit
