@@ -1980,7 +1980,10 @@ lifecycle-aware, testable primitives: operations, non-paged and bounded
 offset-paged resources, immutable state, optimistic command coordination,
 bounded navigation, and stable-ID scopes are now implemented and exercised;
 the first responsive navigation recipe, explicit responsive focus identity,
-and bounded scenario-manifest listing are also implemented. Isolated semantic
+and bounded scenario-manifest listing are also implemented. Accepted DLV-051
+confirms an advanced widget can author a stable responsive edge directly and
+prove it with one-step controller replay, but it also reinforces that replacement-
+page transport is not a continuous collection abstraction. Isolated semantic
 scenario execution, cursor/append resources, additional page recipes,
 an ID/action analyzer, interactive/native preview and capture, publication, and
 broader migrations remain.
@@ -1991,10 +1994,10 @@ private responsibility reduction. YT Music is a credible teachable reference
 for one-owner orchestration plus value-based policies and pure presentation;
 require another advanced widget to reproduce a proposed boundary before
 promoting it into public templates or a mandatory application framework.
-For Spotify, preserve the accepted coherent keyed presentation while DLV-043
-turns the named route/playback/presentation regions into real encapsulated
-types; DLV-006/DLV-022 later replace the remaining page-window and focus
-composition. Network Controls
+For Spotify, preserve the accepted coherent keyed presentation and DLV-051's
+explicit seek-to-selected-destination edge while widgets-led DLV-006/DLV-022
+replace the remaining page-window and focus composition. DLV-043 then turns the
+named route/playback/presentation regions into real encapsulated types. Network Controls
 now supplies the multi-provider comparison point: its provider and command
 policies remain domain-specific, value-based, and private. Give Audio Mixer its
 own absolute-value confirmation/coalescing design rather than forcing either

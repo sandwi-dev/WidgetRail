@@ -251,11 +251,15 @@ remains off until the publisher-trust gates in Phase 4.
   lanes and one immutable render-facing revision without a task/CTS registry.
   Its companion-specific confirmation policy stays authored, and its still-large
   controller/view owner remains application-composition evidence rather than a
-  reason to create a universal base class. Next migrate suitable
-  command/resource/navigation families, add focused provider-event/
-  confirmation/coalescing recipes, design cursor/append resources, and add an
-  analyzer for duplicate/unstable IDs and unhandled actions. The SDK must not
-  infer domain merge, retry, or confirmation policy.
+  reason to create a universal base class. Accepted DLV-051 now proves a
+  responsive widget can author and replay an exact seek-to-selected-navigation
+  edge without native special cases. Widgets-led serialized DLV-006 is assigned
+  next to add the distinct cursor/append collection and bounded lazy-artwork
+  foundation; DLV-022 and DLV-018 consume it for Spotify continuity and trusted
+  Games artwork. Continue suitable command/resource/navigation migrations,
+  focused provider-event/confirmation/coalescing recipes, and an analyzer for
+  duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
+  merge, retry, or confirmation policy.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance
