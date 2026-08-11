@@ -153,6 +153,49 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-086 — Reconcile YT Music package version ownership
+
+**State:** Done
+**Closing commit:** `abbf54b`
+**Integrated on `main`:** `14f7451`
+
+**Reviewer disposition:** Accepted. The current immutable manifest remains
+authoritative at `0.2.7`; the companion `appVersion`, source constant, README
+commands, and validating manifest-equality test now agree. Focused YT Music
+evidence passes 55/55, including the exact pairing handshake field. No package
+version, installed immutable bytes, runtime contract, or authentication
+behavior changed.
+
+### DLV-084 / DLV-088 / DLV-090 — Durable Game Launcher hide and restore
+
+**State:** Done
+**Implementation commits:** `6511dc9`, corrected by `8295983`
+**Acceptance proof and integrated `main`:** `dc1bc16`
+
+**Reviewer disposition:** Accepted. Game Launcher persists at most 32 explicit
+SavedId exclusions and exposes controller-reachable Hidden/Restore actions
+without disturbing favorites, groups, recent order, or manual entries. Restore
+and Back now form one coherent current-library transition, reject late Hidden
+generations, restore actionable focus, and require no manual Refresh. Final
+direct evidence passes 43/43. Clean generic AppContainer run
+`20260811T175350Z-011a57cd` passes 6/6, including the exact Hide, Hidden,
+Restore, Back, and enabled launch route that rejected the earlier candidates.
+
+### DLV-085 / DLV-089 — Clear selected widget private state from Settings
+
+**State:** Done
+**Implementation commits:** `e0edfb8`, corrected by `022ffc4`
+**Integrated on `main`:** `dc1bc16`
+
+**Reviewer disposition:** Accepted. Trusted Settings receives only sanitized
+existence/status and a revision-bound confirmation token; it never receives the
+private document. The bridge registry retires a running exact worker before
+clear and publishes one fresh generation, while disabled packages reuse the
+same canonical version-derived installed identity without starting a worker.
+Final focused evidence includes Runtime 74/74, private state 10/10, Settings
+54/54, diagnostics 16/16, catalog 35/35, Bridge 73/73, and the production-shaped
+enabled-to-disabled exact-identity transition.
+
 ### DLV-083 — Add scoped LB/RB Game Launcher page switching
 
 **State:** Done
@@ -792,22 +835,18 @@ route/action, playback, and presentation boundaries while retaining one
   manual entries are now available on main. DLV-082 `a862ed4` is accepted and
   integrated through `ef8fbab`: bounded source-health truth now reaches Game
   Launcher without exposing adapter control or suppressing usable games.
-  DLV-083 `f441472` is accepted and integrated through `464460c`. DLV-084
-  candidate `6511dc9` is committed but not accepted: its installed-worker
-  Restore/Back path can remain on disabled warm rows. DLV-085 candidate
-  `e0edfb8` is also committed but not accepted: its disabled-package fallback
-  derives a synthetic private-state instance instead of the exact production
-  installed-version identity. DLV-088 candidate `8295983` now passes its direct
-  43-case suite,
-  but its only installed-worker run still reproduced the original unavailable-
-  row failure before the final route-token change. DLV-089 is actively
-  correcting DLV-085; DLV-090 is its next ordered Ready item and owns one clean
-  final installed-route proof for DLV-088. DLV-086 follows as the bounded
-  correction for the unrelated YT Music package-version drift exposed by the
-  retained aggregate. DLV-087 is the
-  next visible cross-lane milestone: protected Personal Wi-Fi connection through
-  a host-owned credential prompt. DLV-038 remains deferred test-architecture
-  debt rather than filler work.
+  DLV-083 `f441472` is accepted and integrated through `464460c`. The complete
+  DLV-084/085/088/089/090 prefix is accepted and integrated through `dc1bc16`:
+  Game Launcher has durable hide/restore with a green final installed route,
+  and Settings clears one exact running or disabled widget's private state
+  through the singular host owners. DLV-086 `abbf54b` is accepted and integrated
+  through `14f7451`, closing the narrow YT Music source/handshake version drift.
+  DLV-087 is the active visible cross-lane milestone: protected Personal Wi-Fi
+  connection through a host-owned credential prompt. DLV-091 and DLV-092 are
+  ordered Ready successors for Bluetooth removal and privacy-safe connection
+  details, so the widgets lane can continue immediately from a clean DLV-087
+  boundary. DLV-038 remains deferred test-architecture debt rather than filler
+  work.
 
 ### DLV-082 — Surface isolated game-library source health
 
@@ -940,8 +979,8 @@ native changes.
 
 ### DLV-084 — Add durable Game Launcher hide and restore
 
-**State:** Candidate `6511dc9` rejected pending DLV-088 correction; DLV-085 was
-already in progress when review completed and must not be interrupted
+**State:** Done; candidate `6511dc9` corrected by DLV-088 `8295983` and accepted
+through final installed proof `dc1bc16`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-083
 **Dependencies:** DLV-060, DLV-066, DLV-075, DLV-080, and DLV-083 only for
@@ -1007,10 +1046,15 @@ route actions while the installed path exercises ordinary serialized actions.
 DLV-088 owns one bounded readiness/reload correction and a single retained
 installed-route rerun. Do not repeat the unchanged fixture or broaden the work.
 
+**Final reviewer disposition:** Accepted after DLV-088 and DLV-090. The final
+direct suite passes 43/43, and clean installed run
+`20260811T175350Z-011a57cd` passes 6/6 with an enabled restored launch action and
+no manual Refresh. Integrated on `main` through `dc1bc16`.
+
 ### DLV-085 — Clear selected widget private state from Settings
 
-**State:** Candidate `e0edfb8` rejected pending DLV-089 correction; DLV-088 was
-already in progress when review completed and must not be interrupted
+**State:** Done; candidate `e0edfb8` corrected by DLV-089 `022ffc4` and
+integrated through `dc1bc16`
 **Lane:** widgets, acting as serialized managed widget-management lead
 **Baseline:** clean closing commit of DLV-084
 **Dependencies:** DLV-001, DLV-017, DLV-044, DLV-058, and DLV-084 only for
@@ -1090,11 +1134,14 @@ assignment's exact-identity and disable acceptance. DLV-089 owns only that
 identity correction and one retained enabled-to-disabled fixture; do not rerun
 the aggregate or reopen the accepted worker-replacement design.
 
+**Final reviewer disposition:** Accepted after DLV-089 established one
+canonical installed package/version identity for running and disabled paths.
+Bridge 73/73 and the production-shaped enabled-to-disabled transition are
+green; integrated on `main` through `dc1bc16`.
+
 ### DLV-088 — Complete Game Launcher Restore-to-library readiness
 
-**State:** Candidate `8295983` rejected pending DLV-090 final installed-route
-proof; DLV-089 was already in progress when review completed and must not be
-interrupted
+**State:** Done; candidate `8295983` accepted through DLV-090 proof `dc1bc16`
 **Lane:** widgets
 **Baseline:** candidate DLV-085 commit `e0edfb8`, retaining candidate DLV-084
 `6511dc9`, plus reviewer control-plane merge `dc46f87`
@@ -1157,10 +1204,13 @@ repeated, so it is honest retained evidence but cannot prove the final commit on
 the exact seam that invalidated DLV-084. DLV-090 owns one clean final installed
 route after DLV-089; do not rerun the direct suite or broaden the correction.
 
+**Final reviewer disposition:** Accepted. Clean exact-prefix installed run
+`20260811T175350Z-011a57cd` passes 6/6 without manual Refresh; integrated on
+`main` through `dc1bc16`.
+
 ### DLV-089 — Preserve exact private-state identity after widget disable
 
-**State:** Assigned; implementation started automatically after candidate
-DLV-088 commit `8295983` and clean merge of current `main`
+**State:** Done; accepted as `022ffc4` and integrated through `dc1bc16`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-088, retaining candidate DLV-085
 `e0edfb8`
@@ -1216,9 +1266,15 @@ removal.
 exposing private-state contents, changing a public contract, migrating unrelated
 state, or altering package enablement/removal semantics.
 
+**Reviewer disposition:** Accepted. Production and disabled management paths
+share `InstalledWidgetInstanceIdentity`; the real enabled-to-disabled fixture
+rejects stale confirmation, clears without creating a worker, preserves a
+neighbor, and re-enables cleanly. Final Bridge passes 73/73.
+
 ### DLV-090 — Prove final Game Launcher Restore route in the installed worker
 
-**State:** Ready; execute automatically after committing DLV-089
+**State:** Done; clean installed proof committed as `dc1bc16` and integrated on
+`main`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-089, retaining candidate DLV-084
 `6511dc9` and candidate DLV-088 `8295983`
@@ -1270,9 +1326,13 @@ Refresh.
 Game Launcher route/readiness ownership, or correction requires changing a
 shared public/native boundary.
 
+**Reviewer disposition:** Accepted. No additional product edit was required.
+Clean run `20260811T175350Z-011a57cd` passes the generic AppContainer group 6/6
+at exact code commit `07e6d11`; evidence-only closing commit is `dc1bc16`.
+
 ### DLV-086 — Reconcile YT Music package version ownership
 
-**State:** Ready; execute automatically after committing DLV-090
+**State:** Done; accepted as `abbf54b` and integrated through `14f7451`
 **Lane:** widgets
 **Baseline:** clean closing commit of DLV-090
 **Dependencies:** accepted package reproducibility through DLV-057 and DLV-090
@@ -1317,9 +1377,14 @@ the retained `20260811T162358Z-a68acd42` result is the originating evidence.
 would require publishing different bytes under immutable `0.2.7`, or the value
 is consumed as a compatibility contract that requires a product decision.
 
+**Reviewer disposition:** Accepted. Focused YT Music Release evidence passes
+55/55 and asserts the real pairing request's `appVersion`; the manifest and all
+current author commands remain `0.2.7`. No package bytes were republished.
+
 ### DLV-087 — Connect protected Personal Wi-Fi through a host-owned prompt
 
-**State:** Ready; execute automatically after committing DLV-086
+**State:** Assigned; implementation started automatically after DLV-086 commit
+`abbf54b`
 **Lane:** widgets, acting as the serialized cross-lane Network Controls lead
 **Baseline:** clean closing commit of DLV-086 plus accepted current `main`
 **Dependencies:** DLV-028, DLV-031, DLV-037, DLV-075, and DLV-079; DLV-086 is
@@ -1401,6 +1466,146 @@ delete pre-existing Windows profile state, a documented API cannot support the
 selected Personal mode, or a material threat-model/native architecture choice
 is required. Preserve the bounded evidence rather than falling back to Shell,
 netsh, registry, or undocumented APIs.
+
+### DLV-091 — Remove a paired Bluetooth device with explicit confirmation
+
+**State:** Ready; take automatically after DLV-087 reaches a clean committed
+boundary and the planner control-plane commit containing this assignment is
+merged
+**Lane:** widgets, acting as the serialized Bluetooth capability lead
+**Baseline:** clean closing commit of DLV-087 plus the accepted current `main`
+**Dependencies:** DLV-028, DLV-031, DLV-037, and accepted DLV-087 only for
+contiguous lane order
+**Owner:** Network Controls paired-device presentation, one exact host-brokered
+unpair operation, trusted Windows Bluetooth provider policy, focused fixtures,
+and directly affected public documentation; no generic Bluetooth profile,
+driver, compositor, or media ownership
+**Concurrency:** Do not begin until DLV-087 commits and releases the shared
+Network Controls, broker, bridge, and native-input boundary. Once active, the
+platform lane must not change those files or Bluetooth provider contracts.
+
+**Visible outcome:** A controller user can select a currently paired Bluetooth
+device, choose Remove device, review an explicit confirmation, and see Removing,
+Removed, Denied, Failed, or No longer available feedback without opening Windows
+Settings. Cancel returns to the same device and makes no system change.
+
+**Objective:** Extend the existing read/pair/manage slice with the documented
+`DeviceInformation.Pairing.UnpairAsync` operation while preserving exact opaque
+identity, authoritative post-operation refresh, and a separate least-privilege
+grant for destructive device removal.
+
+**In scope:** a distinct closed `bluetooth.unpair`-style capability; exact
+current generation-bound paired-device token; existing bounded `ActionSheet`
+or confirmation scope with non-color destructive copy; Interactive-only
+admission; one in-flight operation; WinRT unpair result mapping; device
+disappearance, provider refresh, denial, busy, timeout, cancellation-ignoring
+completion, widget hide/restart, stale generation, repeated confirmation, and
+unaffected-neighbor behavior; authoritative event/query reconciliation; stable
+nearest-survivor focus; package consent and public capability documentation.
+
+**Out of scope:** deleting drivers, services, registry state, cached secrets, or
+arbitrary device nodes; Shell/Settings automation; automatic removal; generic
+Bluetooth Connect/Disconnect; profile-specific GATT/RFCOMM operations; pairing
+ceremonies beyond the accepted slice; background control; screenshots; or
+physical-device acceptance in the automated gate.
+
+**Acceptance criteria:** only a current paired device exposed by the trusted
+provider can produce one confirmation-bound unpair request. The widget receives
+no raw device instance path, Bluetooth address, association endpoint, handle,
+or provider exception. Cancel, stale identity, replacement, hide, removal, or
+lost Interactive authority invokes nothing. Commit invokes at most one current
+`UnpairAsync`; UI success appears only after an accepted result and
+authoritative refresh no longer reports the pairing. Failure retains the device
+and offers bounded retry or Windows-managed details. Another device and all
+Wi-Fi/radio behavior remain unchanged, and no new polling, background command,
+or retained authority is introduced.
+
+**Verification:** Tier 1 Network Controls, Windows Bluetooth provider,
+PlatformBroker, WidgetBridge/Runtime, capability/API compatibility, and
+documentation Release suites with deterministic fake WinRT completion. Tier 2
+smallest installed generic-AppContainer route proving confirm, cancel, exact
+unpair, stale rejection, authoritative removal, and unaffected neighbor. This
+adds a destructive public capability, so run the canonical Tier-3 verifier
+exactly once from the clean closing commit. After accepted integration, fully
+package and visibly relaunch. Real hardware unpair/re-pair remains manual and
+must preserve a known recovery path.
+
+**Stop/escalate when:** the current provider cannot map a sanitized row back to
+one exact `DeviceInformation` pairing owner, Windows requires driver/device-node
+authority beyond `UnpairAsync`, correctness would remove more than the selected
+pairing, or a material public threat-model choice is required. Do not substitute
+Settings, PowerShell, registry, SetupAPI deletion, or another broad management
+grant.
+
+### DLV-092 — Show privacy-safe active connection details
+
+**State:** Ready; execute automatically after DLV-091 commits
+**Lane:** widgets, acting as the serialized Network Controls read-capability lead
+**Baseline:** clean closing commit of DLV-091
+**Dependencies:** DLV-028, DLV-031, DLV-037, DLV-087, and DLV-091 only for
+ordered same-lane delivery
+**Owner:** trusted Windows network-details provider, bounded read-only broker/SDK
+contract, Network Controls details route, focused fixtures, and directly
+affected public documentation; no diagnostic repair, traffic capture, or
+connection-control ownership
+**Concurrency:** May begin only after DLV-091 commits. Platform remains idle
+unless the planner assigns work proven disjoint from Network Controls,
+PlatformBroker, WidgetBridge, and the public capability surface.
+
+**Visible outcome:** Network Controls offers a controller-first Connection
+details view showing the active transport, Windows connectivity level, and
+bounded current IP, gateway, and DNS summaries with explicit unavailable,
+privacy-denied, changed, and offline states. It updates after a real network
+change without a polling loop and never blocks Wi-Fi or Bluetooth controls.
+
+**Objective:** Add the roadmap's first read-only connection-detail slice through
+one explicit privacy-reviewed capability, using documented Windows connectivity
+and IP Helper observations rather than Shell commands or broad adapter access.
+
+**In scope:** a separate read grant and consent copy; current preferred
+connection plus Ethernet/Wi-Fi/other transport classification; closed
+`None`/`Local`/`Constrained`/`Internet` connectivity values; bounded normalized
+IPv4/IPv6, default-gateway, and DNS display values only where documented local
+APIs provide current truth; link-local/loopback/temporary-address policy;
+event-driven NetworkStatus/IP Helper invalidation followed by re-query; one
+immutable revision; compact/standard/wide layout; copy-free semantic text;
+adapter loss/replacement, VPN/multiple-route ambiguity, sleep/resume, privacy
+denial/revocation, malformed/over-bound provider data, cancellation-ignoring
+refresh, and lifecycle drain.
+
+**Out of scope:** SSID/BSSID or signal without the existing explicit Windows
+location flow; interface GUID, MAC address, route table, DHCP lease, domain,
+proxy, public-IP lookup, geolocation, packet contents, traffic history, saved
+credentials, continuous throughput sampling, latency/packet-loss tests,
+DNS edits, renew/repair actions, Shell/PowerShell/netsh output, clipboard copy,
+or remote network requests.
+
+**Acceptance criteria:** the widget receives only the bounded display contract
+authorized by the new read grant and no raw adapter/route/provider identity.
+One event burst coalesces to one current re-query; a stale result cannot replace
+the current revision, and Hidden/Background state owns no timer or sampling
+loop. Ambiguous or unavailable gateway/DNS truth is labeled honestly rather
+than guessed. Denial or optional-section failure leaves existing Wi-Fi,
+Bluetooth, radio, scan, pair, connect, and unpair surfaces usable and focusable.
+Snapshot, log, persisted state, and diagnostics bounds are explicit and contain
+no unapproved network identity.
+
+**Verification:** Tier 1 Windows network provider, PlatformBroker, WidgetSdk/API
+compatibility, Network Controls presentation/navigation, lifecycle, and
+documentation Release suites with deterministic multi-adapter, VPN, offline,
+denial, churn, and stale-completion fixtures. Tier 2 smallest installed generic-
+AppContainer route proving consent, bounded projection, one event-driven
+refresh, optional failure isolation, and no worker polling. Run the canonical
+Tier-3 verifier exactly once only if the closing diff changes the public cross-
+process schema or verifier manifest; otherwise retain focused and grouped
+evidence. After accepted integration, fully package and visibly relaunch.
+
+**Stop/escalate when:** documented APIs cannot provide a stable bounded value,
+accurate display requires raw route/interface authority or a remote probe, the
+privacy model would expose location-sensitive Wi-Fi identity outside its
+existing explicit flow, or the assignment starts becoming a throughput/
+latency/repair framework. Preserve the exact gap for a later diagnostic
+milestone.
 
 ### DLV-007 — Make Spotify presentation state coherent
 

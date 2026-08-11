@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `ef8fbab`; prior retained
+Last reassessed: 2026-08-11 against integrated `main` `dc1bc16`; prior retained
 evidence remains scoped to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
@@ -26,12 +26,14 @@ provider 46/46, Game Launcher 37/37, installed AppContainer 6/6, and 55 docs.
 The one integrated aggregate stopped after 39 seconds on pre-existing YT Music
 metadata drift: `YtmDesktopApiClient.PackageVersion` is `0.2.6` while the
 current immutable package manifest is `0.2.7`. The changed SDK checks had
-passed; the aggregate was not rerun. DLV-086 owns that narrow correction behind
-the visible launcher and Settings queue. Full Release packaging succeeded and
-accepted main is visibly running as PID 30588.
+passed; the aggregate was not rerun. Accepted DLV-086 `abbf54b`, integrated
+through `14f7451`, aligns the source constant, pairing `appVersion`, README
+commands, and manifest-equality guard at `0.2.7`; YT Music passes 55/55 and no
+immutable package bytes were republished. Full Release packaging for the prior
+visible prefix succeeded and accepted main is visibly running as PID 20024.
 
-Independent review of DLV-085 candidate `e0edfb8` accepts the management
-boundary but not the complete identity behavior. Settings receives only a
+Independent review of DLV-085 candidate `e0edfb8` accepted the management
+boundary but initially rejected the complete identity behavior. Settings receives only a
 sanitized existence/token projection; the bridge registry remains the singular
 worker-generation owner; and the private-state backend remains the document
 owner. Focused evidence passes Runtime 74/74, private state 10/10, Settings
@@ -39,23 +41,27 @@ owner. Focused evidence passes Runtime 74/74, private state 10/10, Settings
 two-widget clear fixture. The candidate nevertheless duplicates production
 installed-instance derivation for disabled packages as `<widget-id>.disabled`
 instead of `BridgeCatalog`'s version-derived `installed.<hash>`. That is a
-correctness and maintainability failure: one logical authority has two identity
-owners, and enabled-to-disabled state can survive a reset unnoticed. DLV-089 is
-queued after active visible DLV-088 to establish one internal derivation owner
-and add the missing real transition fixture; the canonical aggregate is not
-rerun.
+correctness and maintainability failure: one logical authority had two identity
+owners, and enabled-to-disabled state could survive a reset unnoticed. Accepted
+DLV-089 `022ffc4` now gives production and disabled management paths one
+`InstalledWidgetInstanceIdentity` owner. Bridge 73/73 proves stale-token refusal,
+exact clear without worker creation, neighbor isolation, and clean re-enable.
+The coherent Settings correction is integrated through `dc1bc16`; the canonical
+aggregate was not rerun.
 
-DLV-088 candidate `8295983` also demonstrates why direct managed tests are not
+DLV-088 candidate `8295983` also demonstrated why direct managed tests are not
 sufficient acceptance for this product seam. Its final Game Launcher suite
 passes 43/43 with coherent Restore/Back readiness, focus, and late-generation
 rejection. The only installed generic-worker run
 `20260811T174504Z-9a7a377a` still returned every game as disabled
 `Unavailable`, exactly matching the DLV-084 rejection; it ran before the final
 route-token correction and was honestly retained rather than repeated. Because
-that later edit has no production-shaped evidence, the candidate remains
-unintegrated. DLV-090 schedules one clean final installed route after DLV-089,
-without rerunning the green direct suite or expanding into provider, SDK, or
-native work.
+that later edit initially had no production-shaped evidence, the candidate was
+not accepted from direct tests alone. DLV-090 then ran the final exact prefix
+once: `20260811T175350Z-011a57cd` passes the generic AppContainer group 6/6 with
+the exact restored enabled row and no Refresh. The coherent Game Launcher
+correction is integrated through `dc1bc16` without expanding into provider,
+SDK, or native work.
 
 DLV-078 `6d30f5e`, integrated through `a072d6f`, closes the independently
 reproduced cold-worker presentation-ordering defect without pretending to solve
