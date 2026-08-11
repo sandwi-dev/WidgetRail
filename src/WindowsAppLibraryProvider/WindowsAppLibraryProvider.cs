@@ -22,8 +22,10 @@ public sealed class WindowsAppLibraryProvider :
     private readonly IReadOnlyList<IGameLibrarySource> _sources;
     private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
+    private readonly IWindowsRunningAppObserver _runningApps;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _artworkGate = new(4, 4);
+    private readonly SemaphoreSlim _observationGate = new(1, 1);
     private readonly object _lifetimeGate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly byte[] _cursorKey = RandomNumberGenerator.GetBytes(32);
@@ -114,7 +116,15 @@ public sealed class WindowsAppLibraryProvider :
 
     internal WindowsAppLibraryProvider(
         IReadOnlyList<IGameLibrarySource> sources,
-        IShellStaExecutor shellSta)
+        IShellStaExecutor shellSta) : this(
+            sources, shellSta, new WindowsRunningAppObserver())
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps)
     {
         ArgumentNullException.ThrowIfNull(sources);
         if (sources.Count == 0 || sources.Count > 16 ||
@@ -132,6 +142,81 @@ public sealed class WindowsAppLibraryProvider :
         _sourcesByIdentity = _sources.ToDictionary(
             source => source.SourceIdentity, StringComparer.Ordinal);
         _shellSta = shellSta ?? throw new ArgumentNullException(nameof(shellSta));
+        _runningApps = runningApps ?? throw new ArgumentNullException(nameof(runningApps));
+    }
+
+    public async Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
+        CancellationToken cancellationToken)
+    {
+        await GetAppsAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterObservationOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            return await _shellSta.RunAsync(ObserveRunningCore, operation.Token)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            operation.Release(_observationGate);
+        }
+    }
+
+    private RunningAppBackendObservationPage ObserveRunningCore(
+        CancellationToken cancellationToken)
+    {
+        long catalogRevision;
+        GameLibrarySourceItem[] registrations;
+        lock (_stateGate)
+        {
+            catalogRevision = _catalogRevision;
+            registrations = _registrationsByOpaqueId.Values.ToArray();
+        }
+        var byIdentity = registrations
+            .GroupBy(item => item.StableIdentity, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(),
+                StringComparer.OrdinalIgnoreCase);
+        var observedWindows = _runningApps.Observe(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var observations = observedWindows
+            .Where(item => byIdentity.ContainsKey(item.RegistrationIdentity))
+            .GroupBy(item => item.RegistrationIdentity, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(64)
+            .ToArray();
+        var result = new List<RunningAppBackendObservation>(observations.Length);
+        var revisionEvidence = new StringBuilder();
+        foreach (var group in observations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var expected = byIdentity[group.Key];
+            var source = _sourcesByIdentity[expected.SourceIdentity];
+            var exact = source.ResolveExact(expected, cancellationToken);
+            if (exact is null || !string.Equals(exact.StableIdentity,
+                    expected.StableIdentity, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var displayName = SanitizeDisplayName(exact.DisplayName);
+            if (displayName is null) continue;
+            var instances = group.Select(item => item.InstanceEvidence)
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            if (instances.Length == 0) continue;
+            revisionEvidence.Append(exact.StableIdentity).Append('\0')
+                .AppendJoin(',', instances).Append('\0');
+            result.Add(new RunningAppBackendObservation(
+                exact.StableIdentity, instances[0],
+                displayName, ToBrokerKind(exact.Kind),
+                exact.Attribution));
+        }
+        lock (_stateGate)
+        {
+            if (_catalogRevision != catalogRevision)
+                throw new BrokerException("stale_observation", "The app library changed during observation.");
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var revision = "running-" + Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{catalogRevision:X16}\0{revisionEvidence}")));
+        return new RunningAppBackendObservationPage(result.AsReadOnly(), revision);
     }
 
     /// <summary>Returns the cached immutable snapshot, scanning lazily on first use.</summary>
@@ -630,6 +715,25 @@ public sealed class WindowsAppLibraryProvider :
         }
     }
 
+    private async Task<ProviderOperation> EnterObservationOperationAsync(
+        CancellationToken cancellationToken)
+    {
+        ThrowIfTerminating();
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token);
+        try
+        {
+            await _observationGate.WaitAsync(linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            return new ProviderOperation(linked);
+        }
+        catch
+        {
+            linked.Dispose();
+            throw;
+        }
+    }
+
     private void ThrowIfTerminating()
     {
         lock (_lifetimeGate) ThrowIfTerminatingLocked();
@@ -665,17 +769,20 @@ public sealed class WindowsAppLibraryProvider :
     {
         var failures = new List<Exception>();
         var gateHeld = false;
+        var observationGateHeld = false;
         try
         {
             var disposals = _sources
                 .Select(source => Task.Run(() => DisposeSource(source)))
                 .ToArray();
-
             try
             {
                 await _scanGate.WaitAsync().WaitAsync(TerminalDrainDeadline)
                     .ConfigureAwait(false);
                 gateHeld = true;
+                await _observationGate.WaitAsync().WaitAsync(TerminalDrainDeadline)
+                    .ConfigureAwait(false);
+                observationGateHeld = true;
             }
             catch (TimeoutException exception)
             {
@@ -701,6 +808,7 @@ public sealed class WindowsAppLibraryProvider :
         }
         finally
         {
+            if (observationGateHeld) _observationGate.Release();
             if (gateHeld) _scanGate.Release();
             _lifetime.Dispose();
         }

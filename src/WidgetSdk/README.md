@@ -269,6 +269,13 @@ refresh, launch, filesystem, registry, store, or account authority. Keep usable
 items visible when another source is degraded, and use the existing page
 refresh operation rather than creating a per-source refresh pipeline.
 
+`WidgetAppLibraryService.ObserveRunningAsync` belongs to the separate optional
+`system.apps.running.read.v1` grant. It returns at most 64 sanitized candidates
+that the trusted host mapped exactly to current installed SavedIds plus one
+short-lived revision. Call `ConfirmRunningAsync(savedId, revision)` before a
+durable add. Neither method exposes process/window/path identity or grants
+launch authority, and ordinary catalog access remains independently consented.
+
 Protocol v14 also supplies `WidgetArtworkHandle`, `UI.Artwork`, and
 `ButtonElement.LeadingArtwork`. Handles are bounded opaque identities—not URLs
 or paths—and grant no fetch, file, network, decode, or action authority. Use

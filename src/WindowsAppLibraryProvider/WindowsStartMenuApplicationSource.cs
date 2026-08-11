@@ -212,6 +212,9 @@ internal sealed class WindowsStartMenuApplicationSource : IStartMenuApplicationS
                extension.Equals(".com", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static string IdentityForExecutable(string targetPath) =>
+        HashIdentity(targetPath, string.Empty);
+
     private static string HashIdentity(string targetPath, string arguments)
     {
         var normalized = targetPath.Trim().ToUpperInvariant() + "\0" + arguments.Trim();

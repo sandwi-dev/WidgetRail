@@ -30,6 +30,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Maximum curated long names remain bounded and controller reachable", MaximumLongLibraryIsBounded),
     ("Library feedback uses a non-focusable lifecycle-bound toast", ToastFeedbackIsLifecycleBound),
     ("Catalog add remove and B navigation retain a user-owned library", CuratesLibrary),
+    ("Running app route confirms current opaque identity before durable add",
+        RunningAppRouteConfirmsCurrentIdentity),
     ("Catalog removal preserves unrelated rows through restart failure and CAS", CatalogRemovalPreservesLibraryContinuity),
     ("Failed durable removal rolls back the whole Library mutation", FailedRemovalRollsBack),
     ("Removing a focused app selects the nearest surviving row", RemovalSelectsNearestRow),
@@ -97,6 +99,44 @@ static async Task LoadsFirstPage()
     Assert.Equal(2, fake.PageRequests.Count);
     Assert.Equal((0, GamesAppsWidget.PageSize), fake.PageRequests[1]);
     Assert.Equal("one", widget.Items.Single().AppId);
+    await Background(widget);
+}
+
+static async Task RunningAppRouteConfirmsCurrentIdentity()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        RunningObservation = new([
+            new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
+                "Windows"),
+        ], "running-revision"),
+        ConfirmRunningHandler = request => request.Revision == "running-revision"
+            ? new WidgetAppLibraryItem(
+                "app-current", "Visible app", WidgetAppLibraryKind.Application)
+            {
+                SavedId = request.SavedId,
+                SourceAttribution = "Windows",
+            }
+            : null,
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
+
+    await widget.OnActionAsync(new("games.open-running", "games.open-running"));
+    await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
+        widget.ViewState == GamesAppsViewState.Ready);
+    var tile = ActionSurfaces(Snapshot(widget, 900).Root).Single(candidate =>
+        candidate.ActionId == "games.toggle-curation");
+    await widget.OnActionAsync(new("games.toggle-curation", tile.Id));
+
+    Assert.Equal(1, fake.RunningConfirmations.Count);
+    Assert.Equal("saved-running", fake.RunningConfirmations[0].SavedId);
+    Assert.Equal("running-revision", fake.RunningConfirmations[0].Revision);
+    await WaitUntil(() => widget.CuratedItems.Any(item =>
+        item.SavedId == "saved-running"));
+    Assert.Equal("app-current", widget.CuratedItems.Single(item =>
+        item.SavedId == "saved-running").AppId);
     await Background(widget);
 }
 
@@ -2265,7 +2305,10 @@ static Task PackageValidates()
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(root, "manifest.json")));
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.SequenceEqual(["system.apps.library.read.v1"], manifest.Permissions);
-    Assert.SequenceEqual(["system.apps.library.launch.v1"], manifest.OptionalPermissions);
+    Assert.SequenceEqual([
+        "system.apps.library.launch.v1",
+        "system.apps.running.read.v1",
+    ], manifest.OptionalPermissions);
     var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
     var compiled = GbssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
@@ -2515,12 +2558,31 @@ file sealed class FakeAppLibraryHost
         ValueTask<ResolveSavedWidgetAppLibraryItemsResponse>>? ResolveHandler { get; set; }
     public Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
         ValueTask<WidgetCapabilityAcknowledgement>>? LaunchHandler { get; set; }
+    public WidgetRunningAppObservation RunningObservation { get; set; } =
+        new([], "running-empty");
+    public Func<ConfirmWidgetRunningAppRequest, WidgetAppLibraryItem?>?
+        ConfirmRunningHandler { get; set; }
+    public List<ConfirmWidgetRunningAppRequest> RunningConfirmations { get; } = [];
     public WidgetTestPrivateState PrivateState { get; init; } = new();
 
     public WidgetHostServices Build() => new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetAppLibraryCapabilities.GetPage, GetPage)
         .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, ResolveSaved)
         .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)
+        .WithHandler(WidgetAppLibraryCapabilities.ObserveRunning,
+            (_, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(RunningObservation);
+            })
+        .WithHandler(WidgetAppLibraryCapabilities.ConfirmRunning,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                RunningConfirmations.Add(request);
+                return ValueTask.FromResult(new ConfirmWidgetRunningAppResponse(
+                    ConfirmRunningHandler?.Invoke(request)));
+            })
         .WithPrivateState(PrivateState)
         .Build();
 

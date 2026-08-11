@@ -504,6 +504,35 @@ public sealed record ResolveSavedAppLibraryItemsRequest(
 public sealed record ResolveSavedAppLibraryItemsSummary(
     [property: JsonRequired] IReadOnlyList<AppLibraryItemSummary> Items);
 
+/// <summary>One privacy-safe current-window match to an installed registration.</summary>
+public sealed record RunningAppCandidateSummary(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string DisplayName,
+    [property: JsonRequired] AppLibraryKind Kind,
+    [property: JsonRequired] string SourceAttribution);
+
+public sealed record RunningAppObservationSummary(
+    [property: JsonRequired] IReadOnlyList<RunningAppCandidateSummary> Items,
+    [property: JsonRequired] string Revision);
+
+public sealed record ConfirmRunningAppRequest(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string Revision);
+
+public sealed record ConfirmRunningAppSummary(AppLibraryItemSummary? Item);
+
+/// <summary>Host-only normalized observation; private identities never cross IPC.</summary>
+public sealed record RunningAppBackendObservation(
+    [property: JsonIgnore] string StableProviderIdentity,
+    [property: JsonIgnore] string InstanceEvidence,
+    string DisplayName,
+    AppLibraryKind Kind,
+    string SourceAttribution);
+
+public sealed record RunningAppBackendObservationPage(
+    IReadOnlyList<RunningAppBackendObservation> Items,
+    string Revision);
+
 public sealed record LaunchAppLibraryItemRequest(
     [property: JsonRequired] string AppId)
 {
@@ -936,6 +965,11 @@ public interface IAppLibraryPlatformBrokerBackend
         string appId,
         CancellationToken cancellationToken) =>
         Task.FromResult(new AppLibraryIconSummary(null));
+
+    Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromException<RunningAppBackendObservationPage>(
+            new BrokerException("platform_unavailable", "Running-app observation is unavailable."));
 }
 
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource

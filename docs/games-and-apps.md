@@ -175,7 +175,10 @@ launch grant only when opening a selected app is an optional feature:
 ```json
 {
   "permissions": ["system.apps.library.read.v1"],
-  "optionalPermissions": ["system.apps.library.launch.v1"]
+  "optionalPermissions": [
+    "system.apps.library.launch.v1",
+    "system.apps.running.read.v1"
+  ]
 }
 ```
 
@@ -201,6 +204,15 @@ await HostServices.AppLibrary.LaunchAsync(
     WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
     cancellationToken);
 ```
+
+`system.apps.running.read.v1` is a separate optional read grant. **Add running
+app** performs one on-demand observation and returns only visible programs that
+the trusted host maps exactly to one current installed registration. The widget
+receives a sanitized name, kind/source label, opaque SavedId, and short-lived
+revision—never a PID, HWND, path, command, AUMID, package identity, or retained
+process handle. Adding rechecks both the observation revision and current
+registration before the existing bounded SavedId CAS mutation; denial leaves
+the ordinary Catalog usable.
 
 `QueryAsync` accepts a bounded installed/kind/source/sort query, an optional
 opaque cursor with its direction, and a page size of 1–64. It returns

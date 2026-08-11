@@ -45,7 +45,8 @@ planned. A structurally valid package is not necessarily trustworthy.
   resume, and has no desktop-token fallback. Failure to create or verify any
   isolation component prevents the worker from running.
 - The managed capability broker has a closed versioned vocabulary for audio,
-  network/Bluetooth, activity, app-library, media, exact-port loopback JSON,
+  network/Bluetooth, activity, app-library, separately consented on-demand
+  visible-running-app observation, media, exact-port loopback JSON,
   write-only private secrets, and host-granted private widget state. Ordinary
   OS/provider authority rechecks the manifest declaration, durable consent,
   authenticated package/publisher/instance, and lifecycle on every operation.

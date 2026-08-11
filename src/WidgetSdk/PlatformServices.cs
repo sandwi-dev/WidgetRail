@@ -482,6 +482,22 @@ public sealed record ResolveSavedWidgetAppLibraryItemsRequest(
 public sealed record ResolveSavedWidgetAppLibraryItemsResponse(
     [property: JsonRequired] IReadOnlyList<WidgetAppLibraryItem> Items);
 
+public sealed record WidgetRunningAppCandidate(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string DisplayName,
+    [property: JsonRequired] WidgetAppLibraryKind Kind,
+    [property: JsonRequired] string SourceAttribution);
+
+public sealed record WidgetRunningAppObservation(
+    [property: JsonRequired] IReadOnlyList<WidgetRunningAppCandidate> Items,
+    [property: JsonRequired] string Revision);
+
+public sealed record ConfirmWidgetRunningAppRequest(
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] string Revision);
+
+public sealed record ConfirmWidgetRunningAppResponse(WidgetAppLibraryItem? Item);
+
 public sealed record LaunchWidgetAppLibraryItemRequest(
     [property: JsonRequired] string AppId)
 {
@@ -695,6 +711,14 @@ public static class WidgetAppLibraryCapabilities
     public static WidgetCapabilityOperation<ResolveSavedWidgetAppLibraryItemsRequest,
         ResolveSavedWidgetAppLibraryItemsResponse> ResolveSaved { get; } =
         new("system.apps.library.read.v1", "apps.library.resolve-saved");
+
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery,
+        WidgetRunningAppObservation> ObserveRunning { get; } =
+        new("system.apps.running.read.v1", "apps.running.list");
+
+    public static WidgetCapabilityOperation<ConfirmWidgetRunningAppRequest,
+        ConfirmWidgetRunningAppResponse> ConfirmRunning { get; } =
+        new("system.apps.running.read.v1", "apps.running.confirm");
 
     public static WidgetCapabilityOperation<LaunchWidgetAppLibraryItemRequest,
         WidgetCapabilityAcknowledgement> Launch { get; } =
@@ -1300,6 +1324,54 @@ public sealed class WidgetAppLibraryService
         }
         return response.Items.ToArray();
     }
+
+    public async ValueTask<WidgetRunningAppObservation> ObserveRunningAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.ObserveRunning,
+            new WidgetCapabilityQuery(), cancellationToken).ConfigureAwait(false);
+        if (response?.Items is null || response.Items.Count > 64 ||
+            response.Revision is not { Length: > 0 and <= 128 })
+            throw MalformedRunningObservation();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in response.Items)
+        {
+            if (item is null || !IsValidSavedId(item.SavedId) ||
+                !seen.Add(item.SavedId) || !Enum.IsDefined(item.Kind) ||
+                !IsDisplayValue(item.DisplayName, 160) ||
+                !IsDisplayValue(item.SourceAttribution, 64))
+                throw MalformedRunningObservation();
+        }
+        return response with { Items = response.Items.ToArray() };
+    }
+
+    public async ValueTask<WidgetAppLibraryItem?> ConfirmRunningAsync(
+        string savedId,
+        string revision,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsValidSavedId(savedId))
+            throw new ArgumentException("Saved app identifier is invalid.", nameof(savedId));
+        if (revision is not { Length: > 0 and <= 128 })
+            throw new ArgumentException("Observation revision is invalid.", nameof(revision));
+        var response = await _client.InvokeAsync(
+            WidgetAppLibraryCapabilities.ConfirmRunning,
+            new ConfirmWidgetRunningAppRequest(savedId, revision),
+            cancellationToken).ConfigureAwait(false);
+        if (response is null) throw MalformedRunningObservation();
+        if (response.Item is null) return null;
+        if (!string.Equals(response.Item.SavedId, savedId, StringComparison.Ordinal))
+            throw MalformedRunningObservation();
+        return response.Item;
+    }
+
+    private static bool IsDisplayValue(string? value, int maximum) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maximum &&
+        !value.Any(char.IsControl);
+
+    private static WidgetCapabilityException MalformedRunningObservation() => new(
+        "malformed_response", "The running-app observation is invalid.");
 
     private static WidgetCapabilityException MalformedResolution() => new(
         "malformed_response", "The app library provider returned an invalid resolution.");

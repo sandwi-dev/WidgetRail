@@ -92,6 +92,18 @@ if (args.Contains("--steam-artwork-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await InstalledRunningAppRunsIsolated(installed.Catalog);
+    Console.WriteLine("PASS exact installed running-app acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -431,6 +443,62 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         throw new TimeoutException(
             $"Installed Steam artwork for {displayName} did not rotate.");
     }
+}
+
+static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
+{
+    var backend = CreateBackend(gameLibraryCount: 128);
+    backend.SetRunningAppBackend([
+        new("stable-manual-app", "fixture-instance", "A Conformance Manual App",
+            AppLibraryKind.Application, "Windows"),
+    ]);
+    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    Assert.True(configured.RequiresAppContainer,
+        "Installed running-app route did not use the generic AppContainer worker.");
+    using var consentRoot = new TemporaryDirectory("gba-installed-running-app-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var library = await WaitForSnapshotAsync(client, "Conformance Game 00000");
+    var open = Nodes(library.Root).Single(node =>
+        node.ActionId == "game-launcher.running.open");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.running.open", open.Id));
+    var running = await WaitForActionSnapshotAsync(
+        client, "game-launcher.manual.toggle", "A Conformance Manual App",
+        requireEnabled: true);
+    var add = Nodes(running.Root).Single(node =>
+        node.ActionId == "game-launcher.manual.toggle" &&
+        Nodes(node).Any(descendant => descendant.Text == "A Conformance Manual App"));
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.manual.toggle", add.Id));
+    _ = await WaitForSnapshotAsync(client, "Already included");
 }
 
 static async Task MaximumDirectoryPackageRunsIsolated()

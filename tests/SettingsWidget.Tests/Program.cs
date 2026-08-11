@@ -1325,7 +1325,10 @@ static async Task AppLibraryPermissionCopy()
     using var temp = new TemporaryDirectory();
     var catalogRoot = Path.Combine(temp.Path, "catalog");
     WriteInstalledWidget(catalogRoot, "dev.test.launcher", "dev.publisher.launcher", "Launcher",
-        [PlatformCapabilities.AppLibraryReadV1], [PlatformCapabilities.AppLibraryLaunchV1]);
+        [PlatformCapabilities.AppLibraryReadV1], [
+            PlatformCapabilities.AppLibraryLaunchV1,
+            PlatformCapabilities.AppRunningReadV1,
+        ]);
     var widget = CreateWithPermissions(temp.Path, catalogRoot,
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
@@ -1343,6 +1346,8 @@ static async Task AppLibraryPermissionCopy()
     var launchCapabilities = Snapshot(widget);
     Assert.Contains("Launch installed apps",
         Button(launchCapabilities.Root, "capability.item.1").Text!);
+    Assert.Contains("See visible running apps",
+        Button(launchCapabilities.Root, "capability.item.2").Text!);
     await Action(widget, "capability.select.1");
     var launchDecision = Snapshot(widget);
     var launchDescription = Text(launchDecision.Root, "capability.description").Text!;

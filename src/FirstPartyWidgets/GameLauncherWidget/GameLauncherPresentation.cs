@@ -47,6 +47,7 @@ internal static class GameLauncherPresentation
                 UI.Text(state.Route switch
                         {
                             GameLauncherRoute.AddGames => "Add games",
+                            GameLauncherRoute.Running => "Add running app",
                             GameLauncherRoute.Hidden => "Hidden games",
                             _ => "Game Launcher",
                         },
@@ -54,6 +55,7 @@ internal static class GameLauncherPresentation
                         state.Route switch
                         {
                             GameLauncherRoute.AddGames => "Add games",
+                            GameLauncherRoute.Running => "Add running app",
                             GameLauncherRoute.Hidden => "Hidden games",
                             _ => "Game Launcher",
                         })
@@ -66,15 +68,26 @@ internal static class GameLauncherPresentation
         var filterControls = new List<WidgetElement>();
         if (state.Route != GameLauncherRoute.Library)
             filterControls.Add(UI.Button("Back",
-                state.Route == GameLauncherRoute.AddGames
-                    ? "game-launcher.add.back" : "game-launcher.hidden.back",
-                state.Route == GameLauncherRoute.AddGames
-                    ? "game-launcher.add.back" : "game-launcher.hidden.back")
+                state.Route switch
+                {
+                    GameLauncherRoute.AddGames => "game-launcher.add.back",
+                    GameLauncherRoute.Running => "game-launcher.running.back",
+                    _ => "game-launcher.hidden.back",
+                },
+                state.Route switch
+                {
+                    GameLauncherRoute.AddGames => "game-launcher.add.back",
+                    GameLauncherRoute.Running => "game-launcher.running.back",
+                    _ => "game-launcher.hidden.back",
+                })
                 .Disabled(!state.Interactive));
         else
         {
             filterControls.Add(UI.Button("Add games", "game-launcher.add.open",
                     "game-launcher.add.open")
+                .Disabled(!state.Interactive));
+            filterControls.Add(UI.Button("Add running app", "game-launcher.running.open",
+                    "game-launcher.running.open")
                 .Disabled(!state.Interactive));
             filterControls.Add(UI.Button(
                     $"Hidden ({state.Organization.ExcludedSavedIds.Count})",
@@ -94,24 +107,30 @@ internal static class GameLauncherPresentation
                 .Disabled(!state.Interactive ||
                     state.Organization.RecentSavedIds.Count == 0));
         }
-        filterControls.Add(UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
-                "game-launcher.filter.source", "game-launcher.filter.source")
-            .Disabled(!state.Interactive));
-        filterControls.Add(UI.Button("Sort: " + (state.Query.Sort switch
-            {
-                WidgetAppLibrarySortOrder.DisplayNameDescending => "Z–A",
-                WidgetAppLibrarySortOrder.SourceThenDisplayName => "Source",
-                _ => "A–Z",
-            }), "game-launcher.filter.sort", "game-launcher.filter.sort")
-            .Disabled(!state.Interactive));
-        filterControls.Add(UI.Button("Clear", "game-launcher.query.clear",
-                "game-launcher.query.clear")
-            .Disabled(!state.Interactive || !state.FavoriteFilter &&
-                state.RecentMode == GameLauncherRecentMode.Off &&
-                state.Query.SearchText is null && state.Query.SourceAttribution is null &&
-                state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName));
+        if (state.Route != GameLauncherRoute.Running)
+        {
+            filterControls.Add(UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
+                    "game-launcher.filter.source", "game-launcher.filter.source")
+                .Disabled(!state.Interactive));
+            filterControls.Add(UI.Button("Sort: " + (state.Query.Sort switch
+                {
+                    WidgetAppLibrarySortOrder.DisplayNameDescending => "Z–A",
+                    WidgetAppLibrarySortOrder.SourceThenDisplayName => "Source",
+                    _ => "A–Z",
+                }), "game-launcher.filter.sort", "game-launcher.filter.sort")
+                .Disabled(!state.Interactive));
+            filterControls.Add(UI.Button("Clear", "game-launcher.query.clear",
+                    "game-launcher.query.clear")
+                .Disabled(!state.Interactive || !state.FavoriteFilter &&
+                    state.RecentMode == GameLauncherRecentMode.Off &&
+                    state.Query.SearchText is null && state.Query.SourceAttribution is null &&
+                    state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName));
+        }
 
-        var queryControls = UI.Stack("game-launcher.query",
+        WidgetElement queryControls = state.Route == GameLauncherRoute.Running
+            ? UI.Row("game-launcher.query", filterControls.ToArray())
+                .Classes("game-launcher-query")
+            : UI.Stack("game-launcher.query",
             UI.TextEntry(
                     state.Query.SearchText ?? string.Empty,
                     state.Route switch
@@ -131,11 +150,13 @@ internal static class GameLauncherPresentation
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
-        if (state.Route == GameLauncherRoute.AddGames && snapshot.Items.Count != 0)
+        if ((state.Route is GameLauncherRoute.AddGames or GameLauncherRoute.Running) &&
+            snapshot.Items.Count != 0)
         {
             var tiles = snapshot.Items.Select(item => ManualTile(
-                item, state.Organization.ManualSavedIds.Contains(
-                    item.Value.SavedId, StringComparer.Ordinal),
+                item, GameLauncherOrganizationPolicy.ReferencedSavedIds(state.Organization)
+                    .Contains(item.Value.SavedId, StringComparer.Ordinal),
+                state.Route == GameLauncherRoute.Running,
                 state.Interactive && !state.OrganizationBusy)).ToArray();
             var scroll = UI.VerticalScroll(ScrollId,
                     UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, tiles)
@@ -591,6 +612,7 @@ internal static class GameLauncherPresentation
     private static WidgetElement ManualTile(
         GameLauncherItem item,
         bool included,
+        bool runningRoute,
         bool interactive)
     {
         var automatic = item.Value.Kind == WidgetAppLibraryKind.Game;
@@ -600,7 +622,9 @@ internal static class GameLauncherPresentation
             WidgetAppLibraryKind.Application => "Application",
             _ => "Unknown",
         };
-        var state = automatic ? "Included" : included ? "Added" : "Available";
+        var state = automatic ? "Included" : included
+            ? runningRoute ? "Already included" : "Added"
+            : "Available";
         var actionId = automatic
             ? "game-launcher.manual.included"
             : "game-launcher.manual.toggle";
@@ -614,9 +638,10 @@ internal static class GameLauncherPresentation
                     : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Value.DisplayName),
                 accessibilityLabel: $"{item.Value.DisplayName}, {kind}, " +
                     (automatic ? "Included automatically" : included
-                        ? "Added, remove from library" : "Available, add to library"),
+                        ? runningRoute ? "Already included" : "Added, remove from library"
+                        : "Available, add to library"),
                 orientation: ActionSurfaceOrientation.Vertical)
-            .Disabled(!interactive || automatic)
+            .Disabled(!interactive || automatic || runningRoute && included)
             .CollectionItem(item.Key)
             .Classes("game-launcher-tile");
     }

@@ -415,6 +415,7 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See installed apps",
+        PlatformCapabilities.AppRunningReadV1 => "See visible running apps",
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
@@ -493,6 +494,9 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryReadV1 =>
             "See a bounded catalog of Start Menu application names, conservative kinds, and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
+        PlatformCapabilities.AppRunningReadV1 =>
+            "On request, see visible applications that exactly match the installed catalog. " +
+            "Widgets receive only names, kinds, sources, and opaque saved IDs—never process or window identity.",
         PlatformCapabilities.AppLibraryLaunchV1 =>
             "Launch one selected Start Menu registration by its opaque ID while the widget is interactive. " +
             "The trusted host rechecks the exact registration before asking Windows to open it; widgets cannot " +

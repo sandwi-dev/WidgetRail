@@ -20,6 +20,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
+    ("Running app observation is separately consented opaque and stale-safe",
+        RunningAppContracts),
     ("App library cursors and registrations stay bounded across ten thousand items",
         AppLibraryCursorBounds),
     ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
@@ -340,7 +342,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(32, PlatformCapabilities.All.Count);
+    Assert.Equal(33, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -1258,6 +1260,60 @@ static async Task AppLibraryContracts()
         .GetProperty("appId").GetString();
     Assert.True(firstWidgetId != secondWidgetId,
         "Opaque app IDs must not correlate two widget broker sessions.");
+}
+
+static async Task RunningAppContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new("provider-current", "stable-current", "Visible app",
+            AppLibraryKind.Application) { SourceAttribution = "Windows" },
+    ]);
+    backend.SetRunningAppBackend([
+        new("stable-current", "private-process-evidence", "Visible app",
+            AppLibraryKind.Application, "Windows"),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppRunningReadV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var denied = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningList, new { }));
+    Assert.Equal("permission_denied", denied.ErrorCode);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppRunningReadV1,
+        ConsentDecision.Grant);
+
+    var observed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningList, new { }));
+    Assert.True(observed.Succeeded, observed.ErrorCode ?? "running observation failed");
+    var payload = observed.Payload!.Value;
+    Assert.Equal(1, payload.GetProperty("items").GetArrayLength());
+    var item = payload.GetProperty("items")[0];
+    var savedId = item.GetProperty("savedId").GetString()!;
+    var revision = payload.GetProperty("revision").GetString()!;
+    var serialized = payload.GetRawText();
+    Assert.True(!serialized.Contains("stable-current", StringComparison.Ordinal));
+    Assert.True(!serialized.Contains("private-process-evidence", StringComparison.Ordinal));
+
+    var confirmed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningConfirm, new { savedId, revision }));
+    Assert.True(confirmed.Succeeded, confirmed.ErrorCode ?? "running confirmation failed");
+    Assert.Equal(savedId, confirmed.Payload!.Value.GetProperty("item")
+        .GetProperty("savedId").GetString());
+
+    backend.SetRunningAppBackend([]);
+    var stale = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningConfirm, new { savedId, revision }));
+    Assert.True(stale.Succeeded, stale.ErrorCode ?? "stale confirmation failed");
+    Assert.Equal(JsonValueKind.Null, stale.Payload!.Value.GetProperty("item").ValueKind);
 }
 
 static async Task AppLibraryCursorBounds()

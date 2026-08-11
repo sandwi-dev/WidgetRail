@@ -864,6 +864,53 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task RunningRouteConfirmsExactObservationBeforeManualAdd()
+    {
+        var host = new FakeHost(1)
+        {
+            RunningObservation = new([
+                new("saved-00000", "Automatic game", WidgetAppLibraryKind.Game, "Steam"),
+                new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
+                    "Windows"),
+            ], "running-revision"),
+            ConfirmRunningHandler = request => request.Revision == "running-revision"
+                ? new WidgetAppLibraryItem(
+                    "app-current-running", "Visible app", WidgetAppLibraryKind.Application)
+                {
+                    SavedId = request.SavedId,
+                    SourceAttribution = "Windows",
+                }
+                : null,
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.running.open", "game-launcher.running.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "running route load");
+        var snapshot = Snapshot(widget, 700);
+        var automatic = Nodes(snapshot.Root).Single(node =>
+            node.ActionId == "game-launcher.manual.included");
+        Assert.IsTrue(automatic.IsDisabled);
+        var available = Nodes(snapshot.Root).Single(node =>
+            node.ActionId == "game-launcher.manual.toggle");
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", available.Id));
+
+        Assert.AreEqual(1, host.RunningConfirmations.Count);
+        Assert.AreEqual("saved-running", host.RunningConfirmations[0].SavedId);
+        Assert.AreEqual("running-revision", host.RunningConfirmations[0].Revision);
+        CollectionAssert.AreEqual(new[] { "saved-running" },
+            widget.Organization.ManualSavedIds.ToArray());
+
+        host.RunningObservation = new([], "replacement-revision");
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "running route refresh");
+        Assert.AreEqual(0, widget.Collection.Items.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ManualEntrySurvivesRestartButLaunchStillRevalidatesExactSavedId()
     {
         var state = new WidgetTestPrivateState();
@@ -1946,6 +1993,11 @@ public sealed class GameLauncherTests
         internal List<WidgetAppLibraryCursorRequest> Queries { get; } = [];
         internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
             ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
+        internal WidgetRunningAppObservation RunningObservation { get; set; } =
+            new([], "running-empty");
+        internal Func<ConfirmWidgetRunningAppRequest, WidgetAppLibraryItem?>?
+            ConfirmRunningHandler { get; set; }
+        internal List<ConfirmWidgetRunningAppRequest> RunningConfirmations { get; } = [];
         internal TaskCompletionSource FirstQueryStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -1960,6 +2012,20 @@ public sealed class GameLauncherTests
             .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, Resolve)
             .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)
             .WithHandler(WidgetAppLibraryCapabilities.LaunchObserved, LaunchObserved)
+            .WithHandler(WidgetAppLibraryCapabilities.ObserveRunning,
+                (_, token) =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    return ValueTask.FromResult(RunningObservation);
+                })
+            .WithHandler(WidgetAppLibraryCapabilities.ConfirmRunning,
+                (request, token) =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    RunningConfirmations.Add(request);
+                    return ValueTask.FromResult(new ConfirmWidgetRunningAppResponse(
+                        ConfirmRunningHandler?.Invoke(request)));
+                })
             .WithPrivateState(_state)
             .Build();
 

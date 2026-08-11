@@ -42,6 +42,10 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                 await QueryAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryResolveSaved => BrokerJson.ToElement(
                 await ResolveSavedAsync(payload, cancellationToken).ConfigureAwait(false)),
+            PlatformCapabilities.AppRunningList => BrokerJson.ToElement(
+                await ObserveRunningAsync(payload, cancellationToken).ConfigureAwait(false)),
+            PlatformCapabilities.AppRunningConfirm => BrokerJson.ToElement(
+                await ConfirmRunningAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryLaunch =>
                 await LaunchAsync(payload, observed: false, cancellationToken)
                     .ConfigureAwait(false),
@@ -51,6 +55,77 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             _ => throw new BrokerException(
                 "unsupported_operation", "App-library operation is unsupported."),
         };
+
+    private async Task<RunningAppObservationSummary> ObserveRunningAsync(
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        BrokerCapabilityDomains.DemandEmptyPayload(payload);
+        var observed = ValidateRunningPage(await _backend.ObserveRunningAppsAsync(
+            cancellationToken).ConfigureAwait(false));
+        return new RunningAppObservationSummary(observed.Items.Select(item =>
+            new RunningAppCandidateSummary(
+                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                item.DisplayName, item.Kind, item.SourceAttribution)).ToArray(),
+            observed.Revision);
+    }
+
+    private async Task<ConfirmRunningAppSummary> ConfirmRunningAsync(
+        JsonElement payload,
+        CancellationToken cancellationToken)
+    {
+        var request = BrokerJson.ParsePayload<ConfirmRunningAppRequest>(payload);
+        ValidateSavedIds([request.SavedId], 1);
+        if (request.Revision is not { Length: > 0 and <= 128 })
+            throw new BrokerException("invalid_payload", "Running-app revision is invalid.");
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var observed = ValidateRunningPage(await _backend.ObserveRunningAppsAsync(
+                cancellationToken).ConfigureAwait(false));
+            if (!string.Equals(request.Revision, observed.Revision, StringComparison.Ordinal))
+                return new ConfirmRunningAppSummary(null);
+            var match = observed.Items.SingleOrDefault(item => string.Equals(
+                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                request.SavedId, StringComparison.Ordinal));
+            if (match is null) return new ConfirmRunningAppSummary(null);
+            var page = ValidatePage(await _backend.QueryAppLibraryAsync(
+                new AppLibraryBackendCursorRequest(
+                    new AppLibraryBackendQuery
+                    {
+                        StableIdentityFilter = [match.StableProviderIdentity],
+                    }, null, null, 1), cancellationToken).ConfigureAwait(false), 1);
+            if (page.Items.Count != 1 || !string.Equals(
+                    page.Items[0].StableProviderIdentity,
+                    match.StableProviderIdentity, StringComparison.Ordinal))
+                return new ConfirmRunningAppSummary(null);
+            return new ConfirmRunningAppSummary(ProjectPage(page).Items.Single());
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private static RunningAppBackendObservationPage ValidateRunningPage(
+        RunningAppBackendObservationPage? page)
+    {
+        if (page is null || page.Items is null || page.Items.Count > 64 ||
+            page.Revision is not { Length: > 0 and <= 128 })
+            throw new BrokerException("invalid_backend_data", "Running-app observation is invalid.");
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in page.Items)
+        {
+            if (item is null || !Enum.IsDefined(item.Kind) ||
+                item.StableProviderIdentity is not { Length: > 0 and <= 128 } ||
+                item.InstanceEvidence is not { Length: > 0 and <= 128 } ||
+                !identities.Add(item.StableProviderIdentity))
+                throw new BrokerException("invalid_backend_data", "Running-app observation is invalid.");
+            ContractValidation.DisplayName(item.DisplayName);
+            ContractValidation.DisplayName(item.SourceAttribution);
+        }
+        return page with { Items = page.Items.ToArray() };
+    }
 
     private async Task<AppLibraryCursorPageSummary> QueryAsync(
         JsonElement payload,

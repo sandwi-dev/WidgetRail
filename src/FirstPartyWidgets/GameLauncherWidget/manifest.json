@@ -12,7 +12,10 @@
   },
   "presentation": { "icon": "play" },
   "permissions": [ "system.apps.library.read.v1" ],
-  "optionalPermissions": [ "system.apps.library.launch.v1" ],
+  "optionalPermissions": [
+    "system.apps.library.launch.v1",
+    "system.apps.running.read.v1"
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "unload-after-idle",

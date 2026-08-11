@@ -1840,6 +1840,21 @@ themes also use non-shrinking fixed regions, a thin native Slider
  rows as unavailable after the visible reload control. That installed
  transition remains explicit verification debt for planner disposition; it is
  not reported as a passing AppContainer acceptance result.
+ DLV-095 adds a separate optional `system.apps.running.read.v1` grant and an
+ explicit **Add running app** route to Games & Apps and Game Launcher. The
+ trusted Windows provider observes only visible owned top-level windows on
+ demand, excludes inaccessible/elevated/overlay processes, and maps packaged
+ or canonical executable identity one-to-one to a current normalized
+ registration. Broker and SDK payloads contain only a sanitized name, closed
+ kind/source, authority-scoped SavedId, and short-lived revision; PID, HWND,
+ path, command, AUMID, package identity, and provider evidence remain host-only.
+ Add confirms the current observation and registration before reusing each
+ widget's existing bounded SavedId CAS policy, while ordinary catalog access
+ remains independently usable. Focused Release evidence passes Widget SDK
+ 87/87, API compatibility 12/12, PlatformBroker 54/54, Windows app-library
+ provider 54/54, Games & Apps 58/58, and Game Launcher 44/44. A narrow
+ credential-free generic-AppContainer worker route also passes exact running
+ observation, confirmation, and durable manual add.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late
@@ -2770,8 +2785,8 @@ and [troubleshooting](troubleshooting.md).
    optional packaged-font brokering, and further motion polish without
    importing browser layout or arbitrary asset loading.
 4. Extend Games & Apps beyond its bounded Start Menu, AppsFolder, and Steam
-   sources with additional reviewed launcher adapters,
-   running-program capture, and a host-owned file picker while preserving
+   sources with additional reviewed launcher adapters and a host-owned file
+   picker while preserving
    opaque exact launch identities.
 5. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
