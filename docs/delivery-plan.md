@@ -150,6 +150,27 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-016 — Establish native idle and semantic-churn baselines
+
+**State:** Done
+**Closing commit:** `df1258e` (`[DLV-016] establish native performance
+baselines`)
+**Integrated on `main`:** `fee1103`
+
+**Reviewer disposition:** Accepted. One focused native target measures a stable
+55-node snapshot and 48-node semantic projection through hidden, visible-idle,
+and 256-update phases, while the existing schema-2 sampler supplies the real
+Hidden/Visible host process-tree observation. Five fresh Release processes pass
+13,120 native checks with projection p95 `0.399–0.591 ms`, private working set
+`0.63–1.32 MiB`, bounded node/update/snapshot counts, exact source/executable
+hashes, repeated-range evidence, and broad material-regression gates. The real
+host sample records Hidden/Visible CPU p95 `0.09737%/0.09773%`, zero hidden
+timer messages, and zero post-warmup Direct2D frames. Both reports preserve
+unavailable GPU, scheduler, presentation, controller, private-process-tree, and
+long-run metrics explicitly; they are dirty focused local evidence, not release
+or universal game-time claims. Runner self-tests and 53 documentation contracts
+pass; no aggregate ran.
+
 ### DLV-015 — Add deterministic real-host accessibility proof
 
 **State:** Done
@@ -2179,7 +2200,8 @@ canonical result remains the sole Tier-3 run.
 recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
 **Owner:** Spotify Queue, Playlists, and playlist-detail collection state and
-presentation, shared cursor/append consumption, exact focus fixtures, and
+presentation, shared cursor/append consumption, the exact shared SDK cursor-
+admission correction exposed by this first consumer, exact focus fixtures, and
 directly affected Spotify documentation; no provider, public protocol, or native
 collection implementation changes
 **Visible outcome:** Queue and Playlist traversal stays continuous across loads;
@@ -2194,12 +2216,20 @@ the accepted DLV-051 Player focus edge.
 12/12/5 and sparse/final pages; stable keyed anchors; refresh, cache eviction,
 rapid route changes, Back/return, cancellation, stale completion, header action,
 compact/expanded identity, and safe partial/error presentation; deletion of
-superseded widget-local page-window state.
+superseded widget-local page-window state. After deterministic consumer proof
+showed repeated near-edge input replaces an identical pending cursor request,
+also make `WidgetCursorResource` join the exact current identical intent, as
+`WidgetPagedResource` already does, while preserving latest-wins replacement
+for a genuinely different cursor, direction, viewport, or refresh intent. This
+correction may change only the shared resource implementation and its focused
+existing SDK tests; it adds no public member or wire behavior.
 
 **Out of scope:** Spotify OAuth/Premium/Web Playback/provider changes, search,
 new product screens, custom page caches, ordinal/title focus IDs, native
-collection exceptions, DLV-051 changes, DLV-043 decomposition, shared geometry
-offsets, screenshots, or live credentials.
+collection exceptions, public SDK signatures or protocol revisions, changing
+non-identical cursor intents from their existing latest-wins policy, DLV-051
+changes, DLV-043 decomposition, shared geometry offsets, screenshots, or live
+credentials.
 
 **Acceptance criteria:** crossing every forward/reverse transport boundary moves
 to the adjacent keyed item without top/bottom teleport; existing keys retain
@@ -2208,18 +2238,34 @@ after deletion. The Play/header action participates in one explicit authored
 edge and cannot alternate with the first row on snapshot replacement. Route and
 Back restoration, selected responsive destination, accepted seek navigation,
 bounded retention, loading/error copy, and Active-lifetime cancellation remain
-exact.
+exact. Repeating the same pagination action while its exact cursor intent is
+pending returns `Joined`, shares the same completion, and invokes `LoadPage`
+once; a different intent still replaces/cancels through the established bounded
+latest-wins lane, and Reset/lifecycle termination drains both paths.
 
-**Verification:** Tier 1 Spotify and shared collection Release suites plus the
-smallest controller replay/production-host semantic fixture covering forward,
-reverse, header, refresh, and route return. Validate the package and affected
-docs. No aggregate, provider, live account, broad screenshot matrix, or native
-collection redesign.
+**Verification:** Tier 1 Spotify and shared collection Release suites,
+including direct no-sleep identical-join, different-intent replacement,
+Reset, and lifecycle-drain cursor-resource cases, plus the smallest controller
+replay/production-host semantic fixture covering forward, reverse, header,
+refresh, and route return. Validate the package and affected docs. No aggregate,
+provider, live account, broad screenshot matrix, or native collection redesign.
 
 **Stop/escalate when:** DLV-006 cannot express a required keyed anchor/edge,
-the native host ignores a valid shared collection state, or correction requires
-provider/auth behavior, a public contract revision, or a material Spotify UX
-decision. Report the shared defect instead of adding a widget-local workaround.
+the native host ignores a valid shared collection state, or the bounded
+identical-intent correction requires a public signature/protocol revision,
+changes non-identical intent policy, provider/auth behavior, or a material
+Spotify UX decision. Report any broader shared defect instead of adding a
+widget-local workaround.
+
+**Planner scope correction:** The first consumer run passes 40/41 focused
+Spotify cases, including forward/reverse traversal, third-page eviction and
+reverse restoration, stable refresh anchoring, and the authored Play/header
+edge. The remaining deterministic case proves two provider calls for the same
+near-edge action while its exact cursor intent is pending. The shared cursor
+resource creates a replacement request unconditionally, whereas the established
+paged resource first joins an equal current intent. The bounded parity fix above
+is therefore an immediate prerequisite of the visible DLV-022 outcome and is
+authorized inside this milestone; a Spotify-local busy flag remains prohibited.
 
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
@@ -2512,10 +2558,11 @@ clean recovery task, not an integration source. DLV-025 retains only its
 committed branch baseline and documented evidence after its former worktree
 disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
-`56f6908`. DLV-016 is now Assigned. DLV-011 follows the accepted collection and
-measurement foundations, DLV-033 awaits the compositor decision, and DLV-025
-remains user-decision blocked. No third safe platform Ready item is manufactured
-while those explicit architecture dependencies remain.
+`56f6908`; DLV-016 is accepted and integrated as `fee1103`. DLV-011 is now
+Assigned on the accepted collection and measurement foundations, DLV-033 awaits
+the compositor decision, and DLV-025 remains user-decision blocked. No third
+safe platform Ready item is manufactured while those explicit architecture
+dependencies remain.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -3000,11 +3047,18 @@ versions and proves the new digest is selected. Focused evidence passes worker
 host 10/10, runtime 74/74, bridge 69/69, the production host failure/Retry case,
 and the exact-package recovery fixture. The local profile now reports enabled
 Spotify `0.2.11` and YT Music `0.2.7`; accepted main `56f6908` was rebuilt and
-visibly relaunched for live confirmation.
+visibly relaunched for live confirmation. The first planner relaunch used the
+native-only `-SkipPackaging` path and therefore paired the new native
+`admitSnapshot` request with an older packaged bridge, producing a live
+`set-widget-lifecycle` invalid-payload failure. A full documented Release
+packaging build from accepted main republished WidgetBridge, WidgetRuntime,
+worker hosts, and bundled widgets together; the 23:23 launch no longer records
+that failure. Future bridge/runtime integrations must treat the Release output
+as one coherent artifact graph rather than a native executable alone.
 
 ### DLV-016 — Establish native idle and semantic-churn baselines
 
-**State:** Assigned after accepted DLV-052
+**State:** Done; accepted source commit `df1258e`, integrated as `fee1103`
 **Baseline:** accepted DLV-052 integration `56f6908` plus the reviewer commit
 recording this assignment
 **Owner:** OverlayHost/native renderer measurement harness and budgets
@@ -3032,10 +3086,20 @@ samples. No aggregate unless the verifier manifest changes.
 **Stop/escalate when:** evidence requires elevated tracing, a representative
 game/hardware choice, or a product budget decision not already documented.
 
+**Reviewer disposition:** Accepted. The focused synthetic harness and the
+existing production-host sampler are complementary rather than substituted:
+the first supplies deterministic semantic churn, snapshot/node/update,
+latency, private-resident-page, provenance, repeat range, and material gates;
+the second supplies actual Hidden/Visible process-tree CPU, memory, process,
+timer, and Direct2D-frame observations. Retained evidence and limitations match
+the Recently completed disposition. No product behavior, aggregate verifier,
+capture path, or elevated tracing changed.
+
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 
-**State:** Ready after DLV-016
-**Baseline:** closing commit of DLV-016
+**State:** Assigned after accepted DLV-016
+**Baseline:** accepted DLV-016 integration `fee1103` plus the reviewer commit
+advancing this assignment
 **Dependencies:** DLV-006 and DLV-016
 **Owner:** platform lane over a host-owned pinned-window feasibility harness,
 window/focus/input/lifecycle policy, monitor/DPI placement, and bounded native
