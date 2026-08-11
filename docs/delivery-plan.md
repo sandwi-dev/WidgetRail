@@ -3448,12 +3448,15 @@ Pin/Unpin lifecycle. DLV-070 `c61a49d` is accepted and integrated through
 `0b21384`; one production owner now receives authenticated bounded Show
 activation from later launches. DLV-068 `b83b3f7` is accepted and integrated
 through `9e795ac`; durable controller/pointer/UIA placement is now available.
-DLV-069 candidate `ea2691c` is rejected pending DLV-073 because its Click-through
-paint path hides the admitted widget behind an opaque placeholder. DLV-073 is
-the active visible correction; DLV-062 remains Ready behind that correction for
-the fixed-video trusted-rich-media feasibility gate. This visible sequence is
+DLV-069 candidate `ea2691c`, corrected by DLV-073 `aaafefc`, is accepted and
+integrated through `eef3162`: Click-through keeps the current admitted widget
+visible while withholding input and actionable UIA. DLV-062 is the active
+fixed-video trusted-rich-media feasibility gate. No later platform item is Ready
+yet because YouTube v1 depends on that go/no-go result, DLV-025 requires the
+user's compositor choice, and endpoint selection still lacks a supported setter;
+the planner will not manufacture internal filler. This visible sequence is
 independent of the blocked animated-resize compositor and may run beside widgets
-DLV-072 under the explicit file boundaries below.
+DLV-060 under the explicit file boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
@@ -3654,7 +3657,7 @@ composition and strengthened real-HWND display-reconciliation proof.
 
 ### DLV-069 — Complete pinned-surface input and accessibility composition
 
-**State:** Rejected; correction assigned as DLV-073
+**State:** Done; accepted only with DLV-073 correction, integrated through `eef3162`
 **Lane:** platform
 **Baseline:** accepted DLV-068 source `b83b3f7`, integrated through `9e795ac`
 **Closing candidate:** `ea2691c` (`[DLV-069] complete pinned input composition`)
@@ -3708,12 +3711,13 @@ visible pinned-surface outcome and makes DLV-062's visible fixed-video successor
 impossible. The candidate also grows the logical coordinator from about 964 to
 1,416 physical lines; DLV-073 must supply the final responsibility map and a
 bounded hotspot disposition rather than silently extending the prior exception.
-Keep `ea2691c` and its clean accepted-main merge intact; do not integrate the
-candidate without DLV-073.
+The rejected candidate was kept intact. DLV-073 `aaafefc` closes the visible
+gap without weakening its input/accessibility behavior; the corrected prefix is
+accepted and integrated through `eef3162`.
 
 ### DLV-073 — Keep pinned content visible in Click-through mode
 
-**State:** Assigned
+**State:** Done; accepted as `aaafefc`, integrated through `eef3162`
 **Lane:** platform
 **Baseline:** clean branch commit `e4bb73d`, which retains rejected DLV-069
 candidate `ea2691c` and merges accepted main `96fbd85`
@@ -3782,11 +3786,28 @@ authority, or separating visual and interaction state would create another
 lifecycle/focus/renderer owner. Preserve the exact evidence rather than hiding
 content or beginning DLV-062.
 
+**Reviewer disposition:** Accepted. The post-render opaque viewport cover is
+deleted, while a small pure presentation policy keeps admitted widget content
+constant and varies only whether interactive semantics are exposed. The real-
+HWND fixture proves current sentinel sequence 1 remains presented in Click-
+through, hidden-overlay sequence 3 replaces it before reopen, and pointer,
+controller, queued input, focus, hit testing, widget actions, and actionable UIA
+remain inert. Focused evidence passes the 80-check coordinator fixture, 308
+host-policy/UIA checks, the OverlayHost Release build, and 54 documentation
+contracts; the observed incremental private-working-set delta is 11,370,496
+bytes, below the existing material gate. The coordinator remains 1,416 physical
+lines before and after with no new mutable dependency, timer, state machine, or
+authority. Treat it as a conditional cohesive one-HWND composition exception:
+reopen decomposition if DLV-062 adds media/session ownership to it, creates a
+second renderer/focus/lifecycle authority, or materially grows the aggregate.
+
 ### DLV-062 — Gate one trusted fixed-video media surface
 
-**State:** Ready
+**State:** Assigned
 **Lane:** platform
-**Baseline:** closing commit of DLV-073
+**Baseline:** accepted DLV-073 integration `eef3162`; merge current local main
+at the clean platform boundary, then merge the preserved DLV-062 checkpoint
+branch as explicitly directed by the planner
 **Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, DLV-069, and
 DLV-073
 **Owner:** trusted rich-media process/session feasibility, fixed-video host
