@@ -380,6 +380,17 @@ replacement. Do not stop capture work merely because the first artifact is
 invalid. Once a valid capture exists, continue into production code when the
 reported defect remains visible in that evidence.
 
+Keep that investigation proportional to the assignment. For a non-rendering
+behavior already covered by deterministic state or semantic evidence, perform
+one bounded capture-path diagnosis and correction attempt. If valid automation
+would then require a new graphics-capture technology, HDR/color pipeline, or a
+test subsystem larger than the product fix, preserve and exclude the invalid
+artifacts, report the visual check as manual evidence, and stop capture-tool
+implementation for planner triage. Do not let supporting screenshot machinery
+become an unassigned milestone. Rendering, composition, temporal-artifact, and
+explicit capture-infrastructure assignments may require deeper capture work
+within their documented scope.
+
 When a test fails:
 
 - Retain and report the failing evidence.

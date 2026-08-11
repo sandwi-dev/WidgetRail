@@ -131,6 +131,15 @@ diagnose the capture path, produce and validate corrected output, and then use
 that valid output to decide whether production-code investigation remains
 necessary.
 
+Capture work must also remain proportional. For non-rendering behavior with
+deterministic state/semantic coverage, stop after one bounded capture-path
+diagnosis if valid automation would require a new graphics-capture technology,
+HDR/color pipeline, or a test subsystem larger than the product correction.
+Exclude the invalid artifacts, retain the diagnostic evidence, and move the
+visual check to the manual Release queue. Deeper capture infrastructure is
+executable only when the assigned milestone itself owns rendering,
+composition, temporal visual evidence, or capture tooling.
+
 ## Recently completed
 
 ### DLV-001 — Finish the paused authority-recovery operator surface

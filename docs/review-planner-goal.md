@@ -329,6 +329,24 @@ than becoming a second implementation/test runner. At a named Tier-3 checkpoint,
 run or direct one exact-commit aggregate as the delivery plan specifies and
 inspect its machine-readable provenance.
 
+### Evidence proportionality stop rule
+
+Verification must remain proportional to the product risk. For a non-rendering
+behavior such as focus, scrolling, state reconciliation, or action routing,
+deterministic state/semantic evidence plus the freshly launched Release and a
+bounded user check may be the acceptance path. A valid capture is useful
+supporting evidence, but automated capture infrastructure must not become a
+larger milestone than the product correction it verifies.
+
+When a valid capture would require adopting a new graphics-capture technology,
+HDR/color-conversion pipeline, or application-sized test subsystem, stop after
+one bounded capture-path diagnosis. Exclude the invalid artifacts, record the
+visual check as manual evidence, and continue product delivery unless the
+assignment itself is specifically about rendering, composition, temporal
+visual artifacts, or capture infrastructure. Further capture-tool engineering
+requires its own planner-assigned milestone. Never accept a wrong-window,
+cropped, stale, black, or partial image merely to avoid this stop rule.
+
 ## Review cadence and scope rotation
 
 After each accepted milestone, reassess the affected surface. At least every
