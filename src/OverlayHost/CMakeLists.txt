@@ -17,6 +17,7 @@ add_compile_options(/utf-8)
 
 add_executable(OverlayHost WIN32
     main.cpp
+    OverlayProcessOwner.cpp
     OverlayState.cpp
     WidgetBridgeClient.cpp
     RemoteImageCache.cpp
@@ -73,10 +74,20 @@ target_link_libraries(OverlayHost PRIVATE
     ole32
     oleaut32
     uiautomationcore
+    advapi32
 )
 
 if(GBA_BUILD_TESTS)
     enable_testing()
+    add_executable(OverlayProcessOwnerTests
+        OverlayProcessOwnerTests.cpp OverlayProcessOwner.cpp)
+    target_compile_features(OverlayProcessOwnerTests PRIVATE cxx_std_20)
+    target_compile_options(OverlayProcessOwnerTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(OverlayProcessOwnerTests PRIVATE
+        GBA_OVERLAY_PROCESS_OWNER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(OverlayProcessOwnerTests PRIVATE user32 advapi32)
+    add_test(NAME OverlayProcessOwnerTests COMMAND OverlayProcessOwnerTests)
+
     add_executable(ScrollEvidenceProbeTests
         ScrollEvidenceProbeTests.cpp ScrollEvidenceProbe.cpp)
     target_compile_features(ScrollEvidenceProbeTests PRIVATE cxx_std_20)

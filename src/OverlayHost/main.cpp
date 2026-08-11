@@ -12,6 +12,7 @@
 #include "NativeStyle.h"
 #include "OverlayChrome.h"
 #include "OverlayPlacement.h"
+#include "OverlayProcessOwner.h"
 #include "OverlayTargeting.h"
 #include "OverlayTransition.h"
 #include "PressedInteraction.h"
@@ -37,6 +38,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <climits>
 #include <filesystem>
@@ -81,6 +83,7 @@ constexpr UINT kPerformanceResetMessage = WM_APP + 8;
 constexpr UINT kGuideCompatibilityDeviceMessage = WM_APP + 9;
 constexpr UINT kAccessibilityActionMessage = WM_APP + 10;
 constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
+constexpr UINT kProcessActivationMessage = WM_APP + 12;
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
@@ -544,6 +547,10 @@ public:
             DispatchMessageW(&message);
         }
         return static_cast<int>(message.wParam);
+    }
+
+    void BindProcessActivation(gba::process::OverlayProcessOwner& owner) noexcept {
+        owner.BindNotificationWindow(window_, kProcessActivationMessage);
     }
 
 private:
@@ -1175,6 +1182,16 @@ private:
             }
             SyncWidgetActivity();
             InvalidateRect(window_, nullptr, FALSE);
+            return 0;
+        case kProcessActivationMessage:
+            AppendDiagnostic(L"Resident process received an authenticated Show activation");
+            if (state_.surface() == gba::Surface::Hidden) {
+                Dispatch(gba::Command::ToggleOverlay);
+            } else {
+                (void)ShowOverlay();
+                (void)AcquireOverlayForegroundInput();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
             return 0;
         case WM_SETFOCUS:
             accessibilityProvider_.SetWindowFocused(true);
@@ -5162,6 +5179,40 @@ private:
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+    std::wstring processProfile = L"production";
+    bool processOwnerProbe = false;
+    for (int index = 1; index < __argc; ++index) {
+        if (_wcsicmp(__wargv[index], L"--process-profile") == 0 &&
+            index + 1 < __argc) {
+            processProfile = __wargv[++index];
+        } else if (_wcsicmp(__wargv[index], L"--process-owner-probe") == 0) {
+            processOwnerProbe = true;
+        }
+    }
+    gba::process::OverlayProcessOwner processOwner;
+    std::wstring ownershipError;
+    const auto ownership = processOwner.Begin(
+        processProfile, std::chrono::milliseconds(3000), ownershipError);
+    if (ownership == gba::process::OwnershipResult::ClientAcknowledged) {
+        AppendDiagnostic(
+            L"Activation client forwarded Show and exited profile=" + processProfile +
+            L" pid=" + std::to_wstring(GetCurrentProcessId()));
+        return EXIT_SUCCESS;
+    }
+    if (ownership != gba::process::OwnershipResult::Owner) {
+        AppendDiagnostic(L"Activation client failed: " + ownershipError);
+        return EXIT_FAILURE;
+    }
+    AppendDiagnostic(
+        L"OverlayHost process owner elected profile=" + processProfile +
+        L" pid=" + std::to_wstring(GetCurrentProcessId()));
+    if (processOwnerProbe) {
+        const bool received = processOwner.WaitForShow(std::chrono::seconds(10));
+        AppendDiagnostic(received
+            ? L"Process-owner probe received Show without initializing OverlayApp"
+            : L"Process-owner probe timed out");
+        return received ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     OverlayApp app;
     if (!app.Initialize(instance, showCommand)) {
         const std::wstring message = L"OverlayHost failed to initialize.\n\n" +
@@ -5171,5 +5222,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
                     L"Game Bar Alternative", MB_OK | MB_ICONERROR);
         return EXIT_FAILURE;
     }
+    app.BindProcessActivation(processOwner);
     return app.Run();
 }
