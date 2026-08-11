@@ -255,14 +255,13 @@ remains off until the publisher-trust gates in Phase 4.
   responsive widget can author and replay an exact seek-to-selected-navigation
   edge without native special cases. Widgets-led serialized DLV-006 is accepted
   through `9c7438f` as the distinct cursor/append collection and bounded lazy-
-  artwork foundation. DLV-022 candidate `c349bbd` proves the main Spotify cursor
-  path, and accepted-at-code DLV-053 commit `7f5c2fd` now supplies bounded
-  repeated-media occurrence keys plus the singleton graph correction. DLV-018
-  candidate `039b7b8` adds the lazy
-  trusted path but remains unintegrated until DLV-054 removes UI-thread bridge
-  contention and invalidates same-identity changed icons. Finish active DLV-054,
-  integrate and launch the coherent visible prefix if accepted, then take
-  DLV-043. Continue suitable
+  artwork foundation. DLV-022, DLV-018, and their accepted DLV-053/DLV-054
+  corrections are integrated through `8c1bbdf`: Spotify has bounded repeated-
+  media occurrence keys plus the singleton graph correction, while trusted Games
+  artwork no longer waits on provider I/O under the native request path and
+  exact revalidation changes rotate stale pixels. Before the visible launch,
+  DLV-055 must publish/install Spotify `0.2.12` because the changed source still
+  declares the already-installed immutable `0.2.11`; then take DLV-043. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -285,11 +284,12 @@ remains off until the publisher-trust gates in Phase 4.
   open with feedback. Bounded current-user AppsFolder/AUMID discovery, exact
   revalidated null-argument activation, and curated Shell icons are now
   implemented beside Start Menu shortcuts. User evidence still shows the Play
-  fallback where trusted artwork is absent. DLV-018 candidate `039b7b8` adds
-  bounded lazy handles for trusted Start Menu and AppsFolder artwork without
-  serializing base64 images into snapshots, while Steam remains a documented
-  fallback. DLV-054 must keep that demand off the native UI/control-plane path
-  and rotate or invalidate it when exact trusted registration content changes.
+  fallback where trusted artwork is absent. DLV-018 plus accepted DLV-054 now
+  add bounded lazy handles for trusted Start Menu and AppsFolder artwork without
+  serializing base64 images into snapshots or holding provider I/O under native
+  control-plane progress; exact trusted revalidation rotates the handle, decoded
+  cache entry, and render bitmap. Steam remains a documented fallback. Packaged
+  live artwork coverage follows the coherent post-DLV-055 launch.
   Launcher sources,
   authoritative game classification, history, search, source grouping,
   running-program capture, and file-picker additions remain roadmap work.
@@ -319,10 +319,10 @@ remains off until the publisher-trust gates in Phase 4.
   eligibility, PID-safe ownership, and live EME/autoplay/resource evidence.
   Do not claim public distribution while the documented five-user Development
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
-  Before expanding breadth, integrate and live-verify accepted-at-code DLV-053
-  (`7f5c2fd`) after active DLV-054 closes the preceding artwork prefix. DLV-053
-  gives Queue/Playlist traversal bounded duplicate-occurrence identity and a
-  non-self-linking singleton header graph over DLV-006's continuous keyed list.
+  Before expanding breadth, finish DLV-055 so the already-integrated DLV-022/053
+  Queue/Playlist traversal, bounded duplicate-occurrence identity, and non-self-
+  linking singleton header graph execute from unique installed Spotify version
+  `0.2.12` instead of the older selected `0.2.11`.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,

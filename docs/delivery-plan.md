@@ -686,16 +686,15 @@ The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
 `main`. DLV-006's public/native prefix, cursor-cycle correction, and final
 production-host/UIA composition proof are accepted and integrated through
-`9c7438f`. DLV-022 candidate `c349bbd` is corrected at code level by accepted
-DLV-053 commit `7f5c2fd`: bounded occurrence keys now distinguish repeated
-queue/playlist media, preserve exact actions, and remove the singleton self
-edge. DLV-018 candidate `039b7b8` adds the trusted artwork path but is rejected
-pending DLV-054 because slow artwork demand serializes the native UI behind the
-same synchronous bridge client and same-identity icon changes do not invalidate
-the retained native cache. DLV-054 is now Assigned and active before DLV-043;
-the complete DLV-022/018/053 prefix remains unintegrated until that correction
-is accepted. DLV-038 remains deferred test-
-architecture debt rather than filler work.
+`9c7438f`. The coherent DLV-022/018/053/054 prefix is accepted and integrated
+through `8c1bbdf`: Spotify now uses bounded continuous occurrence-aware lists,
+and Games & Apps has lazy trusted artwork whose provider work does not serialize
+ordinary bridge traffic and whose exact revalidation revision rotates stale
+native pixels. Integration review then found Spotify source changed while its
+already-installed immutable manifest remained `0.2.11`. DLV-055 is Assigned to
+issue, install, select, and enable a content-unique package before the visible
+launch; DLV-043 follows. DLV-038 remains deferred test-architecture debt rather
+than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2222,8 +2221,8 @@ canonical result remains the sole Tier-3 run.
 
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Candidate `c349bbd` corrected by accepted-at-code DLV-053 commit
-`7f5c2fd`; complete dependent prefix remains unintegrated pending DLV-054
+**State:** Done; source `c349bbd` corrected by DLV-053 and integrated through
+`8c1bbdf`
 **Baseline:** accepted DLV-006 integration `9c7438f` plus the reviewer commit
 recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
@@ -2326,8 +2325,8 @@ DLV-018 requires DLV-054's separate correction.
 
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
-**State:** Candidate `039b7b8` rejected; correction queued as DLV-054 after the
-already-started DLV-053 milestone
+**State:** Done; source `039b7b8` corrected by DLV-054 and integrated through
+`8c1bbdf`
 **Baseline:** unaccepted DLV-022 candidate `c349bbd`
 **Dependencies:** DLV-006 and DLV-017
 **Owner:** trusted app-library artwork registration/projection, brokered opaque
@@ -2395,7 +2394,7 @@ gaps without broadening widget authority.
 
 ### DLV-053 — Correct Spotify occurrence identity and singleton focus
 
-**State:** Done; accepted at code level as `7f5c2fd`; unintegrated pending DLV-054
+**State:** Done; accepted as `7f5c2fd` and integrated through `8c1bbdf`
 **Baseline:** closing commit of DLV-018, including unaccepted candidate
 `c349bbd`; retain the complete prefix for correction and review
 **Dependencies:** DLV-006, DLV-022 candidate `c349bbd`, and DLV-018
@@ -2466,12 +2465,15 @@ from mutating matcher state, and Reset clears all retained occurrences. A
 one-row playlist now authors Play Down to row and row Up to Play with no self
 Down edge. Retained Release evidence passes Spotify 45/45, installed-worker
 conformance 6/6, 53 documentation files, and the validated Spotify 0.2.11
-package. The commit is not integrated because its ancestry still contains the
-rejected DLV-018 candidate; DLV-054 must close that prefix first.
+package. DLV-054 subsequently closed the preceding artwork correction and the
+coherent prefix is integrated through `8c1bbdf`; live proof waits for DLV-055 to
+publish the changed Spotify source under a new immutable package version.
 
 ### DLV-054 — Keep trusted artwork current without blocking the overlay
 
-**State:** Assigned after accepted-at-code DLV-053
+**State:** Done; accepted source commit `546f014`, integrated through `8c1bbdf`
+**Closing commit:** `546f014` (`[DLV-054] keep trusted artwork current without
+blocking`)
 **Baseline:** closing commit of DLV-053, including rejected DLV-018 candidate
 `039b7b8`; retain the complete prefix for correction and review
 **Dependencies:** DLV-006, DLV-018 candidate `039b7b8`, and DLV-053 only for
@@ -2539,10 +2541,79 @@ separate artwork I/O from UI/control-plane progress without material
 architecture choice, or overlaps active platform work. Preserve the exact
 blocked-provider trace rather than accepting serialized UI latency.
 
+**Reviewer disposition:** Accepted. Artwork demand receives a quick correlated
+acknowledgement before trusted provider I/O, then completes through a bounded
+private event queue with current worker/artwork-session admission. Stop and
+same-widget lifecycle traffic proceed while a cancellation-ignoring provider is
+blocked; retired completion cannot publish. A host-only digest of the exact
+provider revalidation key rotates the opaque handle, decoded cache entry, and
+per-node render bitmap even when AppId, SavedId, and launch identity are stable.
+The 512-registration, 32-entry/32-MiB cache, 12-KiB/64-pixel decode, semantic
+fallback, focus, membership, warm-state, and launch-authority bounds remain.
+Focused Release evidence passes provider 32/32, broker 51/51, Bridge 70/70,
+Widget SDK 85/85, Games & Apps 56/56, first-party installed conformance 6/6,
+4,777 renderer checks, native cache/parser cases, the production host build, and
+54 documentation contracts. No aggregate or screenshot ran. The main Release
+artifact graph rebuilt successfully after integration; packaged live artwork
+remains verification evidence rather than a claim that EQ-020 is closed.
+
+### DLV-055 — Publish the current Spotify correction under a unique version
+
+**State:** Assigned
+**Baseline:** accepted integration `8c1bbdf` plus the reviewer control-plane
+commit containing this assignment
+**Dependencies:** DLV-022 and DLV-053; DLV-054 only for contiguous integration
+order
+**Owner:** widgets lane over Spotify Community manifest/package metadata,
+directly affected version references, supported install/select workflow, and the
+smallest exact installed-package fixture; no Spotify behavior or architecture
+changes
+**Concurrency:** Platform may remain idle; do not touch native host, bridge,
+provider, public SDK/protocol, DLV-025 evidence, or reviewer-owned files.
+**Visible outcome:** The freshly launched overlay executes the accepted
+continuous-list and duplicate-occurrence Spotify code instead of silently
+reusing the older installed `0.2.11` payload.
+
+**Objective:** Restore DLV-052's content-unique package discipline after
+DLV-022/DLV-053 changed Spotify source without changing its immutable manifest
+version, then make the exact built package the enabled active local version.
+
+**In scope:** increment Spotify to canonical pre-release version `0.2.12`;
+update exact public/version references; build, validate, and pack through the
+supported Community script; disable, install, explicitly select `0.2.12`, and
+enable through the supported catalog workflow; prove the installed payload
+digest equals the just-built package and differs from `0.2.11`; start the exact
+package through the generic AppContainer path and obtain its first snapshot;
+retain `0.2.11` as an inactive rollback version.
+
+**Out of scope:** Spotify behavior, list/focus/occurrence changes, DLV-043
+decomposition, provider/OAuth/Premium work, deleting an installed version,
+permissive same-version overwrite, catalog/security redesign, public SDK or
+protocol changes, screenshots, live credentials, or aggregate verification.
+
+**Acceptance criteria:** source, manifest, docs, built archive, installed
+manifest, active catalog entry, and enabled worker all identify `0.2.12`; the
+installed sealed payload digest equals the archive that was just built and is
+not the prior `0.2.11` digest. The package starts through the production generic
+AppContainer worker path and publishes a first credential-free snapshot. The
+workflow never silently selects `0.2.11`, never overwrites an immutable version,
+and leaves the previous version available only as an inactive rollback.
+
+**Verification:** Tier 1 Spotify package build/validation and documentation
+contracts. Tier 2 only the smallest installed first-party/community package
+start/first-snapshot fixture plus exact catalog/digest inspection. Do not rerun
+the 45-case Spotify behavior suite because production behavior did not change;
+no aggregate, provider, native, screenshot, or live-account run.
+
+**Stop/escalate when:** the supported workflow cannot install/select without
+deleting or overwriting an immutable package, the exact digest cannot be proven,
+or startup fails for a reason outside package freshness. Preserve the profile
+and report rather than weakening catalog integrity.
+
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
-**State:** Ready after DLV-054
-**Baseline:** closing commit of DLV-054
+**State:** Ready after DLV-055
+**Baseline:** closing commit of DLV-055
 **Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
