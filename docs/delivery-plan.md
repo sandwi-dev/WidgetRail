@@ -738,23 +738,15 @@ route/action, playback, and presentation boundaries while retaining one
   each launch, and adds bounded favorites plus explicit preferred-variant
   groups. DLV-067 `ddf7626` is accepted and integrated through `3d8f486`:
   evidence-backed launch states now gate overlay close without exposing process
-  identity, and retained per-game results are bounded. DLV-075 candidate
-  `9e754f0` is rejected pending DLV-079: its host-owned text-entry modal retains
-  snapshot/node references and action authority across a nested message loop.
-  DLV-076 candidate `79848f6` is rejected pending DLV-080 because Recent: First
-  reorders only the current provider page. DLV-077 candidate `f4745ad` is also
-  rejected pending DLV-080 because it injects resolved manual rows into the
-  provider cursor result and can exceed the resource's requested page size.
-  DLV-079 `d702d37` is accepted but held with that unintegrated prefix: native
-  text entry now copies bounded request values across the modal loop and freshly
-  revalidates the complete current action authority before send, while work-area
-  geometry and spatial controller navigation satisfy the assigned host gate.
-  DLV-080 candidate `2e38f00` correctly separates bounded recent/manual slices
-  from provider cursor pages, but is rejected pending DLV-081 because a launch
-  recorded while Recent: First is already active moves the still-current catalog
-  row into Recent as display-only and disables it until reload. DLV-081 is
-  Assigned as the narrow final managed correction before integration. DLV-038
-  remains deferred test-architecture debt rather than filler work.
+  identity, and retained per-game results are bounded. The complete
+  DLV-075/DLV-076/DLV-077 correction prefix is accepted and integrated through
+  `d116f0d`: DLV-079 `d702d37` revalidates bounded host-owned text-entry
+  authority after the nested modal loop, DLV-080 `2e38f00` composes bounded
+  recent/manual sections outside provider cursor pages, and DLV-081 `b2596e1`
+  preserves current launch authority during immediate Recent: First promotion.
+  Game Launcher search/filter, complete-library recent ordering, and trusted
+  manual entries are now available on main. DLV-038 remains deferred test-
+  architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3387,7 +3379,8 @@ worker 6/6, and 55 documentation contracts. Integrated as `3d8f486`.
 
 ### DLV-075 — Add controller-first Game Launcher search and filters
 
-**State:** Candidate `9e754f0` rejected; retain unchanged for DLV-079 correction
+**State:** Done; candidate `9e754f0` corrected by DLV-079 and integrated through
+`d116f0d`
 **Lane:** widgets, acting as serialized cross-lane query/text-entry lead
 **Baseline:** accepted DLV-067 integration `3d8f486` plus the reviewer
 control-plane commit containing this assignment
@@ -3461,7 +3454,8 @@ after DLV-076 without rebasing or rewriting either commit.
 
 ### DLV-076 — Add bounded recent-launch ordering to Game Launcher
 
-**State:** Candidate `79848f6` rejected; retain unchanged for DLV-080 correction
+**State:** Done; candidate `79848f6` corrected by DLV-080/DLV-081 and integrated
+through `d116f0d`
 **Lane:** widgets
 **Baseline:** closing commit of DLV-075
 **Dependencies:** DLV-060, DLV-066, DLV-067, and DLV-075
@@ -3520,7 +3514,7 @@ the full library or weakening exact launch revalidation.
 
 ### DLV-079 — Revalidate and bound host-owned text entry
 
-**State:** Done; accepted as `d702d37`, held for contiguous DLV-080 correction
+**State:** Done; accepted as `d702d37`, integrated through `d116f0d`
 **Closing commit:** `d702d37` (`[DLV-079] Revalidate and bound host text entry`)
 **Lane:** widgets, acting as serialized cross-lane native correction lead
 **Baseline:** closing commit of DLV-077, retaining DLV-075 candidate `9e754f0`
@@ -3599,12 +3593,11 @@ geometric Left/Right/Up/Down navigation reaches the keyboard and action row
 without linear wrap. Retained focused evidence passes the direct modal/admission
 fixture, native bridge text-entry parser, production OverlayHost Release build,
 and documentation across 55 files. No aggregate or screenshot work ran. The
-commit remains unintegrated only because DLV-080 must close the rejected
-DLV-076/DLV-077 managed prefix immediately after it.
+commit is integrated with the corrected managed prefix through `d116f0d`.
 
 ### DLV-080 — Make recent-first ordering complete-library correct
 
-**State:** Candidate `2e38f00` rejected; retain unchanged for DLV-081 correction
+**State:** Done; accepted with DLV-081 correction and integrated through `d116f0d`
 **Closing commit:** `2e38f00` (`[DLV-080] Compose bounded recent and manual slices`)
 **Lane:** widgets
 **Baseline:** closing commit of DLV-079, retaining DLV-076 candidate `79848f6`
@@ -3676,7 +3669,7 @@ No provider/native/aggregate/screenshot/physical-game run.
 unbounded catalog load, recent rows cannot remain non-authorizing until exact
 current resolve, or DLV-077 establishes an incompatible private-state owner.
 
-**Reviewer disposition:** Rejected pending DLV-081. The candidate correctly
+**Reviewer disposition:** Accepted with DLV-081. The candidate correctly
 returns only the provider's at-most-64 rows to `WidgetCursorResource`, resolves
 at most 32 recent plus 32 manual SavedIds into separate fixed slices, composes
 and deduplicates those sections outside cursor-anchor accounting, removes
@@ -3689,13 +3682,15 @@ organization without reloading `_fixedRows`. Presentation then moves that ID
 ahead of the catalog, but `PresentedRowFor` searches only `_fixedRows` for a
 current item and falls back to stored display projection even though the exact
 same SavedId is still current in `snapshot.Items`. The tile becomes disabled
-until another query reload. Preserve `2e38f00`; DLV-081 must let the fixed
-section reuse the exact current provider-page item before falling back to stored
-display state, without changing page accounting or persistence.
+until another query reload. DLV-081 `b2596e1` lets the fixed section reuse the
+exact current provider-page item before falling back to stored display state,
+without changing page accounting or persistence. The corrected prefix is
+integrated through `d116f0d`.
 
 ### DLV-081 — Preserve current authority during immediate recent promotion
 
-**State:** Assigned; execute immediately after DLV-080 and before integration
+**State:** Done; accepted as `b2596e1`, integrated through `d116f0d`
+**Closing commit:** `b2596e1` (`[DLV-081] Preserve live recent launch authority`)
 **Lane:** widgets
 **Baseline:** closing candidate `2e38f00`, retaining the complete
 DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix unchanged
@@ -3741,9 +3736,20 @@ physical-game run unless production scope unexpectedly expands.
 SavedId without changing cursor/resource authority or the correction requires
 another committed-state owner.
 
+**Reviewer disposition:** Accepted. Presentation now resolves a promoted fixed
+identity from the exact current provider page before the separately resolved
+fixed slice and stored display fallback. Immediate Recent: First promotion keeps
+the current display, source, artwork, enabled state, and one exact identity
+without a provider reload; a second activation performs a second exact
+ResolveSaved launch. When promotion removes the prior cursor anchor, the first
+remaining current catalog item becomes the bounded anchor. The focused Game
+Launcher Release suite passes 36/36. No provider, broker, SDK, native,
+documentation, installed-worker, screenshot, or aggregate work ran.
+
 ### DLV-077 — Add explicit manual entries to Game Launcher
 
-**State:** Candidate `f4745ad` rejected; retain unchanged for DLV-080 correction
+**State:** Done; candidate `f4745ad` corrected by DLV-080/DLV-081 and integrated
+through `d116f0d`
 **Closing commit:** `f4745ad` (`[DLV-077] Add trusted manual Game Launcher entries`)
 **Lane:** widgets
 **Baseline:** closing commit of DLV-076
@@ -4024,27 +4030,25 @@ planner will not manufacture internal filler. The 2026-08-11 accepted-main
 Release build produced a narrower deterministic switch failure before reaching
 the blocked resize/compositor question: worker startup replaced the prior
 admitted content with a transient surface. DLV-078 owns that presentation-
-ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/DLV-080
-prefix releases the shared native input/build boundary. The platform lane
-remains idle until then.
+ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/
+DLV-080/DLV-081 prefix released the shared native input/build boundary through
+`d116f0d`. DLV-078 is now Assigned as the top visible platform correction.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Blocked by active DLV-081 correction ownership; assign to platform
-after the corrected DLV-075/DLV-076/DLV-077/DLV-079/DLV-080/DLV-081 prefix is
-accepted
+**State:** Assigned; execute on accepted integration `d116f0d`
 **Lane:** platform
-**Baseline:** accepted DLV-080 integration plus the reviewer control-plane commit
-that changes this item to Assigned
-**Dependencies:** DLV-020 and accepted DLV-080; independent of blocked DLV-025
+**Baseline:** accepted DLV-075 through DLV-081 integration `d116f0d` plus the
+reviewer control-plane commit that records this assignment
+**Dependencies:** DLV-020 and accepted DLV-081; independent of blocked DLV-025
 **Owner:** OverlayHost widget-switch presentation admission/retention ordering,
 the existing deterministic production-host fixture, and directly affected
 diagnostics/docs; no compositor or widget feature ownership
-**Concurrency:** After DLV-080 releases the retained prefix, no widget assignment
+**Concurrency:** After DLV-081 releases the retained prefix, no widget assignment
 may touch OverlayHost, WidgetBridgeClient, transition fixtures, native build
 manifests, or switch diagnostics while this runs. Do not start before the
-planner accepts the DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix and assigns
-this item.
+planner accepts the DLV-075/DLV-076/DLV-077/DLV-079/DLV-080/DLV-081 prefix and
+assigns this item.
 
 **Visible outcome:** Cycling to a cold isolated widget keeps the last admitted
 widget content and host chrome painted until the destination's first valid

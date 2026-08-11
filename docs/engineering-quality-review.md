@@ -1746,8 +1746,8 @@ polling regions of `main.cpp`; reduced line count alone is not closure.
 
 ### EQ-031 — P1 — Text-entry commit retains stale native authority across a nested loop
 
-**Status: Closed by accepted DLV-079 commit `d702d37`; held for contiguous
-integration after DLV-080.**
+**Status: Closed by accepted DLV-079 commit `d702d37`, integrated through
+`d116f0d`.**
 
 **Evidence.** DLV-075's `OverlayApp::OpenTextEntryModal` resolves a
 `WidgetNode` through a `const WidgetSnapshot&` stored in `widgetSnapshots_`,
@@ -1801,13 +1801,12 @@ inside the active monitor work area, exposes all edit/key/action controls throug
 native UI Automation providers, and uses spatial non-wrapping directional
 selection across keyboard and action rows. The direct modal/admission fixture,
 native bridge parser, production OverlayHost Release build, and 55 documentation
-contracts pass. The commit is accepted but remains unintegrated only to preserve
-the rejected managed prefix for DLV-080's immediate correction.
+contracts pass. The corrected prefix is integrated through `d116f0d`.
 
 ### EQ-032 — P1 — Launcher retained organization violates catalog-page composition
 
-**Status: DLV-080 candidate `2e38f00` closes bounded page/fixed-slice ownership;
-assigned DLV-081 closes immediate current-row promotion before integration.**
+**Status: Closed by DLV-080 `2e38f00` plus DLV-081 `b2596e1`, integrated
+through `d116f0d`.**
 
 **Evidence.** DLV-076 correctly persists at most 32 recent opaque SavedIds and
 uses that exact set for the provider-backed Recent: Only filter. In Recent:
@@ -1859,7 +1858,11 @@ promotes the current-page ID, fails to consult that same current provider item,
 and falls back to stored display projection, which disables the tile until a
 query reload. DLV-081 must use the exact current page item first while preserving
 the resolved-fixed then display-only fallback once the item is no longer
-retained.
+retained. DLV-081 `b2596e1` implements that ordering, preserves current
+display/source/artwork and enabled state without reloading, deduplicates the
+promoted identity, selects a remaining current catalog anchor, and revalidates
+the second launch by exact SavedId. The focused Game Launcher suite passes
+36/36; the corrected prefix is integrated through `d116f0d`.
 
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 
