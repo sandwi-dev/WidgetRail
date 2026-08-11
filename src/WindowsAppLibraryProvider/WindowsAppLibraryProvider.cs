@@ -11,15 +11,20 @@ namespace GameBarAlternative.WindowsAppLibraryProvider;
 /// Launch resolves a provider-owned opaque ID and exactly revalidates its
 /// trusted registration before invoking the corresponding Windows launcher.
 /// </summary>
-public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
+public sealed class WindowsAppLibraryProvider :
+    IAppLibraryPlatformBrokerBackend,
+    IAsyncDisposable
 {
     internal const int MaximumApps = 512;
     internal const int MaximumDisplayNameLength = 120;
+    private static readonly TimeSpan TerminalDrainDeadline = TimeSpan.FromSeconds(5);
 
     private readonly IReadOnlyList<IGameLibrarySource> _sources;
     private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly object _lifetimeGate = new();
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly object _stateGate = new();
     private readonly Dictionary<string, string> _opaqueIdsByIdentity =
         new(StringComparer.OrdinalIgnoreCase);
@@ -28,6 +33,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _iconsByRevalidationKey =
         new(StringComparer.Ordinal);
+    private TaskCompletionSource? _terminalCompletion;
 
     public WindowsAppLibraryProvider() : this(
         new WindowsStartMenuApplicationSource(),
@@ -122,6 +128,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     public async Task<IReadOnlyList<WindowsAppLibraryItem>> GetAppsAsync(
         CancellationToken cancellationToken = default)
     {
+        ThrowIfTerminating();
         lock (_stateGate)
         {
             if (_snapshot is not null) return _snapshot;
@@ -150,6 +157,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 
     private IReadOnlyList<AppLibraryBackendItemSummary> ProjectCurrentForBroker()
     {
+        ThrowIfTerminating();
         lock (_stateGate)
         {
             if (_snapshot is null)
@@ -184,10 +192,11 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
     public async Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken)
     {
+        ThrowIfTerminating();
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             throw AppUnavailable();
 
-        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             GameLibrarySourceItem? registered;
@@ -206,7 +215,8 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                     if (exact is null || !IsStructurallyValid(exact)) throw AppUnavailable();
                     source.Launch(exact, token);
                     return true;
-                }, cancellationToken).ConfigureAwait(false);
+                }, operation.Token).ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -232,17 +242,18 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         }
         finally
         {
-            _scanGate.Release();
+            operation.Release(_scanGate);
         }
     }
 
     public async Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
         string appId, CancellationToken cancellationToken)
     {
+        ThrowIfTerminating();
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             return new AppLibraryIconSummary(null);
 
-        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             GameLibrarySourceItem? registration;
@@ -266,25 +277,28 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                     var exact = source.ResolveExact(registration, token);
                     return exact is null ? null : source.LoadArtwork(exact, token);
                 },
-                cancellationToken).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
+                operation.Token).ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
             if (png is not null)
             {
                 lock (_stateGate)
+                {
+                    operation.Token.ThrowIfCancellationRequested();
                     _iconsByRevalidationKey[registration.ArtworkRevision] = png;
+                }
             }
             return new AppLibraryIconSummary(png);
         }
         finally
         {
-            _scanGate.Release();
+            operation.Release(_scanGate);
         }
     }
 
     private async Task<IReadOnlyList<WindowsAppLibraryItem>> ScanAsync(
         bool force, CancellationToken cancellationToken)
     {
-        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!force)
@@ -297,8 +311,8 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 
             var snapshots = await _shellSta.RunAsync(
                 token => _sources.Select(source => source.Refresh(token)).ToArray(),
-                cancellationToken).ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
+                operation.Token).ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
             var registrations = snapshots
                 .SelectMany(snapshot => snapshot.Items)
                 .ToArray();
@@ -306,7 +320,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
         }
         finally
         {
-            _scanGate.Release();
+            operation.Release(_scanGate);
         }
     }
 
@@ -334,6 +348,7 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 
         lock (_stateGate)
         {
+            ThrowIfTerminating();
             if (clearIcons) _iconsByRevalidationKey.Clear();
             var liveIdentities = candidates
                 .Select(candidate => candidate.Registration.StableIdentity)
@@ -393,6 +408,139 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
 
     private static BrokerException AppUnavailable() =>
         new("app_not_found", "The selected app is no longer available.");
+
+    private async Task<ProviderOperation> EnterOperationAsync(
+        CancellationToken cancellationToken)
+    {
+        CancellationTokenSource linked;
+        lock (_lifetimeGate)
+        {
+            ThrowIfTerminatingLocked();
+            linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _lifetime.Token);
+        }
+
+        try
+        {
+            await _scanGate.WaitAsync(linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            return new ProviderOperation(linked);
+        }
+        catch
+        {
+            linked.Dispose();
+            throw;
+        }
+    }
+
+    private void ThrowIfTerminating()
+    {
+        lock (_lifetimeGate) ThrowIfTerminatingLocked();
+    }
+
+    private void ThrowIfTerminatingLocked() =>
+        ObjectDisposedException.ThrowIf(_terminalCompletion is not null, this);
+
+    public ValueTask DisposeAsync()
+    {
+        TaskCompletionSource completion;
+        var startsTerminalWork = false;
+        lock (_lifetimeGate)
+        {
+            if (_terminalCompletion is null)
+            {
+                _terminalCompletion = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                startsTerminalWork = true;
+            }
+            completion = _terminalCompletion;
+        }
+
+        if (startsTerminalWork)
+        {
+            _lifetime.Cancel();
+            _ = CompleteDisposalAsync(completion);
+        }
+        return new ValueTask(completion.Task);
+    }
+
+    private async Task CompleteDisposalAsync(TaskCompletionSource completion)
+    {
+        var failures = new List<Exception>();
+        var gateHeld = false;
+        try
+        {
+            var disposals = _sources
+                .Select(source => Task.Run(() => DisposeSource(source)))
+                .ToArray();
+
+            try
+            {
+                await _scanGate.WaitAsync().WaitAsync(TerminalDrainDeadline)
+                    .ConfigureAwait(false);
+                gateHeld = true;
+            }
+            catch (TimeoutException exception)
+            {
+                failures.Add(new InvalidOperationException(
+                    "Game-library provider work did not drain within its bounded deadline.",
+                    exception));
+            }
+
+            var results = await Task.WhenAll(disposals).ConfigureAwait(false);
+            failures.AddRange(results.OfType<Exception>());
+
+            lock (_stateGate)
+            {
+                _snapshot = null;
+                _registrationsByOpaqueId = new(StringComparer.Ordinal);
+                _opaqueIdsByIdentity.Clear();
+                _iconsByRevalidationKey.Clear();
+            }
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+        finally
+        {
+            if (gateHeld) _scanGate.Release();
+            _lifetime.Dispose();
+        }
+
+        if (failures.Count == 0)
+            completion.TrySetResult();
+        else
+            completion.TrySetException(new AggregateException(
+                "One or more game-library sources failed bounded terminal cleanup.",
+                failures));
+    }
+
+    private static Exception? DisposeSource(IGameLibrarySource source)
+    {
+        try
+        {
+            source.Dispose();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+    }
+
+    private sealed class ProviderOperation(CancellationTokenSource cancellation) : IDisposable
+    {
+        private int _gateHeld = 1;
+        internal CancellationToken Token => cancellation.Token;
+
+        internal void Release(SemaphoreSlim gate)
+        {
+            if (Interlocked.Exchange(ref _gateHeld, 0) != 0) gate.Release();
+        }
+
+        public void Dispose() => cancellation.Dispose();
+    }
 
     private sealed class EmptyAppsFolderApplicationSource : IAppsFolderApplicationSource
     {

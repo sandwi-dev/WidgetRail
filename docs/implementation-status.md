@@ -1425,10 +1425,17 @@ deactivation cannot race an already-disposed source. The focused suite covers
 cancellation during retry, and the real generic-worker/AppContainer path passed
 three consecutive lifecycle conformance runs.
 
-DLV-059 replaces the provider root's Start Menu/AppsFolder/Steam discovery,
+DLV-059, corrected by DLV-071, replaces the provider root's Start
+Menu/AppsFolder/Steam discovery,
 launch, and artwork switches with two ordinary implementations of one private
 normalized source contract. The 475-line authoritative owner keeps the sole
-scan gate, immutable merged snapshot, opaque public-ID map, and icon cache. A
+scan gate, immutable merged snapshot, opaque public-ID map, icon cache, and
+terminal lifetime. That lifetime is linked into every admitted source/Shell
+operation; composite broker shutdown cancels it, joins the scan gate's bounded
+cooperative publication drain (or reports its bounded timeout), disposes every
+source exactly once, clears retained
+authority/artwork, and publishes one shared terminal result to concurrent or
+repeated disposers. A
 564-line source-policy file owns the shared bounded generation/disposal policy
 plus the Windows-installed and Steam adapters; each adapter alone knows its raw
 resolution and launch authority. Cross-boundary mutable knowledge is limited to
@@ -1437,8 +1444,11 @@ sanitized attribution, kind, installed/available state, supported actions,
 artwork revision, health, and source version. Direct fixtures prove exact
 source-owned resolve/launch, duplicate-name separation, last-good failure
 isolation, a late generation losing to the current snapshot, and cancellation-
-driven terminal drain. The focused Release suite passes 36/36 without broker,
-widget, native, aggregate, or physical launch verification.
+driven terminal drain. The corrected focused Release suite passes 41/41,
+including production composite disposal, active cooperative cancellation,
+cancellation-ignoring late completion, bounded uncooperative failure, all-source
+cleanup after one failure, post-terminal rejection, and concurrent idempotent
+disposal. No widget, native, aggregate, or physical launch verification ran.
 
 The trusted `WindowsAppLibraryProvider` lazily merges the bounded current-user/
 all-user Start Menu Programs roots, the current user's Shell AppsFolder, and

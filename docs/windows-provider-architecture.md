@@ -396,7 +396,18 @@ held behind source-private opaque record identities, so the authoritative
 library can merge, cache, and route an exact operation without learning a path,
 AUMID, Steam AppId, or source-specific launch rule. Each source retains its own
 last-good snapshot when it reports an isolated failure, rejects a late refresh
-generation, and cancels/drains admitted work at terminal disposal.
+generation, and cancels/drains admitted work at terminal disposal. The
+`WindowsAppLibraryProvider` is the exact terminal owner for both sources: its
+single lifetime cancellation is linked into scan, resolve, launch, and artwork
+operations, and the existing scan gate is also the publication-drain boundary.
+Composite broker shutdown reaches that terminal path, waits within the bounded
+deadline for cooperative publication drain, disposes every
+distinct source exactly once even when another reports a bounded drain failure,
+and clears cached authority and artwork only after terminal publication has
+been closed. An uncooperative operation yields a bounded terminal failure and
+cannot publish if it later completes. Repeated disposal joins the same outcome;
+calls admitted after the terminal transition fail before Shell or source work
+begins.
 
 AppsFolder enumeration runs on one process-wide bounded STA queue, visits at
 most 2,048 Shell items, and retains only sanitized display text plus a strict
