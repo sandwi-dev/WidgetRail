@@ -646,8 +646,11 @@ placement is accepted through DLV-068.
 `0b21384`, restores one authoritative OverlayHost across ordinary and `--show`
 launches. Accepted DLV-068 `b83b3f7`, integrated through `9e795ac`, adds one
 controller/pointer/UIA move-resize state machine with atomic monitor-safe
-placement. Assigned DLV-069 completes input/focus/UIA and emergency-hide
-composition; DLV-062 then runs the fixed-video trusted-media feasibility gate.
+placement. DLV-069 candidate `ea2691c` adds input/focus/UIA and emergency-hide
+composition but is rejected because Click-through covers the pinned widget with
+an opaque placeholder. Assigned DLV-073 restores persistent visible content
+while keeping Click-through input and UIA inert; DLV-062 then runs the fixed-
+video trusted-media feasibility gate.
 YouTube URL/video-ID v1 is not authorized until those remaining gates are
 accepted.
 
