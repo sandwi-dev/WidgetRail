@@ -78,6 +78,10 @@ guarantees that are available now.
   auto-curation with durable exclusions, opt-in Applications/Unknown entries,
   stable opaque identity reconciliation, paged SDK, separately consented exact
   launch, controller UX, and current source/icon/classification limits.
+- [Game Launcher reference](game-launcher.md) — complete installed-only game
+  library over bounded opaque cursors, responsive virtualized grid semantics,
+  lazy artwork, favorites, explicit preferred-variant groups, display-only warm
+  state, and fresh exact launch admission.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.

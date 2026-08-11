@@ -347,7 +347,7 @@ field const int GameBarAlternative.WidgetSdk.WidgetCommunityPlatformLimits.Maxim
 field const int GameBarAlternative.WidgetSdk.WidgetCommunityPlatformLimits.MaximumPrivateStateInputUtf8Bytes = 262144
 field const int GameBarAlternative.WidgetSdk.WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes = 65536
 field const int GameBarAlternative.WidgetSdk.WidgetCommunityPlatformLimits.MinimumLoopbackPort = 1024
-field const int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.MaximumCursorHistory = 128
+field const int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.MaximumCursorHistory = 256
 field const int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.MaximumPageSize = 100
 field const int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.MaximumRetainedItems = 256
 field const int GameBarAlternative.WidgetSdk.WidgetNavigator<TRoute>.DefaultMaximumDepth = 8

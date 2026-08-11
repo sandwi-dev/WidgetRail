@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using GameBarAlternative.FirstPartyWidgets.AudioMixer;
 using GameBarAlternative.FirstPartyWidgets.GamesApps;
+using GameBarAlternative.FirstPartyWidgets.GameLauncher;
 using GameBarAlternative.FirstPartyWidgets.MediaSessions;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
 using GameBarAlternative.FirstPartyWidgets.Settings;
@@ -110,7 +111,7 @@ static async Task BundledCatalogUsesManifests()
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
     var catalog = BridgeCatalog.Load(deployment.BundledCatalogPath);
     Assert.SequenceEqual(
-        new[] { "media-sessions", "games-apps", "audio-mixer", "network-controls", "spotify" },
+        new[] { "media-sessions", "games-apps", "game-launcher", "audio-mixer", "network-controls", "spotify" },
         catalog.Widgets.Select(widget => widget.Id));
 
     foreach (var package in deployment.Packages)
@@ -217,7 +218,7 @@ static async Task InstalledPackagesMerge()
         deployment.WorkerHostPath);
     Assert.True(load.InstalledCatalogValid, "Installed first-party catalog was rejected.");
     Assert.Equal(0, load.Warnings.Count);
-    Assert.Equal(6, load.Catalog.Widgets.Count);
+    Assert.Equal(7, load.Catalog.Widgets.Count);
     var installedSnapshot = await new WidgetCatalog(deployment.InstalledCatalogRoot)
         .DiscoverAsync();
 
@@ -1412,7 +1413,9 @@ static async Task RunCatalogAsync(
         {
             var configured = catalog.GetConfigured(widgetId(package));
             var backend = CreateBackend(
-                spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify");
+                spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify",
+                gameLibraryCount: package.Manifest.Id == "org.gbar.firstparty.game-launcher"
+                    ? 10_000 : 2);
             using var consentRoot = new TemporaryDirectory("gba-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
             var identity = new BrokerWidgetIdentity(
@@ -1501,6 +1504,7 @@ static async Task ExerciseControlAsync(
     }
 
     string actionId;
+    ViewNode? explicitSource = null;
     Func<int> calls;
     switch (package.Manifest.Id)
     {
@@ -1529,6 +1533,26 @@ static async Task ExerciseControlAsync(
             actionId = "games.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;
+        case "org.gbar.firstparty.game-launcher":
+            Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
+                node.ActionId == "game-launcher.launch"));
+            Assert.True(Nodes(snapshot.Root).Count() < 1_024,
+                "Game Launcher serialized an unbounded semantic tree.");
+            Assert.True(Nodes(snapshot.Root).Any(node => node.ArtworkHandle is not null),
+                "Game Launcher did not project lazy opaque artwork handles.");
+            var nextPage = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.next");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.next", nextPage.Id));
+            snapshot = await WaitForSnapshotAsync(client, "Conformance Game 00064");
+            explicitSource = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.launch" &&
+                (node.AccessibilityLabel ?? string.Empty).Contains(
+                    "Conformance Game 00064", StringComparison.Ordinal));
+            Assert.Equal(explicitSource.Id, snapshot.InitialFocusId);
+            actionId = "game-launcher.launch";
+            calls = () => backend.AppLibraryLaunchCalls;
+            break;
         case "org.gbar.firstparty.media-sessions":
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;
@@ -1542,7 +1566,7 @@ static async Task ExerciseControlAsync(
                 $"No conformance control is defined for {package.Manifest.Id}.");
     }
 
-    var source = Nodes(snapshot.Root).FirstOrDefault(node =>
+    var source = explicitSource ?? Nodes(snapshot.Root).FirstOrDefault(node =>
         string.Equals(node.ActionId, actionId, StringComparison.Ordinal));
     Assert.True(source is not null,
         $"{package.Manifest.Name} {route} snapshot omitted action '{actionId}'.");
@@ -1700,7 +1724,9 @@ static async Task ExerciseAudioDashboardControlsAsync(
     }
 }
 
-static SimulatedPlatformBrokerBackend CreateBackend(bool spotifyReady = false)
+static SimulatedPlatformBrokerBackend CreateBackend(
+    bool spotifyReady = false,
+    int gameLibraryCount = 2)
 {
     var backend = new SimulatedPlatformBrokerBackend
     {
@@ -1758,13 +1784,24 @@ static SimulatedPlatformBrokerBackend CreateBackend(bool spotifyReady = false)
         new AudioDeviceSummary("output-one", "Conformance Speakers", AudioDeviceDirection.Output, true),
         new AudioDeviceSummary("input-one", "Conformance Microphone", AudioDeviceDirection.Input, true),
     ]);
-    backend.SetAppLibrary(
-    [
-        new AppLibraryItemSummary(
-            "game-conformance", "Conformance Trusted Game", AppLibraryKind.Game),
-        new AppLibraryItemSummary(
-            "app-conformance", "Conformance Library App", AppLibraryKind.Application),
-    ]);
+    if (gameLibraryCount > 2)
+    {
+        backend.SetAppLibraryBackend(Enumerable.Range(0, gameLibraryCount).Select(index =>
+            new AppLibraryBackendItemSummary(
+                $"game-{index:D5}", $"stable-game-{index:D5}",
+                $"Conformance Game {index:D5}", AppLibraryKind.Game,
+                ArtworkRevision: $"art-{index:D5}", SourceAttribution: "Steam")));
+    }
+    else
+    {
+        backend.SetAppLibrary(
+        [
+            new AppLibraryItemSummary(
+                "game-conformance", "Conformance Trusted Game", AppLibraryKind.Game),
+            new AppLibraryItemSummary(
+                "app-conformance", "Conformance Library App", AppLibraryKind.Application),
+        ]);
+    }
     backend.SetAvailableWifiNetworks(
     [
         new AvailableWifiNetworkSummary(
@@ -1930,6 +1967,8 @@ file sealed class Deployment : IDisposable
                     typeof(MediaSessionsWidget), "Conformance Song"),
                 new PackageSpec("games-apps", "src/FirstPartyWidgets/GamesAppsWidget", "GamesApps", WidgetGlyph.Play,
                     typeof(GamesAppsWidget), "Conformance Trusted Game"),
+                new PackageSpec("game-launcher", "src/FirstPartyWidgets/GameLauncherWidget", "GameLauncher", WidgetGlyph.Play,
+                    typeof(GameLauncherWidget), "Conformance Game 00000"),
                 new PackageSpec("audio-mixer", "src/FirstPartyWidgets/AudioMixerWidget", "AudioMixer", WidgetGlyph.Volume,
                     typeof(AudioMixerWidget), "Conformance Game"),
                 new PackageSpec("network-controls", "src/FirstPartyWidgets/NetworkControlsWidget", "NetworkControls", WidgetGlyph.Wifi,

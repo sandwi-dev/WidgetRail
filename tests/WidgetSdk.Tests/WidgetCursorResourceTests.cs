@@ -140,21 +140,26 @@ internal static class WidgetCursorResourceTests
 
     private static async Task TraverseWithinBound(int total)
     {
-        var widget = await StartAsync(Options(total));
+        const int pageSize = 64;
+        const int retainedItems = 192;
+        var widget = await StartAsync(Options(total,
+            pageSize: pageSize, maximumRetainedItems: retainedItems));
         Equal(WidgetOperationStatus.Succeeded,
             (await widget.Resource.EnsureLoaded().Completion).Status);
-        for (var page = 1; page < total / 100; page++)
+        var pageCount = (total + pageSize - 1) / pageSize;
+        for (var page = 1; page < pageCount; page++)
         {
             Equal(WidgetOperationStatus.Succeeded,
                 (await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion).Status);
-            True(widget.Resource.RetainedItemCount <= 200,
-                "A 10,000-item provider escaped the 200-item retained window.");
+            True(widget.Resource.RetainedItemCount <= retainedItems,
+                "A 10,000-item provider escaped the retained window.");
             True(widget.Render().CreateSnapshot("cursor.fixture", page).Root.Children
-                    .SelectMany(Flatten).Count() <= 203,
+                    .SelectMany(Flatten).Count() <= retainedItems + 3,
                 "A 10,000-item provider serialized an unbounded snapshot.");
         }
-        Equal($"item.{total - 200}", widget.Resource.Snapshot.Items[0].Id);
-        Equal($"focus.item.{total - 100}", widget.Resource.Snapshot.RequestedFocusId);
+        Equal($"item.{total - 1}", widget.Resource.Snapshot.Items[^1].Id);
+        Equal($"focus.item.{total - (total % pageSize == 0 ? pageSize : total % pageSize)}",
+            widget.Resource.Snapshot.RequestedFocusId);
         True(widget.Resource.RetainedCursorCount <= WidgetCursorResource<Item>.MaximumCursorHistory,
             "Cursor history exceeded its explicit bound.");
         await StopAsync(widget);
@@ -381,7 +386,9 @@ internal static class WidgetCursorResourceTests
             },
         });
         await widget.Resource.EnsureLoaded().Completion;
-        for (var index = 1; index <= 127; index++)
+        for (var index = 1;
+             index < WidgetCursorResource<Item>.MaximumCursorHistory;
+             index++)
             Equal(WidgetOperationStatus.Succeeded,
                 (await widget.Resource.Move(
                     WidgetCursorDirection.After, "items.list").Completion).Status);
@@ -446,10 +453,12 @@ internal static class WidgetCursorResourceTests
     private static WidgetCursorResourceOptions<Item> Options(int total,
         Func<IReadOnlyList<Item>, IReadOnlyList<Item>>? transform = null,
         Func<WidgetCollectionCursor?, WidgetCursorDirection?, int, CancellationToken,
-            ValueTask<WidgetCursorPage<Item>>>? @async = null) => new()
+            ValueTask<WidgetCursorPage<Item>>>? @async = null,
+        int pageSize = 100,
+        int maximumRetainedItems = 200) => new()
     {
-        PageSize = 100,
-        MaximumRetainedItems = 200,
+        PageSize = pageSize,
+        MaximumRetainedItems = maximumRetainedItems,
         Viewports = [Viewport()],
         MapError = _ => WidgetResourceError.InvalidPage,
         LoadPage = @async ?? DefaultLoader(total, transform),

@@ -248,7 +248,7 @@ For continuous feeds, use `WidgetCursorResource<TItem>` with typed
 anchor; adjacent pages append/prepend, whole segments evict from the opposite
 edge, and refresh follows the segment containing the anchor. Page size is
 1–100, retention is at least two pages and at most 256 items, and cursor
-history is capped at 128. Duplicate keys, cursor loops, stale completions, and
+history is capped at 256. Duplicate keys, cursor loops, stale completions, and
 malformed pages fail without partial publication.
 
 Protocol v14 also supplies `WidgetArtworkHandle`, `UI.Artwork`, and

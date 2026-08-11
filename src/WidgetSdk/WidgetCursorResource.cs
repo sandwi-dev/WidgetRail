@@ -51,7 +51,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
 {
     public const int MaximumPageSize = 100;
     public const int MaximumRetainedItems = 256;
-    public const int MaximumCursorHistory = 128;
+    public const int MaximumCursorHistory = 256;
 
     private sealed record Intent(
         WidgetCollectionCursor? Cursor,
