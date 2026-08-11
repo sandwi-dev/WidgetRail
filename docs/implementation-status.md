@@ -1738,6 +1738,22 @@ themes also use non-shrinking fixed regions, a thin native Slider
  authored, so boundary, busy, repeated, and replaced input cannot create an
  additional page transition; fixed sections remain outside cursor accounting.
  Single-page tiles retain their existing variant-group and preference shortcuts.
+ DLV-084 advances Game Launcher private organization to schema v5 and adds a
+ bounded exact-SavedId hide/restore policy. Y hides only a current resolved game;
+ the Hidden route retains at most 32 sanitized display rows and never carries
+ launch authority. Restore removes one exclusion while bounded CAS replay
+ preserves unrelated favorites, groups, recent order, and manual membership.
+ Missing rows remain display-only, same-title replacement identities stay
+ independent, and incompatible development schemas reset as a whole. The
+ 128-row/96-character display projection remains below the 64 KiB private-state
+ limit at its proven worst case. Focused Release coverage passes Game Launcher
+ 42/42 and the documentation contract across 55 Markdown files. The retained
+ installed-worker run at
+ `artifacts/verification/20260811T170031Z-c45cff26` passes 5/6: after the new
+ Hide/Restore route returns to Library, the fixture still observes the saved
+ rows as unavailable after the visible reload control. That installed
+ transition remains explicit verification debt for planner disposition; it is
+ not reported as a passing AppContainer acceptance result.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

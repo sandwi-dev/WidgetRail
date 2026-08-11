@@ -1599,6 +1599,42 @@ static async Task ExerciseControlAsync(
             Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
                 node.ActionId == "game-launcher.launch" &&
                 node.CollectionItemKey is not null));
+            var hide = Nodes(snapshot.Root).First(node =>
+                node.ActionId == "game-launcher.launch" &&
+                (node.AccessibilityLabel ?? string.Empty).Contains(
+                    "Conformance Game 00000", StringComparison.Ordinal));
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.hide", hide.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.hidden.open", "Hidden (1)");
+            var openHidden = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.hidden.open");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.hidden.open", openHidden.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.restore", "Conformance Game 00000");
+            var restore = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.restore");
+            Assert.True(restore.IsDisabled is not true,
+                "The current installed hidden row did not expose Restore.");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.restore", restore.Id));
+            snapshot = await WaitForNodeTextSnapshotAsync(
+                client, "game-launcher.status", "No hidden games");
+            var hiddenBack = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.hidden.back" &&
+                node.Id == "game-launcher.hidden.empty.action");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.hidden.back", hiddenBack.Id));
+            snapshot = await WaitForNodeTextSnapshotAsync(
+                client, "game-launcher.title", "Game Launcher");
+            var restoredRefresh = Nodes(snapshot.Root).First(node =>
+                node.ActionId is "game-launcher.refresh" or "game-launcher.retry");
+            await client.SendActionAsync(new WidgetActionEvent(
+                restoredRefresh.ActionId!, restoredRefresh.Id));
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.launch", "Conformance Game 00000",
+                requireEnabled: true);
             var librarySearch = Nodes(snapshot.Root).Single(node =>
                 node.ActionId == "game-launcher.search.commit");
             await client.SendActionAsync(new WidgetActionEvent(
@@ -1945,6 +1981,30 @@ static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
     throw new InvalidOperationException(
         $"Snapshot omitted action '{actionId}' for '{expectedText}'. " +
         $"Latest matching actions: {actionDetails}");
+}
+
+static async Task<ViewSnapshot> WaitForNodeTextSnapshotAsync(
+    WidgetProcessClient client,
+    string nodeId,
+    string expectedText)
+{
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+    ViewSnapshot? latest = null;
+    while (DateTime.UtcNow < deadline)
+    {
+        latest = await client.GetSnapshotAsync();
+        Assert.Equal(0, ViewSnapshotValidator.Validate(latest).Count);
+        if (Nodes(latest.Root).Any(node =>
+                string.Equals(node.Id, nodeId, StringComparison.Ordinal) &&
+                string.Equals(node.Text, expectedText, StringComparison.Ordinal)))
+            return latest;
+        await Task.Delay(40);
+    }
+    var actual = latest is null ? "<no snapshot>" :
+        Nodes(latest.Root).FirstOrDefault(node =>
+            string.Equals(node.Id, nodeId, StringComparison.Ordinal))?.Text ?? "<missing>";
+    throw new InvalidOperationException(
+        $"Snapshot node '{nodeId}' did not reach '{expectedText}'; latest was '{actual}'.");
 }
 
 static async Task WaitUntilAsync(Func<bool> predicate)

@@ -56,8 +56,9 @@ Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
 bytes; the native host requests artwork lazily through the private trusted
 registry and keeps the semantic Play fallback when artwork is absent or stale.
 
-Private schema v4 contains at most 96 sanitized SavedId, display-name, and source
-rows. At most 32 distinct SavedIds may participate in favorites or explicit
+Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
+rows; display names are capped at 96 characters so the worst valid state remains
+below 64 KiB. At most 32 distinct SavedIds may participate in favorites or explicit
 variant groups; there are at most 16 groups and four members per group. It
 contains no AppId, path, command, AUMID, Steam identity, image bytes, or provider
 key. On worker recreation these rows appear immediately as disabled
@@ -89,6 +90,16 @@ independent, and activation still
 requires the same fresh exact-SavedId resolution and short-lived AppId as an
 automatic game.
 
+Y hides the focused current game by its exact opaque SavedId. **Hidden** opens a
+bounded nested route containing at most 32 exclusions, each with an explicit
+**Restore** action. Current rows may show refreshed display and artwork, while a
+missing row keeps only its sanitized display projection; neither kind can launch
+from the Hidden route. Restore removes only that SavedId. Refresh, restart,
+reclassification, and a same-title replacement do not transfer the exclusion,
+and CAS replay preserves unrelated favorites, groups, recent order, and manual
+membership. Invalid schema-v4 or older development state resets atomically rather
+than partially migrating exclusions.
+
 When **Recent: First** is selected, at most 32 retained recent display rows are
 resolved and composed ahead of the manual and provider sections in exact saved
 order. This includes a game launched from a later catalog page after a cold
@@ -98,7 +109,7 @@ the same fixed non-authorizing slice. Search, source, favorites, and display sor
 filter the fixed sections without expanding provider queries or caching the
 complete library.
 
-X toggles the focused current game as a favorite. LB starts an explicit variant
+X toggles the focused current game as a favorite and Y hides it. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating
 the same pair removes the second tile from that group. RB marks a member of an
 existing group as preferred. Recent-first order takes precedence while enabled;
@@ -152,7 +163,8 @@ ignoring old completion, and 2,000- and 10,000-item forward/reverse
 traversal, bounded rows/cursors/snapshot nodes, display-only warm state, fresh
 SavedId revalidation, unavailable launch rejection, retained-window errors,
 lazy artwork semantics, explicit favorite/group/preference mutations, CAS
-conflicts and failures, restart, full source disappearance/reappearance,
+conflicts and failures, bounded hide/restore, non-authorizing missing exclusions,
+replacement independence, restart, full source disappearance/reappearance,
 same-identity refresh, identity replacement, incompatible reset, and
 cancellation-ignoring lifecycle completion. The
 installed generic-worker fixture covers the bundled manifest/catalog route,

@@ -44,9 +44,19 @@ internal static class GameLauncherPresentation
         var header = UI.Stack("game-launcher.header",
                 UI.Text("INSTALLED GAMES", "game-launcher.eyebrow", "Installed games")
                     .Classes("game-launcher-eyebrow"),
-                UI.Text(state.Route == GameLauncherRoute.AddGames ? "Add games" : "Game Launcher",
+                UI.Text(state.Route switch
+                        {
+                            GameLauncherRoute.AddGames => "Add games",
+                            GameLauncherRoute.Hidden => "Hidden games",
+                            _ => "Game Launcher",
+                        },
                         "game-launcher.title",
-                        state.Route == GameLauncherRoute.AddGames ? "Add games" : "Game Launcher")
+                        state.Route switch
+                        {
+                            GameLauncherRoute.AddGames => "Add games",
+                            GameLauncherRoute.Hidden => "Hidden games",
+                            _ => "Game Launcher",
+                        })
                     .Classes("game-launcher-title"),
                 UI.Text(state.Status, "game-launcher.status", state.Status)
                     .Classes("game-launcher-status"))
@@ -54,14 +64,23 @@ internal static class GameLauncherPresentation
         var sourceStatus = SourceStatus(state.Sources, snapshot.Status);
 
         var filterControls = new List<WidgetElement>();
-        if (state.Route == GameLauncherRoute.AddGames)
-            filterControls.Add(UI.Button("Back", "game-launcher.add.back",
-                "game-launcher.add.back").Disabled(!state.Interactive));
+        if (state.Route != GameLauncherRoute.Library)
+            filterControls.Add(UI.Button("Back",
+                state.Route == GameLauncherRoute.AddGames
+                    ? "game-launcher.add.back" : "game-launcher.hidden.back",
+                state.Route == GameLauncherRoute.AddGames
+                    ? "game-launcher.add.back" : "game-launcher.hidden.back")
+                .Disabled(!state.Interactive));
         else
         {
             filterControls.Add(UI.Button("Add games", "game-launcher.add.open",
                     "game-launcher.add.open")
                 .Disabled(!state.Interactive));
+            filterControls.Add(UI.Button(
+                    $"Hidden ({state.Organization.ExcludedSavedIds.Count})",
+                    "game-launcher.hidden.open", "game-launcher.hidden.open")
+                .Disabled(!state.Interactive ||
+                    state.Organization.ExcludedSavedIds.Count == 0));
             filterControls.Add(UI.ToggleButton("Favorites", state.FavoriteFilter,
                     "game-launcher.filter.favorites", "game-launcher.filter.favorites")
                 .Disabled(!state.Interactive ||
@@ -95,9 +114,12 @@ internal static class GameLauncherPresentation
         var queryControls = UI.Stack("game-launcher.query",
             UI.TextEntry(
                     state.Query.SearchText ?? string.Empty,
-                    state.Route == GameLauncherRoute.AddGames
-                        ? "Search trusted installed registrations"
-                        : "Search installed games",
+                    state.Route switch
+                    {
+                        GameLauncherRoute.AddGames => "Search trusted installed registrations",
+                        GameLauncherRoute.Hidden => "Search hidden games",
+                        _ => "Search installed games",
+                    },
                     "game-launcher.search.commit",
                     "game-launcher.search",
                     WidgetAppLibraryQuery.MaximumSearchTextLength)
@@ -137,7 +159,55 @@ internal static class GameLauncherPresentation
                 .Classes("game-launcher-content");
             initialFocus ??= GameLauncherIdentity.FocusId("add", snapshot.Items[0].Key);
         }
-        else if (snapshot.Items.Count != 0 || state.FixedRows.All.Any())
+        else if (state.Route == GameLauncherRoute.Hidden)
+        {
+            var resolved = snapshot.Items.ToDictionary(
+                item => item.Value.SavedId, StringComparer.Ordinal);
+            var stored = state.Organization.Items.ToDictionary(
+                item => item.SavedId, StringComparer.Ordinal);
+            var favorites = new Dictionary<string, int>(StringComparer.Ordinal);
+            var rows = state.Organization.ExcludedSavedIds
+                .Select(savedId => PresentedRowFor(savedId, resolved, stored))
+                .Where(row => row is not null && MatchesFixedQuery(
+                    row.Display, state.Query, favoriteFilter: false, favorites))
+                .Select(row => row!)
+                .OrderBy(row => row, PresentedRowComparer(state.Query.Sort))
+                .Take(GameLauncherPrivateState.MaximumExcludedItems)
+                .ToArray();
+            if (rows.Length == 0)
+            {
+                content = UI.EmptyState("No hidden games",
+                    state.Organization.ExcludedSavedIds.Count == 0
+                        ? "Hidden games will appear here until you restore them."
+                        : "No hidden games match the current filters.",
+                    "game-launcher.hidden.empty",
+                    new ComponentAction("Back", "game-launcher.hidden.back",
+                        WidgetGlyph.Play),
+                    WidgetGlyph.Play);
+                initialFocus = "game-launcher.hidden.empty.action";
+            }
+            else
+            {
+                var tiles = rows.Select(row => HiddenTile(
+                    row, state.Interactive && !state.OrganizationBusy)).ToArray();
+                var scroll = UI.VerticalScroll(ScrollId,
+                        UI.ResponsiveGrid("game-launcher.hidden.grid", 170, 5, tiles)
+                            .Classes("game-launcher-grid"))
+                    .Classes("game-launcher-scroll");
+                content = UI.Stack("game-launcher.content", scroll,
+                        UI.ControllerHint(ControllerButton.A, "Restore selected game",
+                            "game-launcher.hint.restore"))
+                    .Classes("game-launcher-content");
+                initialFocus ??= GameLauncherIdentity.FocusId(
+                    "hidden", GameLauncherIdentity.Key(rows[0].Display.SavedId));
+            }
+        }
+        else if (snapshot.Items.Any(item =>
+                     !state.Organization.ExcludedSavedIds.Contains(
+                         item.Value.SavedId, StringComparer.Ordinal)) ||
+                 state.FixedRows.All.Any(item =>
+                     !state.Organization.ExcludedSavedIds.Contains(
+                         item.Value.SavedId, StringComparer.Ordinal)))
         {
             var pageBumpers = snapshot.HasBefore || snapshot.HasAfter;
             var favorites = state.Organization.FavoriteSavedIds
@@ -156,9 +226,12 @@ internal static class GameLauncherPresentation
             var stored = state.Organization.Items.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);
             var used = new HashSet<string>(StringComparer.Ordinal);
+            var excluded = state.Organization.ExcludedSavedIds
+                .ToHashSet(StringComparer.Ordinal);
             var recentRows = state.RecentMode == GameLauncherRecentMode.Off
                 ? []
                 : state.Organization.RecentSavedIds
+                    .Where(savedId => !excluded.Contains(savedId))
                     .Select(savedId => PresentedRowFor(savedId, resolvedFixed, stored))
                     .Where(row => row is not null && MatchesFixedQuery(
                         row.Display, state.Query, state.FavoriteFilter, favorites))
@@ -169,7 +242,7 @@ internal static class GameLauncherPresentation
             var manualRows = state.RecentMode == GameLauncherRecentMode.RecentOnly
                 ? []
                 : state.Organization.ManualSavedIds
-                    .Where(savedId => !used.Contains(savedId))
+                    .Where(savedId => !used.Contains(savedId) && !excluded.Contains(savedId))
                     .Select(savedId => PresentedRowFor(savedId, resolvedFixed, stored))
                     .Where(row => row is not null &&
                         row.Current?.Value.Kind != WidgetAppLibraryKind.Game &&
@@ -181,7 +254,8 @@ internal static class GameLauncherPresentation
                     .ToArray();
             foreach (var row in manualRows) used.Add(row.Display.SavedId);
             var orderedCatalog = snapshot.Items
-                .Where(item => !used.Contains(item.Value.SavedId))
+                .Where(item => !used.Contains(item.Value.SavedId) &&
+                    !excluded.Contains(item.Value.SavedId))
                 .Select((item, index) => (item, index))
                 .OrderBy(value => favorites.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
                 .ThenBy(value => favorites.GetValueOrDefault(
@@ -202,6 +276,7 @@ internal static class GameLauncherPresentation
                     GameLauncherOrganizationPolicy.ReferencedSavedIds(state.Organization)
                         .Contains(item.SavedId, StringComparer.Ordinal) &&
                     !fixedMembership.Contains(item.SavedId) &&
+                    !excluded.Contains(item.SavedId) &&
                     !liveIds.Contains(item.SavedId) &&
                     MatchesFixedQuery(item, state.Query, state.FavoriteFilter, favorites))
                 .Select(item => new PresentedRow(null, item))
@@ -258,6 +333,8 @@ internal static class GameLauncherPresentation
             {
                 UI.ControllerHint(
                     ControllerButton.X, "Favorite", "game-launcher.hint.favorite"),
+                UI.ControllerHint(
+                    ControllerButton.Y, "Hide selected", "game-launcher.hint.hide"),
             };
             if (pageBumpers)
             {
@@ -294,20 +371,26 @@ internal static class GameLauncherPresentation
             initialFocus ??= recentRows.Concat(manualRows).FirstOrDefault() is { } fixedFirst
                 ? GameLauncherIdentity.FocusId(
                     "grid", GameLauncherIdentity.Key(fixedFirst.Display.SavedId))
-                : snapshot.Anchor is { } focusAnchor
-                    ? GameLauncherIdentity.FocusId("grid", focusAnchor)
+                : retainedCatalogAnchor is { } focusAnchor
+                    ? GameLauncherIdentity.FocusId(
+                        "grid", new WidgetCollectionItemKey(focusAnchor))
                     : snapshot.Items.Count == 0 ? null
                     : GameLauncherIdentity.FocusId("grid", snapshot.Items[0].Key);
         }
         else if (state.Route == GameLauncherRoute.Library &&
-                 state.Organization.Items.Count != 0 && snapshot.Status is
+                 state.Organization.Items.Any(item =>
+                     !state.Organization.ExcludedSavedIds.Contains(
+                         item.SavedId, StringComparer.Ordinal)) && snapshot.Status is
                      WidgetPagedResourceStatus.NotLoaded or
                      WidgetPagedResourceStatus.Loading or
                      WidgetPagedResourceStatus.Refreshing or
                      WidgetPagedResourceStatus.Error or
                      WidgetPagedResourceStatus.Ready)
         {
-            var warm = state.Organization.Items.Select(item => Tile(
+            var warm = state.Organization.Items
+                .Where(item => !state.Organization.ExcludedSavedIds.Contains(
+                    item.SavedId, StringComparer.Ordinal))
+                .Select(item => Tile(
                 item.DisplayName, item.SourceAttribution, item.SavedId, null,
                 null, resolved: false,
                 launchState: null,
@@ -538,6 +621,27 @@ internal static class GameLauncherPresentation
             .Classes("game-launcher-tile");
     }
 
+    private static WidgetElement HiddenTile(PresentedRow row, bool interactive)
+    {
+        var current = row.Current;
+        var artwork = current?.Value.ArtworkHandle is { Length: > 0 } handle
+            ? TileArtwork.FromHandle(new WidgetArtworkHandle(handle),
+                row.Display.DisplayName, ImageFit.Cover)
+            : TileArtwork.FromGlyph(WidgetGlyph.Play, row.Display.DisplayName);
+        var availability = current is null ? "Unavailable · Restore" : "Hidden · Restore";
+        return UI.AppTile(row.Display.DisplayName, availability,
+                "game-launcher.restore",
+                GameLauncherIdentity.FocusId(
+                    "hidden", GameLauncherIdentity.Key(row.Display.SavedId)),
+                subtitle: row.Display.SourceAttribution,
+                artwork: artwork,
+                accessibilityLabel:
+                    $"{row.Display.DisplayName}, {row.Display.SourceAttribution}, {availability}",
+                orientation: ActionSurfaceOrientation.Vertical)
+            .Disabled(!interactive)
+            .Classes("game-launcher-tile");
+    }
+
     private static WidgetElement Tile(
         string title,
         string source,
@@ -578,6 +682,7 @@ internal static class GameLauncherPresentation
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)
             .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
+            .Shortcut(ControllerButton.Y, actionId: "game-launcher.hide")
             .Busy(launching)
             .Disabled(!interactive || !resolved)
             .Classes("game-launcher-tile");

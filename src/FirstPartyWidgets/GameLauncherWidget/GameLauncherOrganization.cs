@@ -11,11 +11,12 @@ internal sealed record GameLauncherPrivateState(
     int Version,
     IReadOnlyList<GameLauncherDisplayItem> Items)
 {
-    internal const int CurrentVersion = 4;
-    internal const int MaximumItems = 96;
+    internal const int CurrentVersion = 5;
+    internal const int MaximumItems = 128;
     internal const int MaximumOrganizedItems = 32;
     internal const int MaximumRecentItems = 32;
     internal const int MaximumManualItems = 32;
+    internal const int MaximumExcludedItems = 32;
     internal const int MaximumGroups = 16;
     internal const int MaximumVariantsPerGroup = 4;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
@@ -24,6 +25,7 @@ internal sealed record GameLauncherPrivateState(
     public IReadOnlyList<GameLauncherVariantGroup> VariantGroups { get; init; } = [];
     public IReadOnlyList<string> RecentSavedIds { get; init; } = [];
     public IReadOnlyList<string> ManualSavedIds { get; init; } = [];
+    public IReadOnlyList<string> ExcludedSavedIds { get; init; } = [];
 }
 
 internal sealed record GameLauncherStateMutation(
@@ -43,12 +45,13 @@ internal static class GameLauncherOrganizationPolicy
         if (state is null || state.Version != GameLauncherPrivateState.CurrentVersion ||
             state.Items is null || state.FavoriteSavedIds is null ||
             state.VariantGroups is null || state.RecentSavedIds is null ||
-            state.ManualSavedIds is null ||
+            state.ManualSavedIds is null || state.ExcludedSavedIds is null ||
             state.Items.Count > GameLauncherPrivateState.MaximumItems ||
             state.FavoriteSavedIds.Count > GameLauncherPrivateState.MaximumOrganizedItems ||
             state.VariantGroups.Count > GameLauncherPrivateState.MaximumGroups ||
             state.RecentSavedIds.Count > GameLauncherPrivateState.MaximumRecentItems ||
-            state.ManualSavedIds.Count > GameLauncherPrivateState.MaximumManualItems)
+            state.ManualSavedIds.Count > GameLauncherPrivateState.MaximumManualItems ||
+            state.ExcludedSavedIds.Count > GameLauncherPrivateState.MaximumExcludedItems)
             return GameLauncherPrivateState.Empty;
 
         var display = new Dictionary<string, GameLauncherDisplayItem>(StringComparer.Ordinal);
@@ -90,6 +93,11 @@ internal static class GameLauncherOrganizationPolicy
             if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
                 !manual.Add(savedId))
                 return GameLauncherPrivateState.Empty;
+        var excluded = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var savedId in state.ExcludedSavedIds)
+            if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
+                !excluded.Add(savedId))
+                return GameLauncherPrivateState.Empty;
         return state with
         {
             Items = state.Items.ToArray(),
@@ -100,6 +108,7 @@ internal static class GameLauncherOrganizationPolicy
             }).ToArray(),
             RecentSavedIds = state.RecentSavedIds.ToArray(),
             ManualSavedIds = state.ManualSavedIds.ToArray(),
+            ExcludedSavedIds = state.ExcludedSavedIds.ToArray(),
         };
     }
 
@@ -168,6 +177,26 @@ internal static class GameLauncherOrganizationPolicy
         if (!included && contains) manual.Remove(display.SavedId);
         if (included == contains) return GameLauncherStateMutation.Reject(state);
         var candidate = WithDisplay(state, display) with { ManualSavedIds = manual };
+        return AcceptIfBounded(state, candidate);
+    }
+
+    internal static GameLauncherStateMutation SetExcluded(
+        GameLauncherPrivateState state,
+        GameLauncherDisplayItem display,
+        bool excluded)
+    {
+        state = Normalize(state);
+        var exclusions = state.ExcludedSavedIds.ToList();
+        var contains = exclusions.Contains(display.SavedId, StringComparer.Ordinal);
+        if (excluded && !contains)
+        {
+            if (exclusions.Count >= GameLauncherPrivateState.MaximumExcludedItems)
+                return GameLauncherStateMutation.Reject(state);
+            exclusions.Add(display.SavedId);
+        }
+        if (!excluded && contains) exclusions.Remove(display.SavedId);
+        if (excluded == contains) return GameLauncherStateMutation.Reject(state);
+        var candidate = WithDisplay(state, display) with { ExcludedSavedIds = exclusions };
         return AcceptIfBounded(state, candidate);
     }
 
@@ -272,6 +301,7 @@ internal static class GameLauncherOrganizationPolicy
         state.FavoriteSavedIds.Concat(state.VariantGroups.SelectMany(group => group.SavedIds))
             .Concat(state.RecentSavedIds)
             .Concat(state.ManualSavedIds)
+            .Concat(state.ExcludedSavedIds)
             .Distinct(StringComparer.Ordinal).ToArray();
 
     internal static GameLauncherVariantGroup? GroupFor(
@@ -309,13 +339,13 @@ internal static class GameLauncherOrganizationPolicy
 
     private static GameLauncherDisplayItem Display(GameLauncherItem item) => new(
         item.Value.SavedId,
-        item.Value.DisplayName.Length <= 120
-            ? item.Value.DisplayName : item.Value.DisplayName[..120],
+        item.Value.DisplayName.Length <= 96
+            ? item.Value.DisplayName : item.Value.DisplayName[..96],
         item.Value.SourceAttribution.Length <= 64
             ? item.Value.SourceAttribution : item.Value.SourceAttribution[..64]);
 
     private static bool ValidDisplay(GameLauncherDisplayItem? item) => item is not null &&
-        ValidSavedId(item.SavedId) && item.DisplayName is { Length: > 0 and <= 120 } &&
+        ValidSavedId(item.SavedId) && item.DisplayName is { Length: > 0 and <= 96 } &&
         item.SourceAttribution is { Length: > 0 and <= 64 } &&
         !item.DisplayName.Any(char.IsControl) && !item.SourceAttribution.Any(char.IsControl);
     private static bool ValidSavedId(string? value) => value is { Length: > 0 and <= 128 } &&
