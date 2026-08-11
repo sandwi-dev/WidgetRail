@@ -241,6 +241,39 @@ void WriteEvidence(const fs::path& destination, const Measurement& result) {
 }
 
 void TestPolicyAndPlacement() {
+    using gba::pinned::ControllerCommand;
+    gba::pinned::ControllerInputContext controller;
+    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+          "unpinned controller input has no pinned-surface route");
+    controller.pinned = true;
+    controller.sameWidgetOpen = true;
+    controller.rightStickPressed = true;
+    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Enter,
+          "right-stick click explicitly enters the current pinned surface");
+    controller.controllerFocused = true;
+    controller.rightStickPressed = false;
+    controller.aPressed = true;
+    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Activate,
+          "A activates only through the focused pinned owner");
+    controller.aPressed = false;
+    controller.bPressed = true;
+    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Exit,
+          "B deterministically returns pinned focus to the overlay");
+    controller.bPressed = false;
+    controller.xPressed = true;
+    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Close,
+          "X closes only while the pinned surface owns controller focus");
+    controller.leftShoulderDown = true;
+    controller.rightShoulderDown = true;
+    Check(gba::pinned::ResolveControllerCommand(controller) ==
+              ControllerCommand::EmergencyHide,
+          "LB plus RB plus X resolves to the global emergency hide authority");
+    controller.placementActive = true;
+    controller.xPressed = false;
+    controller.bPressed = true;
+    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+          "placement mode retains exclusive A/B controller ownership");
+
     gba::pinned::SurfacePolicy policy;
     Check(policy.state() == gba::pinned::LifecycleState::Unpinned,
           "policy begins unpinned");

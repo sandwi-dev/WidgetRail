@@ -24,6 +24,31 @@ enum class StopReason {
     CrashRecovery,
 };
 
+enum class ControllerCommand {
+    None,
+    Enter,
+    Exit,
+    Activate,
+    Close,
+    EmergencyHide,
+};
+
+struct ControllerInputContext final {
+    bool pinned{};
+    bool placementActive{};
+    bool sameWidgetOpen{};
+    bool controllerFocused{};
+    bool aPressed{};
+    bool bPressed{};
+    bool xPressed{};
+    bool rightStickPressed{};
+    bool leftShoulderDown{};
+    bool rightShoulderDown{};
+};
+
+[[nodiscard]] ControllerCommand ResolveControllerCommand(
+    const ControllerInputContext& context) noexcept;
+
 struct SurfaceDescriptor final {
     // Data-only identity. No native window, renderer, process, or provider
     // handle can cross this boundary; the host creates and owns those objects.

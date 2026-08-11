@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -61,6 +62,72 @@ bool InvokeAutomationId(const HWND window, const wchar_t* automationId) {
     return true;
 }
 
+ComPtr<IUIAutomationElement> FindAutomationId(
+    const HWND window, const wchar_t* automationId) {
+    ComPtr<IUIAutomation> automation;
+    if (FAILED(CoCreateInstance(
+            CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(automation.ReleaseAndGetAddressOf())))) return {};
+    ComPtr<IUIAutomationElement> root;
+    if (FAILED(automation->ElementFromHandle(window, root.ReleaseAndGetAddressOf())) || !root)
+        return {};
+    VARIANT expected{};
+    expected.vt = VT_BSTR;
+    expected.bstrVal = SysAllocString(automationId);
+    ComPtr<IUIAutomationCondition> condition;
+    const HRESULT conditionResult = automation->CreatePropertyCondition(
+        UIA_AutomationIdPropertyId, expected, condition.ReleaseAndGetAddressOf());
+    VariantClear(&expected);
+    if (FAILED(conditionResult) || !condition) return {};
+    ComPtr<IUIAutomationElement> element;
+    if (FAILED(root->FindFirst(
+            TreeScope_Descendants, condition.Get(), element.ReleaseAndGetAddressOf())))
+        return {};
+    return element;
+}
+
+bool ActionBoundsInsideWindow(const HWND window, const wchar_t* automationId) {
+    const auto element = FindAutomationId(window, automationId);
+    if (!element) return false;
+    RECT bounds{};
+    RECT windowBounds{};
+    if (FAILED(element->get_CurrentBoundingRectangle(&bounds)) ||
+        !GetWindowRect(window, &windowBounds)) return false;
+    constexpr double tolerance = 0.51;
+    return bounds.right - bounds.left > 0 && bounds.bottom - bounds.top > 0 &&
+        bounds.left + tolerance >= windowBounds.left &&
+        bounds.top + tolerance >= windowBounds.top &&
+        bounds.right <= windowBounds.right + tolerance &&
+        bounds.bottom <= windowBounds.bottom + tolerance;
+}
+
+bool ReadNamedButtonBounds(const HWND window, const wchar_t* automationId,
+                           const wchar_t* expectedName, RECT& bounds) {
+    const auto element = FindAutomationId(window, automationId);
+    if (!element) return false;
+    BSTR name{};
+    CONTROLTYPEID controlType{};
+    const bool valid = SUCCEEDED(element->get_CurrentName(&name)) && name &&
+        std::wstring_view(name) == expectedName &&
+        SUCCEEDED(element->get_CurrentControlType(&controlType)) &&
+        controlType == UIA_ButtonControlTypeId &&
+        SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds));
+    SysFreeString(name);
+    return valid;
+}
+
+bool IsAssertiveLiveRegion(const HWND window, const wchar_t* automationId) {
+    const auto element = FindAutomationId(window, automationId);
+    if (!element) return false;
+    VARIANT value{};
+    const HRESULT result = element->GetCurrentPropertyValue(
+        UIA_LiveSettingPropertyId, &value);
+    const bool assertive = SUCCEEDED(result) && value.vt == VT_I4 &&
+        value.lVal == Assertive;
+    VariantClear(&value);
+    return assertive;
+}
+
 [[nodiscard]] std::size_t PrivateWorkingSetBytes() {
     std::vector<std::byte> buffer(256 * 1024);
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -104,7 +171,17 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
     action.accessibilityLabel = action.text;
     action.actionId = L"fixture-action";
     action.inputScopeId = L"root";
-    snapshot.root.children = {std::move(heading), std::move(action)};
+    action.focusRight = L"pin.fixture.second";
+    gba::WidgetNode second;
+    second.id = L"pin.fixture.second";
+    second.kind = L"button";
+    second.text = L"Second deterministic action";
+    second.accessibilityLabel = second.text;
+    second.actionId = L"fixture-second";
+    second.inputScopeId = L"root";
+    second.focusLeft = L"pin.fixture.action";
+    snapshot.root.children = {
+        std::move(heading), std::move(action), std::move(second)};
     return snapshot;
 }
 
@@ -210,7 +287,12 @@ int main() {
                   error.find(L"Only one") != std::wstring::npos,
               "simultaneous pin cap is enforced");
 
+        Check(coordinator.SetInteractionMode(gba::pinned::InteractionMode::ClickThrough),
+              "fixture returns to closed click-through mode after placement setup");
         UpdateWindow(surface);
+        Check(!FindAutomationId(surface, L"host:pinned.move") &&
+                  !FindAutomationId(surface, L"widget:pin.fixture.action"),
+              "click-through UIA tree exposes no hidden interactive controls");
         IRawElementProviderSimple* root{};
         Check(SUCCEEDED(coordinator.window()
                   ? UiaHostProviderFromHwnd(coordinator.window(), &root)
@@ -244,16 +326,159 @@ int main() {
                   coordinator.presentationState() ==
                       gba::pinned::WidgetSurfacePresentationState::PinnedInteractive,
               "reopened overlay can explicitly restore one interactive pin");
+        UpdateWindow(surface);
+        Check(coordinator.EnterControllerFocus() && coordinator.controllerFocused() &&
+                  GetFocus() == surface,
+              "one explicit host transition gives controller focus to the pinned HWND");
+        UpdateWindow(surface);
+        Check(FindAutomationId(surface, L"widget:pin.fixture.action") &&
+                  FindAutomationId(surface, L"host:pinned.close") &&
+                  FindAutomationId(surface, L"host:pinned.emergency"),
+              "interactive UIA composes widget content with Close and emergency host actions");
+        Check(coordinator.MoveControllerFocus(
+                  gba::input::NavigationDirection::Right) &&
+                  coordinator.focusedElementId() == L"pin.fixture.second" &&
+                  coordinator.MoveControllerFocus(
+                      gba::input::NavigationDirection::Left) &&
+                  coordinator.focusedElementId() == L"pin.fixture.action",
+              "controller focus uses the shared authored and geometric navigation owner");
+        Check(coordinator.QueueFocusedInput(
+                  L"a", gba::ControllerInputOrigin::PhysicalController),
+              "focused controller activation enters the bounded pinned input queue");
+        auto controllerInputs = coordinator.TakeInputRequests();
+        Check(controllerInputs.size() == 1 &&
+                  controllerInputs[0].widgetId == coordinator.widgetId() &&
+                  controllerInputs[0].runtimeGeneration == coordinator.runtimeGeneration() &&
+                  controllerInputs[0].snapshotSequence == 2 &&
+                  controllerInputs[0].nodeId == L"pin.fixture.action" &&
+                  controllerInputs[0].protocolButton == L"a" &&
+                  controllerInputs[0].origin ==
+                      gba::ControllerInputOrigin::PhysicalController,
+              "queued pinned controller input retains exact current generation and focus");
+        coordinator.SetActionFeedback(
+            L"Pinned action failed. Reopen the overlay and try again.", true);
+        Check(IsAssertiveLiveRegion(surface, L"host:pinned.feedback"),
+              "sanitized pinned action failure is an assertive UIA live status");
+        coordinator.SetActionFeedback({}, false);
+
+        const auto widgetAction = FindAutomationId(
+            surface, L"widget:pin.fixture.action");
+        RECT widgetBounds{};
+        Check(widgetAction &&
+                  SUCCEEDED(widgetAction->get_CurrentBoundingRectangle(&widgetBounds)),
+              "pinned widget action exposes real on-screen UIA bounds");
+        const auto widgetPoint = coordinator.PointerPointForTesting(
+            L"pin.fixture.action");
+        Check(widgetPoint.has_value(),
+              "pinned widget action retains one production pointer hit region");
+        SendMessageW(surface, WM_LBUTTONDOWN, MK_LBUTTON,
+                     MAKELPARAM(widgetPoint->x, widgetPoint->y));
+        ReleaseCapture();
+        Check(coordinator.TakeInputRequests().empty(),
+              "pointer capture loss cancels pinned activation without forwarding input");
+        SendMessageW(surface, WM_LBUTTONDOWN, MK_LBUTTON,
+                     MAKELPARAM(widgetPoint->x, widgetPoint->y));
+        SendMessageW(surface, WM_LBUTTONUP, 0,
+                     MAKELPARAM(widgetPoint->x, widgetPoint->y));
+        auto pointerInputs = coordinator.TakeInputRequests();
+        Check(pointerInputs.size() == 1 &&
+                  pointerInputs[0].nodeId == L"pin.fixture.action",
+              "pointer activation shares exact pinned focus and input admission");
+
+        Check(InvokeAutomationId(surface, L"widget:pin.fixture.action"),
+              "real UI Automation invokes the composed pinned widget action");
+        auto automationInputs = coordinator.TakeInputRequests();
+        Check(automationInputs.size() == 1 &&
+                  automationInputs[0].origin ==
+                      gba::ControllerInputOrigin::AccessibilityAutomation &&
+                  automationInputs[0].nodeId == L"pin.fixture.action",
+              "UI Automation action uses the same current bounded input queue");
+        Check(ActionBoundsInsideWindow(surface, L"host:pinned.move") &&
+                  ActionBoundsInsideWindow(surface, L"host:pinned.resize"),
+              "Move and Resize UIA action bounds remain inside the pinned HWND");
         Check(InvokeAutomationId(surface, L"host:pinned.move") &&
                   coordinator.placementMode() == gba::pinned::PlacementMode::Move,
               "real UI Automation Move action enters the shared placement state machine");
+        Check(ActionBoundsInsideWindow(surface, L"host:pinned.commit") &&
+                  ActionBoundsInsideWindow(surface, L"host:pinned.cancel"),
+              "Commit and Cancel UIA action bounds remain inside the pinned HWND");
         Check(coordinator.CancelPlacement(),
               "UI Automation placement can be canceled through the same authority");
+
+        Check(coordinator.BeginPlacement(gba::pinned::PlacementMode::Resize),
+              "minimum-size UIA fixture enters the production resize state machine");
+        for (int step = 0; step < 40; ++step) {
+            (void)coordinator.StepPlacement(gba::pinned::PlacementDirection::Left);
+            (void)coordinator.StepPlacement(gba::pinned::PlacementDirection::Up);
+        }
+        Check(coordinator.CommitPlacement(error),
+              "minimum-size real-HWND placement commits through the production store");
+        UpdateWindow(surface);
+        RECT minimumBounds{};
+        GetWindowRect(surface, &minimumBounds);
+        const UINT minimumDpi = std::max(1U, GetDpiForWindow(surface));
+        Check(minimumBounds.right - minimumBounds.left >= MulDiv(240, minimumDpi, 96) &&
+                  minimumBounds.bottom - minimumBounds.top >= MulDiv(135, minimumDpi, 96),
+              "real pinned HWND remains at or above the injected minimum size");
+        Check(ActionBoundsInsideWindow(surface, L"host:pinned.move") &&
+                  ActionBoundsInsideWindow(surface, L"host:pinned.resize"),
+              "Move and Resize UIA bounds fit the minimum-size surface");
+        RECT moveBounds{};
+        RECT resizeBounds{};
+        Check(ReadNamedButtonBounds(surface, L"host:pinned.move", L"Move pinned surface",
+                                    moveBounds) &&
+                  ReadNamedButtonBounds(surface, L"host:pinned.resize",
+                                        L"Resize pinned surface",
+                                        resizeBounds) &&
+                  moveBounds.left < resizeBounds.left,
+              "minimum-size UIA publishes ordered named Move and Resize buttons");
+        Check(InvokeAutomationId(surface, L"host:pinned.move"),
+              "minimum-size surface exposes the Move action");
+        Check(ActionBoundsInsideWindow(surface, L"host:pinned.commit") &&
+                  ActionBoundsInsideWindow(surface, L"host:pinned.cancel"),
+              "Commit and Cancel UIA bounds fit the minimum-size surface");
+        RECT commitBounds{};
+        RECT cancelBounds{};
+        Check(ReadNamedButtonBounds(surface, L"host:pinned.commit", L"Commit placement",
+                                    commitBounds) &&
+                  ReadNamedButtonBounds(surface, L"host:pinned.cancel", L"Cancel placement",
+                                        cancelBounds) &&
+                  commitBounds.left < cancelBounds.left,
+              "minimum-size UIA publishes ordered named Commit and Cancel buttons");
+        Check(coordinator.CancelPlacement(),
+              "minimum-size placement cancellation remains exact");
+
+        const HMONITOR currentMonitor =
+            MonitorFromWindow(surface, MONITOR_DEFAULTTONEAREST);
+        MONITORINFOEXW currentInfo{sizeof(currentInfo)};
+        Check(currentMonitor && GetMonitorInfoW(currentMonitor, &currentInfo),
+              "real HWND monitor metadata is available for reconciliation");
+        coordinator.ReconcileDisplayEnvironmentForTesting({{
+            L"fixture-replacement-monitor",
+            {currentInfo.rcWork.left, currentInfo.rcWork.top,
+             currentInfo.rcWork.right, currentInfo.rcWork.bottom},
+            minimumDpi,
+            true,
+        }});
+        RECT reconciledBounds{};
+        GetWindowRect(surface, &reconciledBounds);
+        Check(reconciledBounds.left >= currentInfo.rcWork.left &&
+                  reconciledBounds.top >= currentInfo.rcWork.top &&
+                  reconciledBounds.right <= currentInfo.rcWork.right &&
+                  reconciledBounds.bottom <= currentInfo.rcWork.bottom,
+              "coordinator monitor-loss reconciliation keeps the real HWND fully on-screen");
+        Check(coordinator.controllerFocused() && GetFocus() == surface &&
+                  !coordinator.focusedElementId().empty(),
+              "display reconciliation retains one deterministic valid pinned focus owner");
+        Check(ActionBoundsInsideWindow(surface, L"host:pinned.move") &&
+                  ActionBoundsInsideWindow(surface, L"host:pinned.resize"),
+              "reconciled minimum surface retains bounded host UIA actions");
 
         coordinator.ReconcileCatalog({Descriptor()});
         Check(coordinator.pinned(), "current catalog generation retains the surface");
         coordinator.ReconcileCatalog({Descriptor(L"runtime-2")});
         Check(!coordinator.pinned() && coordinator.teardownCount() == 1 &&
+                  !coordinator.controllerFocused() &&
                   coordinator.lastStopReason() ==
                       gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced,
               "runtime replacement tears down exactly once");
@@ -263,9 +488,9 @@ int main() {
         RECT restoredBounds{};
         GetWindowRect(coordinator.window(), &restoredBounds);
         Check(restoredBounds.right - restoredBounds.left ==
-                  committedBounds.right - committedBounds.left &&
+                  reconciledBounds.right - reconciledBounds.left &&
                   restoredBounds.bottom - restoredBounds.top ==
-                      committedBounds.bottom - committedBounds.top,
+                      reconciledBounds.bottom - reconciledBounds.top,
               "repin restores committed logical size from durable storage");
         coordinator.ReconcileCatalog({});
         Check(!coordinator.pinned() && coordinator.teardownCount() == 2 &&
@@ -283,17 +508,45 @@ int main() {
               "worker loss tears down exactly once with its primary reason");
         Check(!IsWindow(failedWorkerSurface), "worker loss leaves no orphaned HWND");
 
+        Check(coordinator.Pin(Admission(), error),
+              "surface can be pinned for UI Automation Close");
+        coordinator.OnOverlayShown();
+        Check(coordinator.ToggleInteractionMode(),
+              "Close fixture explicitly enters Interactive mode");
+        const HWND closeSurface = coordinator.window();
+        UpdateWindow(closeSurface);
+        Check(InvokeAutomationId(closeSurface, L"host:pinned.close") &&
+                  !coordinator.pinned() && !IsWindow(closeSurface) &&
+                  coordinator.teardownCount() == 4 &&
+                  coordinator.lastStopReason() ==
+                      gba::pinned::WidgetSurfaceStopReason::Close,
+              "real UI Automation Close performs exact paired teardown");
+
+        Check(coordinator.Pin(Admission(), error),
+              "surface can be pinned for emergency hide");
+        coordinator.OnOverlayShown();
+        Check(coordinator.ToggleInteractionMode(),
+              "emergency fixture explicitly enters Interactive mode");
+        const HWND emergencySurface = coordinator.window();
+        UpdateWindow(emergencySurface);
+        Check(InvokeAutomationId(emergencySurface, L"host:pinned.emergency") &&
+                  !coordinator.pinned() && !IsWindow(emergencySurface) &&
+                  coordinator.teardownCount() == 5 &&
+                  coordinator.lastStopReason() ==
+                      gba::pinned::WidgetSurfaceStopReason::EmergencyHide,
+              "accessible host emergency action removes every bounded pin and interaction");
+
         Check(coordinator.Pin(Admission(), error), "surface can be pinned for host exit");
         const auto privatePinned = PrivateWorkingSetBytes();
         std::this_thread::sleep_for(std::chrono::milliseconds(750));
         Check(coordinator.Unpin(gba::pinned::WidgetSurfaceStopReason::HostExit),
               "host exit performs terminal teardown");
         Check(!coordinator.Unpin(gba::pinned::WidgetSurfaceStopReason::HostExit) &&
-                  coordinator.teardownCount() == 4,
+                  coordinator.teardownCount() == 6,
               "terminal teardown is idempotent");
         coordinator.Dispose();
         coordinator.Dispose();
-        Check(coordinator.teardownCount() == 4,
+        Check(coordinator.teardownCount() == 6,
               "coordinator disposal after cleanup owns no second teardown");
         std::error_code cleanup;
         std::filesystem::remove_all(placementRoot, cleanup);

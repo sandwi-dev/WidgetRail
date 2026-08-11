@@ -49,14 +49,23 @@ Only one surface may be pinned in this first bounded release:
 
 1. open a supporting widget and press `P`; the new peer surface starts in
    nonactivating click-through mode and the main overlay keeps controller focus;
-2. while that widget remains open in the main overlay, press `P` again to toggle
-   the pinned surface between Interactive and Click-through;
+2. while that widget remains open in the main overlay, press `P` or controller
+   right-stick click to enter the pinned surface. D-pad/stick navigation and
+   `A` then use the exact current widget generation; `B` or another right-stick
+   click returns focus to the overlay and restores Click-through;
 3. press `U`, use the pinned Interactive chrome, close the pinned window, remove
    or replace its package generation, restart its worker, or exit the host to
    perform one exact paired HWND/semantic teardown;
 4. closing the main overlay preserves the surface but always returns it to
    click-through. Reopen the main overlay before explicitly restoring
    Interactive mode.
+
+While the pin owns controller focus, `X` closes it. `LB`+`RB`+`X` is the
+host-owned emergency action: it unpins the bounded surface and releases input
+without consulting widget code. `Ctrl`+`Shift`+`H` provides the same emergency
+path from the visible overlay. Guide closes the overlay through its existing
+global authority, which cancels placement/focus and leaves every surviving pin
+nonactivating and click-through. No hidden-overlay controller input is forwarded.
 
 Interactive placement uses one host state machine across input routes. With the
 same widget open, controller `Menu` starts Move and `View` starts Resize;
@@ -65,6 +74,16 @@ pre-gesture rectangle. Keyboard uses `M`/`R`, arrows, Enter, and Escape.
 Dragging the host-owned Move or Resize chrome commits on pointer release, and
 UI Automation exposes the same Move/Resize then Commit/Cancel actions. Closing
 the main overlay or losing input capture cancels an unfinished gesture.
+
+Interactive UI Automation composes the exact current widget semantic tree after
+the ordered host Enter/Exit, Move, Resize, Click-through, Unpin, Close, and
+Emergency actions. Every queued widget Invoke/RangeValue request is revalidated
+against widget ID, runtime generation, snapshot sequence, active scope, enabled
+state, and focused element before bridge dispatch. Click-through publishes only
+the noninteractive host heading/status, so hidden controls and stale actions are
+not discoverable. Safe action failures publish one bounded assertive live status.
+High contrast uses Windows system colors; reduced-motion rendering remains
+immediate with no new ambient animation or timer.
 
 Unsupported widgets retain their existing behavior. Omitted
 `pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
@@ -144,10 +163,12 @@ the timings are not interchangeable product benchmarks.
 
 `src\OverlayHost\build.ps1 -Configuration Release
 -WidgetSurfaceTestsOnly` builds the production coordinator with its focused
-real-HWND fixture. After DLV-068 it passes 41 admission, closed-state, style,
-real-window, UI Automation, generation, live-update, placement/cancel/commit,
-durable-repin, overlay-hide, cap, and exact-teardown checks. Its current
-incremental pinned private-working-set observation is 10,833,920 bytes, below
+real-HWND fixture. After DLV-069 it passes 76 admission, closed-state, style,
+real-window, controller focus, pointer capture, UI Automation composition,
+generation, live-update, placement/cancel/commit, minimum-size action bounds,
+coordinator monitor-loss reconciliation, durable-repin, overlay-hide, Close,
+emergency-hide, cap, and exact-teardown checks. Its current incremental pinned
+private-working-set observation is 11,026,432 bytes, below
 DLV-016's 128 MiB material gate.
 
 `src\OverlayHost\build.ps1 -Configuration Release
@@ -160,8 +181,8 @@ GPU, idle-CPU, physical-display, or long-run benchmark.
 
 - This is a generic declarative host surface, not an arbitrary-window or public
   native-window API. The only public opt-in is `pinningSupported`.
-- Final one-owner controller focus, emergency hide, and complete widget/UIA
-  interaction composition remain DLV-069.
+- The fixed-video/WebView2 trust and resource feasibility gate remains DLV-062;
+  generic pinning grants no browser, media, provider, or native-object authority.
 - No WebView2, YouTube, authentication, playback, new compositor, Windows App
   SDK dependency, game hook, or elevated hook was implemented.
 - No screenshot, GPU, DWM, presentation, game-frame, hardware-input, or

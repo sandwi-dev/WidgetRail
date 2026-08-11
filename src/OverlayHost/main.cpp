@@ -1174,6 +1174,7 @@ private:
             HandleAccessibilityActions();
             return 0;
         case kPinnedSurfaceChangedMessage:
+            DrainPinnedSurfaceInputs();
             if (state_.surface() == gba::Surface::Hidden) {
                 if (pinnedSurfaceCoordinator_.pinned())
                     SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
@@ -2810,6 +2811,9 @@ private:
                 return;
             }
             if (pinnedSurfaceCoordinator_.ToggleInteractionMode()) {
+                if (pinnedSurfaceCoordinator_.interactionMode() ==
+                    gba::pinned::InteractionMode::Focusable)
+                    (void)pinnedSurfaceCoordinator_.EnterControllerFocus();
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ =
                     pinnedSurfaceCoordinator_.interactionMode() ==
@@ -2872,8 +2876,76 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
+    void DrainPinnedSurfaceInputs() {
+        for (const auto& request : pinnedSurfaceCoordinator_.TakeInputRequests()) {
+            const auto* snapshot = SnapshotFor(request.widgetId);
+            const auto descriptor = std::find_if(
+                widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                [&](const gba::WidgetDescriptor& candidate) {
+                    return candidate.id == request.widgetId;
+                });
+            const auto* node = snapshot
+                ? gba::input::FindNodeInInputScope(
+                      *snapshot, request.nodeId, request.activeInputScopeId)
+                : nullptr;
+            if (!pinnedSurfaceCoordinator_.pinned() ||
+                state_.surface() == gba::Surface::Hidden ||
+                pinnedSurfaceCoordinator_.interactionMode() !=
+                    gba::pinned::InteractionMode::Focusable ||
+                descriptor == widgetDescriptors_.end() || !snapshot || !node ||
+                node->isDisabled || node->isBusy ||
+                descriptor->runtimeGeneration != request.runtimeGeneration ||
+                snapshot->sequence != request.snapshotSequence ||
+                snapshot->activeInputScopeId != request.activeInputScopeId) {
+                AppendDiagnostic(L"Dropped stale or unavailable pinned-surface input");
+                continue;
+            }
+            const auto handled = bridge_.SendControllerInput(
+                request.widgetId, request.protocolButton, L"pinnedSurface",
+                request.nodeId, request.activeInputScopeId, request.snapshotSequence,
+                ++controllerSequence_,
+                static_cast<long long>(GetTickCount64() * 1000), L"pressed",
+                request.requestedValue, request.origin);
+            if (!handled) {
+                pinnedSurfaceCoordinator_.SetActionFeedback(
+                    L"Pinned action failed. Reopen the overlay and try again.", true);
+                AppendDiagnostic(L"Pinned action transport failed for " +
+                                 request.widgetId);
+            } else if (*handled) {
+                pinnedSurfaceCoordinator_.SetActionFeedback(
+                    L"Pinned action completed.", false);
+                RefreshAndApplyPresentation([&] {
+                    RefreshWidgetSnapshot(request.widgetId);
+                });
+            } else {
+                pinnedSurfaceCoordinator_.SetActionFeedback(
+                    L"No pinned action is available here.", false);
+            }
+        }
+    }
+
+    void EmergencyHidePinnedSurfaces() {
+        if (!pinnedSurfaceCoordinator_.pinned()) return;
+        const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
+        (void)pressedInteraction_.Clear();
+        if (pinnedSurfaceCoordinator_.EmergencyHideAll()) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = L"Emergency hide removed all pinned surfaces";
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(lastActionMessage_);
+            SyncWidgetActivity();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+    }
+
     void HandleKey(const UINT key, const bool repeated) {
         if (state_.surface() == gba::Surface::Hidden) return;
+        if (!repeated && key == 'H' &&
+            (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
+            (GetKeyState(VK_SHIFT) & 0x8000) != 0) {
+            EmergencyHidePinnedSurfaces();
+            return;
+        }
         if (pinnedSurfaceCoordinator_.placementMode() !=
             gba::pinned::PlacementMode::None) {
             bool changed = false;
@@ -3195,6 +3267,28 @@ private:
         const WORD released = static_cast<WORD>(previousButtons_ & ~buttons);
         previousButtons_ = buttons;
         const ULONGLONG now = GetTickCount64();
+        const auto pinnedControllerCommand = gba::pinned::ResolveControllerCommand({
+            pinnedSurfaceCoordinator_.pinned(),
+            pinnedSurfaceCoordinator_.placementMode() !=
+                gba::pinned::PlacementMode::None,
+            pinnedSurfaceCoordinator_.pinned() &&
+                state_.surface() == gba::Surface::Widget &&
+                state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId(),
+            pinnedSurfaceCoordinator_.controllerFocused(),
+            (pressed & XINPUT_GAMEPAD_A) != 0,
+            (pressed & XINPUT_GAMEPAD_B) != 0,
+            (pressed & XINPUT_GAMEPAD_X) != 0,
+            (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) != 0,
+            (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
+            (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+        });
+        if (pinnedControllerCommand ==
+            gba::pinned::ControllerCommand::EmergencyHide) {
+            EmergencyHidePinnedSurfaces();
+            leftTriggerPressed_ = connected && controller.Gamepad.bLeftTrigger >= 30;
+            rightTriggerPressed_ = connected && controller.Gamepad.bRightTrigger >= 30;
+            return;
+        }
         constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
         if (recoveryChordDown && !reloadChordHeld_) RestartCurrentWidget();
@@ -3266,6 +3360,67 @@ private:
                 ? L"Move pinned surface: D-pad/stick, A commit, B cancel"
                 : L"Resize pinned surface: D-pad/stick, A commit, B cancel";
             lastActionExpiresAt_ = now + 5000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+
+        if (pinnedControllerCommand == gba::pinned::ControllerCommand::Enter) {
+            if (pinnedSurfaceCoordinator_.interactionMode() !=
+                gba::pinned::InteractionMode::Focusable)
+                (void)pinnedSurfaceCoordinator_.SetInteractionMode(
+                    gba::pinned::InteractionMode::Focusable);
+            if (pinnedSurfaceCoordinator_.EnterControllerFocus()) {
+                (void)pressedInteraction_.Clear();
+                lastActionWidgetId_ =
+                    std::wstring(pinnedSurfaceCoordinator_.widgetId());
+                lastActionMessage_ =
+                    L"Pinned focus entered. B returns, X closes, Menu moves, View resizes.";
+                lastActionExpiresAt_ = now + 5000;
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
+
+        if (pinnedSurfaceCoordinator_.controllerFocused()) {
+            const auto movePinnedFocus = [&](const gba::input::StickNavigationEvent& event) {
+                (void)pinnedSurfaceCoordinator_.MoveControllerFocus(event.direction);
+            };
+            if (const auto direction = stickNavigator_.UpdateEvent(
+                    connected ? controller.Gamepad.sThumbLX : 0,
+                    connected ? controller.Gamepad.sThumbLY : 0, now))
+                movePinnedFocus(*direction);
+            if (const auto direction = dpadNavigator_.UpdateEvent(
+                    gba::input::DigitalNavigationAxis(
+                        buttons, XINPUT_GAMEPAD_DPAD_LEFT,
+                        XINPUT_GAMEPAD_DPAD_RIGHT),
+                    gba::input::DigitalNavigationAxis(
+                        buttons, XINPUT_GAMEPAD_DPAD_DOWN,
+                        XINPUT_GAMEPAD_DPAD_UP), now))
+                movePinnedFocus(*direction);
+            if (pinnedControllerCommand == gba::pinned::ControllerCommand::Activate) {
+                if (!pinnedSurfaceCoordinator_.QueueFocusedInput(
+                        L"a", gba::ControllerInputOrigin::PhysicalController))
+                    pinnedSurfaceCoordinator_.SetActionFeedback(
+                        L"The focused pinned item is unavailable.", false);
+            } else if (pinnedControllerCommand ==
+                       gba::pinned::ControllerCommand::Exit) {
+                (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
+                (void)pinnedSurfaceCoordinator_.SetInteractionMode(
+                    gba::pinned::InteractionMode::ClickThrough);
+                lastActionMessage_ = L"Controller focus returned to the overlay";
+                lastActionExpiresAt_ = now + 2400;
+            } else if (pinnedControllerCommand ==
+                       gba::pinned::ControllerCommand::Close) {
+                const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
+                (void)pinnedSurfaceCoordinator_.Unpin(
+                    gba::pinned::WidgetSurfaceStopReason::Close);
+                lastActionWidgetId_ = widgetId;
+                lastActionMessage_ = L"Pinned surface closed";
+                lastActionExpiresAt_ = now + 2400;
+                SyncWidgetActivity();
+            }
+            leftTriggerPressed_ = connected && controller.Gamepad.bLeftTrigger >= 30;
+            rightTriggerPressed_ = connected && controller.Gamepad.bRightTrigger >= 30;
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
