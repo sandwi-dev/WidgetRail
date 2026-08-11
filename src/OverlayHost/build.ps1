@@ -6,7 +6,8 @@ param(
     [string]$Architecture = 'x64',
     [switch]$SkipTests,
     [switch]$SkipPackaging,
-    [switch]$SemanticChurnTestsOnly
+    [switch]$SemanticChurnTestsOnly,
+    [switch]$PinnedSurfaceTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,8 +111,9 @@ $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\access
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
 $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
+$pinnedSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-surface-host-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -161,11 +163,42 @@ function Invoke-SemanticChurnPerformanceTests {
     }
 }
 
+function Invoke-PinnedSurfaceHostTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'PinnedSurfaceHostTests.cpp'),
+        (Join-Path $projectDirectory 'PinnedSurfacePolicy.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        "/Fo:$pinnedSurfaceTestObjectDirectory\",
+        "/Fe:$outputDirectory\PinnedSurfaceHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'gdi32.lib', 'psapi.lib', 'ole32.lib', 'oleaut32.lib',
+        'uiautomationcore.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "PinnedSurfaceHostTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'PinnedSurfaceHostTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "PinnedSurfaceHostTests failed with exit code $LASTEXITCODE."
+    }
+}
+
 if ($SemanticChurnTestsOnly) {
     if ($SkipTests) {
         throw 'SemanticChurnTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-SemanticChurnPerformanceTests
+    return
+}
+
+if ($PinnedSurfaceTestsOnly) {
+    if ($SkipTests) {
+        throw 'PinnedSurfaceTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-PinnedSurfaceHostTests
     return
 }
 
@@ -549,6 +582,8 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayPlacementTests failed with exit code $LASTEXITCODE."
     }
+
+    Invoke-PinnedSurfaceHostTests
 
     $targetingTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),

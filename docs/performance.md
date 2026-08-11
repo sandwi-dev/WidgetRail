@@ -216,6 +216,23 @@ wakeups, context switches, controller hardware latency, gameplay impact,
 multi-widget cost, and long-run trends. Both outputs publish these limitations
 instead of inferring unavailable metrics.
 
+DLV-011 adds one narrower incremental feasibility observation without changing
+those baselines. Five fresh Release processes in
+`dlv011-native-20260811T070422Z` created a real host-owned top-level tool window,
+published a two-node host UI Automation tree, held it visible without a timer
+for 750 ms, and performed 256 stable semantic mode projections. Incremental
+private working set ranged **0.684-0.707 MiB** (median **0.684 MiB**), observed
+normalized idle CPU was **0%**, and semantic projection p95 ranged
+**0.0003-0.0005 ms** (median **0.0004 ms**). One of two stable semantic nodes
+changed per mode update.
+
+Those increments are below DLV-016's 128 MiB material memory and 50 ms response
+gates. The DLV-011 two-node projection is intentionally much smaller than
+DLV-016's 48-node workload, so the timings are not interchangeable throughput
+benchmarks. The fixture's private pages are also not a production process-tree
+total. See [host-owned pinned-surface feasibility](pinned-surfaces.md) for the
+window-policy decision and complete evidence limits.
+
 ## Verification and remaining tooling
 
 Run functional/regression gates with:

@@ -1,0 +1,102 @@
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace gba::pinned {
+
+enum class InteractionMode {
+    ClickThrough,
+    Focusable,
+};
+
+enum class LifecycleState {
+    Unpinned,
+    Pinned,
+    Stopped,
+};
+
+enum class StopReason {
+    Unpin,
+    HostExit,
+    CrashRecovery,
+};
+
+struct SurfaceDescriptor final {
+    // Data-only identity. No native window, renderer, process, or provider
+    // handle can cross this boundary; the host creates and owns those objects.
+    std::wstring id;
+    std::wstring accessibleName;
+    std::uint32_t backgroundArgb{0xFF24415A};
+    bool reducedMotion{true};
+};
+
+struct SemanticNode final {
+    std::wstring id;
+    std::wstring name;
+    std::wstring value;
+    bool keyboardFocusable{};
+};
+
+class SurfacePolicy final {
+public:
+    [[nodiscard]] bool Pin(SurfaceDescriptor descriptor);
+    void SetInteractionMode(InteractionMode mode) noexcept;
+    void OnMainOverlayHidden() noexcept;
+    void Stop(StopReason reason) noexcept;
+
+    [[nodiscard]] LifecycleState state() const noexcept { return state_; }
+    [[nodiscard]] InteractionMode interactionMode() const noexcept { return interactionMode_; }
+    [[nodiscard]] const std::optional<SurfaceDescriptor>& descriptor() const noexcept {
+        return descriptor_;
+    }
+    [[nodiscard]] StopReason lastStopReason() const noexcept { return lastStopReason_; }
+    [[nodiscard]] std::vector<SemanticNode> ProjectSemantics() const;
+
+private:
+    LifecycleState state_{LifecycleState::Unpinned};
+    InteractionMode interactionMode_{InteractionMode::ClickThrough};
+    std::optional<SurfaceDescriptor> descriptor_;
+    StopReason lastStopReason_{StopReason::Unpin};
+};
+
+struct PhysicalRect final {
+    int left{};
+    int top{};
+    int right{};
+    int bottom{};
+};
+
+struct MonitorWorkArea final {
+    std::wstring stableId;
+    PhysicalRect workArea;
+    unsigned int dpi{96};
+    bool primary{};
+};
+
+struct PersistedPlacement final {
+    std::wstring monitorId;
+    float leftDip{};
+    float topDip{};
+    float widthDip{480.0F};
+    float heightDip{270.0F};
+};
+
+struct ResolvedPlacement final {
+    std::wstring monitorId;
+    PhysicalRect bounds;
+    unsigned int dpi{96};
+    bool usedFallback{};
+    bool clamped{};
+};
+
+/// Resolves a fully work-area-contained physical rectangle. Missing monitors,
+/// malformed persisted values, rotation, and work-area shrink all converge on
+/// the primary (or first valid) monitor and a top-right host default.
+[[nodiscard]] std::optional<ResolvedPlacement> ResolvePlacement(
+    const std::vector<MonitorWorkArea>& monitors,
+    const std::optional<PersistedPlacement>& persisted) noexcept;
+
+} // namespace gba::pinned

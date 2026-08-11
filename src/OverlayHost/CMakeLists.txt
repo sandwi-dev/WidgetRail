@@ -130,6 +130,17 @@ if(GBA_BUILD_TESTS)
     target_compile_options(OverlayPlacementTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME OverlayPlacementTests COMMAND OverlayPlacementTests)
 
+    add_executable(PinnedSurfaceHostTests
+        PinnedSurfaceHostTests.cpp PinnedSurfacePolicy.cpp
+        AccessibilityProvider.cpp AccessibilityEvents.cpp)
+    target_compile_features(PinnedSurfaceHostTests PRIVATE cxx_std_20)
+    target_compile_options(PinnedSurfaceHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(PinnedSurfaceHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(PinnedSurfaceHostTests PRIVATE
+        user32 gdi32 psapi ole32 oleaut32 uiautomationcore)
+    add_test(NAME PinnedSurfaceHostTests COMMAND PinnedSurfaceHostTests)
+
     add_executable(OverlayTargetingTests OverlayTargetingTests.cpp OverlayTargeting.cpp)
     target_compile_features(OverlayTargetingTests PRIVATE cxx_std_20)
     target_compile_options(OverlayTargetingTests PRIVATE /W4 /permissive- /EHsc)
