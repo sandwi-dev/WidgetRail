@@ -665,10 +665,12 @@ The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
 `main`. DLV-006's public/native prefix, cursor-cycle correction, and final
 production-host/UIA composition proof are accepted and integrated through
-`9c7438f`. DLV-022 is now Assigned as the first user-visible consumer, DLV-018
-follows it, and DLV-043 remains the later already-dispositioned Spotify
-architecture work. DLV-038 remains deferred test-architecture debt rather than
-filler work.
+`9c7438f`. DLV-022 produced candidate `c349bbd`, but independent review rejected
+that prefix because URI-only media keys cannot represent legitimate duplicate
+queue/playlist occurrences and the single-row playlist graph authors a self
+edge. DLV-018 was already started and remains the Assigned visible milestone;
+DLV-053 is the next bounded correction before DLV-043. DLV-038 remains deferred
+test-architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2195,7 +2197,8 @@ canonical result remains the sole Tier-3 run.
 
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Assigned after accepted DLV-006
+**State:** Candidate `c349bbd` rejected; correction queued as DLV-053 after the
+already-started DLV-018 milestone
 **Baseline:** accepted DLV-006 integration `9c7438f` plus the reviewer commit
 recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
@@ -2267,10 +2270,24 @@ paged resource first joins an equal current intent. The bounded parity fix above
 is therefore an immediate prerequisite of the visible DLV-022 outcome and is
 authorized inside this milestone; a Spotify-local busy flag remains prohibited.
 
+**Reviewer disposition:** Rejected. Candidate `c349bbd` correctly adds the exact-
+intent shared join and broad continuous-list coverage, but
+`SpotifyCollectionIdentity.Media` hashes only the media URI. Spotify queues and
+playlists may legitimately contain the same track or episode more than once;
+the shared cursor resource rejects those occurrences as duplicate collection
+keys within one page or across retained pages, and the action/focus IDs also
+collide. The current provider, broker, and public widget summary carry no
+occurrence identity, and the candidate has no duplicate-occurrence test. A
+second independent graph defect gives the first playlist row an explicit Down
+edge to itself when the detail contains one item. Do not integrate `c349bbd` or
+dependent commits until DLV-053 supplies bounded occurrence identity and removes
+the self edge. Per the asynchronous review rule, DLV-018 continues first.
+
 ### DLV-018 — Supply trusted artwork for Games & Apps
 
-**State:** Ready after DLV-022
-**Baseline:** closing commit of DLV-022
+**State:** Assigned on top of the unaccepted DLV-022 candidate; finish and commit
+before taking DLV-053
+**Baseline:** unaccepted DLV-022 candidate `c349bbd`
 **Dependencies:** DLV-006 and DLV-017
 **Owner:** trusted app-library artwork registration/projection, brokered opaque
 artwork handles, bounded host decode/cache consumption, Games & Apps
@@ -2316,10 +2333,71 @@ resolution cannot stay identity/generation bound, native cache changes overlap
 active platform work, or a new public authority/protocol beyond DLV-006 is
 required.
 
-### DLV-043 — Replace Spotify partial-file organization with real boundaries
+### DLV-053 — Correct Spotify occurrence identity and singleton focus
 
 **State:** Ready after DLV-018
-**Baseline:** closing commit of DLV-018
+**Baseline:** closing commit of DLV-018, including unaccepted candidate
+`c349bbd`; retain the complete prefix for correction and review
+**Dependencies:** DLV-006, DLV-022 candidate `c349bbd`, and DLV-018
+**Owner:** widgets lane over Spotify Queue/playlist occurrence normalization,
+keyed action/focus resolution, playlist-detail header edges, credential-free
+fixtures, and directly affected Spotify documentation; no provider authority,
+native collection implementation, or unrelated SDK behavior
+**Visible outcome:** Repeated tracks or episodes remain independently reachable
+instead of turning Queue or Playlists into an error, and a one-track playlist
+cannot trap Down navigation on its only row.
+
+**Objective:** Preserve DLV-022's continuous keyed collection behavior while
+representing each legitimate occurrence uniquely and stably enough for bounded
+focus/action routing, including when Spotify supplies the same media URI more
+than once and no provider occurrence ID exists.
+
+**In scope:** retain URI as the semantic media identity; add one explicit,
+collection-context-bound occurrence policy for duplicate queue and playlist
+items; prove same-page and cross-retained-page duplicates, refresh, insertion,
+deletion, eviction/refetch, route/Back, cancellation, and stale completion;
+keep action lookup exact for the selected occurrence; bound and lifecycle-drain
+any matcher/allocator state; remove the singleton row's explicit self Down edge
+while retaining the authored first-row Up and header Play Down relationship.
+An occurrence discriminator may distinguish otherwise identical entries, but
+must not replace semantic identity with a title or a global row ordinal.
+
+**Out of scope:** changing playback semantics for equivalent duplicate media,
+Spotify provider/OAuth/Premium/Web Playback work, new screens, native focus
+heuristics, weakening shared duplicate-key rejection, a public SDK/protocol
+revision, DLV-043 decomposition, screenshots, live credentials, or unrelated
+artwork behavior.
+
+**Acceptance criteria:** two or more equal media URIs in Queue, one playlist
+page, and separate simultaneously retained playlist pages produce unique
+bounded collection, focus, and action IDs and never enter the duplicate-key
+error route. Unique-URI keys survive offset changes; distinguishable duplicate
+occurrences retain their key across refresh/insertion/deletion, while truly
+indistinguishable occurrences use one documented deterministic nearest-
+equivalent fallback rather than failing or selecting an unrelated item. No
+occurrence registry grows beyond the retained collection/lifecycle bounds.
+For an exactly one-row playlist, Play points Down to the row and the row points
+Up to Play, but the row has no self edge; Up/Down cannot oscillate or trap.
+All accepted DLV-022 exact-intent join, forward/reverse, header, route, refresh,
+failure, and lifecycle behavior remains green.
+
+**Verification:** Tier 1 Spotify Release cases for duplicate queue and playlist
+occurrences, cross-page retention, refresh/churn, action identity, and the
+single-row graph; rerun the focused shared cursor tests only if their code
+changes; validate/pack the Spotify package, run the smallest installed-worker
+conformance group, and validate affected documentation. No aggregate, provider,
+native suite, screenshot, or live account.
+
+**Stop/escalate when:** correctness requires a public/provider contract change,
+an unbounded historical occurrence registry, weakening the shared collection's
+duplicate-key failure, or a product choice about which non-equivalent Spotify
+item should play. Preserve exact provider evidence rather than substituting a
+title/global-ordinal key.
+
+### DLV-043 — Replace Spotify partial-file organization with real boundaries
+
+**State:** Ready after DLV-053
+**Baseline:** closing commit of DLV-053
 **Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
