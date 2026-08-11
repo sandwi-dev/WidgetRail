@@ -309,6 +309,18 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
 
+    add_executable(SemanticChurnPerformanceTests
+        SemanticChurnPerformanceTests.cpp AccessibilityTree.cpp DeclarativeRenderer.cpp
+        DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp
+        NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(SemanticChurnPerformanceTests PRIVATE cxx_std_20)
+    target_compile_options(SemanticChurnPerformanceTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(SemanticChurnPerformanceTests PRIVATE
+        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(SemanticChurnPerformanceTests PRIVATE
+        d2d1 dwrite winhttp windowscodecs ole32 psapi)
+    add_test(NAME SemanticChurnPerformanceTests COMMAND SemanticChurnPerformanceTests)
+
     add_executable(SharedComponentGeometryTests
         SharedComponentGeometryTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)

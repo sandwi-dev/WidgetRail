@@ -160,40 +160,61 @@ these patterns.
 
 ## Current measurement
 
-The schema-2 harness completed a full three-state Settings baseline in local run
-`overlay-performance-20260808-201124310-6e6c053e`. It used Release executable
-SHA-256 `f55c41f34bf216ecf986919476d25961d7d4e8c995a6e6f5e9306ce73489e657`,
-three seconds of warmup, 30 requested seconds, and 31 process observations per
-state on a 16-logical-processor Ryzen 7 9800X3D Windows 11 machine. The report
-records a dirty worktree and is therefore local implementation evidence—not a
-release or marketing baseline.
+DLV-016 establishes two complementary local baselines. The production-host
+sampler measures the real host process tree in Hidden and Visible-idle states.
+The native semantic harness isolates deterministic renderer/UI Automation
+projection over one stable representative tree, including private resident
+pages and input-to-projection latency. Neither substitutes one metric for an
+unavailable one.
 
-| State | CPU p95 | Working set p95 | Private bytes p95 | Processes p95 | Guide fallback timer | Post-warmup D2D frames |
+Production-host run
+`overlay-performance-20260811-063511359-b40af482` used Release executable
+SHA-256 `27494a696e7f5e9731b3fff670c335c839f5ee7f4b28d04bf0525d96f7e651f0`,
+two seconds of warmup, 20 requested measurement seconds, and 21 observations
+per state on a 16-logical-processor Ryzen 7 9800X3D Windows 11 machine:
+
+| State | CPU p95 | Working set p95 | Private bytes p95 | Processes p95 | Host timer messages/s | Post-warmup D2D frames |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Hidden | 0.0977% | 95.9 MiB | 42.5 MiB | 3 | 31.65 messages/s | 0 |
-| Visible | 0.2921% | 203.6 MiB | 121.2 MiB | 5 | 31.89 messages/s | 0 |
-| Interactive | 0.1953% | 214.3 MiB | 142.4 MiB | 5 | 31.87 messages/s | 0 |
+| Hidden | 0.09737% | 102.5 MiB | 49.8 MiB | 3 | 0 | 0 |
+| Visible idle | 0.09773% | 219.4 MiB | 132.4 MiB | 5 | 34.12584 | 0 |
 
-The Hidden CPU observation is within the initial 0.1% target for this one run,
-but comparisons remain non-gating. Private-working-set targets are explicitly
-`metric-unavailable`; ordinary working set or private bytes are not substituted
-for them.
+Hidden is within the initial 0.1% diagnostic target in this observation and
+owns no sampled host timer or renderer work. Visible idle retains the ordinary
+controller/bridge timer but schedules no successful Direct2D frame after
+warmup. Process-tree private working set remains `metric-unavailable` because
+the bounded Windows provider is unreliable on this machine; working set and
+private bytes are reported under their own names and are not treated as the
+missing metric. The dirty-worktree provenance makes this focused implementation
+evidence, not release evidence.
 
-The baseline established all three explicit host lifecycle states, produced
-working-set/private-byte/CPU/process samples, published nonce-bound native
-counter records, and left no host, bridge, or worker process behind. After
-warmup, Hidden recorded no controller-timer messages, paints, or successful
-Direct2D frames. It directly recorded 943 quarantined Guide-compatibility timer
-messages over its counter interval; that
-known hidden cadence remains performance follow-up rather than being mislabeled
-as a scheduler-wakeup count. Stable Visible and Interactive observations also
-recorded no post-warmup paints or successful Direct2D frames, while their normal
-controller/bridge timer remained active.
+Native repeated run `dlv016-native-20260811T063924Z-2b5ac019` used five
+independent Release processes over an exact 55-node snapshot, 48 projected
+semantic nodes, 256 updates per process, 12,288 total projected nodes, 960
+changed semantic nodes, and 19,588 canonical snapshot bytes:
 
-These observations do not establish GPU activity, DWM presentation, OS
-scheduler wakeups, context switches, gameplay frame impact, multi-widget cost,
-or long-run memory behavior. The harness reports those fields as unavailable
-instead of deriving them from CPU or paint activity.
+| Metric | Minimum | Median | Maximum | Material gate |
+| --- | ---: | ---: | ---: | ---: |
+| Input-to-semantic-projection p95 | 0.399 ms | 0.405 ms | 0.591 ms | 50 ms |
+| Hidden normalized CPU | 0% | 0% | 0.1285% | 5% |
+| Visible-idle normalized CPU | 0% | 0% | 0% | 5% |
+| Hidden private working set | 0.63 MiB | 0.63 MiB | 0.64 MiB | 128 MiB |
+| Visible-idle private working set | 1.04 MiB | 1.04 MiB | 1.05 MiB | 128 MiB |
+| Input-update private working set | 1.28 MiB | 1.28 MiB | 1.32 MiB | 128 MiB |
+
+The synthetic workload admits at most four changed semantic nodes per input
+update. Snapshot bytes use the existing 1 MiB protocol limit, and projection
+uses the documented 50 ms controller-response budget. CPU and private-working-
+set ceilings are deliberately broad material-regression guards, not new product
+targets. QPC-pair and empty-phase overhead are recorded separately in every
+sample; both rounded to zero at the reported timer/process-accounting
+resolution in this run.
+
+The native harness uses null-target layout, so it excludes paint, GPU, DWM,
+presentation, and game-frame cost. Its private pages exclude bridge and worker
+processes. The host sampler excludes private working set, GPU, OS scheduler
+wakeups, context switches, controller hardware latency, gameplay impact,
+multi-widget cost, and long-run trends. Both outputs publish these limitations
+instead of inferring unavailable metrics.
 
 ## Verification and remaining tooling
 
@@ -274,6 +295,28 @@ Validate the harness's deterministic helpers without launching the overlay via:
 ```powershell
 .\scripts\Measure-OverlayPerformance.ps1 -SelfTest
 ```
+
+Build and run only the DLV-016 native semantic target with:
+
+```powershell
+.\src\OverlayHost\build.ps1 `
+    -Configuration Release `
+    -SemanticChurnTestsOnly
+```
+
+Retain repeated bounded native samples, provenance, metric ranges, and the
+material-regression classification with:
+
+```powershell
+.\scripts\Measure-NativeSemanticChurn.ps1 `
+    -Configuration Release `
+    -SampleCount 5
+```
+
+The runner gives every child sample a 15-second deadline by default and writes
+five immutable sample files plus aggregate JSON and Markdown under a new
+`artifacts/performance/dlv016-native-*` directory. `-SelfTest` validates its
+nearest-rank range logic without building or launching native code.
 
 The performance release gate still needs:
 
