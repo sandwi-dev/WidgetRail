@@ -302,9 +302,10 @@ remains off until the publisher-trust gates in Phase 4.
   serializing base64 images into snapshots or holding provider I/O under native
   control-plane progress; exact trusted revalidation rotates the handle, decoded
   cache entry, and render bitmap. Steam remains a documented fallback on main;
-  DLV-096 candidate `8291c53` implements demand-only trusted-local-cache
-  discovery, but queued DLV-098 must drain scan/observation work before source
-  teardown and bound locator generations before that prefix integrates.
+  DLV-098 candidate `48d19f1` implements demand-only trusted-local-cache
+  discovery, multi-lane terminal drain, and bounded current locators; DLV-099
+  must commit locator promotion/retirement atomically with the accepted source
+  generation before that prefix integrates.
   The coherent post-DLV-055 Release is now
   running for packaged live artwork checks. Launcher sources, authoritative game
   classification, history, search, and source grouping are implemented in the
@@ -400,9 +401,10 @@ not irreversible API priority:
    visual/frame-time evidence before adding later product-target transitions.
 5. **Deepen Games & Apps through safe sources.** Start Menu and bounded
    AppsFolder/AUMID sources plus curated icons and a bounded Steam manifest/URI
-   adapter are implemented. DLV-096 candidate `8291c53` adds demand-only trusted
-   local Steam artwork through the existing lazy handle path; queued DLV-098
-   closes terminal ordering and locator-generation bounds. DLV-095 candidate
+   adapter are implemented. DLV-098 candidate `48d19f1` adds demand-only trusted
+   local Steam artwork, terminal ordering, and locator bounds through the
+   existing lazy handle path; DLV-099 couples locator retirement to source
+   commit. DLV-095 candidate
    `bd270c9` adds an on-demand running-program route only
    for exact normalized registrations, with DLV-097 queued to close its bounded
    observation and SDK-validation review gaps. Add
