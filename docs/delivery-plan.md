@@ -742,10 +742,12 @@ route/action, playback, and presentation boundaries while retaining one
   `9e754f0` is rejected pending DLV-079: its host-owned text-entry modal retains
   snapshot/node references and action authority across a nested message loop.
   DLV-076 candidate `79848f6` is rejected pending DLV-080 because Recent: First
-  reorders only the current provider page. DLV-077 became active before those
-  review dispositions reached the task and may finish under the non-interruption
-  rule; DLV-079 and DLV-080 then correct the retained prefix before integration.
-  DLV-038 remains deferred test-architecture debt rather than filler work.
+  reorders only the current provider page. DLV-077 candidate `f4745ad` is also
+  rejected pending DLV-080 because it injects resolved manual rows into the
+  provider cursor result and can exceed the resource's requested page size.
+  DLV-079 is Assigned; DLV-080 then corrects the retained managed prefix before
+  integration. DLV-038 remains deferred test-architecture debt rather than
+  filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3511,7 +3513,7 @@ the full library or weakening exact launch revalidation.
 
 ### DLV-079 — Revalidate and bound host-owned text entry
 
-**State:** Ready; execute immediately after active DLV-077
+**State:** Assigned; began after DLV-077 commit `f4745ad`
 **Lane:** widgets, acting as serialized cross-lane native correction lead
 **Baseline:** closing commit of DLV-077, retaining DLV-075 candidate `9e754f0`
 and DLV-076 candidate `79848f6` unchanged in branch history
@@ -3579,34 +3581,41 @@ window architecture, or responsive bounds require compositor ownership.
 **State:** Ready; execute immediately after DLV-079 and before any new feature
 **Lane:** widgets
 **Baseline:** closing commit of DLV-079, retaining DLV-076 candidate `79848f6`
-unchanged in branch history
+and DLV-077 candidate `f4745ad` unchanged in branch history
 **Dependencies:** DLV-075, DLV-076, DLV-077, and DLV-079
-**Owner:** Game Launcher recent-first presentation/query composition, private
-state coexistence with DLV-077 manual entries, exact launch admission from the
-bounded recent slice, and focused managed fixtures/docs
+**Owner:** Game Launcher recent/manual retained-slice presentation/query
+composition, exact launch admission from those bounded slices, private-state
+coexistence, and focused managed fixtures/docs
 **Concurrency:** Managed Game Launcher correction only. Do not change public
 query/protocol/provider/broker contracts, native text entry, OverlayHost,
 source adapters, reviewer-owned files, or branch history.
 
 **Visible outcome:** After launching a game from any catalog page and restarting
 the overlay, Recent: First shows that game at the front immediately even when it
-is not in the provider's current page. The normal paginated library remains
-available below it, with no duplicate tile when the same identity is present in
-both slices.
+is not in the provider's current page. Manually added applications remain in a
+bounded visible section without breaking a full provider page. The normal
+paginated library remains available, with no duplicate identity across recent,
+manual, and catalog slices.
 
 **Objective:** Make DLV-076's recent-first promise apply to the complete trusted
-catalog while retaining only the bounded private recent slice and leaving the
-provider-owned catalog cursor independent.
+catalog and correct DLV-077's page-size violation by composing bounded retained
+recent/manual slices outside the provider cursor resource. Keep the provider-
+owned catalog cursor and its page-size contract independent.
 
-**In scope:** compose at most 32 retained recent display rows before the current
-catalog window; deduplicate exact SavedId identities; preserve recent order
-across restart, query replacement, and page traversal; resolve and launch a
-recent-row SavedId through the same current trusted DLV-067 authority rather
-than cached app identity; missing/reclassified/replaced entries; focus/anchor
-restoration between recent and catalog slices; coexistence with search, source,
-favorites, Recent: Only, variant groups, and DLV-077 manual entries; schema/CAS
-conflict/failure/reset bounds; a later-page launch plus cold-restart fixture
-whose first ordinary provider page does not contain that SavedId.
+**In scope:** the `WidgetCursorResource` loader always returns at most the exact
+requested provider page size; compose at most 32 retained recent and 32 freshly
+resolved manual display rows outside that resource; deduplicate exact SavedId
+identities across recent/manual/catalog slices; preserve recent order across
+restart, query replacement, and page traversal; apply search/source/favorite/
+sort visibility coherently to fixed slices without turning them into launch
+authority; resolve and launch a fixed-row SavedId through the same current
+trusted DLV-067 authority rather than cached app identity; missing,
+reclassified, and replaced entries; focus/anchor restoration between sections;
+Recent: Only, variant groups, private schema/CAS conflict/failure/reset bounds;
+automatic Game registrations display as already included rather than offering
+a no-op manual add/remove toggle; a full 64-row provider page plus 32 manual and
+32 recent identities; a later-page launch plus cold-restart fixture whose first
+ordinary provider page does not contain that SavedId.
 
 **Out of scope:** loading or retaining the complete library, provider-side
 recent sort, timestamps/play time/process observation, raw app/path/store
@@ -3615,19 +3624,26 @@ changes.
 
 **Acceptance criteria:** Recent: First always projects the exact bounded recent
 order before unrelated current-page entries, including cold restart after a
-launch beyond page 1. Each SavedId appears once; normal Before/After traversal
-and search/source/favorite filters remain provider-cursor bounded. A retained
-recent row is display-only until activation and can launch only after exact
-current ResolveSaved revalidation; missing, stale, or replaced identity fails
-without authorizing cached data. State remains bounded and preserves DLV-077
-manual membership plus favorites/groups through conflict and reset.
+launch beyond page 1. A provider request for 64 rows returns at most 64 rows to
+`WidgetCursorResource`; fixed recent/manual sections never participate in its
+page/cursor/anchor accounting. Each SavedId appears once across the rendered
+sections; normal Before/After traversal and search/source/favorite filters remain
+provider-cursor bounded. A retained recent or manual row is display-only until
+activation and can launch only after exact current ResolveSaved revalidation;
+missing, stale, or replaced identity fails without authorizing cached data.
+Automatic games cannot accumulate meaningless manual membership. State and the
+complete semantic tree remain within the existing bounds and preserve manual
+membership, favorites, and groups through conflict and reset.
 
-**Verification:** Tier 1 Game Launcher/private-state Release suite with a
-provider page smaller than the catalog, launch on a later page, cold restart on
-page 1, deduplication, missing/replacement, filter coexistence, focus, CAS
-conflict/failure, and DLV-077 schema-preservation cases plus docs. Reuse the
-existing fake provider with exact call/count assertions. No provider/native/
-aggregate/screenshot/physical-game run.
+**Verification:** Tier 1 Game Launcher/private-state Release suite with a full
+64-row provider page, maximum disjoint manual/recent sets, exact loader return
+count, later-page launch, cold restart on page 1, cross-section deduplication,
+automatic-game already-included behavior, missing/replacement, filter/sort/
+source coexistence, focus/page traversal, CAS conflict/failure, and schema-v4
+preservation plus docs. Reuse the existing fake provider with exact call/count
+assertions. Rerun the smallest installed Game Launcher route because DLV-077's
+existing fixture did not cover a full returned provider page after manual add.
+No provider/native/aggregate/screenshot/physical-game run.
 
 **Stop/escalate when:** correct composition requires a public provider sort or
 unbounded catalog load, recent rows cannot remain non-authorizing until exact
@@ -3635,7 +3651,8 @@ current resolve, or DLV-077 establishes an incompatible private-state owner.
 
 ### DLV-077 — Add explicit manual entries to Game Launcher
 
-**State:** Assigned; began after DLV-076 before reviewer correction arrived
+**State:** Candidate `f4745ad` rejected; retain unchanged for DLV-080 correction
+**Closing commit:** `f4745ad` (`[DLV-077] Add trusted manual Game Launcher entries`)
 **Lane:** widgets
 **Baseline:** closing commit of DLV-076
 **Dependencies:** DLV-060, DLV-066, DLV-072, DLV-075, and DLV-076
@@ -3683,6 +3700,23 @@ filesystem, external store, screenshot, or physical launch.
 **Stop/escalate when:** manual inclusion requires exposing executable identity,
 the trusted catalog cannot represent the desired entry, or safe UX requires a
 filesystem/command authority outside the existing threat model.
+
+**Reviewer disposition:** Rejected pending DLV-080. Schema v4, the bounded
+SavedId-only membership policy, nested route/input scope, CAS replay, missing/
+replacement behavior, and exact ResolveSaved launch boundary are coherent.
+Focused evidence reports Game Launcher 32/32 plus the assigned SDK, broker,
+generic-worker, installed-route, and 55-documentation groups. The production
+composition violates the shared cursor resource contract: `LoadPageAsync`
+receives a provider page of up to 64 items, appends freshly resolved manual rows
+to `projectionItems`, and returns that combined list as one
+`WidgetCursorPage`. `WidgetCursorResource.Normalize` rejects any result above
+the requested `PageSize` of 64. A full game page plus one manual Application can
+therefore replace the Library with an invalid-page error; the direct tests use
+small pages, and sorting the conformance Application into the discovery window
+does not exercise the post-add 64-plus-one return. The Add route also labels an
+automatic Game as Available and permits a meaningless manual toggle even though
+the game is already in the Library. Preserve `f4745ad`; DLV-080 must compose
+manual rows outside cursor-page accounting and close the exact maximum-page UX.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
@@ -3898,14 +3932,14 @@ planner will not manufacture internal filler. The 2026-08-11 accepted-main
 Release build produced a narrower deterministic switch failure before reaching
 the blocked resize/compositor question: worker startup replaced the prior
 admitted content with a transient surface. DLV-078 owns that presentation-
-  ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/DLV-080
-  prefix releases the shared native input/build boundary. The platform lane
-  remains idle until then.
+ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/DLV-080
+prefix releases the shared native input/build boundary. The platform lane
+remains idle until then.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Blocked by active DLV-077 plus queued DLV-079/DLV-080 correction
-ownership; assign to platform after the corrected
+**State:** Blocked by active DLV-079 plus queued DLV-080 correction ownership;
+assign to platform after the corrected
 DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix is accepted
 **Lane:** platform
 **Baseline:** accepted DLV-080 integration plus the reviewer control-plane commit

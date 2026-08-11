@@ -1788,10 +1788,10 @@ area at compact, standard, and 150%, and retain accurate UIA names, roles,
 focus restoration, and visible bounds. Do not expand widget key/HWND authority,
 redesign the public query contract, or use screenshot capture as acceptance.
 
-### EQ-032 — P1 — Recent-first ordering is limited to the current catalog page
+### EQ-032 — P1 — Launcher retained organization violates catalog-page composition
 
-**Status: Open in rejected DLV-076 candidate `79848f6`; assigned to DLV-080
-after active DLV-077 and DLV-079.**
+**Status: Open in rejected DLV-076 candidate `79848f6` and DLV-077 candidate
+`f4745ad`; assigned to DLV-080 after active DLV-079.**
 
 **Evidence.** DLV-076 correctly persists at most 32 recent opaque SavedIds and
 uses that exact set for the provider-backed Recent: Only filter. In Recent:
@@ -1803,21 +1803,35 @@ contain it and the game cannot be rendered near the front. The new 40-item test
 launches recent identities that are already present in one loaded snapshot, so
 it cannot detect the page-boundary failure.
 
+DLV-077 introduces the inverse composition error. `LoadPageAsync` receives as
+many as 64 provider rows, removes only manual identities already present in that
+Game query, appends up to 32 separately resolved manual rows, and returns the
+combined list through the same `WidgetCursorPage`. The shared resource's
+`Normalize` method explicitly rejects `page.Items.Count > PageSize`; Game
+Launcher configures `PageSize` to the provider maximum of 64. A full page plus
+one manually added Application can therefore fail the collection even though
+both inputs are individually valid and bounded. Its focused direct cases use
+small catalogs, while the installed fixture proves discovery/action ordering
+but not a successful full-page Library render after the add.
+
 **Why it matters.** The visible control says Recent: First and the delivery
 requirement is complete-library organization. Per-page sorting changes order
 again at every cursor boundary and makes persisted history appear ineffective
 for exactly the large libraries that require paging. Loading the whole catalog
 to compensate would regress the bounded-query architecture.
 
-**Required correction.** DLV-080 should compose the bounded retained recent
-display slice ahead of the independently paged provider window, deduplicate by
-exact SavedId, and route activation only through current ResolveSaved launch
-revalidation. It must preserve normal catalog cursor behavior, filters, focus,
-DLV-077 manual membership, favorites, groups, and bounded CAS state. Required
-evidence starts with a provider page smaller than the catalog: launch a later-
-page identity, cold restart on page 1, prove it is first and nonduplicated, then
-prove missing/replacement identity cannot launch cached authority. No public
-provider sort, full-library load, or process observation is warranted.
+**Required correction.** DLV-080 should compose bounded retained recent and
+resolved manual display sections outside the independently paged provider
+resource, deduplicate by exact SavedId, and route activation only through
+current ResolveSaved launch revalidation. The cursor loader must return no more
+than the exact requested page count under a maximum 64-row page plus maximum
+manual/recent state. Preserve normal catalog cursor behavior, filters/sorts,
+focus, manual membership, favorites, groups, and bounded CAS state; automatic
+Games should be presented as already included instead of receiving a no-op
+manual membership toggle. Evidence must combine a later-page recent cold
+restart with a full provider page plus manual entries, cross-section
+deduplication, and missing/replacement rejection. No public provider sort,
+full-library load, or process observation is warranted.
 
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 
