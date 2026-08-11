@@ -320,7 +320,10 @@ Then repeat the loop.
   `codex/impl-widgets`.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on
-  `codex/impl-platform-recovery` while visible work proceeds. The interrupted
+  `codex/impl-platform-switch` while visible work proceeds. The completed
+  recovery branch `codex/impl-platform-recovery` remains preserved at
+  `7e64b4d` with the non-integrable DLV-062 feasibility checkpoint in its
+  ancestry; do not merge it into visible product work. The interrupted
   `codex/impl-platform-visible` worktree remains preserved with uncommitted
   DLV-016 files and is not an active implementation surface. The original
   `codex/impl-platform` branch remains at its last committed DLV-025 planning

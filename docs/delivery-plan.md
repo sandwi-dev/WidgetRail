@@ -91,7 +91,10 @@ authorize implementation.
 - The `widgets` task works only in its Codex worktree on
   `codex/impl-widgets`. The active `platform` task works only in
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on
-  `codex/impl-platform-recovery`. The interrupted
+  `codex/impl-platform-switch`. The completed recovery branch
+  `codex/impl-platform-recovery` is preserved at `7e64b4d` with the
+  non-integrable DLV-062 feasibility checkpoint in its ancestry and must not be
+  merged into visible product work. The interrupted
   `codex/impl-platform-visible` worktree is preserved with uncommitted DLV-016
   files and is not active. The original `codex/impl-platform` branch remains at
   `57aa2d5`, but its former DLV-025 worktree is no longer registered or present;
@@ -3993,8 +3996,11 @@ a whole-repository framework migration.
 
 Task identity: `platform`
 Active task: `019fef3b-7e94-70f0-b329-3551f8dd805b`
-Active branch: `codex/impl-platform-recovery`
+Active branch: `codex/impl-platform-switch`
 Active worktree: `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`
+Preserved recovery branch: `codex/impl-platform-recovery` at `7e64b4d`; it
+contains the non-integrable DLV-062 feasibility checkpoint and is not an active
+implementation or integration source
 Preserved interrupted branch/worktree: `codex/impl-platform-visible` at
 `C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`; keep its
 uncommitted DLV-016 files read-only while the recovery task resumes DLV-016 on
