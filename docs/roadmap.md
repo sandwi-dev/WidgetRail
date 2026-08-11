@@ -261,10 +261,11 @@ remains off until the publisher-trust gates in Phase 4.
   artwork no longer waits on provider I/O under the native request path and
   exact revalidation changes rotate stale pixels. Accepted DLV-055 `efffa53`
   publishes/installs/selects the changed Spotify source as `0.2.12`, and the
-  coherent Release is visibly running. In-progress DLV-043 now establishes real
-  Spotify ownership boundaries; immediately afterward, DLV-056 must remove the
-  demonstrated checkout-path-sensitive package output and publish a two-root-
-  reproducible main artifact as `0.2.13`. Continue suitable
+  coherent Release is visibly running. Accepted DLV-043 `6c619e9`, integrated
+  through `d534410`, now establishes real Spotify route/action, playback, and
+  snapshot-only presentation boundaries over one retained orchestration owner.
+  Active DLV-056 must remove the demonstrated checkout-path-sensitive package
+  output and publish a two-root-reproducible main artifact as `0.2.13`. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -324,9 +325,10 @@ remains off until the publisher-trust gates in Phase 4.
   Mode gate applies. See [Spotify Web API integration](spotify-integration.md).
   Accepted DLV-055 now runs the integrated DLV-022/053 Queue/Playlist traversal,
   bounded duplicate-occurrence identity, and non-self-linking singleton header
-  graph from unique selected Spotify `0.2.12`. DLV-056 follows DLV-043 to make
-  the managed package checkout-independent and publish the exact main artifact
-  as `0.2.13`; immutable `0.2.11`/`0.2.12` remain rollback generations.
+  graph from unique selected Spotify `0.2.12`. DLV-043's real private ownership
+  boundaries are accepted and integrated; active DLV-056 now makes the managed
+  package checkout-independent and publishes the exact main artifact as
+  `0.2.13`; immutable `0.2.11`/`0.2.12` remain rollback generations.
   Accepted DLV-023 (`3cfdd27`, integrated by `4dc1bd5`)
   now keeps transient provider/poll failures on the last-good player with
   bounded warning/backoff while preserving explicit fatal configuration,

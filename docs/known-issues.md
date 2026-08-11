@@ -86,7 +86,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
 | GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
-| GBA-068 | P0 | Implementing | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-055 `efffa53` installs/selects/enables Spotify `0.2.12`, proves its exact artifact and first AppContainer snapshot, and the coherent Release is visibly running. A main-worktree rebuild of the same commit produced a different digest because managed package output is checkout-path-sensitive; DLV-056 follows in-progress DLV-043 to publish reproducible `0.2.13`. YT Music remains current at `0.2.7`. |
+| GBA-068 | P0 | Implementing | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-055 `efffa53` installs/selects/enables Spotify `0.2.12`, proves its exact artifact and first AppContainer snapshot, and the coherent Release is visibly running. A main-worktree rebuild of the same commit produced a different digest because managed package output is checkout-path-sensitive; accepted DLV-043 is integrated and DLV-056 is active to publish reproducible `0.2.13`. YT Music remains current at `0.2.7`. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2095,10 +2095,10 @@ into the same three-file 146,050-byte package, but the independently derived
 sealed digest was `f989ac...` rather than installed `a946b3...`. The immutable
 catalog correctly refused replacement; the supported workflow reselected and
 re-enabled the accepted latest-source artifact, and the coherent Release is
-visibly running. DLV-056 follows the already-started DLV-043 milestone: remove
-absolute-checkout-path influence, prove identical two-root archive/content
-hashes, and publish the exact main artifact as unique `0.2.13`. Do not interrupt
-DLV-043 or delete/overwrite either rollback generation.
+visibly running. DLV-043 is now accepted and integrated through `d534410`;
+active DLV-056 removes absolute-checkout-path influence, proves identical two-
+root archive/content hashes, and publishes the exact main artifact as unique
+`0.2.13`. Do not delete or overwrite either rollback generation.
 
 The first post-integration relaunch rebuilt only the native executable and left
 the older packaged bridge in `out\Release\runtime`, so the new

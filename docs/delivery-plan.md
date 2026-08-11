@@ -696,10 +696,12 @@ already-installed immutable manifest remained `0.2.11`. Accepted DLV-055
 fresh Release overlay is visibly running for user verification. An independent
 main-worktree rebuild then exposed path-sensitive package output: the same
 commit produced a different sealed digest and immutable `0.2.12` correctly
-refused replacement. In-progress DLV-043 is not interrupted; DLV-056 is next to
-make Community output checkout-independent and publish the corrected artifact
-as `0.2.13`. DLV-038 remains deferred test-architecture debt rather than filler
-work.
+refused replacement. Accepted DLV-043 source commit `6c619e9`, integrated
+through `d534410`, replaces the logical partial widget with real value-based
+route/action, playback, and presentation boundaries while retaining one
+orchestration owner. Active DLV-056 now makes Community output checkout-
+independent and publishes the corrected artifact as `0.2.13`. DLV-038 remains
+deferred test-architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2633,7 +2635,9 @@ prevents calling the main artifact graph exact.
 
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
-**State:** In progress after accepted DLV-055
+**State:** Done; accepted source commit `6c619e9`, integrated through `d534410`
+**Closing commit:** `6c619e9` (`[DLV-043] replace Spotify partials with real
+boundaries`)
 **Baseline:** accepted DLV-055 commit `efffa53`
 **Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
@@ -2677,11 +2681,30 @@ Release suites. No aggregate, live account, provider, or native suite.
 changes, duplicates lifecycle/committed-state/resource authority, exposes a
 DLV-022 list/focus defect, or changes authentication/product behavior.
 
+**Reviewer disposition:** Accepted as a material responsibility split, with a
+conditional cohesive exception for the residual root rather than a claim that
+line count alone is closed. The four-declaration 2,207-line logical partial type
+becomes one non-partial 1,275-line orchestration owner. It retains the sole
+lifecycle, provider-call, three cursor-resource, three task, two-lock/one-
+semaphore, committed-state, and invalidation authority. A closed value-only
+route/action classifier and playback/device command policy own no provider,
+task, lock, resource, or invalidation state; the presenter consumes only one
+immutable `SpotifyPresentationState`. Direct deterministic cases cover repeated
+presentation, action/route admission, and playback command/projection rules,
+while the retained route/Back, provider-event/command, late-result,
+cancellation, and Active-drain matrix remains green. Focused Release evidence
+passes Spotify 48/48, Widget SDK 85/85, generic AppContainer conformance 6/6,
+and 54 documentation contracts. No aggregate, live account, provider, native,
+or screenshot suite ran. Reopen the residual root if presentation/policy returns,
+another lifecycle/resource/coordination owner appears, or material unrelated
+growth occurs. Exact packaged live refresh follows active DLV-056 because
+immutable `0.2.12` cannot carry the newly integrated source.
+
 ### DLV-056 — Make Community packages reproducible across worktrees
 
-**State:** Ready after DLV-043; do not interrupt the active milestone
-**Baseline:** closing commit of DLV-043 plus the reviewer control-plane commit
-containing this assignment
+**State:** Assigned and in progress after accepted DLV-043
+**Baseline:** accepted DLV-043 integration `d534410` plus reviewer control-plane
+commit `509d915`
 **Dependencies:** DLV-055 and DLV-043 only for source/integration order
 **Owner:** widgets lane over the shared managed Community package build inputs,
 Spotify manifest/version references, supported pack/install workflow, and the
