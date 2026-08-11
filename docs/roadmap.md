@@ -603,6 +603,15 @@ click-through, DPI, monitor migration, protected media, borderless games, and
 resource cost. Keep the public pin/presentation contract independent of the
 chosen Windows backend.
 
+DLV-011 has completed that first bounded comparison and selected a host-owned
+Win32 tool window for the next pinning gate. The accepted fixture establishes
+host-only HWND/UIA authority, explicit click-through and focusable modes,
+independent main-overlay hide/close lifetime, bounded monitor/DPI placement,
+and small incremental resource measurements. It does not yet ship Pin/Unpin,
+prove pointer pass-through over a real game, host protected media, or validate
+physical mixed-display behavior; the generic pinning gate below still owns
+those outcomes before YouTube playback is added.
+
 Framework prerequisites:
 
 1. **A real per-widget surface/session model.** Introduce a native

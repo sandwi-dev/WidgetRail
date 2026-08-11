@@ -150,6 +150,27 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-011 — Feasibility gate for host-owned pinned surfaces
+
+**State:** Done
+**Closing commit:** `9af2a76` (`[DLV-011] Gate host-owned pinned surface
+architecture`)
+**Integrated on `main`:** `35df08c`
+
+**Reviewer disposition:** Accepted as an architecture gate, not a shipping
+pinning feature. The selected host-owned Win32 tool-window candidate keeps
+native window, focus, z-order, lifecycle, placement, and accessibility
+authority in OverlayHost; widget input remains a data-only descriptor. A real
+HWND fixture covers click-through/focusable policies, independent main-overlay
+hide/close lifetime, paired teardown, bounded mixed-DPI/monitor fallback, and
+the production UI Automation provider. The focused reviewer rerun passed 299
+checks. Five retained Release processes measured a `0.684-0.707 MiB`
+incremental private working-set delta, 0% normalized 750 ms idle CPU, and
+`0.0003-0.0005 ms` p95 for the deliberately small two-node semantic
+projection. This does not prove cross-game pointer behavior, physical display
+transitions, GPU/DWM cost, protected media, or YouTube playback; those remain
+future bounded gates.
+
 ### DLV-016 — Establish native idle and semantic-churn baselines
 
 **State:** Done
@@ -2636,11 +2657,12 @@ clean recovery task, not an integration source. DLV-025 retains only its
 committed branch baseline and documented evidence after its former worktree
 disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
-`56f6908`; DLV-016 is accepted and integrated as `fee1103`. DLV-011 is now
-Assigned on the accepted collection and measurement foundations, DLV-033 awaits
-the compositor decision, and DLV-025 remains user-decision blocked. No third
-safe platform Ready item is manufactured while those explicit architecture
-dependencies remain.
+`56f6908`; DLV-016 is accepted and integrated as `fee1103`; DLV-011 is accepted
+and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
+DLV-025 remains user-decision blocked. The platform task remains at a clean
+idle boundary while DLV-018 owns shared native/bridge files in the widgets
+lane. No conflicting or fabricated Ready item is manufactured while those
+explicit architecture and file-ownership dependencies remain.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -3175,7 +3197,8 @@ capture path, or elevated tracing changed.
 
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 
-**State:** Assigned after accepted DLV-016
+**State:** Done; accepted and integrated as `35df08c`
+**Closing commit:** `9af2a76`
 **Baseline:** accepted DLV-016 integration `fee1103` plus the reviewer commit
 advancing this assignment
 **Dependencies:** DLV-006 and DLV-016
@@ -3249,8 +3272,9 @@ presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
 
-DLV-011 moved to the platform lane as the Ready consumer of accepted DLV-006
-and the DLV-016 performance baseline.
+DLV-011 completed the bounded architecture gate on accepted DLV-006 and
+DLV-016 foundations. Shipping pinning, rich media, and physical game/display
+compatibility remain separate future assignments.
 
 ## Blocked work
 

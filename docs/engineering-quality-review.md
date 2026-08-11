@@ -1309,6 +1309,18 @@ controller hardware, game-frame impact, long-run trends, or multi-widget
 accumulation. DLV-011 must use these as a comparison baseline, not extrapolate
 them into a pinned-surface or Community-ecosystem budget.
 
+DLV-011 now supplies that bounded comparison. Five focused Release processes
+measured a real host-owned top-level tool window plus a two-node production UI
+Automation projection at `0.684-0.707 MiB` incremental private working set, 0%
+normalized 750 ms idle CPU, and `0.0003-0.0005 ms` semantic p95. The selected
+Win32 candidate keeps HWND, focus, topmost, teardown, placement, and semantic
+authority in the host and accepts only a data descriptor. This closes the
+architecture-choice gate, not the product or compatibility gate: the fixture
+does not prove cross-process click delivery over a game, compositor/GPU cost,
+protected media, physical DPI/hot-plug behavior, or an independently surviving
+YouTube surface. Those claims must remain attached to later generic-pinning and
+rich-media milestones rather than being inferred from the small harness.
+
 **Why it matters.** A user exploring community widgets can accumulate resident
 .NET processes during a gaming session even when every individual package
 obeys its manifest and Job limit. The resulting memory, scheduler, handle, and
