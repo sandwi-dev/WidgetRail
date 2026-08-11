@@ -477,8 +477,8 @@ static async Task BluetoothDeviceListing()
         .Where(button => button.Id.StartsWith(
             "network.bluetooth.item.", StringComparison.Ordinal)).ToArray();
     Assert.Equal(3, devices.Length);
-    Assert.Equal("bluetooth.device.manage", devices[0].ActionId);
-    Assert.Equal("bluetooth.device.manage", devices[1].ActionId);
+    Assert.Equal("bluetooth.device.unpair.open", devices[0].ActionId);
+    Assert.Equal("bluetooth.device.unpair.open", devices[1].ActionId);
     Assert.Equal("bluetooth.device.pair", devices[2].ActionId);
     Assert.Equal("Wireless controller", devices[0].Text);
     Assert.True(devices.All(device => device.IsSelected is not true),
@@ -499,6 +499,36 @@ static async Task BluetoothDeviceListing()
             button.Id.StartsWith("network.bluetooth", StringComparison.Ordinal)),
         "Widget claimed a generic Bluetooth connect operation.");
 
+    await widget.OnActionAsync(new("bluetooth.device.unpair.open", devices[1].Id));
+    var confirmation = Snapshot(widget, 2);
+    Assert.Contains("Remove Paired headset?", Text(confirmation.Root,
+        "network.bluetooth.unpair.sheet.title").Text!);
+    Assert.True(Button(confirmation.Root, "network.bluetooth.unpair.confirm")
+        .AccessibilityLabel!.Contains("Destructive action", StringComparison.Ordinal));
+    await widget.OnActionAsync(new("bluetooth.device.unpair.cancel",
+        "network.bluetooth.unpair.cancel"));
+    Assert.Equal(0, fake.BluetoothUnpairCalls);
+    Assert.True(widget.Bluetooth!.Devices.Any(device => device.DeviceId == "bluetooth-b"));
+
+    await widget.OnActionAsync(new("bluetooth.device.unpair.open", devices[1].Id));
+    await widget.OnActionAsync(new("bluetooth.device.unpair.confirm",
+        "network.bluetooth.unpair.confirm"));
+    Assert.Equal(1, fake.BluetoothUnpairCalls);
+    Assert.Equal("bluetooth-b", fake.LastBluetoothDeviceId);
+    Assert.True(widget.Bluetooth!.Devices.All(device => device.DeviceId != "bluetooth-b"));
+    Assert.True(widget.Bluetooth.Devices.Any(device => device.DeviceId == "bluetooth-a"),
+        "Removing one device changed its unaffected neighbor.");
+
+    fake.BluetoothUnpairingOutcome = WidgetBluetoothUnpairingOutcome.AccessDenied;
+    await widget.OnActionAsync(new("bluetooth.device.unpair.open", devices[0].Id));
+    await widget.OnActionAsync(new("bluetooth.device.unpair.confirm",
+        "network.bluetooth.unpair.confirm"));
+    Assert.Equal(2, fake.BluetoothUnpairCalls);
+    Assert.True(widget.Bluetooth.Devices.Any(device => device.DeviceId == "bluetooth-a"),
+        "A denied removal changed the authoritative pairing.");
+    Assert.Contains("denied", Text(Snapshot(widget, 3).Root,
+        "network.bluetooth.summary").Text!.ToLowerInvariant());
+
     await widget.OnActionAsync(new("bluetooth.device.manage", devices[0].Id));
     Assert.Equal(1, fake.BluetoothManageCalls);
     Assert.Equal("bluetooth-a", fake.LastBluetoothDeviceId);
@@ -518,12 +548,24 @@ static async Task BluetoothDeviceListing()
     Assert.True(widget.Bluetooth!.Devices.Single(device =>
         device.DisplayName == "Wireless controller").IsConnected,
         "A read-only details action disconnected an authoritative Bluetooth device.");
-    Assert.True(widget.Bluetooth.Devices.Single(device =>
-        device.DisplayName == "Paired headset") is { IsPaired: true, IsConnected: false },
-        "A read-only details action connected an authoritative paired Bluetooth device.");
+    Assert.True(widget.Bluetooth.Devices.All(device =>
+        device.DisplayName != "Paired headset"),
+        "An authoritatively removed Bluetooth pairing reappeared after a details action.");
     Assert.True(widget.Bluetooth.Devices.Single(device =>
         device.DisplayName == "Nearby keyboard") is { IsPaired: false, IsConnected: false },
         "A read-only details action mutated authoritative Bluetooth connection state.");
+
+    await widget.OnActionAsync(new("bluetooth.device.unpair.open", devices[0].Id));
+    fake.EmitBluetooth(fake.Bluetooth with
+    {
+        Devices = fake.Bluetooth.Devices.Where(device =>
+            device.DeviceId != "bluetooth-a").ToArray(),
+    });
+    await WaitUntil(() => widget.Bluetooth!.Devices.All(device =>
+        device.DeviceId != "bluetooth-a"));
+    await widget.OnActionAsync(new("bluetooth.device.unpair.confirm",
+        "network.bluetooth.unpair.confirm"));
+    Assert.Equal(2, fake.BluetoothUnpairCalls);
 
     await widget.OnActionAsync(new("bluetooth.device.manage", devices[2].Id));
     Assert.Equal(2, fake.BluetoothManageCalls);
@@ -542,8 +584,8 @@ static async Task BluetoothDeviceListing()
     {
         Devices = [new("bluetooth-a", "Wireless controller", true, false, true)],
     });
-    await WaitUntil(() => widget.Bluetooth?.Devices.Count == 1 &&
-                          widget.Bluetooth.Devices[0].IsConnected == false);
+    await WaitUntil(() => widget.Bluetooth?.Devices is [{ DisplayName: "Wireless controller",
+                                                           IsConnected: false }]);
     var reconciled = Snapshot(widget, 6);
     Assert.Equal("PAIRED", Text(reconciled.Root,
         $"{Buttons(reconciled.Root).Single(button => button.Text == "Wireless controller").Id}.state").Text);
@@ -669,6 +711,32 @@ static async Task RadioCancellationIsGenerationBound()
     Assert.True(!Text(Snapshot(pairWidget, 3).Root, "network.bluetooth.summary").Text!
         .Contains("could not", StringComparison.OrdinalIgnoreCase));
     await Background(pairWidget);
+
+    var unpairFake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    unpairFake.Bluetooth = new WidgetBluetoothSnapshot(
+        WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
+        [new("bluetooth-unpair", "Paired pad", true, false, true)]);
+    unpairFake.HoldBluetoothUnpair = true;
+    unpairFake.IgnoreBluetoothUnpairCancellation = true;
+    var unpairWidget = Create(unpairFake);
+    await ActivateInteractive(unpairWidget);
+    await WaitUntil(() => unpairWidget.Bluetooth?.Devices.Count == 1);
+    await unpairWidget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
+    var unpairRow = Buttons(Snapshot(unpairWidget, 4).Root).Single(button =>
+        button.ActionId == "bluetooth.device.unpair.open");
+    await unpairWidget.OnActionAsync(new("bluetooth.device.unpair.open", unpairRow.Id));
+    var unpairAction = unpairWidget.OnActionAsync(new(
+        "bluetooth.device.unpair.confirm", "network.bluetooth.unpair.confirm")).AsTask();
+    await unpairFake.BluetoothUnpairStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var background = Background(unpairWidget);
+    await unpairFake.BluetoothUnpairCancellationObserved.Task.WaitAsync(
+        TimeSpan.FromSeconds(2));
+    unpairFake.BluetoothUnpairRelease.TrySetResult();
+    await background;
+    await Assert.Canceled(unpairAction);
+    Assert.True(unpairWidget.Bluetooth?.Devices.Single().IsPaired is true,
+        "A cancellation-ignoring late removal overwrote the retired lifecycle.");
+    unpairFake.HoldBluetoothUnpair = false;
 }
 
 static async Task ProviderCommandAndRefreshInterleavings()
@@ -787,6 +855,10 @@ static Task PoliciesArePureAndTyped()
     Assert.Contains("Open", eligible.Message);
     Assert.Equal("Another network connection is already in progress",
         NetworkControlsCommandPolicy.MapConnectFailure("provider_busy"));
+    Assert.Equal("Bluetooth device removal timed out",
+        NetworkControlsCommandPolicy.MapBluetoothUnpairFailure("request_timeout"));
+    Assert.Equal("That Bluetooth device is no longer available",
+        NetworkControlsCommandPolicy.MapBluetoothUnpairFailure("resource_not_found"));
     return Task.CompletedTask;
 }
 
@@ -804,6 +876,9 @@ static Task ActionRoutingIsExact()
         ["bluetooth.device.details"] = NetworkControlsAction.ShowBluetoothDetails,
         ["bluetooth.device.pair"] = NetworkControlsAction.PairBluetooth,
         ["bluetooth.device.manage"] = NetworkControlsAction.ManageBluetooth,
+        ["bluetooth.device.unpair.open"] = NetworkControlsAction.OpenUnpairBluetooth,
+        ["bluetooth.device.unpair.confirm"] = NetworkControlsAction.ConfirmUnpairBluetooth,
+        ["bluetooth.device.unpair.cancel"] = NetworkControlsAction.CancelUnpairBluetooth,
         ["retry"] = NetworkControlsAction.Retry,
     };
     foreach (var pair in expected)
@@ -848,7 +923,8 @@ static Task PresentationIsDeterministic()
         null,
         "opaque-b",
         NetworkControlsTab.Wifi,
-        true);
+        true,
+        null);
     var first = NetworkControlsPresentation.Render(state)
         .CreateSnapshot("network.presentation", 17);
     var second = NetworkControlsPresentation.Render(state)
@@ -909,6 +985,7 @@ static async Task ShippedAssetsValidate()
         "system.network.bluetooth.read.v1",
         "system.network.bluetooth.radio.control.v1",
         "system.network.bluetooth.pair.v1",
+        "system.network.bluetooth.unpair.v1",
         "system.network.bluetooth.manage.v1"], manifest.OptionalPermissions);
     var residency = WidgetResidencyPolicies.Resolve(manifest);
     Assert.Equal(WidgetResidencyMode.UnloadAfterIdle, residency.Mode);
@@ -1166,6 +1243,7 @@ file sealed class FakeNetworkHost
     private int _bluetoothRadioSetCalls;
     private int _bluetoothPairCalls;
     private int _bluetoothManageCalls;
+    private int _bluetoothUnpairCalls;
     private int _statusSubscriptionCount;
     private int _wifiSubscriptionCount;
     private int _radioSubscriptionCount;
@@ -1175,6 +1253,7 @@ file sealed class FakeNetworkHost
     private int _canceledRadioSubscriptions;
     private int _canceledBluetoothSubscriptions;
     private int _canceledBluetoothPairCalls;
+    private int _canceledBluetoothUnpairCalls;
 
     public WidgetNetworkStatus Status { get; set; } = StatusDefault();
     public WidgetAvailableWifiNetworks Wifi { get; set; } =
@@ -1192,8 +1271,12 @@ file sealed class FakeNetworkHost
     public bool HoldWifiRadioSet { get; set; }
     public bool HoldBluetoothRadioSet { get; set; }
     public bool HoldBluetoothPair { get; set; }
+    public bool HoldBluetoothUnpair { get; set; }
+    public bool IgnoreBluetoothUnpairCancellation { get; set; }
     public WidgetBluetoothPairingOutcome BluetoothPairingOutcome { get; set; } =
         WidgetBluetoothPairingOutcome.Paired;
+    public WidgetBluetoothUnpairingOutcome BluetoothUnpairingOutcome { get; set; } =
+        WidgetBluetoothUnpairingOutcome.Unpaired;
     public TaskCompletionSource WifiRadioSetStarted { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource ScanStarted { get; } =
@@ -1208,6 +1291,12 @@ file sealed class FakeNetworkHost
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource BluetoothPairStarted { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource BluetoothUnpairStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource BluetoothUnpairCancellationObserved { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource BluetoothUnpairRelease { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     public List<ConnectWidgetAvailableWifiNetworkRequest> ConnectRequests { get; } = [];
     public int StatusCalls => Volatile.Read(ref _statusCalls);
     public int WifiCalls => Volatile.Read(ref _wifiCalls);
@@ -1217,6 +1306,7 @@ file sealed class FakeNetworkHost
     public int BluetoothRadioSetCalls => Volatile.Read(ref _bluetoothRadioSetCalls);
     public int BluetoothPairCalls => Volatile.Read(ref _bluetoothPairCalls);
     public int BluetoothManageCalls => Volatile.Read(ref _bluetoothManageCalls);
+    public int BluetoothUnpairCalls => Volatile.Read(ref _bluetoothUnpairCalls);
     public string? LastBluetoothDeviceId { get; private set; }
     public int StatusSubscriptionCount => Volatile.Read(ref _statusSubscriptionCount);
     public int WifiSubscriptionCount => Volatile.Read(ref _wifiSubscriptionCount);
@@ -1227,6 +1317,8 @@ file sealed class FakeNetworkHost
     public int CanceledRadioSubscriptions => Volatile.Read(ref _canceledRadioSubscriptions);
     public int CanceledBluetoothSubscriptions => Volatile.Read(ref _canceledBluetoothSubscriptions);
     public int CanceledBluetoothPairCalls => Volatile.Read(ref _canceledBluetoothPairCalls);
+    public int CanceledBluetoothUnpairCalls =>
+        Volatile.Read(ref _canceledBluetoothUnpairCalls);
 
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetNetworkCapabilities.GetStatus, GetStatusAsync)
@@ -1238,6 +1330,7 @@ file sealed class FakeNetworkHost
         .WithHandler(WidgetNetworkCapabilities.GetBluetooth, GetBluetoothAsync)
         .WithHandler(WidgetNetworkCapabilities.SetBluetoothRadio, SetBluetoothRadioAsync)
         .WithHandler(WidgetNetworkCapabilities.PairBluetoothDevice, PairBluetoothDeviceAsync)
+        .WithHandler(WidgetNetworkCapabilities.UnpairBluetoothDevice, UnpairBluetoothDeviceAsync)
         .WithHandler(WidgetNetworkCapabilities.OpenBluetoothDeviceSettings,
             OpenBluetoothDeviceSettingsAsync)
         .WithEventStream(WidgetNetworkCapabilities.StatusChanged, OpenStatusStream)
@@ -1352,6 +1445,39 @@ file sealed class FakeNetworkHost
         LastBluetoothDeviceId = request.DeviceId;
         if (BluetoothException is not null) throw BluetoothException;
         return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+    }
+
+    private async ValueTask<WidgetBluetoothUnpairingResult> UnpairBluetoothDeviceAsync(
+        UnpairWidgetBluetoothDeviceRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _bluetoothUnpairCalls);
+        LastBluetoothDeviceId = request.DeviceId;
+        BluetoothUnpairStarted.TrySetResult();
+        if (HoldBluetoothUnpair)
+        {
+            using var cancellationRegistration = cancellationToken.Register(
+                () => BluetoothUnpairCancellationObserved.TrySetResult());
+            if (IgnoreBluetoothUnpairCancellation)
+                await BluetoothUnpairRelease.Task;
+            else
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException)
+            {
+                Interlocked.Increment(ref _canceledBluetoothUnpairCalls);
+                throw;
+            }
+        }
+        if (BluetoothException is not null) throw BluetoothException;
+        if (BluetoothUnpairingOutcome is WidgetBluetoothUnpairingOutcome.Unpaired or
+            WidgetBluetoothUnpairingOutcome.AlreadyUnpaired)
+            EmitBluetooth(Bluetooth with
+            {
+                Devices = Bluetooth.Devices.Where(device => !string.Equals(
+                    device.DeviceId, request.DeviceId, StringComparison.Ordinal)).ToArray(),
+            });
+        return new WidgetBluetoothUnpairingResult(BluetoothUnpairingOutcome);
     }
 
     private async ValueTask<WidgetCapabilityAcknowledgement> ScanAsync(

@@ -78,6 +78,17 @@ internal sealed class NetworkCapabilityDomain(IPlatformBrokerBackend backend)
                         "invalid_backend_data", "Bluetooth pairing result is invalid.");
                 return BrokerJson.ToElement(result);
             }
+            case PlatformCapabilities.NetworkBluetoothDeviceUnpair:
+            {
+                var request = BrokerJson.ParsePayload<UnpairBluetoothDeviceRequest>(payload);
+                ContractValidation.OpaqueId(request.DeviceId);
+                var result = await backend.UnpairBluetoothDeviceAsync(
+                    request.DeviceId, cancellationToken).ConfigureAwait(false);
+                if (result is null || !Enum.IsDefined(result.Outcome))
+                    throw new BrokerException(
+                        "invalid_backend_data", "Bluetooth removal result is invalid.");
+                return BrokerJson.ToElement(result);
+            }
             case PlatformCapabilities.NetworkBluetoothDeviceSettingsOpen:
             {
                 var request = BrokerJson.ParsePayload<OpenBluetoothDeviceSettingsRequest>(payload);

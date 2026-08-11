@@ -324,6 +324,9 @@ on the owner thread. No provider timer runs while the system is unchanged.
   operations. Desktop UI-dependent pairing objects must be associated with the
   owner window. See
   [DeviceInformationPairing](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing?view=winrt-26100).
+- `UnpairAsync` returns the closed `DeviceUnpairingResultStatus` result set;
+  access denial, an operation already in progress, and failure are not success.
+  See [UnpairAsync](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing.unpairasync?view=winrt-26100).
 - Bluetooth communication is profile-specific. GATT requires knowledge of the
   intended services/characteristics, while RFCOMM establishes a socket to a
   service. The public API therefore does not justify a generic device-level
@@ -332,8 +335,9 @@ on the owner thread. No provider timer runs while the system is unchanged.
 
 ### Implemented boundary and remaining work
 
-Bluetooth radio read/control, event-driven device enumeration, pairing, and
-management fallback are separate closed broker capabilities. The trusted WinRT
+Bluetooth radio read/control, event-driven device enumeration, pairing,
+destructive removal, and management fallback are separate closed broker
+capabilities. The trusted WinRT
 adapter publishes bounded opaque IDs, sanitized names, and paired/present/
 connected state; native device IDs, addresses, handles, and pairing secrets
 never cross the broker. Software-radio changes reconcile effective state and
@@ -344,10 +348,13 @@ Pairing resolves one current opaque ID to a retained native association
 endpoint only inside the trusted provider, calls `PairAsync`, returns a bounded
 typed Windows outcome, and refreshes/publishes authoritative state even after
 failure or cancellation. It does not claim that a Bluetooth profile connected.
+Removal similarly resolves only a current paired opaque ID, calls `UnpairAsync`,
+maps the closed Windows outcome, and refreshes/publishes authoritative state in
+all completion paths. Native IDs and provider exceptions remain host-only.
 The separate manage operation validates the same opaque ID and opens
 `ms-settings:bluetooth` without placing that native ID in the URI. That fallback
-lets Windows own unsupported ceremonies and paired-device management. Unpair is
-not implemented and physical pairing still needs reversible hardware evidence.
+lets Windows own unsupported ceremonies and profile-specific management.
+Physical remove/re-pair still needs reversible hardware evidence.
 Generic Connect/Disconnect remains out of scope; a future GATT or RFCOMM
 integration must declare its exact profile/service authority and resource/
 lifecycle policy.

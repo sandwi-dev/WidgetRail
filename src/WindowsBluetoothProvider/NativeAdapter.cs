@@ -55,6 +55,16 @@ public enum BluetoothPairingOutcome
     Failed,
 }
 
+public enum BluetoothUnpairingOutcome
+{
+    Unpaired,
+    AlreadyUnpaired,
+    OperationInProgress,
+    AccessDenied,
+    DeviceUnavailable,
+    Failed,
+}
+
 public sealed record NativeBluetoothDevice(
     string NativeId,
     string DisplayName,
@@ -77,6 +87,9 @@ public interface IWindowsBluetoothNativeAdapter : IAsyncDisposable
         bool enabled, CancellationToken cancellationToken);
     Task<BluetoothPairingOutcome> PairAsync(
         string nativeDeviceId, CancellationToken cancellationToken);
+    Task<BluetoothUnpairingOutcome> UnpairAsync(
+        string nativeDeviceId, CancellationToken cancellationToken) =>
+        Task.FromResult(BluetoothUnpairingOutcome.DeviceUnavailable);
 }
 
 public interface IWindowsBluetoothNativeAdapterFactory

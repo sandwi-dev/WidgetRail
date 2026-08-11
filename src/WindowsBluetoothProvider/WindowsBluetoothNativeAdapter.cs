@@ -214,6 +214,41 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         return outcome;
     }
 
+    public async Task<BluetoothUnpairingOutcome> UnpairAsync(
+        string nativeDeviceId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(nativeDeviceId);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (!_devices.TryGetValue(nativeDeviceId, out var known) || !known.IsPresent)
+                return BluetoothUnpairingOutcome.DeviceUnavailable;
+            if (!known.IsPaired) return BluetoothUnpairingOutcome.AlreadyUnpaired;
+        }
+
+        DeviceInformation information;
+        try
+        {
+            information = await DeviceInformation.CreateFromIdAsync(nativeDeviceId)
+                .AsTask(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (UnauthorizedAccessException) { return BluetoothUnpairingOutcome.AccessDenied; }
+        catch (Exception) { return BluetoothUnpairingOutcome.DeviceUnavailable; }
+
+        if (!information.Pairing.IsPaired)
+            return BluetoothUnpairingOutcome.AlreadyUnpaired;
+        try
+        {
+            var result = await information.Pairing.UnpairAsync()
+                .AsTask(cancellationToken).ConfigureAwait(false);
+            return MapUnpairingStatus(result.Status);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (UnauthorizedAccessException) { return BluetoothUnpairingOutcome.AccessDenied; }
+        catch (Exception) { return BluetoothUnpairingOutcome.Failed; }
+    }
+
     internal static BluetoothPairingOutcome MapPairingStatus(
         DevicePairingResultStatus status) => status switch
     {
@@ -247,6 +282,18 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         DevicePairingResultStatus.RemoteDeviceHasAssociation =>
             BluetoothPairingOutcome.RemoteAlreadyAssociated,
         _ => BluetoothPairingOutcome.Failed,
+    };
+
+    internal static BluetoothUnpairingOutcome MapUnpairingStatus(
+        DeviceUnpairingResultStatus status) => status switch
+    {
+        DeviceUnpairingResultStatus.Unpaired => BluetoothUnpairingOutcome.Unpaired,
+        DeviceUnpairingResultStatus.AlreadyUnpaired =>
+            BluetoothUnpairingOutcome.AlreadyUnpaired,
+        DeviceUnpairingResultStatus.OperationAlreadyInProgress =>
+            BluetoothUnpairingOutcome.OperationInProgress,
+        DeviceUnpairingResultStatus.AccessDenied => BluetoothUnpairingOutcome.AccessDenied,
+        _ => BluetoothUnpairingOutcome.Failed,
     };
 
     private void MarkPaired(string nativeDeviceId)

@@ -325,6 +325,19 @@ public sealed record PairWidgetBluetoothDeviceRequest(
     [property: JsonRequired] string DeviceId);
 public sealed record WidgetBluetoothPairingResult(
     [property: JsonRequired] WidgetBluetoothPairingOutcome Outcome);
+public enum WidgetBluetoothUnpairingOutcome
+{
+    Unpaired,
+    AlreadyUnpaired,
+    OperationInProgress,
+    AccessDenied,
+    DeviceUnavailable,
+    Failed,
+}
+public sealed record UnpairWidgetBluetoothDeviceRequest(
+    [property: JsonRequired] string DeviceId);
+public sealed record WidgetBluetoothUnpairingResult(
+    [property: JsonRequired] WidgetBluetoothUnpairingOutcome Outcome);
 public sealed record OpenWidgetBluetoothDeviceSettingsRequest(
     [property: JsonRequired] string DeviceId);
 
@@ -612,6 +625,10 @@ public static class WidgetNetworkCapabilities
     public static WidgetCapabilityOperation<PairWidgetBluetoothDeviceRequest,
         WidgetBluetoothPairingResult> PairBluetoothDevice { get; } =
             new("system.network.bluetooth.pair.v1", "network.bluetooth.device.pair");
+
+    public static WidgetCapabilityOperation<UnpairWidgetBluetoothDeviceRequest,
+        WidgetBluetoothUnpairingResult> UnpairBluetoothDevice { get; } =
+            new("system.network.bluetooth.unpair.v1", "network.bluetooth.device.unpair");
 
     public static WidgetCapabilityOperation<OpenWidgetBluetoothDeviceSettingsRequest,
         WidgetCapabilityAcknowledgement> OpenBluetoothDeviceSettings { get; } =
@@ -959,6 +976,20 @@ public sealed class WidgetNetworkService
         if (response is null || !Enum.IsDefined(response.Outcome))
             throw new WidgetCapabilityException(
                 "malformed_response", "The Bluetooth provider returned an invalid pairing result.");
+        return response;
+    }
+
+    public async ValueTask<WidgetBluetoothUnpairingResult> UnpairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken = default)
+    {
+        ValidateOpaqueId(deviceId, nameof(deviceId));
+        var response = await _client.InvokeAsync(
+            WidgetNetworkCapabilities.UnpairBluetoothDevice,
+            new UnpairWidgetBluetoothDeviceRequest(deviceId), cancellationToken)
+            .ConfigureAwait(false);
+        if (response is null || !Enum.IsDefined(response.Outcome))
+            throw new WidgetCapabilityException(
+                "malformed_response", "The Bluetooth provider returned an invalid removal result.");
         return response;
     }
 

@@ -1042,12 +1042,13 @@ Up/Down navigation.
   authoritative and multi-PHY partial failure is explicit.
 - `WindowsBluetoothProvider`: a lazy event-driven WinRT backend for sanitized
   Bluetooth software-radio state and bounded nearby/paired/connected discovery.
-  It supports software radio On/Off and explicit pairing of one current opaque
-  device through Windows Association Endpoint pairing. Unsupported ceremonies,
-  paired-device management, and profile-specific operations open the Windows
+  It supports software radio On/Off plus explicit pairing and removal of one
+  current opaque device through Windows Association Endpoint pairing. Removal
+  uses its own destructive grant and always refreshes authoritative state.
+  Unsupported ceremonies and profile-specific operations open the Windows
   Bluetooth Settings surface through a separately consented capability. Native
-  device IDs never cross the broker. Host-owned unpair and generic device
-  Connect/Disconnect are not implemented.
+  device IDs never cross the broker. Generic device Connect/Disconnect is not
+  implemented.
 - `WindowsActivityProvider`: a lazy WinEvent foreground/destroy observer with
   no polling. It keeps at most 16 eligible running applications and publishes
   bounded display names plus per-process-lifetime opaque IDs; activation can
@@ -1270,11 +1271,26 @@ current bundled Network Controls generation. The masked native modal bypasses
 the worker; the provider creates one per-user profile without overwrite,
 correlates the existing ACM completion, and removes only its newly created
 profile on terminal failure. Software Wi-Fi radio
-read/control, Bluetooth radio/discovery, explicit pairing, and a separately
-consented Windows Settings management fallback are implemented behind granular
-grants. Unpair and generic Bluetooth Connect/Disconnect remain outside the
-current broker surface, and physical pairing still needs reversible hardware
-verification.
+read/control, Bluetooth radio/discovery, explicit pairing/removal, and a
+separately consented Windows Settings management fallback are implemented
+behind granular grants. Removal requires an ActionSheet confirmation, a current
+paired opaque identity, Interactive lifecycle, and authoritative disappearance
+before success. Generic Bluetooth Connect/Disconnect remains outside the
+current broker surface, and physical remove/re-pair still needs reversible
+hardware verification.
+
+DLV-091 adds the separately consented
+`system.network.bluetooth.unpair.v1` operation. Network Controls binds an
+explicit destructive ActionSheet to one current paired opaque row, cancels or
+rejects stale/lost-Interactive requests, and reports success only after the
+trusted provider's authoritative refresh removes that pairing. Focused Release
+evidence passes Network Controls 22/22, Windows Bluetooth 18/18, PlatformBroker
+52/52, WidgetSdk 87/87, SDK compatibility 12/12, Settings 54/54, WidgetBridge
+74/74, WidgetRuntime 74/74, and documentation validation across 55 Markdown
+files. The installed generic-AppContainer route passes 6/6 with cancel,
+confirmation, exact removal, stale-row rejection, and unaffected-neighbor
+coverage; retained result:
+`artifacts/verification/20260811T191258Z-5004ee02/verification-result.json`.
 
 DLV-035 keeps `WindowsNetworkPlatformBackend` as the only native-adapter
 lifetime, MTA owner-thread, command-queue, committed provider-state, event-
@@ -2600,8 +2616,8 @@ with C++ installed:
   creation without exposing secret/profile XML to the worker, but excludes
   enterprise/legacy provisioning and automatic current SSID/signal access.
   Software Wi-Fi radio control plus separately capability-gated
-  Bluetooth radio/discovery and explicit association pairing are implemented.
-  Remaining roadmap work includes unpair/profile-specific Bluetooth operations.
+  Bluetooth radio/discovery and explicit association pairing/removal are
+  implemented. Remaining roadmap work includes profile-specific Bluetooth operations.
   Enterprise Wi-Fi and generic Bluetooth
   Connect/Disconnect are not promised. See
   [widget capabilities](capabilities.md) and [Windows provider

@@ -126,6 +126,10 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         string deviceId, CancellationToken cancellationToken) =>
         _bluetooth.PairBluetoothDeviceAsync(deviceId, cancellationToken);
 
+    public Task<BluetoothUnpairingResultSummary> UnpairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken) =>
+        _bluetooth.UnpairBluetoothDeviceAsync(deviceId, cancellationToken);
+
     public Task OpenBluetoothDeviceSettingsAsync(
         string deviceId, CancellationToken cancellationToken) =>
         _bluetooth.OpenBluetoothDeviceSettingsAsync(deviceId, cancellationToken);
@@ -438,6 +442,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             string deviceId, CancellationToken cancellationToken) =>
             Task.FromException<BluetoothPairingResultSummary>(
                 new BrokerException("platform_unavailable", "Bluetooth pairing is unavailable."));
+
+        public Task<BluetoothUnpairingResultSummary> UnpairBluetoothDeviceAsync(
+            string deviceId, CancellationToken cancellationToken) =>
+            Task.FromException<BluetoothUnpairingResultSummary>(
+                new BrokerException("platform_unavailable", "Bluetooth removal is unavailable."));
 
         public Task OpenBluetoothDeviceSettingsAsync(
             string deviceId, CancellationToken cancellationToken) =>

@@ -21,4 +21,5 @@ internal sealed record NetworkControlsPresentationState(
     string? PendingNetworkId,
     string? SelectedNetworkId,
     NetworkControlsTab ActiveTab,
-    bool Interactive);
+    bool Interactive,
+    WidgetBluetoothDevice? UnpairConfirmationDevice);

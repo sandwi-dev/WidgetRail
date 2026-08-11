@@ -28,6 +28,7 @@ ctor GameBarAlternative.WidgetSdk.SetWidgetWifiRadioRequest(bool Enabled)
 ctor GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest(string? ContextUri, System.Collections.Generic.IReadOnlyList<string>? ItemUris, string? DeviceId = null, int? Offset = null, string? OffsetUri = null)
 ctor GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest(string ProfileId)
 ctor GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest(string DeviceId, bool ContinuePlaying)
+ctor GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
 ctor GameBarAlternative.WidgetSdk.WidgetActionEvent(string ActionId, string SourceElementId, GameBarAlternative.WidgetProtocol.ControllerButton? ControllerButton = null, GameBarAlternative.WidgetProtocol.ControllerEventPhase Phase = GameBarAlternative.WidgetProtocol.ControllerEventPhase.Pressed, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, double? RequestedValue = null, string? InputScopeId = null)
 ctor GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs(GameBarAlternative.WidgetSdk.WidgetActionEvent Action, System.Exception Exception)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery Query, string? Cursor, GameBarAlternative.WidgetSdk.WidgetCursorDirection? Direction, int Limit, bool Refresh = false)
@@ -51,6 +52,7 @@ ctor GameBarAlternative.WidgetSdk.WidgetBluetoothChanged(GameBarAlternative.Widg
 ctor GameBarAlternative.WidgetSdk.WidgetBluetoothDevice(string DeviceId, string DisplayName, bool IsPaired, bool IsConnected, bool IsPresent)
 ctor GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult(GameBarAlternative.WidgetSdk.WidgetBluetoothPairingOutcome Outcome)
 ctor GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot(GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState RadioState, bool CanControlRadio, GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState DiscoveryState, System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetBluetoothDevice> Devices)
+ctor GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult(GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome Outcome)
 ctor GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement(bool Acknowledged)
 ctor GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>(string CapabilityId, string EventType)
 ctor GameBarAlternative.WidgetSdk.WidgetCapabilityException(string errorCode, string message)
@@ -195,6 +197,12 @@ enum GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.NoAdapter = GameBarA
 enum GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.Off = GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.Off
 enum GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.On = GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.On
 enum GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.Unavailable = GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState.Unavailable
+enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.AccessDenied = GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.AccessDenied
+enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.AlreadyUnpaired = GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.AlreadyUnpaired
+enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.DeviceUnavailable = GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.DeviceUnavailable
+enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.Failed = GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.Failed
+enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.OperationInProgress = GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.OperationInProgress
+enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.Unpaired = GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome.Unpaired
 enum GameBarAlternative.WidgetSdk.WidgetCommandPolicy.Latest = GameBarAlternative.WidgetSdk.WidgetCommandPolicy.Latest
 enum GameBarAlternative.WidgetSdk.WidgetCommandPolicy.Serial = GameBarAlternative.WidgetSdk.WidgetCommandPolicy.Serial
 enum GameBarAlternative.WidgetSdk.WidgetCommandPolicy.SingleFlight = GameBarAlternative.WidgetSdk.WidgetCommandPolicy.SingleFlight
@@ -672,6 +680,11 @@ method GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.Deconst
 method GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.ToString() -> string
+method GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.<Clone>$() -> GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest
+method GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Deconstruct(out string DeviceId) -> void
+method GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.ToString() -> string
 method GameBarAlternative.WidgetSdk.Widget.RenderSnapshot(string widgetInstanceId, long sequence) -> GameBarAlternative.WidgetProtocol.ViewSnapshot
 method GameBarAlternative.WidgetSdk.WidgetActionEvent.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetActionEvent
 method GameBarAlternative.WidgetSdk.WidgetActionEvent.Deconstruct(out string ActionId, out string SourceElementId, out GameBarAlternative.WidgetProtocol.ControllerButton? ControllerButton, out GameBarAlternative.WidgetProtocol.ControllerEventPhase Phase, out long Sequence, out long MonotonicTimestampMicroseconds, out double? RequestedValue, out string? InputScopeId) -> void
@@ -807,6 +820,11 @@ method GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.Deconstruct(out Game
 method GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult
+method GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome Outcome) -> void
+method GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement
 method GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement.Deconstruct(out bool Acknowledged) -> void
 method GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement.Equals(object? obj) -> bool
@@ -973,6 +991,7 @@ method GameBarAlternative.WidgetSdk.WidgetNetworkService.RequestWifiScanAsync(Sy
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.SetBluetoothRadioAsync(bool enabled, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.SetWifiRadioAsync(bool enabled, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.SwitchSavedProfileAsync(string profileId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method GameBarAlternative.WidgetSdk.WidgetNetworkService.UnpairBluetoothDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchAvailableWifiAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetworksChanged>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchBluetoothAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetBluetoothChanged>
 method GameBarAlternative.WidgetSdk.WidgetNetworkService.WatchStatusAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<GameBarAlternative.WidgetSdk.WidgetNetworkStatusChanged>
@@ -1401,6 +1420,8 @@ method static GameBarAlternative.WidgetSdk.UI.Toast(string title, string message
 method static GameBarAlternative.WidgetSdk.UI.ToggleButton(string label, bool isOn, string action, string id) -> GameBarAlternative.WidgetSdk.ButtonElement
 method static GameBarAlternative.WidgetSdk.UI.ValueRow(string label, string value, string id, string? description = null, GameBarAlternative.WidgetProtocol.WidgetGlyph? glyph = null, string? valueAccessibilityLabel = null) -> GameBarAlternative.WidgetSdk.RowElement
 method static GameBarAlternative.WidgetSdk.UI.VerticalScroll(string id, params GameBarAlternative.WidgetSdk.WidgetElement[] children) -> GameBarAlternative.WidgetSdk.ScrollElement
+method static GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Equality(GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
+method static GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.op_Inequality(GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? left, GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionEvent.op_Equality(GameBarAlternative.WidgetSdk.WidgetActionEvent? left, GameBarAlternative.WidgetSdk.WidgetActionEvent? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionEvent.op_Inequality(GameBarAlternative.WidgetSdk.WidgetActionEvent? left, GameBarAlternative.WidgetSdk.WidgetActionEvent? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.op_Equality(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? left, GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
@@ -1447,6 +1468,8 @@ method static GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult.op_Equal
 method static GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult.op_Inequality(GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult? left, GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.op_Equality(GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot? left, GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.op_Inequality(GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot? left, GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.op_Equality(GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult? left, GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.op_Inequality(GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult? left, GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement.op_Equality(GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement? left, GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement.op_Inequality(GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement? left, GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>.op_Equality(GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>? left, GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>? right) -> bool
@@ -1655,6 +1678,7 @@ method virtual GameBarAlternative.WidgetSdk.TextEntryElement.Equals(GameBarAlter
 method virtual GameBarAlternative.WidgetSdk.ToastElement.<Clone>$() -> GameBarAlternative.WidgetSdk.ToastElement
 method virtual GameBarAlternative.WidgetSdk.ToastElement.Equals(GameBarAlternative.WidgetSdk.ToastElement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.Equals(GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.Widget.OnActionAsync(GameBarAlternative.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual GameBarAlternative.WidgetSdk.Widget.OnControllerInputAsync(GameBarAlternative.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual GameBarAlternative.WidgetSdk.WidgetActionEvent.Equals(GameBarAlternative.WidgetSdk.WidgetActionEvent? other) -> bool
@@ -1681,6 +1705,7 @@ method virtual GameBarAlternative.WidgetSdk.WidgetBluetoothChanged.Equals(GameBa
 method virtual GameBarAlternative.WidgetSdk.WidgetBluetoothDevice.Equals(GameBarAlternative.WidgetSdk.WidgetBluetoothDevice? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult.Equals(GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.Equals(GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.Equals(GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement.Equals(GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>.Equals(GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse>.Equals(GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse>? other) -> bool
@@ -1796,6 +1821,7 @@ property GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState GameBarAlter
 property GameBarAlternative.WidgetSdk.WidgetBluetoothPairingOutcome GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult.Outcome { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot.RadioState { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot GameBarAlternative.WidgetSdk.WidgetBluetoothChanged.Snapshot { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult.Outcome { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetCollectionCursor? GameBarAlternative.WidgetSdk.WidgetCursorPage<TItem>.After { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetCollectionCursor? GameBarAlternative.WidgetSdk.WidgetCursorPage<TItem>.Before { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetCollectionCursor? GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.After { get; set; }
@@ -2164,6 +2190,7 @@ property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAl
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest,GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement> GameBarAlternative.WidgetSdk.WidgetSpotifyCapabilities.StartPlayback { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest,GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.SwitchSavedProfile { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest,GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement> GameBarAlternative.WidgetSdk.WidgetSpotifyCapabilities.TransferPlayback { get; }
+property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest,GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult> GameBarAlternative.WidgetSdk.WidgetNetworkCapabilities.UnpairBluetoothDevice { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest,GameBarAlternative.WidgetSdk.WidgetAppLibraryPage> GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilities.GetPage { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetAudioInput> GameBarAlternative.WidgetSdk.WidgetAudioCapabilities.GetInput { get; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityOperation<GameBarAlternative.WidgetSdk.WidgetCapabilityQuery,GameBarAlternative.WidgetSdk.WidgetAudioOutput> GameBarAlternative.WidgetSdk.WidgetAudioCapabilities.GetOutput { get; }
@@ -2241,6 +2268,7 @@ property string GameBarAlternative.WidgetSdk.TextEntryElement.Value { get; set; 
 property string GameBarAlternative.WidgetSdk.ToastElement.Message { get; }
 property string GameBarAlternative.WidgetSdk.ToastElement.Title { get; }
 property string GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.DeviceId { get; set; }
+property string GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.DeviceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetActionEvent.ActionId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetActionEvent.SourceElementId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.AppId { get; set; }
@@ -2397,6 +2425,7 @@ type enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection : System.IComp
 type enum GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetBluetoothPairingOutcome : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetBluetoothRadioState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingOutcome : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetCommandPolicy : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetCursorDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetLifecycleState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2472,6 +2501,7 @@ type sealed class GameBarAlternative.WidgetSdk.TextEntryElement : GameBarAlterna
 type sealed class GameBarAlternative.WidgetSdk.TileArtwork
 type sealed class GameBarAlternative.WidgetSdk.ToastElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.ToastElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest : System.IEquatable<GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest>
+type sealed class GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>
 type sealed class GameBarAlternative.WidgetSdk.WidgetActionEvent : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetActionEvent>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryItem : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem>
@@ -2495,6 +2525,7 @@ type sealed class GameBarAlternative.WidgetSdk.WidgetBluetoothChanged : System.I
 type sealed class GameBarAlternative.WidgetSdk.WidgetBluetoothDevice : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetBluetoothDevice>
 type sealed class GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetBluetoothPairingResult>
 type sealed class GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetBluetoothSnapshot>
+type sealed class GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetBluetoothUnpairingResult>
 type sealed class GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetCapabilityAcknowledgement>
 type sealed class GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload> : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<TPayload>>
 type sealed class GameBarAlternative.WidgetSdk.WidgetCapabilityException : System.Exception, System.Runtime.Serialization.ISerializable

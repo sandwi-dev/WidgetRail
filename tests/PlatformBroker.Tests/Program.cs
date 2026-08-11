@@ -334,7 +334,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(30, PlatformCapabilities.All.Count);
+    Assert.Equal(31, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -2687,6 +2687,7 @@ static async Task BluetoothContracts()
         PlatformCapabilities.NetworkBluetoothReadV1,
         PlatformCapabilities.NetworkBluetoothRadioControlV1,
         PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothUnpairV1,
         PlatformCapabilities.NetworkBluetoothManageV1);
     broker.SetLifecycle(BrokerLifecycleState.Visible);
 
@@ -2747,7 +2748,37 @@ static async Task BluetoothContracts()
     Assert.Equal("userInteractionRequired",
         paired.Payload!.Value.GetProperty("outcome").GetString());
     Assert.Equal(1, backend.BluetoothPairCalls);
+
+    var unpairWithoutConsent = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothUnpairV1,
+        PlatformCapabilities.NetworkBluetoothDeviceUnpair,
+        new { deviceId = "bluetooth-1" }));
+    Assert.Equal("permission_denied", unpairWithoutConsent.ErrorCode);
     Assert.Equal("bluetooth-2", backend.LastBluetoothDeviceId);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkBluetoothUnpairV1,
+        ConsentDecision.Grant);
+    backend.BluetoothUnpairingResult = BluetoothUnpairingResultStatus.Unpaired;
+    var unpaired = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothUnpairV1,
+        PlatformCapabilities.NetworkBluetoothDeviceUnpair,
+        new { deviceId = "bluetooth-1" }));
+    Assert.True(unpaired.Succeeded && unpaired.Payload is not null);
+    Assert.Equal("unpaired", unpaired.Payload!.Value.GetProperty("outcome").GetString());
+    Assert.Equal("bluetooth-1", backend.LastBluetoothDeviceId);
+    var afterUnpair = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothReadV1,
+        PlatformCapabilities.NetworkBluetoothGet, new { }));
+    Assert.True(afterUnpair.Succeeded && afterUnpair.Payload is not null);
+    Assert.DoesNotContain("Wireless controller", afterUnpair.Payload!.Value.GetRawText(),
+        StringComparison.Ordinal);
+    Assert.Contains("Nearby keyboard", afterUnpair.Payload.Value.GetRawText());
+
+    var malformedUnpair = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.NetworkBluetoothUnpairV1,
+        PlatformCapabilities.NetworkBluetoothDeviceUnpair,
+        new { deviceId = "bluetooth-1", nativeId = "secret" }));
+    Assert.Equal("invalid_payload", malformedUnpair.ErrorCode);
+    Assert.Equal("bluetooth-1", backend.LastBluetoothDeviceId);
 
     var malformedPair = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.NetworkBluetoothPairV1,

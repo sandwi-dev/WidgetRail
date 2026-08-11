@@ -99,10 +99,9 @@ Available-network read/scan/connect is implemented end to end in the typed
 SDK, authenticated broker, Native Wi-Fi provider, bundled manifest/catalog,
 Settings consent descriptions, first-party widget, and deterministic tests.
 Software Wi-Fi radio read/control, Bluetooth radio/discovery, explicit
-association pairing, and a Windows-owned management fallback are also
+association pairing/removal, and a Windows-owned management fallback are also
 implemented behind separate closed grants. Remaining work is deliberately
-separate: enterprise provisioning, Bluetooth unpair, and profile-specific
-Bluetooth communication.
+separate: enterprise provisioning and profile-specific Bluetooth communication.
 Unknown future capability names continue to fail closed.
 
 The implemented Wi-Fi contract is:
@@ -151,17 +150,21 @@ the effective Windows state, including typed partial failure. An explicit A
 action on one current unpaired opaque device invokes Windows Association
 Endpoint `PairAsync`; every completed Windows result maps to a bounded typed
 outcome, and the provider always refreshes authoritative device state. A result
-never claims profile connectivity. Devices already paired/connected, and
+never claims profile connectivity. A paired row opens a nested confirmation;
+confirm resolves that exact current opaque ID, invokes `UnpairAsync`, and shows
+success only after the authoritative refresh no longer reports the pairing.
+Cancel, stale identity, lifecycle loss, and replacement invoke nothing. Devices
+already paired/connected, and
 pairing outcomes that require a ceremony the overlay does not own, can open the
 Windows Bluetooth Settings page through a separate manage grant. The validated
 native device ID remains host-only and is never embedded in the Settings URI.
-Unpair is not implemented. A generic
-Bluetooth device Connect/Disconnect operation is **not** promised: Windows
+A generic Bluetooth device Connect/Disconnect operation is **not** promised: Windows
 communication is profile-specific, such as GATT service/characteristic access
 or RFCOMM sockets, and each future profile integration needs a separate narrow
 capability. See Microsoft's [Radio](https://learn.microsoft.com/en-us/uwp/api/windows.devices.radios.radio?view=winrt-26100),
 [DeviceWatcher](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.devicewatcher?view=winrt-26100),
 [DeviceInformationPairing](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing?view=winrt-26100),
+[UnpairAsync](https://learn.microsoft.com/en-us/uwp/api/windows.devices.enumeration.deviceinformationpairing.unpairasync?view=winrt-26100),
 [Bluetooth GATT client](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-client),
 and [Bluetooth RFCOMM](https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/send-or-receive-files-with-rfcomm)
 documentation.
@@ -187,6 +190,7 @@ Declare the smallest authority in `manifest.json`:
     "system.network.bluetooth.read.v1",
     "system.network.bluetooth.radio.control.v1",
     "system.network.bluetooth.pair.v1",
+    "system.network.bluetooth.unpair.v1",
     "system.network.bluetooth.manage.v1"
   ]
 }
@@ -203,10 +207,11 @@ Declare the smallest authority in `manifest.json`:
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, acknowledged subscription, and sanitized device/radio events | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync` | Interactive only |
 | `system.network.bluetooth.pair.v1` | `PairBluetoothDeviceAsync` for one current opaque device and typed authoritative outcome | Interactive only |
+| `system.network.bluetooth.unpair.v1` | `UnpairBluetoothDeviceAsync` for one explicitly confirmed current paired opaque device; authoritative removal gates success | Interactive only |
 | `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync` for one current opaque device; Windows owns the management UI | Interactive only |
 
 `permissions` means the widget considers read access essential;
-`optionalPermissions` means connection/radio/pairing/management enhancements
+`optionalPermissions` means connection/radio/pairing/removal/management enhancements
 can degrade independently from coarse status, nearby-network presentation, and
 Wi-Fi radio visibility. Pair and manage are intentionally different decisions:
 granting read/discovery or radio control does not authorize either operation.
@@ -499,7 +504,7 @@ The implemented first-party package contract is:
 - source `src/FirstPartyWidgets/NetworkControlsWidget`;
 - required `system.network.read.v1`, `system.network.wifi.read.v1`, and
   `system.network.wifi.radio.read.v1`; optional connection, Wi-Fi radio control,
-  Bluetooth read, and Bluetooth radio-control grants;
+  Bluetooth read, radio-control, pairing, removal, and management grants;
 - x64, `unload-after-idle` background policy with a 120-second bound, 64 MiB
   requested memory, and 10 Hz maximum widget update budget; and
 - root controller input scope `network-controls`.
@@ -516,7 +521,10 @@ Its implemented stable actions are:
 | Focused Scan action | A | `wifi.scan` | Request one bounded scan while Interactive; there is no automatic or repeating scan. |
 | Focused network row | A or X | `wifi.connect.item` | Request connection to that exact current saved/open result while Interactive. |
 | Focused Bluetooth radio | A | `bluetooth.radio.toggle` | Request software radio On/Off while Interactive and reconcile denial/partial failure. |
-| Focused Bluetooth device | A | `bluetooth.device.info` | Select/show sanitized state only; no pair or connect command. |
+| Focused nearby Bluetooth device | A | `bluetooth.device.pair` | Start association for that exact current opaque row. |
+| Focused paired Bluetooth device | A | `bluetooth.device.unpair.open` | Open explicit Remove device confirmation; B/Cancel changes nothing. |
+| Removal confirmation | A | `bluetooth.device.unpair.confirm` | Invoke one exact current removal, then reconcile authoritative disappearance. |
+| Focused Bluetooth device | X | `bluetooth.device.manage` | Open the Windows-owned Bluetooth Settings fallback for the exact current row. |
 | Failure/unavailable surface | focused A | `retry` | Make one explicit refresh/recovery attempt; never start a retry loop. |
 
 There is deliberately no dashboard selection or connect action. The open

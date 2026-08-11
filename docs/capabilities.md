@@ -45,6 +45,7 @@ The current closed capability set is:
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
 | `system.network.bluetooth.radio.control.v1` | `SetBluetoothRadioAsync`; software radio only | Interactive only |
 | `system.network.bluetooth.pair.v1` | `PairBluetoothDeviceAsync(deviceId)` for one current broker-issued opaque device ID; returns an authoritative bounded pairing outcome and never implies profile connection | Interactive only |
+| `system.network.bluetooth.unpair.v1` | `UnpairBluetoothDeviceAsync(deviceId)` for one current paired opaque device ID; returns a bounded removal outcome and requires authoritative disappearance before UI success | Interactive only |
 | `system.network.bluetooth.manage.v1` | `OpenBluetoothDeviceSettingsAsync(deviceId)` after validating one current opaque device ID; opens the Windows-owned Bluetooth Settings surface without placing the native ID in a URI | Interactive only |
 | `system.activity.recent.read.v1` | `HostServices.RecentActivity.GetRecentAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
 | `system.apps.library.read.v1` | `HostServices.AppLibrary.QueryAsync(query, cursor, direction, limit, refresh)` and `ResolveSavedAsync(savedIds)` for bounded cursor pages, sanitized names/source labels, conservative kinds, short-lived launch IDs, authority-scoped durable SavedIds, and up to 16 observation-only source-health rows bound to the page revision | Visible or Interactive |
@@ -74,14 +75,15 @@ accept them, and no widget may infer them from the implemented network grants:
 | Planned closed authority | Intended boundary | Initial lifecycle |
 | --- | --- | --- |
 | Protected Wi-Fi credential flow | Host-owned WPA/WPA2/WPA3 Personal prompt/profile creation; no credential reaches the worker | Interactive only |
-| Bluetooth unpair | Host-owned disassociation ceremony; no native identifier or ceremony secret reaches the worker | Interactive only |
 | Profile-specific Bluetooth communication | A separate reviewed GATT/RFCOMM/service contract, never authority inherited from discovery | Feature-specific |
 
 Pairing is implemented as association only. A `Paired` result does not mean a
 headset, controller, GATT service, or RFCOMM service is connected or usable.
 Unsupported ceremonies and management use the separately granted Windows
-Settings fallback; there is no widget-owned credential/PIN dialog. Unpair has
-no public capability yet.
+Settings fallback; there is no widget-owned credential/PIN dialog. Removal is
+a separate destructive grant: show explicit confirmation, send only the exact
+current opaque paired-device ID, and wait for the authoritative refreshed
+snapshot before claiming success.
 
 There is deliberately no generic Bluetooth Connect/Disconnect grant. Windows
 communication is profile-specific (for example GATT or RFCOMM), so a future
@@ -287,11 +289,11 @@ fail with typed codes instead of exposing a secret-entry surface to the worker.
 Wi-Fi and Bluetooth radio setters always reconcile the authoritative state.
 `partial_failure` means one native target changed and another did not; the UI
 must show the refreshed state rather than pretending the requested state won.
-Bluetooth device IDs are opaque and generation-bound. Pair only an ID from the
-current snapshot, handle every `WidgetBluetoothPairingOutcome` without
-inventing success, and wait for the following authoritative Bluetooth snapshot
-before changing paired/connected presentation. `OpenBluetoothDeviceSettingsAsync`
-is a Windows-owned management fallback, not a generic connect or unpair result.
+Bluetooth device IDs are opaque and generation-bound. Pair or remove only an ID
+from the current snapshot, handle every typed outcome without inventing success,
+and wait for the following authoritative Bluetooth snapshot before changing
+paired/connected presentation. `OpenBluetoothDeviceSettingsAsync` is a
+Windows-owned management fallback, not a generic connect result.
 
 Audio device enumeration reports which sanitized endpoints are currently
 default. It intentionally has no default-device setter. Input read/control is

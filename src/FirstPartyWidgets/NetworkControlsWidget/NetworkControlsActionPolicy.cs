@@ -12,6 +12,9 @@ internal enum NetworkControlsAction
     ShowBluetoothDetails,
     PairBluetooth,
     ManageBluetooth,
+    OpenUnpairBluetooth,
+    ConfirmUnpairBluetooth,
+    CancelUnpairBluetooth,
     Retry,
 }
 
@@ -28,6 +31,9 @@ internal static class NetworkControlsActionPolicy
         "bluetooth.device.details" => NetworkControlsAction.ShowBluetoothDetails,
         "bluetooth.device.pair" => NetworkControlsAction.PairBluetooth,
         "bluetooth.device.manage" => NetworkControlsAction.ManageBluetooth,
+        "bluetooth.device.unpair.open" => NetworkControlsAction.OpenUnpairBluetooth,
+        "bluetooth.device.unpair.confirm" => NetworkControlsAction.ConfirmUnpairBluetooth,
+        "bluetooth.device.unpair.cancel" => NetworkControlsAction.CancelUnpairBluetooth,
         "retry" => NetworkControlsAction.Retry,
         _ => NetworkControlsAction.None,
     };

@@ -32,6 +32,30 @@ internal static class NetworkControlsPresentation
         if (state.NetworkStatus is null || state.Wifi is null || state.WifiRadio is null)
             return RenderProviderState(header, state.ViewState);
 
+        if (state.UnpairConfirmationDevice is { } removing)
+        {
+            var sheet = UI.ActionSheet(
+                $"Remove {removing.DisplayName}?",
+                "network.bluetooth.unpair.sheet",
+                "network.bluetooth.unpair.scope",
+                "bluetooth.device.unpair.cancel",
+                [
+                    new ActionSheetItem(
+                        "network.bluetooth.unpair.cancel", "Cancel",
+                        "bluetooth.device.unpair.cancel", null,
+                        "Cancel device removal"),
+                    new ActionSheetItem(
+                        "network.bluetooth.unpair.confirm", "Remove device",
+                        "bluetooth.device.unpair.confirm", WidgetGlyph.Warning,
+                        $"Remove {removing.DisplayName}", ActionSheetItemTone.Danger,
+                        IsDisabled: !state.Interactive || state.BluetoothBusy,
+                        IsBusy: state.BluetoothBusy),
+                ],
+                "Windows will remove this pairing. You may need to pair the device again.");
+            return new WidgetView(
+                sheet, "network.bluetooth.unpair.cancel", Surface: CompactSurface);
+        }
+
         var status = state.NetworkStatus;
         var wifi = state.Wifi;
         var radio = state.WifiRadio;
@@ -437,9 +461,9 @@ internal static class NetworkControlsPresentation
             var isPending = string.Equals(
                 device.DeviceId, state.PendingBluetoothDeviceId, StringComparison.Ordinal);
             var actionId = device.IsPaired
-                ? "bluetooth.device.manage" : "bluetooth.device.pair";
+                ? "bluetooth.device.unpair.open" : "bluetooth.device.pair";
             var actionLabel = device.IsPaired
-                ? "Press A to manage in Windows Bluetooth Settings"
+                ? "Press A to remove. Press X to manage in Windows Bluetooth Settings"
                 : "Press A to pair. Press X if Windows interaction is required";
             var button = UI.Button(device.DisplayName, actionId, id)
                 .Icon(WidgetGlyph.Connection,

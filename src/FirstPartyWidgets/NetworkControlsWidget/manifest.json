@@ -25,6 +25,7 @@
     "system.network.bluetooth.read.v1",
     "system.network.bluetooth.radio.control.v1",
     "system.network.bluetooth.pair.v1",
+    "system.network.bluetooth.unpair.v1",
     "system.network.bluetooth.manage.v1"
   ],
   "residencyPolicy": {

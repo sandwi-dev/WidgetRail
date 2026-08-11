@@ -1393,7 +1393,8 @@ static async Task BluetoothPermissionCopy()
     var catalogRoot = Path.Combine(temp.Path, "catalog");
     WriteInstalledWidget(catalogRoot, "dev.test.bluetooth", "dev.publisher.bluetooth", "Bluetooth helper",
         [PlatformCapabilities.NetworkBluetoothReadV1],
-        [PlatformCapabilities.NetworkBluetoothRadioControlV1]);
+        [PlatformCapabilities.NetworkBluetoothRadioControlV1,
+         PlatformCapabilities.NetworkBluetoothUnpairV1]);
     var widget = CreateWithPermissions(temp.Path, catalogRoot,
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
@@ -1408,8 +1409,17 @@ static async Task BluetoothPermissionCopy()
     var control = Snapshot(widget);
     Assert.Contains("hardware switches", Text(control.Root, "capability.description").Text!);
     Assert.Contains("device policy", Text(control.Root, "capability.description").Text!);
+    await Action(widget, "back");
+    await Action(widget, "capability.select.2");
+    var removal = Snapshot(widget);
+    Assert.Equal("Remove Bluetooth pairings",
+        Text(removal.Root, "capability.heading").Text);
+    Assert.Contains("explicit confirmation",
+        Text(removal.Root, "capability.description").Text!);
+    Assert.Contains("opaque ID", Text(removal.Root, "capability.description").Text!);
     Assert.Valid(read);
     Assert.Valid(control);
+    Assert.Valid(removal);
 }
 
 static async Task GrantAndRevoke()

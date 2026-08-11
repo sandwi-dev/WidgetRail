@@ -280,6 +280,19 @@ public sealed record PairBluetoothDeviceRequest(
     [property: JsonRequired] string DeviceId);
 public sealed record BluetoothPairingResultSummary(
     [property: JsonRequired] BluetoothPairingResultStatus Outcome);
+public enum BluetoothUnpairingResultStatus
+{
+    Unpaired,
+    AlreadyUnpaired,
+    OperationInProgress,
+    AccessDenied,
+    DeviceUnavailable,
+    Failed,
+}
+public sealed record UnpairBluetoothDeviceRequest(
+    [property: JsonRequired] string DeviceId);
+public sealed record BluetoothUnpairingResultSummary(
+    [property: JsonRequired] BluetoothUnpairingResultStatus Outcome);
 public sealed record OpenBluetoothDeviceSettingsRequest(
     [property: JsonRequired] string DeviceId);
 
@@ -901,6 +914,10 @@ public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
         string deviceId, CancellationToken cancellationToken) =>
         Task.FromException<BluetoothPairingResultSummary>(
             new BrokerException("platform_unavailable", "Bluetooth pairing is unavailable."));
+    Task<BluetoothUnpairingResultSummary> UnpairBluetoothDeviceAsync(
+        string deviceId, CancellationToken cancellationToken) =>
+        Task.FromException<BluetoothUnpairingResultSummary>(
+            new BrokerException("platform_unavailable", "Bluetooth removal is unavailable."));
     Task OpenBluetoothDeviceSettingsAsync(
         string deviceId, CancellationToken cancellationToken) =>
         Task.FromException(
