@@ -1788,6 +1788,37 @@ area at compact, standard, and 150%, and retain accurate UIA names, roles,
 focus restoration, and visible bounds. Do not expand widget key/HWND authority,
 redesign the public query contract, or use screenshot capture as acceptance.
 
+### EQ-032 — P1 — Recent-first ordering is limited to the current catalog page
+
+**Status: Open in rejected DLV-076 candidate `79848f6`; assigned to DLV-080
+after active DLV-077 and DLV-079.**
+
+**Evidence.** DLV-076 correctly persists at most 32 recent opaque SavedIds and
+uses that exact set for the provider-backed Recent: Only filter. In Recent:
+First mode, `EffectiveQueryLocked` does not change the ordinary catalog query.
+`GameLauncherPresentation.Render` then orders only `snapshot.Items`, the current
+bounded provider page, against the recent map. A game launched from page 3 can
+be recorded durably, but after restart the first A-Z provider page does not
+contain it and the game cannot be rendered near the front. The new 40-item test
+launches recent identities that are already present in one loaded snapshot, so
+it cannot detect the page-boundary failure.
+
+**Why it matters.** The visible control says Recent: First and the delivery
+requirement is complete-library organization. Per-page sorting changes order
+again at every cursor boundary and makes persisted history appear ineffective
+for exactly the large libraries that require paging. Loading the whole catalog
+to compensate would regress the bounded-query architecture.
+
+**Required correction.** DLV-080 should compose the bounded retained recent
+display slice ahead of the independently paged provider window, deduplicate by
+exact SavedId, and route activation only through current ResolveSaved launch
+revalidation. It must preserve normal catalog cursor behavior, filters, focus,
+DLV-077 manual membership, favorites, groups, and bounded CAS state. Required
+evidence starts with a provider page smaller than the catalog: launch a later-
+page identity, cold restart on page 1, prove it is first and nonduplicated, then
+prove missing/replacement identity cannot launch cached authority. No public
+provider sort, full-library load, or process observation is warranted.
+
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 
 **Status: Implemented in commit `4450cfa`; bounded local/CI

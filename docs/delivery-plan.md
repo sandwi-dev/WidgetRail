@@ -741,10 +741,11 @@ route/action, playback, and presentation boundaries while retaining one
   identity, and retained per-game results are bounded. DLV-075 candidate
   `9e754f0` is rejected pending DLV-079: its host-owned text-entry modal retains
   snapshot/node references and action authority across a nested message loop.
-  DLV-076 is Assigned and may finish because it does not touch that boundary;
-  DLV-079 then corrects the retained prefix before DLV-077 continues visible
-  manual inclusion. DLV-038 remains deferred test-architecture debt rather than
-  filler work.
+  DLV-076 candidate `79848f6` is rejected pending DLV-080 because Recent: First
+  reorders only the current provider page. DLV-077 became active before those
+  review dispositions reached the task and may finish under the non-interruption
+  rule; DLV-079 and DLV-080 then correct the retained prefix before integration.
+  DLV-038 remains deferred test-architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3451,7 +3452,7 @@ after DLV-076 without rebasing or rewriting either commit.
 
 ### DLV-076 — Add bounded recent-launch ordering to Game Launcher
 
-**State:** Assigned; implementation began from retained DLV-075 candidate
+**State:** Candidate `79848f6` rejected; retain unchanged for DLV-080 correction
 **Lane:** widgets
 **Baseline:** closing commit of DLV-075
 **Dependencies:** DLV-060, DLV-066, DLV-067, and DLV-075
@@ -3495,17 +3496,32 @@ No provider/native/aggregate/screenshot/physical game run.
 wall-clock identity, provider/public protocol changes, or another committed-
 state owner.
 
+**Reviewer disposition:** Rejected pending DLV-080. The current schema-v3
+history is bounded to 32 opaque SavedIds, records only exact current confirmed
+launch outcomes, survives conflict/restart, and keeps failure, cancellation,
+replacement, favorites, and variant groups isolated. Recent: Only correctly
+uses the provider-owned exact-ID query. Recent: First, however, leaves the
+provider query in ordinary catalog order and reorders only `snapshot.Items` in
+the retained widget window. A game launched from page N disappears from the
+front after restart because page 1 does not contain it. The 40-item fixture fits
+the recent identities inside one loaded window and therefore does not exercise
+the complete-library case. Preserve `79848f6`; DLV-080 must compose the bounded
+retained recent slice ahead of the independently paged catalog without loading
+the full library or weakening exact launch revalidation.
+
 ### DLV-079 — Revalidate and bound host-owned text entry
 
-**State:** Ready; execute immediately after active DLV-076 and before DLV-077
+**State:** Ready; execute immediately after active DLV-077
 **Lane:** widgets, acting as serialized cross-lane native correction lead
-**Baseline:** closing commit of DLV-076, retaining DLV-075 candidate `9e754f0`
-unchanged in branch history
-**Dependencies:** DLV-075 and DLV-076 only for contiguous correction order
+**Baseline:** closing commit of DLV-077, retaining DLV-075 candidate `9e754f0`
+and DLV-076 candidate `79848f6` unchanged in branch history
+**Dependencies:** DLV-075, DLV-076, and DLV-077 only for contiguous correction
+order
 **Owner:** OverlayHost text-entry request/current-authority admission,
 TextEntryModal spatial focus and responsive work-area geometry, exact native
 fixtures, and directly affected text-entry documentation
-**Concurrency:** Do not rebase, reset, amend, merge, or rewrite DLV-075/DLV-076.
+**Concurrency:** Do not rebase, reset, amend, merge, or rewrite
+DLV-075/DLV-076/DLV-077.
 Platform remains idle because this correction owns the same native input/build
 boundary. Do not touch Game Launcher recent/manual policy, provider query
 semantics, compositor/capture work, or reviewer-owned files.
@@ -3558,12 +3574,71 @@ external store, or live account.
 protocol change, the nested loop must be replaced by a materially different
 window architecture, or responsive bounds require compositor ownership.
 
+### DLV-080 — Make recent-first ordering complete-library correct
+
+**State:** Ready; execute immediately after DLV-079 and before any new feature
+**Lane:** widgets
+**Baseline:** closing commit of DLV-079, retaining DLV-076 candidate `79848f6`
+unchanged in branch history
+**Dependencies:** DLV-075, DLV-076, DLV-077, and DLV-079
+**Owner:** Game Launcher recent-first presentation/query composition, private
+state coexistence with DLV-077 manual entries, exact launch admission from the
+bounded recent slice, and focused managed fixtures/docs
+**Concurrency:** Managed Game Launcher correction only. Do not change public
+query/protocol/provider/broker contracts, native text entry, OverlayHost,
+source adapters, reviewer-owned files, or branch history.
+
+**Visible outcome:** After launching a game from any catalog page and restarting
+the overlay, Recent: First shows that game at the front immediately even when it
+is not in the provider's current page. The normal paginated library remains
+available below it, with no duplicate tile when the same identity is present in
+both slices.
+
+**Objective:** Make DLV-076's recent-first promise apply to the complete trusted
+catalog while retaining only the bounded private recent slice and leaving the
+provider-owned catalog cursor independent.
+
+**In scope:** compose at most 32 retained recent display rows before the current
+catalog window; deduplicate exact SavedId identities; preserve recent order
+across restart, query replacement, and page traversal; resolve and launch a
+recent-row SavedId through the same current trusted DLV-067 authority rather
+than cached app identity; missing/reclassified/replaced entries; focus/anchor
+restoration between recent and catalog slices; coexistence with search, source,
+favorites, Recent: Only, variant groups, and DLV-077 manual entries; schema/CAS
+conflict/failure/reset bounds; a later-page launch plus cold-restart fixture
+whose first ordinary provider page does not contain that SavedId.
+
+**Out of scope:** loading or retaining the complete library, provider-side
+recent sort, timestamps/play time/process observation, raw app/path/store
+identity, public protocol change, new store adapters, screenshots, or native UI
+changes.
+
+**Acceptance criteria:** Recent: First always projects the exact bounded recent
+order before unrelated current-page entries, including cold restart after a
+launch beyond page 1. Each SavedId appears once; normal Before/After traversal
+and search/source/favorite filters remain provider-cursor bounded. A retained
+recent row is display-only until activation and can launch only after exact
+current ResolveSaved revalidation; missing, stale, or replaced identity fails
+without authorizing cached data. State remains bounded and preserves DLV-077
+manual membership plus favorites/groups through conflict and reset.
+
+**Verification:** Tier 1 Game Launcher/private-state Release suite with a
+provider page smaller than the catalog, launch on a later page, cold restart on
+page 1, deduplication, missing/replacement, filter coexistence, focus, CAS
+conflict/failure, and DLV-077 schema-preservation cases plus docs. Reuse the
+existing fake provider with exact call/count assertions. No provider/native/
+aggregate/screenshot/physical-game run.
+
+**Stop/escalate when:** correct composition requires a public provider sort or
+unbounded catalog load, recent rows cannot remain non-authorizing until exact
+current resolve, or DLV-077 establishes an incompatible private-state owner.
+
 ### DLV-077 — Add explicit manual entries to Game Launcher
 
-**State:** Ready
+**State:** Assigned; began after DLV-076 before reviewer correction arrived
 **Lane:** widgets
-**Baseline:** accepted closing commit of DLV-079
-**Dependencies:** DLV-060, DLV-066, DLV-072, DLV-075, DLV-076, and DLV-079
+**Baseline:** closing commit of DLV-076
+**Dependencies:** DLV-060, DLV-066, DLV-072, DLV-075, and DLV-076
 **Owner:** Game Launcher manual-inclusion policy over the existing trusted app-
 library query/resolve/launch authority, private state, presentation, and focused
 fixtures; no arbitrary executable or filesystem picker
@@ -3823,26 +3898,27 @@ planner will not manufacture internal filler. The 2026-08-11 accepted-main
 Release build produced a narrower deterministic switch failure before reaching
 the blocked resize/compositor question: worker startup replaced the prior
 admitted content with a transient surface. DLV-078 owns that presentation-
-ordering correction after the corrected DLV-075/DLV-076/DLV-079 prefix releases
-the shared native input/build boundary. The platform lane remains idle until
-then.
+  ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/DLV-080
+  prefix releases the shared native input/build boundary. The platform lane
+  remains idle until then.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Blocked by active DLV-076 plus queued DLV-079 shared native/build
-ownership; assign to platform after the corrected DLV-075/DLV-076/DLV-079
-prefix is accepted
+**State:** Blocked by active DLV-077 plus queued DLV-079/DLV-080 correction
+ownership; assign to platform after the corrected
+DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix is accepted
 **Lane:** platform
-**Baseline:** accepted DLV-079 integration plus the reviewer control-plane commit
+**Baseline:** accepted DLV-080 integration plus the reviewer control-plane commit
 that changes this item to Assigned
-**Dependencies:** DLV-020 and accepted DLV-079; independent of blocked DLV-025
+**Dependencies:** DLV-020 and accepted DLV-080; independent of blocked DLV-025
 **Owner:** OverlayHost widget-switch presentation admission/retention ordering,
 the existing deterministic production-host fixture, and directly affected
 diagnostics/docs; no compositor or widget feature ownership
-**Concurrency:** After DLV-079 releases native host/input files, may run beside
-widgets DLV-077, which must not touch OverlayHost, WidgetBridgeClient, transition
-fixtures, native build manifests, or switch diagnostics. Do not start before the
-planner accepts the DLV-075/DLV-076/DLV-079 prefix and assigns this item.
+**Concurrency:** After DLV-080 releases the retained prefix, no widget assignment
+may touch OverlayHost, WidgetBridgeClient, transition fixtures, native build
+manifests, or switch diagnostics while this runs. Do not start before the
+planner accepts the DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix and assigns
+this item.
 
 **Visible outcome:** Cycling to a cold isolated widget keeps the last admitted
 widget content and host chrome painted until the destination's first valid
