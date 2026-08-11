@@ -206,17 +206,14 @@ Check:
   affected.
 - Performance implications and measurements when relevant.
 - Test determinism, failure-route coverage, timeout bounds, and provenance.
-- Capture-evidence integrity before interpreting pixels: the retained frame
-  must identify the intended window/client area, cover its expected bounds,
-  come from the intended state and frame, and agree with host geometry,
-  semantics/UIA, or direct live observation. Treat a cropped, stale, partial,
-  wrong-window, or prematurely captured image as a capture-harness defect or
-  invalid artifact first, not as evidence of missing product UI. Require the
-  implementation task to correct or explicitly exclude invalid captures before
-  investigating production layout/rendering code from them. Do not use an
-  invalid initial capture to stop or waive capture investigation: require a
-  bounded harness diagnosis, corrected recapture, and validation, then continue
-  product-code diagnosis if the defect persists in the valid evidence.
+- Capture evidence is optional supporting evidence unless the user explicitly
+  assigns capture-tool work. Use a frame only when its target window, bounds,
+  state, and authored content are already credible. Immediately exclude a
+  clipped, malformed, stale, black, partial, wrong-window, or premature image;
+  do not investigate or modify the capture harness, and do not infer a product
+  defect from it. Continue with deterministic functional/state/semantic checks,
+  launch the accepted Release, and let the user report visual defects from the
+  live product.
 - Documentation accuracy and absence of unrelated/reviewer-owned changes.
 - Full diff quality: duplication, dead code, giant responsibilities, AI-like
   boilerplate, speculative abstraction, debug artifacts, and whitespace.
@@ -331,21 +328,15 @@ inspect its machine-readable provenance.
 
 ### Evidence proportionality stop rule
 
-Verification must remain proportional to the product risk. For a non-rendering
-behavior such as focus, scrolling, state reconciliation, or action routing,
-deterministic state/semantic evidence plus the freshly launched Release and a
-bounded user check may be the acceptance path. A valid capture is useful
-supporting evidence, but automated capture infrastructure must not become a
-larger milestone than the product correction it verifies.
-
-When a valid capture would require adopting a new graphics-capture technology,
-HDR/color-conversion pipeline, or application-sized test subsystem, stop after
-one bounded capture-path diagnosis. Exclude the invalid artifacts, record the
-visual check as manual evidence, and continue product delivery unless the
-assignment itself is specifically about rendering, composition, temporal
-visual artifacts, or capture infrastructure. Further capture-tool engineering
-requires its own planner-assigned milestone. Never accept a wrong-window,
-cropped, stale, black, or partial image merely to avoid this stop rule.
+Verification must remain proportional to the product risk. Deterministic
+functional, state, semantic, accessibility, timing, and resource evidence plus
+the freshly launched Release are the default acceptance path. A screenshot may
+support review when it is already valid, but a malformed capture is simply
+excluded; no recapture, graphics-capture technology, HDR/color-conversion
+pipeline, or screenshot-harness correction is authorized by an ordinary
+product milestone. The user owns live visual defect reports. Capture-tool
+engineering requires a separate user- or planner-authorized assignment whose
+objective is the capture system itself.
 
 ## Review cadence and scope rotation
 

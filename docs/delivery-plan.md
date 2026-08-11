@@ -118,27 +118,13 @@ repeat unrelated green suites after every correction. Every command has a
 bounded timeout and retained failures are evidence, not an invitation to rerun
 unchanged code.
 
-Visual evidence is admissible only after its capture provenance is validated.
-The assignment must identify the intended window/client region, capture bounds
-and dimensions, scale/state, and enough host geometry or semantics/UIA evidence
-to prove the required content was actually inside the captured region. If live
-observation and host state show the complete overlay while an image is cropped,
-stale, premature, or missing expected extents, correct or exclude the capture
-artifact before investigating product layout/rendering code. This gate preserves
-capture-based review; it prevents invalid captures from generating product
-changes. It does not stop capture investigation: the assigned agent must first
-diagnose the capture path, produce and validate corrected output, and then use
-that valid output to decide whether production-code investigation remains
-necessary.
-
-Capture work must also remain proportional. For non-rendering behavior with
-deterministic state/semantic coverage, stop after one bounded capture-path
-diagnosis if valid automation would require a new graphics-capture technology,
-HDR/color pipeline, or a test subsystem larger than the product correction.
-Exclude the invalid artifacts, retain the diagnostic evidence, and move the
-visual check to the manual Release queue. Deeper capture infrastructure is
-executable only when the assigned milestone itself owns rendering,
-composition, temporal visual evidence, or capture tooling.
+Screenshots are optional supporting evidence. Use them only when the intended
+window, bounds, state, and authored content are already credible. Immediately
+exclude a clipped, malformed, stale, black, partial, wrong-window, or premature
+artifact. Do not debug or extend the capture harness and do not infer a product
+defect from invalid pixels. Continue with deterministic functional/state/
+semantic evidence, then launch the accepted Release for the user's visual
+check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
@@ -2125,7 +2111,8 @@ explicit focus target, scroll offset, revealable target, presentation bounds,
 and active input scope for every Down and reverse Up step; correct host-owned
 focus/reveal/state behavior if the emitted graph is valid; stable scroll identity
 across snapshot refresh, session addition/removal, 100-150% scale, compact and
-standard surfaces, analog/D-pad parity, and retained semantic/capture evidence.
+standard surfaces, analog/D-pad parity, and retained deterministic semantic/
+state evidence. The freshly launched Release supplies the user's visual check.
 
 **Out of scope:** changing audio capability/provider behavior, dashboard
 LB/RB/X authority from DLV-019, input/output endpoint selection, manual wheel-
@@ -2143,12 +2130,10 @@ surfaces retain their current behavior.
 
 **Verification:** Tier 1 native focus, declarative renderer, scroll-state, and
 host Release suites plus the production Audio Mixer fixture at preferred,
-constrained, and 150%-scale surfaces with a reviewed down-and-reverse capture
-sequence. Before interpreting the sequence, assert the target HWND/client and
-content bounds, capture rectangle/output dimensions, scale, expected root/tray
-extents, and agreement with the recorded focus/scroll/UIA state; a clipped or
-premature frame is capture-harness evidence and must be recaptured or excluded,
-not treated as missing widget UI. No aggregate.
+constrained, and 150%-scale surfaces with a retained down-and-reverse focus,
+offset, revealability, bounds, and UIA trace. Screenshots are non-gating; exclude
+any invalid artifact without capture-harness work. After integration, launch the
+fresh main Release for the user's live functional and visual check. No aggregate.
 
 **Stop/escalate when:** the production snapshot lacks or misstates an explicit
 Audio Mixer Up link, the defect requires managed widget source changes, or the

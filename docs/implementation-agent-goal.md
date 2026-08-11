@@ -346,50 +346,26 @@ Every test or build command must have a bounded timeout. Inspect actual output,
 machine-readable results, commit provenance, and failure fields. Do not infer
 success from an exit code alone.
 
-### Capture evidence integrity
+### Capture evidence policy
 
-Screenshots and frame sequences remain required whenever an assignment asks for
-visual or temporal evidence, but validate the capture pipeline before treating
-an apparent visual defect as a product defect.
+Screenshots are optional supporting evidence, not a default implementation
+gate. Retain one only when the intended process/window, bounds, state, and
+authored content are already credible. If a screenshot or frame sequence is
+clipped, malformed, stale, black, partial, wrong-window, or premature:
 
-For every retained product capture:
+- Exclude it immediately from valid evidence.
+- Do not debug, repair, replace, or expand the capture harness.
+- Do not inspect or change product rendering/layout code to explain it.
+- Continue with the assignment's deterministic functional, state, semantic,
+  accessibility, timing, and resource checks.
+- Report the live visual check as pending for the user after the planner
+  launches the accepted Release.
 
-- Record or assert the intended process/window identity, client/content bounds,
-  capture rectangle and output dimensions, DPI/scale, product state, and frame
-  or sequence position needed to interpret it.
-- Confirm that the image covers the full region required by the acceptance
-  claim. Cross-check window/client geometry and semantics/UIA or deterministic
-  host state; when direct live observation is available, reconcile any mismatch
-  with what was visibly rendered.
-- Reject, recapture, or clearly label images that are cropped, stale, from the
-  wrong window, taken before final layout/presentation, missing expected tray or
-  root extents, or otherwise inconsistent with the recorded geometry.
-- Diagnose and correct the capture harness first when the live product and
-  semantic/geometry evidence are complete but the screenshot is clipped. Do not
-  search for or change production layout/rendering code to explain pixels that
-  lie outside an invalid capture boundary.
-- Investigate production code when the defect reproduces live or remains in a
-  validated full-frame capture with consistent geometry and state evidence.
-
-Do not weaken this rule by abandoning captures. A valid capture is product
-evidence; an invalid capture is test-infrastructure evidence. Investigating
-capture output remains part of the assignment: when an image fails validation,
-inspect and correct the window selection, bounds, timing/presentation,
-DPI/scale, or capture mechanism as appropriate, then recapture and validate the
-replacement. Do not stop capture work merely because the first artifact is
-invalid. Once a valid capture exists, continue into production code when the
-reported defect remains visible in that evidence.
-
-Keep that investigation proportional to the assignment. For a non-rendering
-behavior already covered by deterministic state or semantic evidence, perform
-one bounded capture-path diagnosis and correction attempt. If valid automation
-would then require a new graphics-capture technology, HDR/color pipeline, or a
-test subsystem larger than the product fix, preserve and exclude the invalid
-artifacts, report the visual check as manual evidence, and stop capture-tool
-implementation for planner triage. Do not let supporting screenshot machinery
-become an unassigned milestone. Rendering, composition, temporal-artifact, and
-explicit capture-infrastructure assignments may require deeper capture work
-within their documented scope.
+The user will report visual product defects from the running overlay. Capture-
+tool engineering, including new window-capture APIs, Desktop Duplication,
+HDR/color conversion, screenshot retries, or capture-specific test frameworks,
+is unauthorized unless a separate planner assignment explicitly owns the
+capture system itself.
 
 When a test fails:
 
