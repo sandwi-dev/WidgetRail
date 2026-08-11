@@ -1,0 +1,11 @@
+.game-launcher-widget { padding: 18px; gap: 14px; background: #11151b; color: #f4f7fa; }
+.game-launcher-header { gap: 4px; }
+.game-launcher-eyebrow { color: #75b9ff; font-size: 12px; }
+.game-launcher-title { font-size: 26px; font-weight: 700; }
+.game-launcher-status { color: #aeb9c6; }
+.game-launcher-content { gap: 12px; }
+.game-launcher-scroll { gap: 12px; }
+.game-launcher-grid { gap: 12px; }
+.game-launcher-tile { min-height: 150px; }
+.game-launcher-actions { gap: 10px; }
+.game-launcher-warning { margin: 8px 0 0; }

@@ -1565,7 +1565,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  DLV-006 adds protocol-v14 continuous cursor collections without changing the
  offset-paged replacement-window contract. `WidgetCursorResource<T>` owns one
  latest-wins bidirectional request lane, complete-page append/prepend, a
- two-page/256-item retention ceiling, 128 remembered cursors, stable typed item
+ two-page/256-item retention ceiling, 256 remembered cursors, stable typed item
  keys, anchor-aware refresh, safe nearest deletion fallback, and exact entering-
  edge focus. Native layout retains the authored anchor's viewport-relative
  position before the first paint and keyed List/Grid descendants drive the
@@ -1614,6 +1614,21 @@ themes also use non-shrinking fixed regions, a thin native Slider
  evidence also retains 85/85 Widget SDK cases, 49 native focus checks, and
  4,777 native renderer checks; the earlier single clean aggregate remains the
  only Tier-3 run.
+ DLV-060 adds a separately bundled Game Launcher while preserving Games & Apps
+ as the curated tray. The launcher queries only installed trusted Game rows,
+ traverses 2,000- and 10,000-item fake catalogs in 64-item provider pages,
+ retains at most 192 rows and 256 cursor tokens, and renders only its retained
+ responsive-grid window. Its bounded private state stores at most 96 sanitized
+ SavedId/display/source rows: those warm rows are disabled and cannot authorize
+ launch. A tile launches only after resolving its SavedId to a current exact
+ AppId. The generic-worker fixture uses the same broker/cache/launch authority
+ as Games & Apps and exercises a 10,000-row backend, adjacent keyed focus, an
+ opaque lazy artwork handle, and exact launch through the AppContainer route.
+ Focused Release verification
+ `artifacts/verification/20260811T121636Z-e6ecf7c2` passes Widget SDK 86/86,
+ PlatformBroker 52/52, Windows app-library provider 43/43, Game Launcher 10/10,
+ WidgetCatalog 35/35, and the documentation contract across 55 Markdown files.
+ The separately bounded installed generic-worker/AppContainer suite passes 6/6.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

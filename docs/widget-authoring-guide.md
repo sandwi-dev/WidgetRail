@@ -1151,7 +1151,7 @@ The provider has one Latest request lane. Cancellation-ignoring and stale
 completions cannot publish. Duplicate keys, a returned cursor loop, null or
 oversized pages, and unsafe errors fail without partially changing the window.
 Page size is 1–100, retained items are at least two pages and at most 256,
-cursor history is capped at 128, pagination threshold is 1–8, and the protocol
+cursor history is capped at 256, pagination threshold is 1–8, and the protocol
 accepts at most 256 serialized collection items. The logical provider may have
 thousands of items; only this window reaches the host.
 One same-direction traversal admits at most 128 distinct cursor identities and

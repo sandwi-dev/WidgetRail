@@ -11,6 +11,11 @@ manifest-backed first-party package that uses the public SDK, generic
 broker, normal lifecycle, and declarative renderer. It is not a privileged
 native shell panel.
 
+Games & Apps intentionally remains the small curated dashboard tray. The
+separate [Game Launcher](game-launcher.md) traverses the complete installed-game
+catalog through the same trusted provider cache and launch authority without
+copying provider/source policy into either widget.
+
 The old Recent Apps project remains useful historical coverage for the
 read-only foreground-activity API, but it is no longer one of the packaged
 dashboard widgets. Games & Apps lists installed launch registrations rather
