@@ -1032,20 +1032,23 @@ Later Network Control phases add:
 - SSID and signal/link quality only through an explicit Windows privacy-access
   flow with required/denied/revoked states;
 - bounded IP address, gateway, and DNS summaries that never expose credentials
-  or raw provider handles;
+  or raw provider handles — accepted DLV-092 now supplies this separately
+  consented, event-driven route with explicit offline, ambiguous, denied, and
+  unavailable states;
 - throughput, latency, and packet-loss diagnostics with explicit sampling
   ownership, frequency bounds, cancellation, and visible resource cost; and
 - safe reconnect/renew/diagnostic actions only after capability and failure-
   recovery review.
 
 Network phase dependencies through scan, saved/open/Personal connection,
-Bluetooth association pairing, and exact confirmed unpair are now
+Bluetooth association pairing, exact confirmed unpair, and privacy-safe active
+connection details are now
 implemented: bounded models and controller focus, separate closed grants,
 event-driven IP Helper/Native Wi-Fi, explicit scan, generation-bound IDs, and
 precise-location denial states. Remaining dependencies are the host-owned
 enterprise/captive exclusions, profile-specific Bluetooth operations, hardware/
-privacy matrices, and measured diagnostic sampling. Identity/address details
-and recovery commands do not enter the public contract before those reviews.
+privacy matrices, and measured diagnostic sampling. Raw identity and recovery
+commands do not enter the public contract before those reviews.
 
 The user-visible first-party reference includes explicit scans and unsaved open
 networks, software Wi-Fi/Bluetooth radio controls, association pairing, and a

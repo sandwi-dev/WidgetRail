@@ -153,6 +153,27 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-092 — Show privacy-safe active connection details
+
+**State:** Done
+**Closing commit:** `bbd4919`
+**Integrated on `main`:** `fd965e6`
+
+**Reviewer disposition:** Accepted. Network Controls now exposes a separately
+consented, controller-first details route containing only closed connectivity
+and transport values plus bounded normalized IP, gateway, and DNS display
+values. The trusted provider selects one exact best interface or reports
+ambiguity, filters loopback/link-local/temporary addresses, coalesces native
+change bursts through a one-entry revision channel, and never polls while the
+widget is inactive. The worker uses an Active latest-wins refresh, rejects
+stale and malformed results, and isolates denial/failure from Wi-Fi and
+Bluetooth. Focused evidence passes Windows Network 57/57, PlatformBroker 53/53,
+WidgetSdk 87/87, API compatibility 12/12, Network Controls 24/24, Settings
+54/54, documentation 55, and installed AppContainer conformance 6/6. The one
+clean exact-commit aggregate stopped at an unrelated unchanged WidgetRuntime
+race after 73/74 cases; it was retained and not rerun. Live visual verification
+continues in the fully repackaged Release.
+
 ### DLV-087 / DLV-093 — Connect protected Personal Wi-Fi safely
 
 **State:** Done
@@ -880,12 +901,16 @@ route/action, playback, and presentation boundaries while retaining one
   The corrected DLV-087/DLV-091/DLV-093 Network Controls prefix is accepted and
   integrated through `63ca3a2`: protected Personal Wi-Fi uses a zeroed mutable
   host path with attempt-owned rollback, and confirmed Bluetooth removal affects
-  only one current pairing. DLV-092 is now active for privacy-safe connection
-  details. Ready DLV-094 then fills the remaining trusted Steam-artwork fallback,
-  followed by Ready DLV-095 for an on-demand normalized running-app capture
-  route. This keeps the lane on visible product work after the bounded
-  credential correction and prevents another empty clean boundary.
-  DLV-038 remains deferred test-architecture debt rather than filler work.
+  only one current pairing. DLV-092 `bbd4919` is accepted and integrated through
+  `fd965e6`: privacy-safe connection details now update without polling or raw
+  adapter identity. DLV-094 is active for the remaining trusted Steam-artwork
+  fallback, followed by Ready DLV-095 for an on-demand normalized running-app
+  capture route. These two visible milestones are the complete currently safe
+  queue: another local game-store adapter remains blocked on documented,
+  maintainable registration/launch authority; audio endpoint selection remains
+  blocked on a supported Windows setter; and Spotify/YT Music live expansion
+  still requires third-party account evidence. DLV-038 remains deferred test-
+  architecture debt rather than filler work.
 
 ### DLV-082 — Surface isolated game-library source health
 
@@ -1688,8 +1713,7 @@ fixture and was not rerun.
 
 ### DLV-092 — Show privacy-safe active connection details
 
-**State:** Assigned; implementation began automatically from clean DLV-093
-commit `3ce8991`
+**State:** Done; accepted as `bbd4919` and integrated through `fd965e6`
 **Lane:** widgets, acting as the serialized Network Controls read-capability lead
 **Baseline:** clean closing commit of DLV-093
 **Dependencies:** DLV-028, DLV-031, DLV-037, DLV-087, DLV-091, and DLV-093 only
@@ -1757,9 +1781,20 @@ existing explicit flow, or the assignment starts becoming a throughput/
 latency/repair framework. Preserve the exact gap for a later diagnostic
 milestone.
 
+**Reviewer disposition:** Accepted. The public capability carries no interface,
+route, provider, profile, MAC, path, or process identity. Provider invalidation
+is a bounded one-entry revision signal; the worker performs one current Active
+re-query and rejects a cancellation-ignoring stale completion. The existing
+network owners grew but did not gain another lifecycle, timer, polling loop,
+lock, semaphore, or mutable authority: their reopened hotspot dispositions are
+recorded in `engineering-quality-review.md`. Focused and installed evidence is
+green as summarized in Recently completed. The exact-commit aggregate's sole
+failure is the unchanged WidgetRuntime cancellation-ignoring gesture fixture,
+which is outside this 30-file connection-details diff.
+
 ### DLV-094 — Resolve trusted local Steam artwork lazily
 
-**State:** Ready; execute automatically after DLV-092 commits
+**State:** Assigned; implementation began from clean branch merge `3d881db`
 **Lane:** widgets, acting as the serialized app-library artwork lead
 **Baseline:** clean closing commit of DLV-092 after merging the planner commit
 that contains this assignment
