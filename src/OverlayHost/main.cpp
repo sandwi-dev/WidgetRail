@@ -1141,7 +1141,31 @@ private:
         case kSnapshotRefreshMessage:
             if (state_.surface() == gba::Surface::Hidden &&
                 !pinnedSurfaceCoordinator_.pinned()) return 0;
-            RefreshAndApplyPresentation([&] { RefreshCurrentBridgeSnapshot(); });
+            {
+                const std::wstring widgetId = state_.surface() == gba::Surface::Hidden
+                    ? std::wstring(pinnedSurfaceCoordinator_.widgetId())
+                    : state_.surface() == gba::Surface::Widget
+                    ? std::wstring(state_.activeWidget())
+                    : std::wstring(state_.selectedWidget());
+                const bool coldPresentationPending =
+                    IsBridgeWidget(widgetId) && SnapshotFor(widgetId) == nullptr;
+                RefreshAndApplyPresentation([&] {
+                    if (!coldPresentationPending) {
+                        RefreshCurrentBridgeSnapshot();
+                        return;
+                    }
+                    SyncWidgetActivity();
+                    if (SnapshotFor(widgetId) && pendingContentRevealWidget_ == widgetId) {
+                        pendingContentRevealWidget_.clear();
+                        // The last-good content was already fully visible.
+                        // Admission is one atomic identity swap, not a fade to
+                        // an empty content layer and back.
+                        overlayTransition_.SnapContentVisible();
+                        AdvanceOverlayTransition(GetTickCount64());
+                        RestoreFocusForActiveSurface(widgetId);
+                    }
+                });
+            }
             return 0;
         case kForegroundChangedMessage:
             if (state_.surface() != gba::Surface::Hidden) {
@@ -1641,11 +1665,18 @@ private:
              before.reopenWidget != state_.persistent().reopenWidget)) {
             SavePersistentState(state_.persistent());
         }
-        SyncWidgetActivity();
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget()) {
             focusedElementId_.clear();
             lastWidgetRenderResult_ = {};
+            ClearAccessibilityTree();
         }
+        const bool deferColdWidgetStart =
+            priorSurface == gba::Surface::Widget &&
+            state_.surface() == gba::Surface::Widget &&
+            priorActive != state_.activeWidget() &&
+            IsBridgeWidget(state_.activeWidget()) &&
+            SnapshotFor(state_.activeWidget()) == nullptr;
+        SyncWidgetActivity(deferColdWidgetStart);
         if (state_.surface() == gba::Surface::Widget &&
             priorFocusRegion != state_.focusRegion() &&
             state_.focusRegion() == gba::FocusRegion::Widget) {
@@ -1761,6 +1792,14 @@ private:
                     : L""));
         }
         ApplyPresentation(presentation);
+        if (deferColdWidgetStart && IsWindowVisible(window_)) {
+            // Revoke the old widget's lifecycle/input semantics above, but
+            // commit its last admitted pixels before the posted cold-start
+            // request can block this window thread. The retained snapshot is
+            // visual-only and therefore publishes no stale focus or UIA.
+            RedrawWindow(window_, nullptr, nullptr,
+                RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+        }
         (void)ReconcileResponsiveFocusPersistence();
     }
 
@@ -2157,7 +2196,7 @@ private:
         return true;
     }
 
-    void SyncWidgetActivity() {
+    void SyncWidgetActivity(const bool deferColdWidgetStart = false) {
         std::unordered_map<std::wstring, gba::WidgetLifecycleState> desiredStates;
         const auto overlayDesired = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
@@ -2203,6 +2242,10 @@ private:
             const auto current = lifecycleBridgeStates_.find(widgetId);
             if (current != lifecycleBridgeStates_.end() &&
                 current->second == desiredState) {
+                continue;
+            }
+            if (deferColdWidgetStart && current == lifecycleBridgeStates_.end() &&
+                SnapshotFor(widgetId) == nullptr) {
                 continue;
             }
             const auto failPinned = [&] {
@@ -4072,6 +4115,12 @@ private:
         renderedSnapshotSequences_.erase(widgetId);
         pendingContentRevealWidget_ = widgetId;
         overlayTransition_.SnapContentVisible();
+        ClearAccessibilityTree();
+        if (state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == widgetId && IsWindowVisible(window_)) {
+            RedrawWindow(window_, nullptr, nullptr,
+                RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+        }
 
         const auto restarted = bridge_.RestartWidget(widgetId);
         if (!restarted || !*restarted) {
@@ -5299,6 +5348,23 @@ private:
                     renderTarget_.Get(), *snapshot,
                     renderedFocusId,
                     viewport, options);
+                if (result.succeeded) {
+                    const std::wstring paintKey =
+                        std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
+                        L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
+                        (retainedCommittedSnapshot ? L"retained" : L"admitted");
+                    if (paintKey != lastWidgetPresentationPaintKey_) {
+                        lastWidgetPresentationPaintKey_ = paintKey;
+                        AppendDiagnostic(
+                            L"Widget presentation paint target=" + std::wstring(widget) +
+                            L" content=" +
+                            (retainedCommittedSnapshot ? L"retained" : L"admitted") +
+                            L" rendered=" + std::wstring(renderedWidget) +
+                            L" sequence=" + std::to_wstring(snapshot->sequence) +
+                            L" semantics=" +
+                            (retainedCommittedSnapshot ? L"inert" : L"current"));
+                    }
+                }
                 declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;
                 if (!retainedCommittedSnapshot) {
                     if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
@@ -5493,6 +5559,7 @@ private:
     std::wstring committedWidgetPresentationWidget_;
     std::optional<gba::WidgetSnapshot> committedWidgetPresentationSnapshot_;
     std::wstring committedWidgetPresentationFocusId_;
+    std::wstring lastWidgetPresentationPaintKey_;
     BYTE targetOverlayOpacity_{248};
     BYTE targetBackdropOpacity_{kBackdropOpacity};
     std::optional<BYTE> appliedOverlayOpacity_;

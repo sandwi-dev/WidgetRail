@@ -74,12 +74,12 @@ internal static class Program
             if (!_firstSnapshotDelayed)
             {
                 _firstSnapshotDelayed = true;
+                if (firstSnapshotSignal is not null)
+                    File.WriteAllText(
+                        firstSnapshotSignal,
+                        Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
                 if (_surface.FirstSnapshotDelayMilliseconds > 0)
                 {
-                    if (firstSnapshotSignal is not null)
-                        File.WriteAllText(
-                            firstSnapshotSignal,
-                            Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
                     Thread.Sleep(_surface.FirstSnapshotDelayMilliseconds);
                 }
             }
