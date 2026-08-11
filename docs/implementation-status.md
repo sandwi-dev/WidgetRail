@@ -201,6 +201,33 @@ boundary's propagated cancellation contract and the underlying coalesced-event
 timeout rather than being treated as retry closure. No Runtime, native,
 documentation, or aggregate suite ran.
 
+DLV-040 moves diagnostics and authority-recovery policy out of
+`WidgetBridgeServer` without moving authenticated routing, companion identity,
+framing, serialized writes, or host-effect publication. The server falls from
+892 to 616 physical lines and retains one read-only diagnostics source, one
+snapshot projector, and one exact-token recovery projector. The source captures
+immutable catalog/registry/residency/appearance/provider values and performs the
+consent read; it owns no mutation, lock, task, or revision. The snapshot owner
+alone increments the diagnostic revision and independently reduces malformed or
+unavailable areas to bounded safe state. The recovery owner alone maps the
+existing Runtime service's pending records and typed retry results, validates
+32/64-character uppercase tokens before mutation, preserves the existing
+commit-versus-cancellation gate, and observes canceled synchronous work. It
+never accepts a path, SID, descriptor, object identity, raw clear, or replacement
+authority. Direct value fixtures cover degraded and unavailable areas,
+malformed recovery state, stale catalog mapping, the 64-item bound, exact-token
+retry, failed verification, refusal, cancellation, and commit-winning recovery.
+No public diagnostics schema, private transport, catalog/client ownership,
+recovery authority, Settings behavior, or threat model changes.
+Focused dirty-worktree Release run `20260811T031616Z-fc4a7976` completed in
+33.812 seconds and passed WidgetBridge 68/68, Settings 53/53, and documentation
+validation across 52 Markdown files. The run retained one stable dirty-status
+fingerprint at accepted control-plane commit `c61536a`; no Runtime, native,
+security aggregate, or unrelated suite was run.
+After the final atomic catalog-diagnostics capture edit, focused run
+`20260811T031849Z-591cf5c6` completed in 17.523 seconds and passed WidgetBridge
+68/68 against the final source state.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic

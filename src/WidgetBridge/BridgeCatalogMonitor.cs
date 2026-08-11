@@ -14,6 +14,11 @@ public sealed record BridgeCatalogReloadResult(
     BridgeCatalog Current,
     IReadOnlyList<string> Warnings);
 
+internal readonly record struct BridgeCatalogDiagnosticSnapshot(
+    long Revision,
+    int DiagnosticCount,
+    bool RetainedLastGood);
+
 /// <summary>
 /// Maintains one validated, last-good bridge catalog and publishes monotonically
 /// increasing revisions. File-system notifications are hints only: every
@@ -85,6 +90,12 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     public bool RetainedLastGood
     {
         get { lock (_stateGate) return _retainedLastGood; }
+    }
+
+    internal BridgeCatalogDiagnosticSnapshot DiagnosticsSnapshot()
+    {
+        lock (_stateGate)
+            return new(_revision, _lastDiagnostics.Count, _retainedLastGood);
     }
 
     public void Start()
