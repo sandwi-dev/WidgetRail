@@ -336,7 +336,7 @@ try {
     $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
     $rendererSourceNames = @(
         'OverlayEvidenceCapture.cpp', 'WidgetBridgeClient.cpp', 'DeclarativeRenderer.cpp',
-        'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'DeclarativeMotion.cpp',
+        'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp', 'DeclarativeMotion.cpp',
         'NativeIcons.cpp', 'RemoteImageCache.cpp')
     $compilerArguments = @(
         '/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-',

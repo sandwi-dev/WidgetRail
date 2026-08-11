@@ -354,30 +354,84 @@ private:
                 totalCross += crossGap * static_cast<float>(lines.size() - 1);
             width = largestMain + Horizontal(padding);
             height = totalCross + Vertical(padding);
+        } else if (element.direction == LayoutDirection::Row) {
+            const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
+            std::vector<FlexItem> items;
+            items.reserve(element.children.size());
+            float margins{};
+            for (const auto& child : element.children) {
+                const auto childMargin = ResolveSpacing(child.margin, child.id, true);
+                const auto childMeasured = Measure(
+                    child, innerMaximumWidth, innerMaximumHeight).size;
+                const auto basis = ResolveOptional(
+                    child.flexBasis, child.id, "flexBasis", 0.0F, kMaximumCoordinate);
+                const auto explicitWidth = ResolveOptional(
+                    child.width, child.id, "width", 0.0F, kMaximumCoordinate);
+                const auto preferred = basis.value_or(
+                    explicitWidth.value_or(childMeasured.width));
+                auto minimum = ResolveOptional(
+                    child.minWidth, child.id, "minWidth", 0.0F, kMaximumCoordinate)
+                    .value_or(0.0F);
+                auto maximum = ResolveOptional(
+                    child.maxWidth, child.id, "maxWidth", 0.0F, kMaximumCoordinate)
+                    .value_or(kMaximumCoordinate);
+                if (maximum < minimum) {
+                    AddIssue(child.id, "inverted_constraints",
+                        "Maximum size was raised to the minimum size.",
+                        LayoutIssueSeverity::Warning);
+                    maximum = minimum;
+                }
+                items.push_back({
+                    &child,
+                    childMargin,
+                    std::clamp(preferred, minimum, maximum),
+                    minimum,
+                    maximum,
+                    ResolveNumber(
+                        child.flexGrow, child.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F),
+                    ResolveNumber(
+                        child.flexShrink, child.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F),
+                });
+                margins += Horizontal(childMargin);
+            }
+            const auto totalGap = items.size() > 1
+                ? gap * static_cast<float>(items.size() - 1)
+                : 0.0F;
+            const auto naturalMain = [&] {
+                float value = margins + totalGap;
+                for (const auto& item : items) value += item.main;
+                return value;
+            }();
+            // Horizontal flex changes the width used to measure wrapped text.
+            // Compute the row's cross size from those final flex widths rather
+            // than the pre-flex one-line estimates, while retaining the row's
+            // existing intrinsic main-size contract.
+            DistributeFlex(items, std::max(0.0F,
+                innerMaximumWidth - margins - totalGap));
+            float largestCross = 0.0F;
+            for (const auto& item : items) {
+                largestCross = std::max(
+                    largestCross,
+                    ResolveRowCrossSize(item, innerMaximumHeight) + Vertical(item.margin));
+            }
+            width = naturalMain + Horizontal(padding);
+            height = largestCross + Vertical(padding);
         } else {
             const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
             float totalMain = 0.0F;
             float largestCross = 0.0F;
             for (const auto& child : element.children) {
                 const auto childMargin = ResolveSpacing(child.margin, child.id, true);
-                const auto childMeasured = Measure(child, innerMaximumWidth, innerMaximumHeight).size;
-                if (element.direction == LayoutDirection::Row) {
-                    totalMain += childMeasured.width + Horizontal(childMargin);
-                    largestCross = std::max(largestCross, childMeasured.height + Vertical(childMargin));
-                } else {
-                    totalMain += childMeasured.height + Vertical(childMargin);
-                    largestCross = std::max(largestCross, childMeasured.width + Horizontal(childMargin));
-                }
+                const auto childMeasured = Measure(
+                    child, innerMaximumWidth, innerMaximumHeight).size;
+                totalMain += childMeasured.height + Vertical(childMargin);
+                largestCross = std::max(
+                    largestCross, childMeasured.width + Horizontal(childMargin));
             }
             if (element.children.size() > 1)
                 totalMain += gap * static_cast<float>(element.children.size() - 1);
-            if (element.direction == LayoutDirection::Row) {
-                width = totalMain + Horizontal(padding);
-                height = largestCross + Vertical(padding);
-            } else {
-                width = largestCross + Horizontal(padding);
-                height = totalMain + Vertical(padding);
-            }
+            width = largestCross + Horizontal(padding);
+            height = totalMain + Vertical(padding);
         }
 
         const auto explicitWidth = ResolveOptional(element.width, element.id, "width", 0.0F, kMaximumCoordinate);

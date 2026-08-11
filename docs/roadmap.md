@@ -251,11 +251,15 @@ remains off until the publisher-trust gates in Phase 4.
   lanes and one immutable render-facing revision without a task/CTS registry.
   Its companion-specific confirmation policy stays authored, and its still-large
   controller/view owner remains application-composition evidence rather than a
-  reason to create a universal base class. Next migrate suitable
-  command/resource/navigation families, add focused provider-event/
-  confirmation/coalescing recipes, design cursor/append resources, and add an
-  analyzer for duplicate/unstable IDs and unhandled actions. The SDK must not
-  infer domain merge, retry, or confirmation policy.
+  reason to create a universal base class. Accepted DLV-051 now proves a
+  responsive widget can author and replay an exact seek-to-selected-navigation
+  edge without native special cases. Widgets-led serialized DLV-006 is assigned
+  next to add the distinct cursor/append collection and bounded lazy-artwork
+  foundation; DLV-022 and DLV-018 consume it for Spotify continuity and trusted
+  Games artwork. Continue suitable command/resource/navigation migrations,
+  focused provider-event/confirmation/coalescing recipes, and an analyzer for
+  duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
+  merge, retry, or confirmation policy.
 - Add local worker/provider recovery, crash quarantine, lifecycle enforcement,
   resource evidence, and disk/profile quotas/cleanup
 - Performance widget only after its real local diagnostics data and acceptance
@@ -423,9 +427,10 @@ not irreversible API priority:
    renderer assertions plus packaged Games & Apps, Spotify, and component-
    gallery captures.
    **DLV-003 (`27b0319`, integrated by `703c5bb`) implemented the narrow Button
-   geometry slice, but 2026-08-09 packaged Now Playing evidence still shows
-   shared icon/label/trailing-content imbalance. Product acceptance is reopened
-   as DLV-021 across Button, ActionSurface, and SectionHeader composition.**
+   geometry slice. DLV-021 (`b714efe`, integrated by `bc2de86`) now gives
+   Button, ActionSurface, and SectionHeader one DirectWrite measurement/paint
+   model and exact five-product profile coverage. Packaged visual confirmation
+   of the original Now Playing and Spotify reports remains.**
 5. **Hold Y to refresh the selected widget from the icon tray.** Keep tap Y as
    the existing enter/exit-reorder command, but defer that tap decision long
    enough for a clearly hinted hold gesture. Crossing the bounded hold threshold

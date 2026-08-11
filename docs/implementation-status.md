@@ -6,6 +6,79 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-049 locks the user-reported four-session Audio Mixer reverse-scroll state
+to the corrected shared-geometry baseline from DLV-021. The emitted production
+snapshot retains the exact `audio.input.volume.slider` Up edge to
+`audio.master.volume.slider`; no host fallback, managed Audio Mixer change, or
+public protocol change was needed. A test-only provider state now stages four
+real Audio Mixer sessions, and the focused production-HWND/UIA fixture begins
+at Microphone with Master already above the viewport after retained offset,
+content-extent, and host-extent reconciliation. Authenticated host evidence
+records the authored Up target before input, its offscreen logical bounds and
+native revealability, the finite `296.6 / 298.2` root offset/maximum, and the
+single Up result at Master and offset zero. Full-motion settling and reopen keep
+that state canonical, and `overlay.log` contains no `value_clamped [audio.root]`
+normalization. The same native focus-move authority serves keyboard and
+controller commands; the production fixture drives its deterministic HWND key
+mapping rather than claiming physical-controller hardware evidence. A focused
+renderer case independently replaces a larger retained session surface with
+four sessions while focused at Microphone. Release verification passes
+DeclarativeRenderer 4,774 checks, ScrollEvidenceProbe 35 checks, the single
+AudioMixerScrollHost production fixture, and a fresh OverlayHost build. The
+fixture retains no screenshots; visual validation remains user-owned.
+
+DLV-026 restores complete bidirectional Audio Mixer controller traversal in the
+native host. The production focus graph was valid; scaled native layout placed
+each Slider edge no more than one raster pixel beyond its rounded card content
+clip, so the host incorrectly classified later offscreen targets as impossible
+to reveal even while the root Scroll retained range. The renderer now tolerates
+only that bounded raster-edge overlap while still rejecting controls hidden by
+a wrong-axis or fixed nested clip. A credential-free worker runs the real
+first-party Audio Mixer with 12 sessions, and the production-HWND fixture walks
+all 14 controls down and back to master output at preferred, constrained, and
+150% surfaces. Exact host records prove explicit target, active scope,
+revealability, presentation/navigation/UIA bounds, monotonic offsets, the true
+zero leading boundary, stable unrelated-session refresh, deterministic removed-
+focus fallback, and subsequent session addition. Screenshot acquisition is
+excluded from this functional fixture: every record marks visual evidence as
+user-validated, with no `PrintWindow`, desktop/screen fallback, or screenshot
+failure capable of interrupting the traversal.
+Fresh integrated Release visuals remain user-validated. The authenticated test-only
+`ScrollEvidenceProbe` owns path enablement, target/direction state, bounded
+serialization, UTF-8 conversion, and atomic replacement; `OverlayApp` retains
+only handshake-gated argument admission and typed focus/render calls, while the
+disabled normal path performs no probe write. D-pad and analog controller
+events continue through the same native focus-move authority, and no managed
+widget or public protocol changed.
+
+DLV-021 consolidates shared text and component geometry without adding widget-
+specific offsets. The new narrow `NativeTextLayout` owner creates the one
+DirectWrite plan used by intrinsic measurement and paint: text transform, font,
+weight, uniform line spacing, font-derived baseline, letter spacing, wrapping,
+ellipsis, and positive vertical ink overhang can no longer diverge between
+those phases.
+Intrinsic extents round outward to the active native-pixel grid before layout,
+so later raster snapping cannot turn a tight one-line control label into a
+clipped second line. `DeclarativeLayout` remains the flex owner and now
+remeasures a non-wrapping Row's cross size at its final distributed child
+widths; a SectionHeader trailing action therefore cannot preserve an obsolete
+one-line text-stack height. `DeclarativeRenderer` consumes those two owners for
+Button, ActionSurface, SectionHeader, and ordinary text placement and retains
+only a small test-only painted-line-count seam. A separate focused component
+fixture covers Games & Apps, Spotify `LIBRARY` and `Check configuration`, Now
+Playing, Settings, and SDK Gallery at compact, standard, wide/150%, and high-
+contrast/reduced-transparency profiles, including stable selected/busy/disabled
+Button geometry. Final focused Release checks pass NativeTextLayout 25,
+DeclarativeLayout 250, DeclarativeRenderer 4,769, and shared component geometry
+589 checks, with NativeStyle green and the production OverlayHost compiling.
+The verified deterministic bundle at
+`artifacts/evidence/dlv021/20260811T040500Z/manifest.json` retains 16 Games &
+Apps/Spotify standalone widget-body renders from seven authoritative snapshots
+across 30 exact files with zero renderer diagnostics. Its exporter records the
+existing Settings worker-start gap; Now Playing, Settings, and SDK Gallery are
+therefore claimed by the direct production-renderer component matrix rather
+than by unavailable semantic PNGs.
+
 Responsive Row wrapping, protocol-v7 ActionSurface, protocol-v8 ResponsiveGrid,
 MediaTile/AppTile, Toast, semantic CodeText, independent per-edge borders, and
 the first production uses of the public Picker and Scrubber are implemented in

@@ -77,6 +77,7 @@ $imageTestObjectDirectory = Join-Path $outputDirectory 'obj\image-tests'
 $layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
 $iconTestObjectDirectory = Join-Path $outputDirectory 'obj\icon-tests'
 $styleTestObjectDirectory = Join-Path $outputDirectory 'obj\style-tests'
+$textLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\text-layout-tests'
 $motionTestObjectDirectory = Join-Path $outputDirectory 'obj\motion-tests'
 $placementTestObjectDirectory = Join-Path $outputDirectory 'obj\placement-tests'
 $targetingTestObjectDirectory = Join-Path $outputDirectory 'obj\targeting-tests'
@@ -98,12 +99,16 @@ $actionFailureHostTestObjectDirectory = Join-Path $outputDirectory 'obj\action-f
 $actionFailureFixtureOutput = Join-Path $outputDirectory 'obj\action-failure-fixture'
 $widgetSwitchHostTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-switch-host-tests'
 $widgetSwitchFixtureOutput = Join-Path $outputDirectory 'obj\widget-switch-fixture'
+$audioMixerScrollHostTestObjectDirectory = Join-Path $outputDirectory 'obj\audio-mixer-scroll-host-tests'
+$audioMixerScrollFixtureOutput = Join-Path $outputDirectory 'obj\audio-mixer-scroll-fixture'
+$scrollEvidenceProbeTestObjectDirectory = Join-Path $outputDirectory 'obj\scroll-evidence-probe-tests'
 $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tests'
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+$componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -129,9 +134,11 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+    (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
     (Join-Path $projectDirectory 'NativeStyle.cpp'),
+    (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
     (Join-Path $projectDirectory 'OverlayChrome.cpp'),
     (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
     (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
@@ -337,6 +344,22 @@ if (-not $SkipPackaging) {
 }
 
 if (-not $SkipTests) {
+    $scrollEvidenceProbeTestArguments = $common + @(
+        (Join-Path $projectDirectory 'ScrollEvidenceProbeTests.cpp'),
+        (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
+        "/Fo:$scrollEvidenceProbeTestObjectDirectory\",
+        "/Fe:$outputDirectory\ScrollEvidenceProbeTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $scrollEvidenceProbeTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ScrollEvidenceProbeTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ScrollEvidenceProbeTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ScrollEvidenceProbeTests failed with exit code $LASTEXITCODE."
+    }
+
     $testArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayStateTests.cpp'),
         (Join-Path $projectDirectory 'OverlayState.cpp'),
@@ -419,6 +442,23 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'NativeStyleTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "NativeStyleTests failed with exit code $LASTEXITCODE."
+    }
+
+    $textLayoutTestArguments = $common + @(
+        (Join-Path $projectDirectory 'NativeTextLayoutTests.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        "/Fo:$textLayoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\NativeTextLayoutTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('dwrite.lib', 'ole32.lib')
+    & $cl $textLayoutTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeTextLayoutTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'NativeTextLayoutTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "NativeTextLayoutTests failed with exit code $LASTEXITCODE."
     }
 
     $motionTestArguments = $common + @(
@@ -775,6 +815,40 @@ if (-not $SkipTests) {
         }
     }
 
+    $audioMixerScrollHostTestArguments = $common + @(
+        (Join-Path $projectDirectory 'AudioMixerScrollHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$audioMixerScrollHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\AudioMixerScrollHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'gdi32.lib', 'windowscodecs.lib', 'ole32.lib',
+        'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $audioMixerScrollHostTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AudioMixerScrollHostTests build failed with exit code $LASTEXITCODE."
+    }
+    if (-not $SkipPackaging) {
+        & dotnet publish `
+            (Join-Path $projectDirectory '..\..\tests\AudioMixerScrollFixture\AudioMixerScrollFixture.csproj') `
+            --configuration $Configuration --no-self-contained --nologo `
+            --output $audioMixerScrollFixtureOutput
+        if ($LASTEXITCODE -ne 0) {
+            throw "Audio Mixer scroll fixture publish failed with exit code $LASTEXITCODE."
+        }
+        $audioMixerScrollFixture = Join-Path $audioMixerScrollFixtureOutput 'AudioMixerScrollFixture.exe'
+        if (-not (Test-Path -LiteralPath $audioMixerScrollFixture)) {
+            throw "Audio Mixer scroll fixture publish omitted AudioMixerScrollFixture.exe."
+        }
+        & (Join-Path $outputDirectory 'AudioMixerScrollHostTests.exe') `
+            --installation $outputDirectory `
+            --fixture-worker $audioMixerScrollFixture
+        if ($LASTEXITCODE -ne 0) {
+            throw "AudioMixerScrollHostTests failed with exit code $LASTEXITCODE."
+        }
+    }
+
     $trayLayoutTestArguments = $common + @(
         (Join-Path $projectDirectory 'TrayLayoutTests.cpp'),
         (Join-Path $projectDirectory 'TrayLayout.cpp'),
@@ -830,6 +904,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
@@ -846,6 +921,31 @@ if (-not $SkipTests) {
     & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+
+    $componentGeometryTestArguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'SharedComponentGeometryTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$componentGeometryTestObjectDirectory\",
+        "/Fe:$outputDirectory\SharedComponentGeometryTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $componentGeometryTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "SharedComponentGeometryTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'SharedComponentGeometryTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "SharedComponentGeometryTests failed with exit code $LASTEXITCODE."
     }
 }
 

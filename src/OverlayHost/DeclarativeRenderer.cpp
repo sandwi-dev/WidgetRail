@@ -1,14 +1,12 @@
 #include "DeclarativeRenderer.h"
 
 #include "NativeIcons.h"
+#include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
-
-#include <dwrite_1.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cwctype>
 #include <limits>
 #include <set>
 #include <utility>
@@ -27,7 +25,6 @@ using declarative::Size;
 
 constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 32;
-constexpr std::size_t kMaximumTextCharacters = 4096;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -37,6 +34,11 @@ constexpr float kButtonStateCueHeightFactor = 0.72F;
 constexpr std::size_t kMaximumScrollStateEntries = 4096;
 constexpr std::size_t kMaximumFocusFollowPasses = 32;
 constexpr float kRevealEpsilon = 0.01F;
+// Native layout and Direct2D rasterization can put a child edge no more than
+// one physical pixel beyond an otherwise matching fixed clip after scale
+// conversion. Keep that native-pixel cap scale-aware; larger fixed-axis
+// clipping still fails closed because no Scroll can repair it.
+constexpr float kRevealRasterEdgePixelTolerance = 1.0F;
 constexpr NativeColor kDefaultText{0.969F, 0.973F, 0.988F, 1.0F};
 constexpr NativeColor kMutedText{0.725F, 0.741F, 0.784F, 1.0F};
 constexpr NativeColor kDefaultFocus{1.0F, 1.0F, 1.0F, 1.0F};
@@ -156,22 +158,6 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
     }
     path.pop_back();
     return false;
-}
-
-[[nodiscard]] std::wstring TransformText(
-    std::wstring text,
-    const NativeTextTransform transform) {
-    if (transform == NativeTextTransform::Uppercase) {
-        std::transform(text.begin(), text.end(), text.begin(), [](const wchar_t value) {
-            return static_cast<wchar_t>(std::towupper(value));
-        });
-    } else if (transform == NativeTextTransform::Lowercase) {
-        std::transform(text.begin(), text.end(), text.begin(), [](const wchar_t value) {
-            return static_cast<wchar_t>(std::towlower(value));
-        });
-    }
-    if (text.size() > kMaximumTextCharacters) text.resize(kMaximumTextCharacters);
-    return text;
 }
 
 [[nodiscard]] float PositionFactorX(const NativeObjectPosition position) noexcept {
@@ -789,8 +775,13 @@ struct DeclarativeRenderer::RenderPass final {
         const float targetSize,
         const float clipStart,
         const float clipSize) const {
-        if (targetStart >= clipStart - kRevealEpsilon &&
-            targetStart + targetSize <= clipStart + clipSize + kRevealEpsilon) {
+        const auto rasterEdgeTolerance =
+            std::isfinite(options.pixelScale) && options.pixelScale > 0.0F
+            ? kRevealRasterEdgePixelTolerance / options.pixelScale
+            : 0.0F;
+        if (targetStart >= clipStart - rasterEdgeTolerance &&
+            targetStart + targetSize <=
+                clipStart + clipSize + rasterEdgeTolerance) {
             return true;
         }
 
@@ -902,99 +893,46 @@ struct DeclarativeRenderer::RenderPass final {
             owner->scrollOffsets_.erase(inactive[index].second);
     }
 
-    [[nodiscard]] ComPtr<IDWriteTextFormat> TextFormat(const NativeRenderStyle& style) {
-        ComPtr<IDWriteTextFormat> format;
-        if (!owner->writeFactory_) return format;
-        const auto weight = static_cast<DWRITE_FONT_WEIGHT>(
-            std::clamp(style.fontWeight(), 100, 900));
-        const auto family = style.fontFamily().empty()
-            ? L"Segoe UI Variable Text"
-            : style.fontFamily().c_str();
-        const auto resultCode = owner->writeFactory_->CreateTextFormat(
-            family,
-            nullptr,
-            weight,
-            DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL,
-            std::clamp(style.fontSizePx(), 8.0F, 128.0F),
-            L"",
-            format.ReleaseAndGetAddressOf());
-        if (FAILED(resultCode)) return {};
-        switch (style.textAlign()) {
-        case NativeTextAlign::Center:
-            (void)format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-            break;
-        case NativeTextAlign::End:
-            (void)format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_TRAILING);
-            break;
-        default:
-            (void)format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
-            break;
-        }
-        (void)format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-        (void)format->SetWordWrapping(
-            style.maxLines() == 1 ? DWRITE_WORD_WRAPPING_NO_WRAP : DWRITE_WORD_WRAPPING_WRAP);
-        if (style.textOverflow() == NativeTextOverflow::Ellipsis) {
-            DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
-            ComPtr<IDWriteInlineObject> sign;
-            if (SUCCEEDED(owner->writeFactory_->CreateEllipsisTrimmingSign(
-                    format.Get(), sign.ReleaseAndGetAddressOf()))) {
-                (void)format->SetTrimming(&trimming, sign.Get());
-            }
-        }
-        return format;
-    }
-
     [[nodiscard]] Size MeasureText(
         const WidgetNode& node,
         const NativeRenderStyle& style,
         const declarative::MeasureConstraints& constraints) {
-        const auto text = TransformText(node.text, style.textTransform());
         const auto maximumWidth = std::max(1.0F, constraints.maximumWidth);
         const auto lineHeight = style.fontSizePx() * style.lineHeight();
         const auto maximumHeight = std::max(
             lineHeight,
             std::min(constraints.maximumHeight, lineHeight * static_cast<float>(style.maxLines())));
-        auto format = TextFormat(style);
-        if (!format || !owner->writeFactory_) {
+        const auto availableHeight = std::isfinite(constraints.maximumHeight) &&
+                constraints.maximumHeight > 0.0F
+            ? std::max(maximumHeight, constraints.maximumHeight)
+            : maximumHeight + style.fontSizePx();
+        const auto plan = CreateNativeTextLayoutPlan(
+            owner->writeFactory_, node.text, style, maximumWidth,
+            availableHeight);
+        if (!plan.IsValid()) {
             const auto estimated = std::min(
                 maximumWidth,
-                static_cast<float>(text.size()) * style.fontSizePx() * 0.56F);
+                static_cast<float>(node.text.size()) * style.fontSizePx() * 0.56F);
             const auto lines = std::max(1.0F,
-                std::ceil(static_cast<float>(text.size()) * style.fontSizePx() * 0.56F /
+                std::ceil(static_cast<float>(node.text.size()) * style.fontSizePx() * 0.56F /
                     maximumWidth));
             return {estimated, std::min(maximumHeight, lines * lineHeight)};
         }
-        ComPtr<IDWriteTextLayout> textLayout;
-        if (FAILED(owner->writeFactory_->CreateTextLayout(
-                text.data(),
-                static_cast<UINT32>(text.size()),
-                format.Get(),
-                maximumWidth,
-                maximumHeight,
-                textLayout.ReleaseAndGetAddressOf()))) {
-            return {};
-        }
-        (void)textLayout->SetLineSpacing(
-            DWRITE_LINE_SPACING_METHOD_UNIFORM,
-            lineHeight,
-            lineHeight * 0.8F);
-        if (std::abs(style.letterSpacingPx()) > 0.001F) {
-            ComPtr<IDWriteTextLayout1> layout1;
-            if (SUCCEEDED(textLayout.As(&layout1))) {
-                DWRITE_TEXT_RANGE range{0, static_cast<UINT32>(text.size())};
-                (void)layout1->SetCharacterSpacing(
-                    0.0F,
-                    style.letterSpacingPx(),
-                    0.0F,
-                    range);
-            }
-        }
-        DWRITE_TEXT_METRICS metrics{};
-        if (FAILED(textLayout->GetMetrics(&metrics))) return {};
+        // Intrinsic text becomes component geometry and is subsequently
+        // snapped to the effective native-pixel grid. Round outward here so
+        // that snap-to-nearest cannot make a later paint box fractionally
+        // narrower or shorter than the DirectWrite plan that established its
+        // natural size (which can otherwise reflow a tight one-line label).
+        const auto pixelScale = std::isfinite(options.pixelScale) &&
+                options.pixelScale > 0.0F
+            ? options.pixelScale
+            : 1.0F;
+        const auto rasterCeiling = [pixelScale](const float value) {
+            return std::ceil(std::max(0.0F, value) * pixelScale) / pixelScale;
+        };
         return {
-            std::min(maximumWidth, metrics.widthIncludingTrailingWhitespace),
-            std::min(maximumHeight, metrics.height),
+            std::min(maximumWidth, rasterCeiling(plan.measuredWidth)),
+            std::min(availableHeight, rasterCeiling(plan.measuredHeight)),
         };
     }
 
@@ -1149,42 +1087,32 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode& node,
         const NativeRenderStyle& style,
         Rect rect,
-        const float opacity) {
+        const float opacity,
+        const NativeTextVerticalAlignment verticalAlignment =
+            NativeTextVerticalAlignment::Start) {
         if (!target || node.text.empty()) return;
-        auto format = TextFormat(style);
-        if (!format || !owner->writeFactory_) {
-            Add(node.id, L"text_format", L"DirectWrite could not create a text format.");
-            return;
-        }
-        auto text = TransformText(node.text, style.textTransform());
-        const auto lineHeight = style.fontSizePx() * style.lineHeight();
-        rect.height = std::min(rect.height, lineHeight * static_cast<float>(style.maxLines()));
-        ComPtr<IDWriteTextLayout> textLayout;
-        if (FAILED(owner->writeFactory_->CreateTextLayout(
-                text.data(), static_cast<UINT32>(text.size()), format.Get(),
-                std::max(1.0F, rect.width), std::max(1.0F, rect.height),
-                textLayout.ReleaseAndGetAddressOf()))) {
+        const auto plan = CreateNativeTextLayoutPlan(
+            owner->writeFactory_, node.text, style,
+            std::max(1.0F, rect.width), std::max(1.0F, rect.height));
+        if (!plan.IsValid()) {
             Add(node.id, L"text_layout", L"DirectWrite could not create a text layout.");
             return;
         }
-        (void)textLayout->SetLineSpacing(
-            DWRITE_LINE_SPACING_METHOD_UNIFORM, lineHeight, lineHeight * 0.8F);
-        if (std::abs(style.letterSpacingPx()) > 0.001F) {
-            ComPtr<IDWriteTextLayout1> layout1;
-            if (SUCCEEDED(textLayout.As(&layout1))) {
-                (void)layout1->SetCharacterSpacing(
-                    0.0F, style.letterSpacingPx(), 0.0F,
-                    DWRITE_TEXT_RANGE{0, static_cast<UINT32>(text.size())});
-            }
-        }
+#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+        DWRITE_TEXT_METRICS textMetrics{};
+        if (SUCCEEDED(plan.layout->GetMetrics(&textMetrics)))
+            result.textLineCounts[node.id] = textMetrics.lineCount;
+#endif
         const auto color = style.foreground().value_or(kDefaultText);
         auto brush = Brush(target, WithOpacity(color, opacity));
         if (brush) {
             target->DrawTextLayout(
-                D2D1::Point2F(rect.x, rect.y),
-                textLayout.Get(),
+                D2D1::Point2F(
+                    rect.x,
+                    plan.LayoutOriginY(rect.y, rect.height, verticalAlignment)),
+                plan.layout.Get(),
                 brush.Get(),
-                D2D1_DRAW_TEXT_OPTIONS_CLIP);
+                D2D1_DRAW_TEXT_OPTIONS_NONE);
         }
     }
 
@@ -1724,7 +1652,8 @@ struct DeclarativeRenderer::RenderPass final {
                 else
                     DrawSemanticIcon(node, style, iconRect, opacity, node.glyph);
             }
-            if (hasText) DrawTextContent(node, style, textRect, opacity);
+            if (hasText) DrawTextContent(
+                node, style, textRect, opacity, NativeTextVerticalAlignment::Center);
             DrawStateCue(node, style, paintRect, opacity, placement.trailingStateCue);
         } else if (node.kind == L"progress") {
             DrawProgress(node, style, presented.contentBox, opacity);

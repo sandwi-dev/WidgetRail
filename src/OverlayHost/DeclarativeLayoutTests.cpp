@@ -120,6 +120,45 @@ void FlexGrowHonorsMaximum() {
     Near(result.Find("flexible")->borderBox.width, 380.0F, "remaining grow space is redistributed");
 }
 
+void FlexedRowRemeasuresWrappedCrossSize() {
+    auto text = Element("header-text");
+    text.flexGrow = 1.0F;
+    text.flexShrink = 1.0F;
+    text.minWidth = 0.0F;
+
+    auto trailing = Element("header-action");
+    trailing.width = 96.0F;
+    trailing.height = 44.0F;
+    trailing.flexShrink = 0.0F;
+
+    auto header = Element("header", LayoutDirection::Row);
+    header.gap = 10.0F;
+    header.crossAxisAlignment = CrossAxisAlignment::Center;
+    header.overflow = OverflowBehavior::Clip;
+    header.children = {text, trailing};
+
+    auto root = Element("root");
+    root.children = {header};
+    const auto measure = [](const LayoutElement& element,
+                            const gba::declarative::MeasureConstraints& constraints) {
+        if (element.id == "header-text") {
+            return Size{360.0F, constraints.maximumWidth < 300.0F ? 76.0F : 59.0F};
+        }
+        return Size{};
+    };
+    const auto result = ComputeLayout(
+        root, {0.0F, 0.0F, 384.0F, 200.0F}, measure);
+    Check(result.valid(), "final-width row remeasure is valid");
+    Near(result.Find("header")->borderBox.height, 76.0F,
+        "trailing action cannot retain the obsolete one-line header height");
+    Near(result.Find("header-text")->borderBox.width, 278.0F,
+        "header text receives the final width after the trailing action and gap");
+    Near(result.Find("header-text")->borderBox.height, 76.0F,
+        "header text receives its complete wrapped cross size");
+    Near(result.Find("header-text")->visibleBox.height, 76.0F,
+        "header clipping uses the final wrapped cross size");
+}
+
 void NestedPaddingAndMargins() {
     auto leaf = Element("leaf");
     leaf.width = 40.0F;
@@ -749,6 +788,7 @@ int main() {
     MediaLayout1080p();
     FlexShrinkAndMinimums();
     FlexGrowHonorsMaximum();
+    FlexedRowRemeasuresWrappedCrossSize();
     NestedPaddingAndMargins();
     OverflowClipping();
     ScrollOffsetsAreBoundedAndClipped();

@@ -20,8 +20,10 @@ add_executable(OverlayHost WIN32
     OverlayState.cpp
     WidgetBridgeClient.cpp
     RemoteImageCache.cpp
+    ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
     NativeIcons.cpp
+    NativeTextLayout.cpp
     NativeStyle.cpp
     OverlayChrome.cpp
     DeclarativeMotion.cpp
@@ -73,6 +75,14 @@ target_link_libraries(OverlayHost PRIVATE
 
 if(GBA_BUILD_TESTS)
     enable_testing()
+    add_executable(ScrollEvidenceProbeTests
+        ScrollEvidenceProbeTests.cpp ScrollEvidenceProbe.cpp)
+    target_compile_features(ScrollEvidenceProbeTests PRIVATE cxx_std_20)
+    target_compile_options(ScrollEvidenceProbeTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ScrollEvidenceProbeTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ScrollEvidenceProbeTests COMMAND ScrollEvidenceProbeTests)
+
     add_executable(OverlayStateTests
         OverlayStateTests.cpp
         OverlayState.cpp
@@ -98,6 +108,15 @@ if(GBA_BUILD_TESTS)
     target_compile_options(NativeStyleTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(NativeStyleTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME NativeStyleTests COMMAND NativeStyleTests)
+
+    add_executable(NativeTextLayoutTests
+        NativeTextLayoutTests.cpp NativeTextLayout.cpp NativeStyle.cpp)
+    target_compile_features(NativeTextLayoutTests PRIVATE cxx_std_20)
+    target_compile_options(NativeTextLayoutTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(NativeTextLayoutTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(NativeTextLayoutTests PRIVATE dwrite ole32)
+    add_test(NAME NativeTextLayoutTests COMMAND NativeTextLayoutTests)
 
     add_executable(DeclarativeMotionTests
         DeclarativeMotionTests.cpp DeclarativeMotion.cpp)
@@ -235,6 +254,17 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(WidgetSwitchHostTests PRIVATE
         user32 gdi32 windowscodecs ole32)
 
+    # Real-product Audio Mixer focus/scroll coverage runs the production host
+    # against a deterministic worker built from the first-party widget.
+    add_executable(AudioMixerScrollHostTests
+        AudioMixerScrollHostTests.cpp OverlayHostTestSupport.cpp)
+    target_compile_features(AudioMixerScrollHostTests PRIVATE cxx_std_20)
+    target_compile_options(AudioMixerScrollHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AudioMixerScrollHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(AudioMixerScrollHostTests PRIVATE
+        user32 gdi32 windowscodecs ole32 oleaut32 uiautomationcore)
+
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)
     target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)
@@ -257,11 +287,22 @@ if(GBA_BUILD_TESTS)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
-        NativeStyle.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(DeclarativeRendererTests PRIVATE
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
+
+    add_executable(SharedComponentGeometryTests
+        SharedComponentGeometryTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(SharedComponentGeometryTests PRIVATE cxx_std_20)
+    target_compile_options(SharedComponentGeometryTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(SharedComponentGeometryTests PRIVATE
+        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(SharedComponentGeometryTests PRIVATE
+        d2d1 dwrite winhttp windowscodecs ole32)
+    add_test(NAME SharedComponentGeometryTests COMMAND SharedComponentGeometryTests)
 endif()

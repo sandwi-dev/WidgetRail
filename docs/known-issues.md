@@ -21,7 +21,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | --- | --- | --- | --- | --- |
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
-| GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | One whole-widget controller Scroll contains every control and restores the last master, microphone, or application focus target; packaged visual/controller verification remains. |
+| GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
 | GBA-004 | P1 | Blocked | OverlayHost UI thread / presentation / composition | DLV-020 removed the startup surface in focused captures, but 2026-08-10 user evidence shows the real Games & Apps extent animation misses frames, flickers the whole interface, and exposes large gray/black bands. DLV-025 reproduced the single-HWND resize/composition failure and stopped without a product commit; resumption requires a user-authorized atomic compositor design. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
@@ -74,11 +74,11 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-053 | P1 | Verifying | Widget SDK resource coordination | Public `WidgetResource<TValue>` now owns bounded non-paged load/cache/retry/last-good/subscription state with lifecycle cancellation and stale-result rejection; broader production migrations and packaged evidence remain. |
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
 | GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | Typed status-only service failures and bounded safe UI copy remain intact through DLV-009's immutable presentation/current-attempt migration; focused YT Music coverage passes 51/51 and real-companion failure evidence remains. |
-| GBA-056 | P1 | Confirmed | Spotify widget focus composition | Left from the inactive seek Slider moves to Previous track instead of the navigation menu to its left; DLV-022 owns explicit responsive focus edges. |
+| GBA-056 | P1 | Verifying | Spotify widget focus composition | Accepted DLV-051 (`dc22202`, integrated as `822d29c`) authors the inactive seek Slider's Left edge to the selected wide rail destination or compact Player tab and passes exact semantic/controller replay. Fresh live confirmation remains. |
 | GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | Auto-loading list transitions visibly jump focus from bottom to top or top to bottom when replacing pages; DLV-006 owns continuous cursor/append and keyed viewport anchoring. |
-| GBA-058 | P1 | Confirmed | SectionHeader / native text geometry / Spotify | The `LIBRARY` header in Spotify Playlists is vertically clipped in the packaged overlay; DLV-021 owns shared header measurement and DLV-022 verifies Spotify composition. |
+| GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
 | GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
-| GBA-060 | P1 | Confirmed | Native renderer / shared component geometry | Button text/icon/checkmark alignment remains visibly inconsistent across first-party surfaces including Now Playing; DLV-021 reopens shared end-to-end measurement and paint evidence. |
+| GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
 | GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
@@ -168,6 +168,32 @@ updates, 128-session, and long-label cases. Native renderer coverage passes
 4,311 checks and walks Audio-like master/input/application geometry at the
 actual 464-DIP host content height and a constrained 304-DIP height. These
 focused checks do not replace packaged controller and visual verification.
+
+DLV-026 (`979de24`, `68efc70`, corrected by `9cc633a`, integrated as
+`4957101`) addressed one scale-edge hypothesis but did not close the later user-
+reported reverse trap. Scale
+conversion could leave a Slider edge within one native raster pixel of its
+matching rounded card clip; the prior feasibility test rejected that target
+even though the root Scroll still had range. The renderer now tolerates only
+that scale-aware raster edge while retaining negative coverage for wrong-axis,
+greater-than-one-pixel, and fixed nested clipping. A screenshot-excluded
+production-HWND/UIA manifest records 84 functional states across preferred,
+constrained, and 150% surfaces: every 14-control Down path reverses one control
+at a time to master output and offset zero, while unrelated removal, focused
+removal, nearest fallback, and addition preserve deterministic focus. The fresh
+Release disproved product acceptance: with four live application sessions, Up
+from Microphone could not return to offscreen Master using either keyboard or
+controller, and cycling away/back produced a `value_clamped [audio.root]` repair.
+Accepted DLV-049 confirms the emitted production snapshot declares
+`audio.input.volume.slider` Up as Master. On DLV-021's corrected shared-geometry
+baseline, the exact staged four-session state retains Master as an offscreen but
+revealable target at finite `296.6 / 298.2` offset/range. One production HWND/UIA
+Up reaches Master and offset zero without cycling; reopening preserves that
+canonical state and the log contains no `value_clamped [audio.root]`. Focused
+Release evidence passes 4,774 renderer checks, 35 authenticated probe checks,
+the single live-shaped production-host scenario, and a fresh host build. The
+issue remains Verifying until the freshly launched Release passes the user's
+keyboard/controller reproduction.
 
 **Acceptance:**
 
@@ -1737,9 +1763,15 @@ and cancellation-ignoring pairing and polling completion after deactivation.
 seek Slider owns focus moves to Previous track below it. The selected navigation
 rail is the visually and structurally intended destination to the left.
 
-**Ownership:** Spotify's explicit responsive focus graph first. The native
-geometric resolver is a verification seam, not a reason to encode Spotify IDs
-in the host.
+**Implementation evidence:** Accepted DLV-051 authors the inactive seek Slider's
+Left edge to the stable selected `spotify.nav.wide.*` rail destination and to
+`spotify.nav.compact.player` in compact Player. One credential-free test inspects
+both emitted responsive branches and replays the single Left input across every
+wide destination plus a current-route refresh while preserving seek Down and
+Previous/Play/Next edges. Spotify passes 40/40, documentation validates across
+53 files, and the normal 0.2.10 package validates/packs. The native resolver has
+no Spotify special case. DLV-006/DLV-022 separately own continuous playlist
+collection and header/list traversal.
 
 **Acceptance:** Expanded Left enters the selected rail destination; compact
 mode uses its corresponding navigation tab; Slider adjustment mode still owns
@@ -1769,13 +1801,21 @@ clipped above the playlists content. Spotify currently overrides shared
 SectionHeader content height, while shared intrinsic measurement and trailing
 actions also participate in allocation.
 
-**Ownership:** DLV-021 must reproduce and correct shared SectionHeader
-measurement/paint first; DLV-022 verifies Spotify no longer adds compensating
-geometry.
+**Ownership:** Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) corrects
+shared SectionHeader measurement/paint and proves complete bounds through the
+production renderer. DLV-022 still verifies the composed live Spotify route
+while migrating its continuous list/focus behavior.
 
 **Acceptance:** Eyebrow, title, description, and optional Play/trailing action
 fit their measured content at compact/standard/wide and 100-150% scales, remain
 unclipped during responsive changes, and expose matching semantic bounds.
+
+**Current evidence:** NativeTextLayout 25, DeclarativeLayout 250,
+DeclarativeRenderer 4,769, and shared component geometry 589 pass. Exact Spotify
+fixtures retain complete eyebrow/title/description bounds at compact, standard,
+wide/150%, and combined high-contrast/reduced-transparency profiles. The issue
+remains Verifying until the freshly built packaged overlay confirms the user's
+original live surface.
 
 ## GBA-059 — Games & Apps lacks trusted artwork for saved games
 
@@ -1808,6 +1848,13 @@ DLV-003's narrower automated result.
 icon-label-checkmark/busy variants, wrapped/ellipsized labels, disabled/
 selected/focused states, and every supported scale; Games & Apps, Spotify, Now
 Playing, Settings, and SDK Gallery require no local pixel offsets.
+
+**Current evidence:** Accepted DLV-021 (`b714efe`, integrated by `bc2de86`)
+introduces one NativeTextLayout measurement/paint plan and exact shared-component
+fixtures for all five named products across four profile classes. Selected,
+busy, disabled, icon, label, trailing cue, wrapped text, and real DirectWrite
+paint assertions pass. Keep Verifying until the user checks the new packaged
+Release visually.
 
 ## GBA-061 — Spotify randomly falls back to a full load-error screen
 

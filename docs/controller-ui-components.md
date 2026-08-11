@@ -95,7 +95,10 @@ semantic classes. They do not add worker code, polling, or a new native node:
   Cards are not implicitly actionable; put a real Button inside when an action
   is needed.
 - `UI.SectionHeader(...)` provides optional eyebrow, description, and trailing
-  content with documented stable child-ID suffixes.
+  content with documented stable child-ID suffixes. Native layout remeasures
+  the text stack after a trailing element receives its final width, so wrapped
+  eyebrow/title/description content establishes the complete header height;
+  authors should not add local baseline or fixed-height compensation.
 - `UI.StatusBadge(...)` provides Neutral, Info, Success, Warning, and Danger
   tones. The text must name the state; color is supplementary.
 - `UI.Divider(...)` is decorative spacing/separation and never enters focus.

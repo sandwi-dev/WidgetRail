@@ -621,14 +621,13 @@ Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
-DLV-046, DLV-047, DLV-048, and DLV-050 are accepted and integrated on `main`.
-DLV-051 is the current independent visible correction: it fixes the reported
-Spotify seek-bar Left edge without waiting for or duplicating DLV-006's shared
-continuous-list contract. No third safe widgets-only Ready item is manufactured:
-DLV-006 is the next serialized visible foundation after the active corrections
-and unlocks Spotify list focus, Games artwork, and the game launcher. DLV-043
-and DLV-038 remain dependency-ordered architecture debt rather than filler work.
-Platform DLV-049 continues to supply the second visible-product lane.
+DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
+`main`. DLV-006 is now the widgets-led serialized cross-lane assignment on that
+accepted baseline. It owns the shared cursor/append collection contract and its
+native adoption as one checkpoint; the platform task must not duplicate that
+surface while it completes DLV-015. DLV-022 and DLV-018 are the ordered visible
+consumers, followed by DLV-043's already-dispositioned Spotify architecture
+work. DLV-038 remains deferred test-architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1965,7 +1964,7 @@ ran.
 
 ### DLV-051 — Correct Spotify seek-bar Left navigation
 
-**State:** Assigned
+**State:** Done; accepted and integrated on `main` as `822d29c`
 **Lane:** widgets
 **Baseline:** widgets branch `263536f`, whose accepted implementation content is
 integrated on `main` through `7563471`; consume the planner assignment commit at
@@ -2023,13 +2022,194 @@ responsive-focus semantics, or current Spotify composition cannot express one
 stable corresponding target without a route/product decision. Preserve the
 exact snapshot and report instead of adding a widget-local ordinal/native hack.
 
+**Closing commit:** `dc22202` (`[DLV-051] Correct Spotify seek Left
+navigation`)
+
+**Reviewer disposition:** Accepted. Both responsive Player compositions now
+author the inactive seek Slider's Left edge to a stable selected destination:
+`spotify.nav.wide.*` for the wide rail and `spotify.nav.compact.player` for the
+compact tab. No host heuristic, provider behavior, SDK/protocol contract, or
+playlist paging changed. The focused Release run
+`20260811T043026Z-ea419336` passes Spotify 40/40 and documentation across 53
+files; the ordinary package path validates and packs Spotify 0.2.10. Fresh live
+controller/keyboard confirmation remains in the verification queue.
+
+### DLV-006 — Prove virtualized game-library collection foundations
+
+**State:** Assigned
+**Lane:** widgets, acting as the serialized cross-lane protocol lead
+**Baseline:** accepted local `main` through `822d29c` plus the reviewer commit
+containing this assignment; consume that main baseline at the current clean
+widgets boundary before editing
+**Dependencies:** DLV-004, DLV-005, DLV-021, DLV-049, and DLV-051
+**Owner:** public WidgetProtocol/WidgetSdk cursor-append collection semantics,
+their bounded managed test utilities, native declarative collection/focus/scroll
+adoption, and directly affected public author documentation
+**Concurrency:** May run while platform DLV-015 changes only accessibility
+projection and its isolated fixtures. Do not edit HostAccessibility,
+AccessibilityProvider, AccessibilityTree, AccessibilityEvents, the DLV-015
+production-host fixture, DLV-025 compositor files/evidence, or reviewer-owned
+files. Stop before changing a shared native build/test manifest already modified
+by active DLV-015 so the planner can serialize that mechanical boundary.
+
+**Visible outcome:** Auto-loading lists behave like one continuous controller
+collection: crossing a fetch boundary keeps the same keyed viewport anchor and
+moves to the adjacent item instead of jumping from bottom to top or top to
+bottom. The same contract can render thousands of game-library entries without
+serializing or retaining all of them.
+
+**Objective:** Establish one strict cursor/append collection and native viewport
+contract that directly fixes replacement-page focus jumps and supplies the
+bounded list/grid foundation required by Spotify, trusted Games artwork, and the
+future Game Launcher.
+
+**In scope:** opaque forward/reverse cursors; append/prepend and refresh results;
+stable typed item/focus keys; one explicit viewport anchor; bounded prefetch,
+retention, eviction, pending requests, snapshot nodes, and serialized bytes;
+lazy opaque artwork handles without decode or file/URL authority; loading,
+partial, final, empty, and safe error rows; cancellation, stale completion,
+cursor loop/duplication, sparse page, insertion, deletion, and refresh policy;
+fixed header/action behavior above a collection; responsive List and Grid
+fixtures; deterministic 2,000- and 10,000-item production-style fakes; public
+author guidance and compatibility-baseline updates required by the intentional
+pre-release API change.
+
+**Out of scope:** migrating Spotify product lists (DLV-022), supplying real
+Games artwork (DLV-018), store adapters, search/filter/launch behavior, arbitrary
+file or URL loading, embedding artwork bytes in snapshots, widget-local page
+caches, title/ordinal-derived identity, provider/authentication work, DLV-025
+composition, decorative redesign, screenshots, or a generic data-grid
+application framework.
+
+**Acceptance criteria:** page transport boundaries never become focus wrap
+boundaries; a keyed focused item and viewport anchor survive forward/reverse
+loads, cache hits/eviction, refresh, insertion, deletion, cancellation, sparse
+and final pages whenever that key remains valid, with a deterministic nearest
+fallback otherwise. Reverse loading with a fixed header action cannot oscillate
+between the header and first item. The host retains only the bounded visible/
+prefetch window and never receives a 2,000- or 10,000-node snapshot. Cursor
+loops, duplicate keys, oversized pages/fields, stale generations, and late
+results fail safely. Lazy artwork values are opaque bounded handles and grant no
+ambient fetch authority. Existing bounded offset-page resources retain their
+documented replacement-window semantics rather than silently changing behavior.
+
+**Verification:** Tier 1 WidgetProtocol, WidgetSdk, API-compatibility, native
+layout/renderer/focus/scroll, CLI replay, and documentation Release suites.
+Tier 2 one production-host-style cursor collection fixture covering List, Grid,
+fixed header, forward/reverse loads, refresh/churn, and 2,000/10,000-item bounds.
+**Integration checkpoint:** after the coherent DLV-006 commit, run the canonical
+Tier-3 verifier exactly once from that clean exact commit and inspect its
+machine-readable provenance before taking DLV-022. Every newly created managed
+test project uses `MSTest.Sdk/4.3.2`; existing executable suites remain unchanged.
+
+**Stop/escalate when:** the design requires a new widget authority, arbitrary
+image/file/network access, a compositor/window change, material accessibility-
+projection overlap with active DLV-015, an incompatible public behavior beyond
+the documented pre-release collection contract, or cannot keep the 10,000-item
+case within explicit bounded native/snapshot/resource limits.
+
+### DLV-022 — Repair Spotify continuous-list focus
+
+**State:** Ready after DLV-006
+**Baseline:** closing commit of DLV-006
+**Dependencies:** DLV-006, DLV-021, and DLV-051
+**Owner:** Spotify Queue, Playlists, and playlist-detail collection state and
+presentation, shared cursor/append consumption, exact focus fixtures, and
+directly affected Spotify documentation; no provider, public protocol, or native
+collection implementation changes
+**Visible outcome:** Queue and Playlist traversal stays continuous across loads;
+reverse traversal reaches the header Play action only when intended and never
+oscillates between it and the first row.
+
+**Objective:** Replace Spotify's current replacement-page windows with DLV-006's
+shared keyed collection while preserving route, Back, selected destination, and
+the accepted DLV-051 Player focus edge.
+
+**In scope:** Queue, Playlists, and playlist-item forward/reverse cursor state;
+12/12/5 and sparse/final pages; stable keyed anchors; refresh, cache eviction,
+rapid route changes, Back/return, cancellation, stale completion, header action,
+compact/expanded identity, and safe partial/error presentation; deletion of
+superseded widget-local page-window state.
+
+**Out of scope:** Spotify OAuth/Premium/Web Playback/provider changes, search,
+new product screens, custom page caches, ordinal/title focus IDs, native
+collection exceptions, DLV-051 changes, DLV-043 decomposition, shared geometry
+offsets, screenshots, or live credentials.
+
+**Acceptance criteria:** crossing every forward/reverse transport boundary moves
+to the adjacent keyed item without top/bottom teleport; existing keys retain
+focus and viewport through refresh/append/prepend, with deterministic fallback
+after deletion. The Play/header action participates in one explicit authored
+edge and cannot alternate with the first row on snapshot replacement. Route and
+Back restoration, selected responsive destination, accepted seek navigation,
+bounded retention, loading/error copy, and Active-lifetime cancellation remain
+exact.
+
+**Verification:** Tier 1 Spotify and shared collection Release suites plus the
+smallest controller replay/production-host semantic fixture covering forward,
+reverse, header, refresh, and route return. Validate the package and affected
+docs. No aggregate, provider, live account, broad screenshot matrix, or native
+collection redesign.
+
+**Stop/escalate when:** DLV-006 cannot express a required keyed anchor/edge,
+the native host ignores a valid shared collection state, or correction requires
+provider/auth behavior, a public contract revision, or a material Spotify UX
+decision. Report the shared defect instead of adding a widget-local workaround.
+
+### DLV-018 — Supply trusted artwork for Games & Apps
+
+**State:** Ready after DLV-022
+**Baseline:** closing commit of DLV-022
+**Dependencies:** DLV-006 and DLV-017
+**Owner:** trusted app-library artwork registration/projection, brokered opaque
+artwork handles, bounded host decode/cache consumption, Games & Apps
+presentation, and direct provider/widget fixtures
+**Visible outcome:** Games & Apps rows show their real trusted application/game
+icons when available and a consistent semantic fallback when not, without
+slowing or bloating large collections.
+
+**Objective:** Complete the trusted local artwork path for current Start Menu,
+AppsFolder, and Steam registrations using DLV-006 lazy handles while preserving
+the same opaque provider identity and launch-authority boundary.
+
+**In scope:** source-owned artwork discovery and revalidation; opaque bounded
+handle registration; exact identity/generation binding; lazy demand; file,
+format, dimension, decoded-byte, count, transport, memory, and disk-cache bounds;
+deduplication and eviction; missing/change/churn/corrupt/oversized/stale cases;
+2,000/10,000-item demand fixtures; Games & Apps row presentation and accessible
+fallback semantics.
+
+**Out of scope:** arbitrary widget file/URL access, base64 artwork in snapshots,
+network image fetching, new store adapters, title/path-derived launch identity,
+persisting raw paths or image bytes in widget state, changing launch authority,
+generic media hosting, screenshots as acceptance, or DLV-025 compositor work.
+
+**Acceptance criteria:** an artwork handle is useful only for the exact current
+trusted registration and cannot reveal or fetch an arbitrary path; stale,
+missing, malformed, oversized, or replaced resources fail to one bounded
+source-appropriate fallback. Decode/cache work is lazy and bounded under the
+2,000/10,000-item fixture, with deterministic eviction and no mass snapshot
+payload. Artwork churn cannot change launch identity, focus, membership, or
+warm-start authority. Supported real registrations expose artwork where their
+trusted sources provide it.
+
+**Verification:** Tier 1 app-library provider, broker, resource/cache, Games &
+Apps, shared collection, and documentation Release suites. Tier 2 smallest
+installed-worker/production-host route proving exact opaque-handle demand and
+rejection. No aggregate, external store login, arbitrary filesystem access, or
+screenshot harness.
+
+**Stop/escalate when:** a supported source has no documented trustworthy artwork
+surface, delivery requires ambient filesystem/network authority, handle
+resolution cannot stay identity/generation bound, native cache changes overlap
+active platform work, or a new public authority/protocol beyond DLV-006 is
+required.
+
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
-**State:** Deferred behind DLV-006/DLV-022 visible Spotify work; not Ready for
-automatic selection
-**Baseline:** planner-selected accepted main after the visible Spotify focus and
-collection corrections
-**Dependencies:** DLV-007, DLV-008, DLV-023, and DLV-040 only for queue order
+**State:** Ready after DLV-018
+**Baseline:** closing commit of DLV-018
+**Dependencies:** DLV-007, DLV-008, DLV-023, DLV-022, and DLV-040
 **Owner:** Spotify managed widget internals and credential-free fixtures; no
 provider, broker, public SDK/protocol, or native-host files
 
@@ -2255,16 +2435,13 @@ commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
-not be reset or overwritten. DLV-026 is integrated but failed live product
-acceptance. DLV-021 is accepted and integrated as `bc2de86`; DLV-049 is now
-Assigned before any earlier Ready item. Its production-host fixture ownership
-includes the smallest managed test-fixture-only state needed to reproduce the
-four-session product shape, but excludes managed Audio Mixer product source. A
-blocked compositor milestone does not authorize idling the platform lane or
-switching both lanes to backend refactors. DLV-015 and DLV-016 are the two safe
-independent later items; DLV-006 is the higher-priority serialized visible
-checkpoint after the active corrections, DLV-011 awaits that shared baseline, and DLV-025
-remains user-decision blocked.
+not be reset or overwritten. DLV-049 is accepted and integrated as `a8bcb27`;
+DLV-015 is now Assigned on its clean source baseline while the widgets lane leads
+serialized DLV-006. DLV-016 remains the next independent Ready item. DLV-011
+awaits accepted DLV-006 integration, DLV-033 awaits the compositor decision, and
+DLV-025 remains user-decision blocked. No third safe platform Ready item is
+manufactured while those explicit cross-lane and architecture dependencies
+remain.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -2555,7 +2732,7 @@ confirmation remains in the verification queue.
 
 ### DLV-049 — Correct the live Audio Mixer reverse-scroll state
 
-**State:** Assigned on platform commit `b714efe`; execute before DLV-015
+**State:** Done; accepted and integrated on `main` as `a8bcb27`
 **Baseline:** accepted DLV-021 closing commit `b714efe` plus integrated DLV-026
 candidate `4957101`
 **Dependencies:** DLV-021 only for same-lane order; independent of blocked
@@ -2615,10 +2792,26 @@ preserve the exact snapshot/evidence and report it for an immediate widgets-lane
 correction instead of adding a native fallback. Also stop for public protocol
 changes or a defect inseparable from the blocked compositor architecture.
 
+**Closing commit:** `32af19b` (`[DLV-049] lock four-session Audio Mixer reverse
+scroll`)
+
+**Reviewer disposition:** Accepted. The exact staged four-session snapshot
+retains `audio.input.volume.slider` Up to Master. On the accepted DLV-021 shared-
+geometry baseline, Master remains an offscreen-but-revealable native target at a
+finite retained `296.6 / 298.2` root offset; one production HWND/UIA Up reaches
+Master and offset zero, and reopening neither changes viability nor emits
+`value_clamped [audio.root]`. The assignment therefore locks the already owning
+geometry correction rather than adding another navigation workaround. Focused
+Release evidence passes 4,774 renderer checks, 35 probe checks, the one exact
+production-host scenario, and a fresh host build. The main Release rebuilt at
+`822d29c`; live keyboard/controller confirmation remains required before closing
+GBA-003.
+
 ### DLV-015 — Add deterministic real-host accessibility proof
 
-**State:** Ready after DLV-049
-**Baseline:** closing commit of DLV-049
+**State:** Assigned on platform source commit `32af19b`
+**Baseline:** accepted DLV-049 source commit `32af19b`, integrated on `main` as
+`a8bcb27`
 **Owner:** native accessibility adapter, host harness, and retained evidence
 
 **Objective:** Exercise the production UI Automation projection over
@@ -2678,37 +2871,10 @@ game/hardware choice, or a product budget decision not already documented.
 These are planned but are not executable by either lane until the planner marks
 one Assigned on an accepted integrated baseline.
 
-### DLV-006 — Prove virtualized game-library collection foundations
-
-**State:** Highest-priority serialized visible foundation after DLV-049 and
-DLV-051; awaiting planner-selected lead/baseline
-**Intended lead:** planner-selected serialized protocol lane
-**Dependencies:** DLV-004 and DLV-005
-
-Add the minimum cursor/append virtualized collection, lazy artwork handles,
-stable keyed focus, bounded retention, and 2,000/10,000-item production-style
-fake needed by the future Game Launcher. The contract must also replace the
-currently reported page-window jump: advancing or reversing at a focus edge
-keeps one continuous keyed list/viewport anchor instead of replacing a 12-row
-window and moving focus from bottom to top or top to bottom. Cover a fixed
-header action above the list so reverse loading cannot oscillate between the
-header and first item. Public semantics and native adoption must land as one
-serialized design. This is an exact-commit Tier-3 checkpoint.
-
-### DLV-018 — Supply trusted artwork for Games & Apps
-
-**State:** Awaiting DLV-006; DLV-017 accepted as `5aedfe8`
-**Intended lead:** planner-selected serialized provider/collection lane
-**Dependencies:** DLV-006, DLV-017
-
-Complete the trusted artwork path for Start Menu, AppsFolder, Steam, and future
-source adapters without exposing paths or allowing ordinary widgets to fetch
-arbitrary files/URLs. Use DLV-006 lazy handles and bounded decode/cache budgets;
-show a semantic per-source fallback only when an exact registration has no
-trusted local artwork. Revalidate artwork with the same provider identity as
-launch, reject stale/malformed/oversized images, and cover missing/change/churn,
-2,000/10,000-item demand, memory/transport bounds, and current Games & Apps
-captures. Do not solve this by embedding hundreds of base64 icons in snapshots.
+DLV-006, DLV-022, and DLV-018 moved to the widgets lane as one ordered serialized
+cross-lane sequence on accepted `main`. Their complete executable assignments
+are maintained there; neither implementation task may select a duplicate from
+this integration queue.
 
 ### DLV-033 — Establish a host-owned widget session coordinator
 
@@ -2726,22 +2892,6 @@ into the coordinator or create a generic event bus. Prove runtime versus
 presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
-
-### DLV-022 — Repair Spotify continuous-list focus
-
-**State:** Awaiting DLV-006 and DLV-021 acceptance
-**Intended lead:** widgets lane on an accepted shared collection/geometry baseline
-**Dependencies:** DLV-006, DLV-021
-
-Migrate Spotify playlists and playlist items to the shared continuous
-cursor/append collection and consume DLV-051's accepted responsive Player edge
-without changing it. Reverse traversal from the first playlist item must move
-to the Play/header action only once when intended and must never oscillate during
-load/snapshot replacement. Queue/list traversal,
-12/12/5 and sparse pages, forward/reverse cache transitions, Back/return focus,
-rapid refresh, compact/expanded responsive identity, and the clipped `LIBRARY`
-header must have composed host/renderer/controller evidence. Do not add
-widget-local page caches, renderer offsets, or title-derived focus IDs.
 
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 

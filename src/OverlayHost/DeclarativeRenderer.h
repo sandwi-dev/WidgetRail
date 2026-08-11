@@ -71,6 +71,7 @@ struct RenderResult final {
     std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
     std::map<std::wstring, ButtonContentPlacement, std::less<>> buttonContentPlacements;
+    std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
 #endif
     std::map<std::wstring, declarative::Rect, std::less<>> focusRects;
     // Full logical controller geometry includes offscreen descendants of a
