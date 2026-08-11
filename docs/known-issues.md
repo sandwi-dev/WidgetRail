@@ -86,7 +86,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
 | GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
-| GBA-068 | P0 | Verifying | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. Accepted main through DLV-071 was fully repackaged and visibly launched with no new startup/lifecycle error. The supplied 21:54 startup-failure screenshots predate DLV-052 and are not a current recurrence; direct opening of both widgets remains the user's final live check. |
+| GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
 
 ## GBA-001 — Per-application audio controls have no real effect
@@ -248,6 +248,16 @@ successful draw, and a later `DwmFlush` cannot retract an already composed
 frame. The known-bad prototype remains uncommitted. Resumption requires a
 bounded user-authorized offscreen atomic-present, DirectComposition, or
 swap-chain design.
+
+The 2026-08-11 full Release refresh for accepted Game Launcher main
+`bb449d0` republished the coherent managed/runtime graph, then the unchanged
+`WidgetSwitchHostTests` failed because the production host did not paint its
+expected Audio Mixer fixture surface. The accepted launcher prefix does not
+touch the transition fixture or native presentation path, so this is retained
+as additional GBA-004 fixture/product evidence rather than retried unchanged or
+used to reject the managed milestone. A future compositor decision must make the
+fixture deterministic against the selected presentation architecture instead
+of adding retries or capture work.
 
 **Acceptance:**
 

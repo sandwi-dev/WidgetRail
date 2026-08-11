@@ -1,8 +1,11 @@
 # Widget Authoring Experience Review
 
 Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, transactional versioned template generation, a checked-in pre-release SDK/API release unit, and a compile-tested canonical offline author journey are implemented; manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
-Date: 2026-08-10<br>
-Reassessed: 2026-08-10 against integrated `main` `7563471`, including accepted DLV-047 API/release-unit baseline, DLV-048 canonical author journey, and DLV-050 incremental MSTest.Sdk 4.3.2 correction<br>
+Date: 2026-08-11<br>
+Reassessed: 2026-08-11 against integrated `main` `3d8f486`, including the
+accepted DLV-060 installed Game Launcher, DLV-066 organization policy, and
+DLV-074 public cursor-contract correction plus DLV-067 evidence-backed launch
+lifecycle<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -55,6 +58,22 @@ named `MSTest.Sdk` 4.3.2 cases with a separate bounded update tool; existing
 executable suites are unchanged. External publication and its support/provenance
 policy remain open while native geometry, feedback, accessibility, and
 performance work continues independently.
+
+DLV-060 now supplies the strongest large-collection framework proof: one
+roughly 600-line Game Launcher lifecycle/action/state owner composes the public
+cursor resource, responsive virtualized grid, lazy artwork, private warm
+projection, and exact app-library capability without retaining or serializing a
+10,000-item catalog. DLV-066 adds favorites and explicit preferred variants
+through one value-based policy and bounded CAS store rather than another widget-
+local framework. DLV-067 adds a typed internal launch-observation result while
+the SDK operation runner supplies active-lifetime single-flight cancellation;
+the widget only retains bounded per-SavedId presentation state. This is credible
+evidence that a human team can build a widget broader than Spotify from reusable
+primitives. It does not yet make full-library query UX easy: assigned DLV-075 is
+therefore the next framework milestone for host-owned controller text entry and
+provider-side query/filter composition. DLV-074 also closes the temporary
+128/256 public-const/documentation drift with compatibility 12/12 and Widget SDK
+86/86 evidence.
 
 The framework becomes difficult when a widget has multiple pages, remote state,
 commands, caching, optimistic updates, and lifecycle-sensitive work. Authors

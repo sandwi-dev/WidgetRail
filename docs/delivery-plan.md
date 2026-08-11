@@ -731,11 +731,16 @@ route/action, playback, and presentation boundaries while retaining one
   owner with bounded cancellation, drain, exact-once disposal, and stale-
   publication rejection. DLV-072 `fe66470` is accepted and integrated through
   `7f23738`: the obsolete 512-item snapshot is replaced by bounded opaque cursor
-  queries and Games & Apps now consumes that contract. DLV-060 candidate
-  `8ca0859` delivers the visible launcher but is unaccepted because its public
-  256-cursor constant, checked API baseline, and author documentation disagree.
-  DLV-066 is active on that preserved prefix; bounded DLV-074 follows it before
-  DLV-067. DLV-038 remains deferred test-architecture debt rather than filler
+  queries and Games & Apps now consumes that contract. DLV-060 `8ca0859`,
+  DLV-066 `8a5ec7f`, and correction DLV-074 `d0a1014` are accepted and
+  integrated through `bb449d0`: the bundled Game Launcher traverses the full
+  normalized installed library, retains display-only warm state, revalidates
+  each launch, and adds bounded favorites plus explicit preferred-variant
+  groups. DLV-067 `ddf7626` is accepted and integrated through `3d8f486`:
+  evidence-backed launch states now gate overlay close without exposing process
+  identity, and retained per-game results are bounded. DLV-075 is Assigned;
+  DLV-076 and DLV-077 keep the lane on visible recent ordering and manual
+  inclusion. DLV-038 remains deferred test-architecture debt rather than filler
   work.
 
 ### DLV-007 — Make Spotify presentation state coherent
@@ -3108,7 +3113,7 @@ cursor contract unchanged.
 
 ### DLV-060 — Ship an installed-only Game Launcher library
 
-**State:** Candidate `8ca0859` rejected pending DLV-074 public-contract correction
+**State:** Done; accepted as `8ca0859` with DLV-074 and integrated through `bb449d0`
 **Lane:** widgets, acting as serialized managed capability/widget lead
 **Baseline:** closing commit of DLV-072
 **Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, DLV-059, DLV-071, and
@@ -3185,8 +3190,8 @@ launch truth requires raw identity, or the widget begins owning discovery/cache/
 source policy. Preserve the exact remaining gap for a serialized framework
 prerequisite.
 
-**Reviewer disposition:** Rejected pending one bounded correction after the
-already-started DLV-066 milestone. Candidate `8ca0859` supplies a compact
+**Reviewer disposition:** Accepted with closing public-contract correction
+DLV-074. Candidate `8ca0859` supplies a compact
 268-line lifecycle/orchestration owner, 159-line pure presenter, bounded warm
 projection, exact SavedId revalidation, lazy artwork, responsive grid, bundled
 package/catalog wiring, and a new MSTest.Sdk 4.3.2 suite. Focused evidence
@@ -3195,14 +3200,18 @@ reports SDK 86/86, launcher 10/10, installed generic-worker 6/6, and complete
 rows and 256 cursors. However `MaximumCursorHistory` is a public const: source
 now declares 256 while `src/WidgetSdk/PublicApi.txt` still declares 128,
 `src/WidgetSdk/README.md` still documents 128, and the public authoring guide
-states both 256 and 128 in adjacent paragraphs. The compatibility suite was not
-part of the retained evidence. Do not integrate `8ca0859` or its dependent
-prefix until DLV-074 intentionally updates and verifies the one current public
-contract. Per the asynchronous review rule, do not interrupt active DLV-066.
+states both 256 and 128 in adjacent paragraphs. DLV-074 updates only the
+intentional public const baseline and those stale current documentation claims;
+compatibility 12/12, Widget SDK 86/86, and all 55 documentation contracts pass.
+The accepted contiguous prefix is integrated through `bb449d0`; the complete
+managed/runtime graph was republished and the visible accepted overlay is
+running as PID 23000. The full build's later unchanged WidgetSwitch fixture
+failed to paint its Audio Mixer fixture and is retained as separate evidence
+rather than retried as a condition of this managed launcher acceptance.
 
 ### DLV-066 — Add Game Launcher favorites and preferred variants
 
-**State:** Assigned
+**State:** Done; accepted as `8a5ec7f` and integrated through `bb449d0`
 **Lane:** widgets
 **Baseline:** closing commit of DLV-060
 **Dependencies:** DLV-059, DLV-071, DLV-072, and DLV-060
@@ -3239,9 +3248,21 @@ cases plus docs. No aggregate, native, screenshot, or external store run.
 **Stop/escalate when:** durable preference cannot survive without exposing raw
 source identity or requires provider/public protocol changes.
 
+**Reviewer disposition:** Accepted. One value-based organization policy owns
+schema-v2 normalization, bounded favorite/group/preference transitions, source
+disappearance/reappearance, and whole-schema reset; one two-attempt CAS store
+reapplies only the requested delta to a newer valid revision. The widget remains
+the sole lifecycle, state-revision, presentation, and invalidation owner. State
+is capped at 96 sanitized display rows, 32 organized identities, 16 groups, and
+four members per group, stores no raw launch authority, and keeps missing
+identities disabled until exact SavedId revalidation. Retained Release evidence
+`20260811T123312Z-b54b995b` passes Game Launcher 15/15 and all 55 documentation
+contracts. Package 0.2.0 is integrated through `bb449d0`; live controller and
+visual evaluation remains user evidence.
+
 ### DLV-074 — Align the public cursor traversal contract
 
-**State:** Ready
+**State:** Done; accepted as `d0a1014` and integrated through `bb449d0`
 **Lane:** widgets
 **Baseline:** closing commit of DLV-066, retaining rejected DLV-060 candidate
 `8ca0859` and the clean accepted-main merge
@@ -3290,9 +3311,18 @@ does not change.
 public const value change, another current public surface requires a materially
 different cursor contract, or correction would change product/runtime behavior.
 
+**Reviewer disposition:** Accepted. The checked public const, WidgetSdk README,
+and current authoring guide now agree on the production 256-cursor same-
+direction bound while retaining refresh/direction-change reset semantics. No
+product implementation, broker, protocol, native, provider, package, or test
+framework changed. Retained evidence `20260811T123616Z-fe1edc94` passes
+compatibility 12/12, Widget SDK 86/86, and all 55 documentation contracts. The
+correction and its accepted dependencies are integrated through `bb449d0`.
+
 ### DLV-067 — Present honest Game Launcher launch lifecycle
 
-**State:** Ready
+**State:** Done; accepted as `ddf7626`, integrated through `3d8f486`
+**Closing commit:** `ddf7626` (`[DLV-067] present honest game launch lifecycle`)
 **Lane:** widgets
 **Baseline:** closing commit of DLV-074
 **Dependencies:** DLV-059, DLV-071, DLV-072, DLV-060, DLV-066, and DLV-074
@@ -3329,6 +3359,175 @@ screenshot, or external store run.
 
 **Stop/escalate when:** honest state requires undocumented process/store hooks,
 generic process authority, or a public protocol change not already assigned.
+
+**Reviewer disposition:** Accepted. The new typed observation remains on the
+existing authenticated app-library capability and carries only sanitized state
+and support flags. Current Windows and Steam sources report only `Launcher
+started`; acknowledgement-only adapters remain `Request accepted` and cannot
+close the overlay. Pending, failure, Running, and Ended projection is exact-
+SavedId, collection-revision, lifecycle, and generation gated; stale completion
+cannot publish, deactivation drains the single-flight operation, and retained
+tile states cap at 32. The commit adds no PID, HWND, command, path, or store
+identity and does not add ambient process observation. Retained focused evidence
+passes provider 45/45, broker 52/52, Game Launcher 20/20, installed generic-
+worker 6/6, and 55 documentation contracts. Integrated as `3d8f486`.
+
+### DLV-075 — Add controller-first Game Launcher search and filters
+
+**State:** Assigned
+**Lane:** widgets, acting as serialized cross-lane query/text-entry lead
+**Baseline:** accepted DLV-067 integration `3d8f486` plus the reviewer
+control-plane commit containing this assignment
+**Dependencies:** DLV-006, DLV-060, DLV-066, DLV-067, and DLV-072
+**Owner:** bounded app-library query values, public WidgetSdk text-entry/query
+surface, broker/provider query mapping, native host-owned text-entry modal,
+Game Launcher search/filter presentation, focused cross-boundary fixtures, and
+directly affected public documentation
+**Concurrency:** Platform remains idle while this assignment owns the shared
+native input/focus/build boundary. Do not touch pinning/media/compositor work or
+reviewer-owned files. This is the next public cross-process contract checkpoint;
+do not begin an additional store adapter in parallel.
+
+**Visible outcome:** From Game Launcher, a controller user can open Search,
+enter or edit bounded text with the host-owned on-screen keyboard, commit or
+cancel it, select installed/source/favorite and typed sort filters, clear the
+query, and traverse the filtered results without losing focus or loading the
+complete catalog into the widget.
+
+**Objective:** Complete the requested full-library interaction foundation by
+executing search and filters against one provider-owned immutable library
+revision rather than filtering only the retained widget window.
+
+**In scope:** a typed bounded query containing normalized search text, installed
+and kind criteria, sanitized source selection, a bounded opaque SavedId set for
+favorite filtering, and closed sort values; one host-owned text-entry modal with
+keyboard and controller input, A commit, B cancel, clear/backspace, maximum
+length, focus restoration, high contrast, and accurate UIA semantics; revision-
+bound cursor reset/anchor policy; empty/loading/partial/error/clear states;
+rapid edits, query replacement, cancellation-ignoring results, source failure,
+insertion/deletion, 2,000/10,000-item bounds, and compact/standard/150% fixtures.
+
+**Out of scope:** ambient raw key forwarding to widgets, arbitrary native edit
+controls, fuzzy/remote metadata search, account libraries, new stores, speech,
+IME language claims beyond current keyboard input, recent-history behavior,
+credentials, screenshots, or compositor work.
+
+**Acceptance criteria:** the widget receives only the committed bounded value,
+never raw keyboard events or HWND authority; cancel restores the exact prior
+query/focus and commit creates one current query generation. Provider, broker,
+bridge, snapshot, and native tree retain only bounded pages while a 10,000-item
+search reaches exact first/middle/final/reverse results. Stale query/cursor
+completion cannot publish; favorite/source filters use exact opaque identity,
+not title parsing; every modal action and result is controller and UIA reachable.
+
+**Verification:** Tier 1 provider query, PlatformBroker, WidgetSdk/API
+compatibility, Game Launcher, native input/focus/layout/UIA, CLI replay, and
+documentation Release suites. Tier 2 one production-host route covering modal
+entry, query replacement, cursor traversal, cancellation, and 10,000-item
+bounds. **Integration checkpoint:** run the canonical Tier-3 verifier once from
+the clean exact closing commit because this adds a public cross-process UI/query
+contract. No screenshot, physical controller, external store, or live account.
+
+**Stop/escalate when:** a safe modal requires raw widget key/HWND authority, the
+query cannot remain revision/cursor bounded, accessibility requires a materially
+different product model, or another lane owns a required dirty shared file.
+
+### DLV-076 — Add bounded recent-launch ordering to Game Launcher
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-075
+**Dependencies:** DLV-060, DLV-066, DLV-067, and DLV-075
+**Owner:** Game Launcher overlay-owned recent-history policy, private schema,
+presentation/query composition, and credential-free fixtures; no provider
+process monitoring or public protocol change
+**Concurrency:** May run only after DLV-075 commits. Do not change native text
+entry, provider source adapters, launch-observation authority, or reviewer-owned
+files.
+
+**Visible outcome:** Game Launcher can sort or filter by recently launched games
+and immediately places a successfully accepted launch near the front, while
+failed, stale, or canceled requests never rewrite history.
+
+**Objective:** Add useful durable library organization without background play-
+time tracking, process scanning, or storing raw launch identity.
+
+**In scope:** one current pre-release private schema with at most 32 opaque
+SavedIds and coarse monotonic ordering metadata; update only from the exact
+current DLV-067 accepted launch outcome; bounded recent sort/filter composition;
+missing/reappearing identity, replacement identity, favorites/groups coexistence,
+CAS conflict/failure, warm start, clear-history, incompatible reset, and clock-
+independent deterministic fixtures.
+
+**Out of scope:** play time, Running/Ended inference, PIDs/HWNDs/paths, provider
+telemetry, account sync, achievements, background polling, remote history,
+public SDK changes, new stores, or screenshots.
+
+**Acceptance criteria:** only an exact accepted current launch records history;
+Failed, stale, canceled, replaced, or unsupported outcomes do not. Recent state
+contains no raw authority and cannot authorize launch; one mutation preserves
+unrelated favorites/groups and another launch's order; missing SavedIds remain
+non-authorizing and replacement IDs are independent; state and snapshot size
+remain bounded across restart and conflict.
+
+**Verification:** Tier 1 Game Launcher/private-state Release suite with exact
+launch-outcome, conflict, failure, reset, restart, and ordering cases plus docs.
+No provider/native/aggregate/screenshot/physical game run.
+
+**Stop/escalate when:** credible recent ordering requires process observation,
+wall-clock identity, provider/public protocol changes, or another committed-
+state owner.
+
+### DLV-077 — Add explicit manual entries to Game Launcher
+
+**State:** Ready
+**Lane:** widgets
+**Baseline:** closing commit of DLV-076
+**Dependencies:** DLV-060, DLV-066, DLV-072, DLV-075, and DLV-076
+**Owner:** Game Launcher manual-inclusion policy over the existing trusted app-
+library query/resolve/launch authority, private state, presentation, and focused
+fixtures; no arbitrary executable or filesystem picker
+**Concurrency:** Managed widget/capability consumption only. Do not add store
+adapters, native file dialogs, raw path/command authority, or reviewer-owned
+changes.
+
+**Visible outcome:** Users can open Add games, search trusted installed
+registrations that are not automatically classified as games, add or remove an
+entry by opaque SavedId, and have it survive restart while still requiring exact
+current launch revalidation.
+
+**Objective:** Support the requested manually added library slice through the
+same trusted normalized catalog instead of introducing an unsafe executable-
+path workaround.
+
+**In scope:** an Add games route using DLV-075 search/query with Game,
+Application, and Unknown classification visible; at most 32 explicit SavedIds;
+add/remove, duplicate/no-op, unavailable retention, authoritative
+reclassification, identity replacement, CAS conflict/failure, focus/Back/route
+restoration, warm projection, incompatible reset, and interaction with
+favorites/groups/recent order.
+
+**Out of scope:** filesystem browsing, arbitrary commands/arguments, URL or
+protocol handlers, scripts, emulators, account libraries, store adapters,
+metadata scraping, public authority expansion, native file pickers, or
+screenshots.
+
+**Acceptance criteria:** no path, command, AUMID, Steam/store ID, or provider key
+enters widget state or snapshots; add/remove stores only the exact bounded
+SavedId and sanitized projection. A stale or missing entry cannot launch; the
+same current provider revalidation used by automatic games authorizes it.
+Removing one entry preserves every unrelated organization/history field; every
+route and action remains controller/UIA reachable and bounded.
+
+**Verification:** Tier 1 Game Launcher/private-state, WidgetSdk app-library,
+PlatformBroker exact resolve/launch, generic-worker, and documentation Release
+suites. Tier 2 smallest installed production route for add, restart, remove,
+stale rejection, and exact launch. No aggregate, native redesign, arbitrary
+filesystem, external store, screenshot, or physical launch.
+
+**Stop/escalate when:** manual inclusion requires exposing executable identity,
+the trusted catalog cannot represent the desired entry, or safe UX requires a
+filesystem/command authority outside the existing threat model.
 
 ### DLV-029 — Split Audio Mixer by stable responsibility
 
@@ -3536,13 +3735,12 @@ activation from later launches. DLV-068 `b83b3f7` is accepted and integrated
 through `9e795ac`; durable controller/pointer/UIA placement is now available.
 DLV-069 candidate `ea2691c`, corrected by DLV-073 `aaafefc`, is accepted and
 integrated through `eef3162`: Click-through keeps the current admitted widget
-visible while withholding input and actionable UIA. DLV-062 is the active
-fixed-video trusted-rich-media feasibility gate. No later platform item is Ready
-yet because YouTube v1 depends on that go/no-go result, DLV-025 requires the
-user's compositor choice, and endpoint selection still lacks a supported setter;
-the planner will not manufacture internal filler. This visible sequence is
-independent of the blocked animated-resize compositor and may run beside widgets
-DLV-060 under the explicit file boundaries below.
+visible while withholding input and actionable UIA. DLV-062 is blocked at its
+documented fixed-video material-resource gate. No later platform item is Ready
+because YouTube v1 depends on that go/no-go decision, DLV-025 requires the user's
+compositor choice, and endpoint selection still lacks a supported setter; the
+planner will not manufacture internal filler. The platform lane remains idle
+while widgets DLV-075 owns the shared native text-entry/input boundary.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 

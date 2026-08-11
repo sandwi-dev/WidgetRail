@@ -593,12 +593,22 @@ Staged rollout:
 Menu/AppsFolder and Steam sources now sit behind one normalized internal
 contract with a real production terminal owner. Accepted DLV-072 `fe66470`,
 integrated through `7f23738`, replaces the obsolete 512-item snapshot with
-bounded opaque cursor queries and migrates Games & Apps. Assigned DLV-060 now
-ships the dedicated installed-only Game Launcher over those queries plus the
-accepted cursor-grid and lazy-artwork foundations. DLV-066 adds explicit
-favorites and preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
-Host-owned query/text entry and additional store adapters remain later
-serialized stages rather than being hidden inside the first widget.
+bounded opaque cursor queries and migrates Games & Apps. DLV-060 `8ca0859`,
+DLV-066 `8a5ec7f`, and DLV-074 `d0a1014` are accepted and integrated through
+`bb449d0`: the bundled installed-only Game Launcher now traverses 10,000-row
+fixtures with bounded cursor/grid/artwork state, revalidates exact SavedIds,
+retains non-authorizing warm display state, and provides durable favorites plus
+explicit preferred variants. Accepted DLV-067 `ddf7626`, integrated through
+`3d8f486`, adds only adapter-provable launch lifecycle, gates overlay close on
+stronger-than-acknowledgement evidence, and retains at most 32 per-game results.
+Assigned DLV-075 adds host-owned controller text entry and full-catalog query/
+filter; DLV-076 and DLV-077 then add bounded recent ordering and explicit manual
+inclusion from trusted registrations. Additional store adapters remain
+behind the documented-registration admission gate; current official
+[GOG client](https://docs.gog.com/gc-client-overview/) and
+[SDK](https://docs.gog.com/sdk/) material describes game-side/client integration
+but does not document a supported consumer-library enumeration/launch API, so
+no speculative adapter is pre-authorized.
 
 Completion evidence includes deterministic adapter contract suites; 2,000 and
 10,000 item cold/refresh/search/scroll measurements; bounded memory, decoded

@@ -2,7 +2,7 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `0b21384`; prior retained
+Last reassessed: 2026-08-11 against integrated `main` `3d8f486`; prior retained
 evidence remains scoped to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
@@ -12,7 +12,36 @@ verification credibility, UI/UX foundations, and product readiness
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
 
-### Current review delta — normalized game-library ownership
+### Current review delta — installed Game Launcher product slice
+
+DLV-060 `8ca0859`, DLV-066 `8a5ec7f`, public-contract correction DLV-074
+`d0a1014`, and launch-lifecycle milestone DLV-067 `ddf7626` are accepted and
+integrated through `3d8f486`. The product now has a
+bundled installed-only Game Launcher over the same normalized provider, opaque
+cursor query, lazy artwork, and exact SavedId launch authority as Games & Apps.
+The production widget remains a roughly 600-line lifecycle/action/state owner
+over pure presentation and value-based organization policy rather than another
+application-sized partial type. Its collection/organization state is bounded to
+96 display rows, 32 organized identities, 16 explicit groups, and four variants
+per group; launch results retain at most 32 SavedIds. Missing identities remain
+visible but non-authorizing until exact revalidation. The internal observation
+route carries only typed state/support flags: current Windows and Steam adapters
+claim `Launcher started`, acknowledgement-only adapters remain `Request
+accepted`, and no PID, HWND, path, command, or store identity crosses the widget
+boundary. Retained focused evidence passes SDK 86/86, compatibility 12/12,
+provider 45/45, broker 52/52, launcher 20/20, installed generic-worker 6/6, and
+55 documentation contracts. The complete managed/runtime graph will be
+republished from accepted main before the next visible user test.
+
+The full main build later failed its unchanged `WidgetSwitchHostTests` because
+the production host did not paint the expected Audio Mixer fixture surface.
+All changed managed outputs had already published, and the failure is outside
+the accepted Game Launcher diff; it is retained under GBA-004 rather than
+retried unchanged or misrepresented as a launcher regression. DLV-075 is now
+Assigned, with DLV-076 and DLV-077 queued for visible recent ordering and trusted
+manual inclusion.
+
+### Prior review delta — normalized game-library ownership
 
 DLV-059 `c7c354d`, corrected by DLV-071 `355a858`, is accepted and integrated
 through `6f4c642`. The provider's central Start Menu/AppsFolder/Steam discovery,
@@ -31,7 +60,7 @@ bounded Show clients exit without creating a second bridge, catalog, controller
 lease, or HWND. Exact visible integration retained one production PID across
 two launches.
 
-DLV-060 also stopped correctly before edits after proving a framework gap: the
+DLV-060 originally stopped correctly before edits after proving a framework gap: the
 public app-library service and broker materialized and capped one snapshot at
 512 items. Accepted DLV-072 `fe66470`, integrated through `7f23738`, replaces
 that obsolete pre-release path with bounded revision-bound cursor queries,
@@ -39,7 +68,7 @@ migrates Games & Apps, and keeps the complete 10,000-item catalog solely in the
 normalized provider. Focused provider/broker/SDK/Games/bridge/generic-worker
 evidence passes. Its one clean exact-commit aggregate was run once and stopped
 on inherited YT Music package metadata drift after the changed SDK checks passed;
-visible Game Launcher DLV-060 is now active over the accepted cursor contract.
+the accepted Game Launcher slice above now consumes that cursor contract.
 
 This cycle closes the bounded security-stabilization implementation gate and
 then returns to product work. DLV-001 (`d0c0420`) completes the exact-token,
@@ -72,8 +101,8 @@ that the empty-catalog fixture missed: install succeeded while the older version
 remained selected. The corrected workflow and fixture now prove disable,
 install, explicit select, enable, and content-digest replacement from an older
 enabled version. The local profile selects enabled Spotify `0.2.11` and YT
-Music `0.2.7`; live open confirmation remains without weakening immutable
-package integrity.
+Music `0.2.7`; the user has now confirmed both widgets open in the current fully
+packaged Release without weakening immutable package integrity.
 
 The first DLV-052 planner relaunch also exposed a Release-artifact coherence
 gap: `OverlayHost.exe` was rebuilt with `-SkipPackaging`, but the changed
