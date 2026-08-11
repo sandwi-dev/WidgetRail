@@ -233,6 +233,14 @@ benchmarks. The fixture's private pages are also not a production process-tree
 total. See [host-owned pinned-surface feasibility](pinned-surfaces.md) for the
 window-policy decision and complete evidence limits.
 
+DLV-058's focused production-coordinator fixture adds one validated immutable
+declarative snapshot, native renderer, and host semantic projection to the real
+tool window. Its current Release run passed 33 lifecycle and teardown checks and
+observed a 10,264,576-byte incremental private-working-set delta, below the same
+128 MiB material gate. The 750 ms single-process observation does not establish
+production process-tree totals, idle CPU, GPU/DWM cost, long-run behavior, or a
+physical-game claim.
+
 ## Verification and remaining tooling
 
 Run functional/regression gates with:

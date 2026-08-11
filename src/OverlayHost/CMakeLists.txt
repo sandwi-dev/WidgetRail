@@ -28,6 +28,8 @@ add_executable(OverlayHost WIN32
     OverlayChrome.cpp
     DeclarativeMotion.cpp
     OverlayPlacement.cpp
+    PinnedSurfacePolicy.cpp
+    WidgetSurfaceCoordinator.cpp
     OverlayTargeting.cpp
     OverlayTransition.cpp
     DeclarativeRenderer.cpp
@@ -140,6 +142,20 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(PinnedSurfaceHostTests PRIVATE
         user32 gdi32 psapi ole32 oleaut32 uiautomationcore)
     add_test(NAME PinnedSurfaceHostTests COMMAND PinnedSurfaceHostTests)
+
+    add_executable(WidgetSurfaceCoordinatorTests
+        WidgetSurfaceCoordinatorTests.cpp WidgetSurfaceCoordinator.cpp
+        PinnedSurfacePolicy.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp
+        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(WidgetSurfaceCoordinatorTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetSurfaceCoordinatorTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetSurfaceCoordinatorTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WidgetSurfaceCoordinatorTests PRIVATE
+        user32 gdi32 d2d1 dwrite shcore winhttp windowscodecs psapi
+        ole32 oleaut32 uiautomationcore)
+    add_test(NAME WidgetSurfaceCoordinatorTests COMMAND WidgetSurfaceCoordinatorTests)
 
     add_executable(OverlayTargetingTests OverlayTargetingTests.cpp OverlayTargeting.cpp)
     target_compile_features(OverlayTargetingTests PRIVATE cxx_std_20)

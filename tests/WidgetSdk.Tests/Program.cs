@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using GameBarAlternative.Samples.ClockWidget;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
@@ -52,6 +53,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
     ("Valid manifest passes", ValidManifestPasses),
+    ("Manifest pinning is explicit and defaults closed", ManifestPinningIsExplicit),
     ("Manifest presentation uses only closed semantic host icons", ManifestPresentationIsSemantic),
     ("Manifest permission declarations are bounded ASCII-safe and unambiguous", ManifestPermissionsAreBounded),
     ("Residency policy is versioned bounded and legacy compatible", ResidencyPolicyIsVersioned),
@@ -2641,6 +2643,26 @@ static Task ValidManifestPasses()
     }).Count);
     var roundTrip = ManifestJson.Deserialize(ManifestJson.Serialize(manifest));
     Assert.Equal(manifest.Id, roundTrip.Id);
+    return Task.CompletedTask;
+}
+
+static Task ManifestPinningIsExplicit()
+{
+    var omittedDocument = JsonNode.Parse(ManifestJson.Serialize(ValidManifest()))!.AsObject();
+    omittedDocument.Remove("pinningSupported");
+    var omitted = ManifestJson.Deserialize(
+        Encoding.UTF8.GetBytes(omittedDocument.ToJsonString()));
+    Assert.True(!omitted.PinningSupported,
+        "A manifest that omits pinningSupported was admitted for pinning.");
+
+    var supported = ValidManifest() with { PinningSupported = true };
+    var payload = ManifestJson.Serialize(supported);
+    var json = Encoding.UTF8.GetString(payload);
+    Assert.True(json.Contains("\"pinningSupported\": true", StringComparison.Ordinal),
+        "The explicit pinning declaration was not serialized.");
+    Assert.True(ManifestJson.Deserialize(payload).PinningSupported,
+        "The explicit pinning declaration did not round-trip.");
+    Assert.Equal(0, WidgetManifestValidator.Validate(supported).Count);
     return Task.CompletedTask;
 }
 

@@ -30,6 +30,7 @@ struct WidgetDescriptor final {
     std::wstring runtimeGeneration;
     std::wstring presentationGeneration;
     std::wstring icon{L"connection"};
+    bool pinningSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
 
