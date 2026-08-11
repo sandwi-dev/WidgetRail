@@ -262,6 +262,28 @@ contract into the nuspec and generated project, focused run
 `20260811T034900Z-0e3b2a40` completed in 48.341 seconds and passed the final
 2,400-symbol compatibility check plus GbarCli 55/55.
 
+DLV-050 converts only the newly introduced WidgetSdk compatibility project to
+discoverable `MSTest.Sdk` 4.3.2 tests. Twelve named cases cover the current
+reviewed surface, deterministic bounded generation, additions, removals,
+signature changes, release-unit metadata, missing/oversized/malformed/path-
+bearing baselines, and read-only ordinary execution. Intentional baseline
+mutation is no longer a test-process option: the narrow
+`tools/WidgetSdkApiBaseline` command owns the explicit update, writes only the
+requested baseline through a bounded atomic replacement, and is itself tested
+against a temporary file. The verifier opts `dotnet test` into Microsoft
+Testing Platform, retains named MSTest cases in JUnit output, and continues to
+run all pre-existing executable scenario suites through their unchanged
+`dotnet run` steps. No existing test project was migrated, and no public SDK,
+runtime protocol, template, package, or host behavior changed.
+Focused dirty-worktree Release run `20260811T041316Z-596d7304` completed in
+61.527 seconds. The verifier self-test passed, WidgetSdk built with zero
+warnings/errors and retained its unchanged executable 84/84 contract suite,
+the new Microsoft Testing Platform project passed 12/12 named compatibility
+cases with all names retained in JUnit, GbarCli retained its unchanged
+executable 55/55 suite, and documentation validation covered 53 Markdown
+files. This was the assigned mixed-runner proof, not an aggregate; no Runtime,
+native, packaging, or unrelated suite ran.
+
 DLV-048 makes the marked quickstart blocks the one canonical offline author
 journey instead of maintaining an uncompiled parallel starter in the larger
 authoring guide. The exact generated `VolumeControl.cs` lifecycle/state/action/

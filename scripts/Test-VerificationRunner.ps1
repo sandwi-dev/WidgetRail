@@ -12,6 +12,7 @@ $manifestProjects = @($manifest.steps.arguments | ForEach-Object { $_ } |
     ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
 $testProjects = @(Get-ChildItem (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File |
     Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
+    Where-Object { $_.Directory.Name.EndsWith('.Tests', [StringComparison]::Ordinal) } |
     ForEach-Object { [IO.Path]::GetRelativePath($repositoryRoot, $_.FullName).Replace('\', '/') } |
     Sort-Object -Unique)
 $missingProjects = @($testProjects | Where-Object { $_ -notin $manifestProjects })
@@ -332,6 +333,23 @@ Wait-Process -Id $child.Id
     [xml]$failureDocument = Get-Content -LiteralPath $failureJunit -Raw
     if ($failureDocument.testsuite.failures -ne '1') {
         throw 'A failing process with PASS output produced a green JUnit result.'
+    }
+
+    $mtpStdout = Join-Path $temporary 'mtp.stdout.log'
+    [IO.File]::WriteAllText(
+        $mtpStdout,
+        "passed CurrentPublicApiMatchesReviewedBaseline (38ms)`n" +
+        "passed DiffClassifiesRemovalExactly (0ms)`n")
+    $mtpJunit = Join-Path $temporary 'mtp.junit.xml'
+    Write-VerificationJUnit -Result $success -StdoutPath $mtpStdout `
+        -StderrPath (Join-Path $temporary $success.stderrLog) -OutputPath $mtpJunit
+    [xml]$mtpDocument = Get-Content -LiteralPath $mtpJunit -Raw
+    $mtpNames = @($mtpDocument.testsuite.testcase | ForEach-Object { [string]$_.name })
+    if ($mtpDocument.testsuite.tests -ne '2' -or
+        $mtpDocument.testsuite.failures -ne '0' -or
+        'CurrentPublicApiMatchesReviewedBaseline' -notin $mtpNames -or
+        'DiffClassifiesRemovalExactly' -notin $mtpNames) {
+        throw 'JUnit conversion did not retain Microsoft Testing Platform cases.'
     }
 
     $caseLimitStdout = Join-Path $temporary 'case-limit.stdout.log'

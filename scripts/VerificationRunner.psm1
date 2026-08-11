@@ -308,6 +308,17 @@ function Write-VerificationJUnit {
                     if ($cases.Count -eq $MaximumCases) { $caseExtractionTruncated = $true; break }
                     $cases.Add([pscustomobject]@{ name = $Matches[1]; failure = $Matches[2] })
                 }
+                elseif ($line -match '^passed\s+(.+?)\s+\([^)]+\)$') {
+                    if ($cases.Count -eq $MaximumCases) { $caseExtractionTruncated = $true; break }
+                    $cases.Add([pscustomobject]@{ name = $Matches[1]; failure = $null })
+                }
+                elseif ($line -match '^failed\s+(.+?)\s+\([^)]+\)$') {
+                    if ($cases.Count -eq $MaximumCases) { $caseExtractionTruncated = $true; break }
+                    $cases.Add([pscustomobject]@{
+                        name = $Matches[1]
+                        failure = 'MSTest case failed; inspect retained stdout for assertion details.'
+                    })
+                }
             }
         }
         finally { $reader.Dispose() }
