@@ -96,7 +96,15 @@ Do not:
 
 After committing an assignment, automatically take the first `Ready` milestone
 in your lane when its stated baseline/dependencies are already present in your
-branch. Do not wait for another planner message in that case.
+branch. Do not wait for another planner message or for planner review of the
+commit. Review and implementation run asynchronously.
+
+If the planner later finds a defect in an earlier commit after you have started
+the next assignment, finish and commit the assignment already in progress. The
+planner will insert the bounded correction as the next same-lane item before
+subsequent Ready work. Do not abandon, mix, or interrupt the current milestone
+unless the planner identifies a reproducible P0, destructive/data-loss risk, or
+an architectural defect that continued work would materially compound.
 
 If the next lane assignment says `Awaiting integration`, names a commit not
 present in the branch, or depends on work from the other lane, stop at the clean
@@ -115,6 +123,10 @@ the product is complete.
 The review and planning agent may send lane identity, assignment
 clarifications, bounded integration instructions, corrections, or stop
 instructions directly to this task.
+
+An ordinary review correction applies at the next clean assignment boundary;
+it does not cancel a different milestone already in progress. Finish that
+milestone first, then execute the queued correction before later Ready work.
 
 `docs/delivery-plan.md` remains the durable authority. A direct planner message
 may clarify an assignment but may not silently expand it beyond the documented

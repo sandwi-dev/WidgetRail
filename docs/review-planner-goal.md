@@ -219,8 +219,13 @@ Check:
   boilerplate, speculative abstraction, debug artifacts, and whitespace.
 
 Accept only when the milestone satisfies its documented criteria. Otherwise
-send a bounded correction request to the same task, keep the assignment open,
-and do not integrate it.
+queue a bounded correction as the next same-lane assignment after whatever
+milestone the implementation task has already started. Do not interrupt or
+cancel that new milestone for an ordinary review finding. Keep the rejected
+commit and every dependent later commit unintegrated until the queued correction
+is reviewed. Only a reproducible P0, destructive/data-loss risk, or evidence
+that continuing would materially compound the same invalid architecture may
+preempt work already in progress.
 
 ### 3. Integrate accepted work
 
@@ -277,7 +282,12 @@ rejected when its assigned automated acceptance criteria otherwise pass.
 
 - Send each implementation task any updated lane/baseline/integration
   instruction it needs.
-- Let a task automatically continue through independent same-lane Ready work.
+- Ensure every task automatically continues through independent same-lane
+  Ready work immediately after each commit; planner review is asynchronous and
+  is never a reason to wait at a completed boundary.
+- When review finds a correction after the task has advanced, place that
+  correction immediately after the assignment already in progress and before
+  later Ready work. Do not interrupt the in-progress assignment.
 - When a lane reaches a dependency on accepted main, instruct integration only
   at a clean committed boundary.
 - Monitor active work with bounded waits. Use the heartbeat as a fallback

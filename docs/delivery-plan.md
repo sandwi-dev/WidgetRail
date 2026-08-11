@@ -15,7 +15,8 @@ authorize implementation.
   prompt. It executes only that lane.
 - Each lane has at most one `Assigned` milestone and an ordered `Ready` queue.
   After committing a milestone, a task immediately takes the first same-lane
-  Ready item only when its dependencies are already present in its branch.
+  Ready item when its dependencies are already present in its branch. It never
+  waits for planner review of the closing commit.
 - A task never reorders, merges, broadens, or invents assignments and never
   selects work from another document or lane.
 - Every assignment normally produces one coherent local commit whose subject
@@ -25,8 +26,11 @@ authorize implementation.
   roadmap, issue, review, or goal documents.
 - A reproducible P0 may interrupt the queue. Other discoveries become concise
   planner evidence rather than opportunistic implementation.
-- The planner reviews completed commits in order, returns inadequate work for
-  correction, integrates only accepted work, and refills both lane queues.
+- The planner reviews completed commits asynchronously, integrates only
+  accepted contiguous history, and refills both lane queues. If a review finds
+  inadequate work after the task has advanced, the correction becomes the next
+  same-lane item after the milestone already in progress; ordinary findings do
+  not interrupt that work.
 
 ### Visible-outcome priority gate
 
@@ -574,14 +578,15 @@ suite ran.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-The widgets lane now follows the visible-outcome gate. DLV-019 is accepted and
-integrated. The lane is intentionally waiting at a clean boundary while the
-platform lane completes DLV-026 and DLV-021; DLV-006 then supplies the shared
-visible collection behavior needed by Spotify focus fixes, Games artwork, and
-the game launcher. DLV-040, DLV-043, and DLV-038 remain valid architecture debt but are
-not automatic Ready work; the planner may promote one only while the other lane
-is delivering a visible milestone or when it becomes the immediate prerequisite
-for named visible work.
+The widgets lane now follows the non-idling and visible-outcome gates. DLV-019
+is accepted and integrated. DLV-040 is Assigned on that clean branch while the
+platform lane delivers visible DLV-026/DLV-021 work. DLV-046 through DLV-048
+form an ordered independent developer-experience queue so this lane does not
+wait for planner review or cross-lane integration. DLV-006 remains the next
+serialized visible foundation once DLV-021 is available and may replace that
+queue at a clean boundary; it unlocks Spotify focus fixes, Games artwork, and
+the game launcher. DLV-043 and DLV-038 remain dependency-ordered architecture
+debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1628,13 +1633,15 @@ second Audio Mixer command/committed-state owner.
 
 ### DLV-040 — Extract bridge diagnostics and recovery projection
 
-**State:** Deferred behind the visible product queue; not Ready for automatic
-selection
-**Baseline:** planner-selected accepted main after DLV-019 or another visible
-milestone is actively assigned in the platform lane
+**State:** Assigned
+**Baseline:** accepted widgets-lane commit `6afd60b`; consume reviewer control-
+plane commit containing this assignment at the clean boundary before editing
 **Dependencies:** DLV-001, DLV-031, DLV-039, and DLV-045
 **Owner:** managed bridge diagnostics/recovery internals and direct typed
 diagnostic fixtures; no Settings presentation or installed-widget policy work
+**Concurrency:** May run while platform completes DLV-026 and DLV-021; do not
+touch native OverlayHost, renderer, focus, scroll, component geometry, or
+reviewer-owned files
 
 **Objective:** Keep authenticated request routing and host-effect publication in
 `WidgetBridgeServer` while making one diagnostics area, safe projection rule,
@@ -1670,6 +1677,132 @@ unrelated security work.
 **Stop/escalate when:** separation changes recovery authority or threat model,
 requires Settings product changes, broadens installed-widget hardening, or
 duplicates catalog/client state from DLV-039.
+
+### DLV-046 — Make widget scaffolding transactional and versioned
+
+**State:** Ready after DLV-040
+**Baseline:** closing commit of DLV-040
+**Dependencies:** DLV-010; DLV-040 is queue order only
+**Owner:** `gbar new`, ControllerWidget template input, focused CLI/scaffold
+fixtures, and directly affected public authoring documentation
+**Concurrency:** May run while platform owns native UI work; do not touch
+OverlayHost, renderer, broker authority, runtime isolation, or reviewer-owned
+files
+
+**Objective:** Turn the existing local ControllerWidget directory into a
+strict, bounded, versioned input and make `gbar new widget` all-or-nothing, so a
+developer never receives a silently mixed or half-generated project.
+
+**In scope:** parse a closed template manifest with one supported version and
+explicit relative file inventory; distinguish text templates from bounded
+binary assets; reject traversal, reparse points, duplicates, undeclared or
+missing files, unsupported versions, oversized counts/files/aggregate bytes,
+and invalid replacement destinations; stage generation outside the final
+target; atomically publish only after every read, replacement, SDK-package
+write, and validation succeeds; remove the staging tree on bounded failure;
+actionable errors; deterministic malformed-manifest, unexpected/binary file,
+unreadable input, destination fault, and rollback fixtures.
+
+**Out of scope:** external publication, network template feeds, credentials,
+signing-policy changes, arbitrary scripting/hooks, new widget capabilities,
+template visual redesign, or preserving undocumented pre-release template
+formats.
+
+**Acceptance criteria:** the checked-in template is completely described by a
+validated versioned manifest; success produces the same supported scaffold and
+matching local SDK package as DLV-010; any failure leaves no final target and
+no staging residue; user-authored pre-existing output is never deleted or
+overwritten; every rejection identifies the file or manifest rule and the
+developer action required; generation remains deterministic outside the repo.
+
+**Verification:** Tier 1 GbarCli/scaffold Release suite plus one bounded
+temporary-directory end-to-end success and the focused failure matrix. No
+aggregate, native suite, or screenshot work.
+
+**Stop/escalate when:** correctness requires changing the public widget API,
+weakening path/content bounds, deleting a non-empty user destination, or
+introducing a general package/template execution engine.
+
+### DLV-047 — Establish a checked-in widget SDK compatibility baseline
+
+**State:** Ready after DLV-046
+**Baseline:** closing commit of DLV-046
+**Dependencies:** DLV-010 and DLV-046
+**Owner:** public WidgetSdk package surface, package metadata/validation, CLI
+release-unit checks, and directly affected author documentation
+**Concurrency:** Managed/package work only; do not change runtime protocol,
+host authority, native UI, or reviewer-owned files
+
+**Objective:** Make public SDK changes intentional and reviewable before the
+first external release by checking the exported API and the CLI/template/SDK
+version relationship into the repository.
+
+**In scope:** one generated or checked-in deterministic public-API baseline for
+the supported WidgetSdk package; a bounded compatibility check that reports
+additions, removals, and signature changes; one canonical release-unit version
+contract binding CLI, template compatibility, SDK package, and generated
+project dependency; package metadata and deterministic artifact checks needed
+to run it locally; contributor instructions for intentionally accepting a
+breaking pre-release reset versus a compatible addition.
+
+**Out of scope:** NuGet/GitHub publication, credentials, signing/revocation,
+promising semantic-version compatibility before 1.0, preserving obsolete
+pre-release APIs, changing the runtime wire protocol, or adding a broad build
+or dependency-management framework.
+
+**Acceptance criteria:** an unreviewed public removal or signature change fails
+with the exact symbol and update command/process; compatible additions are
+classified explicitly; a generated widget cannot silently consume a template
+and SDK version pair the CLI does not support; artifact/package checks are
+checkout-path-free and deterministic; the baseline-update workflow requires an
+intentional reviewed file change.
+
+**Verification:** Tier 1 WidgetSdk build/tests, GbarCli package/scaffold tests,
+and the new compatibility/release-unit check in Release. No aggregate or
+external feed.
+
+**Stop/escalate when:** the work requires choosing a post-1.0 compatibility
+promise, changing public protocol semantics, external publication, or retaining
+an obsolete API solely for legacy support.
+
+### DLV-048 — Compile-test the canonical widget authoring path
+
+**State:** Ready after DLV-047
+**Baseline:** closing commit of DLV-047
+**Dependencies:** DLV-010, DLV-046, and DLV-047
+**Owner:** canonical public C# examples, generated starter verification,
+documentation contracts, and focused author-journey fixtures
+**Concurrency:** Documentation/developer tooling only; do not touch native UI,
+runtime authority, first-party widget product behavior, or reviewer-owned
+planning/review files
+
+**Objective:** Replace link-only confidence for the primary widget-authoring
+instructions with one executable source of truth that a new developer can copy,
+build, validate, replay, pack, install, select, roll back, and remove.
+
+**In scope:** identify the smallest canonical lifecycle/state/action/navigation
+examples in public docs; move or generate them from compile-tested sample
+sources without duplicating divergent snippets; execute the documented clean
+temporary-directory path against the checked-in CLI/template/SDK release unit;
+assert command/output claims and actionable failure guidance; keep advanced and
+authentication-gated examples explicitly separate.
+
+**Out of scope:** compiling every Markdown fence, rewriting all documentation,
+new SDK features, live Spotify/YouTube credentials, IDE extensions, external
+publishing, native preview expansion, or screenshot work.
+
+**Acceptance criteria:** every code block on the canonical getting-started path
+is derived from or compiled as part of the test source; the complete local
+author journey succeeds outside the checkout without absolute path leakage;
+docs cannot claim a generated test/replay/package behavior the fixture does not
+prove; failures name the exact author command or file to correct.
+
+**Verification:** Tier 1 GbarCli/scaffold/documentation Release suites and one
+bounded external author-journey fixture. No aggregate, live service, or native
+suite.
+
+**Stop/escalate when:** proof requires external publication/credentials, a new
+public API, or broad documentation restructuring beyond the canonical path.
 
 ### DLV-043 — Replace Spotify partial-file organization with real boundaries
 
