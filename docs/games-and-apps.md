@@ -207,10 +207,16 @@ Current items may set `ArtworkHandle`, an opaque generation-bound registration
 that is neither a path nor a URL. Pass it to `UI.Artwork`,
 `Button.LeadingArtwork`, or `TileArtwork.FromHandle` and retain a semantic glyph
 fallback when it is absent. The host asks the trusted provider for pixels only
-when the artwork is rendered, revalidates the exact current registration, and
-decodes at most 12 KiB / 64 by 64 PNG sources into a 32-entry / 32 MiB in-memory
-LRU cache. Handles and pixels are never persisted in widget private state, and
-no disk artwork cache is created.
+when the artwork is rendered. Demand is admitted quickly and provider I/O runs
+on the bridge's bounded request lane, so a stalled icon source does not hold
+input, lifecycle, catalog, or snapshot traffic. Completion is accepted only for
+the exact current worker and artwork generations. The provider derives a
+host-only artwork revision from its exact revalidation record; changing that
+record rotates the opaque handle and the native per-row decoded/bitmap cache
+key even when the SavedId and launch identity remain stable. The host decodes
+at most 12 KiB / 64 by 64 PNG sources into a 32-entry / 32 MiB in-memory LRU
+cache. Handles and pixels are never persisted in widget private state, and no
+disk artwork cache is created.
 
 `LaunchAsync` accepts only the short-lived opaque `AppId` returned by a current
 page or resolution. Widgets must never persist AppId. Widgets never

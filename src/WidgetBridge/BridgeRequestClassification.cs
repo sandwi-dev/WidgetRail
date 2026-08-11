@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -34,7 +35,6 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
         if (kind is BridgeRequestKind.GetSnapshot or
-            BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -47,7 +47,6 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
-            BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -85,9 +84,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
-                BridgeMessageTypes.ResolveArtwork => Widget(
-                    BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload).WidgetId,
-                    BridgeRequestKind.ResolveArtwork),
+                BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
                 BridgeMessageTypes.RestartWidget => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.RestartWidget),
@@ -121,4 +118,13 @@ internal static class BridgeRequestClassifier
 
     private static BridgeRequestKey Widget(string widgetId, BridgeRequestKind kind) =>
         BridgeRequestKey.Widget(kind, widgetId);
+
+    private static BridgeRequestKey Artwork(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeArtworkRequest>(payload);
+        _ = BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, request.WidgetId);
+        if (!AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle))
+            throw new BridgeProtocolException("Artwork handle is invalid.");
+        return BridgeRequestKey.Global(BridgeRequestKind.ResolveArtwork);
+    }
 }

@@ -328,7 +328,8 @@ public sealed record AppLibraryBackendItemSummary(
     [property: JsonIgnore] string ProviderAppId,
     [property: JsonIgnore] string StableProviderIdentity,
     string DisplayName,
-    AppLibraryKind Kind);
+    AppLibraryKind Kind,
+    [property: JsonIgnore] string ArtworkRevision = "");
 
 /// <summary>Trusted backend icon result; the broker validates every byte.</summary>
 public sealed record AppLibraryIconSummary(string? PngBase64);

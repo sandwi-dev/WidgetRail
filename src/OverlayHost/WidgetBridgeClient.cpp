@@ -656,7 +656,8 @@ bool HandleAsyncEvent(
     WidgetHostEffectQueue& hostEffects,
     PlatformAppearanceRevisionTracker& appearanceChanges,
     WidgetCatalogRevisionTracker& catalogChanges,
-    std::wstring& status) {
+    std::wstring& status,
+    WidgetArtworkResultQueue* artworkResults = nullptr) {
     if (!event.HasKey(L"type") ||
         event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
         !event.HasKey(L"payload") ||
@@ -702,6 +703,23 @@ bool HandleAsyncEvent(
     if (!IsIdentifier(widgetId)) {
         status = L"WidgetBridge asynchronous event has an invalid widget ID.";
         return false;
+    }
+    if (type == L"artwork") {
+        if (!artworkResults || !HasOnlyProperties(
+                payload, {L"widgetId", L"artworkHandle", L"pngBase64"})) {
+            status = L"WidgetBridge artwork event has an invalid payload.";
+            return false;
+        }
+        const auto handle = OptionalString(payload, L"artworkHandle");
+        const auto png = OptionalString(payload, L"pngBase64");
+        if (handle.size() != 44 || !handle.starts_with(L"library.art.") ||
+            !IsIdentifier(handle) || png.size() > 16'384 ||
+            !artworkResults->Push({widgetId, handle, png})) {
+            status = L"WidgetBridge artwork event could not be queued.";
+            return false;
+        }
+        status.clear();
+        return true;
     }
     if (type == L"widget-invalidated") {
         if (!payload.HasKey(L"revision") ||
@@ -859,6 +877,26 @@ std::vector<WidgetHostEffect> WidgetHostEffectQueue::Take() noexcept {
 void WidgetHostEffectQueue::Reset() noexcept {
     lastSequence_ = 0;
     queued_.clear();
+}
+
+bool WidgetArtworkResultQueue::Push(WidgetArtworkResult result) {
+    const auto existing = std::find_if(
+        queued_.begin(), queued_.end(), [&](const WidgetArtworkResult& item) {
+            return item.widgetId == result.widgetId &&
+                   item.artworkHandle == result.artworkHandle;
+        });
+    if (existing != queued_.end()) *existing = std::move(result);
+    else {
+        if (queued_.size() >= MaximumResults) return false;
+        queued_.push_back(std::move(result));
+    }
+    return true;
+}
+
+std::vector<WidgetArtworkResult> WidgetArtworkResultQueue::Take() noexcept {
+    auto result = std::move(queued_);
+    queued_.clear();
+    return result;
 }
 
 std::vector<std::wstring> ChangedWidgetRuntimeIds(
@@ -1055,6 +1093,7 @@ void WidgetBridgeClient::Stop() noexcept {
     (void)invalidations_.Take();
     (void)actionFailures_.Take();
     hostEffects_.Reset();
+    artworkResults_.Reset();
     (void)appearanceChanges_.Take();
     catalogChanges_.Reset();
 }
@@ -1096,7 +1135,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1185,7 +1224,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1256,7 +1295,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1320,7 +1359,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                 std::wstring status;
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
-                        appearanceChanges_, catalogChanges_, status)) {
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1392,7 +1431,7 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status)) {
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1450,7 +1489,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1484,7 +1523,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
     return std::nullopt;
 }
 
-std::optional<std::wstring> WidgetBridgeClient::ResolveArtwork(
+std::optional<bool> WidgetBridgeClient::RequestArtwork(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle) {
     std::scoped_lock lock(requestMutex_);
@@ -1512,18 +1551,13 @@ std::optional<std::wstring> WidgetBridgeClient::ResolveArtwork(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status))
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_))
                     return std::nullopt;
                 continue;
             }
             if (responseId != requestId ||
-                response.GetNamedString(L"type") != L"artwork") return std::nullopt;
-            const auto result = response.GetNamedObject(L"payload");
-            if (OptionalString(result, L"widgetId") != widgetId ||
-                OptionalString(result, L"artworkHandle") != artworkHandle)
-                return std::nullopt;
-            const auto png = OptionalString(result, L"pngBase64");
-            return png.empty() ? std::nullopt : std::optional<std::wstring>{png};
+                response.GetNamedString(L"type") != L"acknowledged") return std::nullopt;
+            return true;
         }
     } catch (const winrt::hresult_error&) {
     }
@@ -1590,7 +1624,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1661,7 +1695,7 @@ std::optional<bool> WidgetBridgeClient::SendAction(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status)) {
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1761,7 +1795,7 @@ bool WidgetBridgeClient::PumpEvents() {
                 return consumed;
             }
             std::wstring status;
-            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status)) {
+            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
                 Fail(std::move(status));
                 return consumed;
             }
@@ -1787,6 +1821,11 @@ std::vector<WidgetActionFailure> WidgetBridgeClient::TakeActionFailures() noexce
 std::vector<WidgetHostEffect> WidgetBridgeClient::TakeHostEffects() noexcept {
     std::scoped_lock lock(requestMutex_);
     return hostEffects_.Take();
+}
+
+std::vector<WidgetArtworkResult> WidgetBridgeClient::TakeArtworkResults() noexcept {
+    std::scoped_lock lock(requestMutex_);
+    return artworkResults_.Take();
 }
 
 std::optional<long long>
@@ -1918,6 +1957,38 @@ std::optional<WidgetActionFailure> ParseWidgetActionFailureEvent(
         return std::move(queued.front());
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget action-failure JSON: " +
+                std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetArtworkResult> ParseWidgetArtworkResultEvent(
+    const std::string_view eventUtf8,
+    std::wstring& error) {
+    try {
+        const auto event = JsonObject::Parse(winrt::to_hstring(eventUtf8));
+        WidgetInvalidationQueue invalidations;
+        WidgetActionFailureQueue failures;
+        WidgetHostEffectQueue effects;
+        WidgetArtworkResultQueue artwork;
+        PlatformAppearanceRevisionTracker appearance;
+        WidgetCatalogRevisionTracker catalog;
+        std::wstring status;
+        if (!HandleAsyncEvent(
+                event, invalidations, failures, effects, appearance, catalog,
+                status, &artwork)) {
+            error = std::move(status);
+            return std::nullopt;
+        }
+        auto queued = artwork.Take();
+        if (queued.size() != 1) {
+            error = L"JSON is not a trusted artwork completion event.";
+            return std::nullopt;
+        }
+        error.clear();
+        return std::move(queued.front());
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid trusted artwork event JSON: " +
                 std::wstring(exception.message());
         return std::nullopt;
     }

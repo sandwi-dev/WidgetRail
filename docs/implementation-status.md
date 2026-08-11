@@ -1477,10 +1477,14 @@ themes also use non-shrinking fixed regions, a thin native Slider
  artwork handles are parsed and preserved as bounded identities but grant no
  URL, file, network, decode, or action authority. DLV-018 completes the trusted
  application-artwork route: Start Menu and AppsFolder registrations issue
- generation-bound opaque handles, the private bridge rechecks the current
- worker/catalog generation, and the provider revalidates its exact source before
- returning a bounded PNG. Native demand is lazy and uses deterministic 32-entry
- / 32 MiB in-memory eviction with no disk cache; missing, malformed, stale,
+ generation-bound opaque handles. DLV-054 makes private native demand a quick
+ correlated admission followed by bounded asynchronous provider work, so input,
+ lifecycle, catalog, and snapshot traffic remains live while an icon source is
+ blocked. Completion rechecks the current worker and artwork generations. A
+ host-only digest of the provider's exact revalidation record rotates the handle
+ and per-row decoded/bitmap key when trusted icon content changes without a
+ SavedId or launch-identity change. Native demand remains lazy with deterministic
+ 32-entry / 32 MiB in-memory eviction and no disk cache; missing, malformed, stale,
  replaced, or Steam-without-trusted-artwork registrations retain the semantic
  fallback without changing launch, focus, membership, or warm-start identity.
  Focused DLV-018 Release evidence passes 32 Windows app-library provider,
@@ -1488,6 +1492,15 @@ themes also use non-shrinking fixed regions, a thin native Slider
  conformance, 85 Widget SDK, 12 API-compatibility, and 53 documentation cases;
  the native 10,000-demand cache fixture passes and the Release OverlayHost
  target compiles.
+ DLV-054 focused evidence adds cancellation-ignoring provider stall, concurrent
+ list/lifecycle progress, bounded Stop, exact late-generation suppression, and
+ same-AppId/SavedId/stable-identity artwork-revision rotation. Release results
+ pass Windows app-library 32/32, broker 51/51, Games & Apps 56/56, Widget SDK
+ 85/85, production Bridge 70/70, documentation over 54 Markdown files, native
+ RemoteImageCache and bridge-parser cases, 4,777 renderer checks, the production
+ OverlayHost target, and the installed first-party package seam 6/6. The
+ correction is private bridge/cache behavior and does not close the broader
+ synchronous startup issue.
  Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,

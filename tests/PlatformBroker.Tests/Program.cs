@@ -203,7 +203,7 @@ static async Task AppLibraryIconsAreBounded()
     backend.SetAppLibraryBackend(Enumerable.Range(0, 33).Select(index =>
         new AppLibraryBackendItemSummary(
             $"provider-{index}", $"stable-{index}", $"App {index}",
-            AppLibraryKind.Application)));
+            AppLibraryKind.Application, "artwork-a")));
     backend.AppLibraryIconHandler = (_, cancellationToken) =>
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -261,15 +261,18 @@ static async Task AppLibraryIconsAreBounded()
 
     backend.SetAppLibraryBackend([
         new AppLibraryBackendItemSummary(
-            "provider-replaced", "stable-replaced", "Replacement",
-            AppLibraryKind.Application),
+            "provider-0", "stable-0", "App 0",
+            AppLibraryKind.Application, "artwork-b"),
     ]);
-    _ = await broker.ExecuteAsync(new BrokerRequestEnvelope(
+    var rotatedPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
         BrokerJson.ProtocolVersion, 3, identity,
         PlatformCapabilities.AppLibraryReadV1,
         PlatformCapabilities.AppLibraryList,
         JsonSerializer.SerializeToElement(
             new AppLibraryPageRequest(0, 64), BrokerJson.StrictOptions)));
+    var rotated = rotatedPayload.Deserialize<AppLibraryPageSummary>(BrokerJson.StrictOptions)!;
+    Assert.True(rotated.Items[0].ArtworkHandle != firstHandle,
+        "Changed trusted artwork revision reused its decoded-cache handle.");
     Assert.Equal(null, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
 
     for (var index = 0; index < 10_000; index++)

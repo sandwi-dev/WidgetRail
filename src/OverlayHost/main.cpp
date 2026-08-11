@@ -444,26 +444,18 @@ public:
             [this](std::wstring_view, gba::RemoteImageState) {
                 if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
             },
-            [this](std::wstring_view source,
-                   std::stop_token stopToken,
-                   const gba::RemoteImageLimits& limits) {
+            gba::RemoteImageCache::FetchFunction{},
+            [this](std::wstring_view source) {
                 constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
-                if (!source.starts_with(prefix))
-                    return gba::RemoteImageCache::FetchAndDecodeSource(
-                        source, stopToken, limits);
-                const auto separator = source.find(L'\x1f', prefix.size());
-                if (separator == std::wstring_view::npos || stopToken.stop_requested())
-                    return gba::RemoteImageFetchResult{
-                        E_INVALIDARG, {}, L"Trusted artwork cache key is invalid."};
-                const auto widgetId = source.substr(prefix.size(), separator - prefix.size());
-                const auto handle = source.substr(separator + 1);
-                const auto png = bridge_.ResolveArtwork(widgetId, handle);
-                if (!png || stopToken.stop_requested())
-                    return gba::RemoteImageFetchResult{
-                        HRESULT_FROM_WIN32(ERROR_NOT_FOUND), {},
-                        L"Trusted artwork is unavailable."};
-                return gba::RemoteImageCache::FetchAndDecodeSource(
-                    L"data:image/png;base64," + *png, stopToken, limits);
+                const auto widgetSeparator = source.find(L'\x1f', prefix.size());
+                const auto handleSeparator = source.rfind(L'\x1f');
+                if (!source.starts_with(prefix) || widgetSeparator == std::wstring_view::npos ||
+                    handleSeparator == widgetSeparator)
+                    return false;
+                const auto widgetId = source.substr(
+                    prefix.size(), widgetSeparator - prefix.size());
+                const auto handle = source.substr(handleSeparator + 1);
+                return bridge_.RequestArtwork(widgetId, handle).value_or(false);
             });
         declarativeRenderer_ = std::make_unique<gba::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
@@ -1227,6 +1219,15 @@ private:
                 if (awaitingSuccessfulOpenPaint_) return 0;
                 PollController();
                 (void)bridge_.PumpEvents();
+                for (auto& artwork : bridge_.TakeArtworkResults()) {
+                    if (artwork.pngBase64.empty())
+                        (void)imageCache_->FailTrustedArtwork(
+                            artwork.widgetId, artwork.artworkHandle);
+                    else
+                        (void)imageCache_->SupplyTrustedArtwork(
+                            artwork.widgetId, artwork.artworkHandle,
+                            std::move(artwork.pngBase64));
+                }
                 if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
                     const auto& current = appearanceState_.current();
                     if (!current || *revision > current->revision) {

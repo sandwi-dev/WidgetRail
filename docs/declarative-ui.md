@@ -307,8 +307,10 @@ continues to use its unchanged replacement-window behavior.
 
 The same version adds an opaque `artworkHandle` on Image/Button nodes. The host
 does not interpret it as a URL or filesystem path. Resolution is a separate
-trusted service; omission of resolved pixels is safe and grants no ambient
-authority.
+trusted service on a bounded asynchronous bridge lane; a slow provider cannot
+serialize ordinary input or lifecycle requests. Completion must still match the
+current worker, handle, and per-node cache revision. Omission of resolved pixels
+is safe and grants no ambient authority.
 
 ## Per-view surface hints
 

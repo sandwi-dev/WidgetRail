@@ -1973,6 +1973,8 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         source = L"gbar-artwork\x1f";
         source.append(artworkWidgetId);
         source.push_back(L'\x1f');
+        source.append(node.id);
+        source.push_back(L'\x1f');
         source.append(node.artworkHandle);
     } else {
         source = node.imageSource;
@@ -1985,6 +1987,15 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         pass.Add(node.id, L"invalid_image_url",
             L"Only bounded HTTPS or canonical inline PNG image sources are accepted.");
         return {};
+    }
+    if (trustedArtwork) {
+        const auto separator = source.rfind(L'\x1f');
+        const auto identityPrefix = source.substr(0, separator + 1);
+        for (auto iterator = bitmaps_.begin(); iterator != bitmaps_.end();) {
+            if (iterator->first != source && iterator->first.starts_with(identityPrefix))
+                iterator = bitmaps_.erase(iterator);
+            else ++iterator;
+        }
     }
     if (const auto existing = bitmaps_.find(source); existing != bitmaps_.end())
         return existing->second;

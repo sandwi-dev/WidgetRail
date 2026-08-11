@@ -331,6 +331,31 @@ int main() {
     })json", error));
     assert(!error.empty());
 
+    error.clear();
+    const auto artwork = gba::testing::ParseWidgetArtworkResultEvent(R"json({
+        "type":"artwork","requestId":0,
+        "payload":{"widgetId":"games-apps","artworkHandle":"library.art.0123456789abcdef0123456789abcdef","pngBase64":"AAAA"}
+    })json", error);
+    assert(artwork && error.empty());
+    assert(artwork->widgetId == L"games-apps");
+    assert(artwork->artworkHandle ==
+           L"library.art.0123456789abcdef0123456789abcdef");
+    assert(artwork->pngBase64 == L"AAAA");
+    gba::WidgetArtworkResultQueue artworkResults;
+    for (std::size_t index = 0;
+         index < gba::WidgetArtworkResultQueue::MaximumResults; ++index) {
+        auto suffix = std::to_wstring(index);
+        suffix.insert(suffix.begin(), 32 - suffix.size(), L'0');
+        assert(artworkResults.Push({
+            L"games-apps", L"library.art." + suffix, L"AAAA"}));
+    }
+    assert(artworkResults.Push({
+        L"games-apps", L"library.art.00000000000000000000000000000000", L"BBBB"}));
+    assert(artworkResults.size() ==
+           gba::WidgetArtworkResultQueue::MaximumResults);
+    assert(!artworkResults.Push({
+        L"games-apps", L"library.art.ffffffffffffffffffffffffffffffff", L"CCCC"}));
+
     gba::WidgetActionFailureQueue actionFailures;
     for (int index = 0; index <= 16; ++index) {
         assert(actionFailures.Push({

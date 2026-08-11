@@ -223,24 +223,43 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
             if (!AppLibraryArtworkRegistry.IsHandle(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
-            using var artworkPublication = _registry.AdmitArtwork(
-                artworkRequest.WidgetId);
-            var configured = artworkPublication.Value;
+            ConfiguredWidget configured;
+            using (var artworkAdmission = _registry.AdmitArtwork(artworkRequest.WidgetId))
+                configured = artworkAdmission.Value;
             var identity = new BrokerWidgetIdentity(
                 configured.PackageId, configured.PublisherId, configured.InstanceId);
-            var pngBase64 = await _appLibraryArtwork.ResolveAsync(
-                identity, artworkRequest.ArtworkHandle, cancellationToken)
-                .ConfigureAwait(false);
             await ReplyAsync(
-                BridgeMessageTypes.Artwork,
+                BridgeMessageTypes.Acknowledged,
                 request.RequestId,
+                new { },
+                cancellationToken).ConfigureAwait(false);
+
+            string? pngBase64 = null;
+            try
+            {
+                pngBase64 = await _appLibraryArtwork.ResolveAsync(
+                    identity, artworkRequest.ArtworkHandle, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Publish an unavailable completion only if the exact worker
+                // generation remains current. Session shutdown suppresses it.
+            }
+
+            using var artworkCompletion = _registry.TryAdmitArtwork(
+                artworkRequest.WidgetId, configured.WorkerFingerprint);
+            if (artworkCompletion is null ||
+                !_appLibraryArtwork.IsCurrent(identity, artworkRequest.ArtworkHandle)) break;
+            await SendEventAsync(
+                BridgeMessageTypes.Artwork,
                 new
                 {
                     widgetId = artworkRequest.WidgetId,
                     artworkHandle = artworkRequest.ArtworkHandle,
-                    pngBase64,
+                    pngBase64 = pngBase64 ?? string.Empty,
                 },
-                cancellationToken).ConfigureAwait(false);
+                _sessionCancellation).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.RestartWidget:

@@ -127,6 +127,23 @@ private:
     std::vector<WidgetHostEffect> queued_;
 };
 
+struct WidgetArtworkResult final {
+    std::wstring widgetId;
+    std::wstring artworkHandle;
+    std::wstring pngBase64;
+};
+
+class WidgetArtworkResultQueue final {
+public:
+    static constexpr std::size_t MaximumResults = 32;
+    [[nodiscard]] bool Push(WidgetArtworkResult result);
+    [[nodiscard]] std::vector<WidgetArtworkResult> Take() noexcept;
+    void Reset() noexcept { queued_.clear(); }
+    [[nodiscard]] std::size_t size() const noexcept { return queued_.size(); }
+private:
+    std::vector<WidgetArtworkResult> queued_;
+};
+
 struct WidgetQuickAction final {
     std::wstring button;
     std::wstring actionId;
@@ -317,7 +334,7 @@ public:
     /// snapshot/input authority, and restores its prior host lifecycle.
     [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);
     [[nodiscard]] std::optional<WidgetSnapshot> GetSnapshot(std::wstring_view widgetId);
-    [[nodiscard]] std::optional<std::wstring> ResolveArtwork(
+    [[nodiscard]] std::optional<bool> RequestArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle);
     [[nodiscard]] std::optional<bool> SendControllerInput(
@@ -343,6 +360,7 @@ public:
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
     [[nodiscard]] std::vector<WidgetActionFailure> TakeActionFailures() noexcept;
     [[nodiscard]] std::vector<WidgetHostEffect> TakeHostEffects() noexcept;
+    [[nodiscard]] std::vector<WidgetArtworkResult> TakeArtworkResults() noexcept;
 
 private:
     [[nodiscard]] bool Launch(
@@ -362,6 +380,7 @@ private:
     WidgetInvalidationQueue invalidations_;
     WidgetActionFailureQueue actionFailures_;
     WidgetHostEffectQueue hostEffects_;
+    WidgetArtworkResultQueue artworkResults_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
     mutable std::recursive_mutex requestMutex_;
@@ -384,6 +403,9 @@ namespace gba::testing {
     std::string_view eventUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetActionFailure> ParseWidgetActionFailureEvent(
+    std::string_view eventUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetArtworkResult> ParseWidgetArtworkResultEvent(
     std::string_view eventUtf8,
     std::wstring& error);
 }

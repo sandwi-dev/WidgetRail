@@ -187,6 +187,15 @@ static async Task SteamCatalogIsOpaque()
     Assert.False(json.Contains("440", StringComparison.Ordinal));
     Assert.False(json.Contains("appmanifest", StringComparison.OrdinalIgnoreCase));
     Assert.Equal(AppLibraryKind.Game, projected.Kind);
+    Assert.True(projected.ArtworkRevision is { Length: 64 });
+    Assert.False(projected.ArtworkRevision.Contains("acf-one", StringComparison.Ordinal));
+
+    steam.Items = [steam.Items.Single() with { RevalidationKey = "acf-two" }];
+    var refreshed = (await ((IAppLibraryPlatformBrokerBackend)provider)
+        .RefreshAppLibraryAsync(CancellationToken.None)).Single();
+    Assert.Equal(projected.ProviderAppId, refreshed.ProviderAppId);
+    Assert.Equal(projected.StableProviderIdentity, refreshed.StableProviderIdentity);
+    Assert.True(projected.ArtworkRevision != refreshed.ArtworkRevision);
 }
 
 static async Task SteamLaunchRevalidatesManifest()

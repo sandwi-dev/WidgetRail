@@ -74,6 +74,15 @@ internal sealed class AppLibraryArtworkRegistry
         }
     }
 
+    internal bool IsCurrent(BrokerWidgetIdentity identity, string handle)
+    {
+        lock (_gate)
+            return _registrations.TryGetValue(handle, out var registration) &&
+                registration.Session.Identity.Equals(identity) &&
+                _sessions.TryGetValue(identity, out var session) &&
+                ReferenceEquals(session, registration.Session);
+    }
+
     private IReadOnlyDictionary<string, string> Replace(
         Session session,
         IReadOnlyList<AppLibraryBackendItemSummary> items)
@@ -95,7 +104,7 @@ internal sealed class AppLibraryArtworkRegistry
             foreach (var item in items)
             {
                 var key = new RegistrationIdentity(
-                    item.ProviderAppId, item.StableProviderIdentity);
+                    item.ProviderAppId, item.StableProviderIdentity, item.ArtworkRevision);
                 var handle = previous.TryGetValue(item.ProviderAppId, out var existing) &&
                     existing.Key == key
                         ? existing.Handle
@@ -156,7 +165,8 @@ internal sealed class AppLibraryArtworkRegistry
         string StableProviderIdentity);
     internal sealed record RegistrationIdentity(
         string ProviderAppId,
-        string StableProviderIdentity);
+        string StableProviderIdentity,
+        string ArtworkRevision);
     internal sealed record HandleRegistration(string Handle, RegistrationIdentity Key);
 
     internal sealed class AppLibraryArtworkSession(

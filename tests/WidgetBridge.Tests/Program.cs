@@ -422,7 +422,7 @@ static Task RequestClassificationIsClosed()
             "widget-a", "library.art.0123456789abcdef0123456789abcdef")),
     });
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
-    Assert.Equal("widget-a", artwork.WidgetId);
+    Assert.Equal<string?>(null, artwork.WidgetId);
 
     var malformedArtwork = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
@@ -501,12 +501,18 @@ static async Task TrustedArtworkDemandIsExact()
     var backend = new SimulatedPlatformBrokerBackend();
     backend.SetAppLibraryBackend([
         new AppLibraryBackendItemSummary(
-            "provider-one", "stable-one", "Artwork App", AppLibraryKind.Application),
+            "provider-one", "stable-one", "Artwork App", AppLibraryKind.Application,
+            "artwork-a"),
     ]);
-    backend.AppLibraryIconHandler = (_, cancellationToken) =>
+    var iconStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var releaseIcon = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.AppLibraryIconHandler = async (_, cancellationToken) =>
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new AppLibraryIconSummary(png));
+        iconStarted.TrySetResult();
+        await releaseIcon.Task.WaitAsync(cancellationToken);
+        return new AppLibraryIconSummary(png);
     };
     var catalog = BridgeCatalog.Load(catalogFiles.Path);
     var pipeName = $"gba-bridge-artwork-{Guid.NewGuid():N}";
@@ -537,13 +543,38 @@ static async Task TrustedArtworkDemandIsExact()
         var resolved = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
             new BridgeArtworkRequest("test-widget", firstHandle));
-        Assert.Equal(BridgeMessageTypes.Artwork, resolved.Type);
-        Assert.Equal(png, resolved.Payload.GetProperty("pngBase64").GetString());
+        Assert.Equal(BridgeMessageTypes.Acknowledged, resolved.Type);
+        await iconStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var concurrent = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(BridgeMessageTypes.Widgets, concurrent.Type);
+        releaseIcon.TrySetResult();
+        var artwork = await client.ReadEventAsync(BridgeMessageTypes.Artwork);
+        Assert.Equal(png, artwork.Payload.GetProperty("pngBase64").GetString());
         Assert.Equal(1, backend.AppLibraryIconCalls);
+
+        var staleStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStale = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var staleFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.AppLibraryIconHandler = async (_, _) =>
+        {
+            staleStarted.TrySetResult();
+            await releaseStale.Task;
+            staleFinished.TrySetResult();
+            return new AppLibraryIconSummary(png);
+        };
+        var stale = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", firstHandle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, stale.Type);
+        await staleStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         backend.SetAppLibraryBackend([
             new AppLibraryBackendItemSummary(
-                "provider-two", "stable-two", "Replacement", AppLibraryKind.Application),
+                "provider-one", "stable-one", "Replacement", AppLibraryKind.Application,
+                "artwork-b"),
         ]);
         _ = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
@@ -551,26 +582,60 @@ static async Task TrustedArtworkDemandIsExact()
         _ = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
-        var stale = await client.RequestAsync(
-            BridgeMessageTypes.ResolveArtwork,
-            new BridgeArtworkRequest("test-widget", firstHandle));
-        Assert.False(
-            stale.Payload.TryGetProperty("pngBase64", out _),
-            "A stale artwork handle returned inline pixels.");
-        Assert.Equal(1, backend.AppLibraryIconCalls);
+        var rotatedSnapshotResponse = await client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        var rotatedSnapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+            rotatedSnapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
+        var rotatedHandle = Flatten(rotatedSnapshot.Root).Single(
+            node => node.Id == "artwork.image").ArtworkHandle!;
+        Assert.True(rotatedHandle != firstHandle,
+            "Changed trusted artwork revision reused the prior handle.");
+        releaseStale.TrySetResult();
+        await staleFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
+        Assert.Equal(2, backend.AppLibraryIconCalls);
 
         var forged = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
             new BridgeArtworkRequest(
                 "test-widget", "library.art.00000000000000000000000000000000"));
-        Assert.False(
-            forged.Payload.TryGetProperty("pngBase64", out _),
-            "A forged artwork handle returned inline pixels.");
-        Assert.Equal(1, backend.AppLibraryIconCalls);
+        Assert.Equal(BridgeMessageTypes.Acknowledged, forged.Type);
+        _ = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(0, client.PendingEventCountOfType(BridgeMessageTypes.Artwork));
+        Assert.Equal(2, backend.AppLibraryIconCalls);
+
+        var blockedStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseBlocked = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockedFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.AppLibraryIconHandler = async (_, _) =>
+        {
+            blockedStarted.TrySetResult();
+            await releaseBlocked.Task;
+            blockedFinished.TrySetResult();
+            return new AppLibraryIconSummary(png);
+        };
+        var blocked = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", rotatedHandle));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, blocked.Type);
+        await blockedStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var whileBlocked = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.Equal(BridgeMessageTypes.Widgets, whileBlocked.Type);
+        _ = await client.RequestAsync(BridgeMessageTypes.Stop, new { });
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(4));
+        Assert.False(blockedFinished.Task.IsCompleted,
+            "Bridge shutdown waited for cancellation-ignoring artwork I/O.");
+        releaseBlocked.TrySetResult();
+        await blockedFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(3, backend.AppLibraryIconCalls);
     }
     finally
     {
-        if (!client.IsTerminal)
+        if (!client.IsTerminal && !serverTask.IsCompleted)
         {
             _ = await client.RequestAsync(BridgeMessageTypes.Stop, new { });
             await serverTask.WaitAsync(TimeSpan.FromSeconds(4));
@@ -2682,6 +2747,8 @@ file sealed class BridgeTestClient : IAsyncDisposable
     private readonly Queue<BridgeEnvelope> _events = new();
     private long _requestId;
     public int PendingEventCount => _events.Count;
+    public int PendingEventCountOfType(string type) =>
+        _events.Count(message => string.Equals(message.Type, type, StringComparison.Ordinal));
 
     private BridgeTestClient(NamedPipeClientStream pipe, BridgeFrameChannel channel)
     {

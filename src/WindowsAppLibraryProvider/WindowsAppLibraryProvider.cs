@@ -1,5 +1,6 @@
-using System.Text;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using GameBarAlternative.PlatformBroker;
 
 namespace GameBarAlternative.WindowsAppLibraryProvider;
@@ -165,11 +166,14 @@ public sealed class WindowsAppLibraryProvider : IAppLibraryPlatformBrokerBackend
                     WindowsAppLibraryKind.Application => AppLibraryKind.Application,
                     WindowsAppLibraryKind.Game => AppLibraryKind.Game,
                     _ => AppLibraryKind.Unknown,
-                });
+                }, ArtworkRevision(registration.RevalidationKey));
             }
             return Array.AsReadOnly(projected);
         }
     }
+
+    private static string ArtworkRevision(string revalidationKey) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(revalidationKey)));
 
     public async Task LaunchAppLibraryItemAsync(
         string appId, CancellationToken cancellationToken)
