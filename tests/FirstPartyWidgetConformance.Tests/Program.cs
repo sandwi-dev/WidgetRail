@@ -1187,14 +1187,16 @@ static async Task ExerciseControlAsync(
     SimulatedPlatformBrokerBackend backend,
     string route)
 {
+    if (package.Manifest.Id == "org.gbar.firstparty.audio-mixer")
+    {
+        await ExerciseAudioDashboardControlsAsync(client, snapshot, backend);
+        return;
+    }
+
     string actionId;
     Func<int> calls;
     switch (package.Manifest.Id)
     {
-        case "org.gbar.firstparty.audio-mixer":
-            actionId = "output.mute.toggle";
-            calls = () => backend.AudioControlCalls;
-            break;
         case "org.gbar.firstparty.network-controls":
             actionId = "wifi.radio.toggle";
             calls = () => backend.WifiRadioControlCalls;
@@ -1245,6 +1247,114 @@ static async Task ExerciseControlAsync(
         Assert.Equal(
             SpotifyPlaybackOperation.Next,
             backend.LastSpotifyPlaybackCommand?.Operation);
+    }
+}
+
+static async Task ExerciseAudioDashboardControlsAsync(
+    WidgetProcessClient client,
+    ViewSnapshot snapshot,
+    SimulatedPlatformBrokerBackend backend)
+{
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    snapshot = await client.GetSnapshotAsync();
+    Assert.SequenceEqual(
+        [ControllerButton.LeftBumper, ControllerButton.X, ControllerButton.RightBumper],
+        snapshot.QuickActions.Select(action => action.Button));
+    Assert.True(snapshot.QuickActions[0].Label.Contains("72% to 67%", StringComparison.Ordinal),
+        "Dashboard LB label omitted its current and target volume.");
+    Assert.True(snapshot.QuickActions[1].Label.Contains(
+            "Mute master output at 72%", StringComparison.Ordinal),
+        "Dashboard X label omitted its current mute/volume state.");
+    Assert.True(snapshot.QuickActions[2].Label.Contains("72% to 77%", StringComparison.Ordinal),
+        "Dashboard RB label omitted its current and target volume.");
+
+    snapshot = await PressAsync(ControllerButton.LeftBumper, 301, expectedCalls: 1);
+    Assert.Equal(0.67, backend.AudioOutput.Volume);
+    Assert.True(snapshot.QuickActions[0].Label.Contains("67% to 62%", StringComparison.Ordinal),
+        "Dashboard LB label did not reconcile to the provider result.");
+
+    snapshot = await PressAsync(ControllerButton.RightBumper, 302, expectedCalls: 2);
+    Assert.Equal(0.72, backend.AudioOutput.Volume);
+    Assert.True(snapshot.QuickActions[2].Label.Contains("72% to 77%", StringComparison.Ordinal),
+        "Dashboard RB label did not reconcile to the provider result.");
+
+    snapshot = await PressAsync(ControllerButton.X, 303, expectedCalls: 3);
+    Assert.True(backend.AudioOutput.IsMuted,
+        "Dashboard X did not mute the simulated master output.");
+    Assert.True(snapshot.QuickActions[1].Label.Contains(
+            "Unmute master output at 72%", StringComparison.Ordinal),
+        "Dashboard X label did not reconcile to muted state.");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var opened = await client.GetSnapshotAsync();
+    var slider = Nodes(opened.Root).Single(node =>
+        string.Equals(node.Id, "audio.master.volume.slider", StringComparison.Ordinal));
+    Assert.Equal(0.72, slider.Value);
+    Assert.True((slider.AccessibilityLabel ?? string.Empty).Contains("muted", StringComparison.Ordinal),
+        "Opening Audio Mixer did not expose the reconciled dashboard mute result.");
+
+    return;
+
+    async Task<ViewSnapshot> PressAsync(
+        ControllerButton button,
+        long inputSequence,
+        int expectedCalls)
+    {
+        var actionFailed = new TaskCompletionSource<WidgetActionFailure>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<WidgetActionFailure> failureHandler = (_, failure) =>
+            actionFailed.TrySetResult(failure);
+        client.ActionFailed += failureHandler;
+        var action = snapshot.QuickActions.Single(item => item.Button == button);
+        Assert.True(action.Capability is not null,
+            $"Audio dashboard {button} omitted exact capability authority.");
+        var handled = await client.SendControllerInputAsync(
+            new ControllerInputEvent(
+                button,
+                ControllerEventPhase.Pressed,
+                ControllerInputContext.DashboardQuickAction,
+                Sequence: inputSequence,
+                SnapshotSequence: snapshot.Sequence),
+            new WidgetDashboardGestureAuthority(
+                action.Capability!.CapabilityId,
+                action.Capability.OperationId,
+                inputSequence,
+                snapshot.Sequence,
+                TimeSpan.FromSeconds(2)));
+        Assert.True(handled, $"Audio dashboard {button} was not accepted.");
+        try
+        {
+            var controlObserved = WaitUntilAsync(() => backend.AudioControlCalls == expectedCalls);
+            var terminal = await Task.WhenAny(controlObserved, actionFailed.Task)
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            if (ReferenceEquals(terminal, actionFailed.Task))
+            {
+                var failure = await actionFailed.Task;
+                throw new InvalidOperationException(
+                    $"Audio dashboard {button} failed before its broker effect: " +
+                    $"{failure.ActionId}/{failure.SourceElementId}: {failure.Message}");
+            }
+            try
+            {
+                await controlObserved;
+            }
+            catch (TimeoutException exception)
+            {
+                var diagnostic = await client.GetSnapshotAsync();
+                var status = Nodes(diagnostic.Root).FirstOrDefault(node =>
+                    string.Equals(node.Id, "audio.status", StringComparison.Ordinal))?.Text ??
+                    "<missing audio.status>";
+                throw new TimeoutException(
+                    $"Audio dashboard {button} produced no broker effect; widget status: {status}",
+                    exception);
+            }
+        }
+        finally
+        {
+            client.ActionFailed -= failureHandler;
+        }
+        snapshot = await client.GetSnapshotAsync();
+        return snapshot;
     }
 }
 

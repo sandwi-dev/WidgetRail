@@ -99,6 +99,13 @@ decides how prompts are displayed. Validation rejects:
 - blank labels or invalid action IDs; and
 - A, B, Y, or D-pad as dashboard bindings.
 
+The selected Audio Mixer card publishes LB/RB as a clamped five-percentage-
+point master-output step and X as master mute/unmute. Its three labels include
+the current authoritative/optimistic percentage and mute state before
+activation. These dashboard declarations are separate from the open-widget
+surface: focused Sliders still own D-pad Left/Right absolute adjustment and A
+mute activation, and open-widget LB/RB do not become audio shortcuts.
+
 A capability-bearing quick action does not make the selected widget
 Interactive. The bridge matches the pressed button and both controller/snapshot
 sequences against its current cached rendered snapshot, then records a dormant

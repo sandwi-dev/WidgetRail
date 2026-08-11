@@ -41,7 +41,7 @@ eventual widgets:
 | `system.audio.sessions.read.v1` | List sanitized render sessions and subscribe to bounded session-change events. |
 | `system.audio.sessions.control.v1` | Set volume/mute for one opaque session while Interactive. |
 | `system.audio.output.read.v1` | Read volume/mute for the current default multimedia render endpoint and subscribe to bounded changes; no endpoint identity. |
-| `system.audio.output.control.v1` | Set master volume/mute for the current default multimedia render endpoint while Interactive; no device switching. |
+| `system.audio.output.control.v1` | Set master volume/mute for the current default multimedia render endpoint while Interactive, or through one exact snapshot-bound dashboard gesture while Visible; no device switching. |
 | `system.audio.devices.read.v1` | Read sanitized endpoint names/direction/default markers and subscribe to changes; no raw endpoint IDs. |
 | `system.audio.input.read.v1` | Read/watch volume and mute for the current default capture endpoint; no sample capture. |
 | `system.audio.input.control.v1` | Set volume/mute for the current default capture endpoint while Interactive. |

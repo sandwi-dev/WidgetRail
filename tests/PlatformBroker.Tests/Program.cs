@@ -285,8 +285,15 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(PlatformCapabilities.TryGet(
         PlatformCapabilities.MediaSessionsControlV1, out var mediaControl));
     Assert.True(mediaControl.AllowsDashboardGesture);
+    Assert.True(PlatformCapabilities.TryGet(
+        PlatformCapabilities.AudioOutputControlV1, out var audioOutputControl));
+    Assert.True(audioOutputControl.AllowsDashboardGestureForOperation(
+        PlatformCapabilities.AudioOutputSetVolume));
+    Assert.True(audioOutputControl.AllowsDashboardGestureForOperation(
+        PlatformCapabilities.AudioOutputSetMuted));
     Assert.True(PlatformCapabilities.All
         .Where(capability => capability.Kind == BrokerCapabilityKind.Control &&
+            capability.Id != PlatformCapabilities.AudioOutputControlV1 &&
             capability.Id != PlatformCapabilities.MediaSessionsControlV1 &&
             capability.Id != PlatformCapabilities.SpotifyPlaybackControlV1)
         .All(capability => !capability.AllowsDashboardGesture));
@@ -1850,6 +1857,8 @@ static async Task DashboardGestureAuthorityIsBounded()
         ConsentDecision.Grant);
     await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
         ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioOutputControlV1,
+        ConsentDecision.Grant);
     var backend = AudioBackend();
     backend.SetMediaSessions([
         new("media-1", "Player", "Title", "Artist", MediaPlaybackStatus.Paused,
@@ -1858,7 +1867,8 @@ static async Task DashboardGestureAuthorityIsBounded()
     ]);
     await using var broker = Broker(identity, store, backend,
         PlatformCapabilities.MediaSessionsControlV1,
-        PlatformCapabilities.AudioSessionsControlV1);
+        PlatformCapabilities.AudioSessionsControlV1,
+        PlatformCapabilities.AudioOutputControlV1);
     broker.SetLifecycle(BrokerLifecycleState.Visible);
 
     var noGrant = await broker.HandleAsync(GestureRequest(
@@ -1892,6 +1902,31 @@ static async Task DashboardGestureAuthorityIsBounded()
         PlatformCapabilities.AudioSessionSetMuted, 11, 5, TimeSpan.FromSeconds(2)),
         "unsupported_capability");
     Assert.Equal(0, backend.AudioControlCalls);
+
+    var noOutputGrant = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetVolume,
+        new { volume = 0.4 }, 11, 5));
+    Assert.Equal("lifecycle_denied", noOutputGrant.ErrorCode);
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetVolume, 11, 5, TimeSpan.FromSeconds(2));
+    var wrongOutputOperation = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetMuted,
+        new { isMuted = true }, 11, 5));
+    Assert.Equal("lifecycle_denied", wrongOutputOperation.ErrorCode);
+    var exactOutput = await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetVolume,
+        new { volume = 0.4 }, 11, 5));
+    Assert.True(exactOutput.Succeeded);
+    Assert.Equal(0.4, backend.AudioOutput.Volume);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetVolume,
+        new { volume = 0.5 }, 11, 5))).ErrorCode);
+    Assert.Equal(1, backend.AudioControlCalls);
 
     broker.GrantDashboardGestureAuthority(
         PlatformCapabilities.MediaSessionsControlV1,
@@ -1942,6 +1977,17 @@ static async Task DashboardGestureAuthorityIsBounded()
         identity, PlatformCapabilities.MediaSessionsControlV1,
         PlatformCapabilities.MediaSessionControl,
         new { sessionId = "media-1", command = "next" }, 16, 9))).ErrorCode);
+
+    broker.GrantDashboardGestureAuthority(
+        PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetMuted, 18, 11, TimeSpan.FromSeconds(2));
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AudioOutputControlV1,
+        ConsentDecision.Deny);
+    Assert.Equal("permission_denied", (await broker.HandleAsync(GestureRequest(
+        identity, PlatformCapabilities.AudioOutputControlV1,
+        PlatformCapabilities.AudioOutputSetMuted,
+        new { isMuted = true }, 18, 11))).ErrorCode);
+    Assert.Equal(1, backend.AudioControlCalls);
 
     broker.SetLifecycle(BrokerLifecycleState.Interactive);
     Assert.Throws<BrokerException>(() => broker.GrantDashboardGestureAuthority(

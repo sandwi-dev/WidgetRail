@@ -32,6 +32,12 @@ internal sealed record AudioMixerPresentationState(
 internal static class AudioMixerPresentation
 {
     private const double VolumeStep = AudioMixerWidget.VolumeStep;
+    private static readonly WidgetQuickActionCapability DashboardOutputVolume = new(
+        WidgetAudioCapabilities.SetOutputVolume.CapabilityId,
+        WidgetAudioCapabilities.SetOutputVolume.OperationId);
+    private static readonly WidgetQuickActionCapability DashboardOutputMute = new(
+        WidgetAudioCapabilities.SetOutputMuted.CapabilityId,
+        WidgetAudioCapabilities.SetOutputMuted.OperationId);
     private static readonly WidgetSurfaceHints CompactSurface = new()
     {
         Mode = WidgetSurfaceMode.Compact,
@@ -80,6 +86,7 @@ internal static class AudioMixerPresentation
 
         var output = state.Output;
         var masterPercent = VolumePercent(output.Volume);
+        var quickActions = MasterQuickActions(output, masterPercent);
         var masterMute = UI.Icon(
                 output.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
                 "audio.master.mute.icon",
@@ -198,7 +205,8 @@ internal static class AudioMixerPresentation
             var emptyRoot = UI.VerticalScroll("audio.root", emptyChildren.ToArray())
                 .InputScope("audio-mixer")
                 .Classes("audio-mixer-widget", "has-master", "has-state");
-            return new WidgetView(emptyRoot, InitialFocusId: initialFocusId, Surface: CompactSurface);
+            return new WidgetView(emptyRoot, InitialFocusId: initialFocusId,
+                QuickActions: quickActions, Surface: CompactSurface);
         }
 
         var sessionRows = new WidgetElement[state.Sessions.Count];
@@ -225,7 +233,37 @@ internal static class AudioMixerPresentation
         var root = UI.VerticalScroll("audio.root", rootChildren.ToArray())
             .InputScope("audio-mixer")
             .Classes("audio-mixer-widget", "has-sessions");
-        return new WidgetView(root, InitialFocusId: initialFocusId, Surface: CompactSurface);
+        return new WidgetView(root, InitialFocusId: initialFocusId,
+            QuickActions: quickActions, Surface: CompactSurface);
+    }
+
+    private static IReadOnlyList<WidgetQuickAction> MasterQuickActions(
+        WidgetAudioOutput output,
+        int currentPercent)
+    {
+        var lowerPercent = VolumePercent(Math.Clamp(output.Volume - VolumeStep, 0, 1));
+        var higherPercent = VolumePercent(Math.Clamp(output.Volume + VolumeStep, 0, 1));
+        return
+        [
+            new(ControllerButton.LeftBumper,
+                AudioMixerWidget.DecreaseOutputVolumeActionId,
+                lowerPercent == currentPercent
+                    ? $"Master output is at minimum ({currentPercent}%)"
+                    : $"Lower master output: {currentPercent}% to {lowerPercent}%",
+                DashboardOutputVolume),
+            new(ControllerButton.X,
+                "output.mute.toggle",
+                output.IsMuted
+                    ? $"Unmute master output at {currentPercent}%"
+                    : $"Mute master output at {currentPercent}%",
+                DashboardOutputMute),
+            new(ControllerButton.RightBumper,
+                AudioMixerWidget.IncreaseOutputVolumeActionId,
+                higherPercent == currentPercent
+                    ? $"Master output is at maximum ({currentPercent}%)"
+                    : $"Raise master output: {currentPercent}% to {higherPercent}%",
+                DashboardOutputVolume),
+        ];
     }
 
     private static StackElement RenderSessionRow(

@@ -23,6 +23,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("D-pad and analog focus graph covers every row", ExplicitFocusGraph),
     ("Whole-list focus reaches both extents and restores the last controller row", WholeListFocusRestoration),
     ("Per-row actions route by stable identity without session shortcuts", ControllerRoutes),
+    ("Dashboard master actions expose current exact volume and mute authority", DashboardMasterActions),
+    ("Rapid dashboard volume presses coalesce to the latest bounded target", DashboardVolumeCoalesces),
+    ("Dashboard master failure restores authoritative state with safe feedback", DashboardFailureRollsBack),
     ("Volume updates immediately and resists stale in-flight events", OptimisticVolume),
     ("Rapid slider changes coalesce latest-wins without freezing other rows", RapidVolumeCoalescing),
     ("Older request failure cannot roll back a newer slider target", OlderFailurePreservesNewerTarget),
@@ -301,7 +304,7 @@ static async Task ControllerRoutes()
     var widget = Create(fake);
     await ActivateReady(widget);
     var snapshot = widget.RenderSnapshot("audio.test", 42);
-    Assert.Equal(0, snapshot.QuickActions.Count);
+    Assert.Equal(3, snapshot.QuickActions.Count);
     var scope = Node(snapshot.Root, "audio.root");
     Assert.Equal(0, scope.Shortcuts.Count);
     Assert.True(!await Route(widget, snapshot, ControllerButton.LeftBumper, "audio.master.volume.slider"),
@@ -336,12 +339,121 @@ static async Task ControllerRoutes()
     await WaitUntil(() => fake.OutputMuteRequests.Count == 1);
     Assert.Equal(true, fake.OutputMuteRequests[0].IsMuted);
 
-    var dashboard = widget.RenderSnapshot("audio.test", 45);
-    Assert.True(!await widget.OnControllerInputAsync(new ControllerInputEvent(
-        ControllerButton.LeftBumper,
-        ControllerEventPhase.Pressed,
-        ControllerInputContext.DashboardQuickAction,
-        SnapshotSequence: dashboard.Sequence)), "Dashboard LB unexpectedly cycled an audio session.");
+    await Background(widget);
+}
+
+static async Task DashboardMasterActions()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Output = new WidgetAudioOutput(0.72, false),
+    };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var snapshot = widget.RenderSnapshot("audio.test", 45);
+    Assert.SequenceEqual(
+        [ControllerButton.LeftBumper, ControllerButton.X, ControllerButton.RightBumper],
+        snapshot.QuickActions.Select(action => action.Button));
+    Assert.SequenceEqual(
+        ["output.volume.decrease", "output.mute.toggle", "output.volume.increase"],
+        snapshot.QuickActions.Select(action => action.ActionId));
+    Assert.Contains("72% to 67%", snapshot.QuickActions[0].Label);
+    Assert.Contains("Mute master output at 72%", snapshot.QuickActions[1].Label);
+    Assert.Contains("72% to 77%", snapshot.QuickActions[2].Label);
+    Assert.Equal(new WidgetQuickActionCapability(
+            WidgetAudioCapabilities.SetOutputVolume.CapabilityId,
+            WidgetAudioCapabilities.SetOutputVolume.OperationId),
+        snapshot.QuickActions[0].Capability);
+    Assert.Equal(new WidgetQuickActionCapability(
+            WidgetAudioCapabilities.SetOutputMuted.CapabilityId,
+            WidgetAudioCapabilities.SetOutputMuted.OperationId),
+        snapshot.QuickActions[1].Capability);
+    Assert.True(!await DashboardRoute(widget, snapshot, ControllerButton.LeftBumper,
+            inputSequence: 1, snapshotSequence: snapshot.Sequence - 1),
+        "A stale dashboard snapshot changed master volume.");
+    Assert.Equal(0, fake.OutputVolumeRequests.Count);
+
+    Assert.True(await DashboardRoute(widget, snapshot, ControllerButton.LeftBumper, 2),
+        "Dashboard LB was not accepted.");
+    await WaitUntil(() => fake.OutputVolumeRequests.Count == 1);
+    await widget.DrainCommandWorkersAsync();
+    Assert.Near(0.67, fake.OutputVolumeRequests[0].Volume);
+    var lowered = widget.RenderSnapshot("audio.test", 46);
+    Assert.Contains("67% to 62%", lowered.QuickActions[0].Label);
+
+    Assert.True(await DashboardRoute(widget, lowered, ControllerButton.X, 3),
+        "Dashboard X was not accepted.");
+    await WaitUntil(() => fake.OutputMuteRequests.Count == 1);
+    await widget.DrainCommandWorkersAsync();
+    Assert.Equal(true, fake.OutputMuteRequests[0].IsMuted);
+    var muted = widget.RenderSnapshot("audio.test", 47);
+    Assert.Contains("Unmute master output at 67%", muted.QuickActions[1].Label);
+
+    await Background(widget);
+    Assert.True(!await DashboardRoute(widget, muted, ControllerButton.RightBumper, 4),
+        "A Background dashboard action was accepted.");
+    Assert.Equal(1, fake.OutputVolumeRequests.Count);
+}
+
+static async Task DashboardVolumeCoalesces()
+{
+    var firstRequest = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Output = new WidgetAudioOutput(0.5, false),
+    };
+    fake.PlanOutputVolume(firstRequest.Task);
+    fake.PlanOutputVolume();
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var snapshot = widget.RenderSnapshot("audio.test", 50);
+
+    Assert.True(await DashboardRoute(widget, snapshot, ControllerButton.RightBumper, 10),
+        "The first dashboard volume press was not accepted.");
+    Assert.True(await DashboardRoute(widget, snapshot, ControllerButton.RightBumper, 11),
+        "The second dashboard volume press was not accepted.");
+    Assert.True(await DashboardRoute(widget, snapshot, ControllerButton.RightBumper, 12),
+        "The third dashboard volume press was not accepted.");
+    await WaitUntil(() => fake.OutputVolumeRequests.Count == 1);
+    await WaitUntil(() => VolumesNear(widget.Output!.Volume, 0.65));
+    Assert.Near(0.55, fake.OutputVolumeRequests[0].Volume);
+    Assert.Equal(1, fake.OutputVolumeRequests.Count);
+
+    firstRequest.SetResult();
+    await WaitUntil(() => fake.OutputVolumeRequests.Count == 2);
+    await widget.DrainCommandWorkersAsync();
+    Assert.Near(0.65, fake.OutputVolumeRequests[1].Volume);
+    Assert.Near(0.65, widget.Output!.Volume);
+    Assert.Contains("65%", Text(Snapshot(widget, 51).Root, "audio.status").Text!);
+    await Background(widget);
+}
+
+static async Task DashboardFailureRollsBack()
+{
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("game", "Game", 0.5)],
+        Output = new WidgetAudioOutput(0.6, false),
+    };
+    fake.PlanOutputMute(failure: new WidgetCapabilityException(
+        "permission_denied", "private provider details"));
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    var snapshot = widget.RenderSnapshot("audio.test", 60);
+
+    Assert.True(await DashboardRoute(widget, snapshot, ControllerButton.X, 20),
+        "The dashboard mute press was not accepted.");
+    await WaitUntil(() => fake.OutputMuteRequests.Count == 1);
+    await WaitUntil(() => Text(Snapshot(widget, 61).Root, "audio.status").Text!
+        .Contains("permission denied", StringComparison.Ordinal));
+    Assert.Equal(false, widget.Output!.IsMuted);
+    var failed = widget.RenderSnapshot("audio.test", 62);
+    Assert.Contains("Mute master output at 60%", failed.QuickActions[1].Label);
+    Assert.True(!Text(failed.Root, "audio.status").Text!
+            .Contains("private provider details", StringComparison.Ordinal),
+        "Dashboard failure feedback leaked provider details.");
     await Background(widget);
 }
 
@@ -1356,6 +1468,19 @@ static async ValueTask<bool> Route(
         ActiveInputScopeId: snapshot.ActiveInputScopeId,
         SnapshotSequence: snapshot.Sequence,
         RequestedValue: requestedValue));
+
+static async ValueTask<bool> DashboardRoute(
+    AudioMixerWidget widget,
+    ViewSnapshot snapshot,
+    ControllerButton button,
+    long inputSequence,
+    long? snapshotSequence = null) =>
+    await widget.OnControllerInputAsync(new ControllerInputEvent(
+        button,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.DashboardQuickAction,
+        Sequence: inputSequence,
+        SnapshotSequence: snapshotSequence ?? snapshot.Sequence));
 
 static WidgetAudioSession Session(
     string id,

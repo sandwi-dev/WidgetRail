@@ -1202,7 +1202,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.audio.sessions.read.v1` | list/watch application sessions | Visible or Interactive |
 | `system.audio.sessions.control.v1` | set session volume/mute | Interactive |
 | `system.audio.output.read.v1` | get/watch master output | Visible or Interactive |
-| `system.audio.output.control.v1` | set master volume/mute | Interactive |
+| `system.audio.output.control.v1` | set master volume/mute | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.audio.devices.read.v1` | list/watch sanitized input/output devices and default markers | Visible or Interactive |
 | `system.audio.input.read.v1` | get/watch current default microphone volume/mute | Visible or Interactive |
 | `system.audio.input.control.v1` | set current default microphone volume/mute | Interactive |

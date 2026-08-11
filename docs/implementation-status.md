@@ -817,6 +817,30 @@ fetches once on activation, then
 reacts to provider events rather than polling. It offers controller session
 selection plus optimistic per-session volume/mute controls in Interactive and
 renders explicit permission, lifecycle, empty, unavailable, and failure states.
+When its dashboard card is selected, the snapshot also advertises three visible
+master-output prompts: LB/RB lower or raise volume by a clamped five percentage
+points and X toggles mute. Each prompt names the current value/state and carries
+only the exact existing output-volume or output-mute operation. The host and
+broker still require current selection/generation, physical input, declaration,
+consent, Visible lifecycle, one unexpired single-use sequence, and an exact
+operation match. Rapid volume input reuses the widget's existing latest-target
+coalescing; provider events and a bounded reread own confirmation, while failure
+restores the authoritative value with sanitized feedback. Opening the widget
+uses that same committed output state and preserves the Slider's D-pad/A
+behavior; application sessions and microphone controls receive no dashboard
+authority.
+The worker capability adapter now treats invocation start as the exact gesture
+admission boundary: once the host has granted the matching sequence and
+operation, completion of the worker/host activation round-trip cannot downgrade
+that already-started request merely because the widget action scope returned.
+The grant remains single-use and is still unavailable to any later invocation.
+
+Focused dirty-worktree Release run `20260811T003239Z-60b7c837` completed in
+86.088 seconds and passed Audio Mixer 45/45, Platform Broker 51/51, the installed
+generic AppContainer worker/bridge/broker route 6/6, and documentation validation
+across 52 Markdown files. The run retained one stable dirty-status fingerprint
+at accepted control-plane commit `a1b9527`; no aggregate, native, Windows Audio
+provider, or unrelated suite was run.
 One root controller Scroll contains master, sanitized device summary,
 microphone, and every application row; this replaces the clipped nested session
 viewport and gives `audio.root` one stable host-owned offset/focus-follow

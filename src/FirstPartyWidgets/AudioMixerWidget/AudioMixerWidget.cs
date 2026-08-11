@@ -36,6 +36,8 @@ public enum AudioOptionalSectionState
 public sealed class AudioMixerWidget : Widget
 {
     public const double VolumeStep = 0.05;
+    internal const string DecreaseOutputVolumeActionId = "output.volume.decrease";
+    internal const string IncreaseOutputVolumeActionId = "output.volume.increase";
     private static readonly TimeSpan ConfirmationDelay = TimeSpan.FromMilliseconds(650);
     private readonly object _stateLock = new();
     private IReadOnlyList<WidgetAudioSession> _sessions = [];
@@ -191,6 +193,12 @@ public sealed class AudioMixerWidget : Widget
 
         switch (action.ActionId)
         {
+            case DecreaseOutputVolumeActionId:
+                await AdjustOutputVolumeAsync(-VolumeStep, cancellationToken).ConfigureAwait(false);
+                break;
+            case IncreaseOutputVolumeActionId:
+                await AdjustOutputVolumeAsync(VolumeStep, cancellationToken).ConfigureAwait(false);
+                break;
             case "output.volume.set" when action.RequestedValue is { } requestedVolume:
                 await SetOutputVolumeAsync(requestedVolume, cancellationToken).ConfigureAwait(false);
                 break;
@@ -727,6 +735,17 @@ public sealed class AudioMixerWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         if (!SliderMath.IsValidRequestedValue(requestedVolume, 0, 1, VolumeStep))
             return ValueTask.CompletedTask;
+        return QueueOutputVolumeAsync(requestedVolume, relative: false);
+    }
+
+    private ValueTask AdjustOutputVolumeAsync(double delta, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return QueueOutputVolumeAsync(delta, relative: true);
+    }
+
+    private ValueTask QueueOutputVolumeAsync(double value, bool relative)
+    {
         long generation;
         CancellationToken runToken;
         var startWorker = false;
@@ -734,7 +753,12 @@ public sealed class AudioMixerWidget : Widget
         {
             if (_output is not { } output) return ValueTask.CompletedTask;
             _preferredFocusTarget = AudioMixerPreferredFocusTarget.MasterOutput;
-            var desired = RoundVolume(requestedVolume);
+            var desired = relative
+                ? Math.Round(
+                    Math.Clamp(output.Volume + value, 0, 1),
+                    6,
+                    MidpointRounding.AwayFromZero)
+                : RoundVolume(value);
             if (VolumesMatch(desired, output.Volume)) return ValueTask.CompletedTask;
             var admission = _outputPending.QueueVolume(output, desired);
             startWorker = admission.StartWorker;

@@ -59,7 +59,13 @@ internal sealed class BrokerWidgetCapabilityClient :
                         operation.OperationId,
                         cancellationToken)
                     .ConfigureAwait(false);
-                if (activated && gesture.IsActive) activatedGesture = gesture;
+                // The request was admitted while the exact physical gesture was
+                // active.  Activation crosses the worker/host pipe, so the
+                // widget action scope can legitimately finish before the host
+                // returns the grant.  Rechecking the scope here would discard a
+                // grant that was already bound to this invocation and downgrade
+                // the request to ordinary lifecycle authority.
+                if (activated) activatedGesture = gesture;
             }
             response = await _client.RequestWithGestureAsync(
                 operation.CapabilityId,

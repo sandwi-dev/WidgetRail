@@ -32,7 +32,7 @@ The current closed capability set is:
 | `system.audio.sessions.read.v1` | `HostServices.Audio.GetSessionsAsync`, `OpenSessionsSubscriptionAsync`, and `WatchSessionsAsync` | Visible or Interactive |
 | `system.audio.sessions.control.v1` | `SetSessionVolumeAsync` and `SetSessionMutedAsync` | Interactive only |
 | `system.audio.output.read.v1` | `HostServices.Audio.GetOutputAsync`, `OpenOutputSubscriptionAsync`, and `WatchOutputAsync` | Visible or Interactive |
-| `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive only |
+| `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.audio.devices.read.v1` | `GetDevicesAsync`, `OpenDevicesSubscriptionAsync`, and `WatchDevicesAsync`; sanitized input/output names and default markers only | Visible or Interactive |
 | `system.audio.input.read.v1` | `GetInputAsync`, `OpenInputSubscriptionAsync`, and `WatchInputAsync` for current default microphone volume/mute | Visible or Interactive |
 | `system.audio.input.control.v1` | `SetInputVolumeAsync` and `SetInputMutedAsync` for the current default microphone | Interactive only |
@@ -187,6 +187,13 @@ When that exact prompt is pressed while the widget remains Visible, the bridge
 may create a dormant host-owned reservation for at most 10 seconds. That
 reservation is not broker authority; it only lets bounded serial widget work
 reach the capability call associated with that exact input and snapshot.
+
+The bundled Audio Mixer uses this exception only for the current default
+master output: LB/RB request one clamped five-percentage-point decrease/increase
+and X requests the exact current mute toggle. Application sessions, microphone
+controls, device selection, and every undeclared audio operation remain
+Interactive-only. Rapid volume presses converge through the widget's existing
+latest-target command policy, then reconcile against a fresh provider result.
 
 This is not extra ambient permission. The bridge revalidates the cached
 snapshot, button, input sequence, snapshot sequence, closed operation, and
