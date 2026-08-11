@@ -75,9 +75,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
 | GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | Typed status-only service failures and bounded safe UI copy remain intact through DLV-009's immutable presentation/current-attempt migration; focused YT Music coverage passes 51/51 and real-companion failure evidence remains. |
 | GBA-056 | P1 | Verifying | Spotify widget focus composition | Accepted DLV-051 (`dc22202`, integrated as `822d29c`) authors the inactive seek Slider's Left edge to the selected wide rail destination or compact Player tab and passes exact semantic/controller replay. Fresh live confirmation remains. |
-| GBA-057 | P0 | Confirmed | Widget SDK cursor resources / Spotify focus | DLV-006 is accepted through `9c7438f`. DLV-022 candidate `c349bbd` is rejected because URI-only media keys collapse legitimate duplicate queue/playlist occurrences into the shared duplicate-key error. DLV-018 continues; DLV-053 is the next correction before integration. |
+| GBA-057 | P0 | Implementing | Widget SDK cursor resources / Spotify focus | DLV-006 is accepted through `9c7438f`. DLV-022 candidate `c349bbd` is rejected because URI-only media keys collapse legitimate duplicate queue/playlist occurrences into the shared duplicate-key error. DLV-053 is now Assigned; its dependent prefix remains unintegrated pending later DLV-054 artwork correction. |
 | GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
-| GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
+| GBA-059 | P1 | Implementing | App-library provider / artwork / Games & Apps / native bridge/cache | DLV-018 candidate `039b7b8` adds opaque lazy trusted artwork but is rejected pending DLV-054: slow resolution serializes UI bridge work and same-identity icon changes can retain stale native pixels. Steam remains an honest fallback until a trusted local source exists. |
 | GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
@@ -1829,18 +1829,27 @@ original live surface.
 ## GBA-059 — Games & Apps lacks trusted artwork for saved games
 
 **Evidence:** The supplied Games & Apps screenshot shows a large Play fallback
-for `007 First Light`. The widget already renders `IconPngBase64` when supplied,
-but the trusted provider only rasterizes selected shortcut/AppsFolder icons;
-the Steam source has no artwork implementation and broad discovery is
-deliberately text-only.
+for `007 First Light`. DLV-018 candidate `039b7b8` now projects bounded opaque
+handles for current resolved registrations and lazily rasterizes trusted Start
+Menu/AppsFolder Shell icons; Steam has no reviewed trusted local artwork source
+and remains a semantic fallback. Independent review found two unclosed product
+paths. The image-cache worker holds the same synchronous native bridge mutex as
+UI input/lifecycle/event operations while it waits for artwork, and handle/cache
+identity omits the registration revalidation revision, so an in-place icon
+change can leave the old decoded bitmap visible indefinitely.
 
-**Ownership:** The trusted source adapters and DLV-006 lazy-artwork contract,
-not the widget and not an arbitrary package URL/file escape.
+**Ownership:** The trusted source adapters, DLV-006 lazy-artwork contract,
+DLV-054's exact-generation/revision registry, and a bounded native artwork
+request owner that does not block the UI. This is not a widget-authored URL/file
+escape or permission to redesign the whole bridge.
 
 **Acceptance:** Supported sources resolve bounded artwork lazily through opaque
 handles, validate identity/format/dimensions/bytes, cap decode/cache/transport
-cost, reject stale assets, and use an honest semantic fallback only when the
-exact registration has no trusted artwork.
+cost, reject stale generation and same-identity changed assets, and use an
+honest semantic fallback only when the exact registration has no trusted
+artwork. A provider stall or failure cannot delay input, switching, event
+pumping, lifecycle work, or overlay shutdown. Packaged live confirmation is
+still required after DLV-054 is accepted and integrated.
 
 ## GBA-060 — Shared button content remains visibly misaligned
 

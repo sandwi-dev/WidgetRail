@@ -257,8 +257,10 @@ remains off until the publisher-trust gates in Phase 4.
   through `9c7438f` as the distinct cursor/append collection and bounded lazy-
   artwork foundation. DLV-022 candidate `c349bbd` proves the main Spotify cursor path but
   remains unintegrated because URI-only keys collide for repeated media and a
-  singleton playlist row self-links. Finish DLV-018 trusted Games artwork, then
-  take DLV-053's bounded correction before DLV-043. Continue suitable
+  singleton playlist row self-links. DLV-018 candidate `039b7b8` adds the lazy
+  trusted path but remains unintegrated until DLV-054 removes UI-thread bridge
+  contention and invalidates same-identity changed icons. Finish the already-
+  started DLV-053 Spotify correction, then take DLV-054 before DLV-043. Continue suitable
   command/resource/navigation migrations,
   focused provider-event/confirmation/coalescing recipes, and an analyzer for
   duplicate/unstable IDs and unhandled actions. The SDK must not infer domain
@@ -281,9 +283,12 @@ remains off until the publisher-trust gates in Phase 4.
   open with feedback. Bounded current-user AppsFolder/AUMID discovery, exact
   revalidated null-argument activation, and curated Shell icons are now
   implemented beside Start Menu shortcuts. User evidence still shows the Play
-  fallback where trusted artwork is absent. DLV-018 adds bounded, lazy artwork
-  handles in the trusted provider/source adapters, including Steam, without
-  serializing large base64 images into every widget snapshot. Launcher sources,
+  fallback where trusted artwork is absent. DLV-018 candidate `039b7b8` adds
+  bounded lazy handles for trusted Start Menu and AppsFolder artwork without
+  serializing base64 images into snapshots, while Steam remains a documented
+  fallback. DLV-054 must keep that demand off the native UI/control-plane path
+  and rotate or invalidate it when exact trusted registration content changes.
+  Launcher sources,
   authoritative game classification, history, search, source grouping,
   running-program capture, and file-picker additions remain roadmap work.
 - Capture proof and widget if Windows API tests pass
