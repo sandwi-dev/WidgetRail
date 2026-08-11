@@ -5,7 +5,8 @@ namespace GameBarAlternative.GbarCli;
 
 internal static class ControllerWidgetScaffolder
 {
-    internal const int SupportedTemplateVersion = 1;
+    internal static int SupportedTemplateVersion =>
+        WidgetSdkReleaseContract.Current.TemplateVersion;
     internal const int MaximumFiles = 64;
     internal const int MaximumManifestBytes = 64 * 1024;
     internal const int MaximumFileBytes = 1024 * 1024;

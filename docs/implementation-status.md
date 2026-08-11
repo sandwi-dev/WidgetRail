@@ -283,6 +283,37 @@ across 52 Markdown files. It retained one stable dirty-state fingerprint at
 DLV-040 baseline `df304c3`; no aggregate, native, Runtime, or unrelated suite
 ran.
 
+DLV-047 establishes one pre-release WidgetSdk release unit without publishing
+it externally. `eng/WidgetSdkRelease.props` is the canonical
+`0.1.0-dev`/package-ID/template-version source imported by both WidgetSdk and
+GbarCli; both assemblies carry matching metadata, the closed template manifest
+must use that supported version, and the local package plus generated
+`PackageReference` use one exact `0.1.0-dev.local.<16-hex>` version. The
+deterministic `src/WidgetSdk/PublicApi.txt` baseline currently describes 2,400
+ordinal public symbols with a 5,000-symbol/1-MiB check bound. The focused
+compatibility runner classifies exact removed or changed symbols separately
+from compatible additions, fails either unreviewed delta, self-tests all three
+classifications, rejects checkout paths and nondeterministic generation, and
+provides one explicit `--update` command. Contributor guidance distinguishes a
+reviewed compatible addition from an intentional breaking pre-release reset;
+no obsolete API is retained solely for legacy support. Package fixtures verify
+matching assembly metadata, ID/versioned nuspec, exact generated dependency,
+and repeated byte determinism. No public API was changed by the milestone, and
+no runtime protocol, external feed/publication, signing, native, or host
+authority changed.
+Focused dirty-worktree run `20260811T034449Z-1daebd3a` retained the first
+DLV-047 attempt: WidgetSdk built cleanly and passed 84/84, and the compatibility
+release-unit check passed all 2,400 symbols, before GbarCli reached 54/55 due to
+an unrelated timed-out broken-worker dev-session fixture. No product change was
+made for that timeout. The bounded failed-step retry
+`20260811T034611Z-5af856cf` completed in 51.780 seconds and passed GbarCli 55/55
+plus documentation validation across 53 Markdown files. No aggregate, native,
+external feed, Runtime, or unrelated suite ran.
+After making the package ID itself flow from the same canonical release
+contract into the nuspec and generated project, focused run
+`20260811T034900Z-0e3b2a40` completed in 48.341 seconds and passed the final
+2,400-symbol compatibility check plus GbarCli 55/55.
+
 DLV-001 completes the bounded AppContainer authority-recovery operator surface.
 The Runtime retains a profile-owned pending record until every original DACL is
 restored and verified, then makes journal clear versus cancellation one atomic

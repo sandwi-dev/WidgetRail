@@ -65,6 +65,12 @@ unreadable template input, validation failure, cancellation, and destination
 failure leave no new output or staging residue and never alter an existing
 author directory.
 
+The current local pre-release unit is `0.1.0-dev`. The generated package adds a
+content-derived `.local.<16-hex>` suffix and the project references that exact
+version. CLI, SDK, and template compatibility is checked before generation;
+see [Widget SDK compatibility and release unit](widget-sdk-compatibility.md)
+before intentionally changing the public SDK surface.
+
 For the normal edit/build/overlay loop, replace the manual build with:
 
 ```powershell

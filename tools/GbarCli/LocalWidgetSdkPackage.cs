@@ -8,13 +8,13 @@ using GameBarAlternative.WidgetSdk;
 namespace GameBarAlternative.GbarCli;
 
 internal sealed record LocalWidgetSdkBundle(
+    string PackageId,
     string Version,
     string FileName,
     byte[] Content);
 
 internal static class LocalWidgetSdkPackage
 {
-    internal const string Id = "GameBarAlternative.WidgetSdk";
     private const int MaximumAssemblyBytes = 16 * 1024 * 1024;
     private static readonly DateTimeOffset ReproducibleTimestamp =
         new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -29,19 +29,21 @@ internal static class LocalWidgetSdkPackage
         hash.AppendData(protocol);
         var suffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
             .ToLowerInvariant();
-        var version = $"1.0.0-local.{suffix}";
+        var contract = WidgetSdkReleaseContract.Current;
+        var version = contract.LocalPackageVersion(suffix);
         using var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
         {
-            WriteText(archive, $"{Id}.nuspec", Nuspec(version));
+            WriteText(archive, $"{contract.PackageId}.nuspec", Nuspec(contract.PackageId, version));
             WriteText(archive, "[Content_Types].xml", ContentTypes);
-            WriteText(archive, "_rels/.rels", Relationships);
+            WriteText(archive, "_rels/.rels", Relationships(contract.PackageId));
             WriteBytes(archive, "lib/net8.0/WidgetSdk.dll", sdk);
             WriteBytes(archive, "lib/net8.0/WidgetProtocol.dll", protocol);
         }
         return new(
+            contract.PackageId,
             version,
-            $"{Id}.{version}.nupkg",
+            $"{contract.PackageId}.{version}.nupkg",
             output.ToArray());
     }
 
@@ -99,11 +101,11 @@ internal static class LocalWidgetSdkPackage
         stream.Write(content);
     }
 
-    private static string Nuspec(string version) => $$"""
+    private static string Nuspec(string packageId, string version) => $$"""
         <?xml version="1.0" encoding="utf-8"?>
         <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
           <metadata>
-            <id>GameBarAlternative.WidgetSdk</id>
+            <id>{{packageId}}</id>
             <version>{{version}}</version>
             <authors>GameBarAlternative</authors>
             <requireLicenseAcceptance>false</requireLicenseAcceptance>
@@ -124,11 +126,11 @@ internal static class LocalWidgetSdkPackage
         </Types>
         """;
 
-    private const string Relationships = """
+    private static string Relationships(string packageId) => $$"""
         <?xml version="1.0" encoding="utf-8"?>
         <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
           <Relationship Type="http://schemas.microsoft.com/packaging/2010/07/manifest"
-                        Target="/GameBarAlternative.WidgetSdk.nuspec"
+                        Target="/{{packageId}}.nuspec"
                         Id="R1" />
         </Relationships>
         """;

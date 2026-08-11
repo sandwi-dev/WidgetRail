@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    This is the canonical pre-release unit shared by WidgetSdk, gbar, and the
+    ControllerWidget template. Change it intentionally with the public API
+    baseline and compatibility evidence; it is not a post-1.0 promise.
+  -->
+  <PropertyGroup>
+    <WidgetSdkReleaseVersion>0.1.0-dev</WidgetSdkReleaseVersion>
+    <WidgetSdkPackageId>GameBarAlternative.WidgetSdk</WidgetSdkPackageId>
+    <ControllerWidgetTemplateVersion>1</ControllerWidgetTemplateVersion>
+  </PropertyGroup>
+</Project>

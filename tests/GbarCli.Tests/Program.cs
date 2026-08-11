@@ -71,6 +71,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
+    ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -336,6 +337,7 @@ static async Task NewScaffolds()
     Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", project);
     Assert.DoesNotContain("ProjectReference", project);
     var expectedSdk = LocalWidgetSdkPackage.Create();
+    Assert.Contains($"Version=\"{expectedSdk.Version}\"", project);
     var sdkPackage = Path.Combine(destination, ".gbar", "packages",
         expectedSdk.FileName);
     Assert.True(File.Exists(sdkPackage), "The offline SDK package was not scaffolded.");

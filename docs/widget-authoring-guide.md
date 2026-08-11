@@ -134,6 +134,14 @@ directory; one final directory rename publishes the project. Choose an output
 path that does not exist. On any failure, `gbar` removes its staging directory
 without deleting or overwriting an author-owned path.
 
+The current CLI/template/SDK release unit is the pre-release version
+`0.1.0-dev`. The generated local package appends a deterministic
+`.local.<16-hex>` content suffix and the project consumes that exact version.
+Contributors changing public SDK signatures must use the checked-in
+[Widget SDK compatibility workflow](widget-sdk-compatibility.md); additions,
+removals, and signature changes all require an intentional baseline diff, and
+breaking pre-release resets do not require retaining obsolete APIs.
+
 The smallest useful widget is a public `Widget` subclass with a public
 parameterless constructor (or one whose parameters are all optional):
 
