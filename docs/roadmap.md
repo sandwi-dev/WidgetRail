@@ -591,13 +591,12 @@ Staged rollout:
 **Current delivery sequence:** DLV-059 `c7c354d`, corrected by DLV-071
 `355a858`, is accepted and integrated through `6f4c642`; the trusted Start
 Menu/AppsFolder and Steam sources now sit behind one normalized internal
-contract with a real production terminal owner. DLV-060 correctly stopped
-before edits because the current public capability materializes and caps the
-library at 512 items. Assigned DLV-072 replaces that obsolete pre-release path
-with bounded opaque cursor queries and migrates Games & Apps; DLV-060 then ships
-the dedicated installed-only Game Launcher over those queries plus the accepted
-cursor-grid and lazy-artwork foundations. DLV-066 adds explicit favorites and
-preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
+contract with a real production terminal owner. Accepted DLV-072 `fe66470`,
+integrated through `7f23738`, replaces the obsolete 512-item snapshot with
+bounded opaque cursor queries and migrates Games & Apps. Assigned DLV-060 now
+ships the dedicated installed-only Game Launcher over those queries plus the
+accepted cursor-grid and lazy-artwork foundations. DLV-066 adds explicit
+favorites and preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
 Host-owned query/text entry and additional store adapters remain later
 serialized stages rather than being hidden inside the first widget.
 

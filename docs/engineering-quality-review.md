@@ -32,12 +32,14 @@ lease, or HWND. Exact visible integration retained one production PID across
 two launches.
 
 DLV-060 also stopped correctly before edits after proving a framework gap: the
-public app-library service and broker materialize and cap one snapshot at 512
-items. That contract cannot support the required 2,000/10,000-item launcher
-without a fake test or widget-local cache. DLV-072 therefore explicitly replaces
-the obsolete pre-release offset/snapshot path with bounded revision-bound
-cursor queries, migrates Games & Apps, and requires one clean exact-commit
-cross-process integration checkpoint before visible Game Launcher work resumes.
+public app-library service and broker materialized and capped one snapshot at
+512 items. Accepted DLV-072 `fe66470`, integrated through `7f23738`, replaces
+that obsolete pre-release path with bounded revision-bound cursor queries,
+migrates Games & Apps, and keeps the complete 10,000-item catalog solely in the
+normalized provider. Focused provider/broker/SDK/Games/bridge/generic-worker
+evidence passes. Its one clean exact-commit aggregate was run once and stopped
+on inherited YT Music package metadata drift after the changed SDK checks passed;
+visible Game Launcher DLV-060 is now active over the accepted cursor contract.
 
 This cycle closes the bounded security-stabilization implementation gate and
 then returns to product work. DLV-001 (`d0c0420`) completes the exact-token,

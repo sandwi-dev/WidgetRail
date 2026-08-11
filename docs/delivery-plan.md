@@ -729,10 +729,11 @@ route/action, playback, and presentation boundaries while retaining one
   corrected by DLV-071 `355a858`, is accepted and integrated through
   `6f4c642`: the normalized sources now have one production provider terminal
   owner with bounded cancellation, drain, exact-once disposal, and stale-
-  publication rejection. DLV-072 is active and replaces the 512-item snapshot
-  capability that correctly blocked DLV-060, followed by visible DLV-060,
-  DLV-066, and DLV-067. DLV-038 remains deferred test-architecture debt rather
-  than filler work.
+  publication rejection. DLV-072 `fe66470` is accepted and integrated through
+  `7f23738`: the obsolete 512-item snapshot is replaced by bounded opaque cursor
+  queries and Games & Apps now consumes that contract. Visible DLV-060 is active,
+  followed by DLV-066 and DLV-067. DLV-038 remains deferred test-architecture
+  debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3024,7 +3025,7 @@ fully repackaged main, and visibly launched the coherent Release.
 
 ### DLV-072 — Replace the 512-item app-library snapshot with cursor queries
 
-**State:** Assigned
+**State:** Done; accepted as `fe66470`, integrated through `7f23738`
 **Lane:** widgets, acting as serialized managed capability lead
 **Baseline:** closing correction commit `355a858`; merge accepted main
 `0b21384` at the next clean boundary before DLV-060
@@ -3089,9 +3090,22 @@ authority, the change requires native collection semantics beyond accepted
 DLV-006, another lane owns a required shared file, or credible implementation
 would retain the complete 10,000-item library in the capability/widget path.
 
+**Reviewer disposition:** Accepted. One provider-owned catalog now serves
+bounded 64-row forward/reverse revision-bound pages; the broker retains at most
+256 current launch/artwork registrations, SavedId resolution traverses without
+projecting or retaining the whole catalog, and Games & Apps retains one 32-row
+page. Focused Release evidence passes provider 43, broker 52, SDK 85, API
+compatibility 12, Games 57, Bridge 70, production generic-worker conformance 6,
+and documentation 54. The single required clean exact-commit aggregate is
+retained as `20260811T112248Z-40d644bc`; it stopped on inherited YT Music package
+metadata drift (`0.2.6` expected versus packaged `0.2.7`) after the changed SDK
+and compatibility checks passed, and was correctly not repeated. The planner
+integrated the candidate through `7f23738`; DLV-060 consumes the accepted public
+cursor contract unchanged.
+
 ### DLV-060 — Ship an installed-only Game Launcher library
 
-**State:** Ready
+**State:** Assigned
 **Lane:** widgets, acting as serialized managed capability/widget lead
 **Baseline:** closing commit of DLV-072
 **Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, DLV-059, DLV-071, and
