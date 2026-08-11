@@ -423,9 +423,10 @@ not irreversible API priority:
    renderer assertions plus packaged Games & Apps, Spotify, and component-
    gallery captures.
    **DLV-003 (`27b0319`, integrated by `703c5bb`) implemented the narrow Button
-   geometry slice, but 2026-08-09 packaged Now Playing evidence still shows
-   shared icon/label/trailing-content imbalance. Product acceptance is reopened
-   as DLV-021 across Button, ActionSurface, and SectionHeader composition.**
+   geometry slice. DLV-021 (`b714efe`, integrated by `bc2de86`) now gives
+   Button, ActionSurface, and SectionHeader one DirectWrite measurement/paint
+   model and exact five-product profile coverage. Packaged visual confirmation
+   of the original Now Playing and Spotify reports remains.**
 5. **Hold Y to refresh the selected widget from the icon tray.** Keep tap Y as
    the existing enter/exit-reorder command, but defer that tap decision long
    enough for a clearly hinted hold gesture. Crossing the bounded hold threshold

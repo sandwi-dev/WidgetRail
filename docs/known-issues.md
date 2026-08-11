@@ -76,9 +76,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | Typed status-only service failures and bounded safe UI copy remain intact through DLV-009's immutable presentation/current-attempt migration; focused YT Music coverage passes 51/51 and real-companion failure evidence remains. |
 | GBA-056 | P1 | Confirmed | Spotify widget focus composition | Left from the inactive seek Slider moves to Previous track instead of the navigation menu to its left; DLV-022 owns explicit responsive focus edges. |
 | GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | Auto-loading list transitions visibly jump focus from bottom to top or top to bottom when replacing pages; DLV-006 owns continuous cursor/append and keyed viewport anchoring. |
-| GBA-058 | P1 | Confirmed | SectionHeader / native text geometry / Spotify | The `LIBRARY` header in Spotify Playlists is vertically clipped in the packaged overlay; DLV-021 owns shared header measurement and DLV-022 verifies Spotify composition. |
+| GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
 | GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
-| GBA-060 | P1 | Confirmed | Native renderer / shared component geometry | Button text/icon/checkmark alignment remains visibly inconsistent across first-party surfaces including Now Playing; DLV-021 reopens shared end-to-end measurement and paint evidence. |
+| GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
 | GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
@@ -1790,13 +1790,21 @@ clipped above the playlists content. Spotify currently overrides shared
 SectionHeader content height, while shared intrinsic measurement and trailing
 actions also participate in allocation.
 
-**Ownership:** DLV-021 must reproduce and correct shared SectionHeader
-measurement/paint first; DLV-022 verifies Spotify no longer adds compensating
-geometry.
+**Ownership:** Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) corrects
+shared SectionHeader measurement/paint and proves complete bounds through the
+production renderer. DLV-022 still verifies the composed live Spotify route
+while migrating its continuous list/focus behavior.
 
 **Acceptance:** Eyebrow, title, description, and optional Play/trailing action
 fit their measured content at compact/standard/wide and 100-150% scales, remain
 unclipped during responsive changes, and expose matching semantic bounds.
+
+**Current evidence:** NativeTextLayout 25, DeclarativeLayout 250,
+DeclarativeRenderer 4,769, and shared component geometry 589 pass. Exact Spotify
+fixtures retain complete eyebrow/title/description bounds at compact, standard,
+wide/150%, and combined high-contrast/reduced-transparency profiles. The issue
+remains Verifying until the freshly built packaged overlay confirms the user's
+original live surface.
 
 ## GBA-059 — Games & Apps lacks trusted artwork for saved games
 
@@ -1829,6 +1837,13 @@ DLV-003's narrower automated result.
 icon-label-checkmark/busy variants, wrapped/ellipsized labels, disabled/
 selected/focused states, and every supported scale; Games & Apps, Spotify, Now
 Playing, Settings, and SDK Gallery require no local pixel offsets.
+
+**Current evidence:** Accepted DLV-021 (`b714efe`, integrated by `bc2de86`)
+introduces one NativeTextLayout measurement/paint plan and exact shared-component
+fixtures for all five named products across four profile classes. Selected,
+busy, disabled, icon, label, trailing cue, wrapped text, and real DirectWrite
+paint assertions pass. Keep Verifying until the user checks the new packaged
+Release visually.
 
 ## GBA-061 — Spotify randomly falls back to a full load-error screen
 

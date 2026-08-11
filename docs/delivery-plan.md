@@ -621,16 +621,16 @@ Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040 and
-DLV-046 are accepted and integrated on `main`. DLV-047 is committed but remains
-unaccepted because its newly created managed test project predates and violates
-the `MSTest.Sdk` 4.3.2 policy. The agent had already started DLV-048, so DLV-048
-remains the current assignment and bounded DLV-050 is the immediate correction
-after it; neither candidate enters `main` until the correction is accepted. No
+DLV-046 are accepted and integrated on `main`. DLV-047 and DLV-048 are committed
+as `7e33f45` and `829e9fd` but remain unaccepted as one contiguous prefix because
+DLV-047's newly created managed test project predates and violates the
+`MSTest.Sdk` 4.3.2 policy. DLV-050 is now the active bounded correction; none of
+that candidate prefix enters `main` until DLV-050 is independently accepted. No
 third safe widgets-only Ready item is manufactured: DLV-006 is the next
-serialized visible foundation once DLV-021 is accepted, and it unlocks Spotify
+serialized visible foundation after the active corrections, and it unlocks Spotify
 focus fixes, Games artwork, and the game launcher. DLV-043 and DLV-038 remain
-dependency-ordered architecture debt rather than filler work. Platform DLV-021/
-DLV-049 continue to supply the required visible-product lane.
+dependency-ordered architecture debt rather than filler work. Platform DLV-049
+continues to supply the required visible-product lane.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -1846,8 +1846,8 @@ owns that bounded correction after the already-started DLV-048 milestone.
 
 ### DLV-048 — Compile-test the canonical widget authoring path
 
-**State:** Assigned on the unaccepted DLV-047 candidate; finish the coherent
-milestone before DLV-050 and do not mix the correction into this commit
+**State:** Completed as `829e9fd`; retained in the unaccepted DLV-047/DLV-048
+prefix until the separate DLV-050 correction is reviewed
 **Baseline:** closing commit of DLV-047
 **Dependencies:** DLV-010, DLV-046, and DLV-047
 **Owner:** canonical public C# examples, generated starter verification,
@@ -1884,10 +1884,24 @@ suite.
 **Stop/escalate when:** proof requires external publication/credentials, a new
 public API, or broad documentation restructuring beyond the canonical path.
 
+**Reviewer disposition:** Accepted at code and focused-evidence level, but not
+yet integrated because it is a descendant of the DLV-047 compatibility
+candidate awaiting DLV-050. The exact generated `VolumeControl.cs` is the only
+canonical starter source and is compared byte-for-normalized-byte to the
+scaffolded file before that file builds and executes outside the checkout. Eight
+marked quickstart blocks bind create/build/test, validate, render, replay,
+pack/install, version selection/rollback, and removal claims to the same
+external fixture. The fixture also proves actionable invalid-GBSS failure,
+three replay actions, byte-identical portable packages, two installed versions,
+rollback, and complete uninstall. Retained focused Release evidence
+`20260811T040047Z-d8e6fe07` passes GbarCli/scaffold 55/55 and documentation
+validation across 53 Markdown files in 39.912 seconds. DLV-050 may correct only
+the preceding compatibility-test framework/verifier boundary; it must not
+rewrite this accepted author journey.
+
 ### DLV-050 — Adopt MSTest.Sdk 4.3.2 for the new SDK compatibility tests
 
-**State:** Ready immediately after DLV-048; execute before any later widgets
-work
+**State:** Assigned; execute before any later widgets work
 **Baseline:** closing commit of DLV-048, including unaccepted DLV-047 candidate
 `7e33f45`
 **Dependencies:** DLV-047 and DLV-048 only for contiguous lane order
@@ -2171,12 +2185,14 @@ commit, merge, reset, stash, or discard its uncommitted DLV-025 evidence
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
 not be reset or overwritten. DLV-026 is integrated but failed live product
-acceptance; DLV-021 remains Assigned and must reach its coherent commit, then
-DLV-049 is the next correction before any earlier Ready item. A
+acceptance. DLV-021 is accepted and integrated as `bc2de86`; DLV-049 is now
+Assigned before any earlier Ready item. Its production-host fixture ownership
+includes the smallest managed test-fixture-only state needed to reproduce the
+four-session product shape, but excludes managed Audio Mixer product source. A
 blocked compositor milestone does not authorize idling the platform lane or
 switching both lanes to backend refactors. DLV-015 and DLV-016 are the two safe
 independent later items; DLV-006 is the higher-priority serialized visible
-checkpoint after DLV-021, DLV-011 awaits that shared baseline, and DLV-025
+checkpoint after the active corrections, DLV-011 awaits that shared baseline, and DLV-025
 remains user-decision blocked.
 
 ### DLV-003 — Correct shared button-content geometry
@@ -2416,9 +2432,10 @@ than adding a native special case.
 
 ### DLV-021 — Correct shared text and component geometry end to end
 
-**State:** Assigned
+**State:** Done; accepted and integrated on `main` as `bc2de86`
 **Baseline:** accepted DLV-026 closing commit `9cc633a` (integrated on `main`
 as `4957101`)
+**Closing commit:** `b714efe` (`[DLV-021] unify shared text geometry`)
 **Owner:** native declarative measurement/paint, shared Button/ActionSurface/
 SectionHeader styles, and component-level semantic/capture tests
 
@@ -2450,11 +2467,26 @@ capture matrix. No aggregate.
 **Stop/escalate when:** the defect is proven to be product-specific composition
 with no shared geometry cause, or correction changes a public layout contract.
 
+**Reviewer disposition:** Accepted. One `NativeTextLayoutPlan` now supplies
+DirectWrite measurement and paint from the same transform, font, wrapping,
+trimming, spacing, overhang, and baseline inputs; non-wrapping rows remeasure
+cross-size after final flex widths, and intrinsic extents round outward at the
+effective pixel scale. The direct production-renderer matrix covers Games &
+Apps, Spotify, Now Playing, Settings, and SDK Gallery at compact, standard,
+wide/150%, and combined high-contrast/reduced-transparency profiles, including
+selected, busy, disabled, trailing-action, and complete text-bound assertions.
+Focused Release evidence passes NativeTextLayout 25, DeclarativeLayout 250,
+DeclarativeRenderer 4,769, shared component geometry 589, NativeStyle, the
+production host build, and 52 documentation contracts. The standalone body
+artifact retains 16 Games/Spotify renders with zero renderer diagnostics and
+honestly excludes its existing Settings worker-start gap; live packaged visual
+confirmation remains in the verification queue.
+
 ### DLV-049 — Correct the live Audio Mixer reverse-scroll state
 
-**State:** Ready immediately after DLV-021; execute before DLV-015
-**Baseline:** closing commit of DLV-021 plus integrated DLV-026 candidate
-`4957101`
+**State:** Assigned on platform commit `b714efe`; execute before DLV-015
+**Baseline:** accepted DLV-021 closing commit `b714efe` plus integrated DLV-026
+candidate `4957101`
 **Dependencies:** DLV-021 only for same-lane order; independent of blocked
 DLV-025
 **Owner:** platform lane over emitted-snapshot inspection, native focus target
@@ -2514,8 +2546,8 @@ changes or a defect inseparable from the blocked compositor architecture.
 
 ### DLV-015 — Add deterministic real-host accessibility proof
 
-**State:** Ready after DLV-021
-**Baseline:** closing commit of DLV-021
+**State:** Ready after DLV-049
+**Baseline:** closing commit of DLV-049
 **Owner:** native accessibility adapter, host harness, and retained evidence
 
 **Objective:** Exercise the production UI Automation projection over
@@ -2577,8 +2609,8 @@ one Assigned on an accepted integrated baseline.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Highest-priority serialized visible foundation after DLV-019 and
-DLV-021; awaiting planner-selected lead/baseline
+**State:** Highest-priority serialized visible foundation after DLV-049 and
+DLV-050; awaiting planner-selected lead/baseline
 **Intended lead:** planner-selected serialized protocol lane
 **Dependencies:** DLV-004 and DLV-005
 

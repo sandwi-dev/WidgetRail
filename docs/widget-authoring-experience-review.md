@@ -1,8 +1,8 @@
 # Widget Authoring Experience Review
 
-Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, and transactional versioned template generation, manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
+Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, transactional versioned template generation, and a compile-tested canonical offline author journey are implemented or complete in the current reviewed candidate; manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK with API governance, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-10<br>
-Reassessed: 2026-08-10 against integrated `main` `6b9144d`, including accepted DLV-010 external package-journey proof, DLV-028 Network responsibility boundaries, DLV-030 YT Music responsibility boundaries, and the earlier advanced-widget evidence plus the two-lane delivery plan<br>
+Reassessed: 2026-08-10 against integrated `main` `bc2de86` and reviewed widgets candidates through DLV-048 `829e9fd`; DLV-047/DLV-048 remain unintegrated until the bounded DLV-050 MSTest correction is accepted<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -46,8 +46,13 @@ proof, source-aware deterministic packaging, and local version
 selection/rollback/removal without checkout references. Accepted DLV-046 adds a
 closed versioned text/binary inventory, bounded paths/content, validated sibling
 staging, one atomic publish, and rollback that never touches author output.
-Externally published SDK/API governance remains open while native geometry,
-feedback, accessibility, and performance work continues independently.
+Reviewed DLV-048 candidate `829e9fd` then makes the exact generated starter and
+eight marked quickstart phases one compile-tested external-directory journey,
+removing the divergent Tutorial 1 command/source sequence. It is held from
+integration only because preceding DLV-047 requires the bounded DLV-050 test-
+framework correction. Externally published SDK/API governance remains open
+while native geometry, feedback, accessibility, and performance work continues
+independently.
 
 The framework becomes difficult when a widget has multiple pages, remote state,
 commands, caching, optimistic updates, and lifecycle-sensitive work. Authors
@@ -141,10 +146,13 @@ content-addressed SDK package into a relative feed and generates the executable
 snapshot proof; no checkout or `--sdk-project` is required. DLV-046 makes that
 operation all-or-nothing over one strict versioned text/binary inventory and
 proves malformed input, unreadable files, validation failure, cancellation,
-destination races, and cleanup. Focused external-directory evidence executes
-the complete local package lifecycle. Publication, API compatibility governance,
-and generic isolated scenario execution remain the boundaries between this
-accepted local journey and a supported public release.
+destination races, and cleanup. Reviewed DLV-048 candidate `829e9fd` adds the
+missing documentation contract: the exact emitted starter is embedded once in
+the quickstart and compared to the generated compiled source, while the same
+external fixture executes every marked local package-lifecycle phase. Publication,
+the pending DLV-050 compatibility-test correction, and generic isolated scenario
+execution remain the boundaries between this local journey and a supported
+public release.
 
 The presentation layer is further along than an earlier gap list implied.
 Pressed-state delivery, bounded subtree translation, responsive branches and
@@ -677,27 +685,25 @@ Retained focused evidence passes CLI/scaffold 53/53, catalog 35/35, and 52
 documentation contracts. This is now a credible cloneable local repository
 journey, though not yet an externally published SDK release.
 
-At the pre-DLV-010 baseline, `gbar new widget` resolved one explicit dependency contract. Under this
-repository it discovers `WidgetSdk.csproj`; elsewhere `--sdk-project` must name
-an existing non-reparse `WidgetSdk.csproj`. Resolution and MSBuild path escaping
-happen before output creation, and no unpublished package fallback remains. A
-focused test copies templates beneath an unrelated temporary root, proves the
-missing-SDK case leaves no target directory, supplies the exact SDK project,
-and successfully completes the generated project's Release build. It injects
-`GBAR_TEMPLATE_ROOT` and points back to the checkout SDK, so it proves the
-interim source override rather than a packaged CLI/feed or cloneable repository.
+Accepted DLV-046 (`84ef91b`, integrated by `06f6cc6`) closes the former template
+atomicity gap. A version-1 closed inventory distinguishes bounded replacement
+text from binary assets, rejects missing/undeclared/duplicate/traversing/reparse/
+oversized input and invalid destinations, stages outside the final target, and
+publishes only by one rename after validation. Failure removes only the owned
+staging tree and never overwrites or deletes author output. Focused evidence
+passes GbarCli/scaffold 54/54 and 52 documentation contracts.
 
-The generator's atomicity stops at that preflight. `NewCommand` then creates the
-final target, recursively enumerates every file beside `template.json`, reads
-each as text, performs global token replacement, and writes it immediately. It
-never parses `templateVersion`, declares an allowed file inventory, distinguishes
-text from binary assets, bounds the template tree, rejects reparse traversal, or
-rolls back a later failure. An unreadable template or destination error can
-leave a partial project; an unexpected backup file is copied silently; and a
-future PNG starter asset cannot survive the text pipeline. Current tests do not
-exercise any of those cases. A professional starter should be a strict versioned
-input artifact and publish atomically, not be whatever files happen to exist in
-a directory at enumeration time.
+Reviewed DLV-048 candidate `829e9fd` closes the local canonical-documentation
+gap. `CanonicalAuthorJourneyContract` requires exactly eight marked blocks,
+compares the documented C# source to the emitted `VolumeControl.cs`, rejects
+absolute checkout and advanced/credential-adjacent content, and binds the
+documented commands to the external fixture that actually builds, executes,
+validates, renders, replays, packs, installs, selects, rolls back, and removes.
+The fixture additionally proves actionable invalid-style failure, all three
+starter actions, portable byte-identical packages, and complete uninstall.
+Retained Release evidence `20260811T040047Z-d8e6fe07` passes GbarCli 55/55 and
+53 Markdown contracts. Integration waits only for the preceding DLV-047
+candidate's DLV-050 framework correction.
 
 DLV-010 closes the prior generated-test and source-to-package breaks. The
 sibling executable uses public `WidgetTestHost` and `SnapshotJson`, exercises
@@ -1626,15 +1632,14 @@ OAuth, hardware, or user secrets. Visual artifacts should be deterministic
 enough for review, with pixel comparisons used cautiously and semantic
 snapshots retained as the primary contract.
 
-The newly expanded public guide and quickstart make both NavigationShell and
-scenario preview much easier to discover, but their copyable examples are not
-compiled by `Documentation.Tests`. The invalid quickstart glyph and stale
-focus/action wording are corrected, and the guide now lists the additive
-protocol-v1–v13 feature matrix. The repository has 70 C# fences, while the
-documentation suite validates links and selected headings/phrases only.
-Canonical end-to-end snippets should still be compile-tested against the same
-SDK reference an external widget uses so documentation cannot remain green
-while recommended code drifts.
+The expanded public guide and quickstart make both NavigationShell and scenario
+preview easier to discover. DLV-048 candidate `829e9fd` now compile-tests the
+canonical getting-started source against the same local SDK release unit an
+external scaffold consumes and executes the eight marked command phases through
+the same external fixture. The broader repository still has many illustrative
+C# fences that are not compilation contracts; advanced snippets should either
+remain clearly illustrative or graduate into focused compiled examples when
+they become recommended canonical paths.
 
 ### 10. Higher-level test harness
 
@@ -1818,9 +1823,10 @@ and fail-closed scenario selection with contract and safety tests.
    deterministic bounds/focus/scroll assertions and reviewed tolerant images
    from clean current packages.
 5. Fluent deterministic test harness.
-6. Compile-test the canonical copyable guide and quickstart examples against
-   the public SDK; the corrected glyph and protocol-matrix regressions
-   demonstrate why prose-only checks are insufficient.
+6. **Completed at local-candidate level by DLV-048 `829e9fd`:** compile-test the
+   canonical quickstart source and execute its marked external author journey.
+   Future recommended canonical paths must use the same derived/compiled model;
+   illustrative advanced fences need not become a repository-wide migration.
 7. Complexity-tiered templates.
 
 ### Phase 4: broaden the ecosystem carefully
