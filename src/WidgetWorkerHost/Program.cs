@@ -18,7 +18,10 @@ internal static class Program
             catch (WidgetLoadException exception)
             {
                 throw new WidgetWorkerBootstrapException(
-                    exception.Code, exception.Message, exitCode: 2, exception);
+                    exception.Code,
+                    exception.Message,
+                    WidgetWorkerStartupDiagnostics.ExitCodeFor(exception.Code),
+                    exception);
             }
         }).ConfigureAwait(false);
     }

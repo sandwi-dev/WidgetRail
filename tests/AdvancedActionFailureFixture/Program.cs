@@ -8,6 +8,14 @@ internal static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        var failOnceMarker = OptionalValue(args, "--fail-once");
+        if (failOnceMarker is not null && !File.Exists(failOnceMarker))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(failOnceMarker))!);
+            using var marker = new FileStream(
+                failOnceMarker, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            return 65;
+        }
         var pipeName = RequiredValue(args, "--widget-pipe");
         var instanceId = RequiredValue(args, "--widget-instance");
         var maximumBytes = int.Parse(
@@ -45,6 +53,15 @@ internal static class Program
         var index = Array.IndexOf(args, name);
         if (index < 0 || index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
             throw new ArgumentException($"Missing required argument {name}.");
+        return args[index + 1];
+    }
+
+    private static string? OptionalValue(string[] args, string name)
+    {
+        var index = Array.IndexOf(args, name);
+        if (index < 0) return null;
+        if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
+            throw new ArgumentException($"Missing value for {name}.");
         return args[index + 1];
     }
 

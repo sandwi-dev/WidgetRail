@@ -12,6 +12,7 @@ internal sealed class WidgetProcessSession(
     private readonly object _terminalGate = new();
     private Task? _terminalTask;
     private int _activePublications;
+    private int _handshakeCompleted;
     private TaskCompletionSource? _publicationsDrained;
 
     internal WidgetPendingRequests PendingRequests { get; } = new();
@@ -28,6 +29,7 @@ internal sealed class WidgetProcessSession(
     {
         get { lock (_terminalGate) return _terminalTask is not null; }
     }
+    internal bool HandshakeCompleted => Volatile.Read(ref _handshakeCompleted) != 0;
 
     private IDisposable? _processLease;
     private IWidgetProcessContentLease? _contentLease;
@@ -157,6 +159,9 @@ internal sealed class WidgetProcessSession(
             _readerTask = start(CancellationToken);
         }
     }
+
+    internal void MarkHandshakeCompleted() =>
+        Interlocked.Exchange(ref _handshakeCompleted, 1);
 
     internal bool TryBeginPublication(out IDisposable admission)
     {

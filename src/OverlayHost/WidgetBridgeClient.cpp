@@ -787,8 +787,24 @@ bool HandleAsyncEvent(
         return true;
     }
     if (type == L"widget-failed") {
-        status = L"Widget '" + widgetId +
-                 L"' worker failed and will be restarted on demand.";
+        if (!payload.HasKey(L"reason") ||
+            payload.GetNamedValue(L"reason").ValueType() != JsonValueType::String ||
+            !payload.HasKey(L"restartsUsed") ||
+            payload.GetNamedValue(L"restartsUsed").ValueType() != JsonValueType::Number ||
+            !payload.HasKey(L"canRestart") ||
+            payload.GetNamedValue(L"canRestart").ValueType() != JsonValueType::Boolean) {
+            status = L"WidgetBridge worker failure has an invalid payload.";
+            return false;
+        }
+        const auto diagnostic = OptionalString(payload, L"diagnosticCode");
+        if (!diagnostic.empty() && !IsIdentifier(diagnostic)) {
+            status = L"WidgetBridge worker failure has an invalid diagnostic code.";
+            return false;
+        }
+        status = diagnostic.empty()
+            ? L"Widget '" + widgetId + L"' worker failed; retry to start a fresh worker."
+            : L"Widget '" + widgetId + L"' startup failed (" + diagnostic +
+                  L"); retry to start a fresh worker.";
         return true;
     }
     status = L"WidgetBridge returned an unknown asynchronous event.";
@@ -1258,6 +1274,84 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge lifecycle JSON: " + std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
+    const std::wstring_view widgetId,
+    const std::wstring_view state) {
+    const bool validState = state == L"visible" || state == L"interactive";
+    if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
+        widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
+        !validState) {
+        if (pipe_ != INVALID_HANDLE_VALUE)
+            Fail(L"Widget presentation establishment request is invalid.");
+        return std::nullopt;
+    }
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        payload.Insert(L"state", JsonValue::CreateStringValue(winrt::hstring(state)));
+        payload.Insert(L"admitSnapshot", JsonValue::CreateBooleanValue(true));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"set-widget-lifecycle"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId = 0;
+            if (!ReadRequestId(response, responseId)) {
+                Fail(L"WidgetBridge returned an invalid presentation request ID.");
+                return std::nullopt;
+            }
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(
+                        response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
+                continue;
+            }
+            if (responseId != requestId) {
+                Fail(L"WidgetBridge returned a mismatched presentation request ID.");
+                return std::nullopt;
+            }
+            const auto type = response.GetNamedString(L"type");
+            if (type == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            if (type != L"snapshot" || !response.HasKey(L"payload") ||
+                response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
+                Fail(L"WidgetBridge returned an unexpected presentation response.");
+                return std::nullopt;
+            }
+            const auto responsePayload = response.GetNamedObject(L"payload");
+            if (OptionalString(responsePayload, L"widgetId") != widgetId) {
+                Fail(L"WidgetBridge established presentation for a different widget ID.");
+                return std::nullopt;
+            }
+            auto snapshot = ParseSnapshot(responsePayload.GetNamedObject(L"snapshot"));
+            if (responsePayload.HasKey(L"renderStyles")) {
+                ApplyComputedStyles(
+                    snapshot.root,
+                    responsePayload.GetNamedObject(L"renderStyles"));
+            }
+            lastError_.clear();
+            return snapshot;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge presentation JSON: " +
+             std::wstring(error.message()));
     }
     return std::nullopt;
 }

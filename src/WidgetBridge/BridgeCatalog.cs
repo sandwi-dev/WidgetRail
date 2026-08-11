@@ -58,6 +58,12 @@ internal sealed record ConfiguredWidget
     [JsonIgnore]
     public Func<CancellationToken, IWidgetProcessContentLease>?
         ContentLeaseFactory { get; init; }
+    /// <summary>
+    /// Trusted catalog provenance. Only the packaged generic loader receives
+    /// its closed startup-exit diagnostic vocabulary.
+    /// </summary>
+    [JsonIgnore]
+    public bool UsesGenericWorkerHost { get; init; }
     /// <summary>Trusted host policy; worker manifests and IPC cannot override it.</summary>
     public int MemoryLimitMb { get; init; } = 64;
     /// <summary>
@@ -367,6 +373,7 @@ public sealed class BridgeCatalog
                     installedRoot,
                     widget.ActiveVersion,
                     cancellationToken),
+                UsesGenericWorkerHost = true,
                 StyleFile = styleFile,
                 // Community manifests describe expected usage but do not set
                 // enforcement policy. The trusted host owns this fixed cap.
@@ -617,6 +624,7 @@ public sealed class BridgeCatalog
             RequiresAppContainer = true,
             IsolationKey = BundledIsolationKey(manifest.Publisher, manifest.Id),
             ReadOnlyPaths = [packageRoot],
+            UsesGenericWorkerHost = true,
             StyleFile = styleFile,
             MemoryLimitMb = manifest.ResourceRequest.MemoryMb,
             ResidencyPolicy = residency,
