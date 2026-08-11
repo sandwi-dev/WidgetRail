@@ -171,6 +171,20 @@ internal static class GameLauncherOrganizationPolicy
         return AcceptIfBounded(state, candidate);
     }
 
+    internal static GameLauncherStateMutation RemoveAutomaticManualGames(
+        GameLauncherPrivateState state,
+        IReadOnlySet<string> automaticGameSavedIds)
+    {
+        state = Normalize(state);
+        if (automaticGameSavedIds.Count == 0) return GameLauncherStateMutation.Reject(state);
+        var retained = state.ManualSavedIds.Where(savedId =>
+                !automaticGameSavedIds.Contains(savedId))
+            .ToArray();
+        return retained.Length == state.ManualSavedIds.Count
+            ? GameLauncherStateMutation.Reject(state)
+            : GameLauncherStateMutation.Apply(state with { ManualSavedIds = retained });
+    }
+
     internal static GameLauncherStateMutation Pair(
         GameLauncherPrivateState state,
         GameLauncherDisplayItem first,

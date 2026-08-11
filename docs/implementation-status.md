@@ -1713,6 +1713,17 @@ themes also use non-shrinking fixed regions, a thin native Slider
  Widget SDK app-library contracts, PlatformBroker exact resolution/launch,
  generic-worker routing, an installed add/exact-launch route, direct restart,
  remove, stale-rejection fixtures, and 55 documentation contracts.
+ DLV-080 corrects the retained-slice composition without changing schema v4 or
+ provider contracts. Every cursor loader result now contains only the provider
+ page (at most 64 rows); up to 32 freshly resolved recent and 32 manually added
+ rows render in separate non-anchor sections, deduplicated by exact SavedId
+ before the provider grid. Recent: First therefore leads with a later-page game
+ after cold restart, while launch still performs fresh exact resolution.
+ Automatic Game registrations are disabled and labeled Included in Add games,
+ and obsolete manual Game membership is removed through bounded CAS state
+ mutation. Focused Release coverage includes a disjoint 64 + 32 + 32 semantic
+ tree, source/favorite/sort coexistence, traversal overlap deduplication,
+ missing/replacement identities, and the installed 64-row-plus-manual route.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

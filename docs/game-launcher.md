@@ -22,9 +22,11 @@ provider identity, infer games from titles, or cache a complete library.
   most 128 opaque SavedIds; the broker resolves them against exact current
   authority-scoped identities and an empty match remains an empty result.
 - The initial and adjacent requests contain at most 64 records. The shared
-  `WidgetCursorResource` appends or prepends complete pages, retains at most 192
-  rows for this widget, remembers at most 256 opaque traversal cursors, and
-  serializes only the retained responsive-grid window.
+  `WidgetCursorResource` appends or prepends complete provider pages, retains at
+  most 192 provider rows for this widget, remembers at most 256 opaque traversal
+  cursors, and serializes only that retained cursor window. Recent and manually
+  added rows are composed in separate fixed sections and never enter provider
+  page, cursor, or viewport-anchor accounting.
 - A 10,000-item library takes 157 bounded pages. Crossing a boundary requests
   focus on the entering keyed tile and retains the authored viewport anchor.
   Previous, Next, Refresh, automatic near-edge pagination, retry, and every tile
@@ -70,10 +72,21 @@ row stores only its opaque SavedId and sanitized display projection, up to 32
 manual entries; no path, command, AUMID, store/provider identifier, or artwork
 bytes enter private state. B or the visible Back action restores the Library
 route and prior focus. On every refresh or worker recreation, manual SavedIds
-are resolved again and merged into the bounded library window. Missing entries
-remain disabled, replacement SavedIds are independent, and activation still
+are resolved again into a separate section of at most 32 rows. Automatic Game
+registrations are labeled **Included** and cannot acquire redundant manual
+membership. Missing entries remain disabled, replacement SavedIds are
+independent, and activation still
 requires the same fresh exact-SavedId resolution and short-lived AppId as an
 automatic game.
+
+When **Recent: First** is selected, at most 32 retained recent display rows are
+resolved and composed ahead of the manual and provider sections in exact saved
+order. This includes a game launched from a later catalog page after a cold
+restart. Exact SavedIds are deduplicated across all three sections, while the
+ordinary provider page remains independently traversable. **Recent: Only** uses
+the same fixed non-authorizing slice. Search, source, favorites, and display sort
+filter the fixed sections without expanding provider queries or caching the
+complete library.
 
 X toggles the focused current game as a favorite. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating

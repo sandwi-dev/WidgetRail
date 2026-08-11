@@ -1568,7 +1568,7 @@ static async Task ExerciseControlAsync(
             await client.SendActionAsync(new WidgetActionEvent(
                 "game-launcher.add.open", openAdd.Id));
             snapshot = await WaitForActionSnapshotAsync(
-                client, "game-launcher.manual.toggle", "Conformance Game 00000");
+                client, "game-launcher.manual.included", "Conformance Game 00000");
             var addSearch = Nodes(snapshot.Root).Single(node =>
                 node.ActionId == "game-launcher.search.commit");
             await client.SendActionAsync(new WidgetActionEvent(
@@ -1587,7 +1587,13 @@ static async Task ExerciseControlAsync(
             await client.SendActionAsync(new WidgetActionEvent(
                 "game-launcher.add.back", back.Id));
             snapshot = await WaitForActionSnapshotAsync(
-                client, "game-launcher.search.commit", "Search installed games");
+                client, "game-launcher.launch", "A Conformance Manual App",
+                requireEnabled: true);
+            Assert.Equal(65, Nodes(snapshot.Root).Count(node =>
+                node.ActionId == "game-launcher.launch"));
+            Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
+                node.ActionId == "game-launcher.launch" &&
+                node.CollectionItemKey is not null));
             var librarySearch = Nodes(snapshot.Root).Single(node =>
                 node.ActionId == "game-launcher.search.commit");
             await client.SendActionAsync(new WidgetActionEvent(
