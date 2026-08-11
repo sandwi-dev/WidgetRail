@@ -10,8 +10,9 @@ namespace GameBarAlternative.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Resolves only allowlisted Steam library-cache files beneath an already
-/// trusted Steam root. Discovery captures bounded object metadata; pixels are
-/// opened, decoded, and normalized only after an opaque artwork demand.
+/// trusted Steam root. Catalog registration is path-normalization only; cache
+/// discovery, object metadata, bytes, decode, and revalidation happen only
+/// after an opaque artwork demand.
 /// </summary>
 internal sealed class WindowsSteamArtworkSource
 {
@@ -39,6 +40,13 @@ internal sealed class WindowsSteamArtworkSource
     private readonly Func<byte[], CancellationToken, string?> _decode;
     private readonly Dictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
     private readonly LinkedList<string> _recency = [];
+    private readonly Dictionary<string, string> _observedRevisionByLocator =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _generationByLocator =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<string>> _rootsByLocator =
+        new(StringComparer.Ordinal);
+    private int _fileProbeCalls;
 
     internal WindowsSteamArtworkSource() : this(
         (bytes, cancellationToken) =>
@@ -55,50 +63,38 @@ internal sealed class WindowsSteamArtworkSource
         get { lock (_cacheGate) return _cache.Count; }
     }
 
-    internal SteamArtworkRegistration? Discover(
-        string trustedSteamRoot,
-        string steamAppId,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!OperatingSystem.IsWindows() ||
-            !WindowsSteamApplicationSource.IsValidAppId(steamAppId))
-            return null;
+    internal int FileProbeCalls => Volatile.Read(ref _fileProbeCalls);
 
+    internal SteamArtworkRegistration? Register(
+        IEnumerable<string> trustedSteamRoots,
+        string steamAppId)
+    {
+        ArgumentNullException.ThrowIfNull(trustedSteamRoots);
+        if (!OperatingSystem.IsWindows() ||
+            !WindowsSteamApplicationSource.IsValidAppId(steamAppId)) return null;
         try
         {
-            var trustedRoot = Path.GetFullPath(trustedSteamRoot);
-            var cacheRoot = Path.Combine(trustedRoot, "appcache", "librarycache");
-            using var root = OpenDirectory(trustedRoot);
-            if (root is null) return null;
-            using var cache = OpenDirectory(cacheRoot);
-            if (cache is null) return null;
-            var finalRoot = GetFinalPath(root);
-            var finalCache = GetFinalPath(cache);
-            if (finalRoot is null || finalCache is null ||
-                !PathEquals(finalCache, Path.Combine(finalRoot, "appcache", "librarycache")))
-                return null;
-
-            foreach (var suffix in CandidateSuffixes)
+            var roots = trustedSteamRoots
+                .Where(root => !string.IsNullOrWhiteSpace(root))
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .Take(WindowsSteamApplicationSource.MaximumLibraries)
+                .ToArray();
+            if (roots.Length == 0) return null;
+            var key = LocatorKey(roots, steamAppId);
+            lock (_cacheGate)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var path = Path.Combine(cacheRoot, steamAppId + suffix);
-                using var file = OpenArtworkFile(path);
-                if (file is null) continue;
-                var finalFile = GetFinalPath(file);
-                if (finalFile is null ||
-                    !PathEquals(Path.GetDirectoryName(finalFile), finalCache) ||
-                    !IsAllowlistedExtension(finalFile))
-                    continue;
-                var revision = CaptureRevision(file);
-                if (revision is null) continue;
-                return new SteamArtworkRegistration(trustedRoot, path, revision);
+                if (!_rootsByLocator.TryGetValue(key, out var canonicalRoots))
+                    _rootsByLocator.Add(key, canonicalRoots = roots);
+                return new(canonicalRoots, steamAppId,
+                    _generationByLocator.GetValueOrDefault(key, "undiscovered"));
             }
         }
         catch (Exception exception) when (IsExpectedFileFailure(exception))
         {
+            return null;
         }
-        return null;
     }
 
     internal string? Load(
@@ -107,22 +103,45 @@ internal sealed class WindowsSteamArtworkSource
     {
         ArgumentNullException.ThrowIfNull(expected);
         cancellationToken.ThrowIfCancellationRequested();
+        var locatorKey = LocatorKey(expected.TrustedSteamRoots, expected.SteamAppId);
+        string? priorRevision;
+        lock (_cacheGate)
+            _observedRevisionByLocator.TryGetValue(locatorKey, out priorRevision);
+        var discovered = DiscoverCurrent(expected, cancellationToken);
+        var currentRevision = discovered?.Revision ?? "missing";
+        string generation;
         lock (_cacheGate)
         {
-            if (_cache.TryGetValue(expected.Revision, out var cached))
+            if (priorRevision is not null &&
+                !string.Equals(priorRevision, currentRevision, StringComparison.Ordinal))
+                _generationByLocator[locatorKey] = currentRevision;
+            _observedRevisionByLocator[locatorKey] = currentRevision;
+            generation = _generationByLocator.GetValueOrDefault(
+                locatorKey, "undiscovered");
+        }
+        var matchesExpectedGeneration = discovered is not null &&
+            (priorRevision is null ||
+                string.Equals(priorRevision, currentRevision, StringComparison.Ordinal)) &&
+            string.Equals(expected.Revision, generation, StringComparison.Ordinal);
+        if (!matchesExpectedGeneration)
+            return null;
+        var current = discovered!;
+        lock (_cacheGate)
+        {
+            if (_cache.TryGetValue(current.Revision, out var cached))
             {
-                TouchLocked(expected.Revision, cached);
+                TouchLocked(current.Revision, cached);
                 return cached.PngBase64;
             }
         }
 
         try
         {
-            using var root = OpenDirectory(expected.TrustedSteamRoot);
+            using var root = ProbeDirectory(current.TrustedSteamRoot);
             if (root is null) return null;
             var cacheRoot = Path.Combine(
-                expected.TrustedSteamRoot, "appcache", "librarycache");
-            using var cache = OpenDirectory(cacheRoot);
+                current.TrustedSteamRoot, "appcache", "librarycache");
+            using var cache = ProbeDirectory(cacheRoot);
             if (cache is null) return null;
             var finalRoot = GetFinalPath(root);
             var finalCache = GetFinalPath(cache);
@@ -130,13 +149,13 @@ internal sealed class WindowsSteamArtworkSource
                 !PathEquals(finalCache, Path.Combine(finalRoot, "appcache", "librarycache")))
                 return null;
 
-            using var file = OpenArtworkFile(expected.FilePath);
+            using var file = ProbeArtworkFile(current.FilePath);
             if (file is null) return null;
             var finalFile = GetFinalPath(file);
             if (finalFile is null ||
                 !PathEquals(Path.GetDirectoryName(finalFile), finalCache) ||
                 !IsAllowlistedExtension(finalFile) ||
-                !string.Equals(CaptureRevision(file), expected.Revision,
+                !string.Equals(CaptureRevision(file), current.Revision,
                     StringComparison.Ordinal))
                 return null;
 
@@ -145,7 +164,7 @@ internal sealed class WindowsSteamArtworkSource
             var bytes = new byte[checked((int)stream.Length)];
             stream.ReadExactly(bytes);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!string.Equals(CaptureRevision(stream.SafeFileHandle), expected.Revision,
+            if (!string.Equals(CaptureRevision(stream.SafeFileHandle), current.Revision,
                     StringComparison.Ordinal) ||
                 !IsAllowlistedPayload(bytes))
                 return null;
@@ -154,13 +173,13 @@ internal sealed class WindowsSteamArtworkSource
             if (png is null) return null;
             lock (_cacheGate)
             {
-                if (_cache.TryGetValue(expected.Revision, out var raced))
+                if (_cache.TryGetValue(current.Revision, out var raced))
                 {
-                    TouchLocked(expected.Revision, raced);
+                    TouchLocked(current.Revision, raced);
                     return raced.PngBase64;
                 }
-                var node = _recency.AddLast(expected.Revision);
-                _cache.Add(expected.Revision, new CacheEntry(png, node));
+                var node = _recency.AddLast(current.Revision);
+                _cache.Add(current.Revision, new CacheEntry(png, node));
                 while (_cache.Count > MaximumCacheEntries)
                 {
                     var oldest = _recency.First!;
@@ -179,6 +198,67 @@ internal sealed class WindowsSteamArtworkSource
         {
             return null;
         }
+    }
+
+    private DiscoveredArtwork? DiscoverCurrent(
+        SteamArtworkRegistration registration,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            foreach (var trustedRoot in registration.TrustedSteamRoots)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var cacheRoot = Path.Combine(trustedRoot, "appcache", "librarycache");
+                using var root = ProbeDirectory(trustedRoot);
+                if (root is null) continue;
+                using var cache = ProbeDirectory(cacheRoot);
+                if (cache is null) continue;
+                var finalRoot = GetFinalPath(root);
+                var finalCache = GetFinalPath(cache);
+                if (finalRoot is null || finalCache is null ||
+                    !PathEquals(finalCache,
+                        Path.Combine(finalRoot, "appcache", "librarycache")))
+                    continue;
+
+                foreach (var suffix in CandidateSuffixes)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var path = Path.Combine(cacheRoot, registration.SteamAppId + suffix);
+                    using var file = ProbeArtworkFile(path);
+                    if (file is null) continue;
+                    var finalFile = GetFinalPath(file);
+                    if (finalFile is null ||
+                        !PathEquals(Path.GetDirectoryName(finalFile), finalCache) ||
+                        !IsAllowlistedExtension(finalFile))
+                        continue;
+                    var revision = CaptureRevision(file);
+                    if (revision is not null)
+                        return new(trustedRoot, path, revision);
+                }
+            }
+        }
+        catch (Exception exception) when (IsExpectedFileFailure(exception))
+        {
+        }
+        return null;
+    }
+
+    private static string LocatorKey(
+        IReadOnlyList<string> roots,
+        string steamAppId) => Convert.ToHexString(SHA256.HashData(
+        Encoding.UTF8.GetBytes(steamAppId + "\0" + string.Join('\0', roots))));
+
+    private SafeFileHandle? ProbeDirectory(string path)
+    {
+        Interlocked.Increment(ref _fileProbeCalls);
+        return OpenDirectory(path);
+    }
+
+    private SafeFileHandle? ProbeArtworkFile(string path)
+    {
+        Interlocked.Increment(ref _fileProbeCalls);
+        return OpenArtworkFile(path);
     }
 
     private void TouchLocked(string revision, CacheEntry entry)
@@ -357,6 +437,11 @@ internal sealed class WindowsSteamArtworkSource
         internal string PngBase64 { get; } = pngBase64;
         internal LinkedListNode<string> Node { get; set; } = node;
     }
+
+    private sealed record DiscoveredArtwork(
+        string TrustedSteamRoot,
+        string FilePath,
+        string Revision);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct FileAttributeTagInfo

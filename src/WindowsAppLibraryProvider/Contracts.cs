@@ -73,12 +73,13 @@ internal sealed record SteamRegistration(
 }
 
 /// <summary>
-/// Host-only evidence for one allowlisted Steam cache file. Paths and object
-/// identity never leave this provider assembly.
+/// Host-only lazy locator for allowlisted Steam cache artwork. Trusted roots and
+/// the numeric app identity never leave this provider assembly; file selection
+/// and object evidence do not exist until explicit artwork demand.
 /// </summary>
 internal sealed record SteamArtworkRegistration(
-    string TrustedSteamRoot,
-    string FilePath,
+    IReadOnlyList<string> TrustedSteamRoots,
+    string SteamAppId,
     string Revision);
 
 internal interface IStartMenuApplicationSource

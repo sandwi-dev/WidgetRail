@@ -398,6 +398,8 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         "Installed Steam replacement reused stale decoded pixels.");
 
     steam.RemoveFirstArtwork();
+    Assert.Equal<string?>(null, await artwork.ResolveAsync(
+        identity, rotatedHandle, CancellationToken.None));
     await client.SendActionAsync(new WidgetActionEvent(
         "game-launcher.refresh", "game-launcher.refresh"));
     snapshot = await WaitForArtworkRotation(

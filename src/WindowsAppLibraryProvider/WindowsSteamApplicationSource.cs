@@ -43,7 +43,12 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
     {
         if (!OperatingSystem.IsWindows()) return [];
         var result = new List<SteamRegistration>();
-        foreach (var library in DiscoverSteamAppsDirectories(cancellationToken))
+        var libraries = DiscoverSteamAppsDirectories(cancellationToken);
+        var trustedRoots = libraries
+            .Select(library => library.TrustedSteamRoot)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        foreach (var library in libraries)
         {
             IReadOnlyList<string> manifests;
             try
@@ -68,10 +73,11 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
                 if (TryReadManifest(manifest, library.TrustedSteamRoot,
                         cancellationToken) is { } registration)
                     result.Add(registration);
-                if (result.Count >= MaximumManifests) return result;
+                if (result.Count >= MaximumManifests)
+                    return RegisterArtwork(result, trustedRoots);
             }
         }
-        return result;
+        return RegisterArtwork(result, trustedRoots);
     }
 
     public SteamRegistration? ReadExact(
@@ -85,7 +91,8 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
         try
         {
             var exact = Path.GetFullPath(manifestPath);
-            var library = DiscoverSteamAppsDirectories(cancellationToken)
+            var libraries = DiscoverSteamAppsDirectories(cancellationToken);
+            var library = libraries
                 .SingleOrDefault(candidate =>
                     IsDirectChild(candidate.SteamAppsDirectory, exact));
             if (library is null) return null;
@@ -93,7 +100,12 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
                 exact, library.TrustedSteamRoot, cancellationToken);
             return current is not null &&
                 string.Equals(current.SteamAppId, steamAppId, StringComparison.Ordinal)
-                    ? current
+                    ? current with
+                    {
+                        Artwork = _artwork.Register(
+                            libraries.Select(candidate => candidate.TrustedSteamRoot),
+                            steamAppId),
+                    }
                     : null;
         }
         catch (Exception exception) when (exception is IOException or
@@ -213,10 +225,18 @@ internal sealed class WindowsSteamApplicationSource : ISteamApplicationSource
             Path.GetFullPath(manifestPath),
             "acf-" + snapshot.Sha256)
         {
-            Artwork = _artwork.Discover(
-                trustedSteamRoot, appId!, cancellationToken),
+            Artwork = _artwork.Register([trustedSteamRoot], appId!),
         };
     }
+
+    private IReadOnlyList<SteamRegistration> RegisterArtwork(
+        IReadOnlyList<SteamRegistration> registrations,
+        IReadOnlyList<string> trustedRoots) => registrations
+        .Select(registration => registration with
+        {
+            Artwork = _artwork.Register(trustedRoots, registration.SteamAppId),
+        })
+        .ToArray();
 
     private static string? ReadBoundedText(string file)
     {

@@ -1671,14 +1671,23 @@ themes also use non-shrinking fixed regions, a thin native Slider
  DLV-094 extends that accepted lazy route to installed Steam registrations. The
  source accepts only direct `_icon.png`/`_icon.jpg`/`_icon.jpeg` files beneath
  the exact non-reparse trusted Steam cache root, records host-only file identity,
- length, file-change, and last-write evidence, caps input at 1 MiB / 4,096 per dimension /
- 16,777,216 decoded pixels, normalizes to the existing 64-pixel / 12-KiB PNG
- contract, and retains at most 64 decoded entries. Steam artwork uses a separate
- four-operation provider lane; a blocked decode cannot serialize catalog or
- lifecycle work. Replacement/removal rejects stale demand and rotates handles
- without changing SavedId or launch authority. Focused Release evidence and the
- installed generic-AppContainer route are recorded with the closing DLV-094
- commit.
+ length, file-change, and last-write evidence, caps input at 1 MiB / 4,096 per
+ dimension / 16,777,216 decoded pixels, normalizes to the existing 64-pixel /
+ 12-KiB PNG contract, and retains at most 64 decoded entries. DLV-096 corrects
+ the rejected candidate by retaining only bounded trusted-root/app identity
+ during catalog enumeration: multi-item list and refresh perform zero artwork
+ filesystem probes, while exact demand owns candidate selection, metadata,
+ bytes, decode, and revalidation. A stable initial lazy generation prevents an
+ unchanged neighbor from rotating merely because its first demand learned file
+ evidence; replacement/removal instead fails the stale demand and rotates only
+ the affected handle on refresh. Steam artwork uses a separate four-operation
+ provider lane. Terminal cleanup cancels first and acquires that lane completely
+ before source disposal or state clearing; cooperative work drains, while an
+ injected cancellation-ignoring operation produces one shared bounded failure
+ and never races disposed source state. Focused Release evidence passes the
+ Windows app-library provider (56/56) and PlatformBroker (54/54) suites plus the
+ exact installed generic-AppContainer Steam-artwork route. No aggregate, native,
+ screenshot, or live Steam verification ran.
  Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,

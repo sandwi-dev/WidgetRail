@@ -517,8 +517,7 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
             .GroupBy(registration => registration.IdentityKey,
                 StringComparer.OrdinalIgnoreCase)
             .Select(group => group
-                .OrderByDescending(registration => registration.Artwork is not null)
-                .ThenBy(registration => registration.ManifestPath,
+                .OrderBy(registration => registration.ManifestPath,
                     StringComparer.OrdinalIgnoreCase)
                 .First())
             .ToArray();
@@ -548,7 +547,7 @@ internal sealed class SteamGameLibrarySource : GameLibrarySourceBase
                 StringComparison.OrdinalIgnoreCase) &&
             string.Equals(current.RevalidationKey, expected.RevalidationKey,
                 StringComparison.Ordinal)
-            ? ToItem(current)
+            ? ToItem(current with { Artwork = expected.Artwork })
             : null;
     }
 

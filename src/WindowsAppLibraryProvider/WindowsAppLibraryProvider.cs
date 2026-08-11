@@ -23,6 +23,7 @@ public sealed class WindowsAppLibraryProvider :
     private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
     private readonly IWindowsRunningAppObserver _runningApps;
+    private readonly TimeSpan _terminalDrainDeadline;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly SemaphoreSlim _artworkGate = new(4, 4);
     private readonly SemaphoreSlim _observationGate = new(1, 1);
@@ -117,14 +118,31 @@ public sealed class WindowsAppLibraryProvider :
     internal WindowsAppLibraryProvider(
         IReadOnlyList<IGameLibrarySource> sources,
         IShellStaExecutor shellSta) : this(
-            sources, shellSta, new WindowsRunningAppObserver())
+            sources, shellSta, new WindowsRunningAppObserver(), TerminalDrainDeadline)
     {
     }
 
     internal WindowsAppLibraryProvider(
         IReadOnlyList<IGameLibrarySource> sources,
         IShellStaExecutor shellSta,
-        IWindowsRunningAppObserver runningApps)
+        TimeSpan terminalDrainDeadline) : this(
+            sources, shellSta, new WindowsRunningAppObserver(), terminalDrainDeadline)
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps) : this(
+            sources, shellSta, runningApps, TerminalDrainDeadline)
+    {
+    }
+
+    private WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps,
+        TimeSpan terminalDrainDeadline)
     {
         ArgumentNullException.ThrowIfNull(sources);
         if (sources.Count == 0 || sources.Count > 16 ||
@@ -143,6 +161,10 @@ public sealed class WindowsAppLibraryProvider :
             source => source.SourceIdentity, StringComparer.Ordinal);
         _shellSta = shellSta ?? throw new ArgumentNullException(nameof(shellSta));
         _runningApps = runningApps ?? throw new ArgumentNullException(nameof(runningApps));
+        if (terminalDrainDeadline <= TimeSpan.Zero ||
+            terminalDrainDeadline > TerminalDrainDeadline)
+            throw new ArgumentOutOfRangeException(nameof(terminalDrainDeadline));
+        _terminalDrainDeadline = terminalDrainDeadline;
     }
 
     public async Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
@@ -496,11 +518,17 @@ public sealed class WindowsAppLibraryProvider :
             string? ResolveArtwork(CancellationToken token)
             {
                 var exact = source.ResolveExact(registration, token);
-                return exact is null ||
-                    !string.Equals(exact.ArtworkRevision,
-                        registration.ArtworkRevision, StringComparison.Ordinal)
-                    ? null
-                    : source.LoadArtwork(exact, token);
+                if (exact is null) return null;
+                if (!string.Equals(exact.ArtworkRevision,
+                        registration.ArtworkRevision, StringComparison.Ordinal))
+                {
+                    // Demand is the only artwork-I/O boundary. Let the exact
+                    // source observe a changed lazy registration, but never
+                    // publish its bytes through the stale generation.
+                    _ = source.LoadArtwork(exact, token);
+                    return null;
+                }
+                return source.LoadArtwork(exact, token);
             }
 
             var png = source.RequiresStaArtwork
@@ -770,36 +798,54 @@ public sealed class WindowsAppLibraryProvider :
         var failures = new List<Exception>();
         var gateHeld = false;
         var observationGateHeld = false;
+        var artworkPermitsHeld = 0;
         try
         {
-            var disposals = _sources
-                .Select(source => Task.Run(() => DisposeSource(source)))
-                .ToArray();
+            using var deadline = new CancellationTokenSource(_terminalDrainDeadline);
             try
             {
-                await _scanGate.WaitAsync().WaitAsync(TerminalDrainDeadline)
-                    .ConfigureAwait(false);
-                gateHeld = true;
-                await _observationGate.WaitAsync().WaitAsync(TerminalDrainDeadline)
-                    .ConfigureAwait(false);
-                observationGateHeld = true;
+                while (artworkPermitsHeld < 4)
+                {
+                    await _artworkGate.WaitAsync(deadline.Token).ConfigureAwait(false);
+                    artworkPermitsHeld++;
+                }
             }
-            catch (TimeoutException exception)
+            catch (OperationCanceledException exception)
             {
                 failures.Add(new InvalidOperationException(
-                    "Game-library provider work did not drain within its bounded deadline.",
+                    "Game-library artwork work did not drain within its bounded deadline.",
                     exception));
             }
 
-            var results = await Task.WhenAll(disposals).ConfigureAwait(false);
-            failures.AddRange(results.OfType<Exception>());
-
-            lock (_stateGate)
+            if (artworkPermitsHeld == 4)
             {
-                _snapshot = null;
-                _registrationsByOpaqueId = new(StringComparer.Ordinal);
-                _opaqueIdsByIdentity.Clear();
-                _iconsByRevalidationKey.Clear();
+                var disposals = _sources
+                    .Select(source => Task.Run(() => DisposeSource(source)))
+                    .ToArray();
+                try
+                {
+                    await _scanGate.WaitAsync(deadline.Token).ConfigureAwait(false);
+                    gateHeld = true;
+                    await _observationGate.WaitAsync(deadline.Token).ConfigureAwait(false);
+                    observationGateHeld = true;
+                }
+                catch (OperationCanceledException exception)
+                {
+                    failures.Add(new InvalidOperationException(
+                        "Game-library provider work did not drain within its bounded deadline.",
+                        exception));
+                }
+
+                var results = await Task.WhenAll(disposals).ConfigureAwait(false);
+                failures.AddRange(results.OfType<Exception>());
+
+                lock (_stateGate)
+                {
+                    _snapshot = null;
+                    _registrationsByOpaqueId = new(StringComparer.Ordinal);
+                    _opaqueIdsByIdentity.Clear();
+                    _iconsByRevalidationKey.Clear();
+                }
             }
         }
         catch (Exception exception)
@@ -810,6 +856,8 @@ public sealed class WindowsAppLibraryProvider :
         {
             if (observationGateHeld) _observationGate.Release();
             if (gateHeld) _scanGate.Release();
+            if (artworkPermitsHeld != 0)
+                _artworkGate.Release(artworkPermitsHeld);
             _lifetime.Dispose();
         }
 

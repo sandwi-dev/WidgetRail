@@ -15,6 +15,9 @@ internal static class SteamArtworkScenarios
         var page = await Query(provider);
         var item = page.Items.Single();
         Assert.Equal(0, resolver.CacheCount);
+        Assert.Equal(0, resolver.FileProbeCalls);
+        _ = await Query(provider, refresh: true);
+        Assert.Equal(0, resolver.FileProbeCalls);
         Assert.True(item.ArtworkRevision.Length == 64);
         var serialized = System.Text.Json.JsonSerializer.Serialize(page);
         Assert.False(serialized.Contains("730", StringComparison.Ordinal));
@@ -29,6 +32,41 @@ internal static class SteamArtworkScenarios
         Assert.True(bytes.AsSpan(0, 8).SequenceEqual(
             new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }));
         Assert.Equal(1, resolver.CacheCount);
+        Assert.True(resolver.FileProbeCalls > 0);
+
+        using var manyLayout = SteamLayout.CreateEmpty();
+        for (var index = 1; index <= 32; index++)
+        {
+            var appId = (30_000 + index).ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+            manyLayout.WriteManifest(appId, $"Steam Game {index}");
+            _ = manyLayout.WriteArtwork(appId, ".png", CreatePng(2, 2, (byte)index));
+        }
+        var manyResolver = new WindowsSteamArtworkSource();
+        await using (var manyProvider = CreateProvider(manyLayout.Root, manyResolver))
+        {
+            Assert.Equal(32, (await Query(manyProvider)).Items.Count);
+            Assert.Equal(32, (await Query(manyProvider, refresh: true)).Items.Count);
+            Assert.Equal(0, manyResolver.FileProbeCalls);
+            var demanded = (await Query(manyProvider)).Items[17];
+            Assert.True((await manyProvider.GetAppLibraryIconAsync(
+                demanded.ProviderAppId, CancellationToken.None)).PngBase64 is not null);
+            Assert.True(manyResolver.FileProbeCalls > 0);
+        }
+
+        using var unavailableLayout = SteamLayout.CreateEmpty();
+        unavailableLayout.WriteManifest("39001", "Cache unavailable");
+        Directory.Delete(Path.Combine(unavailableLayout.Root, "appcache"), recursive: true);
+        var unavailableResolver = new WindowsSteamArtworkSource();
+        await using (var unavailableProvider = CreateProvider(
+                         unavailableLayout.Root, unavailableResolver))
+        {
+            var unavailableItem = (await Query(unavailableProvider)).Items.Single();
+            Assert.Equal(0, unavailableResolver.FileProbeCalls);
+            Assert.Equal<string?>(null, (await unavailableProvider.GetAppLibraryIconAsync(
+                unavailableItem.ProviderAppId, CancellationToken.None)).PngBase64);
+            Assert.True(unavailableResolver.FileProbeCalls > 0);
+        }
 
         using var jpegLayout = SteamLayout.Create(
             "440", ".jpg", await CreateJpeg(13, 9));
@@ -64,8 +102,6 @@ internal static class SteamArtworkScenarios
         if (!OperatingSystem.IsWindows()) return;
         using var layout = SteamLayout.Create("570", ".png", CreatePng(16, 16, 11));
         var resolver = new WindowsSteamArtworkSource();
-        var initialEvidence = resolver.Discover(
-            layout.Root, "570", CancellationToken.None)!;
         var applicationSource = new WindowsSteamApplicationSource([layout.Root], resolver);
         var gameSource = new SteamGameLibrarySource(
             applicationSource, new NoopSteamLauncher());
@@ -83,13 +119,12 @@ internal static class SteamArtworkScenarios
         var priorLength = new FileInfo(layout.ArtworkPath).Length;
         Assert.True(replacement.LongLength <= priorLength);
         Array.Resize(ref replacement, checked((int)priorLength));
-        File.WriteAllBytes(layout.ArtworkPath, replacement);
+        var replacementPath = layout.ArtworkPath + ".replacement";
+        File.WriteAllBytes(replacementPath, replacement);
+        File.Move(replacementPath, layout.ArtworkPath, overwrite: true);
         File.SetLastWriteTimeUtc(layout.ArtworkPath, priorWriteTime);
-        var replacementEvidence = resolver.Discover(
-            layout.Root, "570", CancellationToken.None)!;
-        Assert.False(initialEvidence.Revision == replacementEvidence.Revision);
         var exact = gameSource.ResolveExact(initialSourceItem, CancellationToken.None)!;
-        Assert.False(initialSourceItem.ArtworkRevision == exact.ArtworkRevision);
+        Assert.Equal(initialSourceItem.ArtworkRevision, exact.ArtworkRevision);
         var stale = await provider.GetAppLibraryIconAsync(
             initial.ProviderAppId, CancellationToken.None);
         Assert.Equal<string?>(null, stale.PngBase64);
@@ -151,6 +186,42 @@ internal static class SteamArtworkScenarios
         Assert.True((await demand).PngBase64 is not null);
     }
 
+    internal static async Task ReplacementRetainsUnaffectedNeighbor()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var layout = SteamLayout.CreateEmpty();
+        layout.WriteManifest("701", "Changed game");
+        layout.WriteManifest("702", "Neighbor game");
+        var changedPath = layout.WriteArtwork("701", ".png", CreatePng(9, 9, 17));
+        _ = layout.WriteArtwork("702", ".png", CreatePng(9, 9, 23));
+        var resolver = new WindowsSteamArtworkSource();
+        await using var provider = CreateProvider(layout.Root, resolver);
+
+        var initial = await Query(provider);
+        foreach (var item in initial.Items)
+            Assert.True((await provider.GetAppLibraryIconAsync(
+                item.ProviderAppId, CancellationToken.None)).PngBase64 is not null);
+        var discovered = await Query(provider, refresh: true);
+        var changed = discovered.Items.Single(item => item.DisplayName == "Changed game");
+        var neighbor = discovered.Items.Single(item => item.DisplayName == "Neighbor game");
+        var neighborPng = (await provider.GetAppLibraryIconAsync(
+            neighbor.ProviderAppId, CancellationToken.None)).PngBase64;
+
+        File.WriteAllBytes(changedPath, CreatePng(10, 8, 41));
+        Assert.Equal<string?>(null, (await provider.GetAppLibraryIconAsync(
+            changed.ProviderAppId, CancellationToken.None)).PngBase64);
+        var rotated = await Query(provider, refresh: true);
+        var changedAfter = rotated.Items.Single(item => item.DisplayName == "Changed game");
+        var neighborAfter = rotated.Items.Single(item => item.DisplayName == "Neighbor game");
+        Assert.False(changed.ArtworkRevision == changedAfter.ArtworkRevision);
+        Assert.Equal(neighbor.ArtworkRevision, neighborAfter.ArtworkRevision);
+        Assert.Equal(neighbor.ProviderAppId, neighborAfter.ProviderAppId);
+        Assert.Equal(neighborPng, (await provider.GetAppLibraryIconAsync(
+            neighborAfter.ProviderAppId, CancellationToken.None)).PngBase64);
+        Assert.True((await provider.GetAppLibraryIconAsync(
+            changedAfter.ProviderAppId, CancellationToken.None)).PngBase64 is not null);
+    }
+
     internal static async Task FailuresFallBackAndCacheStaysBounded()
     {
         if (!OperatingSystem.IsWindows()) return;
@@ -181,7 +252,7 @@ internal static class SteamArtworkScenarios
         {
             var appId = (20_000 + index).ToString(System.Globalization.CultureInfo.InvariantCulture);
             var path = cache.WriteArtwork(appId, ".png", CreatePng(1, 1, (byte)index));
-            var registration = resolver.Discover(cache.Root, appId, CancellationToken.None);
+            var registration = resolver.Register([cache.Root], appId);
             Assert.True(registration is not null);
             Assert.True(resolver.Load(registration!, CancellationToken.None) is not null);
             Assert.True(File.Exists(path));
@@ -206,6 +277,31 @@ internal static class SteamArtworkScenarios
         await disposal.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.True(source.ArtworkCancellationObserved);
         Assert.Equal(1, source.ArtworkCalls);
+    }
+
+    internal static async Task CancellationIgnoringArtworkCannotRaceSourceDisposal()
+    {
+        var source = new CancellationIgnoringArtworkSource();
+        var provider = new WindowsAppLibraryProvider(
+            [source], ImmediateSta.Instance, TimeSpan.FromMilliseconds(100));
+        var appId = (await Query(provider)).Items.Single().ProviderAppId;
+        var artwork = provider.GetAppLibraryIconAsync(appId, CancellationToken.None);
+        await source.ArtworkStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var firstDisposal = provider.DisposeAsync().AsTask();
+        var secondDisposal = provider.DisposeAsync().AsTask();
+        var firstFailure = await Assert.ThrowsAsync<AggregateException>(() => firstDisposal);
+        var secondFailure = await Assert.ThrowsAsync<AggregateException>(() => secondDisposal);
+        Assert.True(firstFailure.Flatten().InnerExceptions.Any(exception =>
+            exception.Message.Contains("artwork work", StringComparison.Ordinal)));
+        Assert.True(secondFailure.Flatten().InnerExceptions.Any(exception =>
+            exception.Message.Contains("artwork work", StringComparison.Ordinal)));
+        Assert.Equal(0, source.DisposeCalls);
+        Assert.True(source.CancellationObserved);
+
+        source.ReleaseArtwork.Set();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => artwork);
+        Assert.Equal(0, source.DisposeCalls);
     }
 
     private static WindowsAppLibraryProvider CreateProvider(
@@ -329,7 +425,7 @@ internal static class SteamArtworkScenarios
             "acf-blocked")
         {
             Artwork = new SteamArtworkRegistration(
-                Path.GetTempPath(), Path.Combine(Path.GetTempPath(), "12345_icon.png"),
+                [Path.GetTempPath()], "12345",
                 new string('A', 64)),
         };
 
@@ -362,5 +458,63 @@ internal static class SteamArtworkScenarios
             cancellationToken.ThrowIfCancellationRequested();
             return null;
         }
+    }
+
+    private sealed class CancellationIgnoringArtworkSource : IGameLibrarySource
+    {
+        private readonly GameLibrarySourceItem _item = new(
+            "source-ignoring-artwork",
+            "Ignoring artwork",
+            "stable-ignoring-artwork",
+            "Ignoring artwork",
+            WindowsAppLibraryKind.Game,
+            true,
+            true,
+            GameLibrarySourceActions.Launch | GameLibrarySourceActions.Artwork,
+            new string('B', 64),
+            "item-ignoring-artwork");
+        private int _disposeCalls;
+
+        internal int DisposeCalls => Volatile.Read(ref _disposeCalls);
+        internal bool CancellationObserved { get; private set; }
+        internal TaskCompletionSource ArtworkStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        internal ManualResetEventSlim ReleaseArtwork { get; } = new();
+
+        public string SourceIdentity => "source-ignoring-artwork";
+        public string Attribution => "Ignoring artwork";
+        public bool RequiresStaArtwork => false;
+        public GameLibrarySourceSnapshot Snapshot { get; private set; } = new(
+            "source-ignoring-artwork", "Ignoring artwork", 0,
+            GameLibrarySourceHealth.Unavailable, []);
+
+        public GameLibrarySourceSnapshot Refresh(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Snapshot = new(SourceIdentity, Attribution, 1,
+                GameLibrarySourceHealth.Healthy, [_item]);
+        }
+
+        public GameLibrarySourceItem? ResolveExact(
+            GameLibrarySourceItem item, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return _item;
+        }
+
+        public GameLibraryLaunchResult Launch(
+            GameLibrarySourceItem exactItem, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Launch is not part of this fixture.");
+
+        public string? LoadArtwork(
+            GameLibrarySourceItem exactItem, CancellationToken cancellationToken)
+        {
+            ArtworkStarted.TrySetResult();
+            cancellationToken.Register(() => CancellationObserved = true);
+            ReleaseArtwork.Wait();
+            return Convert.ToBase64String(CreatePng(2, 2, 9));
+        }
+
+        public void Dispose() => Interlocked.Increment(ref _disposeCalls);
     }
 }

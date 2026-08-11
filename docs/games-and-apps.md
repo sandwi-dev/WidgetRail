@@ -245,15 +245,17 @@ disk artwork cache is created.
 
 For an installed Steam registration, the trusted provider may associate the
 exact numeric app identity with an allowlisted `_icon.png`, `_icon.jpg`, or
-`_icon.jpeg` file in that Steam root's local `appcache/librarycache`. It opens
-only a regular non-reparse file beneath the exact trusted root, caps the source
-at 1 MiB / 4,096 per dimension / 16,777,216 decoded pixels, normalizes it to the
-same 64-pixel / 12-KiB PNG contract on demand, and retains at most 64 decoded
-entries in the source cache. File identity, length, file-change, and last-write
-evidence are part of the host-only revision. Replacement or removal therefore
-rejects a stale demand and rotates the opaque handle after refresh. Cache paths,
-Steam AppIds, file identities, and source bytes never enter widget snapshots or
-private state.
+`_icon.jpeg` file in that Steam root's local `appcache/librarycache`. Catalog
+enumeration and refresh retain only a bounded host-internal lazy locator and do
+not open the cache directory or any candidate image. Exact artwork demand opens
+only regular non-reparse objects beneath the trusted root, chooses an allowlisted
+candidate, captures object evidence, caps the source at 1 MiB / 4,096 per
+dimension / 16,777,216 decoded pixels, normalizes it to the same 64-pixel /
+12-KiB PNG contract, and retains at most 64 decoded entries. File identity,
+length, file-change, and last-write evidence are part of the host-only observed
+revision. Replacement or removal rejects the stale demand and rotates only the
+affected opaque handle after refresh. Cache paths, Steam AppIds, file identities,
+and source bytes never enter widget snapshots or private state.
 
 `LaunchAsync` accepts only the short-lived opaque `AppId` returned by a current
 page or resolution. Widgets must never persist AppId. Widgets never
