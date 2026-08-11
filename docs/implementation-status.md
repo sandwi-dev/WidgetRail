@@ -430,6 +430,24 @@ same-page and cross-page duplicates, eviction/refetch, refresh insertion and
 deletion, exact action routing, bounded reset, and the complete prior DLV-022
 collection/lifecycle matrix.
 
+DLV-055 publishes the current immutable Spotify Community package as 0.2.12
+without changing widget behavior or architecture. The supported Release
+package/install workflow validated the authored inputs, packed the expected
+three-file 146,050-byte archive, installed and explicitly selected 0.2.12,
+enabled it, and retained 0.2.11 as an inactive rollback version. The archive
+SHA-256 is
+`99d52e89f5a922fa7347db0bf3a4665e64184925a319d958cdc5dd49f257fa4b`.
+An independent install of that exact archive produced the same content-tree
+digest as the selected installed generation
+(`a946b36c8f818681de5ec39febfd00322accff14f435bfde274a6c94bd8aafef`),
+while retained 0.2.11 remained distinct
+(`abb2cd6f6340b69204489c39b60bb3cd18462010407f60c8f7c4b16ca70fa522`).
+The smallest credential-free production generic-worker fixture loaded the
+selected installed package under required AppContainer isolation and returned
+a valid first Spotify snapshot at sequence 2. The 45-case Spotify behavior
+suite, aggregate, provider, native, screenshot, and live-account verification
+did not run for this packaging-only milestone.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;
@@ -2110,7 +2128,7 @@ with C++ installed:
   `Retry-After`, and sanitized errors. The local `gbar config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
-  setup guidance without opening OAuth automatically. Community package 0.2.10
+  setup guidance without opening OAuth automatically. Community package 0.2.12
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the

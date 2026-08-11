@@ -60,6 +60,24 @@ if (args.Contains("--community-recovery-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--spotify-installed-acceptance", StringComparer.Ordinal))
+{
+    static string RequiredArgument(string[] values, string name)
+    {
+        var index = Array.IndexOf(values, name);
+        return index >= 0 && index + 1 < values.Length &&
+               !string.IsNullOrWhiteSpace(values[index + 1])
+            ? Path.GetFullPath(values[index + 1])
+            : throw new ArgumentException($"{name} requires a path.");
+    }
+    await SpotifyInstalledPackageRunsIsolated(
+        RequiredArgument(args, "--catalog"),
+        RequiredArgument(args, "--package"),
+        RequiredArgument(args, "--acceptance-output"));
+    Console.WriteLine("PASS exact installed Spotify Community package acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -868,6 +886,135 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
             },
         }, CreateEvidenceJsonOptions()));
     }
+}
+
+static async Task SpotifyInstalledPackageRunsIsolated(
+    string catalogRoot,
+    string packagePath,
+    string acceptanceOutput)
+{
+    const string packageId = "org.gbar.samples.spotify";
+    const string currentVersion = "0.2.12";
+    const string rollbackVersion = "0.2.11";
+    Assert.True(File.Exists(packagePath), "The exact Spotify archive is missing.");
+
+    using var validationRoot = new TemporaryDirectory("gba-spotify-dlv055-validation");
+    var inspection = await new WidgetCatalog(validationRoot.Path)
+        .CreateInstaller().ValidateAsync(packagePath);
+    Assert.Equal(packageId, inspection.Id);
+    Assert.Equal(currentVersion, inspection.Version.ToString());
+
+    var catalog = new WidgetCatalog(catalogRoot);
+    var snapshot = await catalog.DiscoverAsync();
+    var selected = snapshot.Widgets.Single(widget => widget.Id == packageId);
+    Assert.True(selected.Enabled, "Spotify 0.2.12 is not enabled.");
+    Assert.Equal(currentVersion, selected.ActiveVersion.Version.ToString());
+    var rollback = selected.Versions.Single(version =>
+        version.Version.ToString() == rollbackVersion);
+    Assert.True(
+        rollback.Version != selected.ActiveVersion.Version,
+        "Spotify 0.2.11 was not retained as a distinct inactive version.");
+
+    using var digestRoot = new TemporaryDirectory("gba-spotify-dlv055-digest");
+    var independentlyInstalled = await new WidgetCatalog(digestRoot.Path)
+        .InstallAsync(packagePath);
+    Assert.Equal(
+        independentlyInstalled.ContentDigest,
+        selected.ActiveVersion.ContentDigest);
+    Assert.True(
+        !string.Equals(
+            rollback.ContentDigest,
+            selected.ActiveVersion.ContentDigest,
+            StringComparison.Ordinal),
+        "Spotify 0.2.12 must have a distinct content digest from 0.2.11.");
+
+    var installedManifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(
+        Path.Combine(selected.ActiveVersion.InstallPath, "manifest.json")));
+    Assert.Equal(currentVersion, installedManifest.Version);
+    Assert.Equal(packageId, installedManifest.Id);
+
+    using var bridgeRoot = new TemporaryDirectory("gba-spotify-dlv055-bridge");
+    var trustedCatalog = Path.Combine(bridgeRoot.Path, "trusted-catalog.json");
+    await File.WriteAllTextAsync(
+        trustedCatalog,
+        "{\"catalogVersion\":1,\"widgets\":[],\"bundledWidgets\":[]}");
+    var workerHost = Path.Combine(AppContext.BaseDirectory, "WidgetWorkerHost.exe");
+    Assert.True(File.Exists(workerHost), "WidgetWorkerHost.exe is missing from test output.");
+    var loaded = await BridgeCatalog.LoadWithInstalledAsync(
+        trustedCatalog, catalogRoot, workerHost);
+    Assert.True(loaded.InstalledCatalogValid, "The installed catalog was not valid.");
+    var configured = loaded.Catalog.GetConfigured(packageId);
+    Assert.True(configured.RequiresAppContainer, "Spotify did not require AppContainer isolation.");
+    Assert.True(
+        configured.ContentLeaseFactory is not null,
+        "Spotify omitted exact installed-package launch authority.");
+    using (var contentLease = configured.ContentLeaseFactory!(CancellationToken.None))
+    {
+        AssertWorkerArguments(
+            configured,
+            contentLease.Targets.Single(target => target.Target.Kind ==
+                AppContainerAuthorityTargetKind.AuthorityRootDirectory).Target.Path,
+            installedManifest);
+    }
+
+    var backend = CreateBackend(spotifyReady: true);
+    using var consentRoot = new TemporaryDirectory("gba-spotify-dlv055-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        MaximumRestartAttempts = 0,
+        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+        StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var first = await WaitForSnapshotAsync(client, "Conformance Spotify Song");
+    Assert.Equal(0, ViewSnapshotValidator.Validate(first).Count);
+    Assert.Equal(1, client.Starts);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+
+    Directory.CreateDirectory(Path.GetDirectoryName(acceptanceOutput)!);
+    await File.WriteAllTextAsync(acceptanceOutput, JsonSerializer.Serialize(new
+    {
+        packageId,
+        sourceVersion = currentVersion,
+        archive = Path.GetFullPath(packagePath),
+        archiveSha256 = Convert.ToHexString(SHA256.HashData(
+            await File.ReadAllBytesAsync(packagePath))).ToLowerInvariant(),
+        installedRoot = selected.ActiveVersion.InstallPath,
+        installedManifestVersion = installedManifest.Version,
+        selectedVersion = selected.ActiveVersion.Version.ToString(),
+        selectedContentDigest = selected.ActiveVersion.ContentDigest,
+        independentlyInstalledContentDigest = independentlyInstalled.ContentDigest,
+        rollbackVersion = rollback.Version.ToString(),
+        rollbackContentDigest = rollback.ContentDigest,
+        rollbackRetainedInactive = true,
+        enabled = selected.Enabled,
+        requiresAppContainer = configured.RequiresAppContainer,
+        firstSnapshotSequence = first.Sequence,
+        firstSnapshotValid = true,
+    }, CreateEvidenceJsonOptions()));
 }
 
 static string[] ReadPackagePaths(string packagePath)

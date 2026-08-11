@@ -4,7 +4,8 @@ This controller-first sample consumes only `WidgetHostServices.Spotify`. It neve
 
 Configure the public Client ID for this package, register the exact redirect URI `http://127.0.0.1:43827/callback/` in Spotify's developer dashboard, then choose **Connect** in the widget. Authorization is always explicit; merely opening the widget never launches a browser.
 
-Version 0.2 adds four controller-first destinations:
+Version 0.2.12 is the current immutable Community package. It adds four
+controller-first destinations:
 
 - **Player** keeps artwork, projected progress, transport, shuffle, and repeat responsive without increasing Spotify polling.
 - **Queue** is fetched only when selected and remains cached while the widget worker lives.
