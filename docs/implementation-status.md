@@ -1822,6 +1822,22 @@ up exactly once. The focused DLV-058 fixture passed 33 checks with a
 material gate. Durable geometry and final composed input/accessibility remain
 DLV-068/DLV-069.
 
+DLV-070 moves process ownership ahead of every `OverlayApp` initialization.
+One race-safe global per-user/profile mutex elects the owner; later ordinary or
+`--show` launches become bounded clients of a user-only, remote-rejecting named
+pipe. The owner validates the connected token SID before accepting the closed
+version-1 Show frame. A client receives one acknowledgement and exits before
+bridge, catalog, controller, or HWND initialization. The transport queues Show
+even while the owner has no HWND, binds it when initialization completes, and
+releases the mutex, pipe thread, events, and notification target exactly once.
+Abandoned mutex ownership recovers after a crash; a claimed endpoint, malformed
+client, wrong profile, or missing acknowledgement fails closed without killing
+another process. The focused Release fixture passes 20 hidden/visible,
+simultaneous, malformed, squatted-endpoint, timeout, abandoned-owner, and
+orderly-exit checks. The isolated exact-executable probe confirms the no-HWND
+owner receives Show and both processes exit 0 without initializing `OverlayApp`
+in the probe owner or client.
+
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is
 **0.684-0.707 MiB**, normalized 750 ms idle CPU is **0%**, and the two-node host

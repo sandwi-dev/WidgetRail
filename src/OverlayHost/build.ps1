@@ -8,6 +8,7 @@ param(
     [switch]$SkipPackaging,
     [switch]$SemanticChurnTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
+    [switch]$ProcessOwnerTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$WidgetSurfaceTestsOnly
 )
@@ -115,8 +116,9 @@ $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
 $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
 $pinnedSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-surface-host-tests'
 $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surface-coordinator-tests'
+$processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -240,6 +242,44 @@ function Invoke-WidgetBridgeCatalogTests {
     }
 }
 
+function Invoke-OverlayProcessOwnerTests {
+    $arguments = $common + @(
+        '/DGBA_OVERLAY_PROCESS_OWNER_TESTING',
+        (Join-Path $projectDirectory 'OverlayProcessOwnerTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
+        "/Fo:$processOwnerTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayProcessOwnerTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib', 'advapi32.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayProcessOwnerTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayProcessOwnerTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayProcessOwnerTests failed with exit code $LASTEXITCODE."
+    }
+
+    $hostExecutable = Join-Path $outputDirectory 'OverlayHost.exe'
+    if (Test-Path -LiteralPath $hostExecutable) {
+        $profile = 'dlv070-exact-' + [Guid]::NewGuid().ToString('N')
+        $owner = Start-Process -FilePath $hostExecutable -ArgumentList @(
+            '--hidden', '--process-owner-probe', '--process-profile', $profile
+        ) -PassThru -WindowStyle Hidden
+        Start-Sleep -Milliseconds 250
+        $client = Start-Process -FilePath $hostExecutable -ArgumentList @(
+            '--show', '--process-profile', $profile
+        ) -PassThru -WindowStyle Hidden
+        $clientDone = $client.WaitForExit(5000)
+        $ownerDone = $owner.WaitForExit(12000)
+        if (-not $clientDone -or -not $ownerDone -or
+            $client.ExitCode -ne 0 -or $owner.ExitCode -ne 0) {
+            throw 'Exact OverlayHost no-HWND owner/client fixture failed.'
+        }
+        Write-Host "OverlayHost exact owner/client fixture passed (owner PID $($owner.Id), client PID $($client.Id))."
+    }
+}
+
 if ($SemanticChurnTestsOnly) {
     if ($SkipTests) {
         throw 'SemanticChurnTestsOnly cannot be combined with SkipTests.'
@@ -272,8 +312,17 @@ if ($WidgetBridgeCatalogTestsOnly) {
     return
 }
 
+if ($ProcessOwnerTestsOnly) {
+    if ($SkipTests) {
+        throw 'ProcessOwnerTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-OverlayProcessOwnerTests
+    return
+}
+
 $hostArguments = $common + @(
     (Join-Path $projectDirectory 'main.cpp'),
+    (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
@@ -312,7 +361,7 @@ $hostArguments = $common + @(
     'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
     'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',
-    'uiautomationcore.lib'
+    'uiautomationcore.lib', 'advapi32.lib'
 )
 
 & $cl $hostArguments
@@ -642,6 +691,7 @@ if (-not $SkipTests) {
 
     Invoke-PinnedSurfaceHostTests
     Invoke-WidgetSurfaceCoordinatorTests
+    Invoke-OverlayProcessOwnerTests
 
     $targetingTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
