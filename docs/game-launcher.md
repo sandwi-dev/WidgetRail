@@ -1,6 +1,6 @@
 # Game Launcher reference
 
-Status: bundled package 0.3.0 implements the installed-only controller-first
+Status: bundled package 0.6.0 implements the installed-only controller-first
 library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
@@ -12,15 +12,28 @@ provider identity, infer games from titles, or cache a complete library.
 
 ## Collection and controller behavior
 
+- **Search installed games** opens one host-owned text-entry modal. Keyboard or
+  controller input remains inside the host; the widget receives only one
+  normalized committed value of at most 96 characters. A commits, B cancels
+  without changing the query, X/backspace edits, Clear removes the query, and
+  focus returns to the search control after the modal closes.
+- Favorites, recent-only, source, and the closed A–Z/Z–A/source sorts are provider queries,
+  not filters over the retained widget window. Favorite filtering sends at
+  most 128 opaque SavedIds; the broker resolves them against exact current
+  authority-scoped identities and an empty match remains an empty result.
 - The initial and adjacent requests contain at most 64 records. The shared
-  `WidgetCursorResource` appends or prepends complete pages, retains at most 192
-  rows for this widget, remembers at most 256 opaque traversal cursors, and
-  serializes only the retained responsive-grid window.
+  `WidgetCursorResource` appends or prepends complete provider pages, retains at
+  most 192 provider rows for this widget, remembers at most 256 opaque traversal
+  cursors, and serializes only that retained cursor window. Recent and manually
+  added rows are composed in separate fixed sections and never enter provider
+  page, cursor, or viewport-anchor accounting.
 - A 10,000-item library takes 157 bounded pages. Crossing a boundary requests
   focus on the entering keyed tile and retains the authored viewport anchor.
   Previous, Next, Refresh, automatic near-edge pagination, retry, and every tile
   remain reachable through controller actions.
-- Cursors remain query/revision/direction bound in the broker. Repeated cursors,
+- Cursors remain query/revision/direction bound in the broker. Committing or
+  clearing a query resets the cursor generation and anchor; a late result from
+  a replaced query cannot publish. Repeated cursors,
   immediate or multi-hop loops within the finite traversal evidence, stale
   generations, malformed pages, cancellation, and traversal beyond the explicit
   bound fail closed while preserving the last good window.
@@ -34,7 +47,7 @@ Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
 bytes; the native host requests artwork lazily through the private trusted
 registry and keeps the semantic Play fallback when artwork is absent or stale.
 
-Private schema v2 contains at most 96 sanitized SavedId, display-name, and source
+Private schema v4 contains at most 96 sanitized SavedId, display-name, and source
 rows. At most 32 distinct SavedIds may participate in favorites or explicit
 variant groups; there are at most 16 groups and four members per group. It
 contains no AppId, path, command, AUMID, Steam identity, image bytes, or provider
@@ -42,11 +55,45 @@ key. On worker recreation these rows appear immediately as disabled
 **Checking…** tiles. They become actionable only after a current provider page
 resolves them.
 
+The same schema retains at most 32 opaque SavedIds in newest-accepted order.
+Only an exact current **Launcher started**, **Running**, or **Ended** observation
+may move an identity to the front. Acknowledgement-only, failed, stale,
+replaced, or canceled launches do not change history. **Recent: First**
+reorders the current resolved window and **Recent: Only** asks the trusted
+catalog for the exact current SavedIds; neither path authorizes launch.
+Missing identities stay as non-authorizing display rows, replacement SavedIds
+remain independent, and **Clear recent** preserves favorites and variant
+groups.
+
+**Add games** opens a bounded nested route over the same trusted installed-app
+catalog and labels current Game, Application, and Unknown classifications.
+Search and source/sort controls remain provider-backed. Adding or removing a
+row stores only its opaque SavedId and sanitized display projection, up to 32
+manual entries; no path, command, AUMID, store/provider identifier, or artwork
+bytes enter private state. B or the visible Back action restores the Library
+route and prior focus. On every refresh or worker recreation, manual SavedIds
+are resolved again into a separate section of at most 32 rows. Automatic Game
+registrations are labeled **Included** and cannot acquire redundant manual
+membership. Missing entries remain disabled, replacement SavedIds are
+independent, and activation still
+requires the same fresh exact-SavedId resolution and short-lived AppId as an
+automatic game.
+
+When **Recent: First** is selected, at most 32 retained recent display rows are
+resolved and composed ahead of the manual and provider sections in exact saved
+order. This includes a game launched from a later catalog page after a cold
+restart. Exact SavedIds are deduplicated across all three sections, while the
+ordinary provider page remains independently traversable. **Recent: Only** uses
+the same fixed non-authorizing slice. Search, source, favorites, and display sort
+filter the fixed sections without expanding provider queries or caching the
+complete library.
+
 X toggles the focused current game as a favorite. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating
 the same pair removes the second tile from that group. RB marks a member of an
-existing group as preferred. Favorites sort first and preferred members sort
-first within the remaining current window, with visible and accessible labels.
+existing group as preferred. Recent-first order takes precedence while enabled;
+otherwise favorites sort first, and preferred members sort first within the
+remaining current window, with visible and accessible labels.
 Preference never redirects a different tile's launch or merges titles: every
 tile continues to resolve and launch its own exact SavedId. A disabled retained
 row preserves organization while its source is missing, and reappearance of the
@@ -89,7 +136,9 @@ adjacent source failure retains prior rows and shows a warning. Lifecycle
 deactivation cancels and drains cursor/private-state work; cancellation-ignoring
 late pages cannot republish after reset.
 
-Focused managed coverage includes 2,000- and 10,000-item forward/reverse
+Focused managed coverage includes normalized search/source/favorite/sort
+criteria, empty favorite matches, query replacement with a cancellation-
+ignoring old completion, and 2,000- and 10,000-item forward/reverse
 traversal, bounded rows/cursors/snapshot nodes, display-only warm state, fresh
 SavedId revalidation, unavailable launch rejection, retained-window errors,
 lazy artwork semantics, explicit favorite/group/preference mutations, CAS

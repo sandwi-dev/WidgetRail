@@ -59,6 +59,27 @@ ID and invokes semantic A only when enabled. Hit testing is host-owned, clipped
 to the renderer's visible active input scope, and never forwards raw mouse data
 to widget code. Clicking the dimmed backdrop closes the overlay.
 
+### Host-owned text entry
+
+A focused `TextEntry` opens one native modal owned by the overlay. Keyboard and
+controller navigation stay inside that modal: A activates a key or commits,
+B cancels, X backspaces, and Clear removes the current value. The edit, key,
+cancel, and commit controls are ordinary high-contrast-aware native controls
+with UI Automation semantics. Left/Right stay within a spatial row and
+Up/Down choose the nearest overlapping row without wrapping to an unrelated
+control. The host scales and centers the complete keyboard inside the active
+monitor work area, including compact and 150% DPI layouts. Closing the modal
+restores a valid current host focus target.
+
+Only one final bounded committed value is sent with the semantic widget action.
+Raw key events, HWNDs, insertion history, and canceled text never enter the
+snapshot or worker. The host rejects values beyond the authored maximum (at
+most 96 characters) or containing control characters. No snapshot or node
+reference survives the modal loop: before sending, the host freshly resolves
+the active widget, runtime and snapshot generation, input scope, source ID,
+action ID, and enabled state. Refresh, replacement, removal, hide, scope change,
+or disablement therefore closes without invoking stale widget authority.
+
 ## B behavior
 
 While widget controls own focus, B is offered to the active input scope. A

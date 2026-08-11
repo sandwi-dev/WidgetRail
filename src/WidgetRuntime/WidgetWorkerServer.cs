@@ -430,6 +430,10 @@ public sealed class WidgetWorkerServer
             (actionScope.Length > 128 ||
              !actionScope.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
             throw new WidgetProtocolViolationException("Action input scope ID is invalid.");
+        if (action.CommittedText is { } committed &&
+            (committed.Length > ProtocolConstants.MaximumTextEntryLength ||
+             committed.Any(char.IsControl)))
+            throw new WidgetProtocolViolationException("Committed text is invalid or too long.");
     }
 
     private static void ValidateControllerInput(ControllerInputEvent input)

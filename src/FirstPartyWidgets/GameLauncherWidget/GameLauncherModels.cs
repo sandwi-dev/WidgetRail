@@ -17,6 +17,20 @@ internal sealed record GameLauncherDisplayItem(
     string DisplayName,
     string SourceAttribution);
 
+internal sealed record GameLauncherFixedRows(
+    IReadOnlyList<GameLauncherItem> Recent,
+    IReadOnlyList<GameLauncherItem> Manual)
+{
+    internal static GameLauncherFixedRows Empty { get; } = new([], []);
+    internal IEnumerable<GameLauncherItem> All => Recent.Concat(Manual);
+}
+
+internal enum GameLauncherRoute
+{
+    Library,
+    AddGames,
+}
+
 internal enum GameLauncherLaunchState
 {
     RequestAccepted,

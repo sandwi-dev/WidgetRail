@@ -3,7 +3,7 @@
   "id": "org.gbar.firstparty.game-launcher",
   "publisher": "org.gbar.firstparty",
   "name": "Game Launcher",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "dotnet-worker",

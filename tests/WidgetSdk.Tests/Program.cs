@@ -27,6 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),
     ("Visual nodes require accessibility and semantic data", VisualNodeRequirementsAreEnforced),
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
+    ("Text entry is host-owned bounded and protocol v15", TextEntryRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
@@ -112,6 +113,33 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static Task TextEntryRoundTrip()
+{
+    var snapshot = new WidgetView(UI.Stack("root",
+        UI.TextEntry("Halo", "Search games", "search.commit", "search", 32)))
+        .CreateSnapshot("text-entry.test", 1);
+    var node = snapshot.Root.Children.Single();
+    Assert.Equal(ProtocolConstants.TextEntryVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ViewNodeKind.TextEntry, node.Kind);
+    Assert.Equal("Halo", node.TextEntryValue);
+    Assert.Equal("Search games", node.TextEntryPlaceholder);
+    Assert.Equal(32, node.TextEntryMaximumLength);
+    Assert.True(node.IsFocusable, "Text entry must be a controller focus target.");
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        UI.TextEntry("", "Search", "search.commit", "search", 97));
+    var invalid = snapshot with
+    {
+        Root = snapshot.Root with
+        {
+            Children = [node with { TextEntryValue = "bad\nvalue" }],
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(invalid).Any(error =>
+        error.Code == "invalid_text_entry_value"),
+        "Control characters must fail text-entry validation.");
+    return Task.CompletedTask;
+}
 
 static Task InlinePngImagesAreBounded()
 {
@@ -219,6 +247,12 @@ static async Task AppLibraryPlatformService()
                 Assert.Equal(WidgetCursorDirection.After, request.Direction);
                 Assert.Equal(12, request.Limit);
                 Assert.Equal(WidgetAppLibraryKind.Application, request.Query.Kind);
+                Assert.Equal("Windows", request.Query.SourceAttribution);
+                Assert.Equal("Launchable App", request.Query.SearchText);
+                Assert.Equal(WidgetAppLibrarySortOrder.SourceThenDisplayName,
+                    request.Query.Sort);
+                Assert.Equal(1, request.Query.FavoriteSavedIds.Count);
+                Assert.Equal("saved-durable", request.Query.FavoriteSavedIds[0]);
                 return ValueTask.FromResult(new WidgetAppLibraryPage(
                     [new WidgetAppLibraryItem(
                         "app-opaque", "Launchable App", WidgetAppLibraryKind.Application)
@@ -252,7 +286,14 @@ static async Task AppLibraryPlatformService()
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
     var page = await widget.AppLibrary.QueryAsync(
-        new WidgetAppLibraryQuery(Kind: WidgetAppLibraryKind.Application),
+        new WidgetAppLibraryQuery(
+            Kind: WidgetAppLibraryKind.Application,
+            SourceAttribution: "Windows",
+            Sort: WidgetAppLibrarySortOrder.SourceThenDisplayName)
+        {
+            SearchText = "  Launchable\tApp  ",
+            FavoriteSavedIds = ["saved-durable"],
+        },
         new WidgetCollectionCursor("cursor-64"), WidgetCursorDirection.After, 12);
     Assert.Equal(1, page.Items.Count);
     Assert.Equal("app-opaque", page.Items[0].AppId);
@@ -281,6 +322,13 @@ static async Task AppLibraryPlatformService()
         widget.AppLibrary.QueryAsync(new WidgetAppLibraryQuery(),
                 limit: WidgetAppLibraryService.MaximumPageSize + 1)
             .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.QueryAsync(new WidgetAppLibraryQuery
+            {
+                FavoriteSavedIds = Enumerable.Range(
+                        0, WidgetAppLibraryQuery.MaximumFavoriteSavedIds + 1)
+                    .Select(index => $"saved-{index}").ToArray(),
+            }).GetAwaiter().GetResult());
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.ResolveSavedAsync(["saved-same", "saved-same"])
             .GetAwaiter().GetResult());

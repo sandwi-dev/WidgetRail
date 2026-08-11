@@ -145,6 +145,13 @@ int main() {
                             {"id":"game-two","kind":"button","text":"Game","actionId":"launch",
                              "collectionItemKey":"game.2","artworkHandle":"library.art.2","imageFit":"contain"}
                         ]
+                    },
+                    {
+                        "id":"search","kind":"textEntry","text":"Halo",
+                        "actionId":"search.commit","accessibilityLabel":"Search installed games",
+                        "accessibilityValue":"Halo","textEntryValue":"Halo",
+                        "textEntryPlaceholder":"Search installed games",
+                        "textEntryMaximumLength":96
                     }
                 ]
             }
@@ -158,7 +165,7 @@ int main() {
         }
     })json", error);
     assert(styledSnapshot && error.empty());
-    assert(styledSnapshot->root.children.size() == 5);
+    assert(styledSnapshot->root.children.size() == 6);
     const auto& styledButton = styledSnapshot->root.children.front();
     (void)styledButton;
     assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
@@ -196,6 +203,13 @@ int main() {
     assert(grid.gridMaximumColumns == 3U);
     assert(grid.children.size() == 2);
     assert(grid.children[1].id == L"grid-two");
+    const auto& textEntry = styledSnapshot->root.children[5];
+    (void)textEntry;
+    assert(textEntry.kind == L"button");
+    assert(textEntry.isTextEntry);
+    assert(textEntry.textEntryValue == L"Halo");
+    assert(textEntry.textEntryPlaceholder == L"Search installed games");
+    assert(textEntry.textEntryMaximumLength == 96U);
 
     error.clear();
     const auto invalidGrid = gba::testing::ParseWidgetSnapshotResponse(R"json({
@@ -211,6 +225,21 @@ int main() {
         }
     })json", error);
     assert(!invalidGrid && !error.empty());
+
+    error.clear();
+    const auto invalidTextEntry = gba::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "sequence": 1,
+            "widgetInstanceId": "text.invalid",
+            "activeInputScopeId": "search",
+            "root": {
+                "id":"search","kind":"textEntry","text":"Search",
+                "actionId":"search.commit","textEntryValue":"bad\nvalue",
+                "textEntryPlaceholder":"Search","textEntryMaximumLength":96
+            }
+        }
+    })json", error);
+    assert(!invalidTextEntry && !error.empty());
 
     error.clear();
     const auto invalidVisibility = gba::testing::ParseWidgetSnapshotResponse(R"json({

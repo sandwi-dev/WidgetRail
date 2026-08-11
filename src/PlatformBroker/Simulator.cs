@@ -360,7 +360,25 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
                 request.Query.Kind is null || item.Kind == request.Query.Kind)
             .Where(item => request.Query.SourceAttribution is null ||
                 item.SourceAttribution == request.Query.SourceAttribution)
-            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Where(item => request.Query.SearchText is null ||
+                item.DisplayName.Contains(
+                    request.Query.SearchText, StringComparison.OrdinalIgnoreCase))
+            .Where(item => request.Query.StableIdentityFilter is null ||
+                request.Query.StableIdentityFilter.Contains(
+                    item.StableProviderIdentity, StringComparer.Ordinal));
+        var ordered = request.Query.Sort switch
+        {
+            AppLibrarySortOrder.DisplayNameDescending => filtered
+                .OrderByDescending(item => item.DisplayName,
+                    StringComparer.OrdinalIgnoreCase),
+            AppLibrarySortOrder.SourceThenDisplayName => filtered
+                .OrderBy(item => item.SourceAttribution,
+                    StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase),
+            _ => filtered.OrderBy(item => item.DisplayName,
+                StringComparer.OrdinalIgnoreCase),
+        };
+        var orderedItems = ordered
             .ThenBy(item => item.StableProviderIdentity, StringComparer.Ordinal)
             .ToArray();
         var offset = 0;
@@ -374,12 +392,12 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
                 !int.TryParse(parts[3], out offset))
                 throw new BrokerException("invalid_cursor", "The app-library cursor is stale.");
         }
-        var items = filtered.Skip(offset).Take(request.Limit).ToArray();
+        var items = orderedItems.Skip(offset).Take(request.Limit).ToArray();
         var before = offset > 0
             ? $"sim.{_appLibraryRevision}.B.{Math.Max(0, offset - request.Limit)}"
             : null;
         var next = offset + items.Length;
-        var after = next < filtered.Length
+        var after = next < orderedItems.Length
             ? $"sim.{_appLibraryRevision}.A.{next}"
             : null;
         return Task.FromResult(new AppLibraryBackendCursorPage(

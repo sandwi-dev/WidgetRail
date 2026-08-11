@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 
 namespace GameBarAlternative.PlatformBroker;
 
@@ -60,6 +61,18 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (request.Query.FavoriteSavedIds.Count != 0)
+            {
+                var stableIdentities = await ResolveFavoriteStableIdentitiesAsync(
+                    backendRequest.Query, request.Query.FavoriteSavedIds,
+                    request.Refresh, cancellationToken).ConfigureAwait(false);
+                backendRequest = backendRequest with
+                {
+                    Query = backendRequest.Query with
+                        { StableIdentityFilter = stableIdentities },
+                    Refresh = false,
+                };
+            }
             var page = ValidatePage(await _backend.QueryAppLibraryAsync(
                     backendRequest, cancellationToken).ConfigureAwait(false), request.Limit);
             cancellationToken.ThrowIfCancellationRequested();
@@ -71,12 +84,50 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         }
     }
 
+    private async Task<IReadOnlyList<string>> ResolveFavoriteStableIdentitiesAsync(
+        AppLibraryBackendQuery query,
+        IReadOnlyList<string> favoriteSavedIds,
+        bool refresh,
+        CancellationToken cancellationToken)
+    {
+        var requested = favoriteSavedIds.ToHashSet(StringComparer.Ordinal);
+        var matches = new List<string>(requested.Count);
+        var seenCursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        string? revision = null;
+        for (var pageIndex = 0; pageIndex < MaximumTraversalPages; pageIndex++)
+        {
+            var page = ValidatePage(await _backend.QueryAppLibraryAsync(
+                new AppLibraryBackendCursorRequest(
+                    query with { StableIdentityFilter = null }, cursor,
+                    cursor is null ? null : AppLibraryCursorDirection.After,
+                    PlatformCapabilityBroker.MaximumAppLibraryPageSize,
+                    Refresh: cursor is null && refresh), cancellationToken)
+                .ConfigureAwait(false), PlatformCapabilityBroker.MaximumAppLibraryPageSize);
+            revision ??= page.Revision;
+            if (!string.Equals(revision, page.Revision, StringComparison.Ordinal))
+                throw new BrokerException(
+                    "invalid_backend_data", "App-library revision changed during query filtering.");
+            foreach (var item in page.Items)
+                if (requested.Contains(_savedIdIssuer.Issue(
+                        _identity, item.StableProviderIdentity)))
+                    matches.Add(item.StableProviderIdentity);
+            if (matches.Count == requested.Count || page.After is null) break;
+            if (!seenCursors.Add(page.After))
+                throw new BrokerException(
+                    "invalid_backend_data", "App-library cursor loop is invalid.");
+            cursor = page.After;
+        }
+        return matches;
+    }
+
     private async Task<ResolveSavedAppLibraryItemsSummary> ResolveSavedAsync(
         JsonElement payload,
         CancellationToken cancellationToken)
     {
         var request = BrokerJson.ParsePayload<ResolveSavedAppLibraryItemsRequest>(payload);
-        ValidateSavedIds(request.SavedIds);
+        ValidateSavedIds(
+            request.SavedIds, PlatformCapabilityBroker.MaximumResolvedAppLibraryItems);
         if (request.SavedIds.Count == 0)
             return new ResolveSavedAppLibraryItemsSummary([]);
 
@@ -233,19 +284,36 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             request.Limit is < 1 or > PlatformCapabilityBroker.MaximumAppLibraryPageSize ||
             (request.Cursor is null) != (request.Direction is null) ||
             request.Cursor is { Length: > 128 } ||
-            request.Query.SourceAttribution is { Length: > 64 })
+            request.Query.SourceAttribution is { Length: > 64 } ||
+            request.Query.SearchText is { Length: > 96 } ||
+            request.Query.SearchText is { } search &&
+                (string.IsNullOrWhiteSpace(search) || search.Any(char.IsControl) ||
+                 search != NormalizeSearchText(search)) ||
+            request.Query.FavoriteSavedIds is null ||
+            request.Query.FavoriteSavedIds.Count > 128 ||
+            request.Query.FavoriteSavedIds.Distinct(StringComparer.Ordinal).Count() !=
+                request.Query.FavoriteSavedIds.Count)
             throw new BrokerException(
                 "invalid_payload", "App-library cursor query is invalid.");
         if (request.Query.SourceAttribution is { } source)
             ContractValidation.DisplayName(source);
+        ValidateSavedIds(request.Query.FavoriteSavedIds, 128);
         return new AppLibraryBackendCursorRequest(
             new AppLibraryBackendQuery(
                 request.Query.InstalledOnly,
                 request.Query.Kind,
                 request.Query.SourceAttribution,
-                request.Query.Sort),
+                request.Query.Sort)
+            {
+                SearchText = request.Query.SearchText,
+            },
             request.Cursor, request.Direction, request.Limit, request.Refresh);
     }
+
+    private static string? NormalizeSearchText(string? value) => value is null
+        ? null
+        : string.Join(' ', value.Normalize(NormalizationForm.FormKC)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     internal static AppLibraryBackendCursorPage ValidatePage(
         AppLibraryBackendCursorPage? page,
@@ -275,10 +343,12 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
     private static BrokerException InvalidItem() =>
         new("invalid_backend_data", "App-library entry is invalid.");
 
-    private static void ValidateSavedIds(IReadOnlyList<string>? savedIds)
+    private static void ValidateSavedIds(
+        IReadOnlyList<string>? savedIds,
+        int maximumCount)
     {
         if (savedIds is null ||
-            savedIds.Count > PlatformCapabilityBroker.MaximumResolvedAppLibraryItems)
+            savedIds.Count > maximumCount)
             throw new BrokerException(
                 "invalid_payload", "Saved app-library identifier bounds are invalid.");
         var requested = new HashSet<string>(StringComparer.Ordinal);

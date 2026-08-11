@@ -11,6 +11,92 @@ namespace GameBarAlternative.Tests.GameLauncher;
 public sealed class GameLauncherTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task QueryControlsMapExactBoundedCriteriaAndClear()
+    {
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion,
+            [new("saved-00000", "Game 00000", "Steam")])
+        {
+            FavoriteSavedIds = ["saved-00000"],
+        };
+        var host = new FakeHost(2, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "query organization load");
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.favorites", "game-launcher.filter.favorites"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "favorite query");
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.source", "game-launcher.filter.source"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "source query");
+        Assert.AreEqual("Steam", host.Queries[^1].Query.SourceAttribution);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.sort", "game-launcher.filter.sort"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "sort query");
+        Assert.AreEqual(WidgetAppLibrarySortOrder.DisplayNameDescending,
+            host.Queries[^1].Query.Sort);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.query.clear", "game-launcher.query.clear"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "cleared query");
+        var cleared = host.Queries[^1].Query;
+        Assert.IsNull(cleared.SearchText);
+        Assert.IsNull(cleared.SourceAttribution);
+        Assert.AreEqual(0, cleared.FavoriteSavedIds.Count);
+        Assert.AreEqual(WidgetAppLibrarySortOrder.DisplayName, cleared.Sort);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CommittedQueryReplacesGenerationAndStaleCompletionCannotPublish()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var staleStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStale = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        host.QueryHandler = (request, _) =>
+        {
+            if (request.Query.SearchText == "Alpha")
+            {
+                staleStarted.TrySetResult();
+                return new ValueTask<WidgetAppLibraryPage>(releaseStale.Task);
+            }
+            var item = Item(1) with { DisplayName = request.Query.SearchText ?? "All" };
+            return ValueTask.FromResult(new WidgetAppLibraryPage(
+                [item], null, null, "query-" + (request.Query.SearchText ?? "all")));
+        };
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "  Alpha  " });
+        await Bounded(staleStarted.Task, "stale query admission");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "Beta" });
+        releaseStale.TrySetResult(new([Item(0) with { DisplayName = "Alpha" }],
+            null, null, "query-alpha"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "replacement query drain");
+        Assert.AreEqual("Beta", widget.Collection.Items.Single().Value.DisplayName);
+
+        var snapshot = Snapshot(widget, 99);
+        var search = Nodes(snapshot.Root).Single(node => node.Id == "game-launcher.search");
+        Assert.AreEqual(ViewNodeKind.TextEntry, search.Kind);
+        Assert.AreEqual("Beta", search.TextEntryValue);
+        await Background(widget);
+    }
+    [TestMethod, Timeout(30_000)]
     [DataRow(2_000)]
     [DataRow(10_000)]
     public async Task LargeLibrariesTraverseInBoundedCursorWindow(int total)
@@ -109,6 +195,13 @@ public sealed class GameLauncherTests
         {
             FavoriteSavedIds = organized.Select(item => item.SavedId).ToArray(),
             VariantGroups = groups,
+            RecentSavedIds = items.Skip(GameLauncherPrivateState.MaximumOrganizedItems)
+                .Take(GameLauncherPrivateState.MaximumRecentItems)
+                .Reverse().Select(item => item.SavedId).ToArray(),
+            ManualSavedIds = items.Skip(GameLauncherPrivateState.MaximumOrganizedItems +
+                    GameLauncherPrivateState.MaximumRecentItems)
+                .Take(GameLauncherPrivateState.MaximumManualItems)
+                .Select(item => item.SavedId).ToArray(),
         };
         var json = JsonSerializer.SerializeToUtf8Bytes(state);
 
@@ -188,7 +281,8 @@ public sealed class GameLauncherTests
         var b = new GameLauncherDisplayItem("saved-b", "B", "Steam");
         var c = new GameLauncherDisplayItem("saved-c", "C", "Windows");
         var d = new GameLauncherDisplayItem("saved-d", "D", "Windows");
-        var baseline = new GameLauncherPrivateState(2, [a, b, c, d])
+        var baseline = new GameLauncherPrivateState(GameLauncherPrivateState.CurrentVersion,
+            [a, b, c, d])
         {
             FavoriteSavedIds = [a.SavedId],
         };
@@ -231,7 +325,7 @@ public sealed class GameLauncherTests
     public void SourceRevisionReplacementUsesOnlyExactSavedIdentity()
     {
         var old = new GameLauncherDisplayItem("saved-a", "Old title", "Steam");
-        var state = new GameLauncherPrivateState(2, [old])
+        var state = new GameLauncherPrivateState(GameLauncherPrivateState.CurrentVersion, [old])
         {
             FavoriteSavedIds = [old.SavedId],
         };
@@ -263,7 +357,7 @@ public sealed class GameLauncherTests
     public async Task IncompatibleStateResetsWholeSchemaBeforeReconciliation()
     {
         var legacyJson = """
-            {"Version":1,"Items":[{"SavedId":"saved-stale","DisplayName":"Stale","SourceAttribution":"Old"}],"FavoriteSavedIds":["saved-stale"]}
+            {"Version":3,"Items":[{"SavedId":"saved-stale","DisplayName":"Stale","SourceAttribution":"Old"}],"FavoriteSavedIds":["saved-stale"],"RecentSavedIds":["saved-stale"],"ManualSavedIds":["saved-stale"]}
             """;
         var state = new WidgetTestPrivateState(legacyJson, 1);
         var page = new TaskCompletionSource<WidgetAppLibraryPage>(
@@ -281,6 +375,8 @@ public sealed class GameLauncherTests
         Assert.AreEqual(GameLauncherPrivateState.CurrentVersion, reset!.Version);
         Assert.AreEqual(0, reset.Items.Count);
         Assert.AreEqual(0, reset.FavoriteSavedIds.Count);
+        Assert.AreEqual(0, reset.RecentSavedIds.Count);
+        Assert.AreEqual(0, reset.ManualSavedIds.Count);
         Assert.IsFalse(Nodes(Snapshot(widget, 13).Root).Any(node =>
             (node.Text ?? string.Empty).Contains("Stale", StringComparison.Ordinal)));
 
@@ -291,6 +387,8 @@ public sealed class GameLauncherTests
         Assert.IsFalse(widget.Organization.Items.Any(item => item.SavedId == "saved-stale"));
         Assert.AreEqual(0, widget.Organization.FavoriteSavedIds.Count);
         Assert.AreEqual(0, widget.Organization.VariantGroups.Count);
+        Assert.AreEqual(0, widget.Organization.RecentSavedIds.Count);
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count);
         Assert.IsFalse(Nodes(Snapshot(widget, 14).Root).Any(node =>
             (node.Text ?? string.Empty).Contains("Stale", StringComparison.Ordinal)));
         await Background(widget);
@@ -300,7 +398,8 @@ public sealed class GameLauncherTests
     public async Task FailedPersistenceLeavesCommittedOrganizationUnchanged()
     {
         var display = new GameLauncherDisplayItem("saved-a", "A", "Steam");
-        var baseline = new GameLauncherPrivateState(2, [display]);
+        var baseline = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display]);
         await Assert.ThrowsExactlyAsync<IOException>(async () =>
             await GameLauncherStateStore.SaveAsync(
                 state => GameLauncherOrganizationPolicy.SetFavorite(
@@ -314,12 +413,377 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task AddGamesRouteShowsAllTrustedKindsAndRestoresLibraryFocus()
+    {
+        var host = new FakeHost(3)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                Kind = index switch
+                {
+                    0 => WidgetAppLibraryKind.Game,
+                    1 => WidgetAppLibraryKind.Application,
+                    _ => WidgetAppLibraryKind.Unknown,
+                },
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        await widget.OnActionAsync(new("game-launcher.add.open", "game-launcher.add.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "add-games route load");
+        Assert.IsNull(host.Queries[^1].Query.Kind);
+        var addSnapshot = Snapshot(widget, 70);
+        var automatic = Nodes(addSnapshot.Root).Single(node =>
+            node.ActionId == "game-launcher.manual.included");
+        Assert.IsTrue(automatic.IsDisabled);
+        StringAssert.Contains(automatic.AccessibilityLabel!, "Game");
+        var addTiles = Nodes(addSnapshot.Root)
+            .Where(node => node.ActionId == "game-launcher.manual.toggle").ToArray();
+        Assert.AreEqual(2, addTiles.Length);
+        StringAssert.Contains(addTiles[0].AccessibilityLabel!, "Application");
+        StringAssert.Contains(addTiles[1].AccessibilityLabel!, "Unknown");
+
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", addTiles[0].Id));
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            widget.Organization.ManualSavedIds.ToArray());
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", addTiles[0].Id));
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count);
+
+        await widget.OnActionAsync(new("game-launcher.add.back", "game-launcher.add.back"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "library route restore");
+        Assert.AreEqual("game-launcher.add.open", Snapshot(widget, 71).InitialFocusId);
+        Assert.AreEqual(WidgetAppLibraryKind.Game, host.Queries[^1].Query.Kind);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task ManualEntrySurvivesRestartButLaunchStillRevalidatesExactSavedId()
+    {
+        var state = new WidgetTestPrivateState();
+        var host = new FakeHost(2, state)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                Kind = index == 1
+                    ? WidgetAppLibraryKind.Application
+                    : WidgetAppLibraryKind.Game,
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new("game-launcher.add.open", "game-launcher.add.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "manual add route");
+        var application = Nodes(Snapshot(widget, 72).Root)
+            .Single(node => node.ActionId == "game-launcher.manual.toggle" &&
+                node.AccessibilityLabel!.Contains("Application", StringComparison.Ordinal));
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", application.Id));
+        await Background(widget);
+
+        var restartedHost = new FakeHost(1, state)
+        {
+            ResolveHandler = request => request.SavedIds.Select(_ => Item(1) with
+            {
+                AppId = "app-fresh-manual",
+                Kind = WidgetAppLibraryKind.Application,
+            }).ToArray(),
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        var manualTile = Nodes(Snapshot(restarted, 73).Root)
+            .Single(node => node.ActionId == "game-launcher.launch" &&
+                node.AccessibilityLabel!.Contains("Game 00001", StringComparison.Ordinal));
+        await restarted.OnActionAsync(new("game-launcher.launch", manualTile.Id));
+
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            restartedHost.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-fresh-manual" },
+            restartedHost.Launches.ToArray());
+        await Background(restarted);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task FullProviderPageAndMaximumFixedSlicesStayIndependentlyBounded()
+    {
+        var recentIds = Enumerable.Range(64, GameLauncherPrivateState.MaximumRecentItems)
+            .Reverse().Select(index => $"saved-{index:D5}").ToArray();
+        var manualIds = Enumerable.Range(96, GameLauncherPrivateState.MaximumManualItems)
+            .Select(index => $"saved-{index:D5}").ToArray();
+        var displays = recentIds.Concat(manualIds).Select(savedId =>
+        {
+            var index = int.Parse(savedId.AsSpan(savedId.LastIndexOf('-') + 1));
+            return new GameLauncherDisplayItem(savedId, $"Game {index:D5}",
+                index % 2 == 0 ? "Steam" : "Windows");
+        }).ToArray();
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, displays)
+        {
+            RecentSavedIds = recentIds,
+            ManualSavedIds = manualIds,
+            FavoriteSavedIds = [recentIds[0], manualIds[0]],
+        };
+        var host = new FakeHost(LauncherWidget.PageSize, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1))
+        {
+            ItemFactory = index => Item(index) with
+            {
+                Kind = index >= 96
+                    ? WidgetAppLibraryKind.Application
+                    : WidgetAppLibraryKind.Game,
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        Assert.AreEqual(LauncherWidget.PageSize, widget.Collection.Items.Count,
+            "fixed rows must not enter the cursor page");
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.recent", "game-launcher.filter.recent"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "maximum fixed-slice reload");
+        Assert.AreEqual(LauncherWidget.PageSize, widget.Collection.Items.Count);
+        Assert.AreEqual(LauncherWidget.PageSize, host.MaximumRequestedLimit);
+        CollectionAssert.AreEquivalent(recentIds.Concat(manualIds).ToArray(),
+            host.ResolveRequests[^1].ToArray());
+
+        var snapshot = Snapshot(widget, 75);
+        var launches = Nodes(snapshot.Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+        Assert.AreEqual(LauncherWidget.PageSize +
+            GameLauncherPrivateState.MaximumRecentItems +
+            GameLauncherPrivateState.MaximumManualItems, launches.Length);
+        Assert.AreEqual(LauncherWidget.PageSize,
+            launches.Count(node => node.CollectionItemKey is not null),
+            "only provider rows participate in cursor anchor accounting");
+        Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
+            GameLauncherIdentity.Key(recentIds[0])), launches[0].Id);
+        Assert.AreEqual(launches.Length,
+            launches.Select(node => node.Id).Distinct(StringComparer.Ordinal).Count());
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.sort", "game-launcher.filter.sort"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-slice descending sort");
+        var sortedFixed = Nodes(Snapshot(widget, 751).Root)
+            .Where(node => node.ActionId == "game-launcher.launch" &&
+                node.CollectionItemKey is null).ToArray();
+        Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
+            GameLauncherIdentity.Key(recentIds[0])), sortedFixed[0].Id,
+            "recent order remains exact instead of following catalog sort");
+        Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
+            GameLauncherIdentity.Key(manualIds[^1])),
+            sortedFixed[GameLauncherPrivateState.MaximumRecentItems].Id,
+            "manual fixed rows follow the selected display sort");
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.source", "game-launcher.filter.source"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-slice source filter");
+        var sourceFixed = Nodes(Snapshot(widget, 752).Root)
+            .Where(node => node.ActionId == "game-launcher.launch" &&
+                node.CollectionItemKey is null).ToArray();
+        Assert.AreEqual(32, sourceFixed.Length);
+        Assert.IsTrue(sourceFixed.All(node =>
+            node.AccessibilityLabel!.Contains("Steam", StringComparison.Ordinal)));
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.favorites", "game-launcher.filter.favorites"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-slice favorite intersection");
+        var favoriteFixed = Nodes(Snapshot(widget, 753).Root)
+            .Where(node => node.ActionId == "game-launcher.launch" &&
+                node.CollectionItemKey is null).ToArray();
+        Assert.AreEqual(1, favoriteFixed.Length);
+        Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
+            GameLauncherIdentity.Key(manualIds[0])), favoriteFixed[0].Id);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task LaterPageRecentLeadsColdFirstPageAndDeduplicatesTraversal()
+    {
+        var state = new WidgetTestPrivateState();
+        var host = new FakeHost(130, state)
+        {
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new("game-launcher.next", "game-launcher.next"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "later catalog page");
+        var laterId = GameLauncherIdentity.FocusId(
+            "grid", GameLauncherIdentity.Key("saved-00100"));
+        await widget.OnActionAsync(new("game-launcher.launch", laterId));
+        CollectionAssert.AreEqual(new[] { "saved-00100" },
+            widget.Organization.RecentSavedIds.ToArray());
+        await Background(widget);
+
+        var restartedHost = new FakeHost(130, state)
+        {
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        Assert.IsFalse(restarted.Collection.Items.Any(item =>
+            item.Value.SavedId == "saved-00100"));
+        await restarted.OnActionAsync(new(
+            "game-launcher.filter.recent", "game-launcher.filter.recent"));
+        await Bounded(restarted.WhenLibraryIdleAsync(), "cold recent-first resolution");
+        var first = Nodes(Snapshot(restarted, 76).Root)
+            .First(node => node.ActionId == "game-launcher.launch");
+        Assert.AreEqual(laterId, first.Id);
+        await restarted.OnActionAsync(new("game-launcher.launch", first.Id));
+        CollectionAssert.AreEqual(new[] { "saved-00100" },
+            restartedHost.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-00100" }, restartedHost.Launches.ToArray());
+
+        await restarted.OnActionAsync(new("game-launcher.next", "game-launcher.next"));
+        await Bounded(restarted.WhenLibraryIdleAsync(), "recent catalog overlap traversal");
+        Assert.AreEqual(1, Nodes(Snapshot(restarted, 77).Root).Count(node =>
+            node.ActionId == "game-launcher.launch" && node.Id == laterId));
+        await Background(restarted);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task AutomaticGamesAreIncludedAndCannotRetainManualMembership()
+    {
+        var display = new GameLauncherDisplayItem(
+            "saved-00000", "Game 00000", "Steam");
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            ManualSavedIds = [display.SavedId],
+            FavoriteSavedIds = [display.SavedId],
+            RecentSavedIds = [display.SavedId],
+        };
+        var host = new FakeHost(1, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count,
+            "fresh classification removes obsolete manual Game membership");
+        CollectionAssert.AreEqual(new[] { display.SavedId },
+            widget.Organization.FavoriteSavedIds.ToArray(),
+            "automatic membership cleanup must preserve unrelated favorites");
+        CollectionAssert.AreEqual(new[] { display.SavedId },
+            widget.Organization.RecentSavedIds.ToArray(),
+            "automatic membership cleanup must preserve unrelated recents");
+
+        await widget.OnActionAsync(new("game-launcher.add.open", "game-launcher.add.open"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "automatic game add route");
+        var automatic = Nodes(Snapshot(widget, 78).Root).Single(node =>
+            node.ActionId == "game-launcher.manual.included");
+        Assert.IsTrue(automatic.IsDisabled);
+        StringAssert.Contains(automatic.AccessibilityLabel!, "Included automatically");
+        await widget.OnActionAsync(new("game-launcher.manual.toggle", automatic.Id));
+        Assert.AreEqual(0, widget.Organization.ManualSavedIds.Count);
+        await Background(widget);
+    }
+
+    [TestMethod]
+    public async Task ManualCasReplayPreservesFavoritesGroupsAndRecentOrder()
+    {
+        var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");
+        var b = new GameLauncherDisplayItem("saved-b", "B", "Windows");
+        var c = new GameLauncherDisplayItem("saved-c", "C", "Xbox");
+        var baseline = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [a, b])
+        {
+            FavoriteSavedIds = [a.SavedId],
+            RecentSavedIds = [b.SavedId],
+        };
+        var latest = baseline with
+        {
+            Items = [c, a, b],
+            RecentSavedIds = [c.SavedId, b.SavedId],
+        };
+        GameLauncherPrivateState? written = null;
+        var attempt = 0;
+        await GameLauncherStateStore.SaveAsync(
+            state => GameLauncherOrganizationPolicy.SetManual(state, a, true),
+            (value, _, _) =>
+            {
+                if (attempt++ == 0)
+                    return ValueTask.FromException<WidgetPrivateStateMutation>(
+                        new WidgetCapabilityException("state_conflict", "fixture"));
+                written = value;
+                return ValueTask.FromResult(new WidgetPrivateStateMutation(3));
+            },
+            _ => ValueTask.FromResult(new WidgetPrivateStateValue<GameLauncherPrivateState>(
+                true, latest, 2)), baseline, 1, CancellationToken.None);
+
+        CollectionAssert.AreEqual(new[] { a.SavedId }, written!.ManualSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { a.SavedId }, written.FavoriteSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { c.SavedId, b.SavedId },
+            written.RecentSavedIds.ToArray());
+    }
+
+    [TestMethod]
+    public void ManualMembershipIsBoundedAndReplacementIdentityIsIndependent()
+    {
+        var state = GameLauncherPrivateState.Empty;
+        for (var index = 0; index < GameLauncherPrivateState.MaximumManualItems; index++)
+        {
+            var display = new GameLauncherDisplayItem(
+                $"saved-{index:D5}", $"Game {index}", "Fixture");
+            var mutation = GameLauncherOrganizationPolicy.SetManual(state, display, true);
+            Assert.IsTrue(mutation.Accepted);
+            state = mutation.State;
+        }
+        var overflow = GameLauncherOrganizationPolicy.SetManual(state,
+            new("saved-overflow", "Overflow", "Fixture"), true);
+        Assert.IsFalse(overflow.Accepted);
+        Assert.AreEqual(GameLauncherPrivateState.MaximumManualItems,
+            overflow.State.ManualSavedIds.Count);
+
+        var replacement = GameLauncherOrganizationPolicy.ProjectPage(state,
+            [GameLauncherItem.From(Item(0) with { SavedId = "saved-replacement" })]);
+        Assert.IsFalse(replacement.ManualSavedIds.Contains(
+            "saved-replacement", StringComparer.Ordinal));
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task MissingManualEntryStaysVisibleButCannotAuthorizeLaunch()
+    {
+        var display = new GameLauncherDisplayItem(
+            "saved-00999", "Unavailable manual game", "Fixture");
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            ManualSavedIds = [display.SavedId],
+        };
+        var state = new WidgetTestPrivateState(JsonSerializer.Serialize(persisted), 1);
+        var host = new FakeHost(1, state) { ResolveHandler = _ => [] };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var unavailable = Nodes(Snapshot(widget, 74).Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            node.AccessibilityLabel!.Contains("Unavailable manual game",
+                StringComparison.Ordinal));
+        Assert.IsTrue(unavailable.IsDisabled);
+        await widget.OnActionAsync(new("game-launcher.launch", unavailable.Id));
+        Assert.AreEqual(0, host.Launches.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ExactLaunchRevalidatesSavedIdentity()
     {
         var host = new FakeHost(1)
         {
             ResolveHandler = request =>
                 [Item(0) with { AppId = "app-current" }],
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -331,7 +795,263 @@ public sealed class GameLauncherTests
 
         CollectionAssert.AreEqual(new[] { "saved-00000" }, host.ResolveRequests[^1].ToArray());
         CollectionAssert.AreEqual(new[] { "app-current" }, host.Launches.ToArray());
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            widget.Organization.RecentSavedIds.ToArray());
         await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task AcceptedLaunchesDriveBoundedRecentOrderingAndFilter()
+    {
+        var host = new FakeHost(40)
+        {
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        for (var index = 0; index < 35; index++)
+        {
+            var tileId = GameLauncherIdentity.FocusId("grid",
+                GameLauncherIdentity.Key($"saved-{index:D5}"));
+            await widget.OnActionAsync(new("game-launcher.launch", tileId));
+        }
+
+        Assert.AreEqual(GameLauncherPrivateState.MaximumRecentItems,
+            widget.Organization.RecentSavedIds.Count);
+        Assert.AreEqual("saved-00034", widget.Organization.RecentSavedIds[0]);
+        Assert.AreEqual("saved-00003", widget.Organization.RecentSavedIds[^1]);
+
+        await widget.OnActionAsync(new("game-launcher.filter.recent",
+            "game-launcher.filter.recent"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "recent-first reload");
+        var first = Nodes(Snapshot(widget, 60).Root)
+            .First(node => node.ActionId == "game-launcher.launch");
+        Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
+            GameLauncherIdentity.Key("saved-00034")), first.Id);
+
+        await widget.OnActionAsync(new("game-launcher.filter.recent",
+            "game-launcher.filter.recent"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "recent-only reload");
+        CollectionAssert.AreEqual(widget.Organization.RecentSavedIds.ToArray(),
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task ImmediateRecentPromotionRetainsCurrentItemAndRelaunchesExactly()
+    {
+        const string artwork = "library.art.0123456789abcdef0123456789abcdef";
+        var resolveGeneration = 0;
+        var host = new FakeHost(3)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                DisplayName = $"Current game {index}",
+                SourceAttribution = "Current catalog",
+                ArtworkHandle = artwork,
+            },
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        host.ResolveHandler = request => request.SavedIds.Select(savedId =>
+        {
+            var index = int.Parse(savedId.AsSpan(savedId.LastIndexOf('-') + 1));
+            return host.ItemFactory(index) with
+            {
+                AppId = $"fresh-app-{++resolveGeneration}",
+                DisplayName = $"Resolved game {index}",
+                SourceAttribution = "Resolved catalog",
+            };
+        }).ToArray();
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.recent", "game-launcher.filter.recent"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "empty recent-first reload");
+        var queriesBeforeLaunch = host.Queries.Count;
+        var promotedId = GameLauncherIdentity.FocusId(
+            "grid", GameLauncherIdentity.Key("saved-00001"));
+
+        await widget.OnActionAsync(new("game-launcher.launch", promotedId));
+
+        var promotedSnapshot = Snapshot(widget, 601);
+        var launchTiles = Nodes(promotedSnapshot.Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+        Assert.AreEqual(3, launchTiles.Length);
+        Assert.AreEqual(promotedId, launchTiles[0].Id);
+        Assert.AreEqual(1, launchTiles.Count(node => node.Id == promotedId),
+            "the promoted identity must not remain duplicated in the catalog section");
+        Assert.IsFalse(launchTiles[0].IsDisabled ?? false);
+        Assert.IsNull(launchTiles[0].CollectionItemKey,
+            "the promoted fixed row must stay outside cursor anchor accounting");
+        Assert.AreEqual(artwork,
+            Nodes(launchTiles[0]).Single(node => node.ArtworkHandle is not null).ArtworkHandle);
+        StringAssert.Contains(launchTiles[0].AccessibilityLabel!, "Current game 1");
+        StringAssert.Contains(launchTiles[0].AccessibilityLabel!, "Current catalog");
+        Assert.AreEqual(queriesBeforeLaunch, host.Queries.Count,
+            "promotion must not reload the provider page");
+
+        await widget.OnActionAsync(new("game-launcher.launch", promotedId));
+
+        Assert.AreEqual(2, host.ResolveRequests.Count);
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[0].ToArray());
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[1].ToArray());
+        CollectionAssert.AreEqual(new[] { "fresh-app-1", "fresh-app-2" },
+            host.Launches.ToArray());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RecentMutationConflictPreservesOrganizationAndConcurrentOrder()
+    {
+        var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");
+        var b = new GameLauncherDisplayItem("saved-b", "B", "Steam");
+        var c = new GameLauncherDisplayItem("saved-c", "C", "Windows");
+        var d = new GameLauncherDisplayItem("saved-d", "D", "Windows");
+        var e = new GameLauncherDisplayItem("saved-e", "E", "Xbox");
+        var baseline = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [a, b, c, d])
+        {
+            FavoriteSavedIds = [c.SavedId],
+            VariantGroups =
+            [
+                new(GameLauncherIdentity.GroupId(c.SavedId, d.SavedId),
+                    [c.SavedId, d.SavedId], d.SavedId),
+            ],
+            RecentSavedIds = [a.SavedId, b.SavedId],
+        };
+        var latest = baseline with
+        {
+            Items = [e, a, b, c, d],
+            RecentSavedIds = [e.SavedId, a.SavedId, b.SavedId],
+        };
+        GameLauncherPrivateState? written = null;
+        var attempts = 0;
+
+        var result = await GameLauncherStateStore.SaveAsync(
+            state => GameLauncherOrganizationPolicy.RecordRecent(state, b),
+            (state, _, _) =>
+            {
+                if (attempts++ == 0)
+                    return ValueTask.FromException<WidgetPrivateStateMutation>(
+                        new WidgetCapabilityException("state_conflict", "fixture"));
+                written = state;
+                return ValueTask.FromResult(new WidgetPrivateStateMutation(3));
+            },
+            _ => ValueTask.FromResult(new WidgetPrivateStateValue<GameLauncherPrivateState>(
+                true, latest, 2)), baseline, 1, CancellationToken.None);
+
+        Assert.IsTrue(result.Saved);
+        CollectionAssert.AreEqual(new[] { b.SavedId, e.SavedId, a.SavedId },
+            written!.RecentSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { c.SavedId },
+            written.FavoriteSavedIds.ToArray());
+        Assert.AreEqual(d.SavedId, written.VariantGroups.Single().PreferredSavedId);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RecentHistorySurvivesRestartAndClearsWithoutOrganizationLoss()
+    {
+        var state = new WidgetTestPrivateState();
+        var host = new FakeHost(2, state)
+        {
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var first = Nodes(Snapshot(widget, 63).Root)
+            .First(node => node.ActionId == "game-launcher.launch");
+        await widget.OnActionAsync(new("game-launcher.favorite", first.Id));
+        await widget.OnActionAsync(new("game-launcher.launch", first.Id));
+        await Background(widget);
+
+        var restartedHost = new FakeHost(2, state);
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        await Bounded(restarted.WhenWarmStateIdleAsync(), "recent warm-state restart");
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            restarted.Organization.RecentSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            restarted.Organization.FavoriteSavedIds.ToArray());
+
+        await restarted.OnActionAsync(new("game-launcher.recent.clear",
+            "game-launcher.recent.clear"));
+        Assert.AreEqual(0, restarted.Organization.RecentSavedIds.Count);
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            restarted.Organization.FavoriteSavedIds.ToArray());
+        await Background(restarted);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task FailedStaleAndCanceledLaunchesNeverRecordRecentHistory()
+    {
+        var missing = new FakeHost(1) { ResolveHandler = _ => [] };
+        var missingWidget = Create(missing);
+        await Interactive(missingWidget);
+        await Ready(missingWidget, missing);
+        var missingTile = Nodes(Snapshot(missingWidget, 61).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+        await missingWidget.OnActionAsync(new("game-launcher.launch", missingTile.Id));
+        Assert.AreEqual(0, missingWidget.Organization.RecentSavedIds.Count);
+        await Background(missingWidget);
+
+        var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<WidgetAppLaunchObservation>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var stale = new FakeHost(1)
+        {
+            LaunchHandler = (_, _) =>
+            {
+                admitted.TrySetResult();
+                return new ValueTask<WidgetAppLaunchObservation>(release.Task);
+            },
+        };
+        var staleWidget = Create(stale);
+        await Interactive(staleWidget);
+        await Ready(staleWidget, stale);
+        var staleTile = Nodes(Snapshot(staleWidget, 62).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+        var launch = staleWidget.OnActionAsync(
+            new("game-launcher.launch", staleTile.Id)).AsTask();
+        await Bounded(admitted.Task, "stale recent admission");
+        await staleWidget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(staleWidget.WhenLibraryIdleAsync(), "stale recent replacement");
+        release.TrySetResult(new(WidgetAppLaunchObservationState.Running, true, false));
+        await Bounded(launch, "stale recent completion");
+        Assert.AreEqual(0, staleWidget.Organization.RecentSavedIds.Count);
+        await Background(staleWidget);
+    }
+
+    [TestMethod]
+    public void MissingAndReplacementIdentitiesDoNotInheritRecentHistory()
+    {
+        var old = new GameLauncherDisplayItem("saved-old", "Game", "Steam");
+        var state = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [old])
+        {
+            RecentSavedIds = [old.SavedId],
+        };
+        var replacement = GameLauncherItem.From(Item(0) with
+        {
+            SavedId = "saved-new",
+            DisplayName = old.DisplayName,
+        });
+
+        var projected = GameLauncherOrganizationPolicy.ProjectPage(state, [replacement]);
+
+        CollectionAssert.AreEqual(new[] { old.SavedId },
+            projected.RecentSavedIds.ToArray());
+        Assert.IsTrue(projected.Items.Any(item => item.SavedId == old.SavedId));
+        Assert.IsTrue(projected.Items.Any(item => item.SavedId == "saved-new"));
     }
 
     [TestMethod, Timeout(30_000)]
@@ -385,6 +1105,7 @@ public sealed class GameLauncherTests
             .Single(node => node.ActionId == "game-launcher.launch");
         StringAssert.Contains(rendered.AccessibilityLabel!, "Request accepted");
         Assert.IsFalse(rendered.AccessibilityLabel!.Contains("Running", StringComparison.Ordinal));
+        Assert.AreEqual(0, widget.Organization.RecentSavedIds.Count);
         await Background(widget);
     }
 
@@ -681,6 +1402,7 @@ public sealed class GameLauncherTests
             IReadOnlyList<WidgetAppLibraryItem>>? ResolveHandler { get; set; }
         internal List<IReadOnlyList<string>> ResolveRequests { get; } = [];
         internal List<string> Launches { get; } = [];
+        internal List<WidgetAppLibraryCursorRequest> Queries { get; } = [];
         internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
             ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
         internal TaskCompletionSource FirstQueryStarted { get; } =
@@ -706,6 +1428,7 @@ public sealed class GameLauncherTests
         {
             token.ThrowIfCancellationRequested();
             FirstQueryStarted.TrySetResult();
+            Queries.Add(request);
             if (QueryHandler is not null) return QueryHandler(request, token);
             var offset = request.Cursor is null ? 0 : int.Parse(
                 request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),

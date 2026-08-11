@@ -174,6 +174,9 @@ struct WidgetNode final {
     std::wstring accessibilityLabel;
     std::wstring accessibilityValue;
     std::wstring actionId;
+    std::wstring textEntryValue;
+    std::wstring textEntryPlaceholder;
+    std::size_t textEntryMaximumLength{};
     std::wstring valueChangedActionId;
     // Optional protocol-v13 identity for mutually exclusive presentations of
     // one logical focus destination. It is never an action-routing key.
@@ -215,6 +218,7 @@ struct WidgetNode final {
     bool isDisabled{};
     bool isSelected{};
     bool isBusy{};
+    bool isTextEntry{};
     std::vector<WidgetNode> children;
 };
 
@@ -354,7 +358,8 @@ public:
         std::wstring_view widgetId,
         std::wstring_view actionId,
         std::wstring_view sourceElementId,
-        std::wstring_view inputScopeId);
+        std::wstring_view inputScopeId,
+        std::optional<std::wstring_view> committedText = std::nullopt);
     [[nodiscard]] std::wstring lastError() const;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();

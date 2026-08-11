@@ -379,13 +379,24 @@ public sealed record WidgetAppLibraryItem(
     public string SourceAttribution { get; init; } = string.Empty;
 }
 
-public enum WidgetAppLibrarySortOrder { DisplayName }
+public enum WidgetAppLibrarySortOrder
+{
+    DisplayName,
+    DisplayNameDescending,
+    SourceThenDisplayName,
+}
 
 public sealed record WidgetAppLibraryQuery(
     bool InstalledOnly = true,
     WidgetAppLibraryKind? Kind = null,
     string? SourceAttribution = null,
-    WidgetAppLibrarySortOrder Sort = WidgetAppLibrarySortOrder.DisplayName);
+    WidgetAppLibrarySortOrder Sort = WidgetAppLibrarySortOrder.DisplayName)
+{
+    public const int MaximumSearchTextLength = 96;
+    public const int MaximumFavoriteSavedIds = 128;
+    public string? SearchText { get; init; }
+    public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
+}
 
 public sealed record WidgetAppLibraryCursorRequest(
     [property: JsonRequired] WidgetAppLibraryQuery Query,
@@ -1008,11 +1019,18 @@ public sealed class WidgetAppLibraryService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
+        var normalizedSearch = NormalizeSearchText(query.SearchText);
         if (!Enum.IsDefined(query.Sort) ||
             query.Kind is { } kind && !Enum.IsDefined(kind) ||
             query.SourceAttribution is { } source &&
                 (string.IsNullOrWhiteSpace(source) || source.Length > 64 ||
-                    source.Any(char.IsControl)))
+                    source.Any(char.IsControl)) ||
+            query.SearchText is not null && normalizedSearch is null ||
+            query.FavoriteSavedIds is null ||
+            query.FavoriteSavedIds.Count > WidgetAppLibraryQuery.MaximumFavoriteSavedIds ||
+            query.FavoriteSavedIds.Distinct(StringComparer.Ordinal).Count() !=
+                query.FavoriteSavedIds.Count ||
+            query.FavoriteSavedIds.Any(savedId => !IsValidSavedId(savedId)))
             throw new ArgumentException("The app-library query is invalid.", nameof(query));
         if ((cursor is null) != (direction is null))
             throw new ArgumentException(
@@ -1022,7 +1040,11 @@ public sealed class WidgetAppLibraryService
         var page = await _client.InvokeAsync(
             WidgetAppLibraryCapabilities.GetPage,
             new WidgetAppLibraryCursorRequest(
-                query, cursor?.Value, direction, limit, refresh),
+                query with
+                {
+                    SearchText = normalizedSearch,
+                    FavoriteSavedIds = query.FavoriteSavedIds.ToArray(),
+                }, cursor?.Value, direction, limit, refresh),
             cancellationToken).ConfigureAwait(false);
         if (page?.Items is null || page.Items.Count > limit ||
             page.Revision is not { Length: > 0 and <= 128 } ||
@@ -1040,6 +1062,21 @@ public sealed class WidgetAppLibraryService
         }
         return page;
     }
+
+    internal static string? NormalizeSearchText(string? value)
+    {
+        if (value is null) return null;
+        var normalized = string.Join(' ', value.Normalize(NormalizationForm.FormKC)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (normalized.Length == 0) return null;
+        return normalized.Length <= WidgetAppLibraryQuery.MaximumSearchTextLength &&
+               !normalized.Any(char.IsControl) ? normalized : null;
+    }
+
+    private static bool IsValidSavedId(string? value) =>
+        value is { Length: > 6 and <= 128 } &&
+        value.StartsWith("saved-", StringComparison.Ordinal) &&
+        value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.');
 
     public ValueTask LaunchAsync(
         string appId,

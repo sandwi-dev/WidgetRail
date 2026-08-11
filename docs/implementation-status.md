@@ -1665,6 +1665,65 @@ themes also use non-shrinking fixed regions, a thin native Slider
  generic-worker route
  `artifacts/verification/20260811T125249Z-fa9ce5d8` passes 6/6, including the
  exact current Game Launcher launch path.
+ DLV-075 advances Game Launcher to package 0.4.0 with provider-owned normalized
+ search, exact source/favorite criteria, and closed display/source sorts over
+ one immutable cursor revision. The widget retains only its bounded cursor
+ window and opaque SavedIds. Protocol v15 adds one bounded TextEntry primitive;
+ the native host owns keyboard/controller editing, commit/cancel, focus
+ restoration, high-contrast native controls, and UI Automation, while the
+ worker receives only one final `CommittedText`. Query replacement resets the
+ shared cursor generation, and stale cancellation-ignoring results cannot
+ publish. Focused Release evidence passes Windows app-library provider 46/46,
+ PlatformBroker 52/52, Widget SDK 87/87, API compatibility 12/12, Game Launcher
+ 22/22, CLI replay 56/56, the documentation contract across 55 Markdown files,
+ TextEntryModalTests, the native bridge parser, and the Release OverlayHost
+ target. The installed generic-worker/AppContainer route passes 6/6 at
+ `artifacts/verification/20260811T134904Z-ff02c207`; the clean exact-commit
+ canonical verifier `artifacts/verification/20260811T140135Z-828292b9` stopped
+ on the inherited YT Music package expectation (`0.2.6` expected, `0.2.7`
+ actual) after the SDK and API compatibility groups passed; it was not rerun.
+ DLV-079 replaces DLV-075's modal-loop reference retention with one immutable
+ bounded text-entry request and a fresh post-modal current-authority resolution.
+ Snapshot refresh, runtime or active-widget replacement, removal, hide,
+ input-scope/action replacement, and disabled/busy sources all fail closed
+ before the bridge action send. TextEntryModal now uses work-area-bounded DPI
+ geometry and true spatial row navigation without wraparound. Focused Release
+ evidence passes TextEntryModal admission/layout/UIA/controller tests, the
+ existing native bridge text-entry parser, and the production OverlayHost target.
+ DLV-076 advances Game Launcher to package 0.5.0 and one current private schema
+ v3. The widget retains at most 32 opaque SavedIds in deterministic newest-
+ accepted order, updated only by exact current Launcher-started/Running/Ended
+ evidence. Acknowledgement-only, failed, stale, replaced, and canceled outcomes
+ do not write history. Recent-first ordering and exact recent-only filtering
+ remain non-authorizing and compose with favorites/groups; bounded CAS replay
+ preserves unrelated organization and another launch's order. Missing identity,
+ replacement identity, warm restart, whole-schema reset, clear-history, and the
+ 64 KiB state ceiling have direct deterministic coverage. Focused Release
+ verification passes Game Launcher 27/27 and the documentation contract across
+ 55 Markdown files.
+ DLV-077 advances Game Launcher to package 0.6.0 and one current private schema
+ v4 with at most 32 explicitly included opaque SavedIds. The Add games nested
+ route queries only the existing trusted installed catalog, exposes current
+ Game/Application/Unknown classification, and stores no executable, command,
+ AUMID, store/provider identity, or launch authority. Manual rows are freshly
+ resolved into the bounded Library window after restart and still require exact
+ SavedId revalidation before launch. Add/remove CAS replay preserves unrelated
+ favorites, groups, and recent ordering; missing and replacement identities
+ remain non-authorizing. Focused Release evidence covers Game Launcher 32/32,
+ Widget SDK app-library contracts, PlatformBroker exact resolution/launch,
+ generic-worker routing, an installed add/exact-launch route, direct restart,
+ remove, stale-rejection fixtures, and 55 documentation contracts.
+ DLV-080 corrects the retained-slice composition without changing schema v4 or
+ provider contracts. Every cursor loader result now contains only the provider
+ page (at most 64 rows); up to 32 freshly resolved recent and 32 manually added
+ rows render in separate non-anchor sections, deduplicated by exact SavedId
+ before the provider grid. Recent: First therefore leads with a later-page game
+ after cold restart, while launch still performs fresh exact resolution.
+ Automatic Game registrations are disabled and labeled Included in Add games,
+ and obsolete manual Game membership is removed through bounded CAS state
+ mutation. Focused Release coverage includes a disjoint 64 + 32 + 32 semantic
+ tree, source/favorite/sort coexistence, traversal overlap deduplication,
+ missing/replacement identities, and the installed 64-row-plus-manual route.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

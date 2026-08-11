@@ -336,14 +336,24 @@ public sealed record AppLibraryBackendItemSummary(
     [property: JsonIgnore] string ArtworkRevision = "",
     string SourceAttribution = "Windows");
 
-public enum AppLibrarySortOrder { DisplayName }
+public enum AppLibrarySortOrder
+{
+    DisplayName,
+    DisplayNameDescending,
+    SourceThenDisplayName,
+}
 public enum AppLibraryCursorDirection { Before, After }
 
 public sealed record AppLibraryBackendQuery(
     bool InstalledOnly = true,
     AppLibraryKind? Kind = null,
     string? SourceAttribution = null,
-    AppLibrarySortOrder Sort = AppLibrarySortOrder.DisplayName);
+    AppLibrarySortOrder Sort = AppLibrarySortOrder.DisplayName)
+{
+    public string? SearchText { get; init; }
+    [JsonIgnore]
+    public IReadOnlyList<string>? StableIdentityFilter { get; init; }
+}
 
 public sealed record AppLibraryBackendCursorRequest(
     AppLibraryBackendQuery Query,
@@ -388,7 +398,11 @@ public sealed record AppLibraryQuery(
     bool InstalledOnly = true,
     AppLibraryKind? Kind = null,
     string? SourceAttribution = null,
-    AppLibrarySortOrder Sort = AppLibrarySortOrder.DisplayName);
+    AppLibrarySortOrder Sort = AppLibrarySortOrder.DisplayName)
+{
+    public string? SearchText { get; init; }
+    public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
+}
 
 public sealed record AppLibraryCursorRequest(
     [property: JsonRequired] AppLibraryQuery Query,
