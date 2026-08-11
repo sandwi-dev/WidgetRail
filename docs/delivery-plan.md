@@ -903,10 +903,14 @@ route/action, playback, and presentation boundaries while retaining one
   host path with attempt-owned rollback, and confirmed Bluetooth removal affects
   only one current pairing. DLV-092 `bbd4919` is accepted and integrated through
   `fd965e6`: privacy-safe connection details now update without polling or raw
-  adapter identity. DLV-094 is active for the remaining trusted Steam-artwork
-  fallback, followed by Ready DLV-095 for an on-demand normalized running-app
-  capture route. These two visible milestones are the complete currently safe
-  queue: another local game-store adapter remains blocked on documented,
+  adapter identity. DLV-094 committed as `3fdbc19`, but independent review
+  rejected it pending DLV-096: catalog enumeration still performs synchronous
+  artwork-file discovery and terminal cleanup does not join the new artwork-
+  operation lane. DLV-095 is active for the on-demand normalized running-app
+  route and is not interrupted; DLV-096 follows it before this dependent prefix
+  may integrate. These visible milestones plus their bounded correction are the
+  complete currently safe queue: another local game-store adapter remains
+  blocked on documented,
   maintainable registration/launch authority; audio endpoint selection remains
   blocked on a supported Windows setter; and Spotify/YT Music live expansion
   still requires third-party account evidence. DLV-038 remains deferred test-
@@ -1794,7 +1798,7 @@ which is outside this 30-file connection-details diff.
 
 ### DLV-094 — Resolve trusted local Steam artwork lazily
 
-**State:** Assigned; implementation began from clean branch merge `3d881db`
+**State:** Rejected in review at `3fdbc19`; correction queued as DLV-096 after active DLV-095
 **Lane:** widgets, acting as the serialized app-library artwork lead
 **Baseline:** clean closing commit of DLV-092 after merging the planner commit
 that contains this assignment
@@ -1859,18 +1863,30 @@ authority, or a cache layout that cannot be bounded and fail closed. Preserve
 the Play fallback rather than guessing from titles or scanning unrelated image
 trees.
 
+**Reviewer disposition:** Not accepted. The candidate keeps decode and payload
+reads on the demanded artwork route, but Steam catalog enumeration calls
+`Discover` for every manifest; that method opens the trusted root, cache
+directory, and candidate artwork file and captures file metadata synchronously.
+This violates the explicit requirement that ordinary list/query traffic never
+wait for image I/O. The provider also admits artwork operations through a new
+four-slot gate while terminal cleanup waits only for the scan gate, allowing a
+cancellation-ignoring resolver to outlive successful disposal and race source
+disposal/state clearing. DLV-096 owns only these two gaps. DLV-095 had already
+started from the committed candidate and continues without interruption; the
+dependent prefix remains unintegrated until the correction passes review.
+
 ### DLV-095 — Add a current running app through normalized authority
 
-**State:** Ready; execute automatically after DLV-094 commits
+**State:** Assigned; implementation active from clean merge baseline `dd3efa7`
 **Lane:** widgets, acting as the serialized app-library observation lead
-**Baseline:** clean closing commit of DLV-094
+**Baseline:** DLV-094 candidate `3fdbc19` plus planner main merge `dd3efa7`
 **Dependencies:** DLV-059, DLV-071, DLV-072, DLV-075, DLV-077, and the accepted
 Games & Apps/Game Launcher private-state prefixes
 **Owner:** one on-demand trusted running-window observation, exact mapping to the
 existing normalized installed-library identity, a separate read grant, bounded
 Games & Apps and Game Launcher add routes, focused fixtures, and directly
 affected docs; no continuous process monitor or arbitrary executable launch
-**Concurrency:** May begin only after DLV-094 commits. Platform remains idle
+**Concurrency:** Began after DLV-094 committed. Platform remains idle
 unless assigned work disjoint from app-library provider, broker/SDK contracts,
 both launcher widgets, and public capability/API files.
 
@@ -1930,6 +1946,75 @@ store state, arbitrary executable authority, elevated inspection, or persistent
 process tracking; the OS cannot provide a bounded observation without keeping
 handles across the user decision; or the work requires changing existing launch
 semantics instead of reusing normalized SavedId resolution.
+
+### DLV-096 — Make Steam artwork discovery truly lazy and drain its lifetime
+
+**State:** Ready; execute automatically after DLV-095 commits
+**Lane:** widgets, correcting the rejected DLV-094 prefix
+**Baseline:** clean closing commit of DLV-095, which remains based on DLV-094
+candidate `3fdbc19`
+**Dependencies:** DLV-094 candidate `3fdbc19` and DLV-095's coherent closing
+commit; no dependency on platform work
+**Owner:** Steam artwork provider-internal lazy registration, artwork-operation
+terminal ownership, focused provider/broker regression fixtures, and directly
+affected implementation/public artwork documentation; no widget feature,
+renderer, native cache, launch authority, or running-app behavior changes
+**Concurrency:** Start only after DLV-095 commits. Platform remains idle. Do not
+rewrite, squash, or rebase the rejected prefix; close it with one ordinary
+follow-up commit.
+
+**Visible outcome:** The DLV-094 Steam icons remain available, while opening or
+refreshing either game library no longer probes every image file and overlay
+shutdown cannot report success while admitted artwork work is still using a
+disposed source.
+
+**Objective:** Close the two independent-review gaps without broadening Steam
+artwork formats, cache layouts, authority, or public contracts.
+
+**In scope:** make Steam catalog enumeration construct only bounded provider-
+internal lazy artwork identity from the already trusted Steam root and exact
+manifest app identity; defer cache directory/file open, candidate selection,
+metadata capture, byte read, decode, and revalidation to explicit artwork
+demand; preserve exact current registration/source/worker/session checks and
+handle rotation on replacement/removal. Track admitted artwork operations in
+the provider's singular terminal owner: cancellation is requested first,
+cooperative work drains, cancellation-ignoring work is bounded by the existing
+terminal deadline and produces an honest terminal failure, sources/state are
+not disposed or cleared concurrently with admitted use, and concurrent/repeated
+disposers observe one terminal result. Remove obsolete eager registration state
+and update claims that currently describe discovery as fully lazy.
+
+**Out of scope:** new image formats/layouts, Steam login/network/API work,
+arbitrary paths, public store identity, renderer/native-cache changes,
+additional caches or semaphores, DLV-095 changes, unrelated provider
+decomposition, aggregate verification, screenshots, or live visual diagnosis.
+
+**Acceptance criteria:** a catalog refresh with many Steam registrations makes
+zero artwork-cache filesystem opens and remains complete when the artwork cache
+is blocked/unavailable; the first exact current demand performs all bounded
+discovery/revalidation and produces the same accepted handle/fallback behavior.
+Replacement/removal still rotates or revokes only the affected handle while an
+unchanged neighbor remains valid. Cooperative cancellation drains before
+disposal completes; a deterministic cancellation-ignoring resolver cannot use
+a disposed source, cannot republish state, and causes one bounded shared
+terminal failure rather than successful early disposal. No public snapshot,
+log, or error exposes Steam app ID or paths.
+
+**Verification:** Tier 1 Windows app-library provider and PlatformBroker
+artwork suites plus documentation validation. Add deterministic fixtures that
+count filesystem artwork probes during multi-item catalog refresh, demand one
+item, retain an unaffected neighbor across replacement, and hold a cancellation-
+ignoring artwork operation through terminal cleanup. Re-run the existing DLV-094
+focused provider/broker/widget groups only where the correction changes their
+boundary; Tier 2 repeat only the dedicated installed Steam-artwork route. Do not
+run the canonical aggregate and do not capture screenshots. After the complete
+DLV-094/095/096 prefix is accepted and integrated, fully package and visibly
+relaunch once for both visible outcomes.
+
+**Stop/escalate when:** deferring discovery requires exposing store/path
+identity, terminal correctness requires unbounded waiting or force termination,
+or DLV-095 introduced an overlapping provider lifetime design that cannot be
+corrected mechanically without changing its accepted product behavior.
 
 ### DLV-007 — Make Spotify presentation state coherent
 

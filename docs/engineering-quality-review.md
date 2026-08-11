@@ -140,6 +140,21 @@ native boundary, platform DLV-078 can run beside widgets DLV-076 before DLV-077.
 
 ### Prior review delta — normalized game-library ownership
 
+Independent review rejects DLV-094 candidate `3fdbc19` pending DLV-096. The
+candidate's decode and payload reads are demand-driven, bounded, and isolated on
+a separate four-operation lane, but `WindowsSteamApplicationSource` still calls
+`WindowsSteamArtworkSource.Discover` while enumerating every manifest. That
+method opens the trusted root, cache directory, and candidate artwork file and
+captures file metadata, so ordinary catalog refresh still depends on artwork
+filesystem latency. The new artwork-operation lane is also absent from
+`WindowsAppLibraryProvider.CompleteDisposalAsync`: terminal cleanup cancels the
+lifetime and joins only `_scanGate`, then disposes sources and clears state even
+if a cancellation-ignoring artwork resolver still owns admitted source work.
+This is a real ownership regression, not a request for broader provider
+refactoring. DLV-096 is queued after already-active DLV-095 to make discovery
+entirely demand-only and add one bounded shared terminal result that joins both
+scan and artwork operations without racing source disposal.
+
 DLV-059 `c7c354d`, corrected by DLV-071 `355a858`, is accepted and integrated
 through `6f4c642`. The provider's central Start Menu/AppsFolder/Steam discovery,
 resolve, launch, and artwork switches become private normalized source owners,

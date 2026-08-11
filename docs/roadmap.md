@@ -301,12 +301,14 @@ remains off until the publisher-trust gates in Phase 4.
   add bounded lazy handles for trusted Start Menu and AppsFolder artwork without
   serializing base64 images into snapshots or holding provider I/O under native
   control-plane progress; exact trusted revalidation rotates the handle, decoded
-  cache entry, and render bitmap. Steam remains a documented fallback today;
-  Ready DLV-094 owns a bounded trusted-local-cache artwork slice without network
-  access or store identity exposure. The coherent post-DLV-055 Release is now
+  cache entry, and render bitmap. Steam remains a documented fallback on main;
+  DLV-094 candidate `3fdbc19` implements the bounded trusted-local-cache slice,
+  but DLV-096 must move candidate-file discovery off catalog refresh and join
+  admitted artwork work during terminal cleanup before that prefix integrates.
+  The coherent post-DLV-055 Release is now
   running for packaged live artwork checks. Launcher sources, authoritative game
   classification, history, search, and source grouping are implemented in the
-  normalized Game Launcher path. Ready DLV-095 adds only on-demand running-
+  normalized Game Launcher path. Active DLV-095 adds only on-demand running-
   program capture for exact current normalized registrations; arbitrary file-
   picker additions remain later roadmap work.
 - Capture proof and widget if Windows API tests pass
@@ -396,9 +398,10 @@ not irreversible API priority:
    visual/frame-time evidence before adding later product-target transitions.
 5. **Deepen Games & Apps through safe sources.** Start Menu and bounded
    AppsFolder/AUMID sources plus curated icons and a bounded Steam manifest/URI
-   adapter are implemented. Ready DLV-094 adds bounded trusted local Steam
-   artwork through the existing lazy handle path, and Ready DLV-095 adds an on-
-   demand running-program route only for exact normalized registrations. Add
+   adapter are implemented. DLV-094 plus queued correction DLV-096 add bounded,
+   demand-only trusted local Steam artwork through the existing lazy handle
+   path; active DLV-095 adds an on-demand running-program route only for exact
+   normalized registrations. Add
    other reviewed launcher adapters and a host-owned file picker later.
    Keep classification evidence-backed and launch identities opaque/revalidated.
 6. **Harden local providers and resource behavior.** The bounded schema-2
