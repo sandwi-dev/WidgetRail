@@ -139,6 +139,15 @@ int wmain() {
     CheckLayout({120, 80, 1120, 780}, 96, "standard modal fits an offset work area");
     CheckLayout({0, 0, 1920, 1080}, 144, "150-percent modal fits the active work area");
 
+    std::vector<wchar_t> ownedSecret(12);
+    for (std::size_t index = 0; index < ownedSecret.size(); ++index)
+        ownedSecret[index] = static_cast<wchar_t>(L'!' + index);
+    gba::input::SecureTextBuffer secureBuffer(std::move(ownedSecret));
+    Check(secureBuffer.view().size() == 12,
+        "secure modal result owns one bounded mutable character buffer");
+    secureBuffer.clear();
+    Check(secureBuffer.empty(), "secure modal result clears its terminal buffer");
+
     gba::input::TextEntryModal modal;
     Check(!modal.active(), "modal starts inactive");
     Check(!modal.Show(GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96),
@@ -216,7 +225,10 @@ int wmain() {
     const auto committed = modal.Show(
         GetModuleHandleW(nullptr), owner, L"A", L"Search installed games", 8);
     driver.join();
-    Check(committed && *committed == L"AI",
+    const auto expectedCommitted = std::wstring_view(L"AI");
+    Check(committed && std::equal(
+        committed->view().begin(), committed->view().end(),
+        expectedCommitted.begin(), expectedCommitted.end()),
         "on-screen key and commit publish one bounded final value");
     Check(!modal.active(), "committed modal releases its window");
 

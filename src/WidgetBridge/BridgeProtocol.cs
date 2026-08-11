@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -62,7 +63,7 @@ internal sealed record BridgeProtectedWifiRequest(
     string WidgetId,
     string RuntimeGeneration,
     string SourceElementId,
-    string Secret);
+    int SecretLength);
 internal sealed record BridgeInvalidation(string WidgetId, long Revision);
 internal sealed record BridgeHostEffect(
     string WidgetId,
@@ -134,6 +135,74 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
         if (envelope.RequestId < 0)
             throw new BridgeProtocolException("Bridge request ID cannot be negative.");
         return envelope;
+    }
+
+    internal async ValueTask<BridgeProtectedWifiSecret> ReadProtectedWifiSecretAsync(
+        int expectedLength,
+        CancellationToken cancellationToken)
+    {
+        if (expectedLength is < 8 or > 63)
+            throw new BridgeProtocolException("Protected Wi-Fi secret length is invalid.");
+        var header = new byte[sizeof(int)];
+        byte[]? bytes = new byte[expectedLength];
+        try
+        {
+            await _stream.ReadExactlyAsync(header, cancellationToken).ConfigureAwait(false);
+            var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+            if (length != expectedLength)
+                throw new BridgeProtocolException(
+                    "Protected Wi-Fi secret frame length did not match its metadata.");
+            await _stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
+            var result = BridgeProtectedWifiSecret.DecodeOwned(bytes);
+            bytes = null;
+            return result;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(header);
+            if (bytes is not null) CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
+}
+
+internal sealed class BridgeProtectedWifiSecret : IDisposable
+{
+    private char[] _characters;
+
+    internal BridgeProtectedWifiSecret(char[] characters) =>
+        _characters = characters ?? throw new ArgumentNullException(nameof(characters));
+
+    internal static BridgeProtectedWifiSecret DecodeOwned(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        char[]? characters = null;
+        try
+        {
+            characters = new char[bytes.Length];
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                if (bytes[index] is < 32 or > 126)
+                    throw new BridgeProtocolException(
+                        "Protected Wi-Fi secret contains an invalid character.");
+                characters[index] = (char)bytes[index];
+            }
+            var result = new BridgeProtectedWifiSecret(characters);
+            characters = null;
+            return result;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            if (characters is not null) Array.Clear(characters);
+        }
+    }
+
+    internal char[] Characters => _characters;
+
+    public void Dispose()
+    {
+        var characters = Interlocked.Exchange(ref _characters, []);
+        Array.Clear(characters);
     }
 }
 

@@ -68,13 +68,15 @@ authority. See [local companion HTTP and private
 secrets](community-companion-services.md) for APIs, limits, errors, identity
 scope, and testing.
 
-The following authority domains are **planned only**. Their final capability
-IDs and typed SDK surfaces are not assigned, the manifest validator does not
-accept them, and no widget may infer them from the implemented network grants:
+The following authority domains are not public widget capabilities. Their final
+capability IDs and typed SDK surfaces are not assigned, the manifest validator
+does not accept them, and no widget may infer them from the implemented network
+grants. The protected Wi-Fi row describes the implemented exact first-party
+host extension; profile-specific Bluetooth communication remains planned:
 
 | Planned closed authority | Intended boundary | Initial lifecycle |
 | --- | --- | --- |
-| Protected Wi-Fi credential flow | Host-owned WPA/WPA2/WPA3 Personal prompt/profile creation; no credential reaches the worker | Interactive only |
+| Protected Wi-Fi credential flow | Exact first-party host-owned WPA2/WPA3 Personal prompt and attempt-owned profile creation; mutable credential buffers bypass the worker and are zeroed | Interactive only |
 | Profile-specific Bluetooth communication | A separate reviewed GATT/RFCOMM/service contract, never authority inherited from discovery | Feature-specific |
 
 Pairing is implemented as association only. A `Paired` result does not mean a

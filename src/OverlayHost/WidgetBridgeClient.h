@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -12,6 +13,24 @@
 #include <vector>
 
 namespace gba {
+
+class ProtectedWifiSecretFrame final {
+public:
+    static std::optional<ProtectedWifiSecretFrame> Create(
+        std::span<const wchar_t> secret);
+    ~ProtectedWifiSecretFrame();
+    ProtectedWifiSecretFrame(const ProtectedWifiSecretFrame&) = delete;
+    ProtectedWifiSecretFrame& operator=(const ProtectedWifiSecretFrame&) = delete;
+    ProtectedWifiSecretFrame(ProtectedWifiSecretFrame&& other) noexcept;
+    ProtectedWifiSecretFrame& operator=(ProtectedWifiSecretFrame&& other) noexcept;
+
+    [[nodiscard]] std::span<const unsigned char> bytes() const noexcept { return bytes_; }
+    void clear() noexcept;
+
+private:
+    explicit ProtectedWifiSecretFrame(std::vector<unsigned char>&& bytes) noexcept;
+    std::vector<unsigned char> bytes_;
+};
 
 struct WidgetDescriptorQuickAction final {
     std::wstring id;
@@ -365,7 +384,7 @@ public:
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,
         std::wstring_view sourceElementId,
-        std::wstring_view secret);
+        std::span<const wchar_t> secret);
     [[nodiscard]] std::wstring lastError() const;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
@@ -380,6 +399,7 @@ private:
         const std::wstring& installedCatalogRoot);
     [[nodiscard]] bool Connect();
     [[nodiscard]] bool WriteFrame(std::string_view utf8);
+    [[nodiscard]] bool WriteProtectedWifiSecret(std::span<const wchar_t> secret);
     [[nodiscard]] std::optional<std::string> ReadFrame();
     void Fail(std::wstring message);
 

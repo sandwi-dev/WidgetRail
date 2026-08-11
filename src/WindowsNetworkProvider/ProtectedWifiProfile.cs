@@ -1,4 +1,5 @@
 using System.Text;
+using System.Security.Cryptography;
 
 namespace GameBarAlternative.WindowsNetworkProvider;
 
@@ -6,14 +7,21 @@ internal sealed class ProtectedWifiProfile : IDisposable
 {
     private char[] _xml;
 
-    private ProtectedWifiProfile(string name, char[] xml)
+    private byte[] _ownershipToken;
+
+    private ProtectedWifiProfile(string name, char[] xml, byte[] ownershipToken)
     {
         Name = name;
         _xml = xml;
+        _ownershipToken = ownershipToken;
     }
 
     internal string Name { get; }
     internal char[] Xml => _xml;
+    internal byte[] OwnershipToken => _ownershipToken;
+
+    internal byte[] TakeOwnershipToken() =>
+        Interlocked.Exchange(ref _ownershipToken, []);
 
     internal static bool TryCreate(
         byte[] ssid,
@@ -35,12 +43,16 @@ internal sealed class ProtectedWifiProfile : IDisposable
         };
         if (authenticationName is null || cipher != 4u) return false;
 
-        var name = Encoding.UTF8.GetString(ssid);
-        if (string.IsNullOrWhiteSpace(name) || name.Any(char.IsControl)) return false;
-        var xml = new char[2048];
+        var ssidName = Encoding.UTF8.GetString(ssid);
+        if (string.IsNullOrWhiteSpace(ssidName) || ssidName.Any(char.IsControl)) return false;
+        var name = $"GameBarAlternative-{Guid.NewGuid():N}";
+        byte[] ownershipToken = [];
+        char[] xml = [];
         var offset = 0;
         try
         {
+            ownershipToken = RandomNumberGenerator.GetBytes(32);
+            xml = new char[2048];
             void Write(ReadOnlySpan<char> value)
             {
                 if (offset + value.Length >= xml.Length)
@@ -79,7 +91,7 @@ internal sealed class ProtectedWifiProfile : IDisposable
             Write("</name><SSIDConfig><SSID><hex>");
             Write(Convert.ToHexString(ssid));
             Write("</hex><name>");
-            WriteEscaped(name);
+            WriteEscaped(ssidName);
             Write("</name></SSID></SSIDConfig><connectionType>ESS</connectionType>");
             Write("<connectionMode>auto</connectionMode><MSM><security><authEncryption>");
             Write("<authentication>");
@@ -89,13 +101,15 @@ internal sealed class ProtectedWifiProfile : IDisposable
             Write("<protected>false</protected><keyMaterial>");
             WriteEscaped(secret);
             Write("</keyMaterial></sharedKey></security></MSM></WLANProfile>");
-            profile = new ProtectedWifiProfile(name, xml);
+            profile = new ProtectedWifiProfile(name, xml, ownershipToken);
+            ownershipToken = [];
             xml = [];
             return true;
         }
         finally
         {
             Array.Clear(xml);
+            CryptographicOperations.ZeroMemory(ownershipToken);
         }
     }
 
@@ -110,5 +124,7 @@ internal sealed class ProtectedWifiProfile : IDisposable
     {
         var xml = Interlocked.Exchange(ref _xml, []);
         Array.Clear(xml);
+        var ownershipToken = Interlocked.Exchange(ref _ownershipToken, []);
+        CryptographicOperations.ZeroMemory(ownershipToken);
     }
 }

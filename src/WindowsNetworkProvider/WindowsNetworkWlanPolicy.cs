@@ -8,7 +8,8 @@ namespace GameBarAlternative.WindowsNetworkProvider;
 
 internal readonly record struct NativeWlanNotificationProjection(
     NativeNetworkConnectionOutcome? ConnectionOutcome,
-    NativeWifiScanOutcome? ScanOutcome);
+    NativeWifiScanOutcome? ScanOutcome,
+    NativeProtectedWifiRollbackResult? RollbackResult = null);
 
 /// <summary>
 /// Bounded saved-profile, available-network, scan, connect, and WLAN callback state.
@@ -309,21 +310,42 @@ internal sealed class WindowsNetworkWlanPolicy
                 return setResult == ErrorAccessDenied
                     ? NativeProtectedWifiConnectStartResult.Unavailable
                     : NativeProtectedWifiConnectStartResult.UnsupportedAuthentication;
+            if (calls.SetWlanProfileCustomUserData(
+                    handle,
+                    target.InterfaceId,
+                    profile.Name,
+                    profile.OwnershipToken) != ErrorSuccess)
+                return NativeProtectedWifiConnectStartResult.RollbackUnverified;
+            if (VerifyProfileOwnership(
+                    calls,
+                    handle,
+                    target.InterfaceId,
+                    profile.Name,
+                    profile.OwnershipToken) != ProfileOwnershipVerification.Match)
+                return NativeProtectedWifiConnectStartResult.RollbackUnverified;
             var connectResult = calls.ConnectWlan(
                 handle,
                 target.InterfaceId,
                 new(WlanConnectionModeProfile, profile.Name, null, Dot11BssTypeAny));
             if (connectResult != ErrorSuccess)
             {
-                _ = calls.DeleteWlanProfile(handle, target.InterfaceId, profile.Name);
-                return NativeProtectedWifiConnectStartResult.Unavailable;
+                var rollback = RollbackProfile(
+                    calls,
+                    handle,
+                    target.InterfaceId,
+                    profile.Name,
+                    profile.OwnershipToken);
+                return rollback == NativeProtectedWifiRollbackResult.Deleted
+                    ? NativeProtectedWifiConnectStartResult.Unavailable
+                    : NativeProtectedWifiConnectStartResult.RollbackUnverified;
             }
             _pendingConnection = new(
                 nativeNetworkKey,
                 target.InterfaceId,
                 profile.Name,
                 target.Ssid.ToArray(),
-                true);
+                true,
+                profile.TakeOwnershipToken());
             return NativeProtectedWifiConnectStartResult.Started;
         }
     }
@@ -357,6 +379,7 @@ internal sealed class WindowsNetworkWlanPolicy
         }
 
         NativeNetworkConnectionOutcome? outcome = null;
+        NativeProtectedWifiRollbackResult? rollbackResult = null;
         if (data.NotificationSource == WlanNotificationSourceAcm &&
             data.NotificationCode is WlanNotificationAcmConnectionComplete or
                 WlanNotificationAcmConnectionAttemptFail &&
@@ -389,11 +412,28 @@ internal sealed class WindowsNetworkWlanPolicy
                             StringComparison.Ordinal),
                     })
                     .ToArray();
-            if (matchedPending is { CreatedProfile: true } &&
-                data.NotificationCode == WlanNotificationAcmConnectionAttemptFail &&
-                matchedPending.ProfileName is { Length: > 0 })
-                _ = calls.DeleteWlanProfile(
-                    handle, matchedPending.InterfaceId, matchedPending.ProfileName);
+            if (matchedPending is not null)
+            {
+                if (matchedPending is { CreatedProfile: true } &&
+                    data.NotificationCode == WlanNotificationAcmConnectionComplete &&
+                    matchedPending.ProfileName is { Length: > 0 } &&
+                    calls.SetWlanProfileCustomUserData(
+                        handle,
+                        matchedPending.InterfaceId,
+                        matchedPending.ProfileName,
+                        []) != ErrorSuccess)
+                    rollbackResult = NativeProtectedWifiRollbackResult.VerificationUnavailable;
+                if (matchedPending is { CreatedProfile: true } &&
+                    data.NotificationCode == WlanNotificationAcmConnectionAttemptFail &&
+                    matchedPending.ProfileName is { Length: > 0 })
+                    rollbackResult = RollbackProfile(
+                        calls,
+                        handle,
+                        matchedPending.InterfaceId,
+                        matchedPending.ProfileName,
+                        matchedPending.OwnershipToken);
+                CryptographicOperations.ZeroMemory(matchedPending.OwnershipToken);
+            }
             if (matchedPending is not null || !string.IsNullOrEmpty(profileName))
             {
                 outcome = new(
@@ -403,7 +443,7 @@ internal sealed class WindowsNetworkWlanPolicy
                         : NativeNetworkConnectionResult.Failed);
             }
         }
-        return new(outcome, null);
+        return new(outcome, null, rollbackResult);
     }
 
     public void Clear()
@@ -411,22 +451,37 @@ internal sealed class WindowsNetworkWlanPolicy
         _connectableProfiles.Clear();
         _connectableNetworks.Clear();
         _pendingScanInterfaces.Clear();
+        var pending = _pendingConnection;
         _pendingConnection = null;
+        if (pending is not null)
+            CryptographicOperations.ZeroMemory(pending.OwnershipToken);
         _cachedAvailableGeneration = -1;
         _cachedAvailableNetworks = [];
     }
 
-    public void RollbackPendingProtected(
+    public NativeProtectedWifiRollbackResult RollbackPendingProtected(
         IWindowsNetworkNativeCalls calls,
         IntPtr handle)
     {
         if (_pendingConnection is not { CreatedProfile: true, ProfileName: { Length: > 0 } } pending)
-            return;
+            return NativeProtectedWifiRollbackResult.NothingToRollback;
         _pendingConnection = null;
-        _ = calls.DeleteWlanProfile(handle, pending.InterfaceId, pending.ProfileName);
+        try
+        {
+            return RollbackProfile(
+                calls,
+                handle,
+                pending.InterfaceId,
+                pending.ProfileName,
+                pending.OwnershipToken);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pending.OwnershipToken);
+        }
     }
 
-    public void RollbackProtected(
+    public NativeProtectedWifiRollbackResult RollbackProtected(
         IWindowsNetworkNativeCalls calls,
         IntPtr handle,
         string nativeNetworkKey)
@@ -434,9 +489,76 @@ internal sealed class WindowsNetworkWlanPolicy
         if (_pendingConnection is not
             { CreatedProfile: true, ProfileName: { Length: > 0 } } pending ||
             !string.Equals(pending.NativeKey, nativeNetworkKey, StringComparison.Ordinal))
-            return;
+            return NativeProtectedWifiRollbackResult.NothingToRollback;
         _pendingConnection = null;
-        _ = calls.DeleteWlanProfile(handle, pending.InterfaceId, pending.ProfileName);
+        try
+        {
+            return RollbackProfile(
+                calls,
+                handle,
+                pending.InterfaceId,
+                pending.ProfileName,
+                pending.OwnershipToken);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pending.OwnershipToken);
+        }
+    }
+
+    private static NativeProtectedWifiRollbackResult RollbackProfile(
+        IWindowsNetworkNativeCalls calls,
+        IntPtr handle,
+        Guid interfaceId,
+        string profileName,
+        byte[] expectedOwnershipToken)
+    {
+        var verification = VerifyProfileOwnership(
+            calls,
+            handle,
+            interfaceId,
+            profileName,
+            expectedOwnershipToken);
+        if (verification == ProfileOwnershipVerification.Unavailable)
+            return NativeProtectedWifiRollbackResult.VerificationUnavailable;
+        if (verification == ProfileOwnershipVerification.Mismatch)
+            return NativeProtectedWifiRollbackResult.OwnershipMismatch;
+        return calls.DeleteWlanProfile(handle, interfaceId, profileName) == ErrorSuccess
+            ? NativeProtectedWifiRollbackResult.Deleted
+            : NativeProtectedWifiRollbackResult.DeleteFailed;
+    }
+
+    private static ProfileOwnershipVerification VerifyProfileOwnership(
+        IWindowsNetworkNativeCalls calls,
+        IntPtr handle,
+        Guid interfaceId,
+        string profileName,
+        byte[] expectedOwnershipToken)
+    {
+        var readResult = calls.GetWlanProfileCustomUserData(
+            handle, interfaceId, profileName, out var actualOwnershipToken);
+        try
+        {
+            if (readResult != ErrorSuccess)
+                return ProfileOwnershipVerification.Unavailable;
+            return actualOwnershipToken.Length == expectedOwnershipToken.Length &&
+                CryptographicOperations.FixedTimeEquals(
+                    actualOwnershipToken,
+                    expectedOwnershipToken)
+                ? ProfileOwnershipVerification.Match
+                : ProfileOwnershipVerification.Mismatch;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(actualOwnershipToken);
+        }
+    }
+
+    private enum ProfileOwnershipVerification
+    {
+        Match,
+        Mismatch,
+        Unavailable,
     }
 
     internal static bool ShouldExposeAvailableNetwork(
@@ -597,7 +719,19 @@ internal sealed class WindowsNetworkWlanPolicy
         Guid InterfaceId,
         string? ProfileName,
         byte[] Ssid,
-        bool CreatedProfile);
+        bool CreatedProfile,
+        byte[] OwnershipToken)
+    {
+        public PendingNativeConnection(
+            string nativeKey,
+            Guid interfaceId,
+            string? profileName,
+            byte[] ssid,
+            bool createdProfile)
+            : this(nativeKey, interfaceId, profileName, ssid, createdProfile, [])
+        {
+        }
+    }
     private sealed record NativeAvailableNetworkTarget(
         Guid InterfaceId,
         byte[] Ssid,

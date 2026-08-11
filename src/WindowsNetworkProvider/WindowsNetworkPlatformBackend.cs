@@ -629,10 +629,12 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         IWindowsNetworkNativeAdapter adapter,
         ConnectProtectedWifiCommand command)
     {
+        ProtectedWifiConnectionResult result;
         try
         {
             if (command.CancellationToken.IsCancellationRequested)
             {
+                command.Dispose();
                 command.Completion.TrySetCanceled(command.CancellationToken);
                 return;
             }
@@ -658,23 +660,22 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                 connecting = _status = _operations.ApplyTo(_status);
             }
             _events.Writer.TryWrite(connecting);
-            command.Completion.TrySetResult(new(
-                ProtectedWifiConnectionStatus.Connecting, "connecting"));
+            result = new(ProtectedWifiConnectionStatus.Connecting, "connecting");
         }
         catch (BrokerException exception)
         {
-            command.Completion.TrySetResult(new(
-                ProtectedWifiConnectionStatus.Rejected, exception.Code));
+            result = new(ProtectedWifiConnectionStatus.Rejected, exception.Code);
         }
         catch
         {
-            command.Completion.TrySetResult(new(
-                ProtectedWifiConnectionStatus.Rejected, "platform_unavailable"));
+            result = new(
+                ProtectedWifiConnectionStatus.Rejected, "platform_unavailable");
         }
         finally
         {
             command.Dispose();
         }
+        command.Completion.TrySetResult(result);
     }
 
     private void ExecuteSetWifiRadio(IWindowsNetworkNativeAdapter adapter, SetWifiRadioCommand command)
@@ -756,7 +757,10 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             failed = _status = _operations.ApplyTo(_status);
         }
         if (nativeKey is not null)
-            adapter.RollbackProtectedWifiConnection(nativeKey);
+        {
+            _ = adapter.RollbackProtectedWifiConnection(nativeKey);
+            _degraded = adapter.IsDegraded;
+        }
         _events.Writer.TryWrite(failed);
     }
 

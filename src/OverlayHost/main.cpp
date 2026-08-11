@@ -4570,7 +4570,7 @@ private:
                         request->widgetId,
                         request->runtimeGeneration,
                         target->sourceElementId,
-                        *committed);
+                        committed->view());
                     handled = result.has_value();
                     lastActionWidgetId_ = request->widgetId;
                     lastActionMessage_ = result && *result == L"connecting"
@@ -4580,7 +4580,8 @@ private:
                 } else {
                     handled = bridge_.SendAction(
                         request->widgetId, target->actionId, target->sourceElementId,
-                        target->activeInputScopeId, *committed);
+                        target->activeInputScopeId,
+                        std::wstring_view(committed->view().data(), committed->view().size()));
                 }
                 if (handled && *handled) {
                     RefreshAndApplyPresentation([&] {
@@ -4588,9 +4589,6 @@ private:
                     });
                 }
             }
-            if (!committed->empty())
-                SecureZeroMemory(
-                    committed->data(), committed->size() * sizeof(wchar_t));
             committed->clear();
         }
         if (state_.surface() == gba::Surface::Widget)

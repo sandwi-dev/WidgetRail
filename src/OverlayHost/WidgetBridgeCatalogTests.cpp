@@ -43,6 +43,22 @@ constexpr std::string_view ValidAppearance = R"json({
 } // namespace
 
 int main() {
+    std::vector<wchar_t> secret(14);
+    for (std::size_t index = 0; index < secret.size(); ++index)
+        secret[index] = static_cast<wchar_t>(L'!' + index);
+    auto protectedFrame = gba::ProtectedWifiSecretFrame::Create(secret);
+    assert(protectedFrame && protectedFrame->bytes().size() == secret.size());
+    assert(std::equal(
+        protectedFrame->bytes().begin(),
+        protectedFrame->bytes().end(),
+        secret.begin(),
+        [](const unsigned char encoded, const wchar_t source) {
+            return encoded == static_cast<unsigned char>(source);
+        }));
+    protectedFrame->clear();
+    assert(protectedFrame->bytes().empty());
+    secret[0] = L'\n';
+    assert(!gba::ProtectedWifiSecretFrame::Create(secret));
     std::wstring error;
     const auto valid = gba::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{

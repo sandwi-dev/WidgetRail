@@ -710,11 +710,13 @@ internal sealed class ManualCommandAdmissionObserver(Type commandType)
 
     public ManualResetEventSlim ReservationEntered { get; } = new(false);
     public ManualResetEventSlim AllowAdmission { get; } = new(false);
+    public NetworkCommand? ObservedCommand { get; private set; }
 
     public void AfterReservation(NetworkCommand command)
     {
         if (command.GetType() != _commandType ||
             Interlocked.Exchange(ref _blocked, 1) != 0) return;
+        ObservedCommand = command;
         ReservationEntered.Set();
         Assert.True(AllowAdmission.Wait(TimeSpan.FromSeconds(10)));
     }

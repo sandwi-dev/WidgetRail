@@ -20,6 +20,46 @@
 #include <utility>
 
 namespace gba {
+
+ProtectedWifiSecretFrame::ProtectedWifiSecretFrame(
+    std::vector<unsigned char>&& bytes) noexcept : bytes_(std::move(bytes)) {}
+
+ProtectedWifiSecretFrame::~ProtectedWifiSecretFrame() { clear(); }
+
+ProtectedWifiSecretFrame::ProtectedWifiSecretFrame(
+    ProtectedWifiSecretFrame&& other) noexcept : bytes_(std::move(other.bytes_)) {
+    other.clear();
+}
+
+ProtectedWifiSecretFrame& ProtectedWifiSecretFrame::operator=(
+    ProtectedWifiSecretFrame&& other) noexcept {
+    if (this != &other) {
+        clear();
+        bytes_ = std::move(other.bytes_);
+        other.clear();
+    }
+    return *this;
+}
+
+std::optional<ProtectedWifiSecretFrame> ProtectedWifiSecretFrame::Create(
+    const std::span<const wchar_t> secret) {
+    if (secret.size() < 8 || secret.size() > 63) return std::nullopt;
+    std::vector<unsigned char> bytes(secret.size());
+    for (std::size_t index = 0; index < secret.size(); ++index) {
+        if (secret[index] < 32 || secret[index] > 126) {
+            if (!bytes.empty()) SecureZeroMemory(bytes.data(), bytes.size());
+            return std::nullopt;
+        }
+        bytes[index] = static_cast<unsigned char>(secret[index]);
+    }
+    return ProtectedWifiSecretFrame(std::move(bytes));
+}
+
+void ProtectedWifiSecretFrame::clear() noexcept {
+    if (!bytes_.empty()) SecureZeroMemory(bytes_.data(), bytes_.size());
+    bytes_.clear();
+}
+
 namespace {
 
 using winrt::Windows::Data::Json::JsonArray;
@@ -33,6 +73,7 @@ constexpr uint32_t kMaximumDescriptorQuickActions = 16;
 constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
+
 constexpr uint32_t kMaximumShellStyles = 12;
 constexpr uint32_t kMaximumShellProperties = 64;
 constexpr std::size_t kMaximumStyleValueTextLength = 4096;
@@ -1775,7 +1816,7 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
     const std::wstring_view widgetId,
     const std::wstring_view runtimeGeneration,
     const std::wstring_view sourceElementId,
-    const std::wstring_view secret) {
+    const std::span<const wchar_t> secret) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || !IsIdentifier(widgetId) ||
         !IsIdentifier(runtimeGeneration) || !IsIdentifier(sourceElementId) ||
@@ -1793,7 +1834,8 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
             JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
         payload.Insert(L"sourceElementId",
             JsonValue::CreateStringValue(winrt::hstring(sourceElementId)));
-        payload.Insert(L"secret", JsonValue::CreateStringValue(winrt::hstring(secret)));
+        payload.Insert(L"secretLength", JsonValue::CreateNumberValue(
+            static_cast<double>(secret.size())));
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
@@ -1801,7 +1843,8 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
             static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
-        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        if (!WriteFrame(winrt::to_string(envelope.Stringify())) ||
+            !WriteProtectedWifiSecret(secret)) return std::nullopt;
 
         while (const auto frame = ReadFrame()) {
             const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
@@ -1839,6 +1882,20 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
             std::wstring(error.message()));
     }
     return std::nullopt;
+}
+
+bool WidgetBridgeClient::WriteProtectedWifiSecret(
+    const std::span<const wchar_t> secret) {
+    auto frame = ProtectedWifiSecretFrame::Create(secret);
+    if (!frame) return false;
+    const auto bytes = frame->bytes();
+    const std::int32_t length = static_cast<std::int32_t>(bytes.size());
+    if (!WriteExact(pipe_, &length, sizeof(length)) ||
+        !WriteExact(pipe_, bytes.data(), static_cast<DWORD>(bytes.size()))) {
+        Fail(Win32Message(L"WriteFile(WidgetBridge protected Wi-Fi)", GetLastError()));
+        return false;
+    }
+    return true;
 }
 
 bool WidgetBridgeClient::WriteFrame(const std::string_view utf8) {

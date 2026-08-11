@@ -205,13 +205,19 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         }
     }
 
-    public void RollbackProtectedWifiConnection(string nativeNetworkKey)
+    public NativeProtectedWifiRollbackResult RollbackProtectedWifiConnection(
+        string nativeNetworkKey)
     {
         ThrowIfDisposed();
         lock (_lifetimeGate)
         {
             ThrowIfDisposed();
-            _wlan.RollbackProtected(_calls, _wlanHandle, nativeNetworkKey);
+            var result = _wlan.RollbackProtected(_calls, _wlanHandle, nativeNetworkKey);
+            if (result is NativeProtectedWifiRollbackResult.OwnershipMismatch or
+                NativeProtectedWifiRollbackResult.DeleteFailed or
+                NativeProtectedWifiRollbackResult.VerificationUnavailable)
+                Volatile.Write(ref _degraded, 1);
+            return result;
         }
     }
 
@@ -319,6 +325,11 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         {
             if (_lifetimeState != LifetimeActive) return;
             projection = _wlan.ProcessNotification(_calls, _wlanHandle, ref data);
+            if (projection.RollbackResult is
+                NativeProtectedWifiRollbackResult.OwnershipMismatch or
+                NativeProtectedWifiRollbackResult.DeleteFailed or
+                NativeProtectedWifiRollbackResult.VerificationUnavailable)
+                Volatile.Write(ref _degraded, 1);
         }
         RaiseChanged(projection.ConnectionOutcome, projection.ScanOutcome);
     }
@@ -404,7 +415,11 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
             }
             if (_wlanHandle != IntPtr.Zero)
             {
-                _wlan.RollbackPendingProtected(_calls, _wlanHandle);
+                var rollback = _wlan.RollbackPendingProtected(_calls, _wlanHandle);
+                if (rollback is NativeProtectedWifiRollbackResult.OwnershipMismatch or
+                    NativeProtectedWifiRollbackResult.DeleteFailed or
+                    NativeProtectedWifiRollbackResult.VerificationUnavailable)
+                    Volatile.Write(ref _degraded, 1);
                 if (_wlanNotificationsRegistered)
                     _ = _calls.RegisterWlanNotification(
                         _wlanHandle,

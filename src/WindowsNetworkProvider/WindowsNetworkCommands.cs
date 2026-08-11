@@ -131,6 +131,9 @@ internal static class WindowsNetworkCommandPolicy
                 "unsupported_authentication", "This Wi-Fi authentication method is unsupported."),
             NativeProtectedWifiConnectStartResult.ProfileAlreadyExists => new BrokerException(
                 "profile_exists", "Windows already has a profile for this network."),
+            NativeProtectedWifiConnectStartResult.RollbackUnverified => new BrokerException(
+                "rollback_unverified",
+                "Windows could not verify ownership of the temporary Wi-Fi profile."),
             NativeProtectedWifiConnectStartResult.NotFound => new BrokerException(
                 "resource_not_found", "The visible Wi-Fi network is no longer available."),
             _ => new BrokerException(

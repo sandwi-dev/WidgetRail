@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.IO.Pipes;
+using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
@@ -18,6 +20,7 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bridge framing rejects oversized messages", OversizedFrameIsRejected),
+    ("Protected Wi-Fi secret frames zero every mutable managed owner", ProtectedWifiSecretFramesAreZeroed),
     ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),
     ("Bridge read and reply timeouts have exact frame owners", BridgeFrameOwnershipScenarios.TimeoutAndCancellationHaveExactOwners),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
@@ -33,6 +36,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
+    ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
@@ -126,6 +130,78 @@ static async Task OversizedFrameIsRejected()
     var channel = new BridgeFrameChannel(stream, 1024);
     await Assert.ThrowsAsync<BridgeProtocolException>(() =>
         channel.ReadAsync(CancellationToken.None).AsTask());
+}
+
+static async Task ProtectedWifiSecretFramesAreZeroed()
+{
+    var secret = Enumerable.Range(0, 14)
+        .Select(index => (char)('!' + index)).ToArray();
+    var expected = SecretSentinel(secret);
+    var encoded = secret.Select(character => checked((byte)character)).ToArray();
+    var decodeOwner = encoded.ToArray();
+    using (var decoded = BridgeProtectedWifiSecret.DecodeOwned(decodeOwner))
+    {
+        Assert.True(decodeOwner.All(value => value == 0),
+            "Secret decoder retained its owned frame bytes.");
+        Assert.Equal(expected, SecretSentinel(decoded.Characters));
+        var characters = decoded.Characters;
+        decoded.Dispose();
+        Assert.True(characters.All(value => value == '\0'),
+            "Secret decoder retained its managed character owner.");
+    }
+
+    var frame = new byte[sizeof(int) + encoded.Length];
+    BinaryPrimitives.WriteInt32LittleEndian(frame, encoded.Length);
+    encoded.CopyTo(frame.AsSpan(sizeof(int)));
+    await using (var stream = new MemoryStream(frame, writable: false))
+    {
+        var channel = new BridgeFrameChannel(stream, 1024);
+        using var decoded = await channel.ReadProtectedWifiSecretAsync(
+            secret.Length, CancellationToken.None);
+        Assert.Equal(expected, SecretSentinel(decoded.Characters));
+    }
+
+    var invalid = encoded.ToArray();
+    invalid[^1] = 0;
+    Assert.Throws<BridgeProtocolException>(() =>
+        BridgeProtectedWifiSecret.DecodeOwned(invalid));
+    Assert.True(invalid.All(value => value == 0),
+        "Rejected secret bytes survived decoding.");
+
+    await using (var failing = new FailingProtectedWifiSecretStream(secret.Length))
+    {
+        var channel = new BridgeFrameChannel(failing, 1024);
+        await Assert.ThrowsAsync<IOException>(() => channel.ReadProtectedWifiSecretAsync(
+            secret.Length, CancellationToken.None).AsTask());
+        Assert.True(failing.CapturedBody is not null &&
+            failing.CapturedBody.All(value => value == 0),
+            "A failed secret-frame read retained its partially filled body.");
+    }
+
+    using (var cancellation = new CancellationTokenSource())
+    await using (var canceled = new FailingProtectedWifiSecretStream(
+        secret.Length, cancellation))
+    {
+        var channel = new BridgeFrameChannel(canceled, 1024);
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            channel.ReadProtectedWifiSecretAsync(
+                secret.Length, cancellation.Token).AsTask());
+        Assert.True(canceled.CapturedBody is not null &&
+            canceled.CapturedBody.All(value => value == 0),
+            "A canceled secret-frame read retained its partially filled body.");
+    }
+
+    Array.Clear(secret);
+    CryptographicOperations.ZeroMemory(encoded);
+    CryptographicOperations.ZeroMemory(frame);
+}
+
+static int SecretSentinel(ReadOnlySpan<char> secret)
+{
+    var value = unchecked((int)2166136261);
+    foreach (var character in secret)
+        value = unchecked((value ^ character) * 16777619);
+    return value;
 }
 
 static Task StrictCatalogRejectsUnknownProperties()
@@ -275,7 +351,78 @@ static Task ProtectedWifiHostAdmissionIsExact()
     })
         Assert.False(NetworkControlsHostPolicy.TryParseNetworkId(source, out _),
             $"Unsafe protected Wi-Fi source was admitted: {source}");
+
+    var metadata = BridgeJson.FromElement<BridgeProtectedWifiRequest>(BridgeJson.ToElement(new
+    {
+        widgetId = "network-controls",
+        runtimeGeneration = "generation-a",
+        sourceElementId = "network.wifi.item.wifi_0123456789ABCDEF",
+        secretLength = 14,
+    }));
+    Assert.Equal(14, metadata.SecretLength);
+    Assert.Throws<JsonException>(() =>
+        BridgeJson.FromElement<BridgeProtectedWifiRequest>(BridgeJson.ToElement(new
+        {
+            widgetId = "network-controls",
+            runtimeGeneration = "generation-a",
+            sourceElementId = "network.wifi.item.wifi_0123456789ABCDEF",
+            secretLength = 14,
+            secret = 1,
+        })));
     return Task.CompletedTask;
+}
+
+static async Task ProtectedWifiProductionDispatchIsZeroed()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    using var catalogFiles = TemporaryCatalog.Create(
+        id: "network-controls",
+        packageId: "org.gbar.firstparty.network-controls",
+        publisherId: "org.gbar.firstparty",
+        instanceId: "network-controls",
+        declaredCapabilities: [PlatformCapabilities.NetworkWifiConnectV1]);
+    var catalog = BridgeCatalog.Load(catalogFiles.Path);
+    var descriptor = catalog.GetConfigured("network-controls").PublicDescriptor();
+    var network = new ProtectedWifiNetworkBackend();
+    var simulator = new SimulatedPlatformBrokerBackend();
+    await using var composite = new CompositePlatformBrokerBackend(simulator, network);
+    var pipeName = $"gba-bridge-protected-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(
+        pipeName, catalog, 64 * 1024, platformBackend: composite);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var lifecycle = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest(
+                "network-controls", WidgetLifecycleState.Interactive));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+
+        var secret = Enumerable.Range(0, 15)
+            .Select(index => (char)('A' + index)).ToArray();
+        var expected = SecretSentinel(secret);
+        var response = await client.RequestProtectedWifiAsync(
+            new BridgeProtectedWifiRequest(
+                "network-controls",
+                descriptor.RuntimeGeneration,
+                "network.wifi.item.wifi_0123456789ABCDEF",
+                secret.Length),
+            secret);
+        Assert.Equal(BridgeMessageTypes.Acknowledged, response.Type);
+        Assert.Equal(expected, network.SecretSentinel);
+        Assert.Equal("wifi_0123456789ABCDEF", network.NetworkId);
+        Assert.True(network.ObservedSecretOwner is not null &&
+            network.ObservedSecretOwner.All(value => value == '\0'),
+            "Production dispatch retained the backend-owned secret characters.");
+        Array.Clear(secret);
+    }
+    finally
+    {
+        try { await client.RequestAsync(BridgeMessageTypes.Stop, new { }); }
+        catch { }
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(8));
+    }
 }
 
 static async Task DiagnosticsAreSettingsOnly()
@@ -2952,6 +3099,114 @@ file sealed class RawBridgeConnection : IAsyncDisposable
     public ValueTask DisposeAsync() => _pipe.DisposeAsync();
 }
 
+file sealed class ProtectedWifiNetworkBackend :
+    INetworkPlatformBrokerBackend,
+    IProtectedWifiHostBackend
+{
+    private readonly SimulatedPlatformBrokerBackend _inner = new();
+    public int? SecretSentinel { get; private set; }
+    public char[]? ObservedSecretOwner { get; private set; }
+    public string? NetworkId { get; private set; }
+
+    public event EventHandler<BrokerPlatformEvent>? EventPublished
+    {
+        add => _inner.EventPublished += value;
+        remove => _inner.EventPublished -= value;
+    }
+
+    public Task<ProtectedWifiConnectionResult> ConnectProtectedWifiAsync(
+        string networkId,
+        char[] secret,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        NetworkId = networkId;
+        SecretSentinel = ComputeSentinel(secret);
+        ObservedSecretOwner = secret;
+        return Task.FromResult(new ProtectedWifiConnectionResult(
+            ProtectedWifiConnectionStatus.Connecting, "connecting"));
+    }
+
+    public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
+        _inner.GetNetworkStatusAsync(cancellationToken);
+    public Task<IReadOnlyList<SavedNetworkProfileSummary>> GetSavedNetworkProfilesAsync(
+        CancellationToken cancellationToken) =>
+        _inner.GetSavedNetworkProfilesAsync(cancellationToken);
+    public Task SwitchSavedNetworkProfileAsync(
+        string profileId,
+        CancellationToken cancellationToken) =>
+        _inner.SwitchSavedNetworkProfileAsync(profileId, cancellationToken);
+    public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(
+        CancellationToken cancellationToken) =>
+        _inner.GetAvailableWifiNetworksAsync(cancellationToken);
+    public Task RequestWifiScanAsync(CancellationToken cancellationToken) =>
+        _inner.RequestWifiScanAsync(cancellationToken);
+    public Task ConnectAvailableWifiNetworkAsync(
+        string networkId,
+        CancellationToken cancellationToken) =>
+        _inner.ConnectAvailableWifiNetworkAsync(networkId, cancellationToken);
+    public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken) =>
+        _inner.GetWifiRadioAsync(cancellationToken);
+    public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken) =>
+        _inner.SetWifiRadioAsync(enabled, cancellationToken);
+
+    private static int ComputeSentinel(ReadOnlySpan<char> secret)
+    {
+        var value = unchecked((int)2166136261);
+        foreach (var character in secret)
+            value = unchecked((value ^ character) * 16777619);
+        return value;
+    }
+}
+
+file sealed class FailingProtectedWifiSecretStream(
+    int length,
+    CancellationTokenSource? cancellation = null) : Stream
+{
+    private int _read;
+    public byte[]? CapturedBody { get; private set; }
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Interlocked.Increment(ref _read) == 1)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.Span, length);
+            return ValueTask.FromResult(sizeof(int));
+        }
+        Assert.True(
+            MemoryMarshal.TryGetArray(buffer, out ArraySegment<byte> segment),
+            "Secret read did not expose its owned array to the failure fixture.");
+        CapturedBody = segment.Array;
+        buffer.Span[..Math.Min(3, buffer.Length)].Fill(0x5A);
+        if (cancellation is not null)
+        {
+            cancellation.Cancel();
+            return ValueTask.FromCanceled<int>(cancellation.Token);
+        }
+        return ValueTask.FromException<int>(new IOException("controlled secret read failure"));
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
+}
+
 file sealed class BridgeTestClient : IAsyncDisposable
 {
     private static readonly TimeSpan ReadDeadline = TimeSpan.FromSeconds(4);
@@ -3006,6 +3261,53 @@ file sealed class BridgeTestClient : IAsyncDisposable
             if (response.RequestId != requestId)
                 throw new InvalidOperationException("Received response for a different request.");
             return response;
+        }
+    }
+
+    public async Task<BridgeEnvelope> RequestProtectedWifiAsync(
+        BridgeProtectedWifiRequest request,
+        char[] secret)
+    {
+        ArgumentNullException.ThrowIfNull(secret);
+        var requestId = Interlocked.Increment(ref _requestId);
+        var encoded = new byte[secret.Length];
+        try
+        {
+            for (var index = 0; index < secret.Length; index++)
+                encoded[index] = checked((byte)secret[index]);
+            await _channel.WriteAsync(new BridgeEnvelope
+            {
+                Type = BridgeMessageTypes.ConnectProtectedWifi,
+                RequestId = requestId,
+                Payload = BridgeJson.ToElement(request),
+            }, CancellationToken.None);
+            var header = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(header, encoded.Length);
+            try
+            {
+                await _pipe.WriteAsync(header);
+                await _pipe.WriteAsync(encoded);
+                await _pipe.FlushAsync();
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(header);
+            }
+            while (true)
+            {
+                var response = await _reader.ReadAsync(ReadDeadline);
+                if (response.RequestId == 0)
+                {
+                    _events.Enqueue(response);
+                    continue;
+                }
+                Assert.Equal(requestId, response.RequestId);
+                return response;
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(encoded);
         }
     }
 

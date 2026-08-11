@@ -1292,6 +1292,31 @@ confirmation, exact removal, stale-row rejection, and unaffected-neighbor
 coverage; retained result:
 `artifacts/verification/20260811T191258Z-5004ee02/verification-result.json`.
 
+DLV-093 replaces the protected-Wi-Fi JSON credential member with one bounded
+raw secret frame owned by mutable native bytes and managed characters. The
+masked edit control is overwritten before destruction; native serialization,
+managed parsing, provider-command, pinned profile XML, and rejected/failed-read
+owners clear at their terminal boundaries. Tests retain only generated mutable
+inputs and derived sentinels. Temporary profiles now use random attempt-unique
+names plus 32-byte per-profile custom user data. The provider verifies that
+token before connect and again before rollback, never overwrites a profile,
+never deletes on missing/replaced/unreadable ownership, exposes typed rollback
+outcomes, and clears the temporary tag after successful connection. Focused
+Release evidence passes Windows Network 55/55, Network Controls 22/22, and
+WidgetBridge 76/76. The final provider result is
+`artifacts/verification/20260811T201025Z-1ccb30f2/verification-result.json`;
+the retained Network Controls/Bridge group is
+`artifacts/verification/20260811T200911Z-98b11010/verification-result.json`.
+The installed generic-AppContainer conformance seam passes 6/6 at
+`artifacts/verification/20260811T200444Z-b424f5c7/verification-result.json`.
+The focused native build compiled the production host and directly passed
+`WidgetBridgeCatalogTests` plus `TextEntryModalTests`; the broader native group
+then stopped in the unchanged production-host fixture because OverlayHost did
+not create a visible HWND in time. Retained result:
+`artifacts/verification/20260811T200143Z-4081e739/verification-result.json`.
+That later fixture limitation is not represented as protected-Wi-Fi acceptance
+evidence and is not rerun here.
+
 DLV-035 keeps `WindowsNetworkPlatformBackend` as the only native-adapter
 lifetime, MTA owner-thread, command-queue, committed provider-state, event-
 channel, subscriber-publication, and disposal owner. Before the split, its

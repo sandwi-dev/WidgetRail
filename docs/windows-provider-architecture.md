@@ -288,8 +288,15 @@ extension of `system.network.read.v1` or the saved-profile-switch grant:
    generation. BSSID, interface GUID, raw SSID bytes, authentication structures,
    profile XML, and keys never cross the broker or enter logs.
 4. Connection accepts current saved-profile-backed and unsaved open results.
-   A later host-owned credential prompt may create/connect a new WPA/WPA2/WPA3
-   Personal profile without exposing the secret to the widget worker.
+   The exact first-party host-owned credential prompt may create/connect one
+   attempt-unique WPA2/WPA3 Personal profile without exposing the secret to the
+   widget worker or JSON. The edit control, native frame, managed command, and
+   profile XML are bounded mutable owners and are cleared. The provider creates
+   without overwrite, stores a random attempt token as Native Wi-Fi per-profile
+   custom user data, and rereads/fixed-time-compares it before rollback. A
+   neighbor replacement, unreadable token, or failed delete is explicit and
+   never authorizes deletion by SSID/common name. Success clears the token and
+   retains the Windows-owned profile.
    Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially.
 5. Software radio control uses `WlanSetInterface` only after a separate

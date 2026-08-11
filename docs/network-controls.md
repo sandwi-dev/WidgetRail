@@ -48,9 +48,13 @@ from the provider snapshot. Completing these semantics under scan/device churn
 is tracked as [GBA-034](known-issues.md).
 
 The bundled surface never prompts inside the widget process or stores a
-password. The trusted host may create one exact per-user WPA2/WPA3 Personal
-profile without overwrite, connect it, and remove only that newly created
-profile on terminal failure. It does not read profile XML or key material,
+password. The trusted host creates an attempt-unique per-user WPA2/WPA3
+Personal profile without overwrite and tags it with random per-profile custom
+user data. Terminal rollback rereads that tag and deletes only an exact match;
+a missing, changed, or unreadable tag and a failed deletion are explicit
+degraded outcomes, never permission to delete by SSID or common profile name.
+Successful connection clears the temporary tag and retains the Windows-owned
+profile. The host does not read stored profile XML or key material,
 edit/delete pre-existing profiles, expose BSSID/MAC/IP/DNS/gateway values,
 open captive portals, change airplane mode,
 disconnect, or silently reorder Windows profile preference. It does not shell
@@ -119,11 +123,16 @@ The implemented Wi-Fi contract is:
    rows open a masked native modal only for the exact current Interactive
    Network Controls generation. The host revalidates authority after the modal
    closes and sends the mutable password directly to the trusted provider; it
-   never dispatches the password or profile XML through the widget worker.
-   The provider creates one `WLAN_PROFILE_USER` profile with overwrite disabled,
-   starts one `WlanConnect`, and trusts only the matching ACM completion. Failure
-   or cancellation rolls back only the profile generation created by that try;
-   success retains the Windows-owned profile.
+   never dispatches the password or profile XML through the widget worker or a
+   JSON value. Native frame bytes, managed characters, command storage, profile
+   XML, and the edit control are mutable owners cleared at their terminal
+   boundaries. The provider creates one attempt-unique `WLAN_PROFILE_USER`
+   profile with overwrite disabled, binds a random ownership token through
+   Native Wi-Fi custom user data, starts one `WlanConnect`, and trusts only the
+   matching ACM completion. Failure or cancellation rereads and compares that
+   token before deletion; replacement, unreadable ownership, or deletion
+   failure stays fail-closed. Success removes the token and retains the
+   Windows-owned profile.
 4. Enterprise/802.1X, certificate, SIM, domain-credential, hidden-network, and
    captive-portal provisioning are unsupported initially. Stored Windows keys
    are never read or exposed.
@@ -245,7 +254,8 @@ scan, prompt, or retry.
 
 The protected prompt uses native password semantics, exposes no accessibility
 value, rejects clipboard copy/cut/paste and context-menu transfer, and clears
-its mutable host/provider password and profile-XML buffers after the attempt.
+the edit control plus every mutable native-frame, managed, command, P/Invoke,
+and profile-XML password owner after the attempt.
 Cancel or stale widget/snapshot authority performs no profile or connect call.
 
 ## Public data model

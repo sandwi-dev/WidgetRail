@@ -6,6 +6,31 @@
 #include <limits>
 
 namespace gba::input {
+
+SecureTextBuffer::SecureTextBuffer(std::vector<wchar_t>&& value) noexcept
+    : value_(std::move(value)) {}
+
+SecureTextBuffer::~SecureTextBuffer() { clear(); }
+
+SecureTextBuffer::SecureTextBuffer(SecureTextBuffer&& other) noexcept
+    : value_(std::move(other.value_)) {
+    other.clear();
+}
+
+SecureTextBuffer& SecureTextBuffer::operator=(SecureTextBuffer&& other) noexcept {
+    if (this != &other) {
+        clear();
+        value_ = std::move(other.value_);
+        other.clear();
+    }
+    return *this;
+}
+
+void SecureTextBuffer::clear() noexcept {
+    if (!value_.empty())
+        SecureZeroMemory(value_.data(), value_.size() * sizeof(wchar_t));
+    value_.clear();
+}
 namespace {
 
 constexpr wchar_t kClassName[] = L"GameBarAlternative.TextEntryModal";
@@ -77,7 +102,7 @@ TextEntryModalLayout CalculateTextEntryModalLayout(
     return result;
 }
 
-std::optional<std::wstring> TextEntryModal::Show(
+std::optional<SecureTextBuffer> TextEntryModal::Show(
     HINSTANCE instance,
     HWND owner,
     const std::wstring_view value,
@@ -86,7 +111,8 @@ std::optional<std::wstring> TextEntryModal::Show(
     const bool password) {
     if (active() || !instance || !owner || maximumLength == 0 ||
         maximumLength > MaximumLength || value.size() > maximumLength ||
-        placeholder.size() > MaximumLength) return std::nullopt;
+        placeholder.size() > MaximumLength || (password && !value.empty()))
+        return std::nullopt;
 
     WNDCLASSEXW type{sizeof(type)};
     type.hInstance = instance;
@@ -234,11 +260,12 @@ void TextEntryModal::Complete(const bool commit) {
     if (commit) {
         const int length = std::clamp(GetWindowTextLengthW(edit_), 0,
             static_cast<int>(maximumLength_));
-        std::wstring value(static_cast<std::size_t>(length) + 1, L'\0');
+        std::vector<wchar_t> value(static_cast<std::size_t>(length) + 1, L'\0');
         if (length != 0) GetWindowTextW(edit_, value.data(), length + 1);
         value.resize(static_cast<std::size_t>(length));
-        result_ = std::move(value);
+        result_.emplace(std::move(value));
     }
+    if (edit_) SetWindowTextW(edit_, L"");
     HWND closing = window_;
     if (closing) DestroyWindow(closing);
     window_ = nullptr;

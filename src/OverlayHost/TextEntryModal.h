@@ -5,11 +5,30 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace gba::input {
+
+class SecureTextBuffer final {
+public:
+    SecureTextBuffer() = default;
+    explicit SecureTextBuffer(std::vector<wchar_t>&& value) noexcept;
+    ~SecureTextBuffer();
+    SecureTextBuffer(const SecureTextBuffer&) = delete;
+    SecureTextBuffer& operator=(const SecureTextBuffer&) = delete;
+    SecureTextBuffer(SecureTextBuffer&& other) noexcept;
+    SecureTextBuffer& operator=(SecureTextBuffer&& other) noexcept;
+
+    [[nodiscard]] std::span<const wchar_t> view() const noexcept { return value_; }
+    [[nodiscard]] bool empty() const noexcept { return value_.empty(); }
+    void clear() noexcept;
+
+private:
+    std::vector<wchar_t> value_;
+};
 
 inline constexpr std::size_t TextEntryCharacterCount = 39;
 inline constexpr std::size_t TextEntryActionCount = 4;
@@ -34,7 +53,7 @@ public:
     TextEntryModal(const TextEntryModal&) = delete;
     TextEntryModal& operator=(const TextEntryModal&) = delete;
 
-    [[nodiscard]] std::optional<std::wstring> Show(
+    [[nodiscard]] std::optional<SecureTextBuffer> Show(
         HINSTANCE instance,
         HWND owner,
         std::wstring_view value,
@@ -67,7 +86,7 @@ private:
     std::vector<FocusTarget> focusTargets_;
     std::wstring initialValue_;
     std::wstring placeholder_;
-    std::optional<std::wstring> result_;
+    std::optional<SecureTextBuffer> result_;
     std::size_t maximumLength_{};
     UINT dpi_{96};
     TextEntryModalLayout layout_{};
