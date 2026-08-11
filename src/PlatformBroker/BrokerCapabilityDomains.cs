@@ -25,6 +25,7 @@ internal static class BrokerCapabilityDomains
             capabilityId == PlatformCapabilities.RecentActivityReadV1)
             return BrokerCapabilityDomain.Network;
         if (capabilityId is PlatformCapabilities.AppLibraryReadV1 or
+            PlatformCapabilities.AppRunningReadV1 or
             PlatformCapabilities.AppLibraryLaunchV1)
             return BrokerCapabilityDomain.AppLibrary;
         if (capabilityId.StartsWith("system.media.", StringComparison.Ordinal) ||

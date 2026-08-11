@@ -1652,7 +1652,7 @@ themes also use non-shrinking fixed regions, a thin native Slider
  and per-row decoded/bitmap key when trusted icon content changes without a
  SavedId or launch-identity change. Native demand remains lazy with deterministic
  32-entry / 32 MiB in-memory eviction and no disk cache; missing, malformed, stale,
- replaced, or Steam-without-trusted-artwork registrations retain the semantic
+ replaced, or Steam registrations without a valid bounded local cache asset retain the semantic
  fallback without changing launch, focus, membership, or warm-start identity.
  Focused DLV-018 Release evidence passes 32 Windows app-library provider,
  51 broker, 56 Games & Apps, 70 production Bridge, 6 isolated first-party
@@ -1668,6 +1668,43 @@ themes also use non-shrinking fixed regions, a thin native Slider
  OverlayHost target, and the installed first-party package seam 6/6. The
  correction is private bridge/cache behavior and does not close the broader
  synchronous startup issue.
+ DLV-094 extends that accepted lazy route to installed Steam registrations. The
+ source accepts only direct `_icon.png`/`_icon.jpg`/`_icon.jpeg` files beneath
+ the exact non-reparse trusted Steam cache root, records host-only file identity,
+ length, file-change, and last-write evidence, caps input at 1 MiB / 4,096 per
+ dimension / 16,777,216 decoded pixels, normalizes to the existing 64-pixel /
+ 12-KiB PNG contract, and retains at most 64 decoded entries. DLV-096 corrects
+ the rejected candidate by retaining only bounded trusted-root/app identity
+ during catalog enumeration: multi-item list and refresh perform zero artwork
+ filesystem probes, while exact demand owns candidate selection, metadata,
+ bytes, decode, and revalidation. A stable initial lazy generation prevents an
+ unchanged neighbor from rotating merely because its first demand learned file
+ evidence; replacement/removal instead fails the stale demand and rotates only
+ the affected handle on refresh. Steam artwork uses a separate four-operation
+ provider lane. DLV-098 makes terminal ownership exact across all three admitted
+ lanes: after cancellation, one deadline drains the four artwork permits plus
+ the scan and running-observation gates before any source disposal or catalog
+ state clear. A timeout in any lane produces the same shared terminal failure,
+ retains state, and performs no source disposal. Current Steam catalog ownership
+ retains at most 4,096 locator generations; removal retires an old locator
+ object, unchanged current registrations retain learned revisions, and an old
+ admitted handle cannot be reinitialized by later catalog churn. Focused
+ DLV-096 Release evidence passes the Windows app-library provider (56/56) and
+ PlatformBroker (54/54) suites plus the exact installed generic-AppContainer
+ Steam-artwork route. DLV-098 focused Release evidence passes the expanded
+ Windows app-library provider suite (60/60), including cooperative and timed-out
+ scan, observation, and artwork ordering plus over-bound locator churn and
+ paused-decode retirement. Documentation validation covers 55 Markdown files.
+ DLV-098 did not repeat the unchanged broker or installed routes, and neither
+ milestone ran an aggregate, native, screenshot, or live Steam verification.
+ DLV-099 couples locator ownership to the existing normalized source-generation
+ commit: Steam enumeration stages a bounded candidate map without mutating the
+ current map, and only the latest accepted source generation promotes that map
+ and retires removed locators. Canceled and losing candidates publish nothing;
+ unchanged locators retain object and learned-revision identity. Focused Release
+ evidence passes the expanded Windows app-library provider suite (62/62) and
+ documentation validation across 55 Markdown files. The unchanged broker,
+ installed, widget, aggregate, native, and screenshot routes were not repeated.
  Deterministic managed fixtures traverse both 2,000- and 10,000-item
  providers while retaining at most 200 items and serializing at most 203 nodes.
  Focused Release evidence covers 85 WidgetSdk cases, 12 API-compatibility cases,
@@ -1829,6 +1866,26 @@ themes also use non-shrinking fixed regions, a thin native Slider
  rows as unavailable after the visible reload control. That installed
  transition remains explicit verification debt for planner disposition; it is
  not reported as a passing AppContainer acceptance result.
+ DLV-095 adds a separate optional `system.apps.running.read.v1` grant and an
+ explicit **Add running app** route to Games & Apps and Game Launcher. The
+ trusted Windows provider observes visible unowned top-level application windows
+ on demand, excludes owned/cloaked/background/inaccessible/elevated/overlay/
+ worker/tool windows, and maps packaged or canonical executable identity
+ one-to-one to a current normalized registration. DLV-097 bounds native work
+ before eligibility filtering: at most 256 top-level callbacks and therefore at
+ most 256 process-open attempts occur per observation, while duplicate collapse
+ and the lower public result cap remain 64. Broker and SDK payloads contain only
+ a sanitized name, closed kind/source, authority-scoped SavedId, and short-lived
+ revision; PID, HWND, path, command, AUMID, package identity, and provider
+ evidence remain host-only. Add confirms the current observation and
+ registration before reusing each widget's existing bounded SavedId CAS policy.
+ The SDK now applies the same closed AppId/SavedId/kind/display/source validation
+ used by pages and resolution to every non-null confirmation response; malformed
+ data returns `malformed_response` before either widget can project or persist
+ it. Focused Release evidence passes Widget SDK 87/87, API compatibility 12/12,
+ Windows app-library provider 57/57, Games & Apps 59/59, and Game Launcher 45/45.
+ The prior credential-free generic-AppContainer route remains the packaged
+ DLV-095 evidence; no aggregate or screenshot verification ran for DLV-097.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late
@@ -2759,8 +2816,8 @@ and [troubleshooting](troubleshooting.md).
    optional packaged-font brokering, and further motion polish without
    importing browser layout or arbitrary asset loading.
 4. Extend Games & Apps beyond its bounded Start Menu, AppsFolder, and Steam
-   sources with additional reviewed launcher adapters,
-   running-program capture, and a host-owned file picker while preserving
+   sources with additional reviewed launcher adapters and a host-owned file
+   picker while preserving
    opaque exact launch identities.
 5. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.

@@ -9,6 +9,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly List<AvailableWifiNetworkSummary> _availableWifiNetworks = [];
     private readonly List<RecentActivitySummary> _recentActivities = [];
     private readonly List<AppLibraryBackendItemSummary> _appLibrary = [];
+    private readonly List<RunningAppBackendObservation> _runningApps = [];
+    private long _runningAppsRevision = 1;
     private long _appLibraryRevision = 1;
     private readonly List<BluetoothDeviceSummary> _bluetoothDevices = [];
     private readonly List<MediaSessionSummary> _mediaSessions = [];
@@ -148,6 +150,13 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         _appLibrary.Clear();
         _appLibrary.AddRange(items);
         _appLibraryRevision++;
+    }
+
+    internal void SetRunningAppBackend(IEnumerable<RunningAppBackendObservation> items)
+    {
+        _runningApps.Clear();
+        _runningApps.AddRange(items);
+        _runningAppsRevision++;
     }
 
     public void SetBluetoothDevices(IEnumerable<BluetoothDeviceSummary> devices)
@@ -432,6 +441,14 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         {
             Sources = AppLibrarySources,
         });
+    }
+
+    public Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new RunningAppBackendObservationPage(
+            _runningApps.ToArray(), $"sim-running-{_runningAppsRevision}"));
     }
 
     public Task LaunchAppLibraryItemAsync(

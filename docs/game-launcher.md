@@ -53,8 +53,22 @@ provider identity, infer games from titles, or cache a complete library.
 ## Artwork, state, and launch authority
 
 Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
-bytes; the native host requests artwork lazily through the private trusted
-registry and keeps the semantic Play fallback when artwork is absent or stale.
+bytes or probe Steam artwork directories/files; the native host requests artwork
+lazily through the private trusted registry and keeps the semantic Play fallback
+when artwork is absent or stale.
+Installed Steam rows use the same handle when the trusted provider can bind the
+exact current registration to a bounded local Steam library-cache PNG or JPEG.
+Only exact demand opens the trusted cache, chooses an allowlisted candidate,
+captures object evidence, reads bytes, and normalizes pixels; widgets never
+receive the cache path, Steam AppId, file identity, or source bytes. Replacing
+or removing the asset invalidates the stale demand and rotates the affected
+handle on the next refresh without changing an unaffected neighbor, launch
+authority, focus, favorites, groups, or recent order.
+The provider retains only the bounded current Steam locator set; terminal
+shutdown drains catalog scans, running observation, and all artwork permits
+before it disposes any source or clears committed catalog state.
+Candidate locator sets remain staged until the matching Steam source generation
+commits, so cancellation or a newer refresh cannot retire current row artwork.
 
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains
@@ -89,6 +103,19 @@ membership. Missing entries remain disabled, replacement SavedIds are
 independent, and activation still
 requires the same fresh exact-SavedId resolution and short-lived AppId as an
 automatic game.
+
+**Add running app** is a separate optional-consent route. It performs one
+bounded observation only when opened or refreshed and shows only visible
+programs that map one-to-one to a current normalized registration. Duplicate
+windows collapse to one row; the host visits at most 256 top-level windows and
+returns at most 64 candidates. Automatic games and identities already retained
+as recent, hidden, or manual rows are disabled rather than duplicated. Adding
+an Application rechecks the short-lived observation revision and exact current
+SavedId, then applies the complete app-library item validator before reusing the
+same 32-row manual CAS policy. A malformed confirmation cannot change any
+neighbor or private state. Process/window/path identity never enters the worker,
+private state, or launch path, and a denied or unavailable observation does not
+disable the normal complete-library route.
 
 Y hides the focused current game by its exact opaque SavedId. **Hidden** opens a
 bounded nested route containing at most 32 exclusions, each with an explicit

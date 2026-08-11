@@ -20,6 +20,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
+    ("Running app observation is separately consented opaque and stale-safe",
+        RunningAppContracts),
     ("App library cursors and registrations stay bounded across ten thousand items",
         AppLibraryCursorBounds),
     ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
@@ -296,6 +298,7 @@ static async Task AppLibraryIconsAreBounded()
     Assert.Equal(0, backend.AppLibraryIconCalls);
 
     var firstHandle = resolved.Items[0].ArtworkHandle!;
+    var neighborHandle = resolved.Items[1].ArtworkHandle!;
     Assert.Equal(png, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
     Assert.Equal(1, backend.AppLibraryIconCalls);
 
@@ -315,6 +318,9 @@ static async Task AppLibraryIconsAreBounded()
         new AppLibraryBackendItemSummary(
             "provider-0", "stable-0", "App 0",
             AppLibraryKind.Application, "artwork-b"),
+        new AppLibraryBackendItemSummary(
+            "provider-1", "stable-1", "App 1",
+            AppLibraryKind.Application, "artwork-a"),
     ]);
     var rotatedPayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
         BrokerJson.ProtocolVersion, 3, identity,
@@ -325,6 +331,7 @@ static async Task AppLibraryIconsAreBounded()
     var rotated = rotatedPayload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
     Assert.True(rotated.Items[0].ArtworkHandle != firstHandle,
         "Changed trusted artwork revision reused its decoded-cache handle.");
+    Assert.Equal(neighborHandle, rotated.Items[1].ArtworkHandle);
     Assert.Equal(null, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
 
     for (var index = 0; index < 10_000; index++)
@@ -335,7 +342,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(32, PlatformCapabilities.All.Count);
+    Assert.Equal(33, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -1253,6 +1260,60 @@ static async Task AppLibraryContracts()
         .GetProperty("appId").GetString();
     Assert.True(firstWidgetId != secondWidgetId,
         "Opaque app IDs must not correlate two widget broker sessions.");
+}
+
+static async Task RunningAppContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([
+        new("provider-current", "stable-current", "Visible app",
+            AppLibraryKind.Application) { SourceAttribution = "Windows" },
+    ]);
+    backend.SetRunningAppBackend([
+        new("stable-current", "private-process-evidence", "Visible app",
+            AppLibraryKind.Application, "Windows"),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppRunningReadV1);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var denied = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningList, new { }));
+    Assert.Equal("permission_denied", denied.ErrorCode);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppRunningReadV1,
+        ConsentDecision.Grant);
+
+    var observed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningList, new { }));
+    Assert.True(observed.Succeeded, observed.ErrorCode ?? "running observation failed");
+    var payload = observed.Payload!.Value;
+    Assert.Equal(1, payload.GetProperty("items").GetArrayLength());
+    var item = payload.GetProperty("items")[0];
+    var savedId = item.GetProperty("savedId").GetString()!;
+    var revision = payload.GetProperty("revision").GetString()!;
+    var serialized = payload.GetRawText();
+    Assert.True(!serialized.Contains("stable-current", StringComparison.Ordinal));
+    Assert.True(!serialized.Contains("private-process-evidence", StringComparison.Ordinal));
+
+    var confirmed = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningConfirm, new { savedId, revision }));
+    Assert.True(confirmed.Succeeded, confirmed.ErrorCode ?? "running confirmation failed");
+    Assert.Equal(savedId, confirmed.Payload!.Value.GetProperty("item")
+        .GetProperty("savedId").GetString());
+
+    backend.SetRunningAppBackend([]);
+    var stale = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppRunningReadV1,
+        PlatformCapabilities.AppRunningConfirm, new { savedId, revision }));
+    Assert.True(stale.Succeeded, stale.ErrorCode ?? "stale confirmation failed");
+    Assert.Equal(JsonValueKind.Null, stale.Payload!.Value.GetProperty("item").ValueKind);
 }
 
 static async Task AppLibraryCursorBounds()

@@ -19,6 +19,7 @@ public enum GamesAppsPage
 {
     Library,
     Catalog,
+    Running,
 }
 
 /// <summary>
@@ -55,6 +56,7 @@ public sealed class GamesAppsWidget : Widget
     private bool _libraryMutationBusy;
     private bool _hasLibrarySnapshot;
     private GamesAppsCatalogState _catalog = GamesAppsCatalogState.Empty;
+    private string? _runningRevision;
     private CancellationTokenSource? _toastLifetime;
     private GamesAppsToastNotice? _toast;
     private long _generation;
@@ -146,7 +148,7 @@ public sealed class GamesAppsWidget : Widget
             case "back":
                 lock (_gate)
                 {
-                    if (_page != GamesAppsPage.Catalog) return;
+                    if (_page == GamesAppsPage.Library) return;
                     var selectedSavedId = _items.FirstOrDefault(item => string.Equals(
                         item.AppId, _selectedAppId, StringComparison.Ordinal))?.SavedId;
                     _page = GamesAppsPage.Library;
@@ -161,17 +163,25 @@ public sealed class GamesAppsWidget : Widget
             case "games.open-catalog":
                 await OpenCatalogAsync(cancellationToken).ConfigureAwait(false);
                 return;
+            case "games.open-running":
+                await OpenRunningAsync(cancellationToken).ConfigureAwait(false);
+                return;
             case "games.toggle-curation":
                 string? catalogAppId = null;
                 lock (_gate)
                 {
-                    if (_page == GamesAppsPage.Catalog)
+                    if (_page is GamesAppsPage.Catalog or GamesAppsPage.Running)
                         catalogAppId = _items.FirstOrDefault(item => string.Equals(
                             GamesAppsPresentation.CatalogElementId(item.SavedId), action.SourceElementId,
                             StringComparison.Ordinal))?.AppId;
                 }
                 if (catalogAppId is not null)
-                    await ToggleCuratedAsync(catalogAppId, cancellationToken).ConfigureAwait(false);
+                {
+                    if (Page == GamesAppsPage.Running)
+                        await AddRunningAsync(catalogAppId, cancellationToken).ConfigureAwait(false);
+                    else
+                        await ToggleCuratedAsync(catalogAppId, cancellationToken).ConfigureAwait(false);
+                }
                 return;
             case "games.remove":
                 string? curatedAppId = null;
@@ -235,7 +245,7 @@ public sealed class GamesAppsWidget : Widget
             var rejected = false;
             lock (_gate)
             {
-                if (_page != GamesAppsPage.Catalog) return;
+                if (_page is not (GamesAppsPage.Catalog or GamesAppsPage.Running)) return;
                 item = _items.FirstOrDefault(candidate =>
                     string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
                 if (item is null) return;
@@ -818,6 +828,88 @@ public sealed class GamesAppsWidget : Widget
                 Invalidate();
             }
         }
+    }
+
+    private async Task OpenRunningAsync(CancellationToken cancellationToken)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, ActiveCancellationToken);
+        if (!await _commandGate.WaitAsync(0, lifetime.Token).ConfigureAwait(false)) return;
+        try
+        {
+            lock (_gate)
+            {
+                Interlocked.Increment(ref _generation);
+                _page = GamesAppsPage.Running;
+                _viewState = GamesAppsViewState.Loading;
+                _status = "Checking visible installed applications…";
+                _loadingMore = true;
+            }
+            Invalidate();
+            var observed = await HostServices.AppLibrary.ObserveRunningAsync(lifetime.Token)
+                .ConfigureAwait(false);
+            var items = observed.Items.Select(item => new WidgetAppLibraryItem(
+                item.SavedId, item.DisplayName, item.Kind)
+            {
+                SavedId = item.SavedId,
+                SourceAttribution = item.SourceAttribution,
+            }).ToArray();
+            lock (_gate)
+            {
+                if (_page != GamesAppsPage.Running) return;
+                _runningRevision = observed.Revision;
+                _items = items;
+                _selectedAppId = items.FirstOrDefault()?.AppId;
+                _viewState = GamesAppsViewState.Ready;
+                _status = items.Length == 0
+                    ? "No visible applications match your installed library"
+                    : $"{items.Length} visible installed application{(items.Length == 1 ? "" : "s")}";
+                _catalog = GamesAppsCatalogState.Empty;
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            if (cancellationToken.IsCancellationRequested) throw;
+        }
+        catch (Exception exception)
+        {
+            ShowToast("Running apps unavailable",
+                ApplyCommandError(exception, "Running apps could not be checked"),
+                ToastTone.Warning);
+            lock (_gate) { _page = GamesAppsPage.Library; _items = _libraryItems; }
+        }
+        finally
+        {
+            lock (_gate) _loadingMore = false;
+            _commandGate.Release();
+            Invalidate();
+        }
+    }
+
+    private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken)
+    {
+        string? revision;
+        lock (_gate)
+        {
+            if (_page != GamesAppsPage.Running ||
+                _libraryItems.Any(item => item.SavedId == savedId)) return;
+            revision = _runningRevision;
+        }
+        if (revision is null) return;
+        var current = await HostServices.AppLibrary.ConfirmRunningAsync(
+            savedId, revision, cancellationToken).ConfigureAwait(false);
+        if (current is null)
+        {
+            ShowToast("App changed", "Refresh running apps and try again", ToastTone.Warning);
+            return;
+        }
+        lock (_gate)
+        {
+            if (_page != GamesAppsPage.Running || _runningRevision != revision) return;
+            _items = _items.Select(item => item.SavedId == savedId ? current : item).ToArray();
+        }
+        await ToggleCuratedAsync(current.AppId, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task LoadMoreAsync(CancellationToken cancellationToken)

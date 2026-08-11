@@ -63,6 +63,7 @@ internal static class ProviderLifetimeScenarios
         await Assert.ThrowsAsync<OperationCanceledException>(() => refresh);
         Assert.Equal(1, source.DisposeCalls);
         Assert.True(source.CancellationObserved);
+        Assert.False(source.DisposedBeforeCancellation);
     }
 
     internal static async Task CancellationIgnoringCompletionCannotPublish()
@@ -70,13 +71,17 @@ internal static class ProviderLifetimeScenarios
         var source = new ControlledGameSource("source-late")
         {
             IgnoreCancellationUntilReleased = true,
+            BlockOnRefreshCall = 2,
         };
         var provider = new WindowsAppLibraryProvider([source], ImmediateSta.Instance);
+        _ = await provider.GetAppsAsync();
         var refresh = Task.Run(() => provider.RefreshAsync());
         await source.OperationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var disposal = provider.DisposeAsync().AsTask();
-        await source.DisposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await source.CancellationSeen.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, source.DisposeCalls);
+        Assert.True(provider.HasRetainedCatalogState);
         source.ReleaseOperation.Set();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => refresh);
@@ -91,20 +96,27 @@ internal static class ProviderLifetimeScenarios
         var source = new ControlledGameSource("source-timeout")
         {
             IgnoreCancellationUntilReleased = true,
-            DisposeFailure = new InvalidOperationException("source did not drain"),
+            BlockOnRefreshCall = 2,
         };
-        var provider = new WindowsAppLibraryProvider([source], ImmediateSta.Instance);
+        var provider = new WindowsAppLibraryProvider(
+            [source], ImmediateSta.Instance, TimeSpan.FromMilliseconds(100));
+        _ = await provider.GetAppsAsync();
         var refresh = Task.Run(() => provider.RefreshAsync());
         await source.OperationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var failure = await Assert.ThrowsAsync<AggregateException>(async () =>
-            await provider.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(7)));
+            await provider.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.True(failure.Flatten().InnerExceptions.Any(exception =>
             exception.Message.Contains("bounded deadline", StringComparison.Ordinal)));
-        Assert.Equal(1, source.DisposeCalls);
+        Assert.Equal(0, source.DisposeCalls);
+        Assert.True(provider.HasRetainedCatalogState);
+        var repeated = await Assert.ThrowsAsync<AggregateException>(() =>
+            provider.DisposeAsync().AsTask());
+        Assert.Equal(failure.Message, repeated.Message);
 
         source.ReleaseOperation.Set();
         await Assert.ThrowsAsync<OperationCanceledException>(() => refresh);
+        Assert.Equal(0, source.DisposeCalls);
         Assert.Throws<ObjectDisposedException>(() =>
             provider.GetAppLibraryIconAsync("app-any", CancellationToken.None)
                 .GetAwaiter().GetResult());
@@ -117,11 +129,15 @@ internal static class ProviderLifetimeScenarios
 
         internal bool WaitForCancellation { get; init; }
         internal bool IgnoreCancellationUntilReleased { get; init; }
+        internal int BlockOnRefreshCall { get; init; } = 1;
         internal Exception? DisposeFailure { get; init; }
         internal int DisposeCalls => Volatile.Read(ref _disposeCalls);
         internal int RefreshCalls => Volatile.Read(ref _refreshCalls);
         internal bool CancellationObserved { get; private set; }
+        internal bool DisposedBeforeCancellation { get; private set; }
         internal TaskCompletionSource OperationStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource CancellationSeen { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource DisposeStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -134,16 +150,24 @@ internal static class ProviderLifetimeScenarios
 
         public GameLibrarySourceSnapshot Refresh(CancellationToken cancellationToken)
         {
-            Interlocked.Increment(ref _refreshCalls);
-            OperationStarted.TrySetResult();
-            if (WaitForCancellation)
+            var call = Interlocked.Increment(ref _refreshCalls);
+            if ((WaitForCancellation || IgnoreCancellationUntilReleased) &&
+                call >= BlockOnRefreshCall)
             {
-                cancellationToken.WaitHandle.WaitOne();
-                CancellationObserved = cancellationToken.IsCancellationRequested;
-                cancellationToken.ThrowIfCancellationRequested();
+                OperationStarted.TrySetResult();
+                using var registration = cancellationToken.Register(() =>
+                {
+                    CancellationObserved = true;
+                    CancellationSeen.TrySetResult();
+                });
+                if (WaitForCancellation)
+                {
+                    cancellationToken.WaitHandle.WaitOne();
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                if (IgnoreCancellationUntilReleased)
+                    ReleaseOperation.Wait();
             }
-            if (IgnoreCancellationUntilReleased)
-                ReleaseOperation.Wait();
             cancellationToken.ThrowIfCancellationRequested();
             Snapshot = new(identity, identity, 1, GameLibrarySourceHealth.Healthy,
                 [Item(identity)]);
@@ -174,6 +198,9 @@ internal static class ProviderLifetimeScenarios
 
         public void Dispose()
         {
+            DisposedBeforeCancellation =
+                (WaitForCancellation || IgnoreCancellationUntilReleased) &&
+                !CancellationObserved;
             Interlocked.Increment(ref _disposeCalls);
             DisposeStarted.TrySetResult();
             if (DisposeFailure is not null) throw DisposeFailure;

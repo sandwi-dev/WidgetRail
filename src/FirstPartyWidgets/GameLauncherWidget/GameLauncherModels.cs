@@ -29,6 +29,7 @@ internal enum GameLauncherRoute
 {
     Library,
     AddGames,
+    Running,
     Hidden,
 }
 

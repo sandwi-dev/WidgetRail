@@ -292,6 +292,26 @@ static async Task AppLibraryPlatformService()
         .WithResponse(
             WidgetAppLibraryCapabilities.Launch,
             new WidgetCapabilityAcknowledgement(true))
+        .WithResponse(
+            WidgetAppLibraryCapabilities.ObserveRunning,
+            new WidgetRunningAppObservation(
+                [new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
+                    "Windows")], "running-revision"))
+        .WithHandler(
+            WidgetAppLibraryCapabilities.ConfirmRunning,
+            (request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal("saved-running", request.SavedId);
+                Assert.Equal("running-revision", request.Revision);
+                return ValueTask.FromResult(new ConfirmWidgetRunningAppResponse(
+                    new WidgetAppLibraryItem(
+                        "app-current", "Visible app", WidgetAppLibraryKind.Application)
+                    {
+                        SavedId = request.SavedId,
+                        SourceAttribution = "Windows",
+                    }));
+            })
         .Build();
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
 
@@ -324,6 +344,45 @@ static async Task AppLibraryPlatformService()
     Assert.Equal("saved-durable", resolved[0].SavedId);
     Assert.Equal("library.art.0123456789abcdef0123456789abcdef",
         resolved[0].ArtworkHandle);
+    var running = await widget.AppLibrary.ObserveRunningAsync();
+    Assert.Equal(1, running.Items.Count);
+    Assert.Equal("saved-running", running.Items[0].SavedId);
+    var confirmed = await widget.AppLibrary.ConfirmRunningAsync(
+        running.Items[0].SavedId, running.Revision);
+    Assert.Equal("app-current", confirmed?.AppId);
+    var validConfirmation = new WidgetAppLibraryItem(
+        "app-current", "Visible app", WidgetAppLibraryKind.Application)
+    {
+        SavedId = "saved-running",
+        SourceAttribution = "Windows",
+    };
+    var malformedConfirmations = new[]
+    {
+        validConfirmation with { AppId = "bad/app" },
+        validConfirmation with { SavedId = "saved-other" },
+        validConfirmation with { Kind = (WidgetAppLibraryKind)999 },
+        validConfirmation with { DisplayName = "" },
+        validConfirmation with { DisplayName = new string('D', 161) },
+        validConfirmation with { DisplayName = "bad\nname" },
+        validConfirmation with { SourceAttribution = "" },
+        validConfirmation with { SourceAttribution = new string('S', 65) },
+        validConfirmation with { SourceAttribution = "bad\rsource" },
+    };
+    foreach (var malformedConfirmation in malformedConfirmations)
+    {
+        var malformedConfirmationHost = WidgetTestHost.Attach(
+            new CapabilityWidget(),
+            new WidgetTestHostServicesBuilder()
+                .WithResponse(
+                    WidgetAppLibraryCapabilities.ConfirmRunning,
+                    new ConfirmWidgetRunningAppResponse(malformedConfirmation))
+                .Build());
+        var malformedConfirmationError = Assert.Throws<WidgetCapabilityException>(() =>
+            malformedConfirmationHost.AppLibrary.ConfirmRunningAsync(
+                    "saved-running", "running-revision")
+                .GetAwaiter().GetResult());
+        Assert.Equal("malformed_response", malformedConfirmationError.ErrorCode);
+    }
     await widget.AppLibrary.LaunchAsync("app-opaque");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());
@@ -349,6 +408,9 @@ static async Task AppLibraryPlatformService()
         widget.AppLibrary.ResolveSavedAsync(
                 Enumerable.Range(0, WidgetAppLibraryService.MaximumSavedItems + 1)
                     .Select(index => $"saved-{index}").ToArray())
+            .GetAwaiter().GetResult());
+    Assert.Throws<ArgumentException>(() =>
+        widget.AppLibrary.ConfirmRunningAsync("not-saved", "revision")
             .GetAwaiter().GetResult());
 
     var malformed = WidgetTestHost.Attach(
@@ -381,6 +443,18 @@ static async Task AppLibraryPlatformService()
     Assert.Throws<WidgetCapabilityException>(() =>
         malformedSources.AppLibrary.QueryAsync(new WidgetAppLibraryQuery())
             .GetAwaiter().GetResult());
+
+    var malformedRunning = WidgetTestHost.Attach(
+        new CapabilityWidget(),
+        new WidgetTestHostServicesBuilder()
+            .WithResponse(
+                WidgetAppLibraryCapabilities.ObserveRunning,
+                new WidgetRunningAppObservation(
+                    [new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
+                        "bad\nsource")], "revision"))
+            .Build());
+    Assert.Throws<WidgetCapabilityException>(() =>
+        malformedRunning.AppLibrary.ObserveRunningAsync().GetAwaiter().GetResult());
 }
 
 static async Task CommunityPlatformServices()

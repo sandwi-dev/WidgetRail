@@ -59,10 +59,13 @@ internal static class GamesAppsPresentation
     {
         var headerChildren = new List<WidgetElement>
         {
-            UI.Text(state.Page == GamesAppsPage.Catalog ? "CATALOG" : "LIBRARY",
-                    "games.eyebrow", state.Page == GamesAppsPage.Catalog
-                        ? "Add applications catalog"
-                        : "Installed application library")
+            UI.Text(state.Page == GamesAppsPage.Library ? "LIBRARY" : "ADD",
+                    "games.eyebrow", state.Page switch
+                    {
+                        GamesAppsPage.Catalog => "Add applications catalog",
+                        GamesAppsPage.Running => "Add a visible running application",
+                        _ => "Installed application library",
+                    })
                 .Classes("games-eyebrow"),
             UI.Text("Games & Apps", "games.title", "Games and Apps")
                 .Classes("games-title"),
@@ -84,7 +87,7 @@ internal static class GamesAppsPresentation
         if (state.ViewState != GamesAppsViewState.Ready)
             return RenderState(header, state);
 
-        return state.Page == GamesAppsPage.Catalog
+        return state.Page is GamesAppsPage.Catalog or GamesAppsPage.Running
             ? RenderCatalog(header, state)
             : RenderLibrary(header, state);
     }
@@ -109,7 +112,11 @@ internal static class GamesAppsPresentation
                 state.LifecycleState != WidgetLifecycleState.Interactive);
             var emptyRoot = UI.Stack("games.root",
                     header,
-                    UI.Stack("games.content", empty).Classes(
+                UI.Stack("games.content", empty,
+                    UI.Button("Add running app", "games.open-running", "games.open-running")
+                        .Icon(WidgetGlyph.Play, "Choose a visible installed application")
+                        .Disabled(state.LibraryMutationBusy ||
+                            state.LifecycleState != WidgetLifecycleState.Interactive)) .Classes(
                         "games-content", "games-state-shell"))
                 .InputScope("games-apps")
                 .Classes("games-apps-widget", "has-state");
@@ -158,9 +165,18 @@ internal static class GamesAppsPresentation
             .Disabled(state.LaunchingAppId is not null || state.LibraryMutationBusy ||
                 state.LifecycleState != WidgetLifecycleState.Interactive)
             .FocusUp(elementIds[^1])
-            .FocusDown("games.open-catalog")
+            .FocusDown("games.open-running")
             .FocusLeft("games.open-catalog")
             .FocusRight("games.open-catalog")
+            .Classes("games-card-action", "games-app-row", "games-load-more"));
+        rows.Add(UI.Button("Add running app", "games.open-running", "games.open-running")
+            .Icon(WidgetGlyph.Play, "Choose a visible installed application")
+            .Disabled(state.LaunchingAppId is not null || state.LibraryMutationBusy ||
+                state.LifecycleState != WidgetLifecycleState.Interactive)
+            .FocusUp("games.open-catalog")
+            .FocusDown("games.open-running")
+            .FocusLeft("games.open-running")
+            .FocusRight("games.open-running")
             .Classes("games-card-action", "games-app-row", "games-load-more"));
         var selected = curated.FirstOrDefault(item => string.Equals(
             item.AppId, state.SelectedAppId, StringComparison.Ordinal)) ?? curated[0];
@@ -190,6 +206,20 @@ internal static class GamesAppsPresentation
         StackElement header,
         GamesAppsPresentationState state)
     {
+        if (state.Page == GamesAppsPage.Running && state.Items.Count == 0)
+        {
+            var empty = UI.EmptyState("No matching running apps",
+                "Only visible applications that exactly match the installed library can be added.",
+                "games.running.empty",
+                new ComponentAction("Check again", "games.open-running", WidgetGlyph.Refresh),
+                WidgetGlyph.Play);
+            var runningScope = UI.Stack("games.catalog", empty)
+                .InputScope("games.catalog").Shortcut(ControllerButton.B, "back");
+            return new WidgetView(UI.Stack("games.root", header,
+                    UI.Stack("games.content", runningScope).Classes("games-content")),
+                "games.running.empty.action", ActiveInputScopeId: "games.catalog",
+                Surface: CatalogSurface);
+        }
         var curated = state.LibrarySavedIds.ToHashSet(StringComparer.Ordinal);
         var elementIds = state.Items.Select(item => CatalogElementId(item.SavedId)).ToArray();
         var rows = new List<WidgetElement>(
@@ -217,18 +247,19 @@ internal static class GamesAppsPresentation
             var down = index + 1 < state.Items.Count
                 ? elementIds[index + 1]
                 : state.HasNextPage ? "games.load-more" : id;
+            var running = state.Page == GamesAppsPage.Running;
             rows.Add(UI.AppTile(
                     item.DisplayName,
-                    saved ? "Saved" : "Available",
+                    saved ? "Already included" : running ? "Running" : "Available",
                     "games.toggle-curation",
                     id,
                     subtitle: AppKindLabel(item.Kind),
                     artwork: AppArtwork(item, $"{item.DisplayName} icon"),
                     accessibilityLabel: saved
-                        ? $"{item.DisplayName}, saved, A removes from library"
+                        ? $"{item.DisplayName}, already included"
                         : $"{item.DisplayName}, available, A adds to library")
                 .Selected(saved)
-                .Disabled(state.LaunchingAppId is not null || state.LoadingMore ||
+                .Disabled(saved && running || state.LaunchingAppId is not null || state.LoadingMore ||
                     state.LifecycleState != WidgetLifecycleState.Interactive)
                 .FocusUp(index == 0
                     ? state.CanLoadPrevious ? "games.previous-page" : id
@@ -259,10 +290,12 @@ internal static class GamesAppsPresentation
             StatusTone.Info,
             "games.section.count");
         var section = UI.SectionHeader(
-                "Add applications",
+                state.Page == GamesAppsPage.Running ? "Add running app" : "Add applications",
                 "games.section",
                 eyebrow: "CATALOG",
-                description: "A adds or removes · B returns",
+                description: state.Page == GamesAppsPage.Running
+                    ? "A adds · B returns"
+                    : "A adds or removes · B returns",
                 trailing: count)
             .AddClasses("games-section-heading");
         var scope = UI.Stack("games.catalog",

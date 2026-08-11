@@ -17,6 +17,7 @@
     <ProjectReference Include="..\..\samples\SpotifyWidget\SpotifyWidget.csproj" />
     <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\..\src\WindowsAppLibraryProvider\WindowsAppLibraryProvider.csproj" />
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
     <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
     <ProjectReference Include="..\..\src\WidgetWorkerHost\WidgetWorkerHost.csproj" />

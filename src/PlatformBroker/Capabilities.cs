@@ -68,6 +68,7 @@ public static class PlatformCapabilities
     public const string NetworkBluetoothManageV1 = "system.network.bluetooth.manage.v1";
     public const string RecentActivityReadV1 = "system.activity.recent.read.v1";
     public const string AppLibraryReadV1 = "system.apps.library.read.v1";
+    public const string AppRunningReadV1 = "system.apps.running.read.v1";
     public const string AppLibraryLaunchV1 = "system.apps.library.launch.v1";
     public const string MediaSessionsReadV1 = "system.media.sessions.read.v1";
     public const string MediaSessionsControlV1 = "system.media.sessions.control.v1";
@@ -112,6 +113,8 @@ public static class PlatformCapabilities
     public const string RecentActivitiesList = "activity.recent.list";
     public const string AppLibraryList = "apps.library.list";
     public const string AppLibraryResolveSaved = "apps.library.resolve-saved";
+    public const string AppRunningList = "apps.running.list";
+    public const string AppRunningConfirm = "apps.running.confirm";
     public const string AppLibraryLaunch = "apps.library.launch";
     internal const string AppLibraryLaunchObserved = "apps.library.launch-observed";
     public const string MediaSessionsGet = "media.sessions.get";
@@ -203,6 +206,9 @@ public static class PlatformCapabilities
             [AppLibraryReadV1] = new(AppLibraryReadV1, 1,
                 BrokerCapabilityKind.Read,
                 Set(AppLibraryList, AppLibraryResolveSaved), Set()),
+            [AppRunningReadV1] = new(AppRunningReadV1, 1,
+                BrokerCapabilityKind.Read,
+                Set(AppRunningList, AppRunningConfirm), Set()),
             [AppLibraryLaunchV1] = new(AppLibraryLaunchV1, 1,
                 BrokerCapabilityKind.Control,
                 Set(AppLibraryLaunch, AppLibraryLaunchObserved), Set(),

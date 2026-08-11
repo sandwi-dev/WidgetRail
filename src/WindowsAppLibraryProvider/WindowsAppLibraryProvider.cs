@@ -22,7 +22,11 @@ public sealed class WindowsAppLibraryProvider :
     private readonly IReadOnlyList<IGameLibrarySource> _sources;
     private readonly IReadOnlyDictionary<string, IGameLibrarySource> _sourcesByIdentity;
     private readonly IShellStaExecutor _shellSta;
+    private readonly IWindowsRunningAppObserver _runningApps;
+    private readonly TimeSpan _terminalDrainDeadline;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private readonly SemaphoreSlim _artworkGate = new(4, 4);
+    private readonly SemaphoreSlim _observationGate = new(1, 1);
     private readonly object _lifetimeGate = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly byte[] _cursorKey = RandomNumberGenerator.GetBytes(32);
@@ -113,7 +117,32 @@ public sealed class WindowsAppLibraryProvider :
 
     internal WindowsAppLibraryProvider(
         IReadOnlyList<IGameLibrarySource> sources,
-        IShellStaExecutor shellSta)
+        IShellStaExecutor shellSta) : this(
+            sources, shellSta, new WindowsRunningAppObserver(), TerminalDrainDeadline)
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        TimeSpan terminalDrainDeadline) : this(
+            sources, shellSta, new WindowsRunningAppObserver(), terminalDrainDeadline)
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps) : this(
+            sources, shellSta, runningApps, TerminalDrainDeadline)
+    {
+    }
+
+    internal WindowsAppLibraryProvider(
+        IReadOnlyList<IGameLibrarySource> sources,
+        IShellStaExecutor shellSta,
+        IWindowsRunningAppObserver runningApps,
+        TimeSpan terminalDrainDeadline)
     {
         ArgumentNullException.ThrowIfNull(sources);
         if (sources.Count == 0 || sources.Count > 16 ||
@@ -131,6 +160,85 @@ public sealed class WindowsAppLibraryProvider :
         _sourcesByIdentity = _sources.ToDictionary(
             source => source.SourceIdentity, StringComparer.Ordinal);
         _shellSta = shellSta ?? throw new ArgumentNullException(nameof(shellSta));
+        _runningApps = runningApps ?? throw new ArgumentNullException(nameof(runningApps));
+        if (terminalDrainDeadline <= TimeSpan.Zero ||
+            terminalDrainDeadline > TerminalDrainDeadline)
+            throw new ArgumentOutOfRangeException(nameof(terminalDrainDeadline));
+        _terminalDrainDeadline = terminalDrainDeadline;
+    }
+
+    public async Task<RunningAppBackendObservationPage> ObserveRunningAppsAsync(
+        CancellationToken cancellationToken)
+    {
+        await GetAppsAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterObservationOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            return await _shellSta.RunAsync(ObserveRunningCore, operation.Token)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            operation.Release(_observationGate);
+        }
+    }
+
+    private RunningAppBackendObservationPage ObserveRunningCore(
+        CancellationToken cancellationToken)
+    {
+        long catalogRevision;
+        GameLibrarySourceItem[] registrations;
+        lock (_stateGate)
+        {
+            catalogRevision = _catalogRevision;
+            registrations = _registrationsByOpaqueId.Values.ToArray();
+        }
+        var byIdentity = registrations
+            .GroupBy(item => item.StableIdentity, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single(),
+                StringComparer.OrdinalIgnoreCase);
+        var observedWindows = _runningApps.Observe(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var observations = observedWindows
+            .Where(item => byIdentity.ContainsKey(item.RegistrationIdentity))
+            .GroupBy(item => item.RegistrationIdentity, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Take(64)
+            .ToArray();
+        var result = new List<RunningAppBackendObservation>(observations.Length);
+        var revisionEvidence = new StringBuilder();
+        foreach (var group in observations)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var expected = byIdentity[group.Key];
+            var source = _sourcesByIdentity[expected.SourceIdentity];
+            var exact = source.ResolveExact(expected, cancellationToken);
+            if (exact is null || !string.Equals(exact.StableIdentity,
+                    expected.StableIdentity, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var displayName = SanitizeDisplayName(exact.DisplayName);
+            if (displayName is null) continue;
+            var instances = group.Select(item => item.InstanceEvidence)
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            if (instances.Length == 0) continue;
+            revisionEvidence.Append(exact.StableIdentity).Append('\0')
+                .AppendJoin(',', instances).Append('\0');
+            result.Add(new RunningAppBackendObservation(
+                exact.StableIdentity, instances[0],
+                displayName, ToBrokerKind(exact.Kind),
+                exact.Attribution));
+        }
+        lock (_stateGate)
+        {
+            if (_catalogRevision != catalogRevision)
+                throw new BrokerException("stale_observation", "The app library changed during observation.");
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var revision = "running-" + Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{catalogRevision:X16}\0{revisionEvidence}")));
+        return new RunningAppBackendObservationPage(result.AsReadOnly(), revision);
     }
 
     /// <summary>Returns the cached immutable snapshot, scanning lazily on first use.</summary>
@@ -326,7 +434,8 @@ public sealed class WindowsAppLibraryProvider :
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             throw AppUnavailable();
 
-        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
         try
         {
             GameLibrarySourceItem? registered;
@@ -386,7 +495,8 @@ public sealed class WindowsAppLibraryProvider :
         if (string.IsNullOrWhiteSpace(appId) || appId.Length > 128)
             return new AppLibraryIconSummary(null);
 
-        using var operation = await EnterOperationAsync(cancellationToken).ConfigureAwait(false);
+        using var operation = await EnterArtworkOperationAsync(cancellationToken)
+            .ConfigureAwait(false);
         try
         {
             GameLibrarySourceItem? registration;
@@ -399,32 +509,55 @@ public sealed class WindowsAppLibraryProvider :
 
             lock (_stateGate)
             {
-                if (_iconsByRevalidationKey.TryGetValue(
+                if (source.RequiresStaArtwork &&
+                    _iconsByRevalidationKey.TryGetValue(
                         registration.ArtworkRevision, out var cached))
                     return new AppLibraryIconSummary(cached);
             }
 
-            var png = await _shellSta.RunAsync(
-                token =>
+            string? ResolveArtwork(CancellationToken token)
+            {
+                var exact = source.ResolveExact(registration, token);
+                if (exact is null) return null;
+                if (!string.Equals(exact.ArtworkRevision,
+                        registration.ArtworkRevision, StringComparison.Ordinal))
                 {
-                    var exact = source.ResolveExact(registration, token);
-                    return exact is null ? null : source.LoadArtwork(exact, token);
-                },
-                operation.Token).ConfigureAwait(false);
+                    // Demand is the only artwork-I/O boundary. Let the exact
+                    // source observe a changed lazy registration, but never
+                    // publish its bytes through the stale generation.
+                    _ = source.LoadArtwork(exact, token);
+                    return null;
+                }
+                return source.LoadArtwork(exact, token);
+            }
+
+            var png = source.RequiresStaArtwork
+                ? await _shellSta.RunAsync(ResolveArtwork, operation.Token)
+                    .ConfigureAwait(false)
+                : await Task.Run(() => ResolveArtwork(operation.Token), operation.Token)
+                    .ConfigureAwait(false);
             operation.Token.ThrowIfCancellationRequested();
             if (png is not null)
             {
                 lock (_stateGate)
                 {
                     operation.Token.ThrowIfCancellationRequested();
-                    _iconsByRevalidationKey[registration.ArtworkRevision] = png;
+                    var isCurrent =
+                        _registrationsByOpaqueId.TryGetValue(appId, out var current) &&
+                        current.SourceIdentity == registration.SourceIdentity &&
+                        current.SourceItemIdentity == registration.SourceItemIdentity &&
+                        current.ArtworkRevision == registration.ArtworkRevision;
+                    if (!isCurrent)
+                        png = null;
+                    else if (source.RequiresStaArtwork)
+                        _iconsByRevalidationKey[registration.ArtworkRevision] = png;
                 }
             }
             return new AppLibraryIconSummary(png);
         }
         finally
         {
-            operation.Release(_scanGate);
+            operation.Release(_artworkGate);
         }
     }
 
@@ -591,6 +724,44 @@ public sealed class WindowsAppLibraryProvider :
         }
     }
 
+    private async Task<ProviderOperation> EnterArtworkOperationAsync(
+        CancellationToken cancellationToken)
+    {
+        ThrowIfTerminating();
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token);
+        try
+        {
+            await _artworkGate.WaitAsync(linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            return new ProviderOperation(linked);
+        }
+        catch
+        {
+            linked.Dispose();
+            throw;
+        }
+    }
+
+    private async Task<ProviderOperation> EnterObservationOperationAsync(
+        CancellationToken cancellationToken)
+    {
+        ThrowIfTerminating();
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetime.Token);
+        try
+        {
+            await _observationGate.WaitAsync(linked.Token).ConfigureAwait(false);
+            linked.Token.ThrowIfCancellationRequested();
+            return new ProviderOperation(linked);
+        }
+        catch
+        {
+            linked.Dispose();
+            throw;
+        }
+    }
+
     private void ThrowIfTerminating()
     {
         lock (_lifetimeGate) ThrowIfTerminatingLocked();
@@ -626,34 +797,57 @@ public sealed class WindowsAppLibraryProvider :
     {
         var failures = new List<Exception>();
         var gateHeld = false;
+        var observationGateHeld = false;
+        var artworkPermitsHeld = 0;
         try
         {
-            var disposals = _sources
-                .Select(source => Task.Run(() => DisposeSource(source)))
-                .ToArray();
-
+            using var deadline = new CancellationTokenSource(_terminalDrainDeadline);
             try
             {
-                await _scanGate.WaitAsync().WaitAsync(TerminalDrainDeadline)
-                    .ConfigureAwait(false);
-                gateHeld = true;
+                while (artworkPermitsHeld < 4)
+                {
+                    await _artworkGate.WaitAsync(deadline.Token).ConfigureAwait(false);
+                    artworkPermitsHeld++;
+                }
             }
-            catch (TimeoutException exception)
+            catch (OperationCanceledException exception)
             {
                 failures.Add(new InvalidOperationException(
-                    "Game-library provider work did not drain within its bounded deadline.",
+                    "Game-library artwork work did not drain within its bounded deadline.",
                     exception));
             }
 
-            var results = await Task.WhenAll(disposals).ConfigureAwait(false);
-            failures.AddRange(results.OfType<Exception>());
-
-            lock (_stateGate)
+            if (artworkPermitsHeld == 4)
             {
-                _snapshot = null;
-                _registrationsByOpaqueId = new(StringComparer.Ordinal);
-                _opaqueIdsByIdentity.Clear();
-                _iconsByRevalidationKey.Clear();
+                try
+                {
+                    await _scanGate.WaitAsync(deadline.Token).ConfigureAwait(false);
+                    gateHeld = true;
+                    await _observationGate.WaitAsync(deadline.Token).ConfigureAwait(false);
+                    observationGateHeld = true;
+                }
+                catch (OperationCanceledException exception)
+                {
+                    failures.Add(new InvalidOperationException(
+                        "Game-library provider work did not drain within its bounded deadline.",
+                        exception));
+                }
+                if (gateHeld && observationGateHeld)
+                {
+                    var disposals = _sources
+                        .Select(source => Task.Run(() => DisposeSource(source)))
+                        .ToArray();
+                    var results = await Task.WhenAll(disposals).ConfigureAwait(false);
+                    failures.AddRange(results.OfType<Exception>());
+
+                    lock (_stateGate)
+                    {
+                        _snapshot = null;
+                        _registrationsByOpaqueId = new(StringComparer.Ordinal);
+                        _opaqueIdsByIdentity.Clear();
+                        _iconsByRevalidationKey.Clear();
+                    }
+                }
             }
         }
         catch (Exception exception)
@@ -662,7 +856,10 @@ public sealed class WindowsAppLibraryProvider :
         }
         finally
         {
+            if (observationGateHeld) _observationGate.Release();
             if (gateHeld) _scanGate.Release();
+            if (artworkPermitsHeld != 0)
+                _artworkGate.Release(artworkPermitsHeld);
             _lifetime.Dispose();
         }
 
@@ -672,6 +869,15 @@ public sealed class WindowsAppLibraryProvider :
             completion.TrySetException(new AggregateException(
                 "One or more game-library sources failed bounded terminal cleanup.",
                 failures));
+    }
+
+    internal bool HasRetainedCatalogState
+    {
+        get
+        {
+            lock (_stateGate)
+                return _snapshot is not null && _registrationsByOpaqueId.Count != 0;
+        }
     }
 
     private static Exception? DisposeSource(IGameLibrarySource source)

@@ -43,6 +43,7 @@ public sealed class GameLauncherWidget : Widget
     private GameLauncherRecentMode _recentMode;
     private GameLauncherFixedRows _fixedRows = GameLauncherFixedRows.Empty;
     private IReadOnlyList<WidgetAppLibrarySource> _sourceObservations = [];
+    private string? _runningRevision;
     private long _fixedRowsRevision;
     private string? _pendingRestoredSavedId;
     private bool _preferLibraryContentFocus;
@@ -51,7 +52,7 @@ public sealed class GameLauncherWidget : Widget
     public GameLauncherWidget()
     {
         _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
-            maximumDepth: 1, maximumRoutes: 3);
+            maximumDepth: 1, maximumRoutes: 4);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()
         {
             PageSize = PageSize,
@@ -246,6 +247,29 @@ public sealed class GameLauncherWidget : Widget
                 if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
                     await ReturnToLibraryAsync().ConfigureAwait(false);
                 return;
+            case "game-launcher.running.open":
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                if (_navigation.Push(GameLauncherRoute.Running, action.SourceElementId) ==
+                    WidgetNavigationResult.Changed)
+                {
+                    lock (_gate)
+                    {
+                        _query = InstalledRegistrations;
+                        _favoriteFilter = false;
+                        _recentMode = GameLauncherRecentMode.Off;
+                        _fixedRows = GameLauncherFixedRows.Empty;
+                        _fixedRowsRevision++;
+                        _runningRevision = null;
+                        _pendingRestoredSavedId = null;
+                        _preferLibraryContentFocus = false;
+                    }
+                    ReloadQuery();
+                }
+                return;
+            case "game-launcher.running.back":
+                if (_navigation.Back(action.SourceElementId) == WidgetNavigationResult.Changed)
+                    await ReturnToLibraryAsync().ConfigureAwait(false);
+                return;
             case "game-launcher.hidden.open":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
                 if (_navigation.Push(GameLauncherRoute.Hidden, action.SourceElementId) ==
@@ -270,9 +294,14 @@ public sealed class GameLauncherWidget : Widget
                 return;
             case "game-launcher.manual.toggle":
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route != GameLauncherRoute.AddGames) return;
-                await ToggleManualAsync(action.SourceElementId, cancellationToken)
-                    .ConfigureAwait(false);
+                    _navigation.Value.Route is not (GameLauncherRoute.AddGames or
+                        GameLauncherRoute.Running)) return;
+                if (_navigation.Value.Route == GameLauncherRoute.Running)
+                    await AddRunningAsync(action.SourceElementId, cancellationToken)
+                        .ConfigureAwait(false);
+                else
+                    await ToggleManualAsync(action.SourceElementId, cancellationToken)
+                        .ConfigureAwait(false);
                 return;
             case "game-launcher.recent.clear":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -511,6 +540,32 @@ public sealed class GameLauncherWidget : Widget
             organization = _organization;
             recentMode = _recentMode;
             favoriteFilter = _favoriteFilter;
+        }
+        if (route == GameLauncherRoute.Running)
+        {
+            if (direction is not null || cursor is not null)
+                throw new InvalidOperationException("Running apps are a single bounded page.");
+            var observed = await HostServices.AppLibrary.ObserveRunningAsync(cancellationToken)
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var running = observed.Items.Select(candidate => GameLauncherItem.From(
+                new WidgetAppLibraryItem(candidate.SavedId, candidate.DisplayName,
+                    candidate.Kind)
+                {
+                    SavedId = candidate.SavedId,
+                    SourceAttribution = candidate.SourceAttribution,
+                })).Take(limit).ToArray();
+            lock (_gate)
+            {
+                if (_navigation.Value.Route != GameLauncherRoute.Running)
+                    throw new OperationCanceledException(cancellationToken);
+                _runningRevision = observed.Revision;
+                _sourceObservations = [];
+                _status = running.Length == 0
+                    ? "No visible applications match the installed library"
+                    : $"{running.Length} visible installed application{(running.Length == 1 ? "" : "s")}";
+            }
+            return new(running, null, null);
         }
         if (route == GameLauncherRoute.Hidden && organization.ExcludedSavedIds.Count == 0)
         {
@@ -836,11 +891,64 @@ public sealed class GameLauncherWidget : Widget
             Invalidate();
             return;
         }
-        var display = new GameLauncherDisplayItem(item.Value.SavedId,
-            item.Value.DisplayName, item.Value.SourceAttribution);
+        await SetManualCurrentAsync(item.Value, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task AddRunningAsync(
+        string sourceElementId,
+        CancellationToken cancellationToken)
+    {
+        var candidate = _library.Snapshot.Items.FirstOrDefault(item => string.Equals(
+            GameLauncherIdentity.FocusId("add", item.Key), sourceElementId,
+            StringComparison.Ordinal));
+        if (candidate is null) return;
+        string? revision;
+        lock (_gate)
+        {
+            if (_navigation.Value.Route != GameLauncherRoute.Running ||
+                GameLauncherOrganizationPolicy.ReferencedSavedIds(_organization)
+                    .Contains(candidate.Value.SavedId, StringComparer.Ordinal)) return;
+            revision = _runningRevision;
+        }
+        if (revision is null) return;
+        var current = await HostServices.AppLibrary.ConfirmRunningAsync(
+            candidate.Value.SavedId, revision, cancellationToken).ConfigureAwait(false);
+        if (current is null)
+        {
+            lock (_gate) _status = "Running app changed · refresh and try again";
+            Invalidate();
+            return;
+        }
+        lock (_gate)
+            if (_navigation.Value.Route != GameLauncherRoute.Running ||
+                !string.Equals(_runningRevision, revision, StringComparison.Ordinal)) return;
+        await SetManualCurrentAsync(current, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SetManualCurrentAsync(
+        WidgetAppLibraryItem item,
+        CancellationToken cancellationToken)
+    {
+        if (item.Kind == WidgetAppLibraryKind.Game)
+        {
+            lock (_gate) _status = "Games are included automatically";
+            Invalidate();
+            return;
+        }
+        var display = new GameLauncherDisplayItem(item.SavedId,
+            item.DisplayName, item.SourceAttribution);
         bool included;
-        lock (_gate) included = _organization.ManualSavedIds.Contains(
-            display.SavedId, StringComparer.Ordinal);
+        lock (_gate)
+        {
+            if (_organization.RecentSavedIds.Contains(display.SavedId, StringComparer.Ordinal) ||
+                _organization.ExcludedSavedIds.Contains(display.SavedId, StringComparer.Ordinal))
+            {
+                _status = "App is already retained in the library";
+                return;
+            }
+            included = _organization.ManualSavedIds.Contains(
+                display.SavedId, StringComparer.Ordinal);
+        }
         await MutateOrganizationAsync(
             state => GameLauncherOrganizationPolicy.SetManual(state, display, !included),
             included ? $"Removed {display.DisplayName}" : $"Added {display.DisplayName}",

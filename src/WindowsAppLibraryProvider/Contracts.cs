@@ -67,7 +67,23 @@ internal sealed record SteamRegistration(
     string SteamAppId,
     string ManifestPath,
     string RevalidationKey) : WindowsLaunchRegistration(
-        IdentityKey, DisplayName, RevalidationKey);
+        IdentityKey, DisplayName, RevalidationKey)
+{
+    internal SteamArtworkRegistration? Artwork { get; init; }
+}
+
+/// <summary>
+/// Host-only lazy locator for allowlisted Steam cache artwork. Trusted roots and
+/// the numeric app identity never leave this provider assembly; file selection
+/// and object evidence do not exist until explicit artwork demand.
+/// </summary>
+internal sealed record SteamArtworkRegistration(
+    SteamArtworkLocator Locator,
+    string Revision);
+
+internal sealed record SteamApplicationSourceCandidate(
+    IReadOnlyList<SteamRegistration> Registrations,
+    IGameLibrarySourceCandidateCommit? Commit = null);
 
 internal interface IStartMenuApplicationSource
 {
@@ -97,10 +113,17 @@ internal interface ISteamApplicationSource
 {
     IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken);
 
+    SteamApplicationSourceCandidate Stage(CancellationToken cancellationToken) =>
+        new(Enumerate(cancellationToken));
+
     SteamRegistration? ReadExact(
         string steamAppId,
         string manifestPath,
         CancellationToken cancellationToken);
+
+    string? LoadArtwork(
+        SteamRegistration exactRegistration,
+        CancellationToken cancellationToken) => null;
 }
 
 /// <summary>

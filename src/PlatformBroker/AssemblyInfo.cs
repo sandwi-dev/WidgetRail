@@ -4,3 +4,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetRuntime")]
 [assembly: InternalsVisibleTo("WindowsCommunityProvider")]
 [assembly: InternalsVisibleTo("WidgetBridge")]
+[assembly: InternalsVisibleTo("FirstPartyWidgetConformance.Tests")]

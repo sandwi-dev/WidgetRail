@@ -1250,6 +1250,7 @@ the smallest closed broker authority in `manifest.json` and call the typed
 | `system.network.bluetooth.manage.v1` | open Windows Bluetooth Settings after validating one current opaque device | Interactive |
 | `system.activity.recent.read.v1` | list/watch bounded recent running applications | Visible or Interactive |
 | `system.apps.library.read.v1` | page installed-app names/kinds, observe bounded sanitized source health, and resolve authority-scoped durable SavedIds to current launch IDs | Visible or Interactive |
+| `system.apps.running.read.v1` | on demand, list visible programs that exactly match one installed registration and confirm one short-lived observation | Visible or Interactive |
 | `system.apps.library.launch.v1` | launch one current broker-issued opaque app ID | Interactive only |
 | `system.media.sessions.read.v1` | list/watch sanitized system media sessions | Visible or Interactive |
 | `system.media.sessions.control.v1` | control one broker-issued media session | Interactive, or one exact declared dashboard gesture while Visible |
@@ -1409,6 +1410,15 @@ remain provider-private. The provider includes reviewed Steam manifests as
 games but uses a semantic fallback because that source supplies no trusted icon
 surface; Xbox and other store adapters remain unsupported. See the
 [Games & Apps reference](games-and-apps.md).
+
+For an optional **Add running app** route, declare
+`system.apps.running.read.v1`, call `ObserveRunningAsync` only when the user
+opens or refreshes that route, and retain its revision only in memory. Before
+persisting a selected SavedId, call `ConfirmRunningAsync(savedId, revision)` and
+accept only the returned current item. This capability exposes no process,
+window, path, command, package, or provider identity and is not launch
+authority; launch still requires fresh SavedId resolution plus the separate
+launch grant.
 
 Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` when a
 controller-first surface needs bounded text. Activating it opens the host-owned
