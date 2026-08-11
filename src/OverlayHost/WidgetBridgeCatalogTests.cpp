@@ -52,6 +52,7 @@ int main() {
             "runtimeGeneration": "runtime-1",
             "presentationGeneration": "presentation-1",
             "icon": "music",
+            "pinningSupported": true,
             "quickActions": [{
                 "id": "refresh",
                 "label": "Refresh",
@@ -75,9 +76,35 @@ int main() {
     assert((*valid)[0].runtimeGeneration == L"runtime-1");
     assert((*valid)[0].presentationGeneration == L"presentation-1");
     assert((*valid)[0].icon == L"music");
+    assert((*valid)[0].pinningSupported);
     assert((*valid)[0].quickActions.size() == 2);
     assert((*valid)[0].quickActions[0].controllerButton == L"x");
     assert(!(*valid)[0].quickActions[1].controllerButton);
+
+    error.clear();
+    const auto defaultPinning = gba::testing::ParseWidgetDescriptors(R"json({
+        "widgets": [{
+            "id": "dev.test.default",
+            "name": "Default",
+            "instanceId": "default.instance",
+            "runtimeGeneration": "runtime-default",
+            "presentationGeneration": "presentation-default",
+            "quickActions": []
+        }]
+    })json", error);
+    assert(defaultPinning && !(*defaultPinning)[0].pinningSupported);
+    error.clear();
+    assert(!gba::testing::ParseWidgetDescriptors(R"json({
+        "widgets": [{
+            "id": "dev.test.bad",
+            "name": "Bad",
+            "instanceId": "bad.instance",
+            "runtimeGeneration": "runtime-bad",
+            "presentationGeneration": "presentation-bad",
+            "pinningSupported": "yes",
+            "quickActions": []
+        }]
+    })json", error));
 
     error.clear();
     const auto styledSnapshot = gba::testing::ParseWidgetSnapshotResponse(R"json({

@@ -1,8 +1,10 @@
-# Host-owned pinned-surface feasibility
+# Host-owned pinned surfaces
 
-Status: DLV-011 selects a bounded Win32 tool-window architecture for further
-host work. It does **not** expose a pin command, public widget API, arbitrary
-HWND path, or media/browser implementation.
+Status: DLV-058 implements the first bounded generic lifecycle on the Win32
+tool-window architecture selected by DLV-011. A widget opts in with the
+data-only `pinningSupported` manifest flag. The host alone creates, renders,
+orders, focuses, and destroys the native surface; no HWND or native authority
+is exposed to widget code.
 
 ## Decision
 
@@ -33,12 +35,34 @@ cross-process mechanism; explicit mouse-activation denial completes the
 candidate policy. See [DWM performance considerations](https://learn.microsoft.com/windows/win32/dwm/bestpractices-ovw)
 and [`WM_NCHITTEST`](https://learn.microsoft.com/windows/win32/inputdev/wm-nchittest).
 
-The feasibility fixture uses one data-only declarative descriptor containing a
-stable ID, accessible name, static ARGB color, and reduced-motion preference.
-It cannot contain a native window, renderer, process, provider, or compositor
-handle. The fixture paints that deterministic color/status surface in a real
-top-level window and publishes a two-node host-domain UI Automation tree
-through the existing native provider. There is no ambient timer or animation.
+The product coordinator admits only the current catalog ID, package instance,
+runtime generation, presentation generation, display name, opt-in flag, and a
+validated immutable declarative snapshot. It cannot admit a native window,
+renderer, process, provider, compositor, or z-order handle. It renders that
+snapshot with the existing native declarative renderer and publishes separate
+host-owned heading and mode status semantics through the existing UI Automation
+provider.
+
+## User lifecycle
+
+Only one surface may be pinned in this first bounded release:
+
+1. open a supporting widget and press `P`; the new peer surface starts in
+   nonactivating click-through mode and the main overlay keeps controller focus;
+2. while that widget remains open in the main overlay, press `P` again to toggle
+   the pinned surface between Interactive and Click-through;
+3. press `U`, use the pinned Interactive chrome, close the pinned window, remove
+   or replace its package generation, restart its worker, or exit the host to
+   perform one exact paired HWND/semantic teardown;
+4. closing the main overlay preserves the surface but always returns it to
+   click-through. Reopen the main overlay before explicitly restoring
+   Interactive mode.
+
+Unsupported widgets retain their existing behavior. Omitted
+`pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
+and admission failures produce bounded host diagnostics rather than a fallback
+window. Worker loss, stale runtime or presentation generations, catalog
+removal, and host exit cannot leave an orphaned surface.
 
 ## Candidate comparison
 
@@ -70,9 +94,10 @@ left/top/width/height in DIPs. Resolution follows one deterministic rule:
 5. when no valid monitor exists, fail closed and create no HWND.
 
 The rule covers work-area shrink, taskbar movement, rotation, mixed DPI,
-negative virtual-screen coordinates, and hot-plug fallback as math. A future
-product adapter would call the same reconciliation from the host's existing
-`WM_DPICHANGED`, `WM_DISPLAYCHANGE`, and `WM_SETTINGCHANGE` paths. Windows
+negative virtual-screen coordinates, and hot-plug fallback as math. A pinned
+HWND currently applies the bounded top-right default and its own
+`WM_DPICHANGED` suggested rectangle. Durable move/resize persistence and
+complete display-environment reconciliation remain DLV-068. Windows
 documents that `WM_DPICHANGED` supplies a new DPI and suggested rectangle, and
 that monitor APIs resolve rectangles in virtual-screen coordinates:
 [WM_DPICHANGED](https://learn.microsoft.com/windows/win32/hidpi/wm-dpichanged),
@@ -100,10 +125,21 @@ process, not the production process-tree total. The two-node semantic workload
 is deliberately smaller than DLV-016, so only gates and direction are compared;
 the timings are not interchangeable product benchmarks.
 
+`src\OverlayHost\build.ps1 -Configuration Release
+-WidgetSurfaceTestsOnly` builds the production coordinator with its focused
+real-HWND fixture. The current DLV-058 Release run passed 33 admission,
+closed-state, style, real-window, UI Automation, generation, live-update,
+overlay-hide, cap, and exact-teardown checks. Its incremental pinned private
+working-set observation was 10,264,576 bytes, below DLV-016's 128 MiB material
+gate. This short single-process observation is not a production process-tree,
+GPU, idle-CPU, or long-run benchmark.
+
 ## Explicit limitations
 
-- This is an architecture gate and test harness, not a user-visible pinning
-  feature. No public protocol or community-widget authority was added.
+- This is a generic declarative host surface, not an arbitrary-window or public
+  native-window API. The only public opt-in is `pinningSupported`.
+- Durable placement, controller action routing, and final composed widget/UIA
+  interaction are intentionally owned by DLV-068 and DLV-069.
 - No WebView2, YouTube, authentication, playback, new compositor, Windows App
   SDK dependency, game hook, or elevated hook was implemented.
 - No screenshot, GPU, DWM, presentation, game-frame, hardware-input, or

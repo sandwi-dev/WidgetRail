@@ -28,6 +28,7 @@ public sealed record BridgeWidgetDescriptor
     public required string RuntimeGeneration { get; init; }
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
+    public bool PinningSupported { get; init; }
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
 }
 
@@ -39,6 +40,8 @@ internal sealed record ConfiguredWidget
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
     public WidgetGlyph Icon { get; init; } = WidgetGlyph.Connection;
+    /// <summary>Immutable declaration; native-window authority remains host-only.</summary>
+    public bool PinningSupported { get; init; }
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
@@ -89,6 +92,7 @@ internal sealed record ConfiguredWidget
         RuntimeGeneration = WorkerFingerprint[..32].ToLowerInvariant(),
         PresentationGeneration = CatalogFingerprint[..32].ToLowerInvariant(),
         Icon = Icon,
+        PinningSupported = PinningSupported,
         QuickActions = QuickActions,
     };
 }
@@ -357,6 +361,7 @@ public sealed class BridgeCatalog
                 Name = manifest.Name,
                 InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
                 Icon = manifest.Presentation.Icon,
+                PinningSupported = manifest.PinningSupported,
                 WorkerExecutable = workerHost,
                 WorkerArguments =
                 [
@@ -613,6 +618,7 @@ public sealed class BridgeCatalog
             Name = manifest.Name,
             InstanceId = source.InstanceId,
             Icon = manifest.Presentation.Icon,
+            PinningSupported = manifest.PinningSupported,
             WorkerExecutable = workerHost,
             WorkerArguments =
             [

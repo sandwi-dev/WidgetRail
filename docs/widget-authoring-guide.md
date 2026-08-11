@@ -1409,6 +1409,7 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
   "publisher": "dev.example",
   "name": "Audio Control",
   "version": "1.0.0",
+  "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -1445,6 +1446,7 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
 | `publisher` | Lowercase reverse-DNS publisher claim. It is not cryptographic proof. |
 | `name` | 1–80 characters. |
 | `version` | Canonical dotted numeric `System.Version` text such as `1.0.0`. Installed versions are immutable. |
+| `pinningSupported` | Optional boolean, default `false`. When `true`, the host may project the widget's validated declarative snapshot into its own bounded pinned tool window. It grants no HWND, topmost, focus, input, renderer, provider, or compositor authority to the widget. |
 | `hostApi` | Current compatible range is minimum `1.0`, maximum major `1`. This is independent of additive snapshot protocol versions 1–13. |
 | `entrypoint.runtime` | Only `dotnet-worker`. |
 | `entrypoint.assembly` | Exact-case normalized package-relative path with `/`, no traversal. |
@@ -1463,6 +1465,15 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
 Unknown capability IDs are syntactically valid at manifest parse time but an
 installed package declaring unsupported authority is omitted by the bridge.
 Use only the published closed IDs above.
+
+For a supporting widget, open its full surface and press `P` to request the
+single host-owned pinned surface. It starts click-through; a second `P` while
+the same widget is open explicitly makes it Interactive, and `U` unpins it.
+Overlay close preserves the surface but restores click-through. Package
+removal/replacement, worker restart/loss, pinned close, and host exit tear it
+down. Authors publish ordinary immutable snapshots and lifecycle behavior only;
+they do not receive window or z-order callbacks. See
+[Host-owned pinned surfaces](pinned-surfaces.md).
 
 ## Validate, list scenarios, render, replay, and test
 

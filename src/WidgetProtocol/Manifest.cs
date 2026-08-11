@@ -15,6 +15,12 @@ public sealed record WidgetManifest
     public required HostApiRange HostApi { get; init; }
     public required WidgetEntrypoint Entrypoint { get; init; }
     /// <summary>
+    /// Declares that the ordinary declarative view may be hosted in a
+    /// platform-owned pinned surface. This grants no HWND, z-order, placement,
+    /// input, or compositor authority and defaults closed.
+    /// </summary>
+    public bool PinningSupported { get; init; }
+    /// <summary>
     /// Safe shell presentation metadata. Icons are semantic host glyphs, never
     /// package paths, font names, SVG, or executable drawing content.
     /// </summary>

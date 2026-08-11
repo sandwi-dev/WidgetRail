@@ -312,7 +312,7 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "presentationGeneration", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["icon", "id", "instanceId", "name", "pinningSupported", "presentationGeneration", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
@@ -320,6 +320,8 @@ static async Task EnumerationIsLazy()
     Assert.Equal(32, descriptor.GetProperty("runtimeGeneration").GetString()!.Length);
     Assert.Equal(32, descriptor.GetProperty("presentationGeneration").GetString()!.Length);
     Assert.Equal("music", descriptor.GetProperty("icon").GetString());
+    Assert.False(descriptor.GetProperty("pinningSupported").GetBoolean(),
+        "Omitted manifest pinning support must project closed.");
     var quickAction = descriptor.GetProperty("quickActions")[0];
     Assert.SequenceEqual(["actionId", "controllerButton", "id", "label", "sourceElementId"],
         quickAction.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));

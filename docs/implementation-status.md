@@ -1803,16 +1803,24 @@ game-frame cost; neither harness measures scheduler wakeups or long-run/many-
 widget trends. Those limits remain explicit and the dirty runs are focused
 implementation evidence, not release or marketing proof.
 
-DLV-011 now selects a bounded host-owned Win32 tool-window architecture for
-further pinned-surface work without exposing a pinning feature or public
-protocol. `PinnedSurfacePolicy` owns a data-only surface descriptor, explicit
-click-through/focusable modes, one cleanup state for unpin/exit/crash recovery,
-and work-area-contained DIP placement with primary-monitor fallback. The real
-HWND fixture verifies `WS_EX_TOOLWINDOW`/topmost/taskbar/Alt-Tab policy,
-nonactivating transparent hit testing, explicit focusable transition, UI
-Automation ownership, survival after the main-overlay window hides/closes, and
-paired HWND/semantic teardown. A widget cannot provide an HWND, renderer,
-provider, process, or compositor handle.
+DLV-011 selected a bounded host-owned Win32 tool-window architecture. DLV-058
+now supplies the first generic declarative product lifecycle. The strict
+optional public-manifest `pinningSupported` boolean defaults false; the bridge
+projects it as data, while `WidgetSurfaceCoordinator` alone owns exact catalog
+and package generations, the real HWND, native declarative rendering,
+topmost/focus/input policy, host chrome/status semantics, one-surface admission,
+live snapshot updates, and exact teardown. `PinnedSurfacePolicy` retains the
+closed click-through/focusable modes and work-area-contained default placement.
+The real-HWND fixtures verify the window-style contract, nonactivating hit
+testing, explicit focusable transition, UI Automation ownership, survival after
+the main overlay hides, and paired HWND/semantic teardown. A widget cannot
+provide an HWND, renderer, provider, process, compositor, or z-order handle.
+New pins begin click-through; explicit `P` toggles interaction, `U` unpins, and
+removal, generation replacement, worker restart/loss, close, or host exit clean
+up exactly once. The focused DLV-058 fixture passed 33 checks with a
+10,264,576-byte incremental private-working-set observation, below DLV-016's
+material gate. Durable geometry and final composed input/accessibility remain
+DLV-068/DLV-069.
 
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is
