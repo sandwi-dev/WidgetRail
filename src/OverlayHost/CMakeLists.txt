@@ -20,6 +20,7 @@ add_executable(OverlayHost WIN32
     OverlayState.cpp
     WidgetBridgeClient.cpp
     RemoteImageCache.cpp
+    ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
     NativeIcons.cpp
     NativeStyle.cpp
@@ -73,6 +74,14 @@ target_link_libraries(OverlayHost PRIVATE
 
 if(GBA_BUILD_TESTS)
     enable_testing()
+    add_executable(ScrollEvidenceProbeTests
+        ScrollEvidenceProbeTests.cpp ScrollEvidenceProbe.cpp)
+    target_compile_features(ScrollEvidenceProbeTests PRIVATE cxx_std_20)
+    target_compile_options(ScrollEvidenceProbeTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ScrollEvidenceProbeTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME ScrollEvidenceProbeTests COMMAND ScrollEvidenceProbeTests)
+
     add_executable(OverlayStateTests
         OverlayStateTests.cpp
         OverlayState.cpp

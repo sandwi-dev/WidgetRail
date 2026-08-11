@@ -16,6 +16,7 @@
 #include "OverlayTransition.h"
 #include "PressedInteraction.h"
 #include "RemoteImageCache.h"
+#include "ScrollEvidenceProbe.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
@@ -670,6 +671,13 @@ private:
                 return false;
             }
         }
+        if (scrollEvidencePath_) {
+            if (!scrollEvidenceProbe_.Enable(*scrollEvidencePath_)) {
+                initializationError_ = L"The scroll evidence destination is invalid.";
+                return false;
+            }
+            scrollEvidencePath_.reset();
+        }
         return true;
     }
 
@@ -896,78 +904,6 @@ private:
             return false;
         }
         return true;
-    }
-
-    void PublishScrollEvidence(
-        const std::wstring_view widgetId,
-        const gba::WidgetSnapshot& snapshot,
-        const gba::RenderResult& result,
-        const std::wstring_view renderedFocusId,
-        const float pixelScale,
-        const float textScale) {
-        if (!scrollEvidencePath_ || renderedFocusId.empty()) return;
-        const auto navigation = result.navigationRects.find(renderedFocusId);
-        const auto presentation = result.focusRects.find(renderedFocusId);
-        if (navigation == result.navigationRects.end() ||
-            presentation == result.focusRects.end()) return;
-
-        const auto appendRect = [](std::wstring& payload, const std::wstring_view key,
-                                   const gba::declarative::Rect& rect) {
-            payload += key;
-            payload += L"=" + std::to_wstring(rect.x) + L"," +
-                std::to_wstring(rect.y) + L"," + std::to_wstring(rect.width) +
-                L"," + std::to_wstring(rect.height) + L"\n";
-        };
-        std::wstring payload =
-            L"gbar-scroll-evidence-v1\nwidget=" + std::wstring(widgetId) +
-            L"\ninstance=" + snapshot.instanceId +
-            L"\nsequence=" + std::to_wstring(snapshot.sequence) +
-            L"\nscope=" + snapshot.activeInputScopeId +
-            L"\nfocus=" + std::wstring(renderedFocusId) +
-            L"\nexplicitTarget=" +
-                (lastFocusEvidenceTarget_.empty()
-                    ? std::wstring(renderedFocusId) : lastFocusEvidenceTarget_) +
-            L"\ndirection=" + lastFocusEvidenceDirection_ +
-            L"\npixelScale=" + std::to_wstring(pixelScale) +
-            L"\ntextScale=" + std::to_wstring(textScale) +
-            L"\nrevealable=" +
-                (result.revealableFocusIds.contains(renderedFocusId) ? L"true" : L"false") +
-            L"\n";
-        appendRect(payload, L"navigation", navigation->second);
-        appendRect(payload, L"presentation", presentation->second);
-        for (const auto& [id, offset] : result.scrollOffsets)
-            payload += L"scroll=" + id + L"," + std::to_wstring(offset) + L"\n";
-
-        if (payload.size() > static_cast<std::size_t>(INT_MAX)) return;
-        const int utf8Length = WideCharToMultiByte(
-            CP_UTF8, WC_ERR_INVALID_CHARS, payload.data(),
-            static_cast<int>(payload.size()), nullptr, 0, nullptr, nullptr);
-        if (utf8Length <= 0) return;
-        std::string utf8(static_cast<std::size_t>(utf8Length), '\0');
-        if (WideCharToMultiByte(
-                CP_UTF8, WC_ERR_INVALID_CHARS, payload.data(),
-                static_cast<int>(payload.size()), utf8.data(), utf8Length,
-                nullptr, nullptr) != utf8Length) return;
-
-        const std::filesystem::path destination(*scrollEvidencePath_);
-        const auto temporary = destination.wstring() + L".tmp-" +
-            std::to_wstring(GetCurrentProcessId());
-        DeleteFileW(temporary.c_str());
-        HANDLE file = CreateFileW(
-            temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-            FILE_ATTRIBUTE_TEMPORARY, nullptr);
-        if (file == INVALID_HANDLE_VALUE) return;
-        DWORD written{};
-        const bool wrote = utf8.size() <= MAXDWORD &&
-            WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()),
-                      &written, nullptr) &&
-            written == static_cast<DWORD>(utf8.size()) && FlushFileBuffers(file);
-        CloseHandle(file);
-        if (!wrote || !MoveFileExW(
-                temporary.c_str(), destination.c_str(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            DeleteFileW(temporary.c_str());
-        }
     }
 
     bool FailWin32(const std::wstring_view operation, const DWORD error) {
@@ -3092,10 +3028,8 @@ private:
         focusedElementId_ = snapshot
             ? focusMemory_.Restore(widgetId, *snapshot)
             : std::wstring{};
-        if (scrollEvidencePath_ && !focusedElementId_.empty()) {
-            lastFocusEvidenceTarget_ = focusedElementId_;
-            lastFocusEvidenceDirection_ = L"restore";
-        }
+        if (!focusedElementId_.empty())
+            (void)scrollEvidenceProbe_.RecordTarget(focusedElementId_, L"restore");
         (void)ReconcileResponsiveFocusPersistence();
     }
 
@@ -3413,10 +3347,7 @@ private:
         sliderInteraction_.DeactivateAll();
         (void)pressedInteraction_.Clear();
         focusedElementId_ = *target;
-        if (scrollEvidencePath_) {
-            lastFocusEvidenceTarget_ = *target;
-            lastFocusEvidenceDirection_ = L"responsive";
-        }
+        (void)scrollEvidenceProbe_.RecordTarget(*target, L"responsive");
         focusMemory_.Remember(widget, *snapshot, focusedElementId_);
         InvalidateRect(window_, nullptr, FALSE);
         return true;
@@ -3722,10 +3653,7 @@ private:
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = explicitTarget->id;
-            if (scrollEvidencePath_) {
-                lastFocusEvidenceTarget_ = explicitTarget->id;
-                lastFocusEvidenceDirection_ = std::wstring(direction);
-            }
+            (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
@@ -3738,10 +3666,7 @@ private:
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_ = *fallback;
-            if (scrollEvidencePath_) {
-                lastFocusEvidenceTarget_ = *fallback;
-                lastFocusEvidenceDirection_ = std::wstring(direction);
-            }
+            (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
@@ -4725,10 +4650,8 @@ private:
                         visibleFocus && *visibleFocus != focusedElementId_) {
                         (void)pressedInteraction_.Clear();
                         focusedElementId_ = *visibleFocus;
-                        if (scrollEvidencePath_) {
-                            lastFocusEvidenceTarget_ = *visibleFocus;
-                            lastFocusEvidenceDirection_ = L"reconcile";
-                        }
+                        (void)scrollEvidenceProbe_.RecordTarget(
+                            *visibleFocus, L"reconcile");
                         focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                         // The completed pass used the old focus state. Schedule one
                         // more paint so the recovered target receives its ring.
@@ -4744,7 +4667,7 @@ private:
                     lastWidgetRenderResult_ = result;
                 }
                 if (!retainedCommittedSnapshot && renderedFocusId == focusedElementId_) {
-                    PublishScrollEvidence(
+                    (void)scrollEvidenceProbe_.Publish(
                         widget, *snapshot, result, renderedFocusId,
                         options.pixelScale, options.accessibility.textScale);
                 }
@@ -4825,6 +4748,7 @@ private:
     std::optional<std::wstring> performanceDiagnosticsPath_;
     std::optional<std::wstring> performanceDiagnosticsNonce_;
     std::optional<std::wstring> scrollEvidencePath_;
+    gba::ScrollEvidenceProbe scrollEvidenceProbe_;
     bool performanceCountersActive_{};
     unsigned long long performanceCounterStarted_{};
     unsigned long long performanceTimerMessages_{};
@@ -4862,8 +4786,6 @@ private:
     ULONGLONG lastGuideDispatchAt_{};
     ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;
-    std::wstring lastFocusEvidenceTarget_;
-    std::wstring lastFocusEvidenceDirection_;
     gba::input::WidgetSurfaceFocusMemory focusMemory_;
     gba::input::SliderInteractionState sliderInteraction_;
     gba::input::PressedInteractionState pressedInteraction_;

@@ -100,12 +100,13 @@ $widgetSwitchHostTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-sw
 $widgetSwitchFixtureOutput = Join-Path $outputDirectory 'obj\widget-switch-fixture'
 $audioMixerScrollHostTestObjectDirectory = Join-Path $outputDirectory 'obj\audio-mixer-scroll-host-tests'
 $audioMixerScrollFixtureOutput = Join-Path $outputDirectory 'obj\audio-mixer-scroll-fixture'
+$scrollEvidenceProbeTestObjectDirectory = Join-Path $outputDirectory 'obj\scroll-evidence-probe-tests'
 $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tests'
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -131,6 +132,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+    (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
     (Join-Path $projectDirectory 'NativeIcons.cpp'),
     (Join-Path $projectDirectory 'NativeStyle.cpp'),
@@ -339,6 +341,22 @@ if (-not $SkipPackaging) {
 }
 
 if (-not $SkipTests) {
+    $scrollEvidenceProbeTestArguments = $common + @(
+        (Join-Path $projectDirectory 'ScrollEvidenceProbeTests.cpp'),
+        (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
+        "/Fo:$scrollEvidenceProbeTestObjectDirectory\",
+        "/Fe:$outputDirectory\ScrollEvidenceProbeTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $scrollEvidenceProbeTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ScrollEvidenceProbeTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ScrollEvidenceProbeTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "ScrollEvidenceProbeTests failed with exit code $LASTEXITCODE."
+    }
+
     $testArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayStateTests.cpp'),
         (Join-Path $projectDirectory 'OverlayState.cpp'),

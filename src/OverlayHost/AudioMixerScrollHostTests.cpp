@@ -242,6 +242,7 @@ struct Frame final {
     int width{};
     int height{};
     std::vector<std::uint8_t> bgra;
+    std::string source;
 };
 
 struct PixelRegionEvidence final {
@@ -291,10 +292,13 @@ Frame CaptureFrame(HWND window) {
     const int width = bounds.right - bounds.left;
     const int height = bounds.bottom - bounds.top;
     Require(width > 0 && height > 0, "Production host exposed an empty extent.");
-    // The production HWND is color-keyed. GetDC(window) can return the desktop
-    // through the complete redirected surface, so request the HWND's authored
-    // client paint explicitly. Color-key pixels may be black in this capture;
-    // the semantic surface and focused-control geometry remain reviewable.
+    POINT clientOrigin{};
+    Require(ClientToScreen(window, &clientOrigin),
+            Win32Error("ClientToScreen(capture)"));
+    // Prefer the authored redirected surface. Some DWM states legally return a
+    // black PrintWindow result for a color-keyed HWND; validate RGB pixels and
+    // then fall back to the same live composed screen rectangle. The later
+    // UIA/edge/footer/tray checks reject an unrelated or incomplete fallback.
     HDC windowDc = GetDC(window);
     Require(windowDc != nullptr, Win32Error("GetDC(window)"));
     HDC memoryDc = CreateCompatibleDC(windowDc);
@@ -313,21 +317,40 @@ Frame CaptureFrame(HWND window) {
     HGDIOBJ previous = SelectObject(memoryDc, bitmap);
     Require(previous != nullptr, Win32Error("SelectObject"));
     constexpr UINT kRenderFullContent = 0x00000002;
-    Require(PrintWindow(
-                window, memoryDc, PW_CLIENTONLY | kRenderFullContent),
-            Win32Error("PrintWindow"));
     Frame frame{width, height, std::vector<std::uint8_t>(
-        static_cast<std::size_t>(width) * height * 4)};
-    std::copy_n(static_cast<const std::uint8_t*>(bits), frame.bgra.size(), frame.bgra.begin());
+        static_cast<std::size_t>(width) * height * 4), {}};
+    const auto copyPixels = [&] {
+        std::copy_n(
+            static_cast<const std::uint8_t*>(bits),
+            frame.bgra.size(), frame.bgra.begin());
+    };
+    const auto hasAuthoredSurface = [&] {
+        const auto pixels = InspectPixelRegion(
+            frame, RECT{0, 0, frame.width, frame.height});
+        return pixels.pixelCount > 0 &&
+            pixels.authoredPixels * 12 > pixels.pixelCount;
+    };
+    if (PrintWindow(window, memoryDc, PW_CLIENTONLY | kRenderFullContent)) {
+        copyPixels();
+        if (hasAuthoredSurface()) frame.source = "print-window";
+    }
+    if (frame.source.empty()) {
+        HDC screenDc = GetDC(nullptr);
+        Require(screenDc != nullptr, Win32Error("GetDC(screen)"));
+        const bool copied = BitBlt(
+            memoryDc, 0, 0, width, height, screenDc,
+            clientOrigin.x, clientOrigin.y, SRCCOPY | CAPTUREBLT);
+        ReleaseDC(nullptr, screenDc);
+        if (copied) {
+            copyPixels();
+            if (hasAuthoredSurface()) frame.source = "screen-composed";
+        }
+    }
     SelectObject(memoryDc, previous);
     DeleteObject(bitmap);
     DeleteDC(memoryDc);
     ReleaseDC(window, windowDc);
-    const auto authoredChannels = std::count_if(
-        frame.bgra.begin(), frame.bgra.end(), [](const std::uint8_t channel) {
-            return channel > 16;
-        });
-    Require(static_cast<std::size_t>(authoredChannels) > frame.bgra.size() / 12,
+    Require(!frame.source.empty(),
             "Full-content HWND capture omitted the authored widget surface.");
     return frame;
 }
@@ -573,7 +596,11 @@ public:
         };
         Require(hasAuthoredCoverage(leftEdge, 20) &&
                     hasAuthoredCoverage(rightEdge, 20),
-                "Captured artifact omitted an authored horizontal host extent.");
+                "Captured artifact omitted an authored horizontal host extent: left=" +
+                    std::to_string(leftEdge.authoredPixels) + "/" +
+                    std::to_string(leftEdge.pixelCount) + " right=" +
+                    std::to_string(rightEdge.authoredPixels) + "/" +
+                    std::to_string(rightEdge.pixelCount) + ".");
         Require(hasAuthoredCoverage(trayPixels, 10),
                 "Captured artifact omitted the authored lower tray landmark.");
         Require(hasAuthoredCoverage(leftFooterPixels, 100) &&
@@ -628,6 +655,7 @@ public:
                  << closeBounds.bottom - closeBounds.top
                  << "},\"captureWidth\":" << frame.width
                  << ",\"captureHeight\":" << frame.height
+                 << ",\"captureSource\":\"" << frame.source << "\""
                  << ",\"leftAuthoredPixels\":" << leftEdge.authoredPixels
                  << ",\"rightAuthoredPixels\":" << rightEdge.authoredPixels
                  << ",\"trayAuthoredPixels\":" << trayPixels.authoredPixels

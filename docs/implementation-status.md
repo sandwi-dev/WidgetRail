@@ -22,9 +22,13 @@ focus fallback, and subsequent session addition; full-content captures retain
 every step. A capture is retained only when its bitmap exactly matches the
 borderless client/window extent, the UI Automation root covers that extent,
 and authored pixels remain present at both horizontal edges, the focused
-control, footer, and lower tray. D-pad and analog controller events continue
-through the same native focus-move authority, and no managed widget or public
-protocol changed.
+control, footer, and lower tray. The authenticated test-only
+`ScrollEvidenceProbe` owns path enablement, target/direction state, bounded
+serialization, UTF-8 conversion, and atomic replacement; `OverlayApp` retains
+only handshake-gated argument admission and typed focus/render calls, while the
+disabled normal path performs no probe write. D-pad and analog controller
+events continue through the same native focus-move authority, and no managed
+widget or public protocol changed.
 
 Responsive Row wrapping, protocol-v7 ActionSurface, protocol-v8 ResponsiveGrid,
 MediaTile/AppTile, Toast, semantic CodeText, independent per-edge borders, and
