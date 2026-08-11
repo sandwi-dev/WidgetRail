@@ -6,7 +6,7 @@ authority boundaries used by the rest of the platform.
 
 ## What the snapshot contains
 
-The bridge produces a bounded schema-1 snapshot with these typed areas:
+The bridge produces a bounded schema-2 snapshot with these typed areas:
 
 - bridge session connectivity;
 - last-good widget-catalog revision, widget count, and bounded warning state;
@@ -17,6 +17,9 @@ The bridge produces a bounded schema-1 snapshot with these typed areas:
 - one bounded worker row per catalog widget: public widget ID/name, running
   state, start count, last stable failure code, and whether on-demand restart is
   still allowed;
+- up to 64 sanitized authority-recovery rows with an opaque recovery ID, safe
+  display label, closed status, and an exact host-owned confirmation token only
+  when retry is currently allowed;
 - explicit `Unavailable` rows for overlay-host and Guide telemetry until the
   native host publishes those facts through a structured contract.
 
@@ -25,8 +28,10 @@ line or claim overlay health merely because its own worker is running.
 
 The snapshot never contains filesystem paths, command lines, process IDs,
 pipe names, nonces, exception text, network identities, audio-session names, or
-widget-provided diagnostic strings. Catalog and consent failures are reduced to
-stable bounded states before crossing the diagnostics channel.
+widget-provided diagnostic strings. Catalog, consent, appearance, provider, and
+recovery inspection failures are reduced independently to stable bounded states
+before crossing the diagnostics channel. One unavailable area cannot replace
+the remaining last-good snapshot.
 
 ## Transport and authority
 
@@ -78,20 +83,26 @@ loop or restart healthy workers.
 
 ## Recovery policy
 
-The Diagnostics page is read-only apart from Refresh:
+Diagnostics remains read-only except for one narrow AppContainer authority-
+recovery operation. A pending host journal record appears with a sanitized
+package/generation label and an opaque recovery ID. Selecting it opens an
+explicit confirmation whose initial focus is **Cancel**. Settings never renders
+or speaks the 32-character current or 64-character legacy confirmation token.
 
-- a failed worker already restarts lazily when the next legitimate request
-  reaches it and the runtime restart budget permits it;
-- installed packages can be disabled or rolled back from **Installed widgets**,
-  where package identity and compatibility are already reviewed;
-- appearance reset remains on the separate confirmation page;
-- permission changes remain on the package/capability confirmation pages.
+Retry sends that exact token over the private process-bound channel. Runtime
+reopens the pending record, verifies the original objects and restored ACLs,
+and makes cancellation versus journal clear one atomic decision. A stale token,
+failed verification, unavailable journal, refusal, timeout, or cancellation
+cannot clear the record or accept replacement authority; Settings refreshes the
+authoritative bounded list after every typed result. There is no raw clear,
+force mode, caller-selected journal path, SID, security descriptor, or object-
+identity input.
 
-Diagnostics does not offer a universal kill/restart/reset button. Such a button
-would conflate trusted and community workers, bypass confirmation flows, and
-could destroy legitimate background work. A future recovery action must be a
-typed host operation with exact target identity, lifecycle rules, confirmation,
-and deterministic crash-loop tests before appearing here.
+This operation is separate from ordinary diagnostics and other recovery
+surfaces. Failed workers still restart lazily within their runtime budget;
+installed packages are disabled or rolled back under **Installed widgets**;
+appearance reset and permission changes retain their own confirmation pages.
+Diagnostics does not offer a universal worker kill/restart/reset action.
 
 ## Presentation-transition log records
 
@@ -125,6 +136,9 @@ dotnet run --project .\tests\WidgetBridge.Tests\WidgetBridge.Tests.csproj -c Rel
 ```
 
 The transport suite covers authenticated process-bound delivery, wrong-nonce
-recovery, and invalid-snapshot rejection. The Settings suite covers nested
-controller scope, rejected catalog/theme state, permission denial summary,
-worker failure rendering, and explicit refresh recovery.
+recovery, and invalid-snapshot rejection. The Bridge suite directly covers
+bounded multi-area projection, sanitized partial failures, malformed recovery
+state, exact-token retry, stale/failed/unavailable results, and cancellation
+versus commit. The Settings suite covers nested controller scope, rejected
+catalog/theme state, permission denial summary, worker failure rendering,
+explicit refresh, token-hidden confirmation, and every closed retry result.
