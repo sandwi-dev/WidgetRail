@@ -146,6 +146,145 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task ControllerBumpersAreScopedAndBoundaryExactAcrossPages()
+    {
+        var host = new FakeHost(260)
+        {
+            LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var first = Snapshot(widget, 201);
+        var firstTile = Nodes(first.Root).First(node =>
+            node.ActionId == "game-launcher.launch");
+        await widget.OnActionAsync(new("game-launcher.launch", firstTile.Id));
+        await WaitUntil(() => widget.Organization.RecentSavedIds.Count == 1);
+        AssertShortcutMap(first, before: false, after: true);
+        Assert.IsFalse(await Route(widget, first, ControllerButton.LeftBumper, firstTile.Id));
+        Assert.IsFalse(await Route(widget, first, ControllerButton.RightBumper, firstTile.Id,
+            ControllerEventPhase.Repeated));
+        Assert.IsTrue(await Route(widget, first, ControllerButton.RightBumper, firstTile.Id));
+        await WaitUntil(() => host.Queries.Count == 2);
+        await Bounded(widget.WhenLibraryIdleAsync(), "first bumper page");
+
+        var retained = Snapshot(widget, 202);
+        AssertShortcutMap(retained, before: false, after: true);
+        Assert.IsTrue(Nodes(retained.Root).Any(node => node.Id == firstTile.Id),
+            "The exact focused SavedId should remain available in the retained window.");
+        Assert.IsTrue(await Route(widget, retained, ControllerButton.RightBumper, firstTile.Id));
+        await WaitUntil(() => host.Queries.Count == 3);
+        await Bounded(widget.WhenLibraryIdleAsync(), "second retained bumper page");
+
+        var beforeEviction = Snapshot(widget, 203);
+        AssertShortcutMap(beforeEviction, before: false, after: true);
+        Assert.IsTrue(await Route(
+            widget, beforeEviction, ControllerButton.RightBumper, firstTile.Id));
+        await WaitUntil(() => host.Queries.Count == 4);
+        await Bounded(widget.WhenLibraryIdleAsync(), "evicting bumper page");
+
+        var middle = Snapshot(widget, 204);
+        AssertShortcutMap(middle, before: true, after: true);
+        Assert.IsFalse(Nodes(middle.Root).Any(node => node.Id == firstTile.Id));
+        var nearest = GameLauncherIdentity.FocusId(
+            "grid", GameLauncherIdentity.Key("saved-00192"));
+        Assert.AreEqual(nearest, widget.Collection.RequestedFocusId);
+        Assert.IsTrue(Nodes(middle.Root).Any(node => node.Id == nearest));
+        Assert.IsTrue(await Route(widget, middle, ControllerButton.RightBumper, nearest));
+        await WaitUntil(() => host.Queries.Count == 5);
+        await Bounded(widget.WhenLibraryIdleAsync(), "final bumper page");
+
+        var final = Snapshot(widget, 205);
+        AssertShortcutMap(final, before: true, after: false);
+        var finalTile = Nodes(final.Root).First(node =>
+            node.ActionId == "game-launcher.launch");
+        Assert.IsFalse(await Route(widget, final, ControllerButton.RightBumper, finalTile.Id));
+        Assert.IsTrue(await Route(widget, final, ControllerButton.LeftBumper, finalTile.Id));
+        await WaitUntil(() => host.Queries.Count == 6);
+        await Bounded(widget.WhenLibraryIdleAsync(), "reverse bumper page");
+
+        var reverse = Snapshot(widget, 206);
+        AssertShortcutMap(reverse, before: true, after: true);
+        Assert.IsFalse(await Route(
+            widget, reverse, ControllerButton.RightBumper, "game-launcher.refresh"),
+            "Bumpers outside the results scroll must keep their existing ownership.");
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.recent", "game-launcher.filter.recent"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "recent-first reload");
+        var fixedSnapshot = Snapshot(widget, 207);
+        var fixedTile = Nodes(fixedSnapshot.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            node.CollectionItemKey is null);
+        Assert.IsTrue(await Route(
+            widget, fixedSnapshot, ControllerButton.RightBumper, fixedTile.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-section bumper page");
+        Assert.IsLessThanOrEqualTo(
+            LauncherWidget.MaximumRetainedItems, widget.Collection.Items.Count);
+        await Background(widget);
+
+        var singleHost = new FakeHost(2);
+        var single = Create(singleHost);
+        await Interactive(single);
+        await Ready(single, singleHost);
+        var singleSnapshot = Snapshot(single, 208);
+        AssertShortcutMap(singleSnapshot, before: false, after: false);
+        var singleTile = Nodes(singleSnapshot.Root).First(node =>
+            node.ActionId == "game-launcher.launch");
+        Assert.AreEqual("game-launcher.variant", singleTile.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.LeftBumper).ActionId);
+        Assert.AreEqual("game-launcher.prefer", singleTile.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.RightBumper).ActionId);
+        await Background(single);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task BumperPagingRejectsBusyAndReplacementStaleCompletion()
+    {
+        var host = new FakeHost(130);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var staleStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStale = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        host.QueryHandler = (request, _) =>
+        {
+            if (request.Query.SearchText == "Current")
+                return ValueTask.FromResult(new WidgetAppLibraryPage(
+                    [Item(1) with { DisplayName = "Current" }], null, null,
+                    "current-revision"));
+            staleStarted.TrySetResult();
+            return new(releaseStale.Task);
+        };
+
+        var admitted = Snapshot(widget, 211);
+        var focused = Nodes(admitted.Root).First(node =>
+            node.ActionId == "game-launcher.launch").Id;
+        Assert.IsTrue(await Route(
+            widget, admitted, ControllerButton.RightBumper, focused));
+        await Bounded(staleStarted.Task, "bumper page admission");
+        var busy = Snapshot(widget, 212);
+        Assert.AreEqual(WidgetPagedResourceStatus.LoadingAdjacent, widget.Collection.Status);
+        AssertShortcutMap(busy, before: false, after: false);
+        Assert.IsFalse(await Route(widget, busy, ControllerButton.RightBumper, focused));
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "Current" });
+        releaseStale.TrySetResult(new(
+            [Item(64) with { DisplayName = "Stale" }], "cursor.0", "cursor.65",
+            "stale-revision"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "bumper replacement drain");
+        Assert.AreEqual("Current", widget.Collection.Items.Single().Value.DisplayName);
+        Assert.IsFalse(widget.Collection.Items.Any(item => item.Value.DisplayName == "Stale"));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task WarmProjectionIsVisibleButCannotAuthorizeLaunch()
     {
         var warm = new GameLauncherPrivateState(GameLauncherPrivateState.CurrentVersion,
@@ -1468,6 +1607,34 @@ public sealed class GameLauncherTests
             await Task.Yield();
         }
         Assert.Fail("Condition did not become true.");
+    }
+
+    private static ValueTask<bool> Route(
+        LauncherWidget widget,
+        ViewSnapshot snapshot,
+        ControllerButton button,
+        string focusedElementId,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed) =>
+        widget.OnControllerInputAsync(new ControllerInputEvent(
+            button, phase, ControllerInputContext.OpenWidget,
+            FocusedElementId: focusedElementId,
+            Sequence: snapshot.Sequence,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
+            SnapshotSequence: snapshot.Sequence));
+
+    private static void AssertShortcutMap(
+        ViewSnapshot snapshot,
+        bool before,
+        bool after)
+    {
+        var scroll = Nodes(snapshot.Root).Single(node =>
+            node.Id == GameLauncherPresentation.ScrollId);
+        Assert.AreEqual(before, scroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftBumper &&
+            shortcut.ActionId == "game-launcher.previous"));
+        Assert.AreEqual(after, scroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightBumper &&
+            shortcut.ActionId == "game-launcher.next"));
     }
 
     private static IEnumerable<ViewNode> Nodes(ViewNode root)

@@ -123,6 +123,7 @@ internal static class GameLauncherPresentation
                 scroll = scroll.Paginate(
                     snapshot.HasBefore ? "game-launcher.library.cursor.before" : null,
                     snapshot.HasAfter ? "game-launcher.library.cursor.after" : null, 2);
+            scroll = PageShortcuts(scroll, snapshot, state.Interactive);
             scroll = scroll with { CollectionAnchorKey = snapshot.Anchor?.Value };
             content = UI.Stack("game-launcher.content",
                     scroll,
@@ -138,6 +139,7 @@ internal static class GameLauncherPresentation
         }
         else if (snapshot.Items.Count != 0 || state.FixedRows.All.Any())
         {
+            var pageBumpers = snapshot.HasBefore || snapshot.HasAfter;
             var favorites = state.Organization.FavoriteSavedIds
                 .Select((savedId, index) => (savedId, index))
                 .ToDictionary(value => value.savedId, value => value.index,
@@ -206,14 +208,14 @@ internal static class GameLauncherPresentation
                 .ToArray();
             var sections = new List<WidgetElement>();
             AddSection(sections, "Recent", "game-launcher.recent.section", recentRows,
-                favorites, preferred, groups, state, collectionItems: false);
+                favorites, preferred, groups, state, pageBumpers, collectionItems: false);
             AddSection(sections, "Added games", "game-launcher.manual.section", manualRows,
-                favorites, preferred, groups, state, collectionItems: false);
+                favorites, preferred, groups, state, pageBumpers, collectionItems: false);
             AddSection(sections, recentRows.Length != 0 || manualRows.Length != 0
                     ? "Catalog" : "Library",
                 "game-launcher.catalog.section",
                 [.. orderedCatalog, .. unavailableRows], favorites, preferred, groups, state,
-                collectionItems: true);
+                pageBumpers, collectionItems: true);
             var scroll = UI.VerticalScroll(ScrollId,
                     UI.Stack("game-launcher.library.sections", sections.ToArray())
                         .Classes("game-launcher-sections"))
@@ -223,6 +225,7 @@ internal static class GameLauncherPresentation
                 scroll = scroll.Paginate(
                     snapshot.HasBefore ? "game-launcher.library.cursor.before" : null,
                     snapshot.HasAfter ? "game-launcher.library.cursor.after" : null, 2);
+            scroll = PageShortcuts(scroll, snapshot, state.Interactive);
             var catalogIds = orderedCatalog.Select(row => row.Display.SavedId)
                 .ToHashSet(StringComparer.Ordinal);
             var retainedCatalogAnchor = snapshot.Anchor is { } anchor &&
@@ -251,12 +254,35 @@ internal static class GameLauncherPresentation
                         .Disabled(!state.Interactive || state.OrganizationBusy ||
                             state.Organization.RecentSavedIds.Count == 0))
                 .Classes("game-launcher-actions");
-            var hints = UI.Row("game-launcher.organization.hints",
-                UI.ControllerHint(ControllerButton.X, "Favorite", "game-launcher.hint.favorite"),
-                UI.ControllerHint(ControllerButton.LeftBumper, "Group variants",
-                    "game-launcher.hint.variant"),
-                UI.ControllerHint(ControllerButton.RightBumper, "Prefer variant",
+            var hintItems = new List<WidgetElement>
+            {
+                UI.ControllerHint(
+                    ControllerButton.X, "Favorite", "game-launcher.hint.favorite"),
+            };
+            if (pageBumpers)
+            {
+                if (state.Interactive && snapshot.Status == WidgetPagedResourceStatus.Ready &&
+                    snapshot.HasBefore)
+                    hintItems.Add(UI.ControllerHint(
+                        ControllerButton.LeftBumper, "Previous page",
+                        "game-launcher.hint.previous"));
+                if (state.Interactive && snapshot.Status == WidgetPagedResourceStatus.Ready &&
+                    snapshot.HasAfter)
+                    hintItems.Add(UI.ControllerHint(
+                        ControllerButton.RightBumper, "Next page",
+                        "game-launcher.hint.next"));
+            }
+            else
+            {
+                hintItems.Add(UI.ControllerHint(
+                    ControllerButton.LeftBumper, "Group variants",
+                    "game-launcher.hint.variant"));
+                hintItems.Add(UI.ControllerHint(
+                    ControllerButton.RightBumper, "Prefer variant",
                     "game-launcher.hint.prefer"));
+            }
+            var hints = UI.Row(
+                "game-launcher.organization.hints", hintItems.ToArray());
             var children = new List<WidgetElement> { scroll, controls, hints };
             if (snapshot.Error is { } retained)
                 children.Add(UI.Alert("Some games are unavailable", retained.Message,
@@ -291,7 +317,8 @@ internal static class GameLauncherPresentation
                     group.PreferredSavedId == item.SavedId),
                 groupSize: GameLauncherOrganizationPolicy.GroupFor(
                     state.Organization, item.SavedId)?.SavedIds.Count ?? 0,
-                interactive: false, key: GameLauncherIdentity.Key(item.SavedId))).ToArray();
+                interactive: false, key: GameLauncherIdentity.Key(item.SavedId),
+                pageBumpers: false)).ToArray();
             var warmScroll = UI.VerticalScroll(ScrollId,
                     UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, warm)
                         .Classes("game-launcher-grid")) with
@@ -378,6 +405,22 @@ internal static class GameLauncherPresentation
             .Classes("game-launcher-source-status");
     }
 
+    private static ScrollElement PageShortcuts(
+        ScrollElement scroll,
+        WidgetCursorResourceSnapshot<GameLauncherItem> snapshot,
+        bool interactive)
+    {
+        if (!interactive || snapshot.Status != WidgetPagedResourceStatus.Ready)
+            return scroll;
+        if (snapshot.HasBefore)
+            scroll = scroll.Shortcut(
+                ControllerButton.LeftBumper, "game-launcher.previous");
+        if (snapshot.HasAfter)
+            scroll = scroll.Shortcut(
+                ControllerButton.RightBumper, "game-launcher.next");
+        return scroll;
+    }
+
     private sealed record PresentedRow(
         GameLauncherItem? Current,
         GameLauncherDisplayItem Display);
@@ -431,6 +474,7 @@ internal static class GameLauncherPresentation
         IReadOnlyDictionary<string, string> preferred,
         IReadOnlyDictionary<string, GameLauncherVariantGroup> groups,
         GameLauncherPresentationState state,
+        bool pageBumpers,
         bool collectionItems)
     {
         if (rows.Count == 0) return;
@@ -450,6 +494,7 @@ internal static class GameLauncherPresentation
                 groupSize: groups.GetValueOrDefault(row.Display.SavedId)?.SavedIds.Count ?? 0,
                 state.Interactive && !state.OrganizationBusy,
                 row.Current?.Key ?? GameLauncherIdentity.Key(row.Display.SavedId),
+                pageBumpers,
                 collectionItem: collectionItems && row.Current is not null))
             .ToArray();
         sections.Add(UI.Stack(id,
@@ -506,6 +551,7 @@ internal static class GameLauncherPresentation
         int groupSize,
         bool interactive,
         WidgetCollectionItemKey key,
+        bool pageBumpers,
         bool collectionItem = true)
     {
         var id = GameLauncherIdentity.FocusId("grid", key);
@@ -532,11 +578,13 @@ internal static class GameLauncherPresentation
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)
             .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
-            .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
-            .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer")
             .Busy(launching)
             .Disabled(!interactive || !resolved)
             .Classes("game-launcher-tile");
+        if (!pageBumpers)
+            tile = tile
+                .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
+                .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer");
         return collectionItem ? tile.CollectionItem(key) : tile;
     }
 }

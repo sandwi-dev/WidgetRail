@@ -1589,6 +1589,11 @@ static async Task ExerciseControlAsync(
             snapshot = await WaitForActionSnapshotAsync(
                 client, "game-launcher.launch", "A Conformance Manual App",
                 requireEnabled: true);
+            if (!Nodes(snapshot.Root).Any(node =>
+                    node.ActionId == "game-launcher.launch" &&
+                    (node.AccessibilityLabel ?? string.Empty).Contains(
+                        "Conformance Game 00000", StringComparison.Ordinal)))
+                snapshot = await WaitForSnapshotAsync(client, "Conformance Game 00000");
             Assert.Equal(65, Nodes(snapshot.Root).Count(node =>
                 node.ActionId == "game-launcher.launch"));
             Assert.Equal(64, Nodes(snapshot.Root).Count(node =>

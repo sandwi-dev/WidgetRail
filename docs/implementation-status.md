@@ -1733,6 +1733,11 @@ themes also use non-shrinking fixed regions, a thin native Slider
  Deterministic source-isolation, partial-result, stale/recovery/disappearance,
  broker validation, SDK compatibility, installed-worker, and documentation
  evidence accompanies the public API baseline addition.
+ DLV-083 scopes LB/RB page switching to the Game Launcher results scroll and
+ composes it with the existing cursor owner. Only current Ready directions are
+ authored, so boundary, busy, repeated, and replaced input cannot create an
+ additional page transition; fixed sections remain outside cursor accounting.
+ Single-page tiles retain their existing variant-group and preference shortcuts.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late
