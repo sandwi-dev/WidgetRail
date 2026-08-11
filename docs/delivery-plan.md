@@ -2263,6 +2263,10 @@ replacement retires only changed locators while unchanged object/revision
 identity and the 4,096-current-locator bound remain intact. Focused evidence
 passes Windows app-library provider 62/62 and documentation 55/55. Independent
 review found no public API expansion or artwork probe on catalog enumeration.
+Local main then fully packaged successfully with tests intentionally skipped by
+the assignment's post-acceptance build gate, and
+`src/OverlayHost/out/Release/OverlayHost.exe --show` launched visibly as PID
+35472 with a nonzero main window handle for hands-on verification.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
