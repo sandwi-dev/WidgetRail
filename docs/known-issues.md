@@ -77,7 +77,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-056 | P1 | Verifying | Spotify widget focus composition | Accepted DLV-051 (`dc22202`, integrated as `822d29c`) authors the inactive seek Slider's Left edge to the selected wide rail destination or compact Player tab and passes exact semantic/controller replay. Fresh live confirmation remains. |
 | GBA-057 | P0 | Verifying | Widget SDK cursor resources / Spotify focus | DLV-022/053 are accepted and integrated through `8c1bbdf`; accepted DLV-055 `efffa53` installs/selects/enables the latest source as `0.2.12`, and the coherent Release is visibly running for live traversal. |
 | GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
-| GBA-059 | P1 | Implementing; DLV-098 rejected, DLV-099 Ready | App-library provider / artwork / Games & Apps / Game Launcher / native bridge/cache | DLV-098 candidate `48d19f1` drains every provider lane before source teardown and bounds current Steam locators, but independent review found locator retirement occurs during enumeration before the source generation commits. DLV-099 couples promotion/retirement to the accepted source generation before the dependent prefix integrates. |
+| GBA-059 | P1 | Verifying on packaged main | App-library provider / artwork / Games & Apps / Game Launcher / native bridge/cache | The corrected DLV-094/096/098/099 prefix is accepted and integrated through `c6d76a3`: Steam artwork is demand-only, bounded, stale-safe, and locator promotion/retirement is coupled to the winning source generation. Awaiting the user's live packaged-library check. |
 | GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
@@ -92,7 +92,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-071 | P1 | Closed | Game Launcher Hidden route / cursor-resource readiness | Accepted DLV-088 plus DLV-090 make Restore/Back publish an enabled current row without Refresh. Final direct evidence is 43/43 and clean installed generic-worker run `20260811T175350Z-011a57cd` passes 6/6. |
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
 | GBA-073 | P1 | Closed | Protected Wi-Fi host transport / Native Wi-Fi rollback | Accepted DLV-093 `3ce8991`, integrated with DLV-087 through `63ca3a2`, replaces password-bearing JSON/string copies with a bounded mutable zeroed frame and requires an exact per-attempt profile ownership token before deletion. Mismatch, unavailable verification, and delete failure are explicit and preserve current Windows state. |
-| GBA-074 | P1 | Verifying; DLV-097 accepted, dependent prefix pending DLV-099 | Running-app observation / Widget SDK / Games & Apps / Game Launcher | Accepted candidate DLV-097 `46d1938` bounds native inspection before eligibility and fully validates confirmed items before either widget can mutate state. Integration and packaged verification wait only for the shared app-library prefix correction DLV-099. |
+| GBA-074 | P1 | Verifying on packaged main | Running-app observation / Widget SDK / Games & Apps / Game Launcher | DLV-095 corrected by accepted DLV-097 is integrated through `c6d76a3`; native inspection is bounded before eligibility and confirmed items are fully validated before either widget can mutate state. Awaiting the user's live packaged-route check. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -1894,14 +1894,15 @@ DLV-054's exact-generation/revision registry, and a bounded native artwork
 request owner that does not block the UI. This is not a widget-authored URL/file
 escape or permission to redesign the whole bridge.
 
-**Current assignment:** DLV-098 candidate `48d19f1` now leaves catalog
+**Current assignment:** The corrected dependent prefix is accepted and integrated
+through `c6d76a3`. DLV-098 leaves catalog
 enumeration artwork-I/O-free, drains artwork/scan/observation lanes before any
 source teardown, retains state on bounded terminal failure, and limits the
 active locator map to 4,096 current objects. It is not accepted because
 `RegisterCatalog` retires the current map during enumeration, before the source
 base performs its final cancellation/latest-generation check and commits the
 candidate snapshot. A canceled or losing refresh can therefore invalidate
-handles in the still-authoritative catalog. DLV-099 stages candidate locators
+handles in the still-authoritative catalog. Accepted DLV-099 stages candidate locators
 and promotes/retires them only with the accepted source generation. No
 correction may fetch from Steam, expose app IDs/paths, scan unrelated image
 trees, or weaken semantic fallback/stale-handle behavior.
@@ -2359,7 +2360,7 @@ process-open attempts before the observer reaches its named cap. Separately,
 item's SavedId equals the request, then returns AppId, kind, display, and source
 fields without the validation applied to ordinary app-library items.
 
-**Ownership:** Accepted candidate DLV-097 `46d1938` owns one deterministic
+**Ownership:** Accepted and integrated DLV-097 `46d1938` owns one deterministic
 examined-window bound, complete SDK validation for a non-null confirmed item,
 focused boundary/malformed-response fixtures, and corrected implementation-
 status wording. It does not change matching, consent, persistence, launch
@@ -2377,7 +2378,7 @@ installed evidence before integration.
 **Current evidence:** Provider 57/57, SDK 87/87, compatibility 12/12, Games &
 Apps 59/59, Game Launcher 45/45, and documentation 55/55 pass. Both widgets
 retain neighbor state and perform no private-state CAS mutation on malformed
-confirmation. Integration and packaged verification wait on shared DLV-099.
+confirmation. Only the user's live packaged verification remains.
 
 ## Closed issues
 

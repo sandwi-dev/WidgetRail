@@ -903,18 +903,13 @@ route/action, playback, and presentation boundaries while retaining one
   host path with attempt-owned rollback, and confirmed Bluetooth removal affects
   only one current pairing. DLV-092 `bbd4919` is accepted and integrated through
   `fd965e6`: privacy-safe connection details now update without polling or raw
-  adapter identity. DLV-094 committed as `3fdbc19`, but independent review
-  rejected it pending DLV-096: catalog enumeration still performs synchronous
-  artwork-file discovery and terminal cleanup does not join the new artwork-
-  operation lane. DLV-095 committed as `bd270c9`; independent review retained
-  its visible design but rejected the commit pending DLV-097 because the public
-  confirmation response is not fully validated and the native walk bounds
-  accepted observations rather than windows examined. DLV-096 committed as
-  `8291c53`, but review found source disposal still precedes scan/observation
-  drain and its locator-generation maps are not bounded. DLV-097 `46d1938` is
-  accepted. DLV-098 committed as `48d19f1`, but locator retirement still occurs
-  before the source generation is accepted. DLV-099 is the final bounded
-  correction before this dependent prefix may integrate. These visible
+  adapter identity. The complete DLV-094/095/096/097/098/099 dependent prefix is
+  accepted and integrated through `c6d76a3`. Steam artwork stays demand-only,
+  bounded, stale-safe, and coupled to the winning catalog generation; all
+  admitted provider lanes drain before source disposal. Games & Apps and Game
+  Launcher also expose the bounded **Add running app** route through normalized
+  opaque authority, with full confirmation validation and a 256-window native
+  inspection bound. These visible
   milestones plus their bounded corrections are the
   complete currently safe queue: another local game-store adapter remains
   blocked on documented,
@@ -1805,7 +1800,7 @@ which is outside this 30-file connection-details diff.
 
 ### DLV-094 — Resolve trusted local Steam artwork lazily
 
-**State:** Rejected in review at `3fdbc19`; correction queued as DLV-096 after active DLV-095
+**State:** Done; accepted as corrected by DLV-096, DLV-098, and DLV-099 and integrated through `c6d76a3`
 **Lane:** widgets, acting as the serialized app-library artwork lead
 **Baseline:** clean closing commit of DLV-092 after merging the planner commit
 that contains this assignment
@@ -1870,7 +1865,7 @@ authority, or a cache layout that cannot be bounded and fail closed. Preserve
 the Play fallback rather than guessing from titles or scanning unrelated image
 trees.
 
-**Reviewer disposition:** Not accepted. The candidate keeps decode and payload
+**Reviewer disposition:** Accepted after DLV-096, DLV-098, and DLV-099. The original candidate keeps decode and payload
 reads on the demanded artwork route, but Steam catalog enumeration calls
 `Discover` for every manifest; that method opens the trusted root, cache
 directory, and candidate artwork file and captures file metadata synchronously.
@@ -1884,8 +1879,7 @@ dependent prefix remains unintegrated until the correction passes review.
 
 ### DLV-095 — Add a current running app through normalized authority
 
-**State:** Rejected in review at `bd270c9`; correction queued as DLV-097 after
-active DLV-096
+**State:** Done; accepted as corrected by DLV-097 and integrated through `c6d76a3`
 **Lane:** widgets, acting as the serialized app-library observation lead
 **Baseline:** DLV-094 candidate `3fdbc19` plus planner main merge `dd3efa7`
 **Dependencies:** DLV-059, DLV-071, DLV-072, DLV-075, DLV-077, and the accepted
@@ -1955,7 +1949,7 @@ process tracking; the OS cannot provide a bounded observation without keeping
 handles across the user decision; or the work requires changing existing launch
 semantics instead of reusing normalized SavedId resolution.
 
-**Reviewer disposition:** The distinct consent grant, opaque SavedId projection,
+**Reviewer disposition:** Accepted after DLV-097. The distinct consent grant, opaque SavedId projection,
 confirm-before-CAS routes, duplicate collapse, provider revalidation, and
 installed generic-worker path are directionally accepted. Focused evidence is
 green for SDK 87/87, API compatibility 12/12, broker 54/54, provider 54/54,
@@ -1971,8 +1965,7 @@ inspection bound. DLV-097 owns only those gaps plus the inaccurate
 
 ### DLV-096 — Make Steam artwork discovery truly lazy and drain its lifetime
 
-**State:** Rejected in review at `8291c53`; correction queued as DLV-098 after
-active DLV-097
+**State:** Done; accepted as corrected by DLV-098 and DLV-099 and integrated through `c6d76a3`
 **Lane:** widgets, correcting the rejected DLV-094 prefix
 **Baseline:** clean closing commit of DLV-095, which remains based on DLV-094
 candidate `3fdbc19`
@@ -2039,7 +2032,7 @@ identity, terminal correctness requires unbounded waiting or force termination,
 or DLV-095 introduced an overlapping provider lifetime design that cannot be
 corrected mechanically without changing its accepted product behavior.
 
-**Reviewer disposition:** Zero artwork-cache probes during catalog enumeration,
+**Reviewer disposition:** Accepted after DLV-098 and DLV-099. Zero artwork-cache probes during catalog enumeration,
 first-demand discovery, affected-handle rotation, neighbor stability, and the
 cancellation-ignoring artwork timeout are accepted in principle. Focused
 evidence passes provider 56/56, broker 54/54, installed Steam-artwork acceptance,
@@ -2057,7 +2050,7 @@ locator ownership.
 
 ### DLV-097 — Bound running-window inspection and validate confirmed items
 
-**State:** Done; accepted as `46d1938`, dependent prefix remains unintegrated
+**State:** Done; accepted as `46d1938` and integrated through `c6d76a3`
 **Lane:** widgets, correcting the rejected DLV-095 commit
 **Baseline:** clean closing commit of DLV-096, containing DLV-095 `bd270c9`
 **Dependencies:** DLV-095 candidate `bd270c9` and DLV-096's coherent closing
@@ -2128,7 +2121,7 @@ Apps 59/59, Game Launcher 45/45, and 55 documentation files.
 
 ### DLV-098 — Drain every provider lane before disposal and bound lazy locators
 
-**State:** Rejected in review at `48d19f1`; correction queued as DLV-099
+**State:** Done; accepted as corrected by DLV-099 and integrated through `c6d76a3`
 **Lane:** widgets, correcting the rejected DLV-096 commit
 **Baseline:** clean closing commit of DLV-097, containing DLV-096 `8291c53`
 **Dependencies:** the DLV-094/095/096 candidates and DLV-097's coherent closing
@@ -2191,7 +2184,7 @@ visibly relaunch once.
 locator bounding requires weakening stale-handle failure or current-handle
 stability, or correction requires a new public authority or architecture.
 
-**Reviewer disposition:** Multi-lane terminal ordering, per-lane timeout state
+**Reviewer disposition:** Accepted after DLV-099. Multi-lane terminal ordering, per-lane timeout state
 retention, concurrent terminal result, 4,096-current-locator bound, retired
 generation rejection, and paused-decode publication checks are accepted in
 principle. Provider evidence passes 60/60 and documentation passes 55/55. The
@@ -2206,7 +2199,7 @@ interleaving fixtures.
 
 ### DLV-099 — Commit Steam locator retirement with the source generation
 
-**State:** Ready; execute immediately
+**State:** Done; accepted as `fb7fa34` and integrated through `c6d76a3`
 **Lane:** widgets, correcting the rejected DLV-098 commit
 **Baseline:** DLV-098 `48d19f1` plus the planner control-plane merge containing
 this assignment
@@ -2262,6 +2255,14 @@ once.
 **Stop/escalate when:** commit coupling requires exposing locator/store identity,
 weakening current/stale handle authority, changing the public API, or a broad
 source framework redesign rather than one narrow acceptance hook/transaction.
+
+**Reviewer disposition:** Accepted. Candidate locators are staged without live-
+map mutation and promoted only from the latest source-generation commit branch.
+Canceled and losing generations leave current locators active; successful
+replacement retires only changed locators while unchanged object/revision
+identity and the 4,096-current-locator bound remain intact. Focused evidence
+passes Windows app-library provider 62/62 and documentation 55/55. Independent
+review found no public API expansion or artwork probe on catalog enumeration.
 
 ### DLV-007 — Make Spotify presentation state coherent
 

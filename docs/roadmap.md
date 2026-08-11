@@ -301,18 +301,16 @@ remains off until the publisher-trust gates in Phase 4.
   add bounded lazy handles for trusted Start Menu and AppsFolder artwork without
   serializing base64 images into snapshots or holding provider I/O under native
   control-plane progress; exact trusted revalidation rotates the handle, decoded
-  cache entry, and render bitmap. Steam remains a documented fallback on main;
-  DLV-098 candidate `48d19f1` implements demand-only trusted-local-cache
-  discovery, multi-lane terminal drain, and bounded current locators; DLV-099
-  must commit locator promotion/retirement atomically with the accepted source
-  generation before that prefix integrates.
+  cache entry, and render bitmap. Steam trusted-local-cache artwork is integrated
+  through `c6d76a3` with demand-only discovery, multi-lane terminal drain,
+  bounded current locators, and promotion/retirement coupled atomically to the
+  accepted source generation.
   The coherent post-DLV-055 Release is now
   running for packaged live artwork checks. Launcher sources, authoritative game
   classification, history, search, and source grouping are implemented in the
-  normalized Game Launcher path. DLV-095 candidate `bd270c9` adds only on-demand
-  running-program capture for exact current normalized registrations; queued
-  DLV-097 bounds the native inspection walk and closes confirmed-item validation
-  before that prefix integrates. Arbitrary file-picker additions remain later
+  normalized Game Launcher path. Accepted DLV-095/097 adds only on-demand
+  running-program capture for exact current normalized registrations with
+  bounded native inspection and full confirmed-item validation. Arbitrary file-picker additions remain later
   roadmap work.
 - Capture proof and widget if Windows API tests pass
 - Expand the implemented Spotify Community addon beyond its controller-first
@@ -401,13 +399,11 @@ not irreversible API priority:
    visual/frame-time evidence before adding later product-target transitions.
 5. **Deepen Games & Apps through safe sources.** Start Menu and bounded
    AppsFolder/AUMID sources plus curated icons and a bounded Steam manifest/URI
-   adapter are implemented. DLV-098 candidate `48d19f1` adds demand-only trusted
-   local Steam artwork, terminal ordering, and locator bounds through the
-   existing lazy handle path; DLV-099 couples locator retirement to source
-   commit. DLV-095 candidate
-   `bd270c9` adds an on-demand running-program route only
-   for exact normalized registrations, with DLV-097 queued to close its bounded
-   observation and SDK-validation review gaps. Add
+   adapter are implemented. The accepted DLV-094/096/098/099 prefix adds demand-
+   only trusted local Steam artwork, terminal ordering, locator bounds, and
+   source-generation-coupled retirement through the existing lazy handle path.
+   Accepted DLV-095/097 adds an on-demand running-program route only for exact
+   normalized registrations with bounded observation and closed SDK validation. Add
    other reviewed launcher adapters and a host-owned file picker later.
    Keep classification evidence-backed and launch identities opaque/revalidated.
 6. **Harden local providers and resource behavior.** The bounded schema-2
