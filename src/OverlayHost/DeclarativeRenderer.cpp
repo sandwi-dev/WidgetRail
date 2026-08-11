@@ -37,6 +37,11 @@ constexpr float kButtonStateCueHeightFactor = 0.72F;
 constexpr std::size_t kMaximumScrollStateEntries = 4096;
 constexpr std::size_t kMaximumFocusFollowPasses = 32;
 constexpr float kRevealEpsilon = 0.01F;
+// Native layout and Direct2D rasterization can put a child edge no more than
+// one physical pixel beyond an otherwise matching fixed clip after scale
+// conversion. Keep that native-pixel cap scale-aware; larger fixed-axis
+// clipping still fails closed because no Scroll can repair it.
+constexpr float kRevealRasterEdgePixelTolerance = 1.0F;
 constexpr NativeColor kDefaultText{0.969F, 0.973F, 0.988F, 1.0F};
 constexpr NativeColor kMutedText{0.725F, 0.741F, 0.784F, 1.0F};
 constexpr NativeColor kDefaultFocus{1.0F, 1.0F, 1.0F, 1.0F};
@@ -789,8 +794,13 @@ struct DeclarativeRenderer::RenderPass final {
         const float targetSize,
         const float clipStart,
         const float clipSize) const {
-        if (targetStart >= clipStart - kRevealEpsilon &&
-            targetStart + targetSize <= clipStart + clipSize + kRevealEpsilon) {
+        const auto rasterEdgeTolerance =
+            std::isfinite(options.pixelScale) && options.pixelScale > 0.0F
+            ? kRevealRasterEdgePixelTolerance / options.pixelScale
+            : 0.0F;
+        if (targetStart >= clipStart - rasterEdgeTolerance &&
+            targetStart + targetSize <=
+                clipStart + clipSize + rasterEdgeTolerance) {
             return true;
         }
 

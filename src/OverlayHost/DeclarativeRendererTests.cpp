@@ -1240,7 +1240,8 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
     for (const auto height : {464.0F, 304.0F}) {
         DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
         float priorOffset = -1.0F;
-        for (const auto& focused : focusOrder) {
+        for (std::size_t index = 0; index < focusOrder.size(); ++index) {
+            const auto& focused = focusOrder[index];
             const auto result = renderer.Render(
                 nullptr, snapshot, focused, {0.0F, 0.0F, 520.0F, height});
             Check(result.focusRects.contains(focused),
@@ -1251,17 +1252,30 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
             const auto offset = result.scrollOffsets.at(L"audio.root");
             Check(offset + 0.01F >= priorOffset,
                   "audio focus order advances through a monotonic root offset");
+            if (index + 1 < focusOrder.size()) {
+                Check(result.revealableFocusIds.contains(focusOrder[index + 1]),
+                      "next explicit audio target remains host-revealable before focus moves");
+            }
             priorOffset = offset;
         }
         Check(priorOffset > 0.0F,
               "final audio session requires whole-widget scrolling");
 
-        const auto returned = renderer.Render(
-            nullptr, snapshot, focusOrder.front(), {0.0F, 0.0F, 520.0F, height});
-        Near(returned.scrollOffsets.at(L"audio.root"), 0.0F,
-             "returning to master output restores the true audio leading edge");
-        Check(returned.focusRects.contains(focusOrder.front()),
-              "master output remains visible after returning from the last app");
+        for (auto item = focusOrder.rbegin(); item != focusOrder.rend(); ++item) {
+            const auto returned = renderer.Render(
+                nullptr, snapshot, *item, {0.0F, 0.0F, 520.0F, height});
+            Check(returned.focusRects.contains(*item),
+                  "reverse audio focus reveals every preceding controller target");
+            const auto rect = returned.focusRects.at(*item);
+            Check(rect.y >= -0.01F && rect.y + rect.height <= height + 0.01F,
+                  "reverse audio target remains wholly inside the host viewport");
+            const auto offset = returned.scrollOffsets.at(L"audio.root");
+            Check(offset <= priorOffset + 0.01F,
+                  "reverse audio focus never increases the root offset");
+            priorOffset = offset;
+        }
+        Near(priorOffset, 0.0F,
+             "reverse audio traversal restores the true audio leading edge");
     }
 }
 
@@ -1789,6 +1803,78 @@ void NestedScrollFocusFollowReachesFixedPoint() {
 }
 
 void IrrevealableClipsDoNotBecomeFocusTraps() {
+    WidgetSnapshot rasterEdge;
+    rasterEdge.instanceId = L"raster-edge.runtime";
+    rasterEdge.activeInputScopeId = L"root";
+    rasterEdge.root = Node(L"raster-scroll", L"scroll");
+    rasterEdge.root.scrollAxis = L"vertical";
+    auto rasterClip = Node(L"raster-clip", L"stack");
+    rasterClip.baseStyle = {
+        {L"height", Length(44)},
+        {L"min-height", Length(44)},
+        {L"flex-shrink", Number(0)},
+        {L"overflow", {L"keyword", L"clip", std::nullopt, {}}},
+    };
+    rasterClip.children = {FixedButton(L"raster-target", 44.75)};
+    rasterEdge.root.children = {
+        FixedSpacer(L"raster-prefix", 100),
+        std::move(rasterClip),
+        FixedSpacer(L"raster-tail", 100),
+    };
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto rasterResult = renderer.Render(
+        nullptr, rasterEdge, {}, {0.0F, 0.0F, 160.0F, 100.0F});
+    Check(!rasterResult.focusRects.contains(L"raster-target"),
+          "raster-edge target begins outside the Scroll viewport");
+    Check(rasterResult.revealableFocusIds.contains(L"raster-target"),
+          "single-pixel fixed-clip overlap does not break Scroll reachability");
+    const auto rasterFocused = renderer.Render(
+        nullptr, rasterEdge, L"raster-target", {0.0F, 0.0F, 160.0F, 100.0F});
+    Check(rasterFocused.focusRects.contains(L"raster-target"),
+          "raster-edge target becomes visible after focus-follow scrolling");
+    Check(rasterFocused.focusRects.at(L"raster-target").height >= 43.99F,
+          "fixed clip removes only the tolerated raster edge");
+
+    for (const auto pixelScale : {1.0F, 1.5F}) {
+        const auto revealableWithNativeOverlap = [pixelScale](
+            const float nativeOverlap,
+            const std::wstring_view suffix) {
+            WidgetSnapshot boundary;
+            boundary.instanceId = L"raster-boundary-" + std::wstring(suffix);
+            boundary.activeInputScopeId = L"root";
+            boundary.root = Node(L"raster-boundary-scroll", L"scroll");
+            boundary.root.scrollAxis = L"vertical";
+            auto fixedClip = Node(L"raster-boundary-clip", L"stack");
+            fixedClip.baseStyle = {
+                {L"height", Length(44)},
+                {L"min-height", Length(44)},
+                {L"flex-shrink", Number(0)},
+                {L"overflow", {L"keyword", L"clip", std::nullopt, {}}},
+            };
+            auto target = FixedButton(L"raster-boundary-target");
+            target.baseStyle.insert_or_assign(
+                L"translate-y", Length(nativeOverlap / pixelScale));
+            fixedClip.children = {std::move(target)};
+            boundary.root.children = {
+                FixedSpacer(L"raster-boundary-prefix", 100),
+                std::move(fixedClip),
+                FixedSpacer(L"raster-boundary-tail", 100),
+            };
+            gba::DeclarativeRenderOptions options;
+            options.pixelScale = pixelScale;
+            options.accessibility.reducedMotion = true;
+            DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
+            const auto result = boundaryRenderer.Render(
+                nullptr, boundary, {}, {0.0F, 0.0F, 160.0F, 100.0F}, options);
+            return result.revealableFocusIds.contains(L"raster-boundary-target");
+        };
+        Check(revealableWithNativeOverlap(0.99F, L"inside"),
+              "fixed clip accepts a just-inside native-pixel raster overlap");
+        Check(!revealableWithNativeOverlap(1.01F, L"outside"),
+              "fixed clip rejects a just-outside native-pixel raster overlap");
+    }
+
     WidgetSnapshot crossAxis;
     crossAxis.instanceId = L"cross-axis.runtime";
     crossAxis.activeInputScopeId = L"root";
@@ -1802,7 +1888,6 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
             L"lengthList", L"0px 0px 0px 140px", std::nullopt, {}});
     crossAxis.root.children.push_back(std::move(displaced));
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
     const auto crossResult = renderer.Render(
         nullptr, crossAxis, {}, {0.0F, 0.0F, 100.0F, 80.0F});
     Check(!crossResult.focusRects.contains(L"cross-axis"),

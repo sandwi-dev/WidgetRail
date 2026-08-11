@@ -98,12 +98,14 @@ $actionFailureHostTestObjectDirectory = Join-Path $outputDirectory 'obj\action-f
 $actionFailureFixtureOutput = Join-Path $outputDirectory 'obj\action-failure-fixture'
 $widgetSwitchHostTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-switch-host-tests'
 $widgetSwitchFixtureOutput = Join-Path $outputDirectory 'obj\widget-switch-fixture'
+$audioMixerScrollHostTestObjectDirectory = Join-Path $outputDirectory 'obj\audio-mixer-scroll-host-tests'
+$audioMixerScrollFixtureOutput = Join-Path $outputDirectory 'obj\audio-mixer-scroll-fixture'
 $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tests'
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -772,6 +774,40 @@ if (-not $SkipTests) {
             --fixture-worker $widgetSwitchFixture
         if ($LASTEXITCODE -ne 0) {
             throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
+        }
+    }
+
+    $audioMixerScrollHostTestArguments = $common + @(
+        (Join-Path $projectDirectory 'AudioMixerScrollHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$audioMixerScrollHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\AudioMixerScrollHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'gdi32.lib', 'windowscodecs.lib', 'ole32.lib',
+        'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $audioMixerScrollHostTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AudioMixerScrollHostTests build failed with exit code $LASTEXITCODE."
+    }
+    if (-not $SkipPackaging) {
+        & dotnet publish `
+            (Join-Path $projectDirectory '..\..\tests\AudioMixerScrollFixture\AudioMixerScrollFixture.csproj') `
+            --configuration $Configuration --no-self-contained --nologo `
+            --output $audioMixerScrollFixtureOutput
+        if ($LASTEXITCODE -ne 0) {
+            throw "Audio Mixer scroll fixture publish failed with exit code $LASTEXITCODE."
+        }
+        $audioMixerScrollFixture = Join-Path $audioMixerScrollFixtureOutput 'AudioMixerScrollFixture.exe'
+        if (-not (Test-Path -LiteralPath $audioMixerScrollFixture)) {
+            throw "Audio Mixer scroll fixture publish omitted AudioMixerScrollFixture.exe."
+        }
+        & (Join-Path $outputDirectory 'AudioMixerScrollHostTests.exe') `
+            --installation $outputDirectory `
+            --fixture-worker $audioMixerScrollFixture
+        if ($LASTEXITCODE -ne 0) {
+            throw "AudioMixerScrollHostTests failed with exit code $LASTEXITCODE."
         }
     }
 

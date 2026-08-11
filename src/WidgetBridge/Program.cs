@@ -29,7 +29,9 @@ internal static class Program
                 eventArgs.Cancel = true;
                 shutdown.Cancel();
             };
-            var settingsPaths = PlatformSettingsPaths.CreateDefault();
+            var settingsPaths = OptionalValue(args, "--settings-root") is { } settingsRoot
+                ? new PlatformSettingsPaths(settingsRoot)
+                : PlatformSettingsPaths.CreateDefault();
             var installationRoot = Path.GetDirectoryName(Path.GetFullPath(catalogPath))
                 ?? Environment.CurrentDirectory;
             var installedCatalogRoot = ResolveInstalledCatalogRoot(args, settingsPaths.RootDirectory);
