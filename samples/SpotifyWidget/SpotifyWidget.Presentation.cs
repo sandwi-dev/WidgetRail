@@ -3,11 +3,24 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.Samples.SpotifyWidget;
 
-public sealed partial class SpotifyWidget
+internal static class SpotifyPresentation
 {
-    public override WidgetView Render()
+    private const string InputScope = "spotify.window";
+    private const string SetupScope = "spotify.setup";
+    private static readonly WidgetSurfaceHints StandardSurface = new()
     {
-        var presentation = CapturePresentationState();
+        Mode = WidgetSurfaceMode.Adaptive,
+        PreferredWidth = 980,
+        PreferredHeight = 560,
+        MinimumWidth = 620,
+        MinimumHeight = 400,
+    };
+    private static readonly WidgetQuickActionCapability PlaybackControlAuthority = new(
+        WidgetSpotifyCapabilities.PlaybackControlCapabilityId,
+        WidgetSpotifyCapabilities.PlaybackControlOperationId);
+
+    internal static WidgetView Render(SpotifyPresentationState presentation)
+    {
         if (presentation.ShowSetup)
             return RenderSetup(presentation.Status, presentation.SetupViewGeneration);
         var header = Header(presentation.Status, presentation.ViewState);
@@ -739,7 +752,7 @@ public sealed partial class SpotifyWidget
             _ => false,
         };
 
-    public static string FormatTime(long milliseconds)
+    internal static string FormatTime(long milliseconds)
     {
         var totalSeconds = Math.Max(0, milliseconds / 1_000);
         var span = TimeSpan.FromSeconds(totalSeconds);

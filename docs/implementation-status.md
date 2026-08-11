@@ -448,6 +448,23 @@ a valid first Spotify snapshot at sequence 2. The 45-case Spotify behavior
 suite, aggregate, provider, native, screenshot, and live-account verification
 did not run for this packaging-only milestone.
 
+DLV-043 replaces Spotify's four-declaration, 2,207-line logical partial widget
+with real private responsibilities. The sole non-partial 1,275-line root keeps
+all lifecycle, three cursor resources, provider calls, three task fields, two
+locks plus one semaphore, committed state, and invalidation. It reaches a
+137-line closed route/action classifier and a 140-line playback/device command
+policy only through immutable values/results; neither policy owns a provider,
+task, lock, resource, or invalidation. The 763-line presenter consumes only one
+immutable `SpotifyPresentationState` and owns no mutable authority. The root's
+34 existing state/resource/coordination fields and its singular lifecycle
+ownership are not duplicated across the boundaries. Direct deterministic
+fixtures cover repeated semantic presentation, route/action admission, and
+playback command/projection rules, while the retained route/Back, provider-event
+versus command, late result, cancellation, and Active-drain cases remain green.
+Focused Release evidence passes Spotify 48/48, Widget SDK 85/85, and generic
+AppContainer conformance 6/6. No aggregate, live account, provider, or native
+suite ran.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;

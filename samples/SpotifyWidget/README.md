@@ -12,6 +12,12 @@ controller-first destinations:
 - **Playlists** lazily appends bounded keyed windows, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
 - **Devices** transfers to Spotify devices and exposes **This overlay** through the trusted Web Playback SDK host. Tokens and the local Spotify device ID never enter widget code.
 
+Internally, one non-partial widget owns lifecycle, provider calls, resources,
+committed state, and invalidation. Closed value-only policies classify authored
+route/actions and reconcile playback/device commands; a separate pure presenter
+accepts only one immutable snapshot. These boundaries add no provider or OAuth
+authority and preserve the package's authored IDs and controller graph.
+
 Wide surfaces use a navigation rail with a persistent player. Left from the
 inactive seek control returns to the currently selected rail destination;
 compact Player uses the corresponding selected tab. Compact surfaces use tabs

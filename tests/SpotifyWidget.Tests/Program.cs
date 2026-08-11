@@ -51,7 +51,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Failed controls roll back optimistic state", FailedControlRollback),
     ("Permission denial remains an actionable UI state", PermissionDenied),
     ("Manifest declares least-privilege partial consent", ManifestContract),
-    ("Spotify internals remain split by stable responsibility", ResponsibilitySplitContract),
+    ("Pure Spotify presentation repeats semantically", PresentationBoundaryIsPure),
+    ("Spotify action and route policy is closed and value based", RouteActionPolicyIsClosed),
+    ("Spotify playback reconciliation is independently deterministic", PlaybackPolicyIsDeterministic),
+    ("Spotify internals have real stable-responsibility boundaries", ResponsibilitySplitContract),
     ("Time labels are stable", TimeFormatting),
 };
 
@@ -1817,6 +1820,81 @@ static Task ManifestContract()
     return Task.CompletedTask;
 }
 
+static Task PresentationBoundaryIsPure()
+{
+    var media = new WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem>(
+        WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
+    var playlists = new WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem>(
+        WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
+    var state = new SpotifyPresentationState(
+        new(1, 0, 0, null), SpotifyWidgetViewState.Unconfigured, null, null,
+        "Spotify client ID required", null, false, 0, SpotifyDestination.Player,
+        media, playlists, null, null, null, false, null, "spotify.setup.open");
+
+    var first = SnapshotJson.Serialize(
+        SpotifyPresentation.Render(state).CreateSnapshot("spotify.presentation", 1));
+    var second = SnapshotJson.Serialize(
+        SpotifyPresentation.Render(state).CreateSnapshot("spotify.presentation", 1));
+    Assert.SequenceEqual(first, second);
+    return Task.CompletedTask;
+}
+
+static Task RouteActionPolicyIsClosed()
+{
+    var queue = SpotifyRouteActionPolicy.Classify(
+        new WidgetActionEvent("spotify.nav.queue", "spotify.nav.wide.queue"));
+    Assert.Equal(SpotifyActionKind.Navigate, queue.Kind);
+    Assert.Equal(SpotifyDestination.Queue, queue.Destination);
+
+    var back = SpotifyRouteActionPolicy.Classify(
+        new WidgetActionEvent("spotify.playlist.back", "spotify.playlist.back.wide"));
+    Assert.Equal(SpotifyActionKind.PlaylistBack, back.Kind);
+    var seek = SpotifyRouteActionPolicy.Classify(
+        new WidgetActionEvent(
+            "spotify.seek", "spotify.seek.slider", RequestedValue: 12_345.4));
+    Assert.Equal(12_345L, seek.RequestedPositionMs);
+    Assert.Equal(SpotifyActionKind.Unknown, SpotifyRouteActionPolicy.Classify(
+        new WidgetActionEvent("spotify.device.select.-1", "spotify.device.invalid")).Kind);
+    Assert.Equal("spotify.nav.compact.playlists",
+        SpotifyRouteActionPolicy.NavigationFocusId(
+            SpotifyDestination.Playlists, "compact"));
+    return Task.CompletedTask;
+}
+
+static Task PlaybackPolicyIsDeterministic()
+{
+    var playback = new WidgetSpotifyPlaybackSummary(
+        true, true, 10_000, 60_000, 1_000,
+        WidgetSpotifyRepeatState.Off, false,
+        new WidgetSpotifyPlaybackItemSummary(
+            WidgetSpotifyPlaybackItemType.Track, "Policy", "Artist", "Album",
+            null, "spotify:track:policy"),
+        new WidgetSpotifyPlaybackDisallowedActions(
+            false, false, false, false, false, false, false, false),
+        "Spotify");
+
+    Assert.Equal(WidgetSpotifyPlaybackOperation.Pause,
+        SpotifyPlaybackPolicy.ResolveToggle(playback));
+    var seek = SpotifyPlaybackPolicy.BuildCommand(
+        playback, WidgetSpotifyPlaybackOperation.Seek, 90_000);
+    Assert.NotNull(seek);
+    Assert.Equal(60_000L, seek!.PositionMilliseconds);
+    var optimistic = SpotifyPlaybackPolicy.ApplyOptimistic(playback, seek, 2_000);
+    Assert.Equal(60_000L, optimistic.ProgressMilliseconds);
+    var projected = SpotifyPlaybackPolicy.Project(playback, 6_000);
+    Assert.NotNull(projected);
+    Assert.Equal(15_000L, projected!.ProgressMilliseconds);
+
+    var blocked = playback with
+    {
+        DisallowedActions = playback.DisallowedActions with { Seeking = true },
+    };
+    Assert.Equal<WidgetSpotifyPlaybackCommand?>(null,
+        SpotifyPlaybackPolicy.BuildCommand(
+            blocked, WidgetSpotifyPlaybackOperation.Seek, 20_000));
+    return Task.CompletedTask;
+}
+
 static Task ResponsibilitySplitContract()
 {
     var sourceRoot = Path.Combine(AppContext.BaseDirectory, "source");
@@ -1826,8 +1904,10 @@ static Task ResponsibilitySplitContract()
     var presentation = File.ReadAllText(
         Path.Combine(sourceRoot, "SpotifyWidget.Presentation.cs"));
 
-    foreach (var source in new[] { lifecycle, routes, playback, presentation })
-        AssertSourceContains(source, "public sealed partial class SpotifyWidget");
+    AssertSourceContains(lifecycle, "public sealed class SpotifyWidget : Widget");
+    Assert.True(!new[] { lifecycle, routes, playback, presentation }.Any(source =>
+            source.Contains("partial class SpotifyWidget", StringComparison.Ordinal)),
+        "SpotifyWidget remains a logical partial type.");
 
     AssertSourceContains(lifecycle, "OnActivatedAsync");
     AssertSourceContains(lifecycle, "OnActionAsync");
@@ -1836,18 +1916,21 @@ static Task ResponsibilitySplitContract()
     Assert.True(!lifecycle.Contains("RenderConnected(", StringComparison.Ordinal),
         "Lifecycle/action wiring regained view composition.");
 
-    AssertSourceContains(routes, "NavigateAndLoadAsync");
-    AssertSourceContains(routes, "LoadDestinationAsync");
-    AssertSourceContains(routes, "ClearPlaylistSelectionLocked");
-    Assert.True(!routes.Contains("OnActivatedAsync", StringComparison.Ordinal),
-        "Route data gained lifecycle ownership.");
+    AssertSourceContains(routes, "internal static class SpotifyRouteActionPolicy");
+    AssertSourceContains(routes, "SpotifyActionIntent Classify");
+    Assert.True(!routes.Contains("lock (", StringComparison.Ordinal) &&
+                !routes.Contains("HostServices", StringComparison.Ordinal),
+        "Route/action policy acquired mutable state or provider authority.");
 
-    AssertSourceContains(playback, "ExecuteAsync");
+    AssertSourceContains(playback, "internal static class SpotifyPlaybackPolicy");
+    AssertSourceContains(playback, "BuildCommand");
     AssertSourceContains(playback, "ApplyOptimistic");
-    AssertSourceContains(playback, "StartPlaybackAsync");
-    Assert.True(!playback.Contains("RenderConnected(", StringComparison.Ordinal),
-        "Playback behavior gained view composition.");
+    Assert.True(!playback.Contains("lock (", StringComparison.Ordinal) &&
+                !playback.Contains("HostServices", StringComparison.Ordinal) &&
+                !playback.Contains("Task", StringComparison.Ordinal),
+        "Playback policy acquired state, provider, or task authority.");
 
+    AssertSourceContains(presentation, "internal static class SpotifyPresentation");
     AssertSourceContains(presentation, "SpotifyPresentationState presentation");
     AssertSourceContains(presentation, "RenderConnected");
     Assert.True(!presentation.Contains("lock (_gate)", StringComparison.Ordinal),

@@ -3,200 +3,135 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.Samples.SpotifyWidget;
 
-public sealed partial class SpotifyWidget
+internal enum SpotifyActionKind
 {
-    private void Navigate(SpotifyDestination destination, string sourceElementId)
+    Unknown,
+    SetupOpen,
+    SetupClose,
+    SetupDone,
+    Connect,
+    Disconnect,
+    Refresh,
+    Playback,
+    Seek,
+    Navigate,
+    PlaylistBack,
+    PageRetry,
+    Noop,
+    LocalStart,
+    LocalStop,
+    DeviceSelect,
+    QueuePlay,
+    PlaylistOpen,
+    PlaylistPlay,
+    PlaylistTrack,
+}
+
+internal readonly record struct SpotifyActionIntent(
+    SpotifyActionKind Kind,
+    SpotifyDestination? Destination = null,
+    WidgetSpotifyPlaybackOperation? PlaybackOperation = null,
+    WidgetCollectionItemKey? ItemKey = null,
+    int ItemIndex = -1,
+    long? RequestedPositionMs = null);
+
+/// <summary>
+/// Closed value-only interpretation of authored Spotify actions and route
+/// focus. It owns no widget state, provider, operation, or invalidation.
+/// </summary>
+internal static class SpotifyRouteActionPolicy
+{
+    internal static SpotifyActionIntent Classify(WidgetActionEvent action)
     {
-        _playlists.ClearRequestedFocus(invalidate: false);
-        lock (_gate)
+        ArgumentNullException.ThrowIfNull(action);
+        var direct = action.ActionId switch
         {
-            ClearPlaylistSelectionLocked();
-            _destination = destination;
-            _pageError = null;
-            _pageLoading = false;
-            _readyInitialFocusId = sourceElementId;
-        }
-        Invalidate();
+            "spotify.setup.open" => new(SpotifyActionKind.SetupOpen),
+            "spotify.setup.close" => new(SpotifyActionKind.SetupClose),
+            "spotify.setup.done" => new(SpotifyActionKind.SetupDone),
+            "spotify.connect" or "spotify.connect.features" =>
+                new(SpotifyActionKind.Connect),
+            "spotify.disconnect" => new(SpotifyActionKind.Disconnect),
+            "spotify.retry" or "spotify.refresh" => new(SpotifyActionKind.Refresh),
+            "spotify.play-toggle" => new(SpotifyActionKind.Playback),
+            "spotify.previous" => Playback(WidgetSpotifyPlaybackOperation.Previous),
+            "spotify.next" => Playback(WidgetSpotifyPlaybackOperation.Next),
+            "spotify.shuffle" => Playback(WidgetSpotifyPlaybackOperation.SetShuffle),
+            "spotify.repeat" => Playback(WidgetSpotifyPlaybackOperation.SetRepeat),
+            "spotify.nav.player" => Navigate(SpotifyDestination.Player),
+            "spotify.nav.queue" => Navigate(SpotifyDestination.Queue),
+            "spotify.nav.playlists" => Navigate(SpotifyDestination.Playlists),
+            "spotify.nav.devices" => Navigate(SpotifyDestination.Devices),
+            "spotify.playlist.back" => new(SpotifyActionKind.PlaylistBack),
+            "spotify.page.retry" => new(SpotifyActionKind.PageRetry),
+            "spotify.page.noop" => new(SpotifyActionKind.Noop),
+            "spotify.local.start" => new(SpotifyActionKind.LocalStart),
+            "spotify.local.stop" => new(SpotifyActionKind.LocalStop),
+            "spotify.playlist.play" => new(SpotifyActionKind.PlaylistPlay),
+            _ => default,
+        };
+        if (direct.Kind != SpotifyActionKind.Unknown) return direct;
+
+        if (action.ActionId == "spotify.seek" &&
+            action.RequestedValue is { } requested && double.IsFinite(requested))
+            return new(SpotifyActionKind.Seek,
+                RequestedPositionMs: Math.Max(0, (long)Math.Round(requested)));
+        if (TryParseIndex(action.ActionId, "spotify.device.select.", out var index))
+            return new(SpotifyActionKind.DeviceSelect, ItemIndex: index);
+        if (TryParseKey(action.ActionId, "spotify.queue.play.", out var queueKey))
+            return new(SpotifyActionKind.QueuePlay, ItemKey: queueKey);
+        if (TryParseKey(action.ActionId, "spotify.playlist.open.", out var playlistKey))
+            return new(SpotifyActionKind.PlaylistOpen, ItemKey: playlistKey);
+        if (TryParseKey(action.ActionId, "spotify.playlist.track.", out var trackKey))
+            return new(SpotifyActionKind.PlaylistTrack, ItemKey: trackKey);
+        return default;
     }
 
-    private async Task NavigateAndLoadAsync(
-        SpotifyDestination destination,
-        string sourceElementId,
-        WidgetOperationContext operation)
+    internal static string Mode(string sourceElementId) =>
+        sourceElementId.Contains(".compact.", StringComparison.Ordinal)
+            ? "compact" : "wide";
+
+    internal static string NavigationFocusId(SpotifyDestination destination, string mode) =>
+        $"spotify.nav.{mode}.{destination.ToString().ToLowerInvariant()}";
+
+    internal static bool DevicesNeedLoad(
+        WidgetSpotifyDevicesSummary? devices,
+        WidgetSpotifyLocalPlaybackSummary? localPlayback,
+        DateTimeOffset? cachedAt,
+        DateTimeOffset now,
+        TimeSpan lifetime) =>
+        devices is null || localPlayback is null || cachedAt is not { } value ||
+        now - value >= lifetime;
+
+    private static SpotifyActionIntent Playback(WidgetSpotifyPlaybackOperation operation) =>
+        new(SpotifyActionKind.Playback, PlaybackOperation: operation);
+
+    private static SpotifyActionIntent Navigate(SpotifyDestination destination) =>
+        new(SpotifyActionKind.Navigate, Destination: destination);
+
+    private static bool TryParseIndex(string action, string prefix, out int index)
     {
-        _playlists.ClearRequestedFocus(invalidate: false);
-        var shouldLoad = false;
-        lock (_gate)
-        {
-            ClearPlaylistSelectionLocked();
-            _destination = destination;
-            _pageError = null;
-            _readyInitialFocusId = sourceElementId;
-            shouldLoad = destination switch
-            {
-                SpotifyDestination.Devices => _devices is null || _localPlayback is null ||
-                    !IsFresh(_devicesCachedAt, DevicesCacheLifetime),
-                _ => false,
-            };
-            _pageLoading = shouldLoad;
-        }
-        Invalidate();
-        if (shouldLoad) await LoadDestinationAsync(destination, operation)
-            .ConfigureAwait(false);
+        index = -1;
+        return action.StartsWith(prefix, StringComparison.Ordinal) &&
+            int.TryParse(action[prefix.Length..], out index) && index >= 0;
     }
 
-    private Task ReloadCurrentPageAsync(WidgetOperationContext operation)
+    private static bool TryParseKey(
+        string action,
+        string prefix,
+        out WidgetCollectionItemKey key)
     {
-        SpotifyDestination destination;
-        lock (_gate)
-        {
-            destination = _destination;
-            _pageLoading = true;
-            _pageError = null;
-        }
-        Invalidate();
-        return LoadDestinationAsync(destination, operation);
-    }
-
-    private async Task LoadDestinationAsync(
-        SpotifyDestination destination,
-        WidgetOperationContext operation)
-    {
-        var cancellationToken = operation.CancellationToken;
+        key = default;
+        if (!action.StartsWith(prefix, StringComparison.Ordinal) ||
+            action.Length == prefix.Length) return false;
         try
         {
-            switch (destination)
-            {
-                case SpotifyDestination.Devices:
-                    var devicesTask = HostServices.Spotify.GetDevicesAsync(cancellationToken).AsTask();
-                    var localTask = HostServices.Spotify.GetLocalPlaybackAsync(cancellationToken).AsTask();
-                    await Task.WhenAll(devicesTask, localTask).ConfigureAwait(false);
-                    if (!operation.IsCurrent) return;
-                    lock (_gate)
-                    {
-                        _devices = devicesTask.Result;
-                        _localPlayback = localTask.Result;
-                        _preferredPlaybackDeviceId = devicesTask.Result.Devices
-                            .FirstOrDefault(device => device.IsActive && !device.IsRestricted)
-                            ?.DeviceId ?? _preferredPlaybackDeviceId;
-                        _devicesCachedAt = _timeProvider.GetUtcNow();
-                    }
-                    break;
-            }
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = null;
-            }
+            key = new(action[prefix.Length..]);
+            return true;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (WidgetCapabilityUnavailableException)
+        catch (ArgumentException)
         {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = "This Spotify feature is unavailable in the trusted host.";
-            }
-        }
-        catch (WidgetCapabilityException exception)
-        {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = PageError(exception);
-            }
-        }
-        catch (Exception)
-        {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = "Spotify could not load this page. Try again.";
-            }
-        }
-        if (operation.IsCurrent) Invalidate();
-    }
-
-    private void OpenPlaylist(WidgetCollectionItemKey key, string sourceElementId)
-    {
-        var mode = sourceElementId.Contains(".compact.", StringComparison.Ordinal)
-            ? "compact" : "wide";
-        lock (_gate)
-        {
-            var playlist = _playlists.Snapshot.Items
-                .FirstOrDefault(item => item.Key == key)?.Value;
-            if (_destination != SpotifyDestination.Playlists || playlist is null) return;
-            _playlists.SelectAnchor(key, invalidate: false);
-            _playlistItems.Reset(invalidate: false);
-            _playlistOccurrences.Reset();
-            var generation = checked(++_playlistSelectionGeneration);
-            _pageError = null;
-            _playlistSelection = new(
-                new(playlist.PlaylistId, generation), playlist, mode, sourceElementId);
-            _playlistItemsSelectionGeneration = generation;
-            _readyInitialFocusId = $"spotify.playlist.play.{mode}";
-            _playlistItems.EnsureLoaded();
+            return false;
         }
     }
-
-    private async ValueTask<WidgetCursorPage<SpotifyMediaCollectionItem>>
-        LoadSelectedPlaylistCursorPageAsync(
-            WidgetCollectionCursor? cursor,
-            WidgetCursorDirection? direction,
-            int limit,
-            CancellationToken cancellationToken)
-    {
-        var offset = SpotifyCollectionIdentity.Offset(cursor);
-        SpotifyPlaylistSelection? selection;
-        lock (_gate) selection = _playlistSelection;
-        if (selection is null)
-            throw new InvalidOperationException("No Spotify playlist is selected.");
-        var occurrenceRequest = _playlistOccurrences.BeginPage(
-            selection.Key.PlaylistId, offset, direction);
-        var page = await HostServices.Spotify.GetPlaylistItemsAsync(
-            selection.Key.PlaylistId, offset, limit, cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(page.Playlist.PlaylistId, selection.Key.PlaylistId,
-                StringComparison.Ordinal))
-            throw new InvalidOperationException("Spotify returned a different playlist.");
-        var items = _playlistOccurrences.NormalizePage(
-            occurrenceRequest,
-            page.Items,
-            _playlistItems.Snapshot.Items.Select(item => item.Key).ToArray());
-        return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit, page.Total);
-    }
-
-    private bool IsFresh(DateTimeOffset? cachedAt, TimeSpan lifetime) =>
-        cachedAt is { } value && _timeProvider.GetUtcNow() - value < lifetime;
-
-    private void ClearPageCaches()
-    {
-        lock (_gate) ClearPageCachesLocked();
-    }
-
-    private void ClearPageCachesLocked()
-    {
-        _playlists.Reset(invalidate: false);
-        ClearPlaylistSelectionLocked();
-        _queue.Reset(invalidate: false);
-        _queueOccurrences.Reset();
-        _devices = null;
-        _localPlayback = null;
-        _devicesCachedAt = null;
-        _preferredPlaybackDeviceId = null;
-        _pageLoading = false;
-        _pageError = null;
-    }
-
-    private void ClearPlaylistSelectionLocked()
-    {
-        _playlistItems.Reset(invalidate: false);
-        _playlistOccurrences.Reset();
-        _playlistSelection = null;
-        _playlistItemsSelectionGeneration = null;
-    }
-
 }
