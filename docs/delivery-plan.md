@@ -2061,7 +2061,11 @@ while DLV-025 awaits a compositor choice. The preserved DLV-025 worktree must
 not be reset or overwritten. DLV-026 is accepted and integrated; DLV-021 is
 Assigned on its closing commit and is the active visible geometry milestone. A
 blocked compositor milestone does not authorize idling the platform lane or
-switching both lanes to backend refactors.
+switching both lanes to backend refactors. DLV-015 and DLV-016 are the two safe
+independent Ready items currently available; a third is deliberately not
+manufactured because DLV-006 is the higher-priority serialized visible
+checkpoint after DLV-021, DLV-011 awaits that shared baseline, and DLV-025
+remains user-decision blocked.
 
 ### DLV-003 — Correct shared button-content geometry
 
