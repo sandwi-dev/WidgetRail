@@ -704,11 +704,13 @@ route/action, playback, and presentation boundaries while retaining one
   warm-main refresh: main rebuilt a different DLL/archive from the same commit.
   DLV-057 commit `90cadf4` is accepted and integrated: warm main, repeated
   main, detached-root, installed content, and the planner's post-integration
-  main refresh now match exactly at immutable `0.2.14`, and PID 27684 is visibly
-  running. DLV-059 is the active immediate prerequisite for the requested
-  dedicated Game Launcher; DLV-060, DLV-066, and DLV-067 form its ordered
-  visible queue. DLV-038 remains deferred test-architecture debt rather than
-  filler work.
+  main refresh now match exactly at immutable `0.2.14`. DLV-059 candidate
+  `c7c354d` established the normalized source split but omitted production
+  ownership of its new disposable source lifetimes; DLV-071 is the active
+  bounded correction. DLV-072 then replaces the 512-item snapshot capability
+  that correctly blocked DLV-060, followed by visible DLV-060, DLV-066, and
+  DLV-067. DLV-038 remains deferred test-architecture debt rather than filler
+  work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2860,7 +2862,8 @@ rewritten, and future failed evidence must append a correction commit.
 
 ### DLV-059 — Normalize trusted installed-game source ownership
 
-**State:** Assigned
+**State:** Correction required; source commit `c7c354d` is unintegrated
+**Closing candidate:** `c7c354d` (`[DLV-059] normalize installed game sources`)
 **Lane:** widgets
 **Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
 control-plane commit containing this assignment
@@ -2916,16 +2919,152 @@ identity private, or overlaps platform pinning files. Preserve the current
 provider behavior and report rather than adding a facade over the existing
 switches.
 
+**Reviewer disposition:** Rejected pending DLV-071. Candidate `c7c354d`
+materially replaces the provider's source-specific discovery/resolve/launch
+switches with private Windows-installed and Steam owners, retains raw path,
+AUMID, and Steam identity inside those owners, and passes 36/36 provider cases
+plus 54 documentation contracts. However each source now owns a lifetime CTS,
+drain event, generation, active-operation count, and `Dispose`, while the
+production `WindowsAppLibraryProvider` is not disposable. The composite broker
+already disposes an app-library backend when it implements `IDisposable`, but
+this candidate never reaches that path. Source cancellation/drain is therefore
+proved only by a direct test and is absent from the production terminal path.
+Do not integrate the candidate until DLV-071 closes ownership and exact-once
+drain without changing its accepted source contract.
+
+### DLV-071 — Close normalized game-source lifetime ownership
+
+**State:** Assigned
+**Lane:** widgets
+**Baseline:** unintegrated DLV-059 candidate `c7c354d` plus the reviewer
+control-plane commit containing this correction
+**Dependencies:** DLV-059 candidate `c7c354d`
+**Owner:** `WindowsAppLibraryProvider` terminal lifecycle, its owned normalized
+sources, composite-backend disposal composition, direct provider fixtures, and
+affected provider documentation; no public capability/protocol, widget,
+native-host, or store behavior
+**Concurrency:** May run while platform finishes DLV-058. Do not touch
+WidgetProtocol, WidgetSdk, OverlayHost, package manifests, or pinning files.
+
+**Visible successor:** DLV-072 and DLV-060's large installed-game library. This
+correction is scheduled first because the Game Launcher must not extend source
+owners whose production cancellation/drain path does not exist.
+
+**Objective:** Make the provider the explicit exact-once owner of every
+normalized source lifetime so broker/process shutdown cancels and drains
+admitted discovery, resolve, launch, and artwork work instead of leaving the
+candidate's disposal contract test-only.
+
+**In scope:** provider `IDisposable` or the narrow existing composite-supported
+terminal contract; one terminal state and cancellation policy; dispose every
+distinct owned source exactly once even when another source reports bounded
+drain failure; reject work admitted after terminal transition; coordinate
+in-flight scan/resolve/launch/artwork operations with source cancellation and
+the provider scan gate without self-deadlock; clear retained authority/icon
+state only after it can no longer publish; idempotent concurrent disposal;
+direct provider and composite-backend terminal fixtures.
+
+**Out of scope:** changing source discovery/resolve/launch results, public app-
+library contracts, the 512-item limit, Game Launcher UI, store adapters,
+`ShellStaExecutor.Shared` process lifetime, broad broker disposal redesign, or
+swallowing an uncooperative source indefinitely.
+
+**Acceptance criteria:** production composite shutdown reaches provider
+termination and every source's exact-once terminal path; admitted cooperative
+work observes cancellation and drains within the existing bound; late or
+cancellation-ignoring completion cannot republish snapshot, authority, artwork,
+or launch success; concurrent/repeated disposal is deterministic; one source's
+terminal failure does not skip cleanup of the others and is reported safely;
+post-disposal calls fail before source or Shell work begins. The closing diff
+preserves DLV-059's private source authority and adds no lifecycle owner or
+hotspot.
+
+**Verification:** Tier 1 Windows app-library provider Release suite with direct
+provider, composite disposal, concurrent/repeated disposal, active operation,
+uncooperative timeout, and post-disposal cases plus affected documentation. No
+broker behavior matrix, widget, native, aggregate, screenshot, or live launch.
+
+**Stop/escalate when:** correct cleanup requires terminating the process/thread,
+disposing the process-wide shared STA lane, changing a public capability, or
+cannot preserve the candidate's exact source authority and last-good behavior.
+
+### DLV-072 — Replace the 512-item app-library snapshot with cursor queries
+
+**State:** Ready
+**Lane:** widgets, acting as serialized managed capability lead
+**Baseline:** closing correction commit of DLV-071
+**Dependencies:** DLV-006, DLV-059, and DLV-071
+**Owner:** normalized app-library backend query contract, PlatformBroker app-
+library domain and artwork registration, public WidgetSdk app-library service,
+Games & Apps migration, API compatibility baseline, focused capability/provider
+fixtures, and directly affected public documentation; no native collection or
+OverlayHost files
+**Concurrency:** May run with platform pinning only while it avoids
+WidgetProtocol, OverlayHost, native manifests/build files, and pinning docs.
+This assignment explicitly authorizes the required pre-release public managed
+app-library API break; do not preserve the obsolete offset/snapshot API solely
+for local legacy compatibility.
+
+**Visible successor:** DLV-060's complete installed Game Launcher library. The
+current public path caps and materializes the authoritative backend snapshot at
+512 items, so a 2,000/10,000-item widget proof would otherwise be fake or
+widget-local.
+
+**Objective:** Replace the finite offset-over-one-snapshot capability with one
+opaque cursor query contract that pages the normalized trusted library through
+the broker and SDK without materializing or serializing the complete library in
+the widget, bridge, capability domain, or artwork session.
+
+**In scope:** one bounded query value with installed/kind/source/filter/sort
+semantics needed by current Games & Apps and DLV-060; opaque revision-bound
+forward/reverse cursors; stable item and SavedId semantics; page size,
+prefetch, retained page, cursor, pending request, artwork registration, and
+serialized-byte bounds; refresh and source-version invalidation; duplicate,
+sparse/final, insertion/deletion, stale/loop/oversized/malformed cursor and
+cancellation cases; migrate Games & Apps to the one new contract and delete the
+obsolete public offset API/central 512-item snapshot path; intentional public-
+API baseline update and pre-release migration notes.
+
+**Out of scope:** Game Launcher presentation (DLV-060), favorites, additional
+stores, search text entry, raw source identity or launch authority, a second
+compatibility facade, native cursor/renderer changes, generic database/query
+frameworks, screenshots, credentials, or physical launch.
+
+**Acceptance criteria:** a 10,000-item fake can traverse first, middle, final,
+reverse, refresh, insertion, deletion, and eviction windows while every
+individual provider/broker/worker response and artwork-registration set remains
+within named bounds; the capability domain and widget never retain or serialize
+all 10,000 records. Cursors are opaque, query/revision-bound, bounded, and fail
+closed on loop, tamper, stale generation, or wrong query. SavedId resolution and
+exact launch remain current-authority operations. Games & Apps preserves its
+curated behavior through the same new service. No old offset/snapshot public
+path, parallel cache, or title/source-derived authority remains.
+
+**Verification:** Tier 1 normalized provider query, PlatformBroker app-library,
+WidgetSdk service/cursor, Games & Apps, API compatibility, artwork registry,
+and documentation Release suites. Tier 2 smallest installed generic-worker
+capability route over forward/reverse/refresh and exact launch/artwork demand.
+**Integration checkpoint:** after committing, run the canonical Tier-3 verifier
+exactly once from the clean exact commit because this intentionally replaces a
+public cross-process capability contract. No screenshot, native redesign,
+external store, or physical game run.
+
+**Stop/escalate when:** a bounded cursor cannot preserve exact saved/launch
+authority, the change requires native collection semantics beyond accepted
+DLV-006, another lane owns a required shared file, or credible implementation
+would retain the complete 10,000-item library in the capability/widget path.
+
 ### DLV-060 — Ship an installed-only Game Launcher library
 
 **State:** Ready
 **Lane:** widgets, acting as serialized managed capability/widget lead
-**Baseline:** closing commit of DLV-059
-**Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, and DLV-059
-**Owner:** normalized trusted game-library query/cursor capability, dedicated
-Game Launcher first-party widget, private user projection, focused broker/widget
-fixtures, and directly affected public documentation; existing native
-VirtualizedGrid/List and opaque artwork contracts are consumed unchanged
+**Baseline:** closing commit of DLV-072
+**Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, DLV-059, DLV-071, and
+DLV-072
+**Owner:** dedicated Game Launcher first-party widget, private user projection,
+focused broker/widget fixtures, and directly affected public documentation;
+DLV-072's normalized cursor capability and existing native VirtualizedGrid/List
+and opaque artwork contracts are consumed unchanged
 **Concurrency:** May run with platform pinning only while it requires no public
 WidgetProtocol/WidgetSdk/native change. Stop for planner serialization if an
 existing public collection or native grid contract is insufficient.
@@ -2971,17 +3110,18 @@ covering continuous grid navigation, lazy artwork, exact launch admission, and
 2,000/10,000-item bounds. No aggregate, screenshot, physical launch, external
 store, or native redesign.
 
-**Stop/escalate when:** the accepted collection/artwork contracts cannot express
-the product without public/native changes, launch truth requires raw identity,
-or the widget begins owning discovery/cache/source policy. Preserve the exact
-gap for a serialized framework prerequisite.
+**Stop/escalate when:** DLV-072's accepted capability or existing collection/
+artwork contracts cannot express the product without further public/native
+changes, launch truth requires raw identity, or the widget begins owning
+discovery/cache/source policy. Preserve the exact gap for a serialized framework
+prerequisite.
 
 ### DLV-066 — Add Game Launcher favorites and preferred variants
 
 **State:** Ready
 **Lane:** widgets
 **Baseline:** closing commit of DLV-060
-**Dependencies:** DLV-059 and DLV-060
+**Dependencies:** DLV-059, DLV-071, DLV-072, and DLV-060
 **Owner:** Game Launcher private durable organization policy, presentation, and
 credential-free fixtures; no provider discovery, native host, or public
 protocol changes
@@ -3020,7 +3160,7 @@ source identity or requires provider/public protocol changes.
 **State:** Ready
 **Lane:** widgets
 **Baseline:** closing commit of DLV-066
-**Dependencies:** DLV-059, DLV-060, and DLV-066
+**Dependencies:** DLV-059, DLV-071, DLV-072, DLV-060, and DLV-066
 **Owner:** trusted launch-result/lifecycle policy, Game Launcher projection,
 and deterministic adapter/widget fixtures; no generic process authority
 
@@ -3255,10 +3395,12 @@ accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
 DLV-025 remains user-decision blocked. DLV-058 now turns DLV-011's accepted
 tool-window architecture into the first visible generic Pin/Unpin lifecycle.
-DLV-068 and DLV-069 complete placement and accessibility/input composition,
-then DLV-062 runs the fixed-video trusted-rich-media feasibility gate. This
-visible sequence is independent of the blocked animated-resize compositor and
-may run beside widgets DLV-059 under the explicit file boundaries below.
+DLV-070 then restores one authoritative host across ordinary and `--show`
+launches before DLV-068 and DLV-069 complete placement and accessibility/input
+composition, then DLV-062 runs the fixed-video trusted-rich-media feasibility
+gate. This visible sequence is independent of the blocked animated-resize
+compositor and may run beside widgets DLV-059 under the explicit file
+boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
@@ -3320,12 +3462,72 @@ raw widget window authority, a public threat-model change, a substantial
 conflict with preserved platform work, or physical-only evidence to choose the
 architecture. Do not borrow the blocked main-panel resize path.
 
-### DLV-068 — Add controller placement and durable pin geometry
+### DLV-070 — Enforce one OverlayHost owner and forward `--show`
 
 **State:** Ready
 **Lane:** platform
 **Baseline:** closing commit of DLV-058
-**Dependencies:** DLV-011, DLV-016, and DLV-058
+**Dependencies:** accepted main through DLV-057; ordered after DLV-058 so the
+active milestone is not interrupted
+**Owner:** OverlayHost process ownership, bounded local activation transport,
+startup/shutdown logging, and focused production-host process fixtures
+
+**Visible outcome:** Running the documented Release command while the overlay
+is already resident brings that exact host forward and exits the launcher;
+Task Manager never accumulates a hidden second OverlayHost.
+
+**Reproduction evidence:** On accepted main `94d4ee0`, PID 27684 was a healthy
+resident OverlayHost with no visible main-window handle. Invoking
+`.\src\OverlayHost\out\Release\OverlayHost.exe --show` at 02:46 created healthy
+PID 17952 with a visible window while PID 27684 remained resident. A bounded
+`CloseMainWindow` request correctly could not close the handle-less older
+process. Do not force-kill or reinterpret that process as valid singleton
+behavior.
+
+**Objective:** Give one per-user OverlayHost process authoritative ownership
+and make later launches bounded activation clients, including while the owner
+is hidden and has no current HWND.
+
+**In scope:** race-safe per-user owner election; a least-authority local show
+request independent of the current main-window handle; ordinary launch and
+`--show`; simultaneous launches; hidden/visible owner; bounded acknowledgement
+and safe exit status; stale/crashed owner recovery; orderly shutdown; explicit
+owner/client logs; unique fixture/profile isolation so tests may run beside the
+development overlay without addressing it.
+
+**Out of scope:** force-terminating another host, a background Windows service,
+external/global activation, broad diagnostics-transport redesign, widget
+worker lifecycle, pinned-surface semantics, compositor/animation work, or
+changing the dashboard toggle model.
+
+**Acceptance criteria:** at most one production owner is resident for one user
+and profile under sequential or simultaneous launches; a later `--show` sends
+exactly one authenticated/bounded local activation to the hidden or visible
+owner, receives an acknowledgement, and exits; it never initializes another
+bridge, worker catalog, controller lease, or HWND. A crashed owner cannot leave
+a permanent lease, a stale/spoofed client cannot activate another user's host,
+and shutdown releases all ownership/transport resources exactly once.
+
+**Verification:** Tier 1 focused process-owner/activation Release tests over
+hidden owner, visible owner, simultaneous launch, stale owner, rejected client,
+timeout, and orderly exit, plus the production OverlayHost build. Tier 2 one
+bounded exact-executable fixture proving the second invocation exits and the
+first process receives Show without a second bridge/controller initialization.
+No aggregate, screenshot, widget-provider, or force-kill run. After integration,
+refresh the coherent main Release and visibly invoke `--show` twice while
+retaining one PID.
+
+**Stop/escalate when:** a safe fix requires a privileged/global service,
+weakens per-user process/transport isolation, conflicts substantially with the
+active pinned-surface lifecycle, or needs destructive cleanup of the current
+resident processes.
+
+### DLV-068 — Add controller placement and durable pin geometry
+
+**State:** Ready
+**Lane:** platform
+**Baseline:** closing commit of DLV-070
+**Dependencies:** DLV-011, DLV-016, DLV-058, and DLV-070
 **Owner:** pinned-surface placement/resize state machine, monitor/DPI persistence,
 host chrome/actions, focused native/UIA fixtures, and public pinning docs
 
@@ -3366,7 +3568,7 @@ authority.
 **State:** Ready
 **Lane:** platform
 **Baseline:** closing commit of DLV-068
-**Dependencies:** DLV-058 and DLV-068
+**Dependencies:** DLV-058, DLV-070, and DLV-068
 **Owner:** pinned-surface controller/pointer focus composition, emergency
 visibility authority, UI Automation tree/actions, help, and production-host
 fixtures
@@ -3408,7 +3610,7 @@ policy choice, or duplicates existing OverlayHost input authority.
 **State:** Ready
 **Lane:** platform
 **Baseline:** closing commit of DLV-069
-**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-068, and DLV-069
+**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, and DLV-069
 **Owner:** trusted rich-media process/session feasibility, fixed-video host
 composition, resource measurement, policy evidence, and focused process/native
 fixtures; no public YouTube widget or account integration
