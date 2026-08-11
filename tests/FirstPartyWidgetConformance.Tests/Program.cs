@@ -745,6 +745,11 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
     Assert.True(
         Version.Parse(packages[1].Manifest.Version) > Version.Parse("0.2.6"),
         "YT Music source package must use a version newer than 0.2.6.");
+    var previousVersions = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["org.gbar.samples.spotify"] = "0.2.10",
+        ["org.gbar.samples.ytmusic"] = "0.2.6",
+    };
 
     var catalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
     var snapshot = await catalog.DiscoverAsync();
@@ -769,11 +774,18 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
         var selected = snapshot.Widgets.Single(widget => widget.Id == package.Manifest.Id);
         Assert.True(selected.Enabled, $"{package.Manifest.Name} was not explicitly enabled.");
         Assert.Equal(package.Manifest.Version, selected.ActiveVersion.Version.ToString());
-        Assert.Equal(1, selected.Versions.Count);
+        Assert.Equal(2, selected.Versions.Count);
+        var previous = selected.Versions.Single(version =>
+            version.Version.ToString() == previousVersions[package.Manifest.Id]);
         var digestCatalog = new WidgetCatalog(Path.Combine(
             deployment.RootPath, "digest-verification", package.Manifest.Id));
         var independentlyInstalled = await digestCatalog.InstallAsync(package.PackagePath);
         Assert.Equal(independentlyInstalled.ContentDigest, selected.ActiveVersion.ContentDigest);
+        Assert.True(!string.Equals(
+                previous.ContentDigest,
+                selected.ActiveVersion.ContentDigest,
+                StringComparison.Ordinal),
+            $"{package.Manifest.Name} remained selected on the seeded older payload digest.");
 
         var configured = loaded.Catalog.GetConfigured(package.Manifest.Id);
         Assert.True(configured.RequiresAppContainer,
@@ -833,6 +845,7 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
         evidence.Add(new
         {
             id = package.Manifest.Id,
+            previousVersion = previous.Version.ToString(),
             version = package.Manifest.Version,
             packageSha256 = Convert.ToHexString(SHA256.HashData(
                 File.ReadAllBytes(package.PackagePath))).ToLowerInvariant(),
@@ -849,7 +862,7 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
             packages = evidence,
             phases = new[]
             {
-                "build-stage-validate-pack-install-select",
+                "seed-enabled-disable-install-select-enable",
                 "selected-payload-digest-match",
                 "generic-appcontainer-visible-first-snapshot",
             },
@@ -1814,6 +1827,20 @@ file sealed class Deployment : IDisposable
                     var spotifyManifest = ManifestJson.Deserialize(
                         await File.ReadAllBytesAsync(Path.Combine(
                             spotifyProjectRoot, "manifest.json")));
+                    var spotifySeedOutput = Path.Combine(
+                        temporary.Path, "spotify-community-seed");
+                    await RunCommunityPackageScriptAsync(
+                        Path.Combine(spotifyProjectRoot, "Build-CommunityPackage.ps1"),
+                        spotifySeedOutput,
+                        installedRoot,
+                        version: "0.2.10",
+                        install: true);
+                    var seededSpotify = (await catalog.DiscoverAsync()).Widgets
+                        .Single(widget => widget.Id == spotifyManifest.Id);
+                    Assert.True(seededSpotify.Enabled,
+                        "Spotify older-version seed was not enabled before update.");
+                    Assert.Equal("0.2.10", seededSpotify.ActiveVersion.Version.ToString());
+
                     var spotifyOutput = Path.Combine(
                         temporary.Path, "spotify-community-package");
                     await RunCommunityPackageScriptAsync(
@@ -1840,6 +1867,22 @@ file sealed class Deployment : IDisposable
                 var ytProjectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
                 var ytManifest = ManifestJson.Deserialize(
                     await File.ReadAllBytesAsync(Path.Combine(ytProjectRoot, "manifest.json")));
+                if (communityRecoveryOnly)
+                {
+                    var ytSeedOutput = Path.Combine(
+                        temporary.Path, "ytmusic-community-seed");
+                    await RunCommunityPackageScriptAsync(
+                        Path.Combine(ytProjectRoot, "Build-CommunityPackage.ps1"),
+                        ytSeedOutput,
+                        installedRoot,
+                        version: "0.2.6",
+                        install: true);
+                    var seededYt = (await catalog.DiscoverAsync()).Widgets
+                        .Single(widget => widget.Id == ytManifest.Id);
+                    Assert.True(seededYt.Enabled,
+                        "YT Music older-version seed was not enabled before update.");
+                    Assert.Equal("0.2.6", seededYt.ActiveVersion.Version.ToString());
+                }
                 var ytOutput = Path.Combine(temporary.Path, "ytmusic-community-package");
                 await RunCommunityPackageScriptAsync(
                     Path.Combine(ytProjectRoot, "Build-CommunityPackage.ps1"),
