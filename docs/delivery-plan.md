@@ -749,9 +749,12 @@ route/action, playback, and presentation boundaries while retaining one
   text entry now copies bounded request values across the modal loop and freshly
   revalidates the complete current action authority before send, while work-area
   geometry and spatial controller navigation satisfy the assigned host gate.
-  DLV-080 is Assigned and must correct the retained managed prefix before any
-  integration. DLV-038 remains deferred test-architecture debt rather than
-  filler work.
+  DLV-080 candidate `2e38f00` correctly separates bounded recent/manual slices
+  from provider cursor pages, but is rejected pending DLV-081 because a launch
+  recorded while Recent: First is already active moves the still-current catalog
+  row into Recent as display-only and disables it until reload. DLV-081 is
+  Assigned as the narrow final managed correction before integration. DLV-038
+  remains deferred test-architecture debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3601,8 +3604,8 @@ DLV-076/DLV-077 managed prefix immediately after it.
 
 ### DLV-080 — Make recent-first ordering complete-library correct
 
-**State:** Assigned; began immediately after accepted DLV-079 and before any new
-feature
+**State:** Candidate `2e38f00` rejected; retain unchanged for DLV-081 correction
+**Closing commit:** `2e38f00` (`[DLV-080] Compose bounded recent and manual slices`)
 **Lane:** widgets
 **Baseline:** closing commit of DLV-079, retaining DLV-076 candidate `79848f6`
 and DLV-077 candidate `f4745ad` unchanged in branch history
@@ -3672,6 +3675,71 @@ No provider/native/aggregate/screenshot/physical-game run.
 **Stop/escalate when:** correct composition requires a public provider sort or
 unbounded catalog load, recent rows cannot remain non-authorizing until exact
 current resolve, or DLV-077 establishes an incompatible private-state owner.
+
+**Reviewer disposition:** Rejected pending DLV-081. The candidate correctly
+returns only the provider's at-most-64 rows to `WidgetCursorResource`, resolves
+at most 32 recent plus 32 manual SavedIds into separate fixed slices, composes
+and deduplicates those sections outside cursor-anchor accounting, removes
+obsolete automatic-Game manual membership without erasing favorites/recents,
+and revalidates every fixed-row launch by exact SavedId. Focused evidence passes
+Game Launcher 35/35, installed AppContainer conformance 6/6, and 55 documentation
+contracts. One live transition remains incorrect. If Recent: First is already
+active and a current catalog tile launches successfully, `RecordRecent` updates
+organization without reloading `_fixedRows`. Presentation then moves that ID
+ahead of the catalog, but `PresentedRowFor` searches only `_fixedRows` for a
+current item and falls back to stored display projection even though the exact
+same SavedId is still current in `snapshot.Items`. The tile becomes disabled
+until another query reload. Preserve `2e38f00`; DLV-081 must let the fixed
+section reuse the exact current provider-page item before falling back to stored
+display state, without changing page accounting or persistence.
+
+### DLV-081 — Preserve current authority during immediate recent promotion
+
+**State:** Assigned; execute immediately after DLV-080 and before integration
+**Lane:** widgets
+**Baseline:** closing candidate `2e38f00`, retaining the complete
+DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix unchanged
+**Dependencies:** DLV-076 and DLV-080
+**Owner:** Game Launcher presentation composition and one focused managed
+regression; no provider, broker, SDK, protocol, native, or persistence changes
+**Concurrency:** Do not merge, rebase, reset, amend, rewrite, or broaden the
+retained prefix. Platform remains idle until this correction is accepted.
+
+**Visible outcome:** With Recent: First already selected, a successfully launched
+catalog game moves to the front immediately and remains an enabled current tile;
+the user does not need to refresh, cycle the filter, or reopen the worker to use
+it again.
+
+**Objective:** When a recent/manual identity is also present in the current
+provider page, compose the fixed section from that exact current item before
+falling back to the separately resolved fixed slice or stored display projection.
+
+**In scope:** one deterministic current-page launch while Recent: First is
+already active; exact SavedId deduplication; current artwork/source/display/key;
+enabled state; a second activation proving fresh exact ResolveSaved launch;
+unchanged fixed-row fallback after the item leaves the retained provider page.
+
+**Out of scope:** reloading after every launch, provider-side recent sorting,
+new query or persistence behavior, cursor/page changes, native work, screenshots,
+or rerunning the installed AppContainer route and documentation groups whose
+files do not change.
+
+**Acceptance criteria:** immediately after an accepted current-page launch, the
+promoted Recent tile uses the same current provider item, remains enabled, has no
+duplicate catalog tile, and a second activation performs exact current SavedId
+resolution. If that item is absent from the current page, the accepted DLV-080
+resolved-fixed then display-only fallback remains unchanged. Provider loader
+count, fixed-slice bounds, cursor anchors, organization state, and semantic-tree
+bounds do not change.
+
+**Verification:** Tier 1 Game Launcher Release suite with the one exact immediate
+promotion/relaunch regression and retained existing DLV-080 cases. No installed
+worker, provider, broker, SDK, native, documentation, aggregate, screenshot, or
+physical-game run unless production scope unexpectedly expands.
+
+**Stop/escalate when:** the current provider item cannot be reused by exact
+SavedId without changing cursor/resource authority or the correction requires
+another committed-state owner.
 
 ### DLV-077 — Add explicit manual entries to Game Launcher
 
@@ -3962,9 +4030,9 @@ remains idle until then.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
-**State:** Blocked by active DLV-080 correction ownership; assign to platform
-after the corrected
-DLV-075/DLV-076/DLV-077/DLV-079/DLV-080 prefix is accepted
+**State:** Blocked by active DLV-081 correction ownership; assign to platform
+after the corrected DLV-075/DLV-076/DLV-077/DLV-079/DLV-080/DLV-081 prefix is
+accepted
 **Lane:** platform
 **Baseline:** accepted DLV-080 integration plus the reviewer control-plane commit
 that changes this item to Assigned

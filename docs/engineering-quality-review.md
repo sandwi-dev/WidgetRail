@@ -1806,8 +1806,8 @@ the rejected managed prefix for DLV-080's immediate correction.
 
 ### EQ-032 — P1 — Launcher retained organization violates catalog-page composition
 
-**Status: Open in rejected DLV-076 candidate `79848f6` and DLV-077 candidate
-`f4745ad`; assigned to DLV-080 after active DLV-079.**
+**Status: DLV-080 candidate `2e38f00` closes bounded page/fixed-slice ownership;
+assigned DLV-081 closes immediate current-row promotion before integration.**
 
 **Evidence.** DLV-076 correctly persists at most 32 recent opaque SavedIds and
 uses that exact set for the provider-backed Recent: Only filter. In Recent:
@@ -1848,6 +1848,18 @@ manual membership toggle. Evidence must combine a later-page recent cold
 restart with a full provider page plus manual entries, cross-section
 deduplication, and missing/replacement rejection. No public provider sort,
 full-library load, or process observation is warranted.
+
+**Candidate review.** `2e38f00` corrects the two structural errors: cursor
+loaders return only provider rows, fixed recent/manual slices are separately
+bounded and deduplicated, automatic Games cannot retain manual membership, and
+fixed-row launches revalidate exact SavedId authority. One live transition
+remains. Recording a successful launch while Recent: First is already active
+updates organization but not the separately resolved fixed slice. Presentation
+promotes the current-page ID, fails to consult that same current provider item,
+and falls back to stored display projection, which disables the tile until a
+query reload. DLV-081 must use the exact current page item first while preserving
+the resolved-fixed then display-only fallback once the item is no longer
+retained.
 
 ### EQ-004 — P1 — Immutable hosted execution evidence remains
 
