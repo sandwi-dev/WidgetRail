@@ -12,6 +12,18 @@ enum class InteractionMode {
     Focusable,
 };
 
+enum class ContentPresentation { AdmittedWidget };
+
+struct SurfacePresentationPolicy final {
+    ContentPresentation content{ContentPresentation::AdmittedWidget};
+    bool exposeInteractiveSemantics{};
+};
+
+[[nodiscard]] constexpr SurfacePresentationPolicy ResolveSurfacePresentationPolicy(
+    const InteractionMode mode) noexcept {
+    return {ContentPresentation::AdmittedWidget, mode == InteractionMode::Focusable};
+}
+
 enum class LifecycleState {
     Unpinned,
     Pinned,
@@ -23,6 +35,31 @@ enum class StopReason {
     HostExit,
     CrashRecovery,
 };
+
+enum class ControllerCommand {
+    None,
+    Enter,
+    Exit,
+    Activate,
+    Close,
+    EmergencyHide,
+};
+
+struct ControllerInputContext final {
+    bool pinned{};
+    bool placementActive{};
+    bool sameWidgetOpen{};
+    bool controllerFocused{};
+    bool aPressed{};
+    bool bPressed{};
+    bool xPressed{};
+    bool rightStickPressed{};
+    bool leftShoulderDown{};
+    bool rightShoulderDown{};
+};
+
+[[nodiscard]] ControllerCommand ResolveControllerCommand(
+    const ControllerInputContext& context) noexcept;
 
 struct SurfaceDescriptor final {
     // Data-only identity. No native window, renderer, process, or provider

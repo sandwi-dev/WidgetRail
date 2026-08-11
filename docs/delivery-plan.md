@@ -729,10 +729,11 @@ route/action, playback, and presentation boundaries while retaining one
   corrected by DLV-071 `355a858`, is accepted and integrated through
   `6f4c642`: the normalized sources now have one production provider terminal
   owner with bounded cancellation, drain, exact-once disposal, and stale-
-  publication rejection. DLV-072 is active and replaces the 512-item snapshot
-  capability that correctly blocked DLV-060, followed by visible DLV-060,
-  DLV-066, and DLV-067. DLV-038 remains deferred test-architecture debt rather
-  than filler work.
+  publication rejection. DLV-072 `fe66470` is accepted and integrated through
+  `7f23738`: the obsolete 512-item snapshot is replaced by bounded opaque cursor
+  queries and Games & Apps now consumes that contract. Visible DLV-060 is active,
+  followed by DLV-066 and DLV-067. DLV-038 remains deferred test-architecture
+  debt rather than filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -3024,7 +3025,7 @@ fully repackaged main, and visibly launched the coherent Release.
 
 ### DLV-072 — Replace the 512-item app-library snapshot with cursor queries
 
-**State:** Assigned
+**State:** Done; accepted as `fe66470`, integrated through `7f23738`
 **Lane:** widgets, acting as serialized managed capability lead
 **Baseline:** closing correction commit `355a858`; merge accepted main
 `0b21384` at the next clean boundary before DLV-060
@@ -3089,20 +3090,36 @@ authority, the change requires native collection semantics beyond accepted
 DLV-006, another lane owns a required shared file, or credible implementation
 would retain the complete 10,000-item library in the capability/widget path.
 
+**Reviewer disposition:** Accepted. One provider-owned catalog now serves
+bounded 64-row forward/reverse revision-bound pages; the broker retains at most
+256 current launch/artwork registrations, SavedId resolution traverses without
+projecting or retaining the whole catalog, and Games & Apps retains one 32-row
+page. Focused Release evidence passes provider 43, broker 52, SDK 85, API
+compatibility 12, Games 57, Bridge 70, production generic-worker conformance 6,
+and documentation 54. The single required clean exact-commit aggregate is
+retained as `20260811T112248Z-40d644bc`; it stopped on inherited YT Music package
+metadata drift (`0.2.6` expected versus packaged `0.2.7`) after the changed SDK
+and compatibility checks passed, and was correctly not repeated. The planner
+integrated the candidate through `7f23738`; DLV-060 consumes the accepted public
+cursor contract unchanged.
+
 ### DLV-060 — Ship an installed-only Game Launcher library
 
-**State:** Ready
+**State:** Assigned
 **Lane:** widgets, acting as serialized managed capability/widget lead
 **Baseline:** closing commit of DLV-072
 **Dependencies:** DLV-006, DLV-017, DLV-018, DLV-054, DLV-059, DLV-071, and
 DLV-072
 **Owner:** dedicated Game Launcher first-party widget, private user projection,
-focused broker/widget fixtures, and directly affected public documentation;
-DLV-072's normalized cursor capability and existing native VirtualizedGrid/List
-and opaque artwork contracts are consumed unchanged
-**Concurrency:** May run with platform pinning only while it requires no public
-WidgetProtocol/WidgetSdk/native change. Stop for planner serialization if an
-existing public collection or native grid contract is insufficient.
+focused broker/widget fixtures, directly affected public documentation, and the
+narrow managed `WidgetCursorResource` traversal correction described below;
+DLV-072's normalized broker capability and existing native VirtualizedGrid/List
+and opaque artwork contracts otherwise remain unchanged
+**Concurrency:** May run with platform pinning because the newly authorized
+correction is confined to the managed SDK cursor resource and focused managed
+tests. Do not change WidgetProtocol, PlatformBroker, native collection/rendering,
+or platform-lane files. Stop for planner serialization if the bounded SDK
+correction cannot close the gap by itself.
 
 **Visible outcome:** A dedicated controller-first Game Launcher presents the
 complete installed local game library from the normalized current sources,
@@ -3112,6 +3129,18 @@ navigation, real lazy artwork, source attribution, and exact launch.
 **Objective:** Prove the framework can support the first complex launcher slice
 without serializing thousands of games, duplicating provider caches/authority,
 or embedding source-specific rules in the widget.
+
+**Planner-authorized prerequisite correction:** The implementation attempt
+proved that the accepted broker pages are bounded to 64 items while the generic
+SDK resource fails closed after 128 retained traversal cursors. A 10,000-item
+library requires 157 pages, so DLV-060 cannot satisfy its existing acceptance
+criteria with the accepted public surface. Correct this narrow managed SDK
+contradiction as part of DLV-060: allow a complete 10,000-item forward/reverse
+traversal while cursor memory, retained rows, pending work, and serialized pages
+remain bounded and loop/stale/tamper failures remain closed. This authorization
+does not permit a second app-library API, provider-specific widget workaround,
+complete-library cache, broker/protocol/native change, or unrelated SDK cleanup.
+Use focused SDK plus Game Launcher evidence only; do not run the aggregate.
 
 **In scope:** dedicated bundled widget/catalog entry; installed-only normalized
 Steam and trusted Windows game records; library-revision-bound opaque cursors;
@@ -3146,9 +3175,11 @@ covering continuous grid navigation, lazy artwork, exact launch admission, and
 store, or native redesign.
 
 **Stop/escalate when:** DLV-072's accepted capability or existing collection/
-artwork contracts cannot express the product without further public/native
-changes, launch truth requires raw identity, or the widget begins owning
-discovery/cache/source policy. Preserve the exact gap for a serialized framework
+artwork contracts cannot express the product after the narrow managed cursor
+resource correction, credible bounded loop protection would require retaining
+the complete traversal, any further public/protocol/native change is required,
+launch truth requires raw identity, or the widget begins owning discovery/cache/
+source policy. Preserve the exact remaining gap for a serialized framework
 prerequisite.
 
 ### DLV-066 — Add Game Launcher favorites and preferred variants
@@ -3434,10 +3465,15 @@ Pin/Unpin lifecycle. DLV-070 `c61a49d` is accepted and integrated through
 `0b21384`; one production owner now receives authenticated bounded Show
 activation from later launches. DLV-068 `b83b3f7` is accepted and integrated
 through `9e795ac`; durable controller/pointer/UIA placement is now available.
-DLV-069 is active for accessibility/input composition, followed by DLV-062 for
-the fixed-video trusted-rich-media feasibility gate. This visible sequence is
+DLV-069 candidate `ea2691c`, corrected by DLV-073 `aaafefc`, is accepted and
+integrated through `eef3162`: Click-through keeps the current admitted widget
+visible while withholding input and actionable UIA. DLV-062 is the active
+fixed-video trusted-rich-media feasibility gate. No later platform item is Ready
+yet because YouTube v1 depends on that go/no-go result, DLV-025 requires the
+user's compositor choice, and endpoint selection still lacks a supported setter;
+the planner will not manufacture internal filler. This visible sequence is
 independent of the blocked animated-resize compositor and may run beside widgets
-DLV-072 under the explicit file boundaries below.
+DLV-060 under the explicit file boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
@@ -3638,9 +3674,10 @@ composition and strengthened real-HWND display-reconciliation proof.
 
 ### DLV-069 — Complete pinned-surface input and accessibility composition
 
-**State:** Assigned
+**State:** Done; accepted only with DLV-073 correction, integrated through `eef3162`
 **Lane:** platform
 **Baseline:** accepted DLV-068 source `b83b3f7`, integrated through `9e795ac`
+**Closing candidate:** `ea2691c` (`[DLV-069] complete pinned input composition`)
 **Dependencies:** DLV-058, DLV-070, and DLV-068
 **Owner:** pinned-surface controller/pointer focus composition, emergency
 visibility authority, UI Automation tree/actions, help, and production-host
@@ -3678,12 +3715,118 @@ Launch after integration.
 **Stop/escalate when:** behavior requires elevated/global hooks, physical-only
 policy choice, or duplicates existing OverlayHost input authority.
 
+**Reviewer disposition:** Rejected as a complete visible pinning milestone.
+The controller route, generation-bound input queue, pointer/UIA action
+composition, emergency hide, high-contrast policy, monitor reconciliation, and
+focused 306/76-check evidence are credible. However
+`WidgetSurfaceCoordinator::Paint` renders the admitted widget and then, for
+Click-through mode, paints an opaque background over the complete widget
+viewport and replaces it with `Click-through preview`. Hiding the main overlay
+forces every surviving pin into that mode, so the widget content disappears at
+the exact moment pinning is meant to preserve it. That contradicts DLV-058's
+visible pinned-surface outcome and makes DLV-062's visible fixed-video successor
+impossible. The candidate also grows the logical coordinator from about 964 to
+1,416 physical lines; DLV-073 must supply the final responsibility map and a
+bounded hotspot disposition rather than silently extending the prior exception.
+The rejected candidate was kept intact. DLV-073 `aaafefc` closes the visible
+gap without weakening its input/accessibility behavior; the corrected prefix is
+accepted and integrated through `eef3162`.
+
+### DLV-073 — Keep pinned content visible in Click-through mode
+
+**State:** Done; accepted as `aaafefc`, integrated through `eef3162`
+**Lane:** platform
+**Baseline:** clean branch commit `e4bb73d`, which retains rejected DLV-069
+candidate `ea2691c` and merges accepted main `96fbd85`
+**Dependencies:** DLV-058, DLV-068, and rejected DLV-069 candidate `ea2691c`
+**Owner:** pinned-surface visual/interaction mode composition, coordinator paint
+and accessibility projection, the smallest real-HWND fixture, and directly
+affected pinning documentation; no media/WebView2 or public widget API work
+**Concurrency:** May run with widgets DLV-072 under the existing disjoint file
+boundary. Do not edit managed app-library/SDK capability files or reviewer-owned
+documents.
+
+**Visible outcome:** A pinned widget remains visibly rendered and current after
+the main overlay closes or the pin becomes Click-through. Pointer, controller,
+and UI Automation actions are inert/hidden in that mode, but the content is not
+replaced by a placeholder.
+
+**Objective:** Separate visual persistence from interaction authority so
+Click-through changes hit testing, focus, action admission, and semantic
+exposure without covering or substituting the admitted widget presentation.
+
+**In scope:** preserve the current admitted declarative render in Interactive
+and Click-through modes; remove the opaque viewport-cover/placeholder behavior;
+keep host chrome visually non-actionable when Click-through; retain
+`WS_EX_NOACTIVATE|WS_EX_TRANSPARENT`, transparent hit testing, mouse-activation
+denial, controller-focus exit, empty pending input, and host-only noninteractive
+UIA semantics; prove snapshot replacement continues to repaint while the main
+overlay is hidden; mode change, hide/reopen, stale generation, worker removal,
+emergency hide, and teardown; one deterministic paint/presentation trace or
+equivalent production-render result that distinguishes admitted widget content
+from a placeholder without using screenshots. Report the coordinator's
+before/after aggregate size, retained responsibilities, coordination state, and
+mutable dependencies. Do not add another state/lifecycle/focus owner or grow
+the coordinator for a new concern; if the correction needs additional mode
+policy, put that decision behind one small pure value seam and justify either a
+conditional cohesive exception or a later bounded extraction.
+
+**Out of scope:** DLV-062 fixed video, WebView2, YouTube, media controls, new
+public protocol/SDK behavior, compositor/animation work, changing placement
+semantics, screenshot/capture work, decorative transition effects, or broad
+native-host decomposition.
+
+**Acceptance criteria:** the same sentinel widget content is present in the
+production render result before and after Interactive-to-Click-through and main
+overlay hide, and a current hidden-pin snapshot update replaces it without
+requiring reopen. Click-through publishes no widget or actionable host UIA
+descendants, accepts no pointer/controller/accessibility widget action, owns no
+controller focus, and leaves no queued input, while the HWND remains visible,
+topmost, nonactivating, and transparent to pointer hit testing. Reopening and
+explicitly entering Interactive restores the current keyed focus and action
+route. Removal, stale generation, Close, emergency hide, and host exit retain
+exact teardown. The closing responsibility map gives the approximately
+1,416-line coordinator an explicit credible disposition and introduces no
+second authority.
+
+**Verification:** Tier 1 only: the directly affected production coordinator/
+real-HWND fixture, the smallest click-through/focus/UIA policy checks, and a
+production OverlayHost Release build. Use deterministic paint/render state and
+semantic/action evidence; no screenshots, capture harness, aggregate, broad
+native matrix, media process, network, or physical controller/display run.
+After accepted integration, rebuild the native main Release and visibly launch
+it for immediate user testing.
+
+**Stop/escalate when:** admitted widget rendering cannot remain visible without
+a compositor/window-technology change, correction requires public API or media
+authority, or separating visual and interaction state would create another
+lifecycle/focus/renderer owner. Preserve the exact evidence rather than hiding
+content or beginning DLV-062.
+
+**Reviewer disposition:** Accepted. The post-render opaque viewport cover is
+deleted, while a small pure presentation policy keeps admitted widget content
+constant and varies only whether interactive semantics are exposed. The real-
+HWND fixture proves current sentinel sequence 1 remains presented in Click-
+through, hidden-overlay sequence 3 replaces it before reopen, and pointer,
+controller, queued input, focus, hit testing, widget actions, and actionable UIA
+remain inert. Focused evidence passes the 80-check coordinator fixture, 308
+host-policy/UIA checks, the OverlayHost Release build, and 54 documentation
+contracts; the observed incremental private-working-set delta is 11,370,496
+bytes, below the existing material gate. The coordinator remains 1,416 physical
+lines before and after with no new mutable dependency, timer, state machine, or
+authority. Treat it as a conditional cohesive one-HWND composition exception:
+reopen decomposition if DLV-062 adds media/session ownership to it, creates a
+second renderer/focus/lifecycle authority, or materially grows the aggregate.
+
 ### DLV-062 — Gate one trusted fixed-video media surface
 
-**State:** Ready
+**State:** Assigned
 **Lane:** platform
-**Baseline:** closing commit of DLV-069
-**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, and DLV-069
+**Baseline:** accepted DLV-073 integration `eef3162`; merge current local main
+at the clean platform boundary, then merge the preserved DLV-062 checkpoint
+branch as explicitly directed by the planner
+**Dependencies:** DLV-011, DLV-016, DLV-058, DLV-070, DLV-068, DLV-069, and
+DLV-073
 **Owner:** trusted rich-media process/session feasibility, fixed-video host
 composition, resource measurement, policy evidence, and focused process/native
 fixtures; no public YouTube widget or account integration

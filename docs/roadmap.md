@@ -591,13 +591,12 @@ Staged rollout:
 **Current delivery sequence:** DLV-059 `c7c354d`, corrected by DLV-071
 `355a858`, is accepted and integrated through `6f4c642`; the trusted Start
 Menu/AppsFolder and Steam sources now sit behind one normalized internal
-contract with a real production terminal owner. DLV-060 correctly stopped
-before edits because the current public capability materializes and caps the
-library at 512 items. Assigned DLV-072 replaces that obsolete pre-release path
-with bounded opaque cursor queries and migrates Games & Apps; DLV-060 then ships
-the dedicated installed-only Game Launcher over those queries plus the accepted
-cursor-grid and lazy-artwork foundations. DLV-066 adds explicit favorites and
-preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
+contract with a real production terminal owner. Accepted DLV-072 `fe66470`,
+integrated through `7f23738`, replaces the obsolete 512-item snapshot with
+bounded opaque cursor queries and migrates Games & Apps. Assigned DLV-060 now
+ships the dedicated installed-only Game Launcher over those queries plus the
+accepted cursor-grid and lazy-artwork foundations. DLV-066 adds explicit
+favorites and preferred variants, and DLV-067 adds only adapter-provable launch lifecycle.
 Host-owned query/text entry and additional store adapters remain later
 serialized stages rather than being hidden inside the first widget.
 
@@ -646,8 +645,10 @@ placement is accepted through DLV-068.
 `0b21384`, restores one authoritative OverlayHost across ordinary and `--show`
 launches. Accepted DLV-068 `b83b3f7`, integrated through `9e795ac`, adds one
 controller/pointer/UIA move-resize state machine with atomic monitor-safe
-placement. Assigned DLV-069 completes input/focus/UIA and emergency-hide
-composition; DLV-062 then runs the fixed-video trusted-media feasibility gate.
+placement. DLV-069 candidate `ea2691c`, corrected by accepted DLV-073 `aaafefc`
+and integrated through `eef3162`, adds input/focus/UIA and emergency-hide
+composition while preserving current widget content in Click-through. Assigned
+DLV-062 now runs the fixed-video trusted-media feasibility gate.
 YouTube URL/video-ID v1 is not authorized until those remaining gates are
 accepted.
 

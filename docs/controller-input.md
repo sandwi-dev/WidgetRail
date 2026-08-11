@@ -303,6 +303,19 @@ Automation actions use the same generation-bound state machine. This is a
 logical mapping verified by focused fixtures, not physical-controller or game
 compatibility evidence.
 
+## Pinned-surface focus and emergency exit
+
+With the same pinned widget open, right-stick click explicitly transfers the
+one controller focus owner from the overlay to the Interactive pin. D-pad/stick
+uses the shared authored/geometric focus resolver and A queues one exact
+generation/snapshot-bound action. B or another right-stick click returns focus
+to the overlay and restores Click-through; X closes the pin. Guide retains its
+global overlay-close meaning, cancels pinned placement/focus, and never forwards
+hidden input. LB+RB+X and visible-overlay Ctrl+Shift+H invoke one host-owned
+emergency unpin path. Placement mode continues to own A/B before these ordinary
+routes. The 306-check pinned policy/host fixture directly asserts these closed
+routes; this is not physical-controller or game compatibility evidence.
+
 ## Foreground ownership and containment limitation
 
 While visible, the host requests `GameInputEnableBackgroundInput` and

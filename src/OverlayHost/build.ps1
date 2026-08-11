@@ -220,6 +220,10 @@ function Invoke-WidgetSurfaceCoordinatorTests {
         (Join-Path $projectDirectory 'PinnedSurfacePlacement.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
+        (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
+        (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
@@ -227,6 +231,7 @@ function Invoke-WidgetSurfaceCoordinatorTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        '/DGBA_WIDGET_SURFACE_COORDINATOR_TESTING',
         "/Fo:$widgetSurfaceTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSurfaceCoordinatorTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'

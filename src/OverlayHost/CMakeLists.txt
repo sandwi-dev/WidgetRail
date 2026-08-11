@@ -158,12 +158,14 @@ if(GBA_BUILD_TESTS)
     add_executable(WidgetSurfaceCoordinatorTests
         WidgetSurfaceCoordinatorTests.cpp WidgetSurfaceCoordinator.cpp
         PinnedSurfacePolicy.cpp PinnedSurfacePlacement.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp
+        AccessibilityTree.cpp ControllerNavigation.cpp FocusNavigation.cpp WidgetSurfaceFocus.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(WidgetSurfaceCoordinatorTests PRIVATE cxx_std_20)
     target_compile_options(WidgetSurfaceCoordinatorTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSurfaceCoordinatorTests PRIVATE
-        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
+        GBA_WIDGET_SURFACE_COORDINATOR_TESTING)
     target_link_libraries(WidgetSurfaceCoordinatorTests PRIVATE
         user32 gdi32 d2d1 dwrite shcore winhttp windowscodecs psapi
         ole32 oleaut32 uiautomationcore)
