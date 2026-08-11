@@ -91,7 +91,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-070 | P2 | Closed | YT Music package metadata / companion handshake | Accepted DLV-086 aligns the source constant, companion `appVersion`, README commands, and validating test with immutable manifest `0.2.7`. YT Music passes 55/55; no package bytes were republished. |
 | GBA-071 | P1 | Closed | Game Launcher Hidden route / cursor-resource readiness | Accepted DLV-088 plus DLV-090 make Restore/Back publish an enabled current row without Refresh. Final direct evidence is 43/43 and clean installed generic-worker run `20260811T175350Z-011a57cd` passes 6/6. |
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
-| GBA-073 | P1 | Confirmed; DLV-093 Ready after active DLV-091 | Protected Wi-Fi host transport / Native Wi-Fi rollback | DLV-087's retained candidate keeps the password out of the widget, snapshot, logs, and persistence, but ordinary native JSON/UTF strings plus managed frame/`JsonElement`/`string` copies are not zeroed. Failure rollback also deletes by the shared SSID-derived profile name without proving the current profile is still the exact attempt-owned generation. Do not integrate the candidate before DLV-093. |
+| GBA-073 | P1 | Closed | Protected Wi-Fi host transport / Native Wi-Fi rollback | Accepted DLV-093 `3ce8991`, integrated with DLV-087 through `63ca3a2`, replaces password-bearing JSON/string copies with a bounded mutable zeroed frame and requires an exact per-attempt profile ownership token before deletion. Mismatch, unavailable verification, and delete failure are explicit and preserve current Windows state. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2279,6 +2279,21 @@ enabled-to-disabled stale/clear/re-enable transition, no disabled worker
 creation, and an unchanged neighbor.
 
 ## GBA-073 — Protected Wi-Fi retains secret copies and rollback ownership is not exact
+
+**Resolution:** Closed by DLV-093 `3ce8991`, integrated with the visible DLV-087
+flow through `63ca3a2`. The password is now carried in one bounded mutable
+native byte frame and one managed mutable owner, both zeroed on terminal paths;
+the modal clears its EDIT text before destruction, and provider command/profile
+XML owners are cleared without creating a raw immutable test string. Temporary
+profiles use random per-attempt names and 32-byte custom-data ownership tokens.
+Every delete verifies the exact interface, profile, and token; replacement,
+unavailable verification, and deletion failure never remove current state and
+produce explicit bounded results. Focused evidence passes Windows Network
+55/55, WidgetBridge 76/76, Network Controls 22/22, generic AppContainer 6/6,
+both native secret targets, and 55 documentation files. The one exact-commit
+aggregate `20260811T201128Z-f9af2cba` reached the changed groups and stopped
+later at an unrelated accepted Game Launcher fixture; it was retained and not
+rerun.
 
 **Evidence:** DLV-087 candidate `8c2949c` collects a masked password in the
 native host and correctly bypasses the ordinary AppContainer widget. The send

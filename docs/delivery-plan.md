@@ -153,6 +153,42 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-087 / DLV-093 — Connect protected Personal Wi-Fi safely
+
+**State:** Done
+**Implementation commits:** `8c2949c`, build correction `376e67c`, boundary
+correction `3ce8991`
+**Integrated on `main`:** `63ca3a2`
+
+**Reviewer disposition:** Accepted as one corrected prefix. The visible masked
+host-owned WPA2/WPA3 Personal flow retains current widget/action/scope/generation
+admission and never exposes its credential to the ordinary worker. DLV-093
+replaces the password-bearing JSON/string path with one bounded mutable secret
+frame, clears the native modal, frame, managed parser, provider command, and
+profile XML owners, and gives each temporary per-user profile a random identity
+plus a per-attempt ownership token that must match before deletion. Unprovable
+or failed rollback is explicit and preserves the profile. Focused evidence is
+green for Windows Network 55/55, WidgetBridge 76/76, Network Controls 22/22,
+generic AppContainer 6/6, both native secret targets, and 55 documentation
+files. The single DLV-093 Tier-3 checkpoint
+`20260811T201128Z-f9af2cba` stopped later at an unrelated accepted Game Launcher
+fixture after the changed managed groups passed; it was retained and not rerun.
+
+### DLV-091 — Remove one paired Bluetooth device
+
+**State:** Done
+**Closing commit:** `286d7a9`
+**Integrated on `main`:** `63ca3a2`
+
+**Reviewer disposition:** Accepted. Network Controls now uses a distinct
+destructive grant and confirmation scope to unpair only the selected current
+opaque device through the trusted provider's closed WinRT result mapping.
+Cancel, stale rows, replacement, repeated input, and lost authority invoke
+nothing; success requires authoritative refresh to remove the pairing while a
+neighbor remains unchanged. The installed route passes 6/6. The one exact-
+commit aggregate stopped only on the inherited visible-HWND host fixture after
+the affected managed/native groups had passed and was not repeated.
+
 ### DLV-086 — Reconcile YT Music package version ownership
 
 **State:** Done
@@ -841,11 +877,12 @@ route/action, playback, and presentation boundaries while retaining one
   and Settings clears one exact running or disabled widget's private state
   through the singular host owners. DLV-086 `abbf54b` is accepted and integrated
   through `14f7451`, closing the narrow YT Music source/handshake version drift.
-  DLV-087 has a retained but rejected candidate prefix; DLV-091 is the active
-  visible Bluetooth-removal successor. DLV-093 is queued immediately after it
-  to close the protected-Wi-Fi secret-buffer and exact-profile-rollback gaps,
-  followed by Ready DLV-092 for privacy-safe connection details. This keeps the
-  lane moving without accepting or interrupting around a failed review.
+  The corrected DLV-087/DLV-091/DLV-093 Network Controls prefix is accepted and
+  integrated through `63ca3a2`: protected Personal Wi-Fi uses a zeroed mutable
+  host path with attempt-owned rollback, and confirmed Bluetooth removal affects
+  only one current pairing. DLV-092 is now active for privacy-safe connection
+  details. This keeps the lane on visible product work after the bounded
+  credential correction.
   DLV-038 remains deferred test-architecture debt rather than filler work.
 
 ### DLV-082 — Surface isolated game-library source health
@@ -1383,8 +1420,8 @@ current author commands remain `0.2.7`. No package bytes were republished.
 
 ### DLV-087 — Connect protected Personal Wi-Fi through a host-owned prompt
 
-**State:** Candidate committed as `8c2949c` plus build correction `376e67c`;
-rejected pending DLV-093
+**State:** Done; accepted with DLV-093 correction `3ce8991` and integrated
+through `63ca3a2`
 **Lane:** widgets, acting as the serialized cross-lane Network Controls lead
 **Baseline:** clean closing commit of DLV-086 plus accepted current `main`
 **Dependencies:** DLV-028, DLV-031, DLV-037, DLV-075, and DLV-079; DLV-086 is
@@ -1467,28 +1504,18 @@ selected Personal mode, or a material threat-model/native architecture choice
 is required. Preserve the bounded evidence rather than falling back to Shell,
 netsh, registry, or undocumented APIs.
 
-**Reviewer disposition:** Not accepted. The candidate's public and product
-shape is otherwise coherent and its focused evidence passes Network Controls
-22/22, Windows Network 54/54, Bridge 74/74, Runtime 74/74, PlatformBroker 52/52,
-generic AppContainer 6/6, both native modal/parser targets, and 55 documentation
-files. The single exact-commit aggregate stopped on a missing `oleaut32` link in
-the canonical native path; append-only correction `376e67c` closes only that
-build parity and the aggregate was correctly not repeated. Independent review
-found two untested acceptance failures. First, the password is inserted into a
-WinRT JSON object, stringified into ordinary native UTF-8/UTF-16 strings, read
-into an uncleared managed byte array/`JsonElement`, and deserialized twice into
-immutable `string` instances before the later mutable copies are zeroed. The
-EDIT control text is also destroyed without first replacing its backing text.
-Second, rollback remembers only the common SSID-derived profile name and calls
-`WlanDeleteProfile` by that name after failure/timeout/disposal; it does not
-prove that the current profile still belongs to the exact generation created by
-this attempt, so an external replacement race can delete newer state. DLV-093
-owns only these two boundary corrections after already-active DLV-091.
+**Reviewer disposition:** Accepted only with DLV-093. The original public and
+product shape remains intact, while `3ce8991` removes the password from JSON and
+immutable native/managed transport owners, clears the modal before destruction,
+and routes each terminal profile deletion through an attempt-unique identity
+and exact ownership-token match. Replacement or unverifiable ownership never
+deletes current Windows state. The corrected focused counts are Windows Network
+55/55, Bridge 76/76, Network Controls 22/22, AppContainer 6/6, both native
+secret targets, and 55 documentation files.
 
 ### DLV-091 — Remove a paired Bluetooth device with explicit confirmation
 
-**State:** Assigned; implementation began automatically from clean planner merge
-`fe155ca`
+**State:** Done; committed as `286d7a9` and integrated through `63ca3a2`
 **Lane:** widgets, acting as the serialized Bluetooth capability lead
 **Baseline:** clean merge `fe155ca`, retaining the DLV-087 candidate prefix and
 accepted current `main`
@@ -1555,9 +1582,16 @@ pairing, or a material public threat-model choice is required. Do not substitute
 Settings, PowerShell, registry, SetupAPI deletion, or another broad management
 grant.
 
+**Reviewer disposition:** Accepted. The distinct unpair capability, destructive
+confirmation, current opaque-device revalidation, single-flight provider call,
+closed WinRT status mapping, and authoritative refresh preserve neighbor state
+and reject stale or repeated authority. The installed generic-AppContainer route
+passes 6/6. The single canonical run stopped only at the inherited visible-HWND
+fixture after the affected groups passed and was not repeated.
+
 ### DLV-093 — Zero protected Wi-Fi transport and own rollback exactly
 
-**State:** Ready; execute automatically after DLV-091 commits
+**State:** Done; committed as `3ce8991` and integrated through `63ca3a2`
 **Lane:** widgets, acting as the serialized DLV-087 correction lead
 **Baseline:** clean closing commit of DLV-091, retaining DLV-087 candidates
 `8c2949c` and `376e67c` unchanged
@@ -1637,9 +1671,23 @@ enough to prevent unintended deletion, or compliant rollback requires reading
 stored key material. Preserve the candidate and report the exact architecture
 decision instead of weakening zeroization or deleting by SSID/common name.
 
+**Reviewer disposition:** Accepted. One mutable two-frame credential path is
+cleared before reply publication and no password-bearing JSON, `JsonElement`,
+immutable managed string, diagnostic, or retained raw test value remains. The
+modal overwrites its EDIT text before destruction; command, native byte,
+managed byte/character, P/Invoke XML, and caller owners are deterministically
+cleared. Temporary profiles use random per-attempt names and 32-byte custom-data
+ownership tokens; every delete verifies the exact interface/profile/token and
+an ownership mismatch, unavailable verification, or delete failure becomes an
+explicit result. Focused evidence passes provider 55/55, bridge 76/76, Network
+Controls 22/22, AppContainer 6/6, both native secret targets, and docs 55. The
+single exact-commit checkpoint stopped later at an unrelated Game Launcher
+fixture and was not rerun.
+
 ### DLV-092 — Show privacy-safe active connection details
 
-**State:** Ready; execute automatically after DLV-093 commits
+**State:** Assigned; implementation began automatically from clean DLV-093
+commit `3ce8991`
 **Lane:** widgets, acting as the serialized Network Controls read-capability lead
 **Baseline:** clean closing commit of DLV-093
 **Dependencies:** DLV-028, DLV-031, DLV-037, DLV-087, DLV-091, and DLV-093 only
