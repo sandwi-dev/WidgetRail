@@ -30,16 +30,17 @@ claim `Launcher started`, acknowledgement-only adapters remain `Request
 accepted`, and no PID, HWND, path, command, or store identity crosses the widget
 boundary. Retained focused evidence passes SDK 86/86, compatibility 12/12,
 provider 45/45, broker 52/52, launcher 20/20, installed generic-worker 6/6, and
-55 documentation contracts. The complete managed/runtime graph will be
-republished from accepted main before the next visible user test.
+55 documentation contracts. The complete managed/runtime graph was republished
+from accepted main and the visible Release is running as PID 33360.
 
-The full main build later failed its unchanged `WidgetSwitchHostTests` because
-the production host did not paint the expected Audio Mixer fixture surface.
-All changed managed outputs had already published, and the failure is outside
-the accepted Game Launcher diff; it is retained under GBA-004 rather than
-retried unchanged or misrepresented as a launcher regression. DLV-075 is now
-Assigned, with DLV-076 and DLV-077 queued for visible recent ordering and trusted
-manual inclusion.
+The full main build later failed its unchanged `WidgetSwitchHostTests` with the
+more precise assertion that worker startup replaced the prior admitted content
+with a transient surface. All changed managed outputs had already published,
+and the failure is outside the accepted Game Launcher diff; it was not retried
+unchanged or misrepresented as a launcher regression. Queued DLV-078 separates
+retained-content/first-snapshot ordering from DLV-025's blocked animated resize/
+compositor decision. DLV-075 remains Assigned; after it releases the shared
+native boundary, platform DLV-078 can run beside widgets DLV-076 before DLV-077.
 
 ### Prior review delta — normalized game-library ownership
 

@@ -216,6 +216,12 @@ remains off until the publisher-trust gates in Phase 4.
   interface, and exposes large gray/black regions. DLV-025 now measures the
   UI-thread resize/redraw/bridge cadence and must deliver an atomic smooth path
   or replace live extent animation with an immediate/composition-only switch.
+  A separate accepted-main production-host failure is now isolated from that
+  compositor decision: `WidgetSwitchHostTests` reports that worker startup
+  replaced the prior admitted content with a transient surface. Queued DLV-078
+  will correct retained-content/first-snapshot ordering after DLV-075 releases
+  the shared native boundary; it may not broaden into animated resize or add
+  screenshot/timing retries.
   Do not add widget-specific animation.
   Do not import web-
   centric staggered entrances, ambient looping motion, editorial serif/faux-
