@@ -111,7 +111,7 @@ The current authoring-coordination milestone also implements public non-paged
 `WidgetIds`/opaque `KeyedId`, active input-scope propagation on every standard
 open-widget action, protocol-v13 explicit focus persistence, and the responsive
 `UI.NavigationShell`. SDK Gallery is the production-style navigation/ID
- migration. YT Music 0.2.6 maps typed/status-only failures to bounded copy and
+ migration. YT Music 0.2.7 maps typed/status-only failures to bounded copy and
  uses SDK-owned Active operation lanes for connection, progress, polling, and
  latest-wins transport reconciliation; it neither retains provider response
  bodies nor renders unknown exception text. DLV-030 preserves its single
@@ -1682,6 +1682,10 @@ themes also use non-shrinking fixed regions, a thin native Slider
  canonical verifier `artifacts/verification/20260811T140135Z-828292b9` stopped
  on the inherited YT Music package expectation (`0.2.6` expected, `0.2.7`
  actual) after the SDK and API compatibility groups passed; it was not rerun.
+ DLV-086 aligns the companion handshake's `appVersion` owner with the current
+ immutable `0.2.7` manifest and keeps the manifest-equality test as the drift
+ guard. No package version, package bytes, runtime contract, or companion
+ authentication behavior changed.
  DLV-079 replaces DLV-075's modal-loop reference retention with one immutable
  bounded text-entry request and a fresh post-modal current-authority resolution.
  Snapshot refresh, runtime or active-widget replacement, removal, hide,
