@@ -234,13 +234,16 @@ if(GBA_BUILD_TESTS)
 
     add_executable(RealHostAccessibilityTests
         RealHostAccessibilityTests.cpp AccessibilityTree.cpp HostAccessibility.cpp
-        AccessibilityProvider.cpp AccessibilityEvents.cpp TrayLayout.cpp)
+        AccessibilityProvider.cpp AccessibilityEvents.cpp TrayLayout.cpp
+        WidgetBridgeClient.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
+        RemoteImageCache.cpp FocusNavigation.cpp)
     target_compile_features(RealHostAccessibilityTests PRIVATE cxx_std_20)
     target_compile_options(RealHostAccessibilityTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(RealHostAccessibilityTests PRIVATE
-        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        GBA_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(RealHostAccessibilityTests PRIVATE
-        user32 ole32 oleaut32 uiautomationcore)
+        windowsapp user32 ole32 oleaut32 uiautomationcore d2d1 dwrite winhttp windowscodecs)
     add_test(NAME RealHostAccessibilityTests COMMAND RealHostAccessibilityTests)
 
     # Cross-process production-host coverage. This target is invoked by

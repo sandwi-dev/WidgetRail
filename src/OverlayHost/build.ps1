@@ -752,17 +752,29 @@ if (-not $SkipTests) {
     }
 
     $realHostAccessibilityTestArguments = $common + @(
+        '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING',
         (Join-Path $projectDirectory 'RealHostAccessibilityTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         (Join-Path $projectDirectory 'HostAccessibility.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
         (Join-Path $projectDirectory 'TrayLayout.cpp'),
+        (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         "/Fo:$realHostAccessibilityTestObjectDirectory\",
         "/Fe:$outputDirectory\RealHostAccessibilityTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
     ) + $libraryArguments + @(
-        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+        'windowsapp.lib', 'user32.lib', 'ole32.lib', 'oleaut32.lib',
+        'uiautomationcore.lib', 'd2d1.lib', 'dwrite.lib', 'winhttp.lib',
+        'windowscodecs.lib'
     )
     & $cl $realHostAccessibilityTestArguments
     if ($LASTEXITCODE -ne 0) {
