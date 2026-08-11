@@ -1051,6 +1051,55 @@ static async Task AppLibraryContracts()
     Assert.Equal("Launchable 000", reversed.Payload!.Value.GetProperty("items")[0]
         .GetProperty("displayName").GetString());
 
+    var allSavedIds = firstPayload.GetProperty("items").EnumerateArray()
+        .Concat(second.Payload.Value.GetProperty("items").EnumerateArray())
+        .Select(item => item.GetProperty("savedId").GetString()!).ToArray();
+    Assert.Equal(70, allSavedIds.Length);
+    var manyFavorites = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        new AppLibraryCursorRequest(new AppLibraryQuery
+        {
+            FavoriteSavedIds = allSavedIds,
+        }, null, null, 64)));
+    Assert.True(manyFavorites.Succeeded,
+        $"Bounded favorite filter failed: {manyFavorites.ErrorCode}");
+    Assert.Equal(64,
+        manyFavorites.Payload!.Value.GetProperty("items").GetArrayLength());
+
+    var filteredRequest = new AppLibraryCursorRequest(
+        new AppLibraryQuery(Kind: AppLibraryKind.Game,
+            Sort: AppLibrarySortOrder.DisplayNameDescending)
+        {
+            SearchText = "Launchable 000",
+            FavoriteSavedIds = [savedAppId],
+        }, null, null, 64, Refresh: true);
+    var filtered = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList, filteredRequest));
+    Assert.True(filtered.Succeeded, $"Filtered app-library page failed: {filtered.ErrorCode}");
+    var filteredItems = filtered.Payload!.Value.GetProperty("items");
+    Assert.Equal(1, filteredItems.GetArrayLength());
+    Assert.Equal(savedAppId, filteredItems[0].GetProperty("savedId").GetString());
+    publicAppId = filteredItems[0].GetProperty("appId").GetString()!;
+    Assert.Equal("Launchable 000",
+        filteredItems[0].GetProperty("displayName").GetString());
+
+    var noMatch = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        filteredRequest with
+        {
+            Refresh = false,
+            Query = filteredRequest.Query with
+            {
+                FavoriteSavedIds = [firstPayload.GetProperty("items")[1]
+                    .GetProperty("savedId").GetString()!],
+            },
+        }));
+    Assert.True(noMatch.Succeeded, $"Empty favorite result failed: {noMatch.ErrorCode}");
+    Assert.Equal(0, noMatch.Payload!.Value.GetProperty("items").GetArrayLength());
+
     // A source revision change makes an older cursor stale.
     backend.SetAppLibraryBackend([
         new AppLibraryBackendItemSummary(
@@ -1061,7 +1110,7 @@ static async Task AppLibraryContracts()
         PlatformCapabilities.AppLibraryList,
         AppQuery(64, after, AppLibraryCursorDirection.After)));
     Assert.Equal("invalid_cursor", last.ErrorCode);
-    Assert.Equal(1, backend.AppLibraryRefreshCalls);
+    Assert.Equal(2, backend.AppLibraryRefreshCalls);
 
     var invalidPage = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
@@ -1139,7 +1188,7 @@ static async Task AppLibraryContracts()
     Assert.True(refreshed.Succeeded);
     Assert.Equal("Changed", refreshed.Payload!.Value.GetProperty("items")[0]
         .GetProperty("displayName").GetString());
-    Assert.Equal(3, backend.AppLibraryRefreshCalls);
+    Assert.Equal(4, backend.AppLibraryRefreshCalls);
 
     var staleToken = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryLaunchV1,

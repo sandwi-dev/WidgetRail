@@ -11,6 +11,92 @@ namespace GameBarAlternative.Tests.GameLauncher;
 public sealed class GameLauncherTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task QueryControlsMapExactBoundedCriteriaAndClear()
+    {
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion,
+            [new("saved-00000", "Game 00000", "Steam")])
+        {
+            FavoriteSavedIds = ["saved-00000"],
+        };
+        var host = new FakeHost(2, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "query organization load");
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.favorites", "game-launcher.filter.favorites"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "favorite query");
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.source", "game-launcher.filter.source"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "source query");
+        Assert.AreEqual("Steam", host.Queries[^1].Query.SourceAttribution);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.sort", "game-launcher.filter.sort"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "sort query");
+        Assert.AreEqual(WidgetAppLibrarySortOrder.DisplayNameDescending,
+            host.Queries[^1].Query.Sort);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.query.clear", "game-launcher.query.clear"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "cleared query");
+        var cleared = host.Queries[^1].Query;
+        Assert.IsNull(cleared.SearchText);
+        Assert.IsNull(cleared.SourceAttribution);
+        Assert.AreEqual(0, cleared.FavoriteSavedIds.Count);
+        Assert.AreEqual(WidgetAppLibrarySortOrder.DisplayName, cleared.Sort);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CommittedQueryReplacesGenerationAndStaleCompletionCannotPublish()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var staleStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStale = new TaskCompletionSource<WidgetAppLibraryPage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        host.QueryHandler = (request, _) =>
+        {
+            if (request.Query.SearchText == "Alpha")
+            {
+                staleStarted.TrySetResult();
+                return new ValueTask<WidgetAppLibraryPage>(releaseStale.Task);
+            }
+            var item = Item(1) with { DisplayName = request.Query.SearchText ?? "All" };
+            return ValueTask.FromResult(new WidgetAppLibraryPage(
+                [item], null, null, "query-" + (request.Query.SearchText ?? "all")));
+        };
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "  Alpha  " });
+        await Bounded(staleStarted.Task, "stale query admission");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "Beta" });
+        releaseStale.TrySetResult(new([Item(0) with { DisplayName = "Alpha" }],
+            null, null, "query-alpha"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "replacement query drain");
+        Assert.AreEqual("Beta", widget.Collection.Items.Single().Value.DisplayName);
+
+        var snapshot = Snapshot(widget, 99);
+        var search = Nodes(snapshot.Root).Single(node => node.Id == "game-launcher.search");
+        Assert.AreEqual(ViewNodeKind.TextEntry, search.Kind);
+        Assert.AreEqual("Beta", search.TextEntryValue);
+        await Background(widget);
+    }
+    [TestMethod, Timeout(30_000)]
     [DataRow(2_000)]
     [DataRow(10_000)]
     public async Task LargeLibrariesTraverseInBoundedCursorWindow(int total)
@@ -681,6 +767,7 @@ public sealed class GameLauncherTests
             IReadOnlyList<WidgetAppLibraryItem>>? ResolveHandler { get; set; }
         internal List<IReadOnlyList<string>> ResolveRequests { get; } = [];
         internal List<string> Launches { get; } = [];
+        internal List<WidgetAppLibraryCursorRequest> Queries { get; } = [];
         internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
             ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
         internal TaskCompletionSource FirstQueryStarted { get; } =
@@ -706,6 +793,7 @@ public sealed class GameLauncherTests
         {
             token.ThrowIfCancellationRequested();
             FirstQueryStarted.TrySetResult();
+            Queries.Add(request);
             if (QueryHandler is not null) return QueryHandler(request, token);
             var offset = request.Cursor is null ? 0 : int.Parse(
                 request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),

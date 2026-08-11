@@ -80,13 +80,14 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `13` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `15` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
 v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
-explicit focus persistence v13; cursor collections and opaque artwork handles v14.
+explicit focus persistence v13; cursor collections and opaque artwork handles
+v14; and host-owned bounded TextEntry v15.
 Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
@@ -1347,7 +1348,16 @@ path, command line, or launcher-specific ID into an action target:
 
 ```csharp
 var page = await HostServices.AppLibrary.QueryAsync(
-    new WidgetAppLibraryQuery(InstalledOnly: true),
+    new WidgetAppLibraryQuery(
+        InstalledOnly: true,
+        Kind: WidgetAppLibraryKind.Game,
+        SourceAttribution: "Steam",
+        Sort: WidgetAppLibrarySortOrder.SourceThenDisplayName)
+    {
+        SearchText = "co-op",
+        FavoriteSavedIds = favoriteSavedIds.Take(
+            WidgetAppLibraryQuery.MaximumFavoriteSavedIds).ToArray(),
+    },
     limit: 32,
     refresh: true,
     cancellationToken);
@@ -1367,8 +1377,12 @@ if (LifecycleState == WidgetLifecycleState.Interactive && restored.Count != 0)
 `QueryAsync` permits 1–64 items per request and returns opaque Before/After
 cursors plus a provider revision. Supply a cursor only with its matching
 `WidgetCursorDirection`; do not parse or persist cursors as durable identity.
-Queries may filter the installed catalog by conservative kind or sanitized
-source attribution and currently sort by display name. `ResolveSavedAsync`
+Queries normalize bounded search text, may filter by conservative kind,
+sanitized source attribution, or at most 128 opaque SavedIds, and use only the
+closed display-name/source sort values. Every criterion is bound into the
+opaque provider cursor; changing one requires an offset-zero request. The
+broker resolves favorite SavedIds to current provider identity without exposing
+that identity to the widget. `ResolveSavedAsync`
 accepts at most 64 unique host-issued SavedIds, preserves request order, and omits apps
 that are no longer available. Read is allowed only in Visible or Interactive;
 launch is separately declared/consented and Interactive-only. Treat `AppId` as
@@ -1384,6 +1398,15 @@ remain provider-private. The provider includes reviewed Steam manifests as
 games but uses a semantic fallback because that source supplies no trusted icon
 surface; Xbox and other store adapters remain unsupported. See the
 [Games & Apps reference](games-and-apps.md).
+
+Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` when a
+controller-first surface needs bounded text. Activating it opens the host-owned
+keyboard/modal; widgets never receive raw keys, edit-control handles, or
+intermediate values. A committed value arrives once in
+`WidgetActionEvent.CommittedText`. B cancels and preserves the authored value.
+The maximum is 96 UTF-16 code units, control characters are rejected, and
+`.Disabled()` keeps the control focusable without admitting activation. This is
+protocol v15; widgets that do not author TextEntry retain their earlier protocol.
 
 This is an intentional pre-release replacement for
 `GetPageAsync(offset, limit)`. There is no compatibility facade: rebuild against

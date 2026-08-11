@@ -1665,6 +1665,21 @@ themes also use non-shrinking fixed regions, a thin native Slider
  generic-worker route
  `artifacts/verification/20260811T125249Z-fa9ce5d8` passes 6/6, including the
  exact current Game Launcher launch path.
+ DLV-075 advances Game Launcher to package 0.4.0 with provider-owned normalized
+ search, exact source/favorite criteria, and closed display/source sorts over
+ one immutable cursor revision. The widget retains only its bounded cursor
+ window and opaque SavedIds. Protocol v15 adds one bounded TextEntry primitive;
+ the native host owns keyboard/controller editing, commit/cancel, focus
+ restoration, high-contrast native controls, and UI Automation, while the
+ worker receives only one final `CommittedText`. Query replacement resets the
+ shared cursor generation, and stale cancellation-ignoring results cannot
+ publish. Focused Release evidence passes Windows app-library provider 46/46,
+ PlatformBroker 52/52, Widget SDK 87/87, API compatibility 12/12, Game Launcher
+ 22/22, CLI replay 56/56, the documentation contract across 55 Markdown files,
+ TextEntryModalTests, the native bridge parser, and the Release OverlayHost
+ target. The installed generic-worker/AppContainer route passes 6/6 at
+ `artifacts/verification/20260811T134904Z-ff02c207`; the clean exact-commit
+ canonical verifier remains the single integration checkpoint.
  DLV-007 now captures Spotify rendering through one private immutable
  presentation revision and keys playlist detail by playlist ID plus selection
  generation. Forced Release interleavings cover Back, rapid reselection, late

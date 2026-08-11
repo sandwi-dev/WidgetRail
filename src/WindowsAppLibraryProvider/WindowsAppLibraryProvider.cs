@@ -168,7 +168,31 @@ public sealed class WindowsAppLibraryProvider :
                 .Where(entry => request.Query.SourceAttribution is null ||
                     string.Equals(entry.registration!.Attribution,
                         request.Query.SourceAttribution, StringComparison.Ordinal))
+                .Where(entry => request.Query.SearchText is null ||
+                    entry.app.DisplayName.Contains(
+                        request.Query.SearchText, StringComparison.OrdinalIgnoreCase))
+                .Where(entry => request.Query.StableIdentityFilter is null ||
+                    request.Query.StableIdentityFilter.Contains(
+                        entry.registration!.StableIdentity, StringComparer.Ordinal))
                 .ToArray();
+            filtered = request.Query.Sort switch
+            {
+                AppLibrarySortOrder.DisplayNameDescending => filtered
+                    .OrderByDescending(entry => entry.app.DisplayName,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(entry => entry.registration!.StableIdentity,
+                        StringComparer.Ordinal)
+                    .ToArray(),
+                AppLibrarySortOrder.SourceThenDisplayName => filtered
+                    .OrderBy(entry => entry.registration!.Attribution,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(entry => entry.app.DisplayName,
+                        StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(entry => entry.registration!.StableIdentity,
+                        StringComparer.Ordinal)
+                    .ToArray(),
+                _ => filtered,
+            };
             var queryHash = QueryHash(request.Query, request.Limit);
             var offset = request.Cursor is null ? 0 :
                 ParseCursor(request.Cursor, request.Direction!.Value,
@@ -214,16 +238,35 @@ public sealed class WindowsAppLibraryProvider :
             request.Cursor is { Length: > 128 } ||
             request.Query.SourceAttribution is { } source &&
                 (string.IsNullOrWhiteSpace(source) || source.Length > 64 ||
-                    source.Any(char.IsControl)))
+                    source.Any(char.IsControl)) ||
+            request.Query.SearchText is { } search &&
+                (string.IsNullOrWhiteSpace(search) || search.Length > 96 ||
+                 search.Any(char.IsControl) || search != NormalizeSearchText(search)) ||
+            request.Query.StableIdentityFilter is { Count: > 128 } ||
+            (request.Query.StableIdentityFilter is { } stableIdentityFilter &&
+             (stableIdentityFilter.Distinct(StringComparer.Ordinal).Count() !=
+                  stableIdentityFilter.Count ||
+              stableIdentityFilter.Any(identity =>
+                  string.IsNullOrWhiteSpace(identity) || identity.Length > 128))))
             throw new BrokerException("invalid_payload", "App-library query is invalid.");
     }
 
     private static string QueryHash(AppLibraryBackendQuery query, int limit)
     {
+        var stableIdentityFilter = query.StableIdentityFilter is null
+            ? "N"
+            : "F" + string.Concat(query.StableIdentityFilter.Select(identity =>
+                $"{identity.Length}:{identity}"));
         var value = string.Join('\u001f', query.InstalledOnly, query.Kind,
-            query.SourceAttribution ?? string.Empty, query.Sort, limit);
+            query.SourceAttribution ?? string.Empty, query.SearchText ?? string.Empty,
+            query.Sort, stableIdentityFilter, limit);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16];
     }
+
+    private static string? NormalizeSearchText(string? value) => value is null
+        ? null
+        : string.Join(' ', value.Normalize(NormalizationForm.FormKC)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private string CreateCursor(int offset, AppLibraryCursorDirection direction,
         long revision, string queryHash)

@@ -24,6 +24,7 @@
 #include "WidgetSurfaceCoordinator.h"
 #include "WidgetSurfaceFocus.h"
 #include "SliderInteraction.h"
+#include "TextEntryModal.h"
 #include "TrayLayout.h"
 
 #include <Windows.h>
@@ -3715,6 +3716,10 @@ private:
                 state_.focusRegion() != gba::FocusRegion::Widget ||
                 state_.activeWidget() != request.widgetId) continue;
 
+            if (resolved->protocolButton == L"a" &&
+                OpenTextEntryModal(request.widgetId, *snapshot, resolved->nodeId))
+                continue;
+
             const auto handled = bridge_.SendControllerInput(
                 request.widgetId, resolved->protocolButton, L"openWidget", resolved->nodeId,
                 snapshot->activeInputScopeId, snapshot->sequence,
@@ -3936,6 +3941,13 @@ private:
         const gba::input::NavigationDirection direction,
         const gba::input::NavigationEventPhase phase,
         const bool repeatedCanNavigate) {
+        if (textEntryModal_.active()) {
+            const auto button = direction == gba::input::NavigationDirection::Left ? L"DPadLeft" :
+                direction == gba::input::NavigationDirection::Right ? L"DPadRight" :
+                direction == gba::input::NavigationDirection::Up ? L"DPadUp" : L"DPadDown";
+            textEntryModal_.HandleController(button);
+            return;
+        }
         if (state_.surface() != gba::Surface::Widget ||
             state_.focusRegion() != gba::FocusRegion::Widget) return;
         const std::wstring_view widgetId = state_.activeWidget();
@@ -4312,6 +4324,10 @@ private:
     void DispatchControllerAction(
         const std::wstring_view button,
         const bool physicalPress = false) {
+        if (textEntryModal_.active()) {
+            textEntryModal_.HandleController(button);
+            return;
+        }
         if (HandleFocusedSliderModeButton(button)) return;
         using gba::input::ControllerActionContext;
         using gba::input::ControllerActionRoute;
@@ -4389,6 +4405,9 @@ private:
                 InvalidateRect(window_, nullptr, FALSE);
                 UpdateWindow(window_);
             }
+            if (isOpen && visibleFocus && protocolButton == L"a" &&
+                phase == gba::input::NavigationEventPhase::Pressed &&
+                OpenTextEntryModal(widget, *snapshot, *visibleFocus)) return;
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
@@ -4448,6 +4467,33 @@ private:
         lastActionExpiresAt_ = GetTickCount64() + 1800;
         AppendDiagnostic(L"Widget action " + lastActionMessage_);
         InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    bool OpenTextEntryModal(
+        const std::wstring_view widget,
+        const gba::WidgetSnapshot& snapshot,
+        const std::wstring_view nodeId) {
+        const auto* node = gba::input::FindNodeInInputScope(
+            snapshot, nodeId, snapshot.activeInputScopeId);
+        if (!node || !node->isTextEntry) return false;
+        if (node->isDisabled || node->isBusy || node->actionId.empty()) return true;
+
+        sliderInteraction_.DeactivateAll();
+        (void)pressedInteraction_.Clear();
+        focusedElementId_ = node->id;
+        focusMemory_.Remember(widget, snapshot, focusedElementId_);
+        const auto committed = textEntryModal_.Show(
+            instance_, window_, node->textEntryValue,
+            node->textEntryPlaceholder, node->textEntryMaximumLength);
+        if (committed) {
+            const auto handled = bridge_.SendAction(
+                widget, node->actionId, node->id,
+                snapshot.activeInputScopeId, *committed);
+            if (handled && *handled)
+                RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
+        }
+        InvalidateRect(window_, nullptr, FALSE);
+        return true;
     }
 
     [[nodiscard]] bool GraphicsResourcesReady() const noexcept {
@@ -5368,6 +5414,7 @@ private:
     gba::input::WidgetSurfaceFocusMemory focusMemory_;
     gba::input::SliderInteractionState sliderInteraction_;
     gba::input::PressedInteractionState pressedInteraction_;
+    gba::input::TextEntryModal textEntryModal_;
     std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
     std::unordered_map<std::wstring, std::wstring> widgetStartupFailures_;
     gba::WidgetBridgeClient bridge_;

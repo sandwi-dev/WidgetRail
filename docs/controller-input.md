@@ -59,6 +59,20 @@ ID and invokes semantic A only when enabled. Hit testing is host-owned, clipped
 to the renderer's visible active input scope, and never forwards raw mouse data
 to widget code. Clicking the dimmed backdrop closes the overlay.
 
+### Host-owned text entry
+
+A focused `TextEntry` opens one native modal owned by the overlay. Keyboard and
+controller navigation stay inside that modal: A activates a key or commits,
+B cancels, X backspaces, and Clear removes the current value. The edit, key,
+cancel, and commit controls are ordinary high-contrast-aware native controls
+with UI Automation semantics. Closing the modal restores focus to the exact
+authored TextEntry ID.
+
+Only one final bounded committed value is sent with the semantic widget action.
+Raw key events, HWNDs, insertion history, and canceled text never enter the
+snapshot or worker. The host rejects values beyond the authored maximum (at
+most 96 characters) or containing control characters.
+
 ## B behavior
 
 While widget controls own focus, B is offered to the active input scope. A

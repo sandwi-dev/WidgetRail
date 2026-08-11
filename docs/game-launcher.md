@@ -1,6 +1,6 @@
 # Game Launcher reference
 
-Status: bundled package 0.3.0 implements the installed-only controller-first
+Status: bundled package 0.4.0 implements the installed-only controller-first
 library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
@@ -12,6 +12,15 @@ provider identity, infer games from titles, or cache a complete library.
 
 ## Collection and controller behavior
 
+- **Search installed games** opens one host-owned text-entry modal. Keyboard or
+  controller input remains inside the host; the widget receives only one
+  normalized committed value of at most 96 characters. A commits, B cancels
+  without changing the query, X/backspace edits, Clear removes the query, and
+  focus returns to the search control after the modal closes.
+- Favorites, source, and the closed A–Z/Z–A/source sorts are provider queries,
+  not filters over the retained widget window. Favorite filtering sends at
+  most 128 opaque SavedIds; the broker resolves them against exact current
+  authority-scoped identities and an empty match remains an empty result.
 - The initial and adjacent requests contain at most 64 records. The shared
   `WidgetCursorResource` appends or prepends complete pages, retains at most 192
   rows for this widget, remembers at most 256 opaque traversal cursors, and
@@ -20,7 +29,9 @@ provider identity, infer games from titles, or cache a complete library.
   focus on the entering keyed tile and retains the authored viewport anchor.
   Previous, Next, Refresh, automatic near-edge pagination, retry, and every tile
   remain reachable through controller actions.
-- Cursors remain query/revision/direction bound in the broker. Repeated cursors,
+- Cursors remain query/revision/direction bound in the broker. Committing or
+  clearing a query resets the cursor generation and anchor; a late result from
+  a replaced query cannot publish. Repeated cursors,
   immediate or multi-hop loops within the finite traversal evidence, stale
   generations, malformed pages, cancellation, and traversal beyond the explicit
   bound fail closed while preserving the last good window.
@@ -89,7 +100,9 @@ adjacent source failure retains prior rows and shows a warning. Lifecycle
 deactivation cancels and drains cursor/private-state work; cancellation-ignoring
 late pages cannot republish after reset.
 
-Focused managed coverage includes 2,000- and 10,000-item forward/reverse
+Focused managed coverage includes normalized search/source/favorite/sort
+criteria, empty favorite matches, query replacement with a cancellation-
+ignoring old completion, and 2,000- and 10,000-item forward/reverse
 traversal, bounded rows/cursors/snapshot nodes, display-only warm state, fresh
 SavedId revalidation, unavailable launch rejection, retained-window errors,
 lazy artwork semantics, explicit favorite/group/preference mutations, CAS

@@ -59,9 +59,23 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.FocusPersistenceVersion);
             if (ContainsCursorCollectionFeature(Root))
                 required = Math.Max(required, ProtocolConstants.CursorCollectionVersion);
+            if (ContainsTextEntry(Root))
+                required = Math.Max(required, ProtocolConstants.TextEntryVersion);
             return required;
         }
     }
+
+    private static bool ContainsTextEntry(WidgetElement element) => element switch
+    {
+        TextEntryElement => true,
+        ResponsiveBranchElement branch => ContainsTextEntry(branch.Child),
+        StackElement stack => stack.Children.Any(ContainsTextEntry),
+        RowElement row => row.Children.Any(ContainsTextEntry),
+        ScrollElement scroll => scroll.Children.Any(ContainsTextEntry),
+        ActionSurfaceElement surface => surface.Children.Any(ContainsTextEntry),
+        GridElement grid => grid.Children.Any(ContainsTextEntry),
+        _ => false,
+    };
 
     private static bool ContainsCursorCollectionFeature(WidgetElement element) => element switch
     {
@@ -239,7 +253,11 @@ public sealed record WidgetActionEvent(
     long Sequence = 0,
     long MonotonicTimestampMicroseconds = 0,
     double? RequestedValue = null,
-    string? InputScopeId = null);
+    string? InputScopeId = null)
+{
+    /// <summary>Bounded host-committed text. Raw/intermediate input is never exposed.</summary>
+    public string? CommittedText { get; init; }
+}
 
 public enum ControllerInputContext
 {

@@ -13,6 +13,15 @@ neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
 See [Declarative UI](../../docs/declarative-ui.md) and
 [Display and resolution](../../docs/display-and-resolution.md).
 
+Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` for bounded
+controller-first text. The native host owns keyboard/controller editing, clear,
+backspace, commit/cancel, focus restoration, high-contrast colors, and the UIA
+edit surface. The widget receives only the final value through
+`WidgetActionEvent.CommittedText`; raw keys, HWNDs, and intermediate edits never
+cross the worker boundary. Values are capped at 96 characters and negotiate
+protocol v15 only when authored. `.Disabled()` preserves a stable focus stop
+while suppressing activation.
+
 For settings and contextual commands, prefer the public controller composites
 over custom focus routing. `UI.SettingsRow` keeps long supporting copy separate
 from its one stable `id.action` target. `UI.ActionSheet` accepts 1–32 stable

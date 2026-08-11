@@ -10,7 +10,8 @@ internal sealed record GameLauncherPresentationState(
     string? LaunchingSavedId,
     IReadOnlyDictionary<string, GameLauncherLaunchState> LaunchStates,
     bool OrganizationBusy,
-    bool Interactive);
+    bool Interactive,
+    WidgetAppLibraryQuery Query);
 
 internal static class GameLauncherPresentation
 {
@@ -36,6 +37,37 @@ internal static class GameLauncherPresentation
                 UI.Text(state.Status, "game-launcher.status", state.Status)
                     .Classes("game-launcher-status"))
             .Classes("game-launcher-header");
+
+        var queryControls = UI.Stack("game-launcher.query",
+            UI.TextEntry(
+                    state.Query.SearchText ?? string.Empty,
+                    "Search installed games",
+                    "game-launcher.search.commit",
+                    "game-launcher.search",
+                    WidgetAppLibraryQuery.MaximumSearchTextLength)
+                .Disabled(!state.Interactive)
+                .Classes("game-launcher-search"),
+            UI.Row("game-launcher.filters",
+                UI.ToggleButton("Favorites", state.Query.FavoriteSavedIds.Count != 0,
+                    "game-launcher.filter.favorites", "game-launcher.filter.favorites")
+                    .Disabled(!state.Interactive ||
+                        state.Organization.FavoriteSavedIds.Count == 0),
+                UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
+                        "game-launcher.filter.source", "game-launcher.filter.source")
+                    .Disabled(!state.Interactive),
+                UI.Button("Sort: " + (state.Query.Sort switch
+                    {
+                        WidgetAppLibrarySortOrder.DisplayNameDescending => "Z–A",
+                        WidgetAppLibrarySortOrder.SourceThenDisplayName => "Source",
+                        _ => "A–Z",
+                    }), "game-launcher.filter.sort", "game-launcher.filter.sort")
+                    .Disabled(!state.Interactive),
+                UI.Button("Clear", "game-launcher.query.clear", "game-launcher.query.clear")
+                    .Disabled(!state.Interactive || state.Query == new WidgetAppLibraryQuery(
+                        InstalledOnly: true, Kind: WidgetAppLibraryKind.Game,
+                        Sort: WidgetAppLibrarySortOrder.DisplayName)))
+            .Classes("game-launcher-filters"))
+        .Classes("game-launcher-query");
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
@@ -185,7 +217,7 @@ internal static class GameLauncherPresentation
             initialFocus = "game-launcher.empty.action";
         }
 
-        var root = UI.Stack("game-launcher.root", header, content)
+        var root = UI.Stack("game-launcher.root", header, queryControls, content)
             .InputScope("game-launcher")
             .Classes("game-launcher-widget");
         return new WidgetView(root, initialFocus,

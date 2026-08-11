@@ -338,6 +338,66 @@ public sealed record ButtonElement : WidgetElement
     };
 }
 
+/// <summary>
+/// Opens a host-owned bounded text-entry modal. Widgets receive only the final
+/// committed value in <see cref="WidgetActionEvent.CommittedText"/>; raw keys,
+/// native handles, and intermediate edits never cross the host boundary.
+/// </summary>
+public sealed record TextEntryElement : WidgetElement
+{
+    internal TextEntryElement(
+        string id, string value, string placeholder, int maximumLength, string actionId)
+        : base(RequireId(id))
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(placeholder);
+        if (maximumLength is < 1 or > ProtocolConstants.MaximumTextEntryLength)
+            throw new ArgumentOutOfRangeException(nameof(maximumLength));
+        if (value.Length > maximumLength)
+            throw new ArgumentException("The text-entry value exceeds its maximum length.", nameof(value));
+        Value = value;
+        Placeholder = placeholder;
+        MaximumLength = maximumLength;
+        ActionId = RequireId(actionId);
+    }
+
+    public string Value { get; init; }
+    public string Placeholder { get; init; }
+    public int MaximumLength { get; init; }
+    public string ActionId { get; init; }
+    public string? AccessibilityLabel { get; init; }
+    public bool IsDisabled { get; init; }
+    public FocusNeighbors? FocusNeighbors { get; init; }
+
+    public TextEntryElement Disabled(bool disabled = true) => this with
+        { IsDisabled = disabled };
+
+    public TextEntryElement FocusUp(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Up = RequireId(id) } };
+    public TextEntryElement FocusDown(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) } };
+    public TextEntryElement FocusLeft(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Left = RequireId(id) } };
+    public TextEntryElement FocusRight(string id) => this with
+        { FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) } };
+
+    internal override ViewNode ToProtocolNode() => new()
+    {
+        Id = Id,
+        Kind = ViewNodeKind.TextEntry,
+        Text = Value.Length == 0 ? Placeholder : Value,
+        AccessibilityLabel = AccessibilityLabel ?? Placeholder,
+        AccessibilityValue = Value,
+        ActionId = ActionId,
+        TextEntryValue = Value,
+        TextEntryPlaceholder = Placeholder,
+        TextEntryMaximumLength = MaximumLength,
+        IsDisabled = IsDisabled,
+        Focus = FocusNeighbors,
+        StyleClasses = StyleClasses,
+    };
+}
+
 public sealed record ProgressElement : WidgetElement
 {
     internal ProgressElement(string id, double value, double maximum, string? accessibilityLabel) : base(RequireId(id))

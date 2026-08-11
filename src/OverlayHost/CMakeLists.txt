@@ -38,6 +38,7 @@ add_executable(OverlayHost WIN32
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
     SliderInteraction.cpp
+    TextEntryModal.cpp
     FocusNavigation.cpp
     WidgetSurfaceFocus.cpp
     WidgetLifecycle.cpp
@@ -219,6 +220,14 @@ if(GBA_BUILD_TESTS)
     target_compile_features(ControllerNavigationTests PRIVATE cxx_std_20)
     target_compile_options(ControllerNavigationTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME ControllerNavigationTests COMMAND ControllerNavigationTests)
+
+    add_executable(TextEntryModalTests TextEntryModalTests.cpp TextEntryModal.cpp)
+    target_compile_features(TextEntryModalTests PRIVATE cxx_std_20)
+    target_compile_options(TextEntryModalTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(TextEntryModalTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(TextEntryModalTests PRIVATE user32 gdi32 ole32 uiautomationcore)
+    add_test(NAME TextEntryModalTests COMMAND TextEntryModalTests)
 
     add_executable(PressedInteractionTests PressedInteractionTests.cpp)
     target_compile_features(PressedInteractionTests PRIVATE cxx_std_20)

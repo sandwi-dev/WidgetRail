@@ -15,6 +15,7 @@ public sealed record ReplayInputEvent
 {
     public required ControllerButton Button { get; init; }
     public ControllerEventPhase Phase { get; init; } = ControllerEventPhase.Pressed;
+    public string? CommittedText { get; init; }
 }
 
 public sealed record ReplayStep(
@@ -23,7 +24,10 @@ public sealed record ReplayStep(
     ControllerEventPhase Phase,
     string? FocusBefore,
     string? FocusAfter,
-    string? ActionId);
+    string? ActionId)
+{
+    public string? CommittedText { get; init; }
+}
 
 public static class ControllerReplay
 {
@@ -45,6 +49,7 @@ public static class ControllerReplay
             var input = replay.Events[index];
             var before = focus;
             string? action = null;
+            string? committedText = null;
 
             if (focus is not null && nodes.TryGetValue(focus, out var current))
             {
@@ -52,8 +57,30 @@ public static class ControllerReplay
                 {
                     var target = DirectionTarget(current.Focus, input.Button);
                     if (target is not null) focus = target;
-                    else if (input.Button == ControllerButton.A && input.Phase == ControllerEventPhase.Pressed)
-                        action = current.ActionId;
+                    else if (input.Button == ControllerButton.A &&
+                             input.Phase == ControllerEventPhase.Pressed)
+                    {
+                        if (current.Kind == ViewNodeKind.TextEntry)
+                        {
+                            if (input.CommittedText is { } value)
+                            {
+                                var maximumLength = current.TextEntryMaximumLength ??
+                                    ProtocolConstants.MaximumTextEntryLength;
+                                if (value.Length > maximumLength || value.Any(char.IsControl))
+                                    throw new CliOperationException(
+                                        $"Committed text for '{current.Id}' is invalid.");
+                                action = current.ActionId;
+                                committedText = value;
+                            }
+                        }
+                        else
+                        {
+                            if (input.CommittedText is not null)
+                                throw new CliOperationException(
+                                    "Committed text is valid only for a text-entry activation.");
+                            action = current.ActionId;
+                        }
+                    }
                 }
 
                 action ??= current.Shortcuts
@@ -65,7 +92,8 @@ public static class ControllerReplay
                 .SelectMany(node => node.Shortcuts)
                 .FirstOrDefault(shortcut => shortcut.Button == input.Button && shortcut.Phase == input.Phase)
                 ?.ActionId;
-            steps.Add(new ReplayStep(index + 1, input.Button, input.Phase, before, focus, action));
+            steps.Add(new ReplayStep(index + 1, input.Button, input.Phase, before, focus, action)
+                { CommittedText = committedText });
         }
         return steps;
     }

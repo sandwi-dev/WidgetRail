@@ -82,6 +82,41 @@ internal static class AppLibraryCursorScenarios
             CancellationToken.None));
     }
 
+    internal static async Task QueryCriteriaAreRevisionBound()
+    {
+        var source = new CursorSource(130);
+        await using var provider = new WindowsAppLibraryProvider([source], CursorSta.Instance);
+        var query = new AppLibraryBackendQuery(Kind: AppLibraryKind.Game,
+            Sort: AppLibrarySortOrder.DisplayNameDescending)
+        {
+            SearchText = "Game 0001",
+            StableIdentityFilter = ["stable-000100", "stable-000101"],
+        };
+        var page = await provider.QueryAppLibraryAsync(
+            new(query, null, null, 64, Refresh: true), CancellationToken.None);
+        Assert.Equal(2, page.Items.Count);
+        Assert.Equal("Game 000101", page.Items[0].DisplayName);
+        Assert.Equal("Game 000100", page.Items[1].DisplayName);
+        var empty = await provider.QueryAppLibraryAsync(
+            new(query with { StableIdentityFilter = [] }, null, null, 64, Refresh: true),
+            CancellationToken.None);
+        Assert.Equal(0, empty.Items.Count);
+        var unfilteredQuery = query with
+        {
+            SearchText = "Game",
+            StableIdentityFilter = null,
+        };
+        var unfiltered = await provider.QueryAppLibraryAsync(
+            new(unfilteredQuery, null, null, 64, Refresh: true), CancellationToken.None);
+        Assert.True(unfiltered.After is not null);
+        await Assert.ThrowsAsync<BrokerException>(() => provider.QueryAppLibraryAsync(
+            new(unfilteredQuery with { StableIdentityFilter = [] }, unfiltered.After,
+                AppLibraryCursorDirection.After, 64), CancellationToken.None));
+        await Assert.ThrowsAsync<BrokerException>(() => provider.QueryAppLibraryAsync(
+            new(query with { SearchText = "Game" }, page.After ?? "invalid",
+                AppLibraryCursorDirection.After, 64), CancellationToken.None));
+    }
+
     internal static async Task ControlledLaunchEvidenceIsPreserved()
     {
         var source = new CursorSource(1)

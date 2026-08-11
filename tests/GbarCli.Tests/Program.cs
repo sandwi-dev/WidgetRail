@@ -1270,6 +1270,32 @@ static Task ReplayFocusAndActions()
     Assert.Equal("lower", steps[1].ActionId);
     Assert.Equal("raise", steps[2].ActionId);
     Assert.Equal("apply", steps[3].ActionId);
+
+    var textSnapshot = new WidgetView(
+        UI.TextEntry("", "Search", "search.commit", "search", 8),
+        "search").CreateSnapshot("text-entry", 1);
+    var textSteps = ControllerReplay.Run(textSnapshot, new InputReplay
+    {
+        Events = [new() { Button = ControllerButton.A, CommittedText = "Halo" }],
+    });
+    Assert.Equal("search.commit", textSteps.Single().ActionId);
+    Assert.Equal("Halo", textSteps.Single().CommittedText);
+    var canceled = ControllerReplay.Run(textSnapshot, new InputReplay
+    {
+        Events = [new() { Button = ControllerButton.A }],
+    });
+    Assert.Equal<string?>(null, canceled.Single().ActionId);
+    try
+    {
+        ControllerReplay.Run(textSnapshot, new InputReplay
+        {
+            Events = [new() { Button = ControllerButton.A, CommittedText = "Too long!" }],
+        });
+        throw new InvalidOperationException("Expected an invalid committed-text replay.");
+    }
+    catch (CliOperationException)
+    {
+    }
     return Task.CompletedTask;
 }
 

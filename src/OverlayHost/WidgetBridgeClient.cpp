@@ -475,6 +475,29 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.accessibilityLabel = OptionalString(source, L"accessibilityLabel");
     node.accessibilityValue = OptionalString(source, L"accessibilityValue");
     node.actionId = OptionalString(source, L"actionId");
+    node.textEntryValue = OptionalString(source, L"textEntryValue");
+    node.textEntryPlaceholder = OptionalString(source, L"textEntryPlaceholder");
+    if (source.HasKey(L"textEntryMaximumLength")) {
+        const auto value = source.GetNamedNumber(L"textEntryMaximumLength");
+        if (!std::isfinite(value) || value < 1 || value > 96 || std::floor(value) != value)
+            throw winrt::hresult_invalid_argument();
+        node.textEntryMaximumLength = static_cast<std::size_t>(value);
+    }
+    if (node.kind == L"textEntry" &&
+        (node.textEntryMaximumLength == 0 ||
+         node.textEntryValue.size() > node.textEntryMaximumLength ||
+         node.textEntryPlaceholder.size() > 96 ||
+         std::any_of(node.textEntryValue.begin(), node.textEntryValue.end(),
+             [](const wchar_t value) { return std::iswcntrl(value) != 0; }) ||
+         std::any_of(node.textEntryPlaceholder.begin(), node.textEntryPlaceholder.end(),
+             [](const wchar_t value) { return std::iswcntrl(value) != 0; })))
+        throw winrt::hresult_invalid_argument();
+    if (node.kind == L"textEntry") {
+        // The trigger participates in the existing button layout/focus/UIA
+        // contract. Activation opens a native host-owned edit modal.
+        node.isTextEntry = true;
+        node.kind = L"button";
+    }
     node.valueChangedActionId = OptionalString(source, L"valueChangedActionId");
     node.focusPersistenceId = OptionalString(source, L"focusPersistenceId");
     node.sliderInteractionMode = OptionalString(source, L"sliderInteractionMode");
@@ -1661,12 +1684,16 @@ std::optional<bool> WidgetBridgeClient::SendAction(
     const std::wstring_view widgetId,
     const std::wstring_view actionId,
     const std::wstring_view sourceElementId,
-    const std::wstring_view inputScopeId) {
+    const std::wstring_view inputScopeId,
+    const std::optional<std::wstring_view> committedText) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() || actionId.empty() ||
         sourceElementId.empty() || !IsIdentifier(widgetId) ||
         !IsIdentifier(actionId) || !IsIdentifier(sourceElementId) ||
-        (!inputScopeId.empty() && !IsIdentifier(inputScopeId))) {
+        (!inputScopeId.empty() && !IsIdentifier(inputScopeId)) ||
+        (committedText && (committedText->size() > 96 ||
+            std::any_of(committedText->begin(), committedText->end(),
+                [](const wchar_t value) { return std::iswcntrl(value) != 0; })))) {
         if (pipe_ != INVALID_HANDLE_VALUE) Fail(L"Widget action request is invalid.");
         return std::nullopt;
     }
@@ -1679,6 +1706,10 @@ std::optional<bool> WidgetBridgeClient::SendAction(
         if (!inputScopeId.empty()) {
             action.Insert(L"inputScopeId",
                           JsonValue::CreateStringValue(winrt::hstring(inputScopeId)));
+        }
+        if (committedText) {
+            action.Insert(L"committedText",
+                JsonValue::CreateStringValue(winrt::hstring(*committedText)));
         }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));

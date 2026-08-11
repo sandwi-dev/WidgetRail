@@ -42,6 +42,15 @@ public static partial class UI
     public static ButtonElement Button(string label, string action, string id) =>
         new(id, label, action);
 
+    /// <summary>Creates a host-owned bounded text-entry trigger.</summary>
+    public static TextEntryElement TextEntry(
+        string value,
+        string placeholder,
+        string action,
+        string id,
+        int maximumLength = ProtocolConstants.MaximumTextEntryLength) =>
+        new(id, value, placeholder, maximumLength, action);
+
     /// <summary>
     /// Creates a controller-ready two-state button. The visual and
     /// accessibility labels expose the current state, while IsSelected gives

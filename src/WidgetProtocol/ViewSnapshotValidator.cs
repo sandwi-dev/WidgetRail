@@ -404,15 +404,16 @@ public static class ViewSnapshotValidator
             if (!string.IsNullOrWhiteSpace(node.Id) && !ids.TryAdd(node.Id, (node, path, scopeKey)))
                 Add($"{path}.id", "duplicate_id", $"The ID '{node.Id}' is already used.");
 
-            if (node.Kind is ViewNodeKind.Button && string.IsNullOrWhiteSpace(node.ActionId))
-                Add($"{path}.actionId", "required", "A button requires an action ID.");
-            if (node.Kind is ViewNodeKind.Button &&
+            if (node.Kind is ViewNodeKind.Button or ViewNodeKind.TextEntry &&
+                string.IsNullOrWhiteSpace(node.ActionId))
+                Add($"{path}.actionId", "required", "An interactive text or button control requires an action ID.");
+            if (node.Kind is ViewNodeKind.Button or ViewNodeKind.TextEntry &&
                 string.IsNullOrWhiteSpace(node.Text) && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
-                Add(path, "missing_accessible_name", "A button requires visible text or an accessibility label.");
-            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface) &&
+                Add(path, "missing_accessible_name", "An interactive text or button control requires visible text or an accessibility label.");
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry) &&
                 (node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null))
                 Add(path, "interaction_state_not_allowed",
-                    "Interaction states apply only to buttons, sliders, and action surfaces.");
+                    "Interaction states apply only to buttons, sliders, action surfaces, and text entry.");
             if (node.Kind is ViewNodeKind.Slider && node.IsSelected is not null)
                 Add($"{path}.isSelected", "interaction_state_not_allowed", "Selected state does not apply to sliders.");
             if (node.Kind is ViewNodeKind.Progress &&
@@ -468,15 +469,38 @@ public static class ViewSnapshotValidator
             {
                 if (node.Minimum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null ||
-                    node.AccessibilityValue is not null ||
+                    (node.Kind is not ViewNodeKind.TextEntry && node.AccessibilityValue is not null) ||
                     node.SliderInteractionMode is not null)
                     Add(path, "slider_property_not_allowed",
                         "Minimum, step, value-change action, accessible value, and interaction mode apply only to sliders.");
             }
-            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface) &&
+            if (node.Kind is ViewNodeKind.TextEntry)
+            {
+                if (snapshot.ProtocolVersion < ProtocolConstants.TextEntryVersion)
+                    Add(path, "feature_requires_version",
+                        $"Text entry requires protocol version {ProtocolConstants.TextEntryVersion} or later.");
+                if (node.TextEntryMaximumLength is not (>= 1 and <= ProtocolConstants.MaximumTextEntryLength))
+                    Add($"{path}.textEntryMaximumLength", "invalid_text_entry_limit",
+                        $"Text entry maximum length must be 1-{ProtocolConstants.MaximumTextEntryLength}.");
+                if (node.TextEntryValue is null ||
+                    node.TextEntryValue.Length > (node.TextEntryMaximumLength ?? 0) ||
+                    node.TextEntryValue.Any(char.IsControl))
+                    Add($"{path}.textEntryValue", "invalid_text_entry_value",
+                        "Text entry requires a bounded control-free current value.");
+                if (node.TextEntryPlaceholder is null ||
+                    node.TextEntryPlaceholder.Length > ProtocolConstants.MaximumTextEntryLength ||
+                    node.TextEntryPlaceholder.Any(char.IsControl))
+                    Add($"{path}.textEntryPlaceholder", "invalid_text_entry_placeholder",
+                        "Text entry requires a bounded control-free placeholder.");
+            }
+            else if (node.TextEntryValue is not null || node.TextEntryPlaceholder is not null ||
+                     node.TextEntryMaximumLength is not null)
+                Add(path, "text_entry_property_not_allowed",
+                    "Text-entry properties apply only to text-entry nodes.");
+            if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry) &&
                 node.ActionId is not null)
                 Add($"{path}.actionId", "action_not_allowed",
-                    "Action IDs apply only to buttons, sliders, and action surfaces.");
+                    "Action IDs apply only to buttons, sliders, action surfaces, and text entry.");
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
             if (node.ArtworkHandle is not null)
             {

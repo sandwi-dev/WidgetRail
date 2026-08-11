@@ -159,6 +159,8 @@ enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Application = GameBarAlte
 enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Game = GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Game
 enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Unknown = GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Unknown
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayNameDescending = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayNameDescending
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.SourceThenDisplayName = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.SourceThenDisplayName
 enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Input = GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Input
 enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Output = GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection.Output
 enum GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating = GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState.Enumerating
@@ -329,6 +331,8 @@ field const int GameBarAlternative.WidgetSdk.UI.MaximumToastMessageCharacters = 
 field const int GameBarAlternative.WidgetSdk.UI.MaximumToastTitleCharacters = 120
 field const int GameBarAlternative.WidgetSdk.Widget.ActionQueueCapacity = 16
 field const int GameBarAlternative.WidgetSdk.Widget.ControllerActionQueueCapacity = 16
+field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.MaximumFavoriteSavedIds = 128
+field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.MaximumSearchTextLength = 96
 field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryService.MaximumPageSize = 64
 field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryService.MaximumSavedItems = 64
 field const int GameBarAlternative.WidgetSdk.WidgetCommandError.MaximumMessageLength = 256
@@ -645,6 +649,15 @@ method GameBarAlternative.WidgetSdk.TextElement.Equals(GameBarAlternative.Widget
 method GameBarAlternative.WidgetSdk.TextElement.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.TextElement.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.TextElement.ToString() -> string
+method GameBarAlternative.WidgetSdk.TextEntryElement.Disabled(bool disabled = true) -> GameBarAlternative.WidgetSdk.TextEntryElement
+method GameBarAlternative.WidgetSdk.TextEntryElement.Equals(GameBarAlternative.WidgetSdk.WidgetElement? other) -> bool
+method GameBarAlternative.WidgetSdk.TextEntryElement.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.TextEntryElement.FocusDown(string id) -> GameBarAlternative.WidgetSdk.TextEntryElement
+method GameBarAlternative.WidgetSdk.TextEntryElement.FocusLeft(string id) -> GameBarAlternative.WidgetSdk.TextEntryElement
+method GameBarAlternative.WidgetSdk.TextEntryElement.FocusRight(string id) -> GameBarAlternative.WidgetSdk.TextEntryElement
+method GameBarAlternative.WidgetSdk.TextEntryElement.FocusUp(string id) -> GameBarAlternative.WidgetSdk.TextEntryElement
+method GameBarAlternative.WidgetSdk.TextEntryElement.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.TextEntryElement.ToString() -> string
 method GameBarAlternative.WidgetSdk.ToastElement.Equals(GameBarAlternative.WidgetSdk.WidgetElement? other) -> bool
 method GameBarAlternative.WidgetSdk.ToastElement.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.ToastElement.GetHashCode() -> int
@@ -1324,6 +1337,8 @@ method static GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileReques
 method static GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest.op_Inequality(GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest? left, GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest? right) -> bool
 method static GameBarAlternative.WidgetSdk.TextElement.op_Equality(GameBarAlternative.WidgetSdk.TextElement? left, GameBarAlternative.WidgetSdk.TextElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.TextElement.op_Inequality(GameBarAlternative.WidgetSdk.TextElement? left, GameBarAlternative.WidgetSdk.TextElement? right) -> bool
+method static GameBarAlternative.WidgetSdk.TextEntryElement.op_Equality(GameBarAlternative.WidgetSdk.TextEntryElement? left, GameBarAlternative.WidgetSdk.TextEntryElement? right) -> bool
+method static GameBarAlternative.WidgetSdk.TextEntryElement.op_Inequality(GameBarAlternative.WidgetSdk.TextEntryElement? left, GameBarAlternative.WidgetSdk.TextEntryElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.TileArtwork.FromGlyph(GameBarAlternative.WidgetProtocol.WidgetGlyph glyph, string accessibilityLabel) -> GameBarAlternative.WidgetSdk.TileArtwork
 method static GameBarAlternative.WidgetSdk.TileArtwork.FromHandle(GameBarAlternative.WidgetSdk.WidgetArtworkHandle handle, string accessibilityLabel, GameBarAlternative.WidgetProtocol.ImageFit fit = GameBarAlternative.WidgetProtocol.ImageFit.Cover) -> GameBarAlternative.WidgetSdk.TileArtwork
 method static GameBarAlternative.WidgetSdk.TileArtwork.FromHttps(string source, string accessibilityLabel, GameBarAlternative.WidgetProtocol.ImageFit fit = GameBarAlternative.WidgetProtocol.ImageFit.Cover) -> GameBarAlternative.WidgetSdk.TileArtwork
@@ -1371,6 +1386,7 @@ method static GameBarAlternative.WidgetSdk.UI.StatusBadge(string label, GameBarA
 method static GameBarAlternative.WidgetSdk.UI.Stepper(string label, string value, string decrementAction, string incrementAction, string id, bool canDecrement = true, bool canIncrement = true) -> GameBarAlternative.WidgetSdk.RowElement
 method static GameBarAlternative.WidgetSdk.UI.Switch(string label, bool isOn, string action, string id, bool isDisabled = false) -> GameBarAlternative.WidgetSdk.ButtonElement
 method static GameBarAlternative.WidgetSdk.UI.Text(string text, string id, string? accessibilityLabel = null) -> GameBarAlternative.WidgetSdk.TextElement
+method static GameBarAlternative.WidgetSdk.UI.TextEntry(string value, string placeholder, string action, string id, int maximumLength = 96) -> GameBarAlternative.WidgetSdk.TextEntryElement
 method static GameBarAlternative.WidgetSdk.UI.Toast(string title, string message, GameBarAlternative.WidgetSdk.ToastTone tone, string id, System.TimeSpan? duration = null, GameBarAlternative.WidgetProtocol.WidgetGlyph? glyph = null) -> GameBarAlternative.WidgetSdk.ToastElement
 method static GameBarAlternative.WidgetSdk.UI.ToggleButton(string label, bool isOn, string action, string id) -> GameBarAlternative.WidgetSdk.ButtonElement
 method static GameBarAlternative.WidgetSdk.UI.ValueRow(string label, string value, string id, string? description = null, GameBarAlternative.WidgetProtocol.WidgetGlyph? glyph = null, string? valueAccessibilityLabel = null) -> GameBarAlternative.WidgetSdk.RowElement
@@ -1622,6 +1638,8 @@ method virtual GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.Eq
 method virtual GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest.Equals(GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.TextElement.<Clone>$() -> GameBarAlternative.WidgetSdk.TextElement
 method virtual GameBarAlternative.WidgetSdk.TextElement.Equals(GameBarAlternative.WidgetSdk.TextElement? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.TextEntryElement.<Clone>$() -> GameBarAlternative.WidgetSdk.TextEntryElement
+method virtual GameBarAlternative.WidgetSdk.TextEntryElement.Equals(GameBarAlternative.WidgetSdk.TextEntryElement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.ToastElement.<Clone>$() -> GameBarAlternative.WidgetSdk.ToastElement
 method virtual GameBarAlternative.WidgetSdk.ToastElement.Equals(GameBarAlternative.WidgetSdk.ToastElement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.Equals(GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest? other) -> bool
@@ -1728,6 +1746,7 @@ property GameBarAlternative.WidgetProtocol.FocusNeighbors? GameBarAlternative.Wi
 property GameBarAlternative.WidgetProtocol.FocusNeighbors? GameBarAlternative.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }
 property GameBarAlternative.WidgetProtocol.FocusNeighbors? GameBarAlternative.WidgetSdk.ScrubberElement.FocusNeighbors { get; set; }
 property GameBarAlternative.WidgetProtocol.FocusNeighbors? GameBarAlternative.WidgetSdk.SliderElement.FocusNeighbors { get; set; }
+property GameBarAlternative.WidgetProtocol.FocusNeighbors? GameBarAlternative.WidgetSdk.TextEntryElement.FocusNeighbors { get; set; }
 property GameBarAlternative.WidgetProtocol.ImageFit GameBarAlternative.WidgetSdk.ImageElement.Fit { get; set; }
 property GameBarAlternative.WidgetProtocol.ImageFit? GameBarAlternative.WidgetSdk.ButtonElement.LeadingImageFit { get; set; }
 property GameBarAlternative.WidgetProtocol.LoadingIndicatorSize GameBarAlternative.WidgetSdk.LoadingIndicatorElement.Size { get; set; }
@@ -1864,6 +1883,7 @@ property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.Widg
 property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.WidgetSdk.WidgetPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.SavedIds { get; set; }
+property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.FavoriteSavedIds { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetElement.StyleClasses { get; set; }
 property System.Collections.Generic.IReadOnlyList<string>? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.ItemUris { get; set; }
 property System.Exception GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Exception { get; set; }
@@ -1923,6 +1943,7 @@ property bool GameBarAlternative.WidgetSdk.SetWidgetAudioOutputMutedRequest.IsMu
 property bool GameBarAlternative.WidgetSdk.SetWidgetAudioSessionMutedRequest.IsMuted { get; set; }
 property bool GameBarAlternative.WidgetSdk.SetWidgetBluetoothRadioRequest.Enabled { get; set; }
 property bool GameBarAlternative.WidgetSdk.SetWidgetWifiRadioRequest.Enabled { get; set; }
+property bool GameBarAlternative.WidgetSdk.TextEntryElement.IsDisabled { get; set; }
 property bool GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.ContinuePlaying { get; set; }
 property bool GameBarAlternative.WidgetSdk.Widget.IsActive { get; }
 property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Refresh { get; set; }
@@ -2028,6 +2049,7 @@ property double GameBarAlternative.WidgetSdk.WidgetAudioSession.Volume { get; se
 property double GameBarAlternative.WidgetSdk.WidgetMediaSession.PlaybackRate { get; set; }
 property double? GameBarAlternative.WidgetSdk.ControllerInputEvent.RequestedValue { get; set; }
 property double? GameBarAlternative.WidgetSdk.WidgetActionEvent.RequestedValue { get; set; }
+property int GameBarAlternative.WidgetSdk.TextEntryElement.MaximumLength { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Limit { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetwork.SignalPercent { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.RetainedCursorCount { get; }
@@ -2197,6 +2219,9 @@ property string GameBarAlternative.WidgetSdk.SliderElement.AccessibilityValue { 
 property string GameBarAlternative.WidgetSdk.SliderElement.ValueChangedActionId { get; set; }
 property string GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest.ProfileId { get; set; }
 property string GameBarAlternative.WidgetSdk.TextElement.Text { get; set; }
+property string GameBarAlternative.WidgetSdk.TextEntryElement.ActionId { get; set; }
+property string GameBarAlternative.WidgetSdk.TextEntryElement.Placeholder { get; set; }
+property string GameBarAlternative.WidgetSdk.TextEntryElement.Value { get; set; }
 property string GameBarAlternative.WidgetSdk.ToastElement.Message { get; }
 property string GameBarAlternative.WidgetSdk.ToastElement.Title { get; }
 property string GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.DeviceId { get; set; }
@@ -2297,11 +2322,14 @@ property string? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.
 property string? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.DeviceId { get; set; }
 property string? GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest.OffsetUri { get; set; }
 property string? GameBarAlternative.WidgetSdk.TextElement.AccessibilityLabel { get; set; }
+property string? GameBarAlternative.WidgetSdk.TextEntryElement.AccessibilityLabel { get; set; }
+property string? GameBarAlternative.WidgetSdk.WidgetActionEvent.CommittedText { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetActionEvent.InputScopeId { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Cursor { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.ArtworkHandle { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.After { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Before { get; set; }
+property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.SearchText { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.SourceAttribution { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.RequestedFocusId { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetCursorViewport<TItem>.EmptyFocusId { get; set; }
@@ -2420,6 +2448,7 @@ type sealed class GameBarAlternative.WidgetSdk.StackElement : GameBarAlternative
 type sealed class GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest : System.IEquatable<GameBarAlternative.WidgetSdk.StartWidgetSpotifyPlaybackRequest>
 type sealed class GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest : System.IEquatable<GameBarAlternative.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest>
 type sealed class GameBarAlternative.WidgetSdk.TextElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.TextElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
+type sealed class GameBarAlternative.WidgetSdk.TextEntryElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.TextEntryElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.TileArtwork
 type sealed class GameBarAlternative.WidgetSdk.ToastElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.ToastElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest : System.IEquatable<GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest>

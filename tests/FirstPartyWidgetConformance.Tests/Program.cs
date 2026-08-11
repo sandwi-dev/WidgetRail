@@ -1550,6 +1550,19 @@ static async Task ExerciseControlAsync(
                 (node.AccessibilityLabel ?? string.Empty).Contains(
                     "Conformance Game 00064", StringComparison.Ordinal));
             Assert.Equal(explicitSource.Id, snapshot.InitialFocusId);
+            var search = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.search.commit");
+            await client.SendActionAsync(new WidgetActionEvent(
+                "game-launcher.search.commit", search.Id)
+                { CommittedText = "Conformance Game 09999" });
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "game-launcher.launch", "Conformance Game 09999");
+            Assert.Equal(1, Nodes(snapshot.Root).Count(node =>
+                node.ActionId == "game-launcher.launch"));
+            Assert.Equal("Conformance Game 09999", Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.search.commit").TextEntryValue);
+            explicitSource = Nodes(snapshot.Root).Single(node =>
+                node.ActionId == "game-launcher.launch");
             actionId = "game-launcher.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;

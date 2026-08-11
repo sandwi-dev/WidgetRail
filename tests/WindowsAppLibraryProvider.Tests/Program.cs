@@ -55,6 +55,8 @@ var tests = new (string Name, Func<Task> Run)[]
         AppLibraryCursorScenarios.TraversesTenThousandWithoutFullPages),
     ("Cursor queries reject tamper wrong query direction and stale refresh",
         AppLibraryCursorScenarios.CursorsRejectTamperQueryAndRefreshChurn),
+    ("Cursor queries bind normalized search source identity and closed sort",
+        AppLibraryCursorScenarios.QueryCriteriaAreRevisionBound),
     ("Controlled adapters preserve bounded Running and Ended evidence",
         AppLibraryCursorScenarios.ControlledLaunchEvidenceIsPreserved),
     ("Shell sources execute on the bounded STA lane", SourcesUseStaLane),

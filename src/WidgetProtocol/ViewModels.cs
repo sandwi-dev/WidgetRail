@@ -18,6 +18,7 @@ public enum ViewNodeKind
     LoadingIndicator,
     ActionSurface,
     Grid,
+    TextEntry,
 }
 
 /// <summary>
@@ -212,6 +213,10 @@ public sealed record ViewNode
     /// <summary>A localized, human-readable value announced for value controls.</summary>
     public string? AccessibilityValue { get; init; }
     public string? ActionId { get; init; }
+    /// <summary>Current bounded value for a host-owned text-entry modal.</summary>
+    public string? TextEntryValue { get; init; }
+    public string? TextEntryPlaceholder { get; init; }
+    public int? TextEntryMaximumLength { get; init; }
     public double? Value { get; init; }
     public double? Minimum { get; init; }
     public double? Maximum { get; init; }
@@ -293,7 +298,8 @@ public sealed record ViewNode
 
     [JsonIgnore]
     public bool IsFocusable => Kind is
-        ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface;
+        ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
+        ViewNodeKind.TextEntry;
 }
 
 public sealed record ViewSnapshot

@@ -113,6 +113,7 @@ $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tes
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
+$textEntryModalTestObjectDirectory = Join-Path $outputDirectory 'obj\text-entry-modal-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
 $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
 $pinnedSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-surface-host-tests'
@@ -120,7 +121,7 @@ $pinnedPlacementTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-pla
 $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surface-coordinator-tests'
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -266,6 +267,24 @@ function Invoke-WidgetBridgeCatalogTests {
     & (Join-Path $outputDirectory 'WidgetBridgeCatalogTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetBridgeCatalogTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-TextEntryModalTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'TextEntryModalTests.cpp'),
+        (Join-Path $projectDirectory 'TextEntryModal.cpp'),
+        "/Fo:$textEntryModalTestObjectDirectory\",
+        "/Fe:$outputDirectory\TextEntryModalTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib', 'gdi32.lib', 'ole32.lib', 'uiautomationcore.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "TextEntryModalTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'TextEntryModalTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "TextEntryModalTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -712,6 +731,7 @@ if (-not $SkipTests) {
     }
 
     Invoke-WidgetBridgeCatalogTests
+    Invoke-TextEntryModalTests
 
     $placementTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
