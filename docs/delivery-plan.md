@@ -150,6 +150,27 @@ check. Capture-tool implementation requires its own explicit assignment.
 
 ## Recently completed
 
+### DLV-058 — Ship generic pinned-surface lifecycle
+
+**State:** Done
+**Closing commit:** `e160690` (`[DLV-058] add generic pinned surface lifecycle`)
+**Integrated on `main`:** `ae34f9a`
+
+**Reviewer disposition:** Accepted. The public `pinningSupported` manifest
+declaration defaults closed and projects only typed catalog data. One native
+`WidgetSurfaceCoordinator` owns the admitted widget/package generations, real
+tool-window HWND, declarative renderer, bounded one-surface cap, click-through/
+Interactive state, snapshot refresh, catalog reconciliation, and exact teardown;
+widgets receive no HWND, z-order, renderer, provider, or compositor authority.
+Focused evidence passes WidgetProtocol/SDK 86/86, WidgetBridge 70/70, the strict
+native catalog parser, the accepted DLV-011 policy fixture's 299 checks, and 33
+real-HWND coordinator admission/style/UIA/generation/update/hide/teardown checks.
+The measured 10,264,576-byte incremental private working set remains below the
+DLV-016 material threshold. Main was fully repackaged without rerunning the
+already retained focused suites and visibly launched as PID 3924. Durable
+placement and final controller/UIA composition remain explicitly owned by
+DLV-068 and DLV-069; physical game/controller/display evidence remains manual.
+
 ### DLV-011 — Feasibility gate for host-owned pinned surfaces
 
 **State:** Done
@@ -3393,18 +3414,19 @@ disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 `56f6908`; DLV-016 is accepted and integrated as `fee1103`; DLV-011 is accepted
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
-DLV-025 remains user-decision blocked. DLV-058 now turns DLV-011's accepted
-tool-window architecture into the first visible generic Pin/Unpin lifecycle.
-DLV-070 then restores one authoritative host across ordinary and `--show`
-launches before DLV-068 and DLV-069 complete placement and accessibility/input
-composition, then DLV-062 runs the fixed-video trusted-rich-media feasibility
-gate. This visible sequence is independent of the blocked animated-resize
-compositor and may run beside widgets DLV-059 under the explicit file
-boundaries below.
+DLV-025 remains user-decision blocked. DLV-058 is accepted as source `e160690`
+and integrated on main through `ae34f9a`, providing the first visible generic
+Pin/Unpin lifecycle. DLV-070 now restores one authoritative host across ordinary
+and `--show` launches before DLV-068 and DLV-069 complete placement and
+accessibility/input composition, then DLV-062 runs the fixed-video trusted-rich-
+media feasibility gate. This visible sequence is independent of the blocked
+animated-resize compositor and may run beside widgets DLV-059 under the explicit
+file boundaries below.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
-**State:** Assigned
+**State:** Done; accepted source `e160690`, integrated on main as `ae34f9a`
+**Closing commit:** `e160690` (`[DLV-058] add generic pinned surface lifecycle`)
 **Lane:** platform, acting as serialized public-manifest/native lead
 **Baseline:** accepted DLV-057 integration `90cadf4` plus the reviewer
 control-plane commit containing this assignment
@@ -3462,11 +3484,21 @@ raw widget window authority, a public threat-model change, a substantial
 conflict with preserved platform work, or physical-only evidence to choose the
 architecture. Do not borrow the blocked main-panel resize path.
 
+**Reviewer disposition:** Accepted. The closed-by-default manifest opt-in is
+projected as data while one native coordinator owns the admitted identities,
+HWND, rendering, mode, cap, live updates, catalog replacement/removal, and
+terminal cleanup. Focused evidence passes SDK 86/86, Bridge 70/70, native
+catalog parsing, DLV-011 policy 299 checks, and the 33-check real-HWND
+coordinator fixture; incremental pinned private working set was 10,264,576
+bytes. The planner integrated `e160690` through `ae34f9a`, rebuilt the complete
+Release artifact graph with packaging, and visibly launched PID 3924. DLV-068
+and DLV-069 retain geometry and final controller/accessibility composition.
+
 ### DLV-070 — Enforce one OverlayHost owner and forward `--show`
 
-**State:** Ready
+**State:** Assigned
 **Lane:** platform
-**Baseline:** closing commit of DLV-058
+**Baseline:** accepted DLV-058 source `e160690`, integrated on main as `ae34f9a`
 **Dependencies:** accepted main through DLV-057; ordered after DLV-058 so the
 active milestone is not interrupted
 **Owner:** OverlayHost process ownership, bounded local activation transport,

@@ -633,21 +633,20 @@ click-through, DPI, monitor migration, protected media, borderless games, and
 resource cost. Keep the public pin/presentation contract independent of the
 chosen Windows backend.
 
-DLV-011 has completed that first bounded comparison and selected a host-owned
-Win32 tool window for the next pinning gate. The accepted fixture establishes
-host-only HWND/UIA authority, explicit click-through and focusable modes,
-independent main-overlay hide/close lifetime, bounded monitor/DPI placement,
-and small incremental resource measurements. It does not yet ship Pin/Unpin,
-prove pointer pass-through over a real game, host protected media, or validate
-physical mixed-display behavior; the generic pinning gate below still owns
-those outcomes before YouTube playback is added.
+DLV-011 completed the bounded comparison and selected a host-owned Win32 tool
+window. Accepted DLV-058 (`e160690`, integrated through `ae34f9a`) now ships the
+first generic declarative Pin/Unpin/click-through lifecycle with a closed-by-
+default manifest opt-in, one host-owned surface coordinator, live snapshot
+updates, generation-bound teardown, and no widget HWND or z-order authority.
+Physical game click-through, durable placement, final controller/UIA
+composition, protected media, and mixed-display behavior remain later gates.
 
-**Current delivery sequence:** Assigned DLV-058 ships the generic Pin/Unpin/
-click-through lifecycle from the accepted Win32 tool-window architecture.
-Ready DLV-068 adds controller move/resize and durable monitor-safe placement;
+**Current delivery sequence:** Assigned DLV-070 first restores one authoritative
+OverlayHost across ordinary and `--show` launches. Ready DLV-068 then adds
+controller move/resize and durable monitor-safe placement;
 DLV-069 completes input/focus/UIA and emergency-hide composition; DLV-062 then
 runs the fixed-video trusted-media feasibility gate. YouTube URL/video-ID v1 is
-not authorized until all four gates are accepted.
+not authorized until those remaining gates are accepted.
 
 Framework prerequisites:
 
