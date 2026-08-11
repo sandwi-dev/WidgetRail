@@ -342,7 +342,8 @@ public sealed class BridgeCatalog
                     PackageId = manifest.Id,
                     PublisherId = manifest.Publisher,
                     Name = manifest.Name,
-                    InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
+                    InstanceId = InstalledWidgetInstanceIdentity.Derive(
+                        manifest.Id, manifest.Version),
                     WorkerExecutable = workerHost,
                     WorkerArguments = [],
                     StyleFile = styleFile,
@@ -359,7 +360,8 @@ public sealed class BridgeCatalog
                 PackageId = manifest.Id,
                 PublisherId = authorityPublisherId,
                 Name = manifest.Name,
-                InstanceId = InstalledInstanceId(manifest.Id, manifest.Version),
+                InstanceId = InstalledWidgetInstanceIdentity.Derive(
+                    manifest.Id, manifest.Version),
                 Icon = manifest.Presentation.Icon,
                 PinningSupported = manifest.PinningSupported,
                 WorkerExecutable = workerHost,
@@ -826,11 +828,6 @@ public sealed class BridgeCatalog
     private static bool IsBridgeLabel(string value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= 256;
 
-    private static string InstalledInstanceId(string id, string version)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{id}@{version}"));
-        return $"installed.{Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant()}";
-    }
 }
 
 public sealed record BridgeCatalogLoadResult(

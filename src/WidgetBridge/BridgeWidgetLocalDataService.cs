@@ -175,7 +175,7 @@ internal sealed class BridgeWidgetLocalDataService(
                 registry.CatalogSnapshot().Catalog.GetConfigured(widgetId),
                 HasRuntimeRegistration: true);
         }
-        catch (KeyNotFoundException) when (catalogMonitor is not null)
+        catch (BridgeProtocolException) when (catalogMonitor is not null)
         {
             var snapshot = await new GameBarAlternative.WidgetCatalog.WidgetCatalog(
                     catalogMonitor.InstalledCatalogRoot)
@@ -194,7 +194,8 @@ internal sealed class BridgeWidgetLocalDataService(
                 PackageId = manifest.Id,
                 PublisherId = InstalledWidgetAuthority.PublisherId(version),
                 Name = manifest.Name,
-                InstanceId = $"{manifest.Id}.disabled",
+                InstanceId = InstalledWidgetInstanceIdentity.Derive(
+                    manifest.Id, manifest.Version),
                 WorkerExecutable = Environment.ProcessPath!,
                 WorkerFingerprint = version.ContentDigest,
                 CatalogFingerprint = version.ContentDigest,

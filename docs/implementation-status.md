@@ -2632,6 +2632,17 @@ with C++ installed:
   replacement-cancellation regression, which was corrected before the final
   green Bridge run.
 
+- DLV-089 makes disabled installed-widget local-data management reuse the same
+  canonical `installed.<package-version-hash>` instance identity that
+  `BridgeCatalog` assigns while the exact package version is enabled. One
+  internal derivation owner now serves both paths; the former synthetic
+  `<widget-id>.disabled` namespace is removed. The production-shaped Bridge
+  fixture writes through the enabled identity, disables through the real
+  catalog, rejects a stale confirmation, clears without creating a worker,
+  preserves a neighboring widget, and observes clean state after re-enabling
+  the unchanged version. No private-state schema, public protocol, package
+  enablement, or removal behavior changed.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:

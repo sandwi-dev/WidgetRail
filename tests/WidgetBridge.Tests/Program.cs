@@ -1256,10 +1256,19 @@ static async Task InstalledWorkerLocalDataClearIsExact()
     var simulator = new SimulatedPlatformBrokerBackend();
     await using var composite = new CompositePlatformBrokerBackend(
         simulator, simulator, privateState: backend);
+    var selectedConfigured = load.Catalog.GetConfigured(selected.Manifest.Id);
+    var neighborConfigured = load.Catalog.GetConfigured(neighbor.Manifest.Id);
+    Assert.Equal(InstalledWidgetInstanceIdentity.Derive(
+        selected.Manifest.Id, selected.Manifest.Version), selectedConfigured.InstanceId);
+    Assert.True(!string.Equals(selectedConfigured.InstanceId,
+        InstalledWidgetInstanceIdentity.Derive(selected.Manifest.Id, "2.0.0"),
+        StringComparison.Ordinal), "An active-version replacement reused local state identity.");
     var selectedIdentity = new BrokerWidgetIdentity(
-        selected.Manifest.Id, InstalledWidgetAuthority.PublisherId(selected), "selected.test");
+        selectedConfigured.PackageId, selectedConfigured.PublisherId,
+        selectedConfigured.InstanceId);
     var neighborIdentity = new BrokerWidgetIdentity(
-        neighbor.Manifest.Id, InstalledWidgetAuthority.PublisherId(neighbor), "neighbor.test");
+        neighborConfigured.PackageId, neighborConfigured.PublisherId,
+        neighborConfigured.InstanceId);
     var encoded = Convert.ToBase64String("{\"schemaVersion\":1}"u8);
     await backend.WritePrivateStateAsync(
         selectedIdentity, new WritePrivateStateRequest(encoded, null), CancellationToken.None);
@@ -1267,8 +1276,11 @@ static async Task InstalledWorkerLocalDataClearIsExact()
         neighborIdentity, new WritePrivateStateRequest(encoded, null), CancellationToken.None);
 
     var pipeName = $"gba-bridge-local-data-{Guid.NewGuid():N}";
+    await using var monitor = new BridgeCatalogMonitor(
+        trusted.Path, catalogRoot, Environment.ProcessPath!, load.Catalog);
     await using var server = new WidgetBridgeServer(
-        pipeName, load.Catalog, 64 * 1024, platformBackend: composite);
+        pipeName, load.Catalog, 64 * 1024, platformBackend: composite,
+        catalogMonitor: monitor);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
     await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
     try
@@ -1279,19 +1291,55 @@ static async Task InstalledWorkerLocalDataClearIsExact()
                 selected.Manifest.Id, WidgetLifecycleState.Visible));
         Assert.Equal(BridgeMessageTypes.Acknowledged, started.Type);
         Assert.Equal(1, server.RunningWorkerCount);
+
+        await catalog.SetEnabledAsync(selected.Manifest.Id, false);
+        var disabled = await BridgeCatalog.LoadWithInstalledAsync(
+            trusted.Path, catalogRoot, Environment.ProcessPath!);
+        server.ApplyCatalog(disabled.Catalog, revision: 1, publishEvent: false);
+        await WaitUntilAsync(() => server.RunningWorkerCount == 0,
+            TimeSpan.FromSeconds(3));
         var inspection = await server.InspectWidgetLocalDataAsync(selected.Manifest.Id);
         Assert.True(inspection.Exists && inspection.ConfirmationToken is not null,
             "Installed state did not produce an exact confirmation token.");
+        var currentState = await backend.ReadPrivateStateAsync(
+            selectedIdentity, CancellationToken.None);
+        await backend.WritePrivateStateAsync(
+            selectedIdentity, new WritePrivateStateRequest(encoded, currentState.Revision),
+            CancellationToken.None);
+        var stale = await server.ClearWidgetLocalDataAsync(
+            selected.Manifest.Id, inspection.ConfirmationToken!);
+        Assert.Equal(PlatformWidgetLocalDataClearStatus.Stale, stale.Status);
+        Assert.True((await backend.ReadPrivateStateAsync(
+            selectedIdentity, CancellationToken.None)).Exists,
+            "A stale disabled confirmation cleared current state.");
+        inspection = await server.InspectWidgetLocalDataAsync(selected.Manifest.Id);
         var result = await server.ClearWidgetLocalDataAsync(
             selected.Manifest.Id, inspection.ConfirmationToken!);
         Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, result.Status);
-        Assert.Equal(1, server.RunningWorkerCount);
+        Assert.True(server.RunningWorkerCount == 0,
+            "Disabled local-data clear created a worker generation.");
         Assert.False((await backend.ReadPrivateStateAsync(
             selectedIdentity, CancellationToken.None)).Exists,
             "Selected installed state survived clear.");
         Assert.True((await backend.ReadPrivateStateAsync(
             neighborIdentity, CancellationToken.None)).Exists,
             "Neighbor installed state changed during clear.");
+
+        await catalog.SetEnabledAsync(selected.Manifest.Id, true);
+        var reenabled = await BridgeCatalog.LoadWithInstalledAsync(
+            trusted.Path, catalogRoot, Environment.ProcessPath!);
+        server.ApplyCatalog(reenabled.Catalog, revision: 2, publishEvent: false);
+        var clean = await server.InspectWidgetLocalDataAsync(selected.Manifest.Id);
+        Assert.False(clean.Exists,
+            "Re-enabled unchanged package observed state cleared from another identity.");
+        Assert.True(server.RunningWorkerCount == 0,
+            "Inspection alone created a re-enabled worker generation.");
+        var restarted = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest(
+                selected.Manifest.Id, WidgetLifecycleState.Visible));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, restarted.Type);
+        Assert.Equal(1, server.RunningWorkerCount);
     }
     finally
     {
