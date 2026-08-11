@@ -642,10 +642,10 @@ Branch: `codex/impl-widgets`
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
-`main`. DLV-006 is now the widgets-led serialized cross-lane assignment on that
-accepted baseline. It owns the shared cursor/append collection contract and its
-native adoption as one checkpoint; the platform task must not duplicate that
-surface while it completes DLV-015. DLV-022 and DLV-018 are the ordered visible
+`main`. DLV-006's public/native implementation prefix and bounded cursor-cycle
+correction are accepted and integrated through `679a73b`; the assignment stays
+Assigned only for the previously frozen DLV-015 production-host composition
+proof on the current main baseline. DLV-022 and DLV-018 are the ordered visible
 consumers, followed by DLV-043's already-dispositioned Spotify architecture
 work. DLV-038 remains deferred test-architecture debt rather than filler work.
 
@@ -2056,11 +2056,11 @@ controller/keyboard confirmation remains in the verification queue.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Assigned
+**State:** Assigned final production-host composition correction
 **Lane:** widgets, acting as the serialized cross-lane protocol lead
-**Baseline:** accepted local `main` through `822d29c` plus the reviewer commit
-containing this assignment; consume that main baseline at the current clean
-widgets boundary before editing
+**Baseline:** accepted local `main` through integrated implementation correction
+`679a73b` plus the reviewer commit recording this final gate; consume that main
+baseline at the current clean widgets boundary before editing
 **Dependencies:** DLV-004, DLV-005, DLV-021, DLV-049, and DLV-051
 **Owner:** public WidgetProtocol/WidgetSdk cursor-append collection semantics,
 their bounded managed test utilities, native declarative collection/focus/scroll
@@ -2128,9 +2128,42 @@ projection overlap with active DLV-015, an incompatible public behavior beyond
 the documented pre-release collection contract, or cannot keep the 10,000-item
 case within explicit bounded native/snapshot/resource limits.
 
+**Accepted implementation prefix:** Source commits `1d214d9` and correction
+`d8dfd8b` are integrated on `main` as `65e4942` and `679a73b`. The prefix adds
+protocol-v14 keyed cursor collections, bounded append/prepend retention, native
+anchor reconciliation and List/Grid edge handling, opaque inert artwork
+handles, authoring/preview contracts, and deterministic 2,000/10,000-item
+proof. Review rejected the first candidate's self-loop-only cursor check;
+`d8dfd8b` adds direction-scoped multi-hop cycle rejection after eviction while
+preserving reverse traversal and evicted-page refetch, plus empty, sparse/
+partial-final, last-good error, and documentation corrections. Focused evidence
+passes Widget SDK 85/85 and 53 documentation files. The single canonical run
+`20260811T052531Z-3eae8cce` passes all 42 steps from clean exact candidate
+commit `1d214d9` with stable eligible provenance; it is retained as integration
+evidence and must not be rerun merely for the bounded correction.
+
+**Final correction scope:** Use the now-accepted DLV-015 production-host fixture
+to compose the real managed cursor snapshot through bridge parsing, native
+renderer/anchor state, focus-edge pagination, and UI Automation semantics. One
+bounded fixture must cover List and responsive Grid, a fixed header action,
+forward and reverse boundary loads, refresh/insertion/deletion churn, stable
+focus and viewport anchor, empty/sparse/partial-final/error state, and proof
+that 2,000/10,000 logical items never become an unbounded host tree. Document
+that one same-direction traversal admits at most 128 distinct cursor identities
+before failing closed; direction change or refresh starts a new bounded
+traversal and legitimate evicted-page refetch remains supported. Add no new
+harness or build manifest, do not alter collection implementation unless this
+composed proof exposes a concrete defect, and do not run Tier 3 again.
+
+**Final correction verification:** Tier 1 only: the smallest existing DLV-015
+production-host/UIA target, directly affected native cursor renderer/focus
+groups, Widget SDK cursor group if production changes are required, and
+documentation validation. No aggregate, screenshot, Spotify migration, broad
+native matrix, or unrelated suite.
+
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Ready after DLV-006
+**State:** Ready after final DLV-006 production-host acceptance
 **Baseline:** closing commit of DLV-006
 **Dependencies:** DLV-006, DLV-021, and DLV-051
 **Owner:** Spotify Queue, Playlists, and playlist-detail collection state and
