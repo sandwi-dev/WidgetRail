@@ -88,6 +88,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
 | GBA-068 | P0 | Live-confirmed fixed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | Accepted DLV-057 `90cadf4` makes warm main, repeated main, detached-root, installed content, and planner post-integration main refresh identical for selected/enabled Spotify `0.2.14`; YT Music remains current at `0.2.7`. The user confirmed the supplied worker-start screenshots no longer reproduce in the current fully packaged Release; production PID 23000 admitted current snapshots from both widgets. Keep the focused regression coverage, but do not reopen this work without a new live recurrence. |
 | GBA-069 | P1 | Closed | OverlayHost process ownership / local activation | Accepted DLV-070 `c61a49d`, integrated through `0b21384`, elects one per-user/profile owner before platform initialization and forwards later Show requests over an authenticated bounded local channel. Two exact visible `--show` invocations retained production PID 27520; client PID 3236 exited after one authenticated resident activation. |
+| GBA-070 | P2 | Confirmed | YT Music package metadata / companion handshake | The DLV-082 integrated Tier-3 checkpoint proved the current immutable manifest is `0.2.7` while `YtmDesktopApiClient.PackageVersion` and its companion `appVersion` remain `0.2.6`. DLV-086 is queued behind visible work to restore one current version owner without republishing the package. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2182,6 +2183,28 @@ main, launched the exact Release command twice, retained resident PID 27520,
 and observed client PID 3236 exit after the resident logged one authenticated
 Show activation. The earlier development hosts were closed gracefully; no
 force termination or destructive recovery was used.
+
+## GBA-070 — YT Music reports a stale package version to its companion
+
+**Evidence:** The single DLV-082 integrated Tier-3 run
+`20260811T162358Z-a68acd42` passed the changed SDK and API compatibility steps,
+then stopped in the unchanged YT Music suite with `Expected '0.2.6', got
+'0.2.7'`. The validating test compares the shipped manifest against
+`YtmDesktopApiClient.PackageVersion`; source inspection confirms that constant
+is still `0.2.6` and is sent as the local companion handshake `appVersion`,
+while the current immutable package manifest is `0.2.7`.
+
+**Ownership:** DLV-086 owns only the YT Music package-version value and exact
+manifest/handshake assertion. It follows DLV-083 through DLV-085 so this
+non-visual drift does not displace visible Game Launcher and Settings work.
+Installer behavior, immutable package replacement, authentication, public SDK,
+and broad metadata centralization are outside the correction.
+
+**Acceptance:** The source constant, built test asset, current manifest, and
+companion handshake agree on `0.2.7`; the existing mismatch assertion remains
+effective; no new package version or different bytes under immutable `0.2.7`
+are published. Run the focused YT Music suite and metadata validation once, not
+the repository aggregate.
 
 ## Closed issues
 
