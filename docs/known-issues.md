@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
-| GBA-004 | P1 | Blocked | OverlayHost UI thread / presentation / composition | DLV-020 removed the startup surface in focused captures, but 2026-08-10 user evidence shows the real Games & Apps extent animation misses frames, flickers the whole interface, and exposes large gray/black bands. DLV-025 reproduced the single-HWND resize/composition failure and stopped without a product commit; resumption requires a user-authorized atomic compositor design. |
+| GBA-004 | P1 | Split: DLV-078 queued; DLV-025 blocked | OverlayHost UI thread / presentation / composition | Accepted-main `WidgetSwitchHostTests` now deterministically proves worker startup can replace prior admitted content with a transient surface; DLV-078 owns that logical retention/admission correction after DLV-075. The separate real Games & Apps extent-animation gray/black-band defect remains blocked in DLV-025 pending an atomic compositor decision. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -258,6 +258,15 @@ as additional GBA-004 fixture/product evidence rather than retried unchanged or
 used to reject the managed milestone. A future compositor decision must make the
 fixture deterministic against the selected presentation architecture instead
 of adding retries or capture work.
+
+The next accepted-main refresh through DLV-067 integration `3d8f486` published
+the coherent managed/runtime graph and reached the same suite, which failed with
+more precise evidence: `Worker startup replaced the prior admitted content with
+a transient surface.` This narrows one defect away from DLV-025's blocked HWND
+resize/compositor decision. Queued DLV-078 owns retained-content versus first-
+snapshot admission ordering only; it starts after DLV-075 releases the shared
+native host/build boundary and must pass the existing fixture without retries or
+screenshot-based diagnosis.
 
 **Acceptance:**
 

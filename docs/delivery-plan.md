@@ -3739,8 +3739,75 @@ visible while withholding input and actionable UIA. DLV-062 is blocked at its
 documented fixed-video material-resource gate. No later platform item is Ready
 because YouTube v1 depends on that go/no-go decision, DLV-025 requires the user's
 compositor choice, and endpoint selection still lacks a supported setter; the
-planner will not manufacture internal filler. The platform lane remains idle
-while widgets DLV-075 owns the shared native text-entry/input boundary.
+planner will not manufacture internal filler. The 2026-08-11 accepted-main
+Release build produced a narrower deterministic switch failure before reaching
+the blocked resize/compositor question: worker startup replaced the prior
+admitted content with a transient surface. DLV-078 owns that presentation-
+ordering correction after DLV-075 releases the shared native input/build
+boundary. The platform lane remains idle until then.
+
+### DLV-078 — Retain admitted content through worker cold start
+
+**State:** Blocked only by active DLV-075 shared native/build ownership; assign
+to platform immediately after DLV-075 is accepted
+**Lane:** platform
+**Baseline:** accepted DLV-075 integration plus the reviewer control-plane commit
+that changes this item to Assigned
+**Dependencies:** DLV-020 and accepted DLV-075; independent of blocked DLV-025
+**Owner:** OverlayHost widget-switch presentation admission/retention ordering,
+the existing deterministic production-host fixture, and directly affected
+diagnostics/docs; no compositor or widget feature ownership
+**Concurrency:** After DLV-075 releases native host/input files, may run beside
+widgets DLV-076, which must not touch OverlayHost, WidgetBridgeClient, transition
+fixtures, native build manifests, or switch diagnostics. Do not start before the
+planner accepts DLV-075 and assigns this item.
+
+**Visible outcome:** Cycling to a cold isolated widget keeps the last admitted
+widget content and host chrome painted until the destination's first valid
+snapshot is ready. The user never sees `Starting isolated ...`, a transient
+placeholder/error surface, black clear, or stale interactive semantics.
+
+**Reproduction evidence:** The full packaged Release build from accepted main
+`3d8f486` published the coherent DLV-067 managed/runtime graph, then
+`WidgetSwitchHostTests` failed exactly: `Worker startup replaced the prior
+admitted content with a transient surface.` The prior build from `bb449d0` had
+failed the same fixture earlier at initial Audio Mixer paint. This is functional
+production-host evidence; do not investigate screenshot clipping.
+
+**Objective:** Close the snapshot-admission/retained-presentation regression at
+the narrow logical owner without attempting DLV-025's blocked atomic animated-
+resize/compositor redesign.
+
+**In scope:** cold destination worker start; retained last-good visual content;
+immediate transfer of lifecycle/input/focus/UIA authority away from the old
+widget; loading, worker failure, Retry, first-snapshot admission, rapid reversal,
+same-identity restart, and destination removal; exact generation/sequence
+admission; bounded failure copy outside the retained content; one deterministic
+fixture correction derived from the existing failing sequence.
+
+**Out of scope:** extent animation cadence, HWND atomic resize, DirectComposition
+or swap-chain selection, per-widget timing/background hacks, screenshot/capture
+analysis, public SDK/protocol changes, widget source changes, broad bridge
+refactoring, unrelated native cleanup, or canonical aggregate verification.
+
+**Acceptance criteria:** the existing exact failure passes without timing
+retries; before first destination admission, painted content identity remains
+the prior admitted snapshot while input/focus/action/UIA authority exposes only
+the destination's valid noninteractive loading/failure semantics; destination
+admission swaps content once; failure and Retry do not resurrect stale
+generation content; rapid reversal/removal stays bounded; no new idle timer,
+frame loop, bridge request, or resource-growth regression is introduced.
+
+**Verification:** Tier 1 exact `WidgetSwitchHostTests` plus the smallest native
+presentation/transition tests touched by the correction. Run the failing fixture
+once after the implementation change and do not duplicate unchanged runs. Tier
+2 planner full packaging/relaunch after acceptance. No aggregate, screenshot
+oracle, physical display, DLV-025 compositor experiment, or unrelated host suite.
+
+**Stop/escalate when:** the exact correction requires an atomic resized-frame
+compositor/window technology decision, public protocol change, widget-specific
+branch, or overlap with active DLV-075. Preserve the deterministic failure and
+return the architecture decision rather than widening scope.
 
 ### DLV-058 — Ship generic pinned-surface lifecycle
 
