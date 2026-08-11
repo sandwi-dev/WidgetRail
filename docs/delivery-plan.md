@@ -642,12 +642,12 @@ Branch: `codex/impl-widgets`
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
-`main`. DLV-006's public/native implementation prefix and bounded cursor-cycle
-correction are accepted and integrated through `679a73b`; the assignment stays
-Assigned only for the previously frozen DLV-015 production-host composition
-proof on the current main baseline. DLV-022 and DLV-018 are the ordered visible
-consumers, followed by DLV-043's already-dispositioned Spotify architecture
-work. DLV-038 remains deferred test-architecture debt rather than filler work.
+`main`. DLV-006's public/native prefix, cursor-cycle correction, and final
+production-host/UIA composition proof are accepted and integrated through
+`9c7438f`. DLV-022 is now Assigned as the first user-visible consumer, DLV-018
+follows it, and DLV-043 remains the later already-dispositioned Spotify
+architecture work. DLV-038 remains deferred test-architecture debt rather than
+filler work.
 
 ### DLV-007 — Make Spotify presentation state coherent
 
@@ -2056,7 +2056,8 @@ controller/keyboard confirmation remains in the verification queue.
 
 ### DLV-006 — Prove virtualized game-library collection foundations
 
-**State:** Assigned final production-host composition correction
+**State:** Done; accepted and integrated through `9c7438f`
+**Closing commit:** `33dccae` (`[DLV-006] compose cursor production-host proof`)
 **Lane:** widgets, acting as the serialized cross-lane protocol lead
 **Baseline:** accepted local `main` through integrated implementation correction
 `679a73b` plus the reviewer commit recording this final gate; consume that main
@@ -2161,10 +2162,21 @@ groups, Widget SDK cursor group if production changes are required, and
 documentation validation. No aggregate, screenshot, Spotify migration, broad
 native matrix, or unrelated suite.
 
+**Reviewer disposition:** Accepted. The existing DLV-015 executable now takes
+managed-format cursor frames through the production bridge parser, Direct2D
+renderer, keyed anchor/focus pagination, accessibility adapter, real HWND/UIA
+provider, and bounded List/Grid/large-logical-collection states. Retained
+focused evidence passes 274 production-host checks, 49 native focus checks,
+4,777 native renderer checks, Widget SDK 85/85, and 53 documentation files.
+The public guide states the 128-identity same-direction fail-closed boundary;
+refresh or direction change starts a new traversal. The prior clean 42-step
+canonical result remains the sole Tier-3 run.
+
 ### DLV-022 — Repair Spotify continuous-list focus
 
-**State:** Ready after final DLV-006 production-host acceptance
-**Baseline:** closing commit of DLV-006
+**State:** Assigned after accepted DLV-006
+**Baseline:** accepted DLV-006 integration `9c7438f` plus the reviewer commit
+recording this assignment
 **Dependencies:** DLV-006, DLV-021, and DLV-051
 **Owner:** Spotify Queue, Playlists, and playlist-detail collection state and
 presentation, shared cursor/append consumption, exact focus fixtures, and
@@ -2484,9 +2496,9 @@ Active task: `019fef3b-7e94-70f0-b329-3551f8dd805b`
 Active branch: `codex/impl-platform-recovery`
 Active worktree: `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`
 Preserved interrupted branch/worktree: `codex/impl-platform-visible` at
-`C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`; do not edit,
-commit, merge, reset, stash, or discard its uncommitted DLV-016 files while
-DLV-052 is active
+`C:\Users\dwive\.codex\worktrees\pvisible\GameBarAlternative`; keep its
+uncommitted DLV-016 files read-only while the recovery task resumes DLV-016 on
+the accepted main baseline
 Preserved blocked branch only: `codex/impl-platform` at `57aa2d5`. Its former
 `C:\Users\dwive\.codex\worktrees\d9b7\GameBarAlternative` is an empty,
 unregistered directory and the previously observed uncommitted DLV-025 files
@@ -2495,17 +2507,15 @@ uncommitted state without explicit user authority.
 
 The platform queue prioritizes visible controller and geometry defects even
 while DLV-025 awaits a compositor choice. The preserved DLV-016 worktree must
-not be reset or overwritten; DLV-025 retains only its committed branch baseline
-and documented evidence after its former worktree disappeared. The idle predecessor platform task
-is archived; the clean recovery task above owns DLV-052 from `f0ec63f` without
-carrying the interrupted performance patch. DLV-049 is accepted and integrated as `a8bcb27`;
-DLV-015 is accepted and integrated as `6d3b093` while the widgets lane leads
-serialized DLV-006. Newly confirmed P0 DLV-052 is now Assigned; DLV-016 follows
-it instead of displacing the visible community-addon failure. DLV-011
-awaits accepted DLV-006 integration, DLV-033 awaits the compositor decision, and
-DLV-025 remains user-decision blocked. No third safe platform Ready item is
-manufactured while those explicit cross-lane and architecture dependencies
-remain.
+not be reset or overwritten; its files are read-only reference material for the
+clean recovery task, not an integration source. DLV-025 retains only its
+committed branch baseline and documented evidence after its former worktree
+disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
+accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
+`56f6908`. DLV-016 is now Assigned. DLV-011 follows the accepted collection and
+measurement foundations, DLV-033 awaits the compositor decision, and DLV-025
+remains user-decision blocked. No third safe platform Ready item is manufactured
+while those explicit architecture dependencies remain.
 
 ### DLV-003 — Correct shared button-content geometry
 
@@ -2906,7 +2916,8 @@ assistive technology, or widgets-lane source changes.
 
 ### DLV-052 — Restore current community addons after a Release relaunch
 
-**State:** Assigned after accepted DLV-015
+**State:** Done; accepted and integrated through `56f6908`
+**Closing commits:** `a4dcf0f`, corrected by `64a4039`
 **Baseline:** accepted integration `6d3b093` plus the reviewer control-plane
 commit containing this assignment
 **Owner:** platform lane over community package build/deployment discipline,
@@ -2978,10 +2989,24 @@ DLV-006 is active, weakens installed-package isolation/integrity, needs external
 credentials, requires destructive package/state recovery outside an explicit
 pre-release reset, or overlaps the preserved DLV-025 worktree.
 
+**Reviewer disposition:** Accepted after a real-profile correction. The first
+candidate established closed generic-loader diagnostics, atomic lifecycle plus
+first-snapshot admission, one persistent Retry surface, Spotify `0.2.11`, YT
+Music `0.2.7`, and exact digest/AppContainer startup evidence. Live refresh then
+proved the script installed Spotify `0.2.11` but left `0.2.10` selected. The
+correction makes both supported workflows perform disable, install, explicit
+version select, and enable, while the isolated fixture now seeds older enabled
+versions and proves the new digest is selected. Focused evidence passes worker
+host 10/10, runtime 74/74, bridge 69/69, the production host failure/Retry case,
+and the exact-package recovery fixture. The local profile now reports enabled
+Spotify `0.2.11` and YT Music `0.2.7`; accepted main `56f6908` was rebuilt and
+visibly relaunched for live confirmation.
+
 ### DLV-016 — Establish native idle and semantic-churn baselines
 
-**State:** Ready after DLV-052
-**Baseline:** closing commit of DLV-052
+**State:** Assigned after accepted DLV-052
+**Baseline:** accepted DLV-052 integration `56f6908` plus the reviewer commit
+recording this assignment
 **Owner:** OverlayHost/native renderer measurement harness and budgets
 
 **Objective:** Add reproducible bounded measurements for hidden/idle host cost
@@ -3006,6 +3031,54 @@ samples. No aggregate unless the verifier manifest changes.
 
 **Stop/escalate when:** evidence requires elevated tracing, a representative
 game/hardware choice, or a product budget decision not already documented.
+
+### DLV-011 — Feasibility gate for host-owned pinned surfaces
+
+**State:** Ready after DLV-016
+**Baseline:** closing commit of DLV-016
+**Dependencies:** DLV-006 and DLV-016
+**Owner:** platform lane over a host-owned pinned-window feasibility harness,
+window/focus/input/lifecycle policy, monitor/DPI placement, and bounded native
+resource evidence; no YouTube provider, playback, credential, or public widget
+API implementation
+**Visible outcome:** Establish one credible Windows surface architecture that
+can remain pinned after the main overlay closes without stealing game input or
+leaking an orphaned window, before the YouTube Video widget is implemented.
+
+**Objective:** Compare the smallest viable native tool-window and supported
+compact-overlay/AppWindow approaches with one declarative placeholder surface,
+then recommend or reject a bounded host-owned architecture using measured
+behavior rather than committing to a playback stack prematurely.
+
+**In scope:** pin/unpin and overlay-close lifecycle; explicit focusable versus
+click-through modes; topmost ownership; taskbar/Alt-Tab behavior; teardown and
+crash cleanup; monitor work area, DPI, rotation, hot-plug, and persisted bounded
+placement; borderless-window compatibility assumptions; reduced motion and
+accessibility ownership; DLV-016 hidden/visible idle and semantic-churn deltas;
+one deterministic declarative color/test surface and documented comparison.
+
+**Out of scope:** WebView2 or YouTube playback, Google authentication, arbitrary
+community HWND creation, public pinning protocol, always-on ambient polling,
+store packaging, broad compositor migration, game-specific hooks, or claiming
+universal exclusive-fullscreen compatibility.
+
+**Acceptance criteria:** the selected candidate, or documented rejection of all
+candidates, records exact focus/input/topmost/teardown/placement behavior and
+resource deltas against DLV-016. Hiding the main overlay does not destroy a
+pinned surface; unpin, host exit, crash recovery, monitor loss, and invalid
+persisted placement converge to one bounded cleanup/fallback. The test surface
+cannot receive widget-authored window handles or authority. Any manual-only
+borderless-game/display claims remain explicitly unverified.
+
+**Verification:** Tier 1 bounded native lifecycle/placement/focus tests and
+DLV-016 measurement comparison plus the smallest production-host placeholder
+fixture. No aggregate, video, credentials, screenshot acceptance, or physical
+game matrix.
+
+**Stop/escalate when:** a credible choice requires Windows App SDK or another
+new runtime dependency, a new compositor/window technology, public protocol or
+threat-model changes, elevated hooks, or physical-only evidence that materially
+changes the architecture decision.
 
 ## Integration queue
 
@@ -3034,16 +3107,8 @@ presentation replacement, removal of active/hovered widgets, last-good retry,
 stale invalidation/effect rejection, start/snapshot/protocol failure, lifecycle
 drain, and Close/Guide responsiveness while another request stalls.
 
-### DLV-011 — Feasibility gate for host-owned pinned surfaces
-
-**State:** Awaiting near-term corrections and DLV-006 architecture baseline
-**Intended lead:** platform lane
-
-Compare a plain host tool window with supported AppWindow compact-overlay
-mechanisms for focus, click-through, DPI/monitor movement, topmost behavior,
-borderless games, teardown, and resource cost. Prove a declarative test surface
-before YouTube playback. Do not add a community WebView, use credentials, or
-claim compatibility without measured evidence.
+DLV-011 moved to the platform lane as the Ready consumer of accepted DLV-006
+and the DLV-016 performance baseline.
 
 ## Blocked work
 

@@ -112,6 +112,29 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
     -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
 
+# Keep the public archive closed over the reviewed runtime payload. Host-owned
+# companion state and secrets must never become package inputs.
+$expectedFiles = @(
+    'manifest.json',
+    'payload\YtMusicWidget.dll',
+    'styles\default.gbss'
+)
+$stagingPrefix = $stagingRoot.TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+$stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
+    $fullName = [System.IO.Path]::GetFullPath($_.FullName)
+    if (-not $fullName.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Staged package file escaped the package root: $fullName"
+    }
+    $fullName.Substring($stagingPrefix.Length)
+})
+$unexpectedFiles = @($stagedFiles | Where-Object { $_ -notin $expectedFiles })
+$missingFiles = @($expectedFiles | Where-Object { $_ -notin $stagedFiles })
+if ($unexpectedFiles.Count -ne 0 -or $missingFiles.Count -ne 0) {
+    throw "Staged package allowlist mismatch. Unexpected: [$($unexpectedFiles -join ', ')]; missing: [$($missingFiles -join ', ')]."
+}
+
 if (Test-Path -LiteralPath $packagePath) {
     Assert-NoReparsePoint -Path $packagePath
     Remove-Item -LiteralPath $packagePath -Force
@@ -129,15 +152,34 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 }
 
 if ($Install) {
+    $catalogRoot = if ([string]::IsNullOrWhiteSpace($Catalog)) {
+        Join-Path ([Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::LocalApplicationData)) 'GameBarAlternative\widgets'
+    } else {
+        [System.IO.Path]::GetFullPath($Catalog)
+    }
     $catalogArguments = if ([string]::IsNullOrWhiteSpace($Catalog)) {
         @()
     } else {
-        @('--catalog', [System.IO.Path]::GetFullPath($Catalog))
+        @('--catalog', $catalogRoot)
+    }
+    $installedPackageRoot = Join-Path (Join-Path $catalogRoot 'packages') $manifest.id
+    if (Test-Path -LiteralPath $installedPackageRoot -PathType Container) {
+        & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
+            disable $manifest.id @catalogArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "gbar disable failed for the installed $($manifest.id) update."
+        }
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         install $packagePath @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "gbar install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
+    }
+    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
+        version select $manifest.id $manifest.version @catalogArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "gbar version select failed for $($manifest.id) $($manifest.version)."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         enable $manifest.id @catalogArguments

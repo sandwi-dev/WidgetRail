@@ -307,6 +307,11 @@ public:
     [[nodiscard]] std::optional<bool> SetWidgetLifecycle(
         std::wstring_view widgetId,
         std::wstring_view state);
+    /// Atomically establishes a non-background lifecycle and admits the exact
+    /// generation's first immutable snapshot.
+    [[nodiscard]] std::optional<WidgetSnapshot> EstablishWidgetPresentation(
+        std::wstring_view widgetId,
+        std::wstring_view state);
     /// Retires the exact current worker registration, clears its cached
     /// snapshot/input authority, and restores its prior host lifecycle.
     [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);

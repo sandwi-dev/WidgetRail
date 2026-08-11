@@ -519,6 +519,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 Type = MessageTypes.HelloAccepted,
                 Payload = RuntimeJson.ToElement(new { }),
             }, timeout.Token).ConfigureAwait(false);
+            currentSession.MarkHandshakeCompleted();
             currentSession.StartReader(token =>
                 ReadResponsesAsync(currentSession, channel, token));
             if (_hostLifecycle != WidgetLifecycleState.Background)
@@ -557,15 +558,24 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             catch (InvalidOperationException)
             {
             }
+            var startupDiagnostic = ResolveStartupDiagnostic(exitCode);
+            var reportedException = startupDiagnostic is null
+                ? exception
+                : new WidgetProcessException(
+                    $"Widget worker startup failed ({startupDiagnostic}).");
             if (!_stopping)
                 ReportFailure(exception is WidgetProtocolViolationException
                     ? WidgetFailureReason.ProtocolViolation
-                    : WidgetFailureReason.ConnectionFailed, exception);
+                    : WidgetFailureReason.ConnectionFailed,
+                    reportedException,
+                    startupDiagnostic);
             var session = Volatile.Read(ref _session);
             session?.Terminate();
             await DisposeSessionAsync(session, cancellationToken).ConfigureAwait(false);
             throw new WidgetProcessException(
-                exitCode is null
+                startupDiagnostic is not null
+                    ? $"Widget worker startup failed ({startupDiagnostic})."
+                    : exitCode is null
                     ? "Widget worker connection failed."
                     : $"Widget worker exited with code {exitCode} before connecting.",
                 exception);
@@ -693,7 +703,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         session.ReleaseLeases();
         if (TryBeginCurrentPublication(session, "process-exited", out var publication))
         {
-            using (publication) ReportFailure(WidgetFailureReason.ProcessExited, null);
+            var startupDiagnostic = session.HandshakeCompleted
+                ? null
+                : ResolveStartupDiagnostic(session.ExitCode);
+            using (publication) ReportFailure(
+                session.HandshakeCompleted
+                    ? WidgetFailureReason.ProcessExited
+                    : WidgetFailureReason.ConnectionFailed,
+                startupDiagnostic is null
+                    ? null
+                    : new WidgetProcessException(
+                        $"Widget worker startup failed ({startupDiagnostic})."),
+                startupDiagnostic);
         }
         session.PendingRequests.FailAll(
             new WidgetProcessException("Widget worker exited unexpectedly."));
@@ -701,7 +722,10 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         session.Cancel();
     }
 
-    private void ReportFailure(WidgetFailureReason reason, Exception? exception)
+    private void ReportFailure(
+        WidgetFailureReason reason,
+        Exception? exception,
+        string? diagnosticCode = null)
     {
         if (Interlocked.Exchange(ref _failureReported, 1) != 0) return;
         int? exitCode = null;
@@ -715,8 +739,15 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         var restartsUsed = Volatile.Read(ref _restartAttempts);
         Failed?.Invoke(this, new WidgetFailure(
             reason, exitCode, exception, restartsUsed,
-            restartsUsed < _options.MaximumRestartAttempts));
+            restartsUsed < _options.MaximumRestartAttempts,
+            diagnosticCode));
     }
+
+    private string? ResolveStartupDiagnostic(int? exitCode) =>
+        exitCode is { } value &&
+        _options.StartupExitDiagnostics.TryGetValue(value, out var diagnostic)
+            ? diagnostic
+            : null;
 
     private async Task DisposeSessionAsync(
         WidgetProcessSession? session,

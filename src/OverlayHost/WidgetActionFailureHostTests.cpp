@@ -208,7 +208,8 @@ public:
             "    \"styleFile\": \"runtime/action-failure-fixture.gbss\",\n"
             "    \"memoryLimitMb\": 64,\n"
             "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"keep-alive\" },\n"
-            "    \"workerArguments\": [],\n"
+            "    \"workerArguments\": [\"--fail-once\", \"" +
+                JsonEscape((root_ / L"worker-failed-once.marker").wstring()) + "\"],\n"
             "    \"declaredCapabilities\": [],\n"
             "    \"quickActions\": []\n"
             "  }],\n"
@@ -552,6 +553,26 @@ void Run(const Arguments& arguments) {
                         automation.Get(), currentRoot.Get(), kTrayAutomationId);
                 }), "The fixture did not appear in the production dashboard.");
         PostKey(window, VK_RETURN);
+        const fs::path logPath = installation.LocalAppData() /
+            L"GameBarAlternative" / L"overlay.log";
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    return ReadLog(logPath).find("YT Music failed: Widget worker") !=
+                        std::string::npos;
+                }), "The primary worker-start failure was not retained by the host.");
+        const auto startupLog = ReadLog(logPath);
+        Require(startupLog.find("hidden suspended widget has no cached snapshot") ==
+                    std::string::npos,
+                "The secondary missing-cache error replaced the primary startup failure.");
+        PostKey(window, VK_RETURN);
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    return FixtureDescendants(host.Id(), arguments.fixtureWorker).size() == 1 &&
+                           [&] {
+                               auto currentRoot = RootForWindow(automation.Get(), window);
+                               return currentRoot && FindByAutomationId(
+                                   automation.Get(), currentRoot.Get(),
+                                   kPlayPauseAutomationId);
+                           }();
+                }), "A Retry did not recover with one fresh worker generation.");
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), window);
                     return currentRoot && FindByAutomationId(
@@ -582,8 +603,6 @@ void Run(const Arguments& arguments) {
                     return IsFocused(playPause.Get());
                 }), "Action failure moved focus away from widget:play-pause.");
 
-        const fs::path logPath = installation.LocalAppData() /
-            L"GameBarAlternative" / L"overlay.log";
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     return MatchingFailureRecords(ReadLog(logPath)) >= 1;
                 }), "overlay.log omitted the exact failure identity/code/action/source record.");

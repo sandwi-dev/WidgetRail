@@ -53,6 +53,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry owns idle unload cancellation and replacement drain", BridgeClientRegistryScenarios.IdleUnloadCancellationAndReplacementAreOwned),
     ("Client registry restart restores lifecycle and resets generation", BridgeClientRegistryScenarios.RestartRestoresLifecycleAndResetsGeneration),
     ("Client registry restart reserves one generation and cleans failed restore", BridgeClientRegistryScenarios.RestartReservationAndRestoreFailureAreClosed),
+    ("Client registry commits lifecycle and first snapshot as one generation", BridgeClientRegistryScenarios.LifecycleAndFirstSnapshotAreAtomic),
     ("Client registry publication admission serializes replacement", BridgeClientRegistryScenarios.PublicationAdmissionSerializesReplacement),
     ("Client registry notification lane bounds and balances admission", BridgeClientRegistryScenarios.NotificationLaneBoundsAndBalancesAdmission),
     ("Client registry notification burst cancels and drains on replacement", BridgeClientRegistryScenarios.NotificationBurstIsBoundedAndRetires),

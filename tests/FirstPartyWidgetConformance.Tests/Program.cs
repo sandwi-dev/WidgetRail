@@ -47,6 +47,19 @@ if (args.Contains("--ytmusic-community-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--community-recovery-acceptance", StringComparer.Ordinal))
+{
+    var outputIndex = Array.IndexOf(args, "--acceptance-output");
+    var output = outputIndex < 0
+        ? null
+        : outputIndex + 1 < args.Length && !string.IsNullOrWhiteSpace(args[outputIndex + 1])
+            ? Path.GetFullPath(args[outputIndex + 1])
+            : throw new ArgumentException("--acceptance-output requires a file path.");
+    await CommunityRecoveryPackagesRunIsolated(output);
+    Console.WriteLine("PASS current Spotify/YT Music Community recovery acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -709,6 +722,149 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
                 "Real YTMDesktop2 pairing approval and API-version compatibility require the companion application.",
                 "Physical controller input, OverlayHost shell composition, and visible transition fidelity require a packaged manual playtest.",
                 "Production Credential Manager secret enumeration/purge is not claimed by this auth-free workflow.",
+            },
+        }, CreateEvidenceJsonOptions()));
+    }
+}
+
+static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput = null)
+{
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        communityRecoveryOnly: true);
+    var packages = new[]
+    {
+        deployment.SpotifyCommunityPackage ??
+            throw new InvalidOperationException("Spotify community package was not produced."),
+        deployment.YtMusicPackage ??
+            throw new InvalidOperationException("YT Music community package was not produced."),
+    };
+    Assert.True(
+        Version.Parse(packages[0].Manifest.Version) > Version.Parse("0.2.10"),
+        "Spotify source package must use a version newer than the stale 0.2.10 payload.");
+    Assert.True(
+        Version.Parse(packages[1].Manifest.Version) > Version.Parse("0.2.6"),
+        "YT Music source package must use a version newer than 0.2.6.");
+    var previousVersions = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["org.gbar.samples.spotify"] = "0.2.10",
+        ["org.gbar.samples.ytmusic"] = "0.2.6",
+    };
+
+    var catalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
+    var snapshot = await catalog.DiscoverAsync();
+    Assert.Equal(2, snapshot.Widgets.Count);
+    var loaded = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    Assert.True(loaded.InstalledCatalogValid,
+        "The exact current Community packages were rejected by the production catalog route.");
+    Assert.Equal(0, loaded.Warnings.Count);
+
+    var evidence = new List<object>();
+    foreach (var package in packages)
+    {
+        var inspection = await new WidgetCatalog(
+                Path.Combine(deployment.RootPath, "validation", package.Manifest.Id))
+            .CreateInstaller().ValidateAsync(package.PackagePath);
+        Assert.Equal(package.Manifest.Id, inspection.Id);
+        Assert.Equal(package.Manifest.Version, inspection.Version.ToString());
+
+        var selected = snapshot.Widgets.Single(widget => widget.Id == package.Manifest.Id);
+        Assert.True(selected.Enabled, $"{package.Manifest.Name} was not explicitly enabled.");
+        Assert.Equal(package.Manifest.Version, selected.ActiveVersion.Version.ToString());
+        Assert.Equal(2, selected.Versions.Count);
+        var previous = selected.Versions.Single(version =>
+            version.Version.ToString() == previousVersions[package.Manifest.Id]);
+        var digestCatalog = new WidgetCatalog(Path.Combine(
+            deployment.RootPath, "digest-verification", package.Manifest.Id));
+        var independentlyInstalled = await digestCatalog.InstallAsync(package.PackagePath);
+        Assert.Equal(independentlyInstalled.ContentDigest, selected.ActiveVersion.ContentDigest);
+        Assert.True(!string.Equals(
+                previous.ContentDigest,
+                selected.ActiveVersion.ContentDigest,
+                StringComparison.Ordinal),
+            $"{package.Manifest.Name} remained selected on the seeded older payload digest.");
+
+        var configured = loaded.Catalog.GetConfigured(package.Manifest.Id);
+        Assert.True(configured.RequiresAppContainer,
+            $"{package.Manifest.Name} bypassed the generic Community AppContainer route.");
+        Assert.Equal(deployment.WorkerHostPath, configured.WorkerExecutable);
+        var backend = CreateBackend(
+            spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify");
+        if (package.Manifest.Id == "org.gbar.samples.ytmusic")
+        {
+            backend.LoopbackHandler = (_, port, isPost, request, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Assert.Equal(YtmDesktopApiClient.CompanionPort, port);
+                Assert.True(!isPost && request.Path == "/",
+                    "Credential-free YT Music startup requested an unexpected companion route.");
+                return Task.FromResult(new LoopbackJsonResponse(
+                    200, "{\"authRequired\":true}", []));
+            };
+        }
+
+        using var consentRoot = new TemporaryDirectory("gba-community-recovery-consent");
+        var consent = new ConsentStore(consentRoot.Path);
+        var identity = new BrokerWidgetIdentity(
+            configured.PackageId, configured.PublisherId, configured.InstanceId);
+        foreach (var capability in configured.DeclaredCapabilities)
+            await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+        await using var client = new WidgetProcessClient(new WidgetProcessOptions
+        {
+            ExecutablePath = configured.WorkerExecutable,
+            Arguments = configured.WorkerArguments,
+            WidgetInstanceId = configured.InstanceId,
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            MaximumRestartAttempts = 0,
+            MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
+            StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
+            IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+            IsolationKey = configured.IsolationKey,
+            ReadOnlyPaths = configured.ReadOnlyPaths,
+            ContentLeaseFactory = configured.ContentLeaseFactory,
+            CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+                configured.PackageId,
+                configured.PublisherId,
+                configured.InstanceId,
+                configured.DeclaredCapabilities,
+                consent,
+                backend,
+                context),
+        });
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        var first = await WaitForSnapshotAsync(client, package.ExpectedText);
+        Assert.Equal(0, ViewSnapshotValidator.Validate(first).Count);
+        Assert.Equal(1, client.Starts);
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+
+        evidence.Add(new
+        {
+            id = package.Manifest.Id,
+            previousVersion = previous.Version.ToString(),
+            version = package.Manifest.Version,
+            packageSha256 = Convert.ToHexString(SHA256.HashData(
+                File.ReadAllBytes(package.PackagePath))).ToLowerInvariant(),
+            selectedContentDigest = selected.ActiveVersion.ContentDigest,
+            firstSnapshotSequence = first.Sequence,
+        });
+    }
+
+    if (acceptanceOutput is not null)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(acceptanceOutput)!);
+        await File.WriteAllTextAsync(acceptanceOutput, JsonSerializer.Serialize(new
+        {
+            packages = evidence,
+            phases = new[]
+            {
+                "seed-enabled-disable-install-select-enable",
+                "selected-payload-digest-match",
+                "generic-appcontainer-visible-first-snapshot",
             },
         }, CreateEvidenceJsonOptions()));
     }
@@ -1561,12 +1717,14 @@ file sealed class Deployment : IDisposable
     public required string BundledCatalogPath { get; init; }
     public required string InstalledCatalogRoot { get; init; }
     public required IReadOnlyList<PackageFixture> Packages { get; init; }
+    public PackageFixture? SpotifyCommunityPackage { get; init; }
     public PackageFixture? YtMusicPackage { get; init; }
 
     public static async Task<Deployment> CreateAsync(
         bool installAsCommunity,
         bool includeEvidencePackages = false,
-        bool ytMusicOnly = false)
+        bool ytMusicOnly = false,
+        bool communityRecoveryOnly = false)
     {
         var temporary = new TemporaryDirectory("gba-firstparty-conformance");
         try
@@ -1650,11 +1808,12 @@ file sealed class Deployment : IDisposable
             }));
 
             var installedRoot = Path.Combine(temporary.Path, "installed");
+            PackageFixture? spotifyCommunityPackage = null;
             PackageFixture? ytMusicPackage = null;
             if (installAsCommunity)
             {
                 var catalog = new WidgetCatalog(installedRoot);
-                if (!ytMusicOnly)
+                if (!ytMusicOnly && !communityRecoveryOnly)
                 {
                     foreach (var fixture in fixtures)
                         await catalog.InstallAsync(fixture.PackagePath);
@@ -1662,9 +1821,68 @@ file sealed class Deployment : IDisposable
                         await catalog.SetEnabledAsync(fixture.Manifest.Id, true);
                 }
 
+                if (communityRecoveryOnly)
+                {
+                    var spotifyProjectRoot = Path.Combine(repo, "samples", "SpotifyWidget");
+                    var spotifyManifest = ManifestJson.Deserialize(
+                        await File.ReadAllBytesAsync(Path.Combine(
+                            spotifyProjectRoot, "manifest.json")));
+                    var spotifySeedOutput = Path.Combine(
+                        temporary.Path, "spotify-community-seed");
+                    await RunCommunityPackageScriptAsync(
+                        Path.Combine(spotifyProjectRoot, "Build-CommunityPackage.ps1"),
+                        spotifySeedOutput,
+                        installedRoot,
+                        version: "0.2.10",
+                        install: true);
+                    var seededSpotify = (await catalog.DiscoverAsync()).Widgets
+                        .Single(widget => widget.Id == spotifyManifest.Id);
+                    Assert.True(seededSpotify.Enabled,
+                        "Spotify older-version seed was not enabled before update.");
+                    Assert.Equal("0.2.10", seededSpotify.ActiveVersion.Version.ToString());
+
+                    var spotifyOutput = Path.Combine(
+                        temporary.Path, "spotify-community-package");
+                    await RunCommunityPackageScriptAsync(
+                        Path.Combine(spotifyProjectRoot, "Build-CommunityPackage.ps1"),
+                        spotifyOutput,
+                        installedRoot,
+                        version: null,
+                        install: true);
+                    var installedSpotify = (await catalog.DiscoverAsync()).Widgets
+                        .Single(widget => widget.Id == spotifyManifest.Id)
+                        .ActiveVersion;
+                    spotifyCommunityPackage = new PackageFixture(
+                        spotifyManifest.Id,
+                        spotifyManifest.Presentation.Icon,
+                        "Conformance Spotify Song",
+                        spotifyManifest,
+                        installedSpotify.InstallPath,
+                        Path.Combine(spotifyOutput,
+                            $"{spotifyManifest.Id}-{spotifyManifest.Version}.gbarwidget"),
+                        spotifyManifest.Permissions.Concat(spotifyManifest.OptionalPermissions)
+                            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+                }
+
                 var ytProjectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
                 var ytManifest = ManifestJson.Deserialize(
                     await File.ReadAllBytesAsync(Path.Combine(ytProjectRoot, "manifest.json")));
+                if (communityRecoveryOnly)
+                {
+                    var ytSeedOutput = Path.Combine(
+                        temporary.Path, "ytmusic-community-seed");
+                    await RunCommunityPackageScriptAsync(
+                        Path.Combine(ytProjectRoot, "Build-CommunityPackage.ps1"),
+                        ytSeedOutput,
+                        installedRoot,
+                        version: "0.2.6",
+                        install: true);
+                    var seededYt = (await catalog.DiscoverAsync()).Widgets
+                        .Single(widget => widget.Id == ytManifest.Id);
+                    Assert.True(seededYt.Enabled,
+                        "YT Music older-version seed was not enabled before update.");
+                    Assert.Equal("0.2.6", seededYt.ActiveVersion.Version.ToString());
+                }
                 var ytOutput = Path.Combine(temporary.Path, "ytmusic-community-package");
                 await RunCommunityPackageScriptAsync(
                     Path.Combine(ytProjectRoot, "Build-CommunityPackage.ps1"),
@@ -1678,7 +1896,7 @@ file sealed class Deployment : IDisposable
                 ytMusicPackage = new PackageFixture(
                     ytManifest.Id,
                     ytManifest.Presentation.Icon,
-                    "Conformance Song",
+                    communityRecoveryOnly ? "Pair device" : "Conformance Song",
                     ytManifest,
                     installedYt.InstallPath,
                     Path.Combine(ytOutput, $"{ytManifest.Id}-{ytManifest.Version}.gbarwidget"),
@@ -1693,6 +1911,7 @@ file sealed class Deployment : IDisposable
                 BundledCatalogPath = bundledCatalog,
                 InstalledCatalogRoot = installedRoot,
                 Packages = fixtures,
+                SpotifyCommunityPackage = spotifyCommunityPackage,
                 YtMusicPackage = ytMusicPackage,
             };
         }
@@ -1815,7 +2034,7 @@ file sealed class Deployment : IDisposable
         foreach (var argument in arguments) start.ArgumentList.Add(argument);
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         using var process = Process.Start(start) ??
-            throw new InvalidOperationException("YT Music package script did not start.");
+            throw new InvalidOperationException("Community package script did not start.");
         var outputTask = process.StandardOutput.ReadToEndAsync();
         var errorTask = process.StandardError.ReadToEndAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
@@ -1827,7 +2046,7 @@ file sealed class Deployment : IDisposable
         {
             try { process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { }
-            throw new TimeoutException("YT Music public package workflow exceeded three minutes.");
+            throw new TimeoutException("Community public package workflow exceeded three minutes.");
         }
         var output = await outputTask;
         var error = await errorTask;
@@ -1836,7 +2055,7 @@ file sealed class Deployment : IDisposable
             var diagnostic = (output + Environment.NewLine + error).Trim();
             if (diagnostic.Length > 2_000) diagnostic = diagnostic[..2_000];
             throw new InvalidOperationException(
-                $"YT Music public package workflow failed ({process.ExitCode}): {diagnostic}");
+                $"Community public package workflow failed ({process.ExitCode}): {diagnostic}");
         }
     }
 

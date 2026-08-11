@@ -1764,8 +1764,8 @@ Media Sessions is the first medium model and command migration.
 
 Next work:
 
-1. Complete DLV-006's continuous keyed collection and viewport-anchor contract,
-   then use DLV-022 to prove Spotify compact/expanded forward and reverse
+1. DLV-006 now supplies the accepted continuous keyed collection and
+   viewport-anchor contract. Use DLV-022 to prove Spotify compact/expanded forward and reverse
    controller flows through the real renderer, host, bridge, cache, and snapshot
    refresh. Crossing a load boundary must retain the adjacent visual row rather
    than teleporting to a replacement window; reverse traversal must not
@@ -1780,9 +1780,9 @@ Next work:
    operation-migration test recipe without hiding domain confirmation policy.
 4. Define credential/session generation semantics before any flow allows
    credentials to be replaced while requests are in flight.
-5. Deliver cursor/append resource state in DLV-006 separately from current-value
-   and offset-page semantics; do not extend the replacement-window contract
-   until it impersonates a continuous collection.
+5. Keep the accepted cursor/append resource separate from current-value and
+   offset-page semantics; migrate a surface only when it truly needs a
+   continuous collection rather than extending the replacement-window contract.
 6. Completed by DLV-007 (`ff706d2`): Spotify has one immutable render-facing
    model and explicitly keyed playlist-detail owner with deterministic
    selection/reset/load interleavings. Generalize keyed resources only after

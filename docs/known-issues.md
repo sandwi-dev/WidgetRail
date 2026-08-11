@@ -75,18 +75,18 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-054 | P0 | Verifying | Widget SDK navigation / controller routing / SDK Gallery | Public bounded navigation, validated hierarchical IDs, exact active-scope action propagation, route cancellation, and remembered return focus are implemented and exercised by SDK Gallery; broader migrations and packaged controller evidence remain. |
 | GBA-055 | P0 | Verifying | YT Music Community addon / loopback error safety | Typed status-only service failures and bounded safe UI copy remain intact through DLV-009's immutable presentation/current-attempt migration; focused YT Music coverage passes 51/51 and real-companion failure evidence remains. |
 | GBA-056 | P1 | Verifying | Spotify widget focus composition | Accepted DLV-051 (`dc22202`, integrated as `822d29c`) authors the inactive seek Slider's Left edge to the selected wide rail destination or compact Player tab and passes exact semantic/controller replay. Fresh live confirmation remains. |
-| GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | DLV-006's accepted prefix is integrated through `679a73b`: protocol-v14 now supplies bounded continuous cursor windows, keyed viewport anchoring, entering-edge focus, reverse refetch, and multi-hop cycle rejection with clean 42-step candidate provenance. One DLV-015-based production-host composition gate remains before DLV-022 migrates Spotify; the user-visible replacement-page jump is therefore still open. |
+| GBA-057 | P0 | Confirmed | Widget SDK paged resources / native focus | DLV-006 is accepted through `9c7438f`: protocol-v14 now supplies bounded continuous cursor windows, keyed viewport anchoring, entering-edge focus, reverse refetch, multi-hop cycle rejection, and a real production-host/UIA composition proof. DLV-022 must still migrate Spotify before the user-visible replacement-page jump is fixed. |
 | GBA-058 | P1 | Verifying | SectionHeader / native text geometry / Spotify | Accepted DLV-021 (`b714efe`, integrated by `bc2de86`) unifies DirectWrite measurement/paint and final-width row remeasurement; exact Spotify header bounds pass across compact/standard/wide-150/accessibility profiles. Fresh packaged Spotify verification remains. |
 | GBA-059 | P1 | Confirmed | App-library provider / artwork / Games & Apps | Saved games can show only the semantic Play fallback because trusted artwork is absent for supported sources such as Steam; DLV-018 owns bounded lazy artwork. |
 | GBA-060 | P1 | Verifying | Native renderer / shared component geometry | Accepted DLV-021 gives Button, ActionSurface, and SectionHeader one measured/painted geometry path and passes exact Games, Spotify, Now Playing, Settings, and SDK Gallery component profiles. Fresh packaged visual confirmation remains. |
 | GBA-061 | P0 | Verifying | Spotify lifecycle / provider failure policy | DLV-023 (`3cfdd27`, integrated by `4dc1bd5`) retains the last-good Ready presentation for typed transient refresh/poll faults with bounded backoff, safe warnings, shared manual recovery, and Active-generation rejection. Live Spotify recurrence testing remains. |
 | GBA-062 | P1 | Verifying | Audio Mixer / dashboard gesture authority | DLV-019 is accepted as `6afd60b`: LB/RB adjust master volume by five percentage points and X toggles mute through exact snapshot-bound authority. Physical-controller verification remains. |
 | GBA-063 | P0 | Verifying | Games & Apps private state / cold start | DLV-017 adds a bounded display-only warm projection, revokes cached AppIds across Active lifetimes/failures, resets incompatible pre-release state atomically, and passes focused SDK 84/84, worker 9/9, and Games 49/49; packaged cold-start timing and physical display/controller proof remain. |
-| GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement. DLV-006's shared keyed collection prefix is integrated through `679a73b`, but its final production-host composition proof and the Spotify DLV-022 migration remain; no live product fix is claimed yet. |
+| GBA-064 | P0 | Confirmed | Spotify list/header focus / native navigation | Reverse playlist traversal can oscillate between the header Play action and first row during scroll/load replacement. DLV-006's shared keyed collection and production-host proof are accepted through `9c7438f`; the Spotify DLV-022 migration remains, so no live product fix is claimed yet. |
 | GBA-065 | P0 | Confirmed | Games & Apps mutation / private-state projection | Removing one Saved entry from Add applications and returning to Library can make every other entry disappear. DLV-024 must prove exact one-row mutation across Back, invalidation, restart, provider failure, and CAS conflict before GBA-063 can close. |
 | GBA-066 | P1 | Confirmed | Games & Apps presentation / surface hints | The normal surface shows too few entries and the Add applications action disappears and reappears during Library state changes. DLV-024 owns a larger bounded preferred height and last-good Library continuity; native switching remains DLV-020. |
 | GBA-067 | P1 | Closed | WidgetBridge frame read/write ownership | DLV-045 (`67df1d9`, integrated by `dfbe02d`) deterministically reproduces the decimal JSON-body signature as an abandoned timed-out test read consuming the Stop header, makes test reads terminal and exactly drained on timeout, and independently closes ordinary reply partial-write exposure through one complete-or-abort reply/event frame owner. Two retained focused runs pass WidgetBridge 66/66; the integrated Release package rebuilt and launched successfully. |
-| GBA-068 | P0 | Confirmed | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | The accepted Release launches, but installed Spotify and YT Music workers repeatedly exit with code 2 before connecting. Spotify then reports a worker connection failure; YT Music additionally misreports the failed lifecycle transition as a missing hidden-widget cache. DLV-052 owns exact package refresh plus single-failure lifecycle recovery. |
+| GBA-068 | P0 | Verifying | Community package deployment / WidgetRuntime / WidgetBridge / OverlayHost lifecycle | DLV-052 is accepted through `56f6908`: lifecycle plus first-snapshot admission is atomic, primary loader failures remain actionable, Retry creates one fresh generation, and the supported package workflow now explicitly selects the installed version. The local profile selects enabled Spotify `0.2.11` and YT Music `0.2.7`; fresh live widget-open confirmation remains. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2021,6 +2021,18 @@ hidden snapshot request or replace the retained surface with a secondary cache
 error; it presents one safe actionable failure and a fresh retry can establish
 one new worker generation. Safe diagnostics retain the exact bounded load code
 without paths, credentials, provider bodies, or exception text.
+
+**Disposition:** DLV-052 source commit `a4dcf0f`, integrated as `fd83b44`,
+closes the worker diagnostic and lifecycle-ordering paths. Review of the real
+profile caught that the first package scripts installed a new version but then
+re-enabled the older selected version; correction `64a4039`, integrated as
+`56f6908`, makes both workflows explicitly disable, install, select the manifest
+version, and enable. The isolated fixture now seeds enabled Spotify `0.2.10`
+and YT Music `0.2.6`, proves `0.2.11`/`0.2.7` plus new digests are selected,
+starts both through the generic AppContainer path, and leaves the real catalog
+unchanged. The local profile reports both corrected versions enabled and the
+fresh main Release is visibly running; keep this issue Verifying until the user
+opens both widgets successfully.
 
 ## Closed issues
 

@@ -1,8 +1,39 @@
 using System.Globalization;
+using System.Collections.Frozen;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
+
+/// <summary>
+/// Closed process-exit vocabulary for the production generic package loader.
+/// The host opts into interpreting these values only for WidgetWorkerHost;
+/// arbitrary custom workers retain ordinary opaque process exit codes.
+/// </summary>
+public static class WidgetWorkerStartupDiagnostics
+{
+    private static readonly IReadOnlyDictionary<string, int> ExitCodesByDiagnostic =
+        new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["missing_entrypoint"] = 64,
+            ["invalid_assembly"] = 65,
+            ["missing_type"] = 66,
+            ["invalid_type"] = 67,
+            ["invalid_constructor"] = 68,
+            ["constructor_failed"] = 69,
+            ["path_escape"] = 70,
+            ["reparse_point"] = 71,
+        };
+
+    /// <summary>Trusted host map used only for the production generic loader.</summary>
+    public static IReadOnlyDictionary<int, string> LoaderExitCodes { get; } =
+        ExitCodesByDiagnostic.ToFrozenDictionary(pair => pair.Value, pair => pair.Key);
+
+    public static int ExitCodeFor(string diagnosticCode) =>
+        ExitCodesByDiagnostic.TryGetValue(diagnosticCode, out var exitCode)
+            ? exitCode
+            : 2;
+}
 
 /// <summary>
 /// Safe entry point for a native .NET widget worker. It owns host argument

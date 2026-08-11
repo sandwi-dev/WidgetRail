@@ -206,28 +206,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             using var snapshotPublication = await _registry.GetSnapshotAsync(
                     snapshotRequest.WidgetId, _sessionCancellation, cancellationToken)
                 .ConfigureAwait(false);
-            var snapshotResult = snapshotPublication.Value;
-            var snapshot = snapshotResult.Snapshot;
-            var configuredForStyle = snapshotResult.Configured;
-            var theme = _appearance is null
-                ? configuredForStyle.CompiledTheme
-                : _appearance.ResolveWidgetTheme(configuredForStyle.Id, configuredForStyle.StylePackage);
-            var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
-            var snapshotBytes = SnapshotJson.Serialize(snapshot);
-            using (var document = JsonDocument.Parse(snapshotBytes))
-            {
-                await SendAsync(new BridgeEnvelope
-                {
-                    Type = BridgeMessageTypes.Snapshot,
-                    RequestId = request.RequestId,
-                    Payload = BridgeJson.ToElement(new
-                    {
-                        widgetId = snapshotRequest.WidgetId,
-                        snapshot = document.RootElement.Clone(),
-                        renderStyles,
-                    }),
-                }, cancellationToken).ConfigureAwait(false);
-            }
+            await ReplySnapshotAsync(
+                request.RequestId,
+                snapshotRequest.WidgetId,
+                snapshotPublication.Value,
+                cancellationToken).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.RestartWidget:
@@ -247,6 +230,22 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             var lifecycleRequest = BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload);
             ValidateHostState(lifecycleRequest.State);
+            if (lifecycleRequest.AdmitSnapshot)
+            {
+                using var presentationPublication = await _registry
+                    .EstablishPresentationAsync(
+                        lifecycleRequest.WidgetId,
+                        lifecycleRequest.State,
+                        _sessionCancellation,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await ReplySnapshotAsync(
+                    request.RequestId,
+                    lifecycleRequest.WidgetId,
+                    presentationPublication.Value,
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            }
             using var lifecyclePublication = await _registry.SetLifecycleAsync(
                     lifecycleRequest.WidgetId,
                     lifecycleRequest.State,
@@ -391,6 +390,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             MaximumMessageBytes = _maximumMessageBytes,
             MaximumRestartAttempts = 2,
             MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
+            StartupExitDiagnostics = configured.UsesGenericWorkerHost
+                ? WidgetWorkerStartupDiagnostics.LoaderExitCodes
+                : new Dictionary<int, string>(),
             ProcessLeaseFactory = processLeaseFactory,
             ContentLeaseFactory = configured.ContentLeaseFactory,
             IsolationPolicy = configured.RequiresAppContainer
@@ -445,10 +447,39 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 widgetId = item.WidgetId,
                 reason = item.Failure.Reason,
                 item.Failure.ExitCode,
+                item.Failure.DiagnosticCode,
                 item.Failure.RestartsUsed,
                 item.Failure.CanRestart,
             },
             cancellationToken);
+
+    private async Task ReplySnapshotAsync(
+        long requestId,
+        string widgetId,
+        BridgeClientSnapshot snapshotResult,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = snapshotResult.Snapshot;
+        var configuredForStyle = snapshotResult.Configured;
+        var theme = _appearance is null
+            ? configuredForStyle.CompiledTheme
+            : _appearance.ResolveWidgetTheme(
+                configuredForStyle.Id, configuredForStyle.StylePackage);
+        var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
+        var snapshotBytes = SnapshotJson.Serialize(snapshot);
+        using var document = JsonDocument.Parse(snapshotBytes);
+        await SendAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Snapshot,
+            RequestId = requestId,
+            Payload = BridgeJson.ToElement(new
+            {
+                widgetId,
+                snapshot = document.RootElement.Clone(),
+                renderStyles,
+            }),
+        }, cancellationToken).ConfigureAwait(false);
+    }
 
     private Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>
         CreateCompanionFactory(ConfiguredWidget configured)
@@ -608,7 +639,10 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
     private static string SafeMessage(Exception exception)
     {
-        var message = exception.Message;
+        var message = exception is WidgetProcessException or
+            WidgetProcessAdmissionException or BridgeProtocolException
+            ? exception.Message
+            : "Widget request failed.";
         if (message.Length > 512) message = message[..512];
         return message.Replace(Environment.NewLine, " ", StringComparison.Ordinal);
     }

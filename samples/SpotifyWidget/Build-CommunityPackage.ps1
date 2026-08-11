@@ -4,6 +4,7 @@ param(
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
     [string]$Catalog,
+    [string]$Version,
     [switch]$Install
 )
 
@@ -23,6 +24,14 @@ $stagingRoot = Join-Path $artifactsRoot 'package-root'
 $payloadRoot = Join-Path $stagingRoot 'payload'
 $manifestPath = Join-Path $sampleRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    $parsedVersion = $null
+    if (-not [System.Version]::TryParse($Version, [ref]$parsedVersion) -or
+        $parsedVersion.ToString() -cne $Version) {
+        throw "Version must use canonical dotted numeric notation: $Version"
+    }
+    $manifest.version = $Version
+}
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
 $cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
 $widgetProject = Join-Path $sampleRoot 'SpotifyWidget.csproj'
@@ -95,8 +104,16 @@ if ($LASTEXITCODE -ne 0) {
 # OAuth credentials live in host-owned stores and must never enter the addon archive.
 Copy-Item -LiteralPath (Join-Path $publishRoot 'SpotifyWidget.dll') `
     -Destination (Join-Path $payloadRoot 'SpotifyWidget.dll') -Force
-Copy-Item -LiteralPath $manifestPath `
-    -Destination (Join-Path $stagingRoot 'manifest.json') -Force
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    Copy-Item -LiteralPath $manifestPath `
+        -Destination (Join-Path $stagingRoot 'manifest.json') -Force
+} else {
+    $generatedManifest = $manifest | ConvertTo-Json -Depth 16
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stagingRoot 'manifest.json'),
+        $generatedManifest,
+        [System.Text.UTF8Encoding]::new($false))
+}
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
     -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
 
@@ -105,8 +122,15 @@ $expectedFiles = @(
     'payload\SpotifyWidget.dll',
     'styles\default.gbss'
 )
+$stagingPrefix = $stagingRoot.TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
-    [System.IO.Path]::GetRelativePath($stagingRoot, $_.FullName)
+    $fullName = [System.IO.Path]::GetFullPath($_.FullName)
+    if (-not $fullName.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Staged package file escaped the package root: $fullName"
+    }
+    $fullName.Substring($stagingPrefix.Length)
 })
 $unexpectedFiles = @($stagedFiles | Where-Object { $_ -notin $expectedFiles })
 $missingFiles = @($expectedFiles | Where-Object { $_ -notin $stagedFiles })
@@ -133,16 +157,37 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 }
 
 if ($Install) {
+    $catalogRoot = if ([string]::IsNullOrWhiteSpace($Catalog)) {
+        Join-Path ([Environment]::GetFolderPath(
+            [Environment+SpecialFolder]::LocalApplicationData)) 'GameBarAlternative\widgets'
+    } else {
+        [System.IO.Path]::GetFullPath($Catalog)
+    }
     $catalogArguments = if ([string]::IsNullOrWhiteSpace($Catalog)) {
         @()
     } else {
-        @('--catalog', [System.IO.Path]::GetFullPath($Catalog))
+        @('--catalog', $catalogRoot)
+    }
+    $installedPackageRoot = Join-Path (Join-Path $catalogRoot 'packages') $manifest.id
+    if (Test-Path -LiteralPath $installedPackageRoot -PathType Container) {
+        & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+            --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
+            disable $manifest.id @catalogArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "gbar disable failed for the installed $($manifest.id) update."
+        }
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         install $packagePath @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "gbar install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
+    }
+    & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+        --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
+        version select $manifest.id $manifest.version @catalogArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "gbar version select failed for $($manifest.id) $($manifest.version)."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
