@@ -135,6 +135,15 @@ internal static class Program
                     MinimumWidth = 420,
                     MinimumHeight = 300,
                 });
+            if (value.StartsWith("game-launcher.", StringComparison.Ordinal))
+                return new("launcher", "Game Launcher", "launcher-surface", 420, new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Wide,
+                    PreferredWidth = 980,
+                    PreferredHeight = 700,
+                    MinimumWidth = 620,
+                    MinimumHeight = 480,
+                });
             throw new ArgumentException($"Unsupported switch fixture instance {value}.");
         }
 

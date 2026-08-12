@@ -107,6 +107,12 @@ its A/select behavior when enabled. Pointer hit testing uses the renderer's clip
 geometry, so it cannot activate hidden or offscreen controls. The UI remains
 controller-first and no raw pointer event crosses into widget code.
 
+When Left/Right changes the selected widget from the tray, the outgoing
+snapshot may remain visible while a cold destination starts, but it is rendered
+without a widget focus ring and exposes no widget UIA descendants. Input and
+semantic focus transfer immediately to the selected tray item; the destination
+enters widget focus only after an explicit Up/A or equivalent activation.
+
 This is best-effort normal windowing, not injection or a render hook. It is
 intended for desktop, windowed games, borderless games, and games using
 Fullscreen Optimizations. It is not guaranteed above true Fullscreen Exclusive,

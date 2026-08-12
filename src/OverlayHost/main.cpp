@@ -2723,7 +2723,10 @@ private:
         committedWidgetSurfaceAvailable_ = true;
         committedWidgetPresentationWidget_ = widgetId;
         committedWidgetPresentationSnapshot_ = *snapshot;
-        committedWidgetPresentationFocusId_ = focusedElementId_;
+        committedWidgetPresentationFocusId_ =
+            state_.focusRegion() == gba::FocusRegion::Widget
+                ? focusedElementId_
+                : std::wstring{};
     }
 
     [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
@@ -3947,9 +3950,26 @@ private:
             items.push_back({widgetId, name});
         }
         if (state_.surface() == gba::Surface::Widget) {
-            if (widgetAccessibilityTree_.widgetId != state_.activeWidget() ||
+            const bool currentWidgetSemantics =
+                widgetAccessibilityTree_.widgetId == state_.activeWidget();
+            if ((!currentWidgetSemantics &&
+                 state_.focusRegion() != gba::FocusRegion::Tray) ||
                 openWidgetAccessibility_.title.empty())
                 return;
+            gba::accessibility::Tree semanticTree = currentWidgetSemantics
+                ? widgetAccessibilityTree_
+                : gba::accessibility::Tree{};
+            if (!currentWidgetSemantics) {
+                semanticTree.widgetId = state_.activeWidget();
+                semanticTree.activeInputScopeId = L"host.tray";
+                if (const auto descriptor = std::find_if(
+                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
+                        [&](const gba::WidgetDescriptor& candidate) {
+                            return candidate.id == state_.activeWidget();
+                        }); descriptor != widgetDescriptors_.end()) {
+                    semanticTree.runtimeGeneration = descriptor->runtimeGeneration;
+                }
+            }
             const auto semanticRevision =
                 gba::accessibility::ComputeOpenWidgetSemanticRevision(
                     items, openWidgetAccessibility_);
@@ -3957,13 +3977,13 @@ private:
                 ? CurrentAccessibilityPolicy()
                 : gba::NativeAccessibilityPolicy{};
             gba::accessibility::ProjectionKey key{
-                widgetAccessibilityTree_.widgetId,
-                widgetAccessibilityTree_.runtimeGeneration,
-                widgetAccessibilityTree_.activeInputScopeId,
+                semanticTree.widgetId,
+                semanticTree.runtimeGeneration,
+                semanticTree.activeInputScopeId,
                 state_.focusRegion() == gba::FocusRegion::Tray
                     ? std::wstring{state_.selectedWidget()}
                     : focusedElementId_,
-                widgetAccessibilityTree_.snapshotSequence,
+                semanticTree.snapshotSequence,
                 widgetAccessibilityRevision_,
                 appearanceState_.current() ? appearanceState_.current()->revision : 0,
                 layout.stripBounds.x,
@@ -3981,7 +4001,7 @@ private:
             key.hostSemanticRevision = semanticRevision;
             if (!accessibilityProjection_.ShouldCollect(key)) return;
             accessibilityTree_ = gba::accessibility::BuildOpenWidgetTree(
-                widgetAccessibilityTree_, items, layout, state_.selectedSlot(),
+                std::move(semanticTree), items, layout, state_.selectedSlot(),
                 state_.focusRegion() == gba::FocusRegion::Tray,
                 openWidgetAccessibility_);
             if (PublishAccessibilityTree(key.pixelsPerDip))
@@ -5655,10 +5675,22 @@ private:
                     renderedFocusId,
                     viewport, options);
                 if (result.succeeded) {
+                    const std::wstring inputOwner =
+                        state_.focusRegion() == gba::FocusRegion::Tray
+                            ? L"tray"
+                            : L"widget";
+                    const std::wstring semanticFocus =
+                        state_.focusRegion() == gba::FocusRegion::Tray
+                            ? L"tray:" + std::wstring(state_.selectedWidget())
+                            : retainedCommittedSnapshot || focusedElementId_.empty()
+                                ? L"none"
+                                : L"widget:" + focusedElementId_;
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
-                        (retainedCommittedSnapshot ? L"retained" : L"admitted");
+                        (retainedCommittedSnapshot ? L"retained" : L"admitted") +
+                        L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
+                        L"\n" + semanticFocus;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
                         AppendDiagnostic(
@@ -5668,7 +5700,14 @@ private:
                             L" rendered=" + std::wstring(renderedWidget) +
                             L" sequence=" + std::to_wstring(snapshot->sequence) +
                             L" semantics=" +
-                            (retainedCommittedSnapshot ? L"inert" : L"current"));
+                            (retainedCommittedSnapshot ? L"inert" : L"current") +
+                            L" input-owner=" + inputOwner +
+                            L" selected=" + std::wstring(state_.selectedWidget()) +
+                            L" visual-focus=" +
+                            (renderedFocusId.empty()
+                                ? std::wstring{L"none"}
+                                : std::wstring{renderedFocusId}) +
+                            L" semantic-focus=" + semanticFocus);
                     }
                 }
                 declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;

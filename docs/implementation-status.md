@@ -858,6 +858,17 @@ Left/Right still visits every enabled widget in catalog order. Visible UIA
 ListItems report `PositionInSet` and `SizeOfSet`, while overflow buttons announce
 their direction and hidden count.
 
+DLV-106 makes tray focus the complete authority during a cold identity switch.
+The last admitted widget snapshot may remain visually rendered until the
+destination is ready, but its committed focus ID is cleared before that retained
+frame. During the interval the host publishes only current tray semantics for
+the selected destination; outgoing widget descendants cannot remain focused,
+actionable, or present in UIA. The bounded presentation diagnostic records the
+input owner, selected stable ID, rendered visual focus, and semantic focus on
+each authority transition. The production-shaped Audio Mixer to 420-ms cold
+Game Launcher fixture proves both retained and admitted frames stay tray-owned
+until an explicit Up/A entry.
+
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
 overlay. Both windows are topmost only while visible. Ordinary controller reads
