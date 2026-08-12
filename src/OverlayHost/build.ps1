@@ -13,6 +13,7 @@ param(
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
     [switch]$TrustedArtworkTestsOnly,
+    [switch]$WidgetSessionTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$WidgetSurfaceTestsOnly
 )
@@ -122,9 +123,10 @@ $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-chu
 $pinnedSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-surface-host-tests'
 $pinnedPlacementTestObjectDirectory = Join-Path $outputDirectory 'obj\pinned-placement-tests'
 $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surface-coordinator-tests'
+$widgetSessionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-session-coordinator-tests'
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -594,6 +596,72 @@ function Invoke-TrustedArtworkTests {
     }
 }
 
+function Invoke-WidgetSessionTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetSessionCoordinatorTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetSessionCoordinator.cpp'),
+        "/Fo:$widgetSessionTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetSessionCoordinatorTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSessionCoordinatorTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetSessionCoordinatorTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSessionCoordinatorTests failed with exit code $LASTEXITCODE."
+    }
+
+    $stateArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayStateTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
+        "/Fo:$testObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayStateTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $stateArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayStateTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayStateTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayStateTests failed with exit code $LASTEXITCODE."
+    }
+
+    $lifecycleArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetLifecycleTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetLifecycle.cpp'),
+        "/Fo:$lifecycleTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetLifecycleTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $lifecycleArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetLifecycleTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetLifecycleTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetLifecycleTests failed with exit code $LASTEXITCODE."
+    }
+
+    $feedbackArguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetActionFeedbackTests.cpp'),
+        (Join-Path $projectDirectory 'WidgetActionFeedback.cpp'),
+        "/Fo:$actionFeedbackTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetActionFeedbackTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $feedbackArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetActionFeedbackTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'WidgetActionFeedbackTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetActionFeedbackTests failed with exit code $LASTEXITCODE."
+    }
+}
+
 if ($CompositionTestsOnly) {
     if ($SkipTests) {
         throw 'CompositionTestsOnly cannot be combined with SkipTests.'
@@ -610,12 +678,21 @@ if ($TrustedArtworkTestsOnly) {
     return
 }
 
+if ($WidgetSessionTestsOnly) {
+    if ($SkipTests) {
+        throw 'WidgetSessionTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-WidgetSessionTests
+    return
+}
+
 $hostArguments = $common + @(
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+    (Join-Path $projectDirectory 'WidgetSessionCoordinator.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
     (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),

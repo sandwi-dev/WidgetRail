@@ -1941,7 +1941,8 @@ std::wstring WidgetBridgeClient::lastError() const {
 }
 
 bool WidgetBridgeClient::PumpEvents() {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return false;
     if (pipe_ == INVALID_HANDLE_VALUE) return false;
     bool consumed = false;
     try {
@@ -1984,34 +1985,40 @@ bool WidgetBridgeClient::PumpEvents() {
 }
 
 std::vector<std::wstring> WidgetBridgeClient::TakeInvalidatedWidgetIds() noexcept {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return {};
     return invalidations_.Take();
 }
 
 std::vector<WidgetActionFailure> WidgetBridgeClient::TakeActionFailures() noexcept {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return {};
     return actionFailures_.Take();
 }
 
 std::vector<WidgetHostEffect> WidgetBridgeClient::TakeHostEffects() noexcept {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return {};
     return hostEffects_.Take();
 }
 
 std::vector<WidgetArtworkResult> WidgetBridgeClient::TakeArtworkResults() noexcept {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return {};
     return artworkResults_.Take();
 }
 
 std::optional<long long>
 WidgetBridgeClient::TakePlatformAppearanceChangedRevision() noexcept {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return std::nullopt;
     return appearanceChanges_.Take();
 }
 
 std::optional<long long>
 WidgetBridgeClient::TakeWidgetCatalogChangedRevision() noexcept {
-    std::scoped_lock lock(requestMutex_);
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return std::nullopt;
     return catalogChanges_.Take();
 }
 
