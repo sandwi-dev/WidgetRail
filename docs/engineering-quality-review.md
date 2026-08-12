@@ -279,7 +279,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-166 found no Games & Apps persistence gap; DLV-167 keeps Settings inventory usable during typed quota recovery. PID 41148 admitted all eight first pages with contained UIA geometry and no host/worker/protocol/broker/provider failure. | DLV-169/170/171 own Spotify continuous lists, Games & Apps artwork, and Game Launcher control/continuation audits; user verdict on PID 41148 remains authoritative for visual cadence and layout. |
+| Visible UI and controller behavior | DLV-169 fixes Spotify terminal wrapping and explicit adjacent focus; DLV-170/171 found no managed artwork or Launcher control/continuation gap. PID 39248 admitted all eight first pages with contained UIA geometry and no error-class host/worker/protocol/broker/provider record. | DLV-172/173/174 now own coherent Game Launcher organization/details, YT Music transport/recovery, and Now Playing recovery/quick-action outcomes. User verdict on PID 39248 remains authoritative for visual cadence and layout. |
 | Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. | Recover the conflicted platform worktree with user authorization, then run DLV-160 end-to-end author lifecycle. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -309,13 +309,14 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-169's exact Spotify 12/12/5 continuous-list audit without adding
-   capture infrastructure or requiring account behavior.
+1. Review DLV-172 as a visible Game Launcher organization/details outcome, not
+   a test-only audit; require exact SavedId, nested-scope, and return-focus
+   authority without expanding into remote services.
 2. Keep platform stopped until the user authorizes bounded abort of the failed
    merge; then review DLV-168's tray UIA completion contract before DLV-160.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 41148 visible for the user's dashboard, Spotify, Settings, and Game Launcher
+4. Keep PID 39248 visible for the user's dashboard, Spotify, Settings, and Game Launcher
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.

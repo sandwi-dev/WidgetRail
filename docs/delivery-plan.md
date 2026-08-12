@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 12:47 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 13:42 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,11 +13,11 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `8dd29c9`; worktree clean when this plan was
+- Local product baseline: `d58e50e`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-167 through `8dd29c9`.
-- Visible accepted Release: PID 41148, launched at 12:42:18 after the Games &
-  Apps audit and Settings quota-recovery correction. The first
+- Latest implementation integration: DLV-171 through `d58e50e`.
+- Visible accepted Release: PID 39248, launched at 13:29:20 after the Spotify
+  continuous-list and library/launcher audits. The first
   dashboard frame is
   bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
@@ -62,6 +62,15 @@ That snapshot is historical evidence, not implementation authority.
   PID 41148 admitted all eight first pages with contained UIA geometry and no
   host/worker/protocol/broker/provider error. The tray UIA completion defect
   repeated on seven post-start selections and remains DLV-168.
+- DLV-169 `add177e`, DLV-170 `1ba2183`, and DLV-171 `055f72a` were reviewed and
+  cherry-picked as `be69735`, `1829140`, and `d58e50e`. Spotify now authors
+  explicit adjacent list focus and terminal non-wrapping edges; 50/50 Spotify,
+  89/89 SDK, and the installed Community route pass. Games & Apps artwork and
+  Game Launcher controls/continuation reproduced no product gap; their focused
+  suites pass 64/64 plus provider 75/75 and Launcher 77/77. PID 39248 admits
+  all eight first pages inside the host with no error-class host, worker,
+  protocol, broker, or provider records. The post-start tray UIA completion
+  defect remains separately owned by DLV-168.
 
 ## Execution protocol
 
@@ -100,35 +109,48 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-169: Spotify continuous-list composition audit
+### Current assignment — DLV-172: Game Launcher M1 organization and details outcome
 
-**State:** Assigned after accepted DLV-166/167 contiguous prefix. The widgets
-task must begin immediately from clean branch `89005d1`.
+**State:** Assigned after accepted DLV-169/170/171 contiguous prefix. The
+widgets task must begin immediately from clean branch `055f72a`.
 
-**Baseline/dependencies:** widgets branch `89005d1`; accepted product `8dd29c9`.
-This assignment owns the Spotify Community widget and existing public cursor-
-resource composition seam plus focused tests/docs only. Do not touch native
-host, OAuth/Web Playback/account behavior, package selection/version, reviewer
-docs, or unrelated SDK abstractions.
+**Baseline/dependencies:** widgets branch `055f72a`; accepted product `d58e50e`.
+This assignment owns managed Game Launcher organization, details/action-sheet
+presentation, private state, and directly required existing SDK seams. Do not
+touch the native host, source launch authority, remote metadata, accounts,
+reviewer docs, or Launcher Experience pack schemas.
 
-**User-visible outcome:** Queue and Playlists traverse continuously in both
-directions without dropped entries, top/bottom wrapping, focus jumps, or the
-previous five-row retention regression.
+**User-visible outcome:** Favorites, Hidden/Restore, Continue/Recent, All
+installed, Manual, and non-empty source collections are controller reachable;
+View opens truthful details and Y opens a scoped action sheet, and returning
+restores the exact collection, tile, page, and focus.
 
-**Objective/acceptance:** run the existing credential-free composed Spotify
-resource/widget fixtures through exact 12/12/5 forward and reverse windows,
-page replacement, eviction, sparse/terminal pages, retry, lifecycle
-reactivation, and focus-edge continuation. Every occurrence remains reachable
-once; focus advances to the adjacent occurrence rather than wrapping or
-jumping to navigation chrome. Implement only a reproducible managed widget or
-existing public cursor-resource composition defect. Do not build new capture,
-live-account, or broad generic fixture infrastructure.
+**Objective/acceptance:** close the smallest coherent M1 slice of GL-CAT-004/005
+and GL-UX-002/005 using exact SavedId operations and conflict-safe existing
+state. Details expose title, source, availability, primary action, favorite,
+category/variant, last-played/playtime, and operation state only when known.
+Nested scopes consume Back before the root and never leak LB/RB or contextual
+shortcuts. Implement visible production behavior, not a test-only audit; if a
+required public SDK/native capability is missing, report the exact boundary for
+planner assignment rather than substituting widget-local authority.
 
-**Verification/stop:** Tier 1 Spotify and directly affected SDK resource suites;
-Tier 2 one existing installed credential-free Spotify route if a product change
-is required. No aggregate, screenshot, OAuth, Web Playback, package bump,
-native focus correction, broad fixture rewrite, or security hardening. Stop and
-report if the defect is native-only or requires a public protocol change.
+**Verification/stop:** Tier 1 Game Launcher and directly affected managed suite;
+Tier 2 one existing installed generic-worker route covering favorite,
+details/action sheet, return-focus, Hide/Restore, and restart. No aggregate,
+capture, remote service, credential, native change, broad test-infrastructure
+rewrite, or security hardening. Keep verification proportional to the visible
+outcome.
+
+### Accepted milestones — DLV-169/170/171: visible widget audits
+
+**State:** Done and accepted through main `d58e50e`. DLV-169 adds explicit
+adjacent Spotify list focus plus terminal non-wrapping edges and passes 50/50
+Spotify, 89/89 SDK, docs 66, and the installed Community route. DLV-170 proves
+discovered Game and explicit Application artwork/fallback across refresh and
+warm restart with Games & Apps 64/64 and provider 75/75; no product gap was
+found. DLV-171 proves 32-game controls, exact help, and full/partial/final
+continuation with Launcher 77/77; no product gap was found. PID 39248 admits all
+eight current first pages within the host and has no recent error-class records.
 
 ### Accepted milestone — DLV-167: installed-widget quota recovery
 
@@ -422,26 +444,26 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-169 — DLV-170: Games & Apps icon/artwork availability audit.**
-   Trace one safely discovered Game and one explicit Application from trusted
-   provider presentation through opaque artwork handles, saved-first warm
-   projection, background reconciliation, and the existing AppTile/fallback
-   presentation. Prove available artwork is requested lazily and survives
-   refresh/restart while absent/terminal art yields one semantic icon fallback
-   without hiding or disabling the row. Implement only a reproducible managed
-   provider/widget gap. Tier 1 provider/Games & Apps plus one installed route;
-   no native image-cache work, remote metadata, raw paths, screenshots,
-   aggregate, public protocol, or speculative framework abstraction.
-2. **Ready after DLV-170 — DLV-171: Game Launcher controls and continuation audit.**
-   Exercise the existing 32-game credential-free production projection through
-   Add games, Add running app, Experiences, supported contextual shortcuts,
-   help copy, full/partial/final collection pages, and last-row Down. Every
-   enabled control must have one admitted action, disabled copy must be
-   truthful, and continuation must advance exactly once to the adjacent game
-   rather than the footer or a same-page loop. Implement only a reproducible
-   managed Game Launcher defect; stop and report a native focus owner. Tier 1
-   Game Launcher plus the smallest existing installed route; no account,
-   native, screenshot, aggregate, broad fixture rewrite, or new feature scope.
+1. **Ready after DLV-172 — DLV-173: YT Music credential-free transport and recovery outcome.**
+   Make the first page and contextual tray actions truthful for no companion,
+   pairing, connected idle, playing/paused, stale, disconnect, reconnect, and
+   deactivation generations. Existing supported play/pause, previous, next,
+   shuffle, repeat, rating, seek, and refresh actions must appear only with
+   current authority, preserve last-good presentation during a transient
+   disconnect, and reject late completion. Implement reproduced managed widget
+   or existing SDK lifecycle gaps. Tier 1 YT Music plus one installed fake-
+   companion route; no real account/network, native host, package bump,
+   capture, aggregate, or speculative API expansion.
+2. **Ready after DLV-173 — DLV-174: Now Playing visible recovery and quick-action outcome.**
+   Keep the selected Windows media session and its metadata/transport controls
+   usable through empty, identity-less, transient provider failure, Retry,
+   session replacement, and worker reactivation. Dashboard shortcuts must be
+   truthful for the current selected session and stale completions must not
+   replace newer state. Implement only a reproduced managed provider/widget or
+   existing SDK lifecycle defect and stop on native-only tray routing. Tier 1
+   Windows Media/Now Playing plus the existing installed recovery route; no
+   native, account, screenshot, aggregate, broad fixture rewrite, or security
+   work.
 
 ## Platform lane
 
@@ -613,7 +635,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 41148 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 39248 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
@@ -630,15 +652,15 @@ missing private seam rather than adding parallel presentation authority.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-171 | `055f72a` | `d58e50e` | No managed Game Launcher gap reproduced; 77/77 covers 32-game controls, exact help, and full/partial/final continuation, and PID 39248 admission passes. |
+| DLV-170 | `1ba2183` | `1829140` | No Games & Apps artwork gap reproduced; 64/64 plus provider 75/75 cover opaque art, refresh/warm restart, and semantic fallback. |
+| DLV-169 | `add177e` | `be69735` | Spotify authors adjacent focus and terminal non-wrap edges across Queue, Playlists, and detail; 50/50, SDK 89/89, docs 66, and installed recovery pass. |
 | DLV-167 | `89005d1` | `8dd29c9` | Settings retains read-only last-good installed inventory and truthful Retry across typed version-limit faults; 60/60, Catalog 35/35, docs 66, and PID 41148 pass. |
 | DLV-166 | `9caa853` | `ded6821` | No Games & Apps product gap reproduced; 63/63, provider 75/75, and a two-worker shared-private-state installed restart route pass. |
 | DLV-165 | `217f515` | `466e189` | One late canceled broker reply no longer poisons the replacement request/channel; Broker 56/56, Launcher 77/77, exact installed launch route, and PID 26524 first-page admission pass. |
 | DLV-164 | `9a8822f` | `11a04e9` | Game Launcher controller hints use one valid responsive non-scroll Row; 77/77, ordinary host route, and zero-invalid-style installed/live evidence pass. |
 | DLV-162 | `31bc594` | `06d3d84` | Identity-less GSMTC sessions retain sanitized `Media app` presentation instead of being omitted; Windows Media 14/14, Now Playing 23/23, installed recovery route passed. |
 | DLV-134/145/146 | `e847502`, `7a566be`, `8c6adb4` | `f88aa58`, `3a22bf9`, `4aa7284` | Persisted four-profile Game Launcher projection adopted through the ordinary production worker/bridge/host path; 1,588 native checks, explicit seeded adoption/fallback host scenarios, managed 68/68. |
-| DLV-135 | `3c93abb` | `e6dc10e` | Deterministic data-only Launcher Experience new/validate/preview/pack/inspect/install/list/remove workflow; 61/61 CLI, 17/17 catalog, 1,361 native offscreen checks. |
-| DLV-143 | `157384f` | `cc0018a` | First compact dashboard commit is bottom-anchored; paint, pointer, UIA, and absolute diagnostics agree. |
-| DLV-144 | `bbed0bc` | `abb1e8d` | Spotify compact player retains the controller rail, one focus-revealing viewport, and cross-branch focus identity; 49/49. |
 | DLV-130/138/139/142 | `da08c44`, `c82f111`, `2281548`, `ecfdd18` | `a3f883e` | Normalized app-library model, focused validation, Windows/Xbox and opt-in Epic installed sources; SDK 89/89, Games 62/62, Launcher 65/65. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
