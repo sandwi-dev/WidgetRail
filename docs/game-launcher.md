@@ -5,6 +5,10 @@ library and uses the
 generic AppContainer worker, normalized app-library broker, shared trusted
 provider cache, lazy artwork registry, and exact launch authority.
 
+The proposed multi-source console-home expansion and launcher-specific theme
+system are specified separately in
+[Game Launcher product and engineering requirements](game-launcher-requirements.md).
+
 Game Launcher is the complete-library companion to the curated Games & Apps
 tray. Both consume the same normalized installed-game records, opaque SavedIds,
 and fresh launch resolution. The widget does not discover stores, retain raw

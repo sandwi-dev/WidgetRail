@@ -102,6 +102,10 @@ implementation turns do not spend context on completed hourly work.
   library over bounded opaque cursors, responsive virtualized grid semantics,
   lazy artwork, favorites, explicit preferred-variant groups, display-only warm
   state, and fresh exact launch admission.
+- [Game Launcher product and engineering requirements](game-launcher-requirements.md)
+  — proposed console-home expansion informed by Heroic and One Game Launcher,
+  including trusted multi-source adapters, optional content operations, and
+  data-only per-launcher experience packs with safe custom layouts and media.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.
