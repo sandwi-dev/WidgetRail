@@ -259,7 +259,7 @@ one class automatically.
 | Production owner | Current signal | Disposition |
 | --- | ---: | --- |
 | `OverlayApp` / `main.cpp` host application | `main.cpp` 6,436 physical lines; dominant logical owner remains several thousand lines | **Open, dependency-ordered.** DLV-143 must keep cold-start geometry in the existing placement/composition owners and provide a before/after responsibility map. Revisit another extraction only as a named visible/release prerequisite. |
-| `GameLauncherWidget` | 1,350-line accepted root; rejected branch reached 1,990 and DLV-175 reduces it to 1,948 with an immutable collection state owner | **Correction queued DLV-183.** DLV-179 makes collection selection exclusive without regrowing the root, but its proven-source catalog is process-local. Persist or authoritatively reconstruct only that bounded identity; do not move provider, validation, or new coordination policy back into the root. |
+| `GameLauncherWidget` | 1,350-line accepted root; held branch remains application-sized after DLV-175's immutable collection owner and later focused policies | **Active conditional exception.** DLV-183 closes the process-local source-catalog gap through existing bounded private-state/CAS ownership without adding mutable root coordination. DLV-184/185 may not add layout or launch-persistence policy to the root beyond a thin lifecycle/state adapter. |
 | `GamesAppsWidget` | 1,376-line root | **Conditional exception.** Sole lifecycle/provider-effect/action/committed-state adapter over separate presentation, catalog, persistence, reconciliation, and app-library projection policies. Reopen for store/domain growth. |
 | `AudioMixerWidget` | 1,702-line root | **Conditional exception.** One state/action/effect/selection/status/invalidation transaction owner over separate provider session, command transition, and presenter. Reopen for another coordination domain. |
 | `SettingsWidget` | 1,503-line root | **Conditional exception.** One lifecycle/service-effect/committed-state adapter over separate section, permission, installed-package, and theme policies. Reopen for another service lifecycle or material unrelated growth. |
@@ -279,7 +279,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-169 fixes Spotify terminal wrapping and explicit adjacent focus; DLV-170/171 found no managed artwork or Launcher control/continuation gap. PID 39248 admitted all eight first pages with contained UIA geometry and no error-class host/worker/protocol/broker/provider record. DLV-176/177 corrections are independently accepted but held. | DLV-179 fixes conflicting collection modes but restart stability remains rejected; DLV-183 owns that correction after assigned visible state work DLV-181. Native TextEntry evidence DLV-180 is assigned on the recovered platform lane; DLV-182/184 keep visible Launcher progression and compact fit queued. |
+| Visible UI and controller behavior | DLV-181 distinct availability and DLV-183 restart-stable source collections are independently accepted but held; DLV-184 compact fit is active. PID 39248 remains the last accepted eight-widget live artifact. | DLV-182 still permits cancellation-ignoring stale Recent persistence; DLV-185 corrects it after DLV-184. Native TextEntry evidence DLV-180 is active on the recovered platform lane; DLV-186/187 keep owned/offline Launcher behavior queued. |
 | Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. The isolated platform merge was user-authorized and cleanly aborted back to `c2a8172`. | Complete assigned DLV-180, then DLV-168 and DLV-160 in queue order. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -309,9 +309,9 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Complete visible DLV-181, then review DLV-183's restart-stable truthful
-   source catalog. Run native DLV-180 after authorized platform recovery before
-   reconsidering the held widget prefix.
+1. Review active DLV-184, then DLV-185's generation-safe Recent persistence.
+   DLV-181/183 are accepted held; native DLV-180 must also pass before the
+   contiguous widget prefix can be reconsidered.
 2. Review assigned native DLV-180 from clean platform baseline `c2a8172`, then
    DLV-168's tray UIA completion contract before DLV-160.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack

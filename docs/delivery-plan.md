@@ -97,6 +97,16 @@ That snapshot is historical evidence, not implementation authority.
 - DLV-180 stopped before task-specific edits because production TextEntry
   open/cancel/focus restoration is native-host-owned. It is now serialized as a
   platform evidence seam instead of blocking the widgets lane.
+- DLV-181 `4476567` and DLV-183 `23fa23d` are independently accepted but held
+  unintegrated. DLV-181 gives loading/empty/offline/degraded/permission/disabled/
+  busy/retry distinct presentation while retaining navigable disabled tiles,
+  last-good games, and exact focus. DLV-183 persists bounded non-authorizing
+  proven-source labels across a cold worker restart and proves Clear/query truth.
+- DLV-182 `498c602` is cleanly committed but rejected and remains held. Newer
+  launch admission correctly reserves a generation, but an older accepted
+  observation can begin cancellation-ignoring private-state persistence before
+  supersession and durably corrupt Recent. DLV-185 owns that exact persistence
+  race after the already-active visible DLV-184 milestone.
 
 ## Execution protocol
 
@@ -135,35 +145,34 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-181: Game Launcher distinct unavailable and degraded states
+### Current assignment — DLV-184: Game Launcher compact first-page fit
 
-**State:** Assigned. Begin immediately from clean widgets commit `84c8780`;
-DLV-179's rejected source-catalog correction is queued next and does not
-interrupt this new visible milestone.
+**State:** In progress from clean widgets commit `498c602`. Finish and commit
+this visible milestone before taking the queued DLV-185 correction.
 
-**Baseline/dependencies:** widgets branch `84c8780`; accepted product `d58e50e`.
-The full Launcher/media prefix remains held. Own only Game Launcher presentation
-of existing provider/library availability, focused tests, and directly affected
-implementation/public docs. Do not edit collection identity/catalog policy,
-YT Music, Media Sessions, native host, provider authority, public protocol,
-reviewer docs, or Launcher Experience pack schemas.
+**Baseline/dependencies:** widgets branch `498c602`; accepted product `d58e50e`.
+DLV-181/183 are accepted held; DLV-182 is rejected but its correction must not
+interrupt this already-started work. Own only the existing managed responsive
+Game Launcher presentation, focused semantic/focus tests, and directly affected
+implementation/public docs. Do not edit launch lifecycle/persistence,
+collection/source-catalog policy, native host/work-area policy, provider
+authority, public protocol, reviewer docs, or Launcher Experience pack schemas.
 
-**User-visible outcome:** loading, empty, offline, stale/degraded source,
-permission denied, busy, disabled, and retry states are visibly distinct and
-controller reachable; a failed source does not erase healthy or last-good games.
+**User-visible outcome:** at 420×340 logical DIPs the first Launcher page keeps
+the focused game, primary action, collection navigation, truthful status, and
+controller help visible and reachable without clipping.
 
-**Objective/acceptance:** deliver GL-UX-006 using existing typed provider and
-library state. Disabled/busy tiles remain navigable and expose a visible and
-accessible reason. Mixed-source failure preserves healthy results and safe
-last-good content; retry affects only the failed/current operation and cannot
-let a late failure replace newer healthy state. Empty is never used as a generic
-failure. Preserve exact focus and collection/query state across failure/retry.
+**Objective/acceptance:** deliver GL-UX-007 through one existing managed
+responsive tree. Compact may reduce hero metadata and density, but launch,
+Back, search, source health, operation/recovery state, collection navigation,
+and controller help remain in semantic/focus order. Standard and wide layouts
+retain their current information hierarchy and exact focus/action identity;
+inactive branches are absent rather than hidden.
 
-**Verification/stop:** Tier 1 Game Launcher plus one installed generic-worker
-mixed-source failure/recovery route. No provider authority, collection-catalog
-correction, native change, account, remote service, capture, aggregate, broad
-fixture rewrite, or security work. Stop if the required typed state does not
-exist at the owned managed boundary and report the exact missing seam.
+**Verification/stop:** Tier 1 Game Launcher plus deterministic compact/standard/
+wide semantic-layout and focus fixtures. No native work-area policy, launch-race
+correction, new renderer/protocol, screenshot gate, theme-pack schema,
+aggregate, or cosmetic redesign beyond the responsive Launcher surface.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -468,34 +477,34 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-181 — DLV-183: persist truthful Game Launcher source collections.**
-   Correct rejected DLV-179 without undoing its single exclusive collection
-   selection. Retain a bounded persisted catalog of sources proven to have at
-   least one current game—or consume an existing authoritative private seam—so
-   a restart whose first page omits a still-current later-page source does not
-   hide that source. Observation-only empty sources remain excluded; an
-   authoritative refresh may remove a now-empty/absent source. Explicitly
-   traverse Clear and compare the visible label with the exact outgoing query.
-   Tier 1 Launcher plus the installed two-source paging/restart/removal route;
-   no public SDK/provider authority, native, capture, aggregate, or root regrowth.
-2. **Ready after DLV-183 — DLV-182: Game Launcher launch-progress and return outcome.**
-   Make exact focused launch visibly progress only through Pending, Request
-   accepted, Launcher started, Running, Ended, or Failed; late results from a
-   replaced source, newer launch, or deactivated worker cannot reorder Recent
-   or change the current tile. Overlay-close eligibility begins only at Launcher
-   started or stronger, while failure returns focus to the same game with a
-   truthful retry path. Tier 1 Launcher/Broker plus the smallest installed exact-
-   launch route; no new source authority, raw command, native layout, capture,
-   aggregate, account, or security work.
-3. **Ready after DLV-182 — DLV-184: Game Launcher compact first-page fit.**
-   Deliver GL-UX-007 through the existing managed responsive presentation so a
-   420×340 logical-DIP first page keeps the focused game, primary action,
-   collection navigation, truthful status, and controller help visible without
-   clipped text or unreachable controls. Larger layouts retain their current
-   information hierarchy and exact focus/action identity. Tier 1 Launcher plus
-   deterministic compact/standard/wide semantic-layout fixtures; no native
-   work-area policy, new renderer/protocol, screenshot gate, theme-pack schema,
-   aggregate, or cosmetic redesign beyond the responsive Launcher surface.
+1. **Ready after DLV-184 — DLV-185: make Launcher Recent persistence generation-safe.**
+   Correct rejected DLV-182 without undoing its latest-wins launch lane. An
+   older launch that has passed observation acceptance but is blocked inside a
+   cancellation-ignoring private-state write must not durably add/reorder Recent
+   after a newer launch is admitted. Use generation-aware conditional commit or
+   exact post-write reconciliation in the existing CAS/private-state owner.
+   Also prove an inactive/rejected `RunLatest` admission cannot invalidate the
+   active launch. Tier 1 Launcher plus a deterministic accepted-result→blocked-
+   persistence→newer-admission barrier fixture and the exact installed launch
+   route; no broker/public protocol, native, capture, aggregate, or root regrowth.
+2. **Ready after DLV-185 — DLV-186: distinguish owned but not installed games.**
+   Deliver GL-CAT-008 only for typed records already exposed by current app-
+   library providers. Owned/not-installed tiles remain navigable and visibly/
+   accessibly distinct, never enter launch admission, and expose Install only
+   when the current typed source capability explicitly authorizes it. Offline,
+   signed-out, unsupported, and stale states retain truthful non-launching copy.
+   Tier 1 Launcher/provider presentation plus one credential-free installed
+   mixed installed/owned route; no new store adapter, content-operation queue,
+   free-form command, native layout, account, capture, aggregate, or security work.
+3. **Ready after DLV-186 — DLV-187: prove offline browsing and exact local launch.**
+   Close GL-CAT-007 for existing installed sources: a failed network/source
+   refresh retains bounded last-good browsing, exact collection/tile focus, and
+   locally revalidated launch only where current typed authority confirms the
+   installation. Offline state must not silently authorize stale or missing
+   records, and recovery must not duplicate/reorder Recent. Tier 1 Launcher and
+   provider fakes plus one installed offline/recovery exact-SavedId route; no
+   remote account, new adapter, public protocol, native layout, capture,
+   aggregate, or speculative security work.
 
 ## Platform lane
 
@@ -663,6 +672,16 @@ missing private seam rather than adding parallel presentation authority.
    executable/remote content, path leakage, second renderer, or stale selection.
    Reuse existing CLI/catalog/Settings/private bridge/native owners; no new pack
    schema, public protocol, gallery, signing, network, aggregate, or screenshots.
+3. **Ready after DLV-160 — DLV-188: current widget-switch continuity verdict.**
+   Reproduce the user's black-border/flicker/tray-motion regression against the
+   exact accepted packaged main path using live transition, placement, and
+   compositor diagnostics—not capture output. If current accepted behavior is
+   already clean, retain a bounded eight-widget transition result and make no
+   product edit. If reproduced, correct only the existing single-window shell/
+   composition transition owner so the tray remains fixed and no opaque border
+   or stale frame is exposed. Tier 1 transition/placement/compositor suites plus
+   one real-host eight-widget cycle; no screenshot gate, second window/renderer,
+   managed widget, protocol, aggregate, or unrelated animation redesign.
 
 ## Serialized integration queue
 
