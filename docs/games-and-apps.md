@@ -279,6 +279,12 @@ Read requires Visible or Interactive. Launch is a control operation and
 requires Interactive; it cannot use dashboard-gesture authority. Declaration,
 user consent, authenticated package/publisher/instance identity, current
 lifecycle, payload validation, and provider validation are independent gates.
+The SDK validates source, availability, artwork, metadata, capabilities, and
+operation values through separate focused owners before one narrow relationship
+composer runs. Games & Apps additionally requires a freshly resolved
+`Installed` row with matching explicit launchability and `Launch` capability;
+unavailable, stale-source, and retained last-good display rows never authorize
+launch.
 
 ## Trusted Windows provider boundary
 

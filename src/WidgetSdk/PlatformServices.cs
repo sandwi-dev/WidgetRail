@@ -1491,19 +1491,9 @@ public sealed class WidgetAppLibraryService
         var sourceIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var source in sources)
         {
-            if (source is null || !Enum.IsDefined(source.Health) ||
-                !Enum.IsDefined(source.AccountState) ||
-                source.Revision < 0 ||
-                source.LastSuccessfulRefreshAtUnixMilliseconds is < 0 ||
-                string.IsNullOrWhiteSpace(source.DisplayName) ||
-                source.DisplayName.Length > 64 || source.DisplayName.Any(char.IsControl) ||
-                source.StatusCode is not { Length: > 0 and <= 48 } ||
-                source.StatusCode.Any(character =>
-                    !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-' and not '.'))
+            if (!WidgetAppLibrarySourceValidator.IsValid(source))
                 throw MalformedPage();
-            try { ValidateOpaqueId(source.SourceId, nameof(sources)); }
-            catch (ArgumentException) { throw MalformedPage(); }
-            if (!sourceIds.Add(source.SourceId)) throw MalformedPage();
+            if (!sourceIds.Add(source!.SourceId)) throw MalformedPage();
         }
     }
 
@@ -1523,7 +1513,7 @@ public sealed class WidgetAppLibraryService
     {
         if (item is null ||
             item.PresentationVersion != WidgetAppLibraryItem.CurrentPresentationVersion ||
-            !IsValidPresentation(item)) return false;
+            !IsValidPresentation(item.Presentation)) return false;
         try
         {
             ValidateOpaqueId(item.AppId, nameof(item));
@@ -1536,73 +1526,21 @@ public sealed class WidgetAppLibraryService
         }
     }
 
-    private static bool IsValidPresentation(WidgetAppLibraryItem item)
+    private static bool IsValidPresentation(WidgetAppLibraryPresentation? value)
     {
-        var value = item.Presentation;
-        if (value is null || !Enum.IsDefined(value.Kind) ||
-            !IsDisplayValue(value.DisplayName, 160) || value.Source is null ||
-            !IsDisplayValue(value.Source.DisplayName, 64) ||
-            value.Availability is null || !Enum.IsDefined(value.Availability.State) ||
-            !IsStatusCode(value.Availability.StatusCode) ||
-            value.Artwork?.Items is null || value.Artwork.Items.Count > 4 ||
-            value.Capabilities?.Actions is null || value.Capabilities.Actions.Count > 13 ||
-            value.Capabilities.Actions.Distinct().Count() != value.Capabilities.Actions.Count ||
-            value.Capabilities.Actions.Any(action => !Enum.IsDefined(action)) ||
-            value.Availability.IsLaunchable !=
-                value.Capabilities.Actions.Contains(WidgetAppLibraryAction.Launch))
+        if (value is null ||
+            !WidgetAppLibraryPresentationIdentityValidator.IsValid(
+                value.DisplayName, value.Kind) ||
+            !WidgetAppLibrarySourceReferenceValidator.IsValid(value.Source) ||
+            !WidgetAppLibraryAvailabilityValidator.IsValid(value.Availability) ||
+            !WidgetAppLibraryArtworkSetValidator.IsValid(value.Artwork) ||
+            !WidgetAppLibraryMetadataValidator.IsValid(value.Metadata) ||
+            !WidgetAppLibraryCapabilitySetValidator.IsValid(value.Capabilities) ||
+            !WidgetAppLibraryOperationValidator.IsValid(value.ActiveOperation))
             return false;
-        try { ValidateOpaqueId(value.Source.SourceId, nameof(item)); }
-        catch (ArgumentException) { return false; }
-
-        var roles = new HashSet<WidgetAppLibraryArtworkRole>();
-        foreach (var artwork in value.Artwork.Items)
-        {
-            if (artwork is null || !Enum.IsDefined(artwork.Role) ||
-                !Enum.IsDefined(artwork.Fallback) || !roles.Add(artwork.Role)) return false;
-            try
-            {
-                ValidateOpaqueId(artwork.Handle, nameof(item));
-                ValidateOpaqueId(artwork.Revision, nameof(item));
-            }
-            catch (ArgumentException) { return false; }
-        }
-
-        if (value.Metadata is { } metadata && !IsValidMetadata(metadata)) return false;
-        if (value.ActiveOperation is { } operation)
-        {
-            if (!Enum.IsDefined(operation.Kind) || !Enum.IsDefined(operation.State) ||
-                !IsStatusCode(operation.StatusCode)) return false;
-            try { ValidateOpaqueId(operation.OperationId, nameof(item)); }
-            catch (ArgumentException) { return false; }
-        }
-        return true;
+        return WidgetAppLibraryPresentationComposer.RelationshipsAreValid(
+            value.Availability, value.Capabilities, value.ActiveOperation);
     }
-
-    private static bool IsValidMetadata(WidgetAppLibraryMetadata metadata)
-    {
-        if (metadata.Attribution is null ||
-            metadata.Revision is not { Length: > 0 and <= 128 } ||
-            metadata.Attribution.RecordRevision is not { Length: > 0 and <= 128 } ||
-            !IsDisplayValue(metadata.Attribution.Provider, 64) ||
-            !IsDisplayValue(metadata.Attribution.Attribution, 160) ||
-            metadata.Attribution.RetrievedAtUnixMilliseconds < 0 ||
-            metadata.SortTitle is { } sort && !IsDisplayValue(sort, 160) ||
-            metadata.Version is { } version && !IsDisplayValue(version, 64) ||
-            metadata.LastPlayedAtUnixMilliseconds is < 0 ||
-            metadata.PlaytimeMinutes is < 0 or > 100_000_000 ||
-            metadata.Categories is null || metadata.Categories.Count > 32 ||
-            metadata.Categories.Distinct(StringComparer.Ordinal).Count() !=
-                metadata.Categories.Count ||
-            metadata.Categories.Any(category => !IsDisplayValue(category, 64)) ||
-            metadata.Description is { Length: > 2048 } ||
-            metadata.Description is { } description && description.Any(char.IsControl))
-            return false;
-        return true;
-    }
-
-    private static bool IsStatusCode(string? value) =>
-        value is { Length: > 0 and <= 48 } && value.All(character =>
-            char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
 
     private static void ValidateOpaqueId(string value, string parameterName)
     {

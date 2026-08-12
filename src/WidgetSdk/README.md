@@ -271,6 +271,11 @@ Unknown presentation versions, enum values, duplicate artwork roles or
 capabilities, inconsistent launchability, unsafe attribution, and malformed
 operation state fail with `malformed_response`; callers must rebuild against
 this pre-release contract rather than retaining the removed scalar model.
+Each immutable value owns its local bounds and vocabulary validation. A narrow
+relationship check then requires `Installed` plus explicit launchability and
+the `Launch` capability to agree, and requires an active operation's matching
+capability; a paused operation also requires `Resume`. `Unavailable` and
+`StaleSource` values are always non-launchable.
 
 `WidgetAppLibraryPage.Sources` carries at most 16 immutable value-only source
 observations for the same page revision. Each row contains an opaque

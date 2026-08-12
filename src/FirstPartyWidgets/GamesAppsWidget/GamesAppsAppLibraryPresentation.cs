@@ -17,6 +17,8 @@ internal static class GamesAppsAppLibraryPresentation
         item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
 
     internal static bool CanLaunch(WidgetAppLibraryItem item) =>
+        item.Presentation.Availability.State ==
+            WidgetAppLibraryAvailabilityState.Installed &&
         item.Presentation.Availability.IsLaunchable &&
         item.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch);
 }

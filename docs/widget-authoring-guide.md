@@ -1435,6 +1435,13 @@ title, source, artwork, or availability text. Unknown versions, enum values,
 duplicate roles/actions, inconsistent launchability, and malformed provenance
 fail closed as `malformed_response`.
 
+Validation is value-scoped: source, availability, artwork, metadata,
+capabilities, and operation records each own their local enum, identifier,
+count, status, and timestamp rules. The presentation relationship check only
+composes those already-valid values. Launch requires `Installed`, explicit
+launchability, and the `Launch` capability together; `Unavailable`,
+`StaleSource`, and retained last-good rows never authorize launch.
+
 Current entries may include opaque artwork handles under `Presentation.Artwork`;
 select the required role with `Find(WidgetAppLibraryArtworkRole.Tile)` (or
 `Cover`, `Hero`, or `Logo`). The native host resolves a handle lazily only

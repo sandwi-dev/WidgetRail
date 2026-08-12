@@ -11,6 +11,43 @@ namespace GameBarAlternative.Tests.GameLauncher;
 public sealed class GameLauncherTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task UnavailableAndStaleResolvedRowsNeverAuthorizeLaunch()
+    {
+        foreach (var state in new[]
+                 {
+                     WidgetAppLibraryAvailabilityState.Unavailable,
+                     WidgetAppLibraryAvailabilityState.StaleSource,
+                 })
+        {
+            var host = new FakeHost(1);
+            host.ResolveHandler = request => request.SavedIds.Select(_ =>
+            {
+                var current = host.ItemFactory(0);
+                return current with
+                {
+                    Presentation = current.Presentation with
+                    {
+                        Availability = new(state, false,
+                            state == WidgetAppLibraryAvailabilityState.Unavailable
+                                ? "unavailable" : "stale"),
+                        Capabilities = new([]),
+                    },
+                };
+            }).ToArray();
+            var widget = Create(host);
+            await Interactive(widget);
+            await Ready(widget, host);
+            var tile = Nodes(Snapshot(widget, 1).Root).Single(node =>
+                node.ActionId == "game-launcher.launch");
+
+            await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+
+            Assert.AreEqual(0, host.Launches.Count);
+            await Background(widget);
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task EpicGameProjectsExactSourceAndLaunchIdentity()
     {
         var host = new FakeHost(1)

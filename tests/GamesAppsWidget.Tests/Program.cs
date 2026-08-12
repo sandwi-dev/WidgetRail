@@ -42,6 +42,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Removing a focused app selects the nearest surviving row", RemovalSelectsNearestRow),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
     ("Launch revalidates a rotated opaque app ID from the selected SavedId", LaunchRevalidatesRotatedAppId),
+    ("Unavailable and stale resolutions never authorize launch",
+        UnavailableAndStaleNeverLaunch),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
@@ -1377,6 +1379,47 @@ static async Task LaunchRevalidatesRotatedAppId()
     Assert.SequenceEqual(["saved-alpha"], fake.ResolveRequests[^1]);
     Assert.SequenceEqual(["opaque-current"], fake.LaunchedIds);
     await Background(widget);
+}
+
+static async Task UnavailableAndStaleNeverLaunch()
+{
+    foreach (var state in new[]
+             {
+                 WidgetAppLibraryAvailabilityState.Unavailable,
+                 WidgetAppLibraryAvailabilityState.StaleSource,
+             })
+    {
+        var original = App("opaque-old", "Alpha") with { SavedId = "saved-alpha" };
+        var fake = new FakeAppLibraryHost
+        {
+            Pages = { [0] = Page([original], null) },
+        };
+        var widget = Create(fake);
+        await Interactive(widget);
+        await AddFromCatalog(widget, "Alpha");
+        await BackToLibrary(widget);
+        fake.ResolveHandler = (request, _) => ValueTask.FromResult(
+            new ResolveSavedWidgetAppLibraryItemsResponse([
+                original with
+                {
+                    AppId = "opaque-current",
+                    Presentation = original.Presentation with
+                    {
+                        Availability = new(state, false,
+                            state == WidgetAppLibraryAvailabilityState.Unavailable
+                                ? "unavailable" : "stale"),
+                        Capabilities = new([]),
+                    },
+                },
+            ]));
+
+        var alpha = ActionSurfaces(Snapshot(widget, 241).Root)
+            .Single(tile => TileTitle(tile) == "Alpha");
+        await widget.OnActionAsync(new("games.launch", alpha.Id));
+
+        Assert.Equal(0, fake.LaunchedIds.Count);
+        await Background(widget);
+    }
 }
 
 static async Task SuccessfulLaunchOrdersRecentFirst()

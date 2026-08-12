@@ -21,6 +21,10 @@ not retain legacy scalar aliases. It uses Tile artwork for rows and Hero artwork
 for the hero only when those roles are present, and enables launch only when the
 current availability and explicit Launch capability agree. Unknown or malformed
 presentation versions fail closed before they can enter widget state.
+The SDK validates each focused value independently, then composes only their
+relationships. Game Launcher also explicitly requires the freshly resolved
+availability state to be `Installed`; unavailable, stale-source, and retained
+last-good rows cannot reach launch even if malformed input claims otherwise.
 
 ## Collection and controller behavior
 

@@ -92,6 +92,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Spotify playback control rejects failed acknowledgements", SpotifyAcknowledgementFailure),
     ("Spotify service fails closed without a host capability client", SpotifyUnavailableClient),
     ("App library host service uses opaque paged read and launch contracts", AppLibraryPlatformService),
+    ("App library values and relationship composer validate independently",
+        AppLibraryPresentationValidationTests.Run),
     ("Community services expose exact loopback and write-only secret contracts", CommunityPlatformServices),
     ("Private state canonicalizes JSON and exposes typed revision CAS helpers", PrivateStateServiceContracts),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
@@ -397,6 +399,27 @@ static async Task AppLibraryPlatformService()
         validConfirmation with { Presentation = validConfirmation.Presentation with
             { Source = validConfirmation.Presentation.Source with
                 { DisplayName = "bad\rsource" } } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            Availability = new(WidgetAppLibraryAvailabilityState.Unavailable,
+                true, "unavailable"),
+        } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            Availability = new(WidgetAppLibraryAvailabilityState.StaleSource,
+                false, "stale"),
+            Capabilities = new([WidgetAppLibraryAction.Launch]),
+        } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            Capabilities = new([]),
+        } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            ActiveOperation = new("operation-update",
+                WidgetAppLibraryOperationKind.Update,
+                WidgetAppLibraryOperationState.Running, "updating"),
+        } },
     };
     foreach (var malformedConfirmation in malformedConfirmations)
     {

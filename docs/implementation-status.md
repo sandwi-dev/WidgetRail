@@ -3308,6 +3308,33 @@ read, add/remove, stale launch, unavailable last-good display, exact status, and
 constrained URI cases. The normalized cross-process DTO did not change, so no
 installed-worker rerun was required.
 
+### Normalized app-library validation ownership correction (DLV-142)
+
+The public normalized app-library shape is unchanged, but SDK validation no
+longer lives in one catch-all presentation method. Focused internal validators
+now own presentation identity, source reference and source status, availability,
+artwork roles/revisions, metadata provenance/timestamps, capability vocabulary,
+and operation identity/state. Each can be tested without constructing an
+unrelated rich presentation. One narrow composer owns only cross-value rules:
+launchability must agree with the explicit `Launch` capability, and an active
+operation requires its matching capability, with `Resume` required for a
+paused operation. Availability validation separately
+requires `Unavailable` and `StaleSource` values to be non-launchable.
+
+Games & Apps and Game Launcher now also state the final admission explicitly:
+only a freshly resolved `Installed` item with matching launchability and Launch
+capability can reach host launch. Focused fixtures reject unavailable, stale,
+retained-last-good, missing-capability, mismatched-operation, unknown enum, and
+unknown presentation-version values as `malformed_response` without changing
+the normalized DTO, opaque identity, provider projections, or DLV-138/DLV-139
+behavior.
+
+Focused Release evidence passes WidgetSdk 89/89, PlatformBroker 56/56,
+WidgetBridge 83/83, Windows app-library provider 71/71, Games & Apps 62/62,
+Game Launcher 65/65, the installed Games & Apps normalized app-library
+acceptance route, and the 65-document contract. No canonical aggregate, native,
+network, external-provider, credential, or capture suite was run.
+
 ### Launcher Experience catalog boundary correction (DLV-137)
 
 The Launcher Experience file guard now reads standard lossy `VP8`, lossless

@@ -792,6 +792,8 @@ public sealed class GameLauncherWidget : Widget
                 item.SavedId, selected.Value.SavedId, StringComparison.Ordinal));
             var stillCurrent = IsCurrentResolved(selected.Key);
             if (current is null || !stillCurrent ||
+                current.Presentation.Availability.State !=
+                    WidgetAppLibraryAvailabilityState.Installed ||
                 !current.Presentation.Availability.IsLaunchable ||
                 !current.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch))
                 throw new WidgetCapabilityException(
