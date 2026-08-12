@@ -214,7 +214,8 @@ public sealed class GameLauncherLayoutTests
         var collection = Snapshot(WidgetPagedResourceStatus.Ready, [item]);
         var state = GameLauncherDetailsPolicy.Project(selection, collection,
             GameLauncherFixedRows.Empty, organization, null,
-            new Dictionary<string, GameLauncherLaunchState>(), false, true);
+            new Dictionary<string, GameLauncherLaunchState>(), "Ready", null,
+            false, true);
         var view = GameLauncherDetailsPresentation.Render(state);
         var first = new PresentationWidget(view).RenderSnapshot("details.layout", 1);
         var second = new PresentationWidget(view).RenderSnapshot("details.layout", 2);
@@ -229,10 +230,30 @@ public sealed class GameLauncherLayoutTests
             node.Kind == ViewNodeKind.Scroll && node.ScrollAxis == ScrollAxis.Vertical));
         Assert.IsLessThan(40, Nodes(first.Root).Count());
         Assert.AreEqual(WidgetSurfaceMode.Wide, first.Surface?.Mode);
+        foreach (var profile in new[]
+                 {
+                     (Name: "compact", Width: 420, Height: 340, Scale: 1.0),
+                     (Name: "standard", Width: 640, Height: 480, Scale: 1.25),
+                     (Name: "wide-150", Width: 980, Height: 700, Scale: 1.5),
+                 })
+        {
+            var nodes = Nodes(first.Root).ToArray();
+            Assert.IsTrue(nodes.Any(node =>
+                node.Id == "game-launcher.details.launch" && node.IsDisabled is not true),
+                $"{profile.Name}: launch is not reachable at {profile.Scale:P0}.");
+            Assert.IsTrue(nodes.Any(node =>
+                node.Id == "game-launcher.details.variant" &&
+                node.Text == "Choose another variant"),
+                $"{profile.Name}: variant selection is not semantically reachable.");
+            Assert.AreEqual(1, nodes.Count(node => node.Id ==
+                "game-launcher.details.scroll"),
+                $"{profile.Name}: details scroll ownership changed.");
+        }
 
         var busyState = GameLauncherDetailsPolicy.Project(selection, collection,
             GameLauncherFixedRows.Empty, organization, item.Value.SavedId,
-            new Dictionary<string, GameLauncherLaunchState>(), true, true);
+            new Dictionary<string, GameLauncherLaunchState>(), "Pending",
+            item.Value.SavedId, true, true);
         var busy = new PresentationWidget(
             GameLauncherDetailsPresentation.Render(busyState))
             .RenderSnapshot("details.busy", 3);

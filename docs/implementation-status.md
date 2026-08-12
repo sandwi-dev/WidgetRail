@@ -2932,6 +2932,18 @@ with C++ installed:
   disappearing identities, busy/unavailable action state, exact Back focus,
   page-bumper non-overlap, long labels, and deterministic bounded rendering.
 
+- DLV-117 corrects the details variant action without changing organization
+  semantics. The first activation is labeled **Choose another variant**, names
+  the selected game in visible status, and returns to the exact Library tile so
+  a distinct second game is reachable. A valid second details route labels the
+  single operation **Group with selected game** or **Remove from variant group**
+  and retains committed success/failure feedback. Same and stale identities fail
+  closed; successful hide still closes details only after the exact persisted
+  exclusion is observed. Game Launcher remains the sole lifecycle, committed
+  state, provider, and persistence owner; the pure details projection gains no
+  task, lock, timer, or resource. Focused Release evidence passes Game Launcher
+  55/55, including exact CAS replay and canceled second-selection refusal.
+
 - DLV-102 gives trusted app artwork an explicit bounded terminal-unavailable
   state in the existing native image cache. One bridge result moves every
   matching widget/handle entry once, posts one invalidation, and emits one

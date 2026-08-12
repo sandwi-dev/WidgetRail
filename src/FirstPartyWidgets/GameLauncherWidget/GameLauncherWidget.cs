@@ -115,7 +115,7 @@ public sealed class GameLauncherWidget : Widget
             if (navigation.Route == GameLauncherRoute.Details && _detailsSelection is { } selected)
                 details = GameLauncherDetailsPolicy.Project(selected, _library.Snapshot,
                     _fixedRows, _organization, _launchingSavedId, _launchStates,
-                    _organizationBusy,
+                    _status, _variantSeedSavedId, _organizationBusy,
                     LifecycleState == WidgetLifecycleState.Interactive);
             preferLibraryContentFocus = _preferLibraryContentFocus;
         }
@@ -231,7 +231,7 @@ public sealed class GameLauncherWidget : Widget
                 if (await SetHiddenAsync(hideSource, hidden: true, cancellationToken)
                         .ConfigureAwait(false) &&
                     _navigation.Value.Route == GameLauncherRoute.Details)
-                    CloseDetails();
+                    CloseDetails(preferLibraryContentFocus: true);
                 return;
             case "game-launcher.restore":
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -242,8 +242,14 @@ public sealed class GameLauncherWidget : Widget
             case "game-launcher.variant":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
                 if (ResolveActionSource(action.SourceElementId) is { } variantSource)
-                    await ToggleVariantAsync(variantSource, cancellationToken)
+                {
+                    var detailsRoute = _navigation.Value.Route == GameLauncherRoute.Details;
+                    var result = await ToggleVariantAsync(variantSource, cancellationToken)
                         .ConfigureAwait(false);
+                    if (detailsRoute && result == GameLauncherVariantActionResult.Started &&
+                        _navigation.Value.Route == GameLauncherRoute.Details)
+                        CloseDetails();
+                }
                 return;
             case "game-launcher.prefer":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -987,12 +993,12 @@ public sealed class GameLauncherWidget : Widget
             cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ToggleVariantAsync(
+    private async Task<GameLauncherVariantActionResult> ToggleVariantAsync(
         string sourceElementId,
         CancellationToken cancellationToken)
     {
         var current = DisplayForSource(sourceElementId);
-        if (current is null) return;
+        if (current is null) return GameLauncherVariantActionResult.Rejected;
         GameLauncherDisplayItem? first;
         GameLauncherVariantGroup? existing;
         var started = false;
@@ -1011,19 +1017,25 @@ public sealed class GameLauncherWidget : Widget
             }
             else
             {
-                first = DisplayForSavedLocked(_variantSeedSavedId!);
+                first = DisplayForCurrentSavedLocked(_variantSeedSavedId!);
                 existing = first is null ? null : _organization.VariantGroups.FirstOrDefault(group =>
                     group.SavedIds.Contains(first.SavedId, StringComparer.Ordinal) &&
                     group.SavedIds.Contains(current.SavedId, StringComparer.Ordinal));
                 _variantSeedSavedId = null;
             }
         }
-        if (started) { Invalidate(); return; }
+        if (started)
+        {
+            Invalidate();
+            return GameLauncherVariantActionResult.Started;
+        }
         if (first is null || first.SavedId == current.SavedId)
         {
-            lock (_gate) _status = "Choose two distinct variants";
+            lock (_gate) _status = first is null
+                ? "The first selected game is no longer available"
+                : "Choose a different game for the second variant";
             Invalidate();
-            return;
+            return GameLauncherVariantActionResult.Rejected;
         }
         await MutateOrganizationAsync(
             existing is null
@@ -1034,6 +1046,7 @@ public sealed class GameLauncherWidget : Widget
                 ? $"Grouped {first.DisplayName} with {current.DisplayName}"
                 : $"Removed {current.DisplayName} from its variant group",
             cancellationToken).ConfigureAwait(false);
+        return GameLauncherVariantActionResult.Completed;
     }
 
     private async Task PreferVariantAsync(
@@ -1185,9 +1198,13 @@ public sealed class GameLauncherWidget : Widget
             selection, sourceElementId, _library.Snapshot, fixedRows);
     }
 
-    private void CloseDetails()
+    private void CloseDetails(bool preferLibraryContentFocus = false)
     {
-        lock (_gate) _detailsSelection = null;
+        lock (_gate)
+        {
+            _detailsSelection = null;
+            _preferLibraryContentFocus = preferLibraryContentFocus;
+        }
         _navigation.Back();
     }
 
@@ -1196,6 +1213,15 @@ public sealed class GameLauncherWidget : Widget
         _library.Snapshot.Items.Where(item => item.Value.SavedId == savedId)
             .Select(item => new GameLauncherDisplayItem(
                 item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution))
+            .FirstOrDefault();
+
+    private GameLauncherDisplayItem? DisplayForCurrentSavedLocked(string savedId) =>
+        _library.Snapshot.Items.Concat(_fixedRows.All)
+            .Where(item => string.Equals(item.Value.SavedId, savedId,
+                StringComparison.Ordinal))
+            .Select(item => new GameLauncherDisplayItem(
+                item.Value.SavedId, item.Value.DisplayName,
+                item.Value.SourceAttribution))
             .FirstOrDefault();
 
     private bool IsCurrentResolved(WidgetCollectionItemKey key)

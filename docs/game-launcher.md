@@ -55,8 +55,14 @@ The route shows the full title, normalized source, availability, launch state,
 favorite state, and variant-group/preference state for that exact opaque SavedId.
 **A** launches through the existing fresh SavedId resolution, **X** toggles the
 favorite, and **Y** hides the game. On a single-page collection **LB/RB** retain
-their existing group/prefer meaning; on a paged collection they remain reserved
-for Library traversal and are not reassigned inside details. **B** returns to the
+their existing two-game selection/prefer meaning; on a paged collection they
+remain reserved for Library traversal and are not reassigned inside details.
+The details action says **Choose another variant** for the first selection and
+returns to the originating Library tile with visible status so a distinct game
+can be chosen. On the second game's details it says exactly **Group with selected
+game** or **Remove from variant group**, and the result remains visible on the
+details page. A stale first selection or selecting the same identity fails closed
+with explicit feedback. **B** returns to the
 originating tile and retained collection offset. A removed or replaced identity
 keeps only its sanitized display projection, becomes visibly unavailable, and
 cannot launch or mutate a different same-title row.
@@ -207,6 +213,8 @@ same-identity refresh, identity replacement, incompatible reset, and
 cancellation-ignoring lifecycle completion. It also covers exact same-title
 details routing, View/A/B and unchanged X/Y/LB/RB semantics, unavailable
 identity refusal, exact Back focus restoration, long labels, and deterministic
-bounded detail layout. The
+bounded detail layout. Exact first/second variant selection, existing-group
+removal, same/stale identity refusal, committed hide closure, and failed/busy
+organization feedback are also covered. The
 installed generic-worker fixture covers the bundled manifest/catalog route,
 10,000-row broker source, adjacent grid focus, artwork handle, and exact launch.

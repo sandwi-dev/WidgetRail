@@ -43,6 +43,13 @@ internal enum GameLauncherLaunchState
     Ended,
 }
 
+internal enum GameLauncherVariantActionResult
+{
+    Rejected,
+    Started,
+    Completed,
+}
+
 internal static class GameLauncherIdentity
 {
     internal static WidgetCollectionItemKey Key(string savedId) =>

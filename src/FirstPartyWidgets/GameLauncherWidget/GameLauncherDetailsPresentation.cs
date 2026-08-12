@@ -20,6 +20,9 @@ internal sealed record GameLauncherDetailsState(
     bool Favorite,
     bool Preferred,
     int GroupSize,
+    string Feedback,
+    string VariantActionLabel,
+    bool VariantActionEnabled,
     bool Interactive,
     bool Resolved,
     bool Busy);
@@ -52,6 +55,8 @@ internal static class GameLauncherDetailsPolicy
         GameLauncherPrivateState organization,
         string? launchingSavedId,
         IReadOnlyDictionary<string, GameLauncherLaunchState> launchStates,
+        string status,
+        string? variantSeedSavedId,
         bool organizationBusy,
         bool interactive)
     {
@@ -73,6 +78,16 @@ internal static class GameLauncherDetailsPolicy
         };
         var group = GameLauncherOrganizationPolicy.GroupFor(
             organization, selection.SavedId);
+        var seedGroup = variantSeedSavedId is null ? null :
+            GameLauncherOrganizationPolicy.GroupFor(organization, variantSeedSavedId);
+        var sameSeed = string.Equals(variantSeedSavedId, selection.SavedId,
+            StringComparison.Ordinal);
+        var pairedWithSeed = seedGroup is not null && group?.Id == seedGroup.Id;
+        var variantLabel = variantSeedSavedId is null
+            ? "Choose another variant"
+            : sameSeed ? "Choose a different game"
+            : pairedWithSeed ? "Remove from variant group"
+            : "Group with selected game";
         return new(
             selection,
             current?.Value.DisplayName ?? selection.DisplayName,
@@ -83,6 +98,9 @@ internal static class GameLauncherDetailsPolicy
                 selection.SavedId, StringComparer.Ordinal),
             group?.PreferredSavedId == selection.SavedId,
             group?.SavedIds.Count ?? 0,
+            status,
+            variantLabel,
+            !sameSeed,
             interactive,
             resolved,
             launching || organizationBusy);
@@ -139,6 +157,8 @@ internal static class GameLauncherDetailsPresentation
                         "game-launcher.details.launch-state", "Game launch state"),
                     UI.Text($"Organization · {favorite} · {groupStatus}",
                         "game-launcher.details.organization", "Game organization"),
+                    UI.Text($"Status · {state.Feedback}",
+                        "game-launcher.details.feedback", "Game action status"),
                     UI.HorizontalScroll("game-launcher.details.actions",
                         UI.Button("Launch", "game-launcher.launch",
                                 GameLauncherDetailsPolicy.ActionSourceId)
@@ -149,9 +169,9 @@ internal static class GameLauncherDetailsPresentation
                             .Disabled(!enabled),
                         UI.Button("Hide", "game-launcher.hide", "game-launcher.details.hide")
                             .Disabled(!enabled),
-                        UI.Button(state.GroupSize > 1 ? "Ungroup variant" : "Group variant",
+                        UI.Button(state.VariantActionLabel,
                                 "game-launcher.variant", "game-launcher.details.variant")
-                            .Disabled(!enabled),
+                            .Disabled(!enabled || !state.VariantActionEnabled),
                         UI.Button("Prefer variant", "game-launcher.prefer",
                                 "game-launcher.details.prefer")
                             .Disabled(!enabled || state.GroupSize < 2 || state.Preferred)),

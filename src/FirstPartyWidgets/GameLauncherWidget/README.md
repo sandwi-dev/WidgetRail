@@ -26,3 +26,9 @@ existing exact-SavedId launch path; X/Y and the context-valid LB/RB actions reus
 the existing organization policy. B restores the originating tile and collection
 offset. If that exact identity disappears, the route remains display-only and all
 authority-bearing actions fail closed.
+
+Variant organization remains the existing explicit two-game policy. Details
+labels the first step **Choose another variant**, returns to the Library with the
+first identity named in status, and labels a valid second step **Group with
+selected game** or **Remove from variant group**. The details status reports the
+committed result or failure; a same or stale identity cannot be paired.
