@@ -3912,3 +3912,18 @@ evidence passes Platform Broker 56/56 and Game Launcher 77/77. The exact
  installed AppContainer route passes after Hide, Restore, Back, current provider
  resolution, and exact launch revalidation, with no temporary diagnostics in the
  committed route.
+
+### Games & Apps persisted-library audit (DLV-166)
+
+No managed product gap reproduced. The focused matrix passes saved-first warm
+projection, delayed and failed background reconciliation, exact removal,
+provider refresh, bounded CAS replay, lifecycle reactivation, and fresh-worker
+state recovery while preserving unrelated rows and exactly one **Add
+applications** action.
+
+The ordinary installed acceptance now reuses one simulated private-state
+backend across two real AppContainer worker generations. It adds an exact
+Application, stops the first worker, and proves the fresh worker renders the
+saved row plus the unrelated trusted Game before completing normal lifecycle
+teardown. Focused Release evidence passes Games & Apps 63/63, Windows App
+Library Provider 75/75, and the installed restart route.

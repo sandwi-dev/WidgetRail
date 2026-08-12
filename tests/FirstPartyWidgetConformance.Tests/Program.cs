@@ -212,11 +212,20 @@ if (args.Contains("--games-apps-installed-acceptance", StringComparer.Ordinal))
         deployment.WorkerHostPath);
     var package = deployment.Packages.Single(candidate =>
         candidate.Manifest.Id == "org.gbar.firstparty.games-apps");
+    var backend = CreateBackend();
     await RunCatalogAsync(
         installed.Catalog,
         [package],
         candidate => candidate.Manifest.Id,
-        "installed-normalized-app-library");
+        "installed-normalized-app-library",
+        sharedBackend: backend);
+    await RunCatalogAsync(
+        installed.Catalog,
+        [package],
+        candidate => candidate.Manifest.Id,
+        "installed-saved-library-restart",
+        verifyGamesAppsRestart: true,
+        sharedBackend: backend);
     Console.WriteLine("PASS installed Games & Apps normalized app-library acceptance");
     return 0;
 }
@@ -2123,7 +2132,9 @@ static async Task RunCatalogAsync(
     Func<PackageFixture, string> widgetId,
     string route,
     Action<TimeSpan>? firstRenderObserved = null,
-    bool textEntryOnly = false)
+    bool textEntryOnly = false,
+    bool verifyGamesAppsRestart = false,
+    SimulatedPlatformBrokerBackend? sharedBackend = null)
 {
     foreach (var package in packages)
     {
@@ -2131,7 +2142,7 @@ static async Task RunCatalogAsync(
         try
         {
             var configured = catalog.GetConfigured(widgetId(package));
-            backend = CreateBackend(
+            backend = sharedBackend ?? CreateBackend(
                 spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify",
                 gameLibraryCount: package.Manifest.Id == "org.gbar.firstparty.game-launcher"
                     ? 10_000 : 2);
@@ -2168,7 +2179,9 @@ static async Task RunCatalogAsync(
 
             var activationStopwatch = Stopwatch.StartNew();
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
-            var snapshot = await WaitForSnapshotAsync(client, package.ExpectedText);
+            var snapshot = await WaitForSnapshotAsync(
+                client,
+                verifyGamesAppsRestart ? "Conformance Library App" : package.ExpectedText);
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
             if (package.Manifest.Id is
                 "org.gbar.firstparty.game-launcher" or
@@ -2197,7 +2210,18 @@ static async Task RunCatalogAsync(
             }
 
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-            if (textEntryOnly)
+            if (verifyGamesAppsRestart)
+            {
+                Assert.Equal("org.gbar.firstparty.games-apps", package.Manifest.Id);
+                Assert.True(Nodes(snapshot.Root).Any(node =>
+                        string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
+                        (node.AccessibilityLabel ?? string.Empty).Contains(
+                            "Conformance Library App", StringComparison.Ordinal)),
+                    "The saved application did not survive a fresh installed worker.");
+                Assert.Equal(1, Nodes(snapshot.Root).Count(node =>
+                    string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal)));
+            }
+            else if (textEntryOnly)
                 await ExerciseTextEntryAsync(package, client, snapshot);
             else
                 await ExerciseControlAsync(package, client, snapshot, backend, route);
