@@ -17,7 +17,13 @@ public sealed record ThemeDescriptor(
 public sealed record ThemeCatalogEntry(
     ThemeDescriptor Descriptor,
     bool IsValid,
-    IReadOnlyList<GbssDiagnostic> Diagnostics);
+    IReadOnlyList<GbssDiagnostic> Diagnostics,
+    string? InstalledId = null,
+    string? InstalledVersion = null)
+{
+    public string CatalogId => InstalledId ?? Descriptor.Id;
+    public string CatalogVersion => InstalledVersion ?? Descriptor.Version.ToString();
+}
 
 public sealed record ThemeCatalogSnapshot(IReadOnlyList<ThemeCatalogEntry> Themes);
 
@@ -131,7 +137,9 @@ public sealed class ThemeCatalog
                 entries.Add(new ThemeCatalogEntry(
                     loaded.Descriptor,
                     loaded.IsValid,
-                    loaded.Diagnostics));
+                    loaded.Diagnostics,
+                    directoryId,
+                    versionText));
             }
         }
         if (packageCount > MaximumThemes)

@@ -16,6 +16,8 @@ public enum SettingsPage
     Root,
     Appearance,
     ThemePicker,
+    ThemeVersion,
+    ThemeRemoval,
     Accessibility,
     AccessibilityVisual,
     Overlay,
@@ -42,6 +44,7 @@ public sealed class SettingsWidget : Widget
 
     private readonly PlatformSettingsStore _store;
     private readonly ThemeCatalog _catalog;
+    private readonly ThemeCatalogMutationPolicy _themeMutations;
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
     private readonly IPlatformDiagnosticsService _diagnosticsService;
@@ -54,6 +57,8 @@ public sealed class SettingsWidget : Widget
     private SettingsInstalledWidgetState _installedState = SettingsInstalledWidgetState.Empty;
     private SettingsPermissionState _permissionState = SettingsPermissionState.Empty;
     private SettingsAuthorityRecoverySelection? _selectedAuthorityRecovery;
+    private SettingsThemeSelection? _selectedTheme;
+    private string? _themePickerFocusId;
     private SettingsPage _page;
     private int _activationLoadCount;
     private bool _settingsValid = true;
@@ -72,6 +77,7 @@ public sealed class SettingsWidget : Widget
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
         _catalog = catalog ?? new ThemeCatalog(paths);
+        _themeMutations = new ThemeCatalogMutationPolicy(_store, _catalog);
         _widgetCatalog = widgetCatalog ?? new CatalogService(
             Path.Combine(paths.RootDirectory, "widgets"));
         _consentStore = consentStore ?? new ConsentStore(
@@ -103,6 +109,8 @@ public sealed class SettingsWidget : Widget
         PlatformDiagnosticsSnapshot diagnostics;
         SettingsInstalledWidgetState installedState;
         SettingsPermissionState permissionState;
+        SettingsThemeSelection? selectedTheme;
+        string? themePickerFocusId;
         string? selectedAuthorityRecoveryId;
         string status;
         lock (_stateLock)
@@ -117,6 +125,8 @@ public sealed class SettingsWidget : Widget
             installedState = _installedState;
             permissionState = _permissionState;
             selectedAuthorityRecoveryId = _selectedAuthorityRecovery?.RecoveryId;
+            selectedTheme = _selectedTheme;
+            themePickerFocusId = _themePickerFocusId;
             status = _status;
         }
 
@@ -129,7 +139,9 @@ public sealed class SettingsWidget : Widget
             status,
             settingsValid,
             busy,
-            error);
+            error,
+            selectedTheme,
+            themePickerFocusId);
         if (SettingsPresentation.TryRender(presentation, out var view)) return view;
         var header = SettingsPresentation.Header(presentation);
         return page switch
@@ -224,9 +236,15 @@ public sealed class SettingsWidget : Widget
                 case "capability.deny": await ChangeConsentAsync(
                     ConsentDecision.Deny, cancellationToken).ConfigureAwait(false); break;
                 case "reset.confirm": await ResetAsync(cancellationToken).ConfigureAwait(false); break;
+                case "theme.select": await SelectSelectedThemeAsync(cancellationToken)
+                    .ConfigureAwait(false); break;
+                case "theme.remove.request": OpenThemeRemoval(); break;
+                case "theme.remove.confirm": await RemoveSelectedThemeAsync(cancellationToken)
+                    .ConfigureAwait(false); break;
+                case "theme.remove.cancel": Navigate(SettingsPage.ThemeVersion); break;
                 default:
                     if (TryThemeIndex(action.ActionId, out var index))
-                        await SelectThemeAsync(index, cancellationToken).ConfigureAwait(false);
+                        OpenThemeVersion(index);
                     else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
                         await SelectInstalledWidgetAsync(index, cancellationToken)
                             .ConfigureAwait(false);
@@ -329,18 +347,126 @@ public sealed class SettingsWidget : Widget
         }
     }
 
-    private async Task SelectThemeAsync(int index, CancellationToken cancellationToken)
+    private void OpenThemeVersion(int index)
     {
         ThemeCatalogEntry? entry;
         lock (_stateLock)
             entry = index >= 0 && index < _themes.Themes.Count ? _themes.Themes[index] : null;
+        if (entry is null) return;
+        lock (_stateLock)
+        {
+            _selectedTheme = new SettingsThemeSelection(
+                entry.CatalogId,
+                entry.CatalogVersion);
+            _themePickerFocusId = $"theme.item.{index}.action";
+            _page = SettingsPage.ThemeVersion;
+            _status = $"Reviewing {entry.Descriptor.Name} {entry.Descriptor.Version}";
+        }
+        Invalidate();
+    }
+
+    private void OpenThemeRemoval()
+    {
+        lock (_stateLock)
+        {
+            var entry = FindSelectedThemeLocked();
+            if (entry is null || entry.Descriptor.IsBuiltIn || IsSelectedThemeLocked(entry)) return;
+            _page = SettingsPage.ThemeRemoval;
+            _status = $"Confirm removal of {entry.Descriptor.Name} {entry.Descriptor.Version}";
+        }
+        Invalidate();
+    }
+
+    private async Task SelectSelectedThemeAsync(CancellationToken cancellationToken)
+    {
+        ThemeCatalogEntry? entry;
+        lock (_stateLock) entry = FindSelectedThemeLocked();
         if (entry is null || !entry.IsValid) return;
-        await PersistPreferenceAsync(
-            SettingsPreferencePolicy.Theme(
+        SetOperation("Selecting theme…", busy: true, error: false);
+        try
+        {
+            var saved = await _themeMutations.SelectAsync(
                 entry.Descriptor.Id,
                 entry.Descriptor.Version.ToString(),
-                entry.Descriptor.Name),
-            cancellationToken).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _settingsValid = true;
+                _page = SettingsPage.ThemePicker;
+                _busy = false;
+                _error = false;
+                _status = $"Selected {entry.Descriptor.Name} {entry.Descriptor.Version}";
+            }
+        }
+        catch (PlatformSettingsException exception)
+        {
+            SetOperation($"Theme selection failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private async Task RemoveSelectedThemeAsync(CancellationToken cancellationToken)
+    {
+        ThemeCatalogEntry? entry;
+        int priorIndex;
+        lock (_stateLock)
+        {
+            entry = FindSelectedThemeLocked();
+            priorIndex = entry is null ? 0 : IndexOfThemeLocked(entry);
+        }
+        if (entry is null || entry.Descriptor.IsBuiltIn) return;
+        SetOperation("Removing theme version…", busy: true, error: false);
+        try
+        {
+            var result = await _themeMutations.RetireAsync(
+                entry.CatalogId,
+                entry.CatalogVersion,
+                cancellationToken).ConfigureAwait(false);
+            var themes = _catalog.Discover();
+            var focusIndex = themes.Themes.Count == 0 ? -1 : Math.Min(priorIndex, themes.Themes.Count - 1);
+            lock (_stateLock)
+            {
+                _themes = themes;
+                _selectedTheme = null;
+                _themePickerFocusId = focusIndex < 0 ? null : $"theme.item.{focusIndex}.action";
+                _page = SettingsPage.ThemePicker;
+                _busy = false;
+                _error = result.CleanupPending;
+                _status = result.CleanupPending
+                    ? "Theme removed; retired files are pending cleanup"
+                    : $"Removed {result.Name} {result.Version}";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            SetOperation("Theme removal cancelled", busy: false, error: false);
+            return;
+        }
+        catch (PlatformSettingsException exception)
+        {
+            SetOperation($"Theme removal failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private ThemeCatalogEntry? FindSelectedThemeLocked() => _selectedTheme is null
+        ? null
+        : _themes.Themes.FirstOrDefault(entry =>
+            string.Equals(entry.CatalogId, _selectedTheme.ThemeId, StringComparison.Ordinal) &&
+            string.Equals(entry.CatalogVersion, _selectedTheme.Version, StringComparison.Ordinal));
+
+    private bool IsSelectedThemeLocked(ThemeCatalogEntry entry) =>
+        string.Equals(entry.Descriptor.Id, _settings.Appearance.ThemeId, StringComparison.Ordinal) &&
+        string.Equals(entry.Descriptor.Version.ToString(), _settings.Appearance.ThemeVersion, StringComparison.Ordinal);
+
+    private int IndexOfThemeLocked(ThemeCatalogEntry entry)
+    {
+        for (var index = 0; index < _themes.Themes.Count; index++)
+            if (ReferenceEquals(_themes.Themes[index], entry) || _themes.Themes[index] == entry) return index;
+        return 0;
     }
 
     private async Task ResetAsync(CancellationToken cancellationToken)
@@ -1246,8 +1372,8 @@ public sealed class SettingsWidget : Widget
     private static bool TryThemeIndex(string action, out int index)
     {
         index = -1;
-        return action.StartsWith("theme.select.", StringComparison.Ordinal) &&
-               int.TryParse(action["theme.select.".Length..], NumberStyles.None,
+        return action.StartsWith("theme.open.", StringComparison.Ordinal) &&
+               int.TryParse(action["theme.open.".Length..], NumberStyles.None,
                    CultureInfo.InvariantCulture, out index);
     }
 
