@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 11:10 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 11:38 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,11 +13,11 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `06d3d84`; worktree clean when this plan was
+- Local product baseline: `11a04e9`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-162 through `06d3d84`.
-- Visible accepted Release: PID 30900, launched at 11:01:57 after the
-  identity-less Windows media-session recovery correction. The first
+- Latest implementation integration: DLV-164 through `11a04e9`.
+- Visible accepted Release: PID 41224, launched at 11:30:37 after the managed
+  Game Launcher controller-hints correction. The first
   dashboard frame is
   bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
@@ -39,6 +39,11 @@ That snapshot is historical evidence, not implementation authority.
   passes. The live PID 30900 smoke admitted every installed first page with all
   published UIA rectangles inside the host. It exposed one new managed Game
   Launcher diagnostic: `flex-wrap` was ignored on the controller-hints slot.
+- DLV-164 `9a8822f` was reviewed and cherry-picked as `11a04e9`; Game Launcher
+  passes 77/77, the ordinary preset/fallback route passes, and both its retained
+  installed diagnostic and PID 41224 smoke admit Game Launcher with zero
+  `invalid_style` records. All eight PID 41224 first pages publish contained
+  UIA geometry; Audio Mixer settles from Loading to three live sessions.
 
 ## Execution protocol
 
@@ -77,36 +82,40 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-164: valid responsive Game Launcher controller hints
+### Current assignment — DLV-165: exact Game Launcher launch-availability audit
 
-**State:** Assigned from the post-DLV-162 clean widgets boundary. DLV-163's
-Audio Mixer audit passed 45/45 widget, 15/15 provider, and an exact live
-Master-to-tray-to-Master reverse path, so no code commit was justified.
+**State:** In progress automatically after clean DLV-164 commit `9a8822f`.
 
-**Baseline/dependencies:** widgets branch `31bc594`; accepted product `06d3d84`.
-This assignment owns Game Launcher managed projection/GBSS and focused tests/
-docs only. Do not touch native host, public protocol/SDK, launcher providers,
-pack schema/catalog, Settings, reviewer docs, or account/hardware work.
+**Baseline/dependencies:** widgets branch `9a8822f`; accepted product `11a04e9`.
+This assignment owns Game Launcher and the managed app-library client/provider
+boundary plus focused tests/docs only. Do not touch native host, public
+protocol/SDK, pack schema/catalog, Settings, reviewer docs, or account work.
 
-**User-visible outcome:** the active Launcher Experience presents its controller
-hints as one valid responsive row/wrapped region with readable, reachable help;
-the host emits no ignored-style diagnostic and does not silently discard the
-author's intended layout.
+**User-visible outcome:** every currently supported exact game row exposes Play
+after fresh provider revalidation; unsupported/stale rows remain truthful and
+cannot launch a same-title neighbor.
 
-**Objective/acceptance:** the live accepted log at 11:03:58.947 proves
-`game-launcher.slot.controller-hints` receives `.game-launcher-footer` with
-`flex-wrap: wrap` while authored as a `Stack`, so native correctly ignores it.
-Correct the managed element/style ownership rather than weakening validation.
-Prove compact/standard/wide and 100/150%-text Launcher Experience projections
-retain exact action/help identity, valid row/wrap semantics, stable focus, and
-contained geometry. The ordinary installed path must emit no `invalid_style`
-for this slot.
+**Objective/acceptance:** reproduce the DLV-163 installed-conformance failure
+(`Play unavailable` after 10/2 app-library calls) through the now-isolated exact
+Game Launcher production AppContainer route. Trace provider page, client
+validation, private projection, and final exact launch revalidation. Fix only a
+reproducible managed defect and remove temporary diagnostic copy before commit.
+Supported, unavailable, refresh, restart, stale, provider-failure, duplicate-
+title, and exact current launch cases remain coherent.
 
-**Verification/stop:** Tier 1 Game Launcher Release suite; Tier 2 one ordinary
-installed custom-pack route plus exact diagnostic check. No aggregate,
-screenshots, native test expansion, pack work, provider change, broad refactor,
-or security hardening. Stop if a new public/native layout semantic is actually
-required.
+**Verification/stop:** Tier 1 provider/Game Launcher Release suites; Tier 2 the
+smallest exact installed launch route. No aggregate, screenshot, native, pack,
+account, broad fixture rewrite, or security hardening. Stop if public protocol,
+raw path/command, unsupported provider authority, or native work is required.
+
+### Accepted milestone — DLV-164: valid responsive Game Launcher controller hints
+
+**State:** Done and accepted through main `11a04e9`. The wrapping footer style
+now belongs to a non-scrolling managed `Row`, not a `Stack`; native validation
+remains strict. Four experiences preserve exact hint/action/focus/SavedId
+identity across compact/standard/wide at 100/150%. Game Launcher passes 77/77,
+ordinary host preset/fallback passes, and installed/live diagnostics contain no
+controller-hint `invalid_style`.
 
 ### Accepted milestone — DLV-162: identity-less media-session recovery
 
@@ -364,22 +373,7 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Held — DLV-149: trusted Launcher Experience selection and Settings
-   management.** Commit `f282237` adds exact ID/version selection, global
-   appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
-   disclosure, and selected-version removal denial. It remains unintegrated
-   until DLV-150 privately consumes it. Do not redo or expose it alone.
-2. **Ready after DLV-164 — DLV-165: exact Game Launcher launch-availability
-   audit.** Reproduce the unrelated installed-conformance failure reported after
-   DLV-163 (`Play unavailable` after 10/2 app-library calls) against current
-   exact SavedId/provider authority and the accepted PID log. Implement only a
-   reproducible managed launcher/provider defect. Prove current supported rows
-   expose Play only after fresh exact revalidation, unsupported rows remain
-   truthful, and retry/restart/stale/provider-failure cannot route a same-title
-   neighbor. Tier 1 provider/Game Launcher plus the smallest installed launch
-   route; no native, aggregate, screenshot, account, or speculative fixture
-   rewrite.
-3. **Ready after DLV-165 — DLV-166: Games & Apps persisted-library live audit.**
+1. **Ready after DLV-165 — DLV-166: Games & Apps persisted-library live audit.**
    Exercise the current saved-first/background-reconciliation path, stable Add
    applications action, exact removal, Back, refresh, provider failure, CAS
    replay, and restart. Verify one removal never clears unrelated saved rows and
@@ -387,6 +381,17 @@ for adoption.
    reproducible managed widget/provider gap. Tier 1 Games & Apps/provider plus
    one installed restart route; no native, public SDK/protocol, aggregate,
    screenshot, or speculative refactor.
+2. **Ready after DLV-166 — DLV-167: Settings installed-widget catalog recovery
+   audit.** Open the ordinary Installed widgets route against the current local
+   package/version catalog and reproduce the previously reported
+   `installed_widget_version_limit` unavailable state. Verify active versions
+   remain manageable, the typed quota cause and recovery action are truthful,
+   Retry/restart/catalog change recover without clearing unrelated Settings,
+   and a quota failure does not collapse the whole inventory to an empty page.
+   Implement only a reproducible Settings/catalog presentation defect. Tier 1
+   Settings/catalog plus one ordinary installed route; no quota increase,
+   package deletion, native, public protocol, aggregate, screenshot, or security
+   expansion.
 
 ## Platform lane
 
@@ -549,7 +554,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 30900 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 41224 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
@@ -566,6 +571,7 @@ missing private seam rather than adding parallel presentation authority.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-164 | `9a8822f` | `11a04e9` | Game Launcher controller hints use one valid responsive non-scroll Row; 77/77, ordinary host route, and zero-invalid-style installed/live evidence pass. |
 | DLV-162 | `31bc594` | `06d3d84` | Identity-less GSMTC sessions retain sanitized `Media app` presentation instead of being omitted; Windows Media 14/14, Now Playing 23/23, installed recovery route passed. |
 | DLV-134/145/146 | `e847502`, `7a566be`, `8c6adb4` | `f88aa58`, `3a22bf9`, `4aa7284` | Persisted four-profile Game Launcher projection adopted through the ordinary production worker/bridge/host path; 1,588 native checks, explicit seeded adoption/fallback host scenarios, managed 68/68. |
 | DLV-135 | `3c93abb` | `e6dc10e` | Deterministic data-only Launcher Experience new/validate/preview/pack/inspect/install/list/remove workflow; 61/61 CLI, 17/17 catalog, 1,361 native offscreen checks. |
@@ -574,7 +580,6 @@ missing private seam rather than adding parallel presentation authority.
 | DLV-130/138/139/142 | `da08c44`, `c82f111`, `2281548`, `ecfdd18` | `a3f883e` | Normalized app-library model, focused validation, Windows/Xbox and opt-in Epic installed sources; SDK 89/89, Games 62/62, Launcher 65/65. |
 | DLV-133 | `4c58eba` | `483f8e4` | Launcher-scoped style/artwork/recovery owner and production semantic lifecycle proof; 1,361 checks. |
 | DLV-131/132/137/140/141 | `100c646`, `874f778`, `41da5b7`, `5e3c69c`, `878b484` | `2f766fe` | Strict data-only catalog, standard WebP, four responsive native presets, package-entry bounds; 1,307 semantic checks. |
-| DLV-127 | `df07d7c` | `2ac0a5a` | Stable shared shell/tray and work-area fit across widget switching. |
 | DLV-126 | `a45166c` | `2c58ba7` | Game Launcher top controls, contextual shortcuts/help, and collection continuation; 60/60. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
