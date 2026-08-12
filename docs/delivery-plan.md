@@ -107,6 +107,12 @@ That snapshot is historical evidence, not implementation authority.
   observation can begin cancellation-ignoring private-state persistence before
   supersession and durably corrupt Recent. DLV-185 owns that exact persistence
   race after the already-active visible DLV-184 milestone.
+- DLV-184 `d703d2a` is cleanly committed but rejected and remains held. It
+  reduces compact fixed-height demand and preserves status, collection, tile,
+  and controller-help semantics, but it makes Search explicitly ExpandedOnly;
+  its test asserts Search is absent at 420×340. That contradicts GL-UX-007 and
+  the assignment's reachable-Search criterion. DLV-189 owns the narrow compact
+  action correction after the already-active DLV-185 milestone.
 
 ## Execution protocol
 
@@ -145,34 +151,34 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-184: Game Launcher compact first-page fit
+### Current assignment — DLV-185: make Launcher Recent persistence generation-safe
 
-**State:** In progress from clean widgets commit `498c602`. Finish and commit
-this visible milestone before taking the queued DLV-185 correction.
+**State:** In progress from clean widgets commit `d703d2a`. Finish and commit
+this launch-correctness milestone before taking the queued DLV-189 correction.
 
-**Baseline/dependencies:** widgets branch `498c602`; accepted product `d58e50e`.
-DLV-181/183 are accepted held; DLV-182 is rejected but its correction must not
-interrupt this already-started work. Own only the existing managed responsive
-Game Launcher presentation, focused semantic/focus tests, and directly affected
-implementation/public docs. Do not edit launch lifecycle/persistence,
-collection/source-catalog policy, native host/work-area policy, provider
-authority, public protocol, reviewer docs, or Launcher Experience pack schemas.
+**Baseline/dependencies:** widgets branch `d703d2a`; accepted product `d58e50e`.
+DLV-181/183 are accepted held; DLV-182/184 are rejected and remain unintegrated.
+Own only the existing managed Launcher launch generation/private-state CAS
+boundary, focused tests, and directly affected implementation/public docs. Do
+not edit compact presentation, collection/source-catalog policy, broker/public
+protocol, native host, provider authority, reviewer docs, or pack schemas.
 
-**User-visible outcome:** at 420×340 logical DIPs the first Launcher page keeps
-the focused game, primary action, collection navigation, truthful status, and
-controller help visible and reachable without clipping.
+**User-visible outcome:** starting another game cannot let the superseded game
+later appear in or reorder Recent, even when its private-state write ignores
+cancellation; rejected/inactive launch input cannot disturb the active launch.
 
-**Objective/acceptance:** deliver GL-UX-007 through one existing managed
-responsive tree. Compact may reduce hero metadata and density, but launch,
-Back, search, source health, operation/recovery state, collection navigation,
-and controller help remain in semantic/focus order. Standard and wide layouts
-retain their current information hierarchy and exact focus/action identity;
-inactive branches are absent rather than hidden.
+**Objective/acceptance:** correct rejected DLV-182 without undoing its latest-
+wins launch lane. An older launch that has passed observation acceptance but is
+blocked inside cancellation-ignoring Recent persistence cannot durably add or
+reorder Recent after a newer launch is admitted. Use generation-aware
+conditional commit or exact post-write reconciliation in the existing CAS/
+private-state owner. An inactive or rejected `RunLatest` admission must not
+increment the valid generation or invalidate the active launch.
 
-**Verification/stop:** Tier 1 Game Launcher plus deterministic compact/standard/
-wide semantic-layout and focus fixtures. No native work-area policy, launch-race
-correction, new renderer/protocol, screenshot gate, theme-pack schema,
-aggregate, or cosmetic redesign beyond the responsive Launcher surface.
+**Verification/stop:** Tier 1 Game Launcher plus a deterministic accepted-result
+→blocked-persistence→newer-admission barrier fixture and the exact installed
+launch route. No broker/public protocol, compact UI correction, native, capture,
+aggregate, broad persistence rewrite, or root regrowth.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -477,17 +483,19 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-184 — DLV-185: make Launcher Recent persistence generation-safe.**
-   Correct rejected DLV-182 without undoing its latest-wins launch lane. An
-   older launch that has passed observation acceptance but is blocked inside a
-   cancellation-ignoring private-state write must not durably add/reorder Recent
-   after a newer launch is admitted. Use generation-aware conditional commit or
-   exact post-write reconciliation in the existing CAS/private-state owner.
-   Also prove an inactive/rejected `RunLatest` admission cannot invalidate the
-   active launch. Tier 1 Launcher plus a deterministic accepted-result→blocked-
-   persistence→newer-admission barrier fixture and the exact installed launch
-   route; no broker/public protocol, native, capture, aggregate, or root regrowth.
-2. **Ready after DLV-185 — DLV-186: distinguish owned but not installed games.**
+1. **Ready after DLV-185 — DLV-189: keep compact Launcher Search reachable.**
+   Correct rejected DLV-184 without restoring its full expanded chrome or
+   exceeding the 420×340 budget. Provide one compact Search action in the
+   visible semantic/focus tree that opens the existing host-owned TextEntry;
+   Back, status/source recovery, collection navigation, focused Play, and
+   controller help remain reachable, while filters/footer/duplicate hero may
+   stay expanded-only. Standard/wide identity and hierarchy remain unchanged.
+   Tier 1 Launcher compact/standard/wide semantic and focus traversal at 100/
+   150%, including exact compact Search activation/return; no native work-area,
+   TextEntry implementation, renderer/protocol, capture, aggregate, or redesign.
+   Semantic fixtures prove fit/reachability only; do not claim physical no-
+   clipping without an existing valid renderer-geometry test.
+2. **Ready after DLV-189 — DLV-186: distinguish owned but not installed games.**
    Deliver GL-CAT-008 only for typed records already exposed by current app-
    library providers. Owned/not-installed tiles remain navigable and visibly/
    accessibly distinct, never enter launch admission, and expose Install only

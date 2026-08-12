@@ -279,7 +279,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-181 distinct availability and DLV-183 restart-stable source collections are independently accepted but held; DLV-184 compact fit is active. PID 39248 remains the last accepted eight-widget live artifact. | DLV-182 still permits cancellation-ignoring stale Recent persistence; DLV-185 corrects it after DLV-184. Native TextEntry evidence DLV-180 is active on the recovered platform lane; DLV-186/187 keep owned/offline Launcher behavior queued. |
+| Visible UI and controller behavior | DLV-181 distinct availability and DLV-183 restart-stable source collections are independently accepted but held. DLV-184 reduces compact height but wrongly removes Search. PID 39248 remains the last accepted eight-widget live artifact. | Active DLV-185 corrects stale Recent persistence; DLV-189 then restores one compact Search action. Native TextEntry evidence DLV-180 is active on the recovered platform lane; DLV-186/187 keep owned/offline Launcher behavior queued. |
 | Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. The isolated platform merge was user-authorized and cleanly aborted back to `c2a8172`. | Complete assigned DLV-180, then DLV-168 and DLV-160 in queue order. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -309,9 +309,9 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active DLV-184, then DLV-185's generation-safe Recent persistence.
-   DLV-181/183 are accepted held; native DLV-180 must also pass before the
-   contiguous widget prefix can be reconsidered.
+1. Review active DLV-185, then DLV-189's compact Search correction. DLV-181/183
+   are accepted held; native DLV-180 must also pass before the contiguous widget
+   prefix can be reconsidered.
 2. Review assigned native DLV-180 from clean platform baseline `c2a8172`, then
    DLV-168's tray UIA completion contract before DLV-160.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
