@@ -7,6 +7,8 @@ using GameBarAlternative.WidgetStyling;
 
 namespace GameBarAlternative.FirstPartyWidgets.Settings;
 
+internal sealed record SettingsThemeSelection(string ThemeId, string Version);
+
 internal sealed record SettingsPresentationState(
     SettingsPage Page,
     PlatformSettingsDocument Settings,
@@ -16,7 +18,9 @@ internal sealed record SettingsPresentationState(
     string Status,
     bool SettingsValid,
     bool Busy,
-    bool Error);
+    bool Error,
+    SettingsThemeSelection? SelectedTheme = null,
+    string? ThemePickerFocusId = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static class SettingsPresentation
@@ -31,7 +35,9 @@ internal static class SettingsPresentation
             SettingsPage.Appearance => RenderAppearance(
                 header, state.Settings, state.Themes, state.Busy),
             SettingsPage.ThemePicker => RenderThemes(
-                header, state.Settings, state.Themes, state.Busy),
+                header, state.Settings, state.Themes, state.ThemePickerFocusId, state.Busy),
+            SettingsPage.ThemeVersion => RenderThemeVersion(header, state, confirmation: false),
+            SettingsPage.ThemeRemoval => RenderThemeVersion(header, state, confirmation: true),
             SettingsPage.Accessibility => RenderAccessibility(
                 header, state.Settings, state.Busy),
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(
@@ -422,38 +428,100 @@ internal static class SettingsPresentation
         StackElement header,
         PlatformSettingsDocument settings,
         ThemeCatalogSnapshot themes,
+        string? requestedFocus,
         bool busy)
     {
-        var options = new PickerOption[themes.Themes.Count];
-        var initialFocus = themes.Themes.Count > 0 ? "theme.item.0" : null;
+        var children = new List<WidgetElement>
+        {
+            UI.Text("Theme versions", "theme.heading", "Installed theme versions")
+                .Classes("page-heading"),
+            UI.Text("Choose an exact version to select or manage. Versions are grouped by theme ID.",
+                "theme.help", "Theme version management help").Classes("page-help"),
+        };
+        string? lastId = null;
+        var initialFocus = themes.Themes.Count > 0 ? "theme.item.0.action" : null;
         for (var index = 0; index < themes.Themes.Count; index++)
         {
             var entry = themes.Themes[index];
+            if (!string.Equals(lastId, entry.CatalogId, StringComparison.Ordinal))
+            {
+                children.Add(UI.Text(
+                    entry.CatalogId,
+                    $"theme.group.{index}",
+                    $"Theme {entry.CatalogId}").Classes("section-heading"));
+                lastId = entry.CatalogId;
+            }
             var selected = entry.IsValid &&
                 entry.Descriptor.Id == settings.Appearance.ThemeId &&
                 entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion;
             var diagnostic = entry.Diagnostics.FirstOrDefault()?.Code;
-            var label = entry.IsValid
-                ? $"{entry.Descriptor.Name}  {entry.Descriptor.Version}"
-                : $"Invalid · {entry.Descriptor.Name} · {diagnostic ?? "validation error"}";
-            var accessibilityLabel = entry.IsValid
-                ? $"{entry.Descriptor.Name}, version {entry.Descriptor.Version}"
-                : $"{entry.Descriptor.Name}, invalid theme, {diagnostic ?? "validation error"}";
-            options[index] = new(
+            children.Add(UI.SettingsRow(
+                entry.Descriptor.Name,
+                new ComponentAction("Review", $"theme.open.{index}"),
                 $"theme.item.{index}",
-                label,
-                $"theme.select.{index}",
-                IsSelected: selected,
-                AccessibilityLabel: accessibilityLabel,
-                IsDisabled: !entry.IsValid,
-                IsBusy: busy);
-            if (selected) initialFocus = $"theme.item.{index}";
+                description: entry.IsValid
+                    ? entry.Descriptor.Publisher ?? (entry.Descriptor.IsBuiltIn ? "Platform" : "Legacy package")
+                    : diagnostic ?? "Validation error",
+                value: entry.Descriptor.Version.ToString(),
+                status: selected ? "Active" : entry.IsValid ? "Installed" : "Invalid",
+                statusTone: entry.IsValid ? StatusTone.Neutral : StatusTone.Danger,
+                isBusy: busy));
+            if (selected && requestedFocus is null) initialFocus = $"theme.item.{index}.action";
         }
-        var picker = UI.Picker(
-                "Choose theme", "theme.picker", "theme.picker", "back", options,
-                "Themes change the overlay and every widget that uses shared semantic styles.")
-            .AddClasses("theme-picker");
-        return View(header, picker, initialFocus, "theme.picker");
+        return View(header, PageScope("theme.picker", children.ToArray()),
+            requestedFocus ?? initialFocus, "theme.picker");
+    }
+
+    private static WidgetView RenderThemeVersion(
+        StackElement header,
+        SettingsPresentationState state,
+        bool confirmation)
+    {
+        var entry = state.SelectedTheme is null ? null : state.Themes.Themes.FirstOrDefault(item =>
+            string.Equals(item.CatalogId, state.SelectedTheme.ThemeId, StringComparison.Ordinal) &&
+            string.Equals(item.CatalogVersion, state.SelectedTheme.Version, StringComparison.Ordinal));
+        if (entry is null)
+            return View(header, PageScope("theme.version.page",
+                    UI.Text("Theme version changed", "theme.version.missing", "Theme version changed"),
+                    UI.Button("Back", "back", "theme.version.back")),
+                "theme.version.back", "theme.version.page");
+        var active = entry.Descriptor.Id == state.Settings.Appearance.ThemeId &&
+                     entry.Descriptor.Version.ToString() == state.Settings.Appearance.ThemeVersion;
+        var removable = !entry.Descriptor.IsBuiltIn && !active;
+        if (confirmation)
+        {
+            return View(header, PageScope("theme.removal.page",
+                    UI.Text("Remove theme version?", "theme.removal.heading", "Remove theme version confirmation")
+                        .Classes("page-heading"),
+                    UI.Text($"{entry.Descriptor.Name} · {entry.CatalogId} · {entry.CatalogVersion}",
+                        "theme.removal.identity", "Exact theme version to remove").Classes("page-help"),
+                    UI.Row("theme.removal.actions",
+                        UI.Button("Remove", "theme.remove.confirm", "theme.removal.confirm")
+                            .FocusRight("theme.removal.cancel").Busy(state.Busy).Disabled(!removable)
+                            .Classes("danger-button"),
+                        UI.Button("Cancel", "theme.remove.cancel", "theme.removal.cancel")
+                            .FocusLeft("theme.removal.confirm").Classes("secondary-button"))),
+                "theme.removal.cancel", "theme.removal.page");
+        }
+        var status = active ? "Active version" : entry.IsValid ? "Installed version" : "Invalid package";
+        return View(header, PageScope("theme.version.page",
+                UI.Text(entry.Descriptor.Name, "theme.version.heading", entry.Descriptor.Name)
+                    .Classes("page-heading"),
+                UI.Text($"{entry.CatalogId} · {entry.CatalogVersion}",
+                    "theme.version.identity", "Exact theme identity").Classes("page-help"),
+                UI.Text(status, "theme.version.status", status),
+                UI.Button("Select this version", "theme.select", "theme.version.select")
+                    .Busy(state.Busy).Disabled(!entry.IsValid || active)
+                    .FocusDown("theme.version.remove"),
+                UI.Button("Remove this version", "theme.remove.request", "theme.version.remove")
+                    .Busy(state.Busy).Disabled(!removable)
+                    .FocusUp("theme.version.select").FocusDown("theme.version.back")
+                    .Classes("danger-button"),
+                UI.Button("Back", "back", "theme.version.back")
+                    .FocusUp("theme.version.remove").Classes("secondary-button")),
+            entry.IsValid && !active ? "theme.version.select" : removable
+                ? "theme.version.remove" : "theme.version.back",
+            "theme.version.page");
     }
 
     private static RowElement LinkStepper(
@@ -560,6 +628,8 @@ internal static class SettingsNavigationPolicy
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
             SettingsPage.ThemePicker => SettingsPage.Appearance,
+            SettingsPage.ThemeVersion => SettingsPage.ThemePicker,
+            SettingsPage.ThemeRemoval => SettingsPage.ThemeVersion,
             SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
             SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
             SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,

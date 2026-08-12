@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
     ("Theme picker scrolls every valid and invalid package", ThemePickerScroll),
     ("Theme selection atomically pins ID and version", ThemeSelection),
+    ("Theme versions group select and confirm exact inactive removal", ThemeVersionManagement),
     ("Reset requires confirmation and restores defaults", ResetConfirmation),
     ("Malformed settings recover through safe defaults", InvalidSettingsRecovery),
     ("Saving exposes busy and completion feedback", BusyFeedback),
@@ -249,18 +250,21 @@ static async Task ThemePickerScroll()
     await Action(widget, "open.themes");
     var snapshot = Snapshot(widget);
     var options = Buttons(snapshot.Root)
-        .Where(button => button.Id.StartsWith("theme.item.", StringComparison.Ordinal))
+        .Where(button => button.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
+                         button.Id.EndsWith(".action", StringComparison.Ordinal))
         .ToArray();
     Assert.True(options.Length >= 7,
         "Theme picker did not expose every installed test theme in one Scroll.");
     for (var index = 0; index < 6; index++)
-        Assert.True(options.Any(button =>
-                button.Text!.StartsWith($"Theme {index}", StringComparison.Ordinal)),
+        Assert.True(Nodes(snapshot.Root).Any(node =>
+                node.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
+                node.Id.EndsWith(".label", StringComparison.Ordinal) &&
+                node.Text == $"Theme {index}"),
             $"Theme {index} was omitted from the Picker.");
     Assert.Equal(ViewNodeKind.Scroll,
-        Nodes(snapshot.Root).Single(node => node.Id == "theme.picker.options").Kind);
-    Assert.True(options.Any(button => button.IsDisabled is true),
-        "Invalid theme was not visible and disabled.");
+        Nodes(snapshot.Root).Single(node => node.Id == "theme.picker").Kind);
+    Assert.True(Nodes(snapshot.Root).Any(node => node.Text == "Invalid"),
+        "Invalid theme was not visible for review.");
     Assert.True(!Scope(snapshot.Root, "theme.picker").Shortcuts.Any(item =>
             item.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
         "Theme selection must not consume bumpers for pagination.");
@@ -277,13 +281,69 @@ static async Task ThemeSelection()
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
     var snapshot = Snapshot(widget);
-    var target = Buttons(snapshot.Root).Single(button => button.Text!.StartsWith("Slate", StringComparison.Ordinal));
-    await Action(widget, target.ActionId!);
+    await Action(widget, "theme.open.2");
+    Assert.Equal(SettingsPage.ThemeVersion, widget.CurrentPage);
+    await Action(widget, "theme.select");
     var saved = await Store(temp.Path).LoadAsync();
     Assert.Equal("dev.test.slate", saved.Appearance.ThemeId);
     Assert.Equal("2.3.4", saved.Appearance.ThemeVersion);
-    var selected = Buttons(Snapshot(widget).Root).Single(button => button.Id == target.Id);
-    Assert.Equal(true, selected.IsSelected);
+    Assert.Equal(SettingsPage.ThemePicker, widget.CurrentPage);
+    Assert.Contains("Selected Slate 2.3.4", Text(Snapshot(widget).Root, "settings.status").Text!);
+}
+
+static async Task ThemeVersionManagement()
+{
+    using var temp = new TemporaryDirectory();
+    WriteTheme(temp.Path, "dev.test.family", "Family", "1.0.0", valid: true);
+    WriteTheme(temp.Path, "dev.test.family", "Family", "2.0.0", valid: true);
+    WriteTheme(temp.Path, "dev.test.other", "Other", "1.0.0", valid: true);
+    WriteTheme(temp.Path, "dev.test.invalid", "Broken", "1.0.0", valid: false);
+    var widget = Create(temp.Path);
+    await Activate(widget);
+    await Action(widget, "open.appearance");
+    await Action(widget, "open.themes");
+    var picker = Snapshot(widget);
+    Assert.True(Nodes(picker.Root).Count(node => node.Text == "dev.test.family") == 1,
+        "Theme family was not grouped under one ID heading.");
+
+    // Built-ins are reviewable/selectable but their removal action is protected.
+    await Action(widget, "theme.open.0");
+    Assert.Equal(true, Button(Snapshot(widget).Root, "theme.version.remove").IsDisabled);
+    await Action(widget, "back");
+
+    // Catalog ordering is two built-ins, then family 1.0.0 and 2.0.0.
+    await Action(widget, "theme.open.2");
+    await Action(widget, "theme.remove.request");
+    Assert.Equal(SettingsPage.ThemeRemoval, widget.CurrentPage);
+    Assert.Contains("dev.test.family · 1.0.0", Text(Snapshot(widget).Root, "theme.removal.identity").Text!);
+    await Action(widget, "theme.remove.confirm");
+    Assert.Equal(SettingsPage.ThemePicker, widget.CurrentPage);
+    Assert.True(!Directory.Exists(Path.Combine(
+        new PlatformSettingsPaths(temp.Path).ThemesDirectory, "dev.test.family", "1.0.0")),
+        "Confirmed exact version remained installed.");
+    Assert.True(Directory.Exists(Path.Combine(
+        new PlatformSettingsPaths(temp.Path).ThemesDirectory, "dev.test.family", "2.0.0")),
+        "Sibling version was removed.");
+    Assert.True(Directory.Exists(Path.Combine(
+        new PlatformSettingsPaths(temp.Path).ThemesDirectory, "dev.test.other", "1.0.0")),
+        "Unrelated theme was removed.");
+    Assert.Equal("theme.item.2.action", Snapshot(widget).InitialFocusId);
+
+    // The invalid package remains reviewable and removable without being selectable.
+    var invalidIndex = Nodes(Snapshot(widget).Root)
+        .Where(node => node.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
+                       node.Id.EndsWith(".label", StringComparison.Ordinal) && node.Text == "Broken")
+        .Select(node => int.Parse(node.Id.Split('.')[2], System.Globalization.CultureInfo.InvariantCulture))
+        .Single();
+    await Action(widget, $"theme.open.{invalidIndex}");
+    Assert.Equal(true, Button(Snapshot(widget).Root, "theme.version.select").IsDisabled);
+    Assert.True(Button(Snapshot(widget).Root, "theme.version.remove").IsDisabled is not true,
+        "Inactive invalid version was not removable.");
+    await Action(widget, "theme.remove.request");
+    await Action(widget, "theme.remove.confirm");
+    Assert.True(!Directory.Exists(Path.Combine(
+        new PlatformSettingsPaths(temp.Path).ThemesDirectory, "dev.test.invalid", "1.0.0")),
+        "Invalid exact version was not removable by its catalog identity.");
 }
 
 static async Task ResetConfirmation()
@@ -1018,8 +1078,8 @@ static async Task ExplicitRefresh()
     Assert.Contains("Settings refreshed", Text(Snapshot(widget).Root, "settings.status").Text!);
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
-    Assert.True(Buttons(Snapshot(widget).Root).Any(button =>
-            button.Text?.Contains("Refreshed", StringComparison.Ordinal) == true),
+    Assert.True(Nodes(Snapshot(widget).Root).Any(node =>
+            node.Text?.Contains("Refreshed", StringComparison.Ordinal) == true),
         "Explicit refresh did not reload theme discovery.");
     await Action(widget, "back");
     await Action(widget, "back");

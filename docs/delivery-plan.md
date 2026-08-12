@@ -81,60 +81,78 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### DLV-111 — Make installed theme versions manageable in Settings
+### DLV-114 — Add controller-first Game Launcher details
 
-**State:** Assigned after accepted DLV-110
-**Baseline:** accepted DLV-110 `e90e729` integrated into main through `4e02184`
-plus the planner assignment commit
-**Dependencies:** immutable theme install/discovery, exact theme pinning,
-Settings Appearance picker, and no-poll theme reload
-**Owner:** widgets lane; `PlatformSettings` theme mutation policy, Settings
-Appearance presentation/actions, `gbar theme` parity, focused managed tests,
-and directly affected theme documentation
-**Concurrency:** Managed Settings/tooling only; no native renderer, compositor,
-public widget capability, signing, remote update, or package-trust redesign.
+**State:** Assigned after accepted DLV-111
+**Baseline:** accepted DLV-111 `a1f008b` integrated into main through `83c5c1f`
+plus the planner acceptance/assignment commit
+**Dependencies:** accepted installed-only Game Launcher, durable organization,
+typed launch lifecycle, bounded route navigation, and shared action-sheet/page
+components
+**Owner:** widgets lane; Game Launcher presentation, route/action policy,
+focused managed tests, and directly affected Game Launcher documentation
+**Concurrency:** Game Launcher managed code only; no Settings, package import,
+native host, renderer/compositor, app-library provider, public protocol/SDK,
+store adapter, launch authority, or reviewer-document changes.
 
-**User-visible outcome:** Settings groups installed theme versions, clearly
-identifies the exact active version, lets the user select an older valid version,
-and removes an inactive user-installed version after confirmation. Built-in and
-currently selected versions remain visibly protected instead of requiring
-manual filesystem cleanup.
+**User-visible outcome:** pressing View on a focused library game opens a clear
+controller-first details surface. It shows the complete title, source,
+availability, launch state, favorite/preferred/group status, and the actions
+that already apply to that exact game; B returns to the same tile. A still
+launches directly and X/Y/LB/RB keep their current meanings.
 
-**Objective:** Complete the smallest safe controller-first theme-version
-management slice over the existing immutable catalog and exact appearance pin.
+**Objective:** Turn existing normalized Game Launcher state into one useful
+selected-game details route without broadening trusted authority or making the
+application root another presentation monolith.
 
-**In scope:** grouped ID/version presentation; stable controller focus and Back;
-exact valid-version selection; explicit confirmation for removal; an atomic
-catalog-owned inactive-version retire operation; CLI `theme remove` parity for
-an exact ID/version; invalid inactive versions remaining reviewable/removable;
-watcher-driven reconciliation; safe actionable failure feedback; affected docs.
+**In scope:** one View shortcut and visible controller hint; bounded nested
+details/action presentation; launch, favorite/unfavorite, hide, and existing
+variant/preference actions where valid; stable exact-item identity; disabled or
+honest unavailable states; focus/scroll return; compact/standard/wide and long-
+label behavior; affected docs.
 
-**Out of scope:** importing or updating packages, file pickers, remote discovery,
-automatic updates, gallery/signing/revocation, graphical preview, arbitrary
-asset support, built-in removal, selected-version removal, compatibility shims,
-or native UI changes.
+**Out of scope:** new metadata fields or capability calls, raw paths/processes,
+store APIs, remote artwork/metadata, installs/updates, play-time/achievements,
+game settings, new launch authority, remapping A/X/Y/LB/RB, native UI changes,
+or compatibility shims.
 
-**Acceptance:** Settings can traverse one/many IDs and versions at compact and
-standard profiles, select an exact valid version without rewriting immutable
-content, and remove only the confirmed inactive user version. Built-in or
-selected versions are non-actionable; malformed identities, reparse paths,
-concurrent catalog changes, cancellation, and deletion failure preserve the
-appearance record and unrelated versions. Success publishes one coherent
-catalog/settings refresh with deterministic focus. CLI and Settings use the
-same mutation policy rather than duplicating filesystem rules.
+**Acceptance:** View from every actionable library tile opens details for that
+exact saved identity and never another same-title variant. Actions reuse the
+existing admission/mutation/launch owners, stale or disappearing rows fail
+closed, busy/paused states are honest, and B restores exact focus and scroll
+when possible with deterministic nearest fallback. Long titles and all content
+remain reachable at compact, standard, wide, and 150% text profiles. The root
+retains one lifecycle/action/state owner: details projection/routing policy is
+separate, adds no task, lock, timer, resource, provider, or committed-state
+authority, and any material root growth must be offset by extracting a closed
+policy rather than adding another partial declaration.
 
-**Verification:** Tier 1 PlatformSettings, Settings, CLI theme, and docs suites.
-Tier 2 uses one temporary catalog with multiple IDs/versions and proves exact
-selection, inactive removal, watcher reconciliation, cancellation/failure, and
-unchanged unrelated content. No aggregate or capture.
+**Verification:** Tier 1 Game Launcher action, navigation, presentation/layout,
+and documentation suites. Tier 2 covers duplicate titles/variants, unavailable
+or disappearing selection, busy launch, long labels, exact Back focus, and the
+unchanged A/X/Y/LB/RB mappings. No aggregate, capture, or live store dependency.
 
-**Stop:** safe removal requires deleting a selected/built-in theme, following an
-untrusted reparse point, weakening immutable install rules, or adding a new
-public/remote authority.
+**Stop:** the route needs new host/provider data, raw launch authority, a public
+protocol/SDK change, native focus special-casing, or another lifecycle/state
+coordinator.
 
-**Queue note:** DLV-110 `e90e729` is accepted and integrated through `4e02184`.
-DLV-111 is the next visible widgets milestone; internal SDK expansion may not
-displace it.
+### Widgets ready queue
+
+#### DLV-113 — Add local widget installation to Settings
+
+**State:** Ready after DLV-114 and accepted/integrated DLV-112
+**Owner/dependencies:** widgets lane; consume only DLV-112's bundled-Settings,
+host-owned picker/install operation in Settings Installed Widgets.
+**Outcome/scope:** add an **Install local widget** action, controller-safe busy/
+cancel/result feedback, disabled-package review handoff, exact focus return, and
+focused Settings/docs tests. The widget never receives a path or generic file
+authority, never duplicates validation, and never auto-enables the package.
+**Acceptance/verification:** cancel is quiet, one valid package appears disabled
+for review, duplicate/invalid/stale/failure results are actionable and path-free,
+repeated input cannot duplicate the picker, B/focus remain deterministic, and
+compact/standard/150% Settings plus focused operation tests pass. No aggregate
+or capture. Stop for any worker-visible path, non-Settings authority, auto-enable,
+or package-policy redesign.
 
 ## Platform lane
 
@@ -152,7 +170,7 @@ bundled Settings identity
 **Owner:** platform lane; host-owned picker adapter, private install request and
 origin policy, existing catalog installer integration, bounded platform tests,
 and directly affected platform/package documentation
-**Concurrency:** Runs while widgets owns DLV-111. Do not touch SettingsWidget,
+**Concurrency:** Runs while widgets owns DLV-114. Do not touch SettingsWidget,
 PlatformSettings, `gbar theme`, renderer/compositor geometry, pinned surfaces,
 reviewer documents, or capture tooling. Shared package-import protocol is led
 only by this lane until accepted.
@@ -204,6 +222,34 @@ native compositor/input authority.
 DLV-112 is the permitted immediate visible prerequisite after that internal
 milestone. Its Settings consumer remains serialized as DLV-113 after acceptance.
 
+### Platform ready queue
+
+#### DLV-115 — Correct the live-reopened widget-switch border and cadence
+
+**State:** Ready after DLV-112
+**Owner/dependencies:** platform lane; native presentation/composition and
+existing GBA-004/GBA-036 alpha, geometry, and transition owners only.
+**User-visible outcome:** cycling among Game Launcher, Games & Apps, Spotify,
+Audio Mixer, and smaller widgets keeps unused client pixels transparent and the
+tray continuously painted, with no black outer rectangle and no return to ugly
+multi-step size transitions.
+**Scope:** begin from the user's current packaged video/report after accepted
+DLV-107; correlate recent typed transition/render logs with current code and
+separate transparency failure from cadence/geometry failure before changing the
+smallest owning seam. Preserve reduced motion and rapid reversal. Do not debug
+screenshots, re-create capture tooling, or revive a rejected prototype merely
+because it exists.
+**Acceptance/verification:** focused existing alpha, geometry, transition,
+targeting, and production-host suites pass with bounded timeouts; semantic and
+typed timing evidence proves continuous tray ownership, alpha-zero unused
+pixels, no opaque full-client clear, no stale/blank intermediate surface, stable
+reversal, and no settled/hidden frame work. The planner then rebuilds and
+launches the packaged Release for the user's live verdict; automated capture is
+not a closing gate. No aggregate unless the change crosses the named compositor
+checkpoint.
+**Stop:** evidence requires a new compositor architecture, Windows-version
+support decision, material public behavior tradeoff, or substantial conflict.
+
 ## Blocked work
 
 | Item | Blocker | Unblocking evidence |
@@ -231,6 +277,7 @@ milestone. Its Settings consumer remains serialized as DLV-113 after acceptance.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-111 | `a1f008b` | `83c5c1f` | Settings now groups exact installed theme versions, protects built-in/current selections, selects older valid versions, and confirms atomic inactive-version retirement with CLI parity. |
 | DLV-033 | `1ec2b70` | `4fa8f63` | Bridge-facing catalog, snapshot, failure, lifecycle, retry, and request policy now has one off-UI-thread coordinator; the host retains renderer/input/presentation authority. |
 | DLV-110 | `e90e729` | `4e02184` | Basic, data, media, and multipage starters now generate atomically outside the checkout with MSTest.Sdk 4.3.2 scenarios, isolated preview, validation, and deterministic packaging. |
 | DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |

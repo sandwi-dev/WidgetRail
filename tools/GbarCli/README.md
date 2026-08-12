@@ -199,6 +199,10 @@ preview do not approximate GBSS with a browser or a second parser.
   validity, and the first safe diagnostic. `--settings-root <root>` gives all
   theme catalog commands an isolated root for testing; otherwise they use
   `%LOCALAPPDATA%\GameBarAlternative`.
+- `theme remove <exact-id> <exact-version>` uses the same exact-version mutation
+  policy as Settings. It removes only an inactive user-installed version after
+  revalidation under the catalog lock. Built-in and selected versions are
+  protected; sibling versions and the appearance record are not rewritten.
 
 The package format is data-only. A `.gbartheme` contains exact-case root
 `theme.json` plus UTF-8 `.gbss` files; assemblies, scripts, executables, images,

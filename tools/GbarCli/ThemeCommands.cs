@@ -32,12 +32,13 @@ internal static class ThemeCommand
             "install" => ThemeInstallCommand.RunAsync(
                 args[1..], output, remoteHttpHandler, cancellationToken),
             "list" => ThemeListCommand.RunAsync(args[1..], output),
+            "remove" => ThemeRemoveCommand.RunAsync(args[1..], output, cancellationToken),
             _ => throw Usage(),
         });
     }
 
     private static CliUsageException Usage() => new(
-        "Usage: gbar theme <new|validate|pack|inspect|preview|install|list> ...");
+        "Usage: gbar theme <new|validate|pack|inspect|preview|install|list|remove> ...");
 
     private const string HelpText = """
         gbar theme - safe data-only global theme tools
@@ -50,6 +51,7 @@ internal static class ThemeCommand
           gbar theme inspect <file.gbartheme>
           gbar theme install <file.gbartheme|https-url|github:owner/repository@tag/asset.gbartheme> [--sha256 <64-hex>] [--settings-root <root>]
           gbar theme list [--settings-root <root>]
+          gbar theme remove <exact-id> <exact-version> [--settings-root <root>]
 
         Remote installs require a SHA-256 pin. Packages contain only strict JSON and GBSS;
         validation proves structure and integrity, not publisher identity.
@@ -330,6 +332,30 @@ internal static class ThemeListCommand
     }
 }
 
+internal static class ThemeRemoveCommand
+{
+    public static async Task<int> RunAsync(
+        string[] args,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var parsed = new CommandArguments(args, "--settings-root");
+        if (parsed.Positionals.Count != 2)
+            throw new CliUsageException(
+                "Usage: gbar theme remove <exact-id> <exact-version> [--settings-root <root>]");
+        var paths = new PlatformSettingsPaths(
+            ThemeSettingsRoot.Resolve(parsed.Option("--settings-root")));
+        var result = await new ThemeCatalogMutationPolicy(
+                new PlatformSettingsStore(paths), new ThemeCatalog(paths))
+            .RetireAsync(parsed.Positionals[0], parsed.Positionals[1], cancellationToken)
+            .ConfigureAwait(false);
+        await output.WriteLineAsync(
+            $"Removed {result.ThemeId} {result.Version}." +
+            (result.CleanupPending ? " Retired files are pending cleanup." : string.Empty));
+        return 0;
+    }
+}
+
 internal static class ThemeSettingsRoot
 {
     public static string Resolve(string? requested) => string.IsNullOrWhiteSpace(requested)
@@ -476,8 +502,8 @@ internal static class ThemePackage
         EnsureExistingPathHasNoReparsePoints(root);
         Directory.CreateDirectory(root);
         EnsureExistingPathHasNoReparsePoints(root);
-        RejectReparsePointIfPresent(Path.Combine(root, "theme-install.lock"));
-        var lockPath = Path.Combine(root, "theme-install.lock");
+        var lockPath = Path.Combine(root, ThemeCatalogMutationPolicy.LockFileName);
+        RejectReparsePointIfPresent(lockPath);
         await using var installLock = await AcquireLockAsync(lockPath, cancellationToken);
         var themes = Path.Combine(root, "themes");
         Directory.CreateDirectory(themes);

@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme manifests enforce identity paths bounds and strict JSON", ThemeManifestSafety),
     ("Theme sources reject traversal and reparse points", ThemeSourceSafety),
     ("Theme count is bounded", ThemeCountIsBounded),
+    ("Theme version mutation is exact protected and bounded", ThemeVersionMutation),
     ("Theme layers apply platform widget and user precedence", ThemeLayerPrecedence),
     ("Invalid reload retains the last valid theme and revision", InvalidReloadRetainsLastGood),
     ("Built-in theme gives CodeText bounded Windows monospace wrapping", CodeTextThemeTests.Run),
@@ -451,6 +452,91 @@ static Task ThemeCountIsBounded()
     var exception = Assert.Throws<PlatformSettingsException>(() => Catalog(temp.Path).Discover());
     Assert.Equal("too_many_themes", exception.Code);
     return Task.CompletedTask;
+}
+
+static async Task ThemeVersionMutation()
+{
+    using var temp = new TemporaryDirectory();
+    var first = WriteTheme(temp.Path, "dev.example.family", "Family", "1.0.0", "button { color: #111111; }");
+    var second = WriteTheme(temp.Path, "dev.example.family", "Family", "2.0.0", "button { color: #222222; }");
+    var unrelated = WriteTheme(temp.Path, "dev.example.other", "Other", "1.0.0", "button { color: #333333; }");
+    var store = Store(temp.Path);
+    var catalog = Catalog(temp.Path);
+    var policy = new ThemeCatalogMutationPolicy(store, catalog);
+
+    var selected = await policy.SelectAsync("dev.example.family", "2.0.0");
+    Assert.Equal("dev.example.family", selected.Appearance.ThemeId);
+    Assert.Equal("2.0.0", selected.Appearance.ThemeVersion);
+    Assert.SequenceEqual("button { color: #222222; }"u8.ToArray(),
+        await File.ReadAllBytesAsync(Path.Combine(second, "theme.gbss")));
+
+    var protectedSelection = await Assert.ThrowsAsync<PlatformSettingsException>(() =>
+        policy.RetireAsync("dev.example.family", "2.0.0"));
+    Assert.Equal("selected_theme_protected", protectedSelection.Code);
+    var protectedBuiltIn = await Assert.ThrowsAsync<PlatformSettingsException>(() =>
+        policy.RetireAsync(ThemeIdentity.BuiltInDefault, ThemeIdentity.BuiltInDefaultVersion));
+    Assert.Equal("builtin_theme_protected", protectedBuiltIn.Code);
+
+    var retired = await policy.RetireAsync("dev.example.family", "1.0.0");
+    Assert.Equal("dev.example.family", retired.ThemeId);
+    Assert.True(!Directory.Exists(first), "Retired exact version remained in the catalog.");
+    Assert.True(Directory.Exists(second), "Selected sibling version was removed.");
+    Assert.True(Directory.Exists(unrelated), "Unrelated theme was removed.");
+    Assert.Equal(selected, await store.LoadAsync());
+    Assert.True(!catalog.Discover().Themes.Any(item =>
+        item.Descriptor.Id == "dev.example.family" && item.Descriptor.Version == new Version(1, 0, 0)),
+        "Retired version remained discoverable.");
+
+    using var cancelled = new CancellationTokenSource();
+    cancelled.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() =>
+        policy.RetireAsync("dev.example.other", "1.0.0", cancelled.Token));
+    Assert.True(Directory.Exists(unrelated), "Cancelled retirement changed the catalog.");
+    var malformed = await Assert.ThrowsAsync<PlatformSettingsException>(() =>
+        policy.RetireAsync("../escape", "1.0.0"));
+    Assert.Equal("invalid_theme_id", malformed.Code);
+
+    var concurrent = WriteTheme(
+        temp.Path, "dev.example.concurrent", "Concurrent", "1.0.0",
+        "button { color: #444444; }");
+    var attempts = await Task.WhenAll(Enumerable.Range(0, 2).Select(async _ =>
+    {
+        try
+        {
+            await new ThemeCatalogMutationPolicy(Store(temp.Path), Catalog(temp.Path))
+                .RetireAsync("dev.example.concurrent", "1.0.0");
+            return "removed";
+        }
+        catch (PlatformSettingsException exception)
+        {
+            return exception.Code;
+        }
+    }));
+    Assert.Equal(1, attempts.Count(result => result == "removed"));
+    Assert.Equal(1, attempts.Count(result => result is "theme_not_found" or "theme_changed"));
+    Assert.True(!Directory.Exists(concurrent), "Concurrent retirement did not settle exactly once.");
+
+    var linked = WriteTheme(
+        temp.Path, "dev.example.linked-removal", "Linked", "1.0.0",
+        "button { color: #555555; }");
+    var outside = Path.Combine(temp.Path, "outside-theme-data.txt");
+    await File.WriteAllTextAsync(outside, "must survive");
+    var link = Path.Combine(linked, "linked.gbss");
+    try
+    {
+        File.CreateSymbolicLink(link, outside);
+    }
+    catch (Exception exception) when (
+        exception is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+    {
+        return;
+    }
+    var linkedResult = await policy.RetireAsync("dev.example.linked-removal", "1.0.0");
+    Assert.True(linkedResult.CleanupPending, "Reparse-backed cleanup was not quarantined.");
+    Assert.Equal("must survive", await File.ReadAllTextAsync(outside));
+    Assert.True(!catalog.Discover().Themes.Any(item =>
+        item.CatalogId == "dev.example.linked-removal" && item.CatalogVersion == "1.0.0"),
+        "Reparse-backed retired package remained in the active catalog.");
 }
 
 static Task ThemeLayerPrecedence()
