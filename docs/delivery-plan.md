@@ -501,8 +501,10 @@ selection requires a material UX choice.
 the advertised WebP contract rejects ordinary `VP8`/`VP8L` files, package and
 catalog limits are reached only after unbounded enumeration/sorting work, and
 the deterministic malformed-package fixtures do not cover several named
-assignment boundaries. DLV-137 is the queued correction after already-active
-DLV-132.
+assignment boundaries. DLV-137 `41da5b7` closes the WebP, catalog, and fixture
+gaps but still counts only admitted safe-extension files, so arbitrarily many
+forbidden/unsafe entries bypass the package file budget and accumulate an
+unbounded diagnostic list. DLV-141 is queued after already-active DLV-140.
 **Baseline/dependencies:** `docs/game-launcher-requirements.md` experience
 architecture, GL-THEME-001 through GL-THEME-012, GL-SEC-004, and delivery step
 1. It does not depend on DLV-130 because packs bind semantic slot names, never
@@ -584,8 +586,12 @@ remote assets, gallery, network, screenshot, or aggregate.
 
 ### DLV-137 — Close the Launcher Experience package-validation gaps
 
-**State:** Ready immediately after the already-active DLV-132; this is the
-DLV-131 review correction and precedes DLV-136 and DLV-133
+**State:** Implemented as `41da5b7` but not accepted or integrated. Standard
+WebP parsing, bounded catalog directory admission, stable duplicate paths, and
+the named malformed fixtures are present, but package enumeration increments
+the 64-file counter only after path/extension admission. Arbitrarily many
+forbidden or unsafe files therefore bypass the limit and each append a
+diagnostic. DLV-141 is the queued correction after already-active DLV-140.
 **Baseline/dependencies:** committed DLV-131 `100c646` plus the completed
 DLV-132 commit; do not change DLV-132 renderer behavior
 **Owner/outcome:** platform lane for the smallest catalog/file-guard/parser and
@@ -613,9 +619,9 @@ the already documented format.
 
 ### DLV-140 — Prove Launcher Experience geometry through the production host
 
-**State:** Ready immediately after the already-active DLV-137; this is the
-DLV-132 review correction and precedes DLV-136 and DLV-133
-**Baseline/dependencies:** committed DLV-132 `874f778` plus accepted DLV-137;
+**State:** Assigned from the clean branch boundary after committed DLV-137;
+finish and commit this coherent in-progress milestone, then take DLV-141
+**Baseline/dependencies:** committed DLV-132 `874f778` plus committed DLV-137;
 do not broaden the recipe schema/catalog or Game Launcher domain contract
 **Owner/outcome:** platform lane for the smallest adapter/fixture correction
 needed to make the documented native Launcher Experience support truthful
@@ -642,9 +648,34 @@ unrelated renderer refactor.
 Launcher domain state before DLV-134, changing the window/compositor ownership
 model, or weakening the existing semantic/action authority boundary.
 
+### DLV-141 — Enforce package entry budgets before diagnostics or admission
+
+**State:** Ready immediately after the already-active DLV-140; this is the
+remaining DLV-137 review correction and precedes DLV-136 and DLV-133
+**Baseline/dependencies:** committed DLV-137 `41da5b7` plus the completed
+DLV-140 commit; do not change DLV-140 renderer/host-semantic behavior
+**Owner/outcome:** platform lane for the smallest Launcher Experience file-
+enumeration and focused-fixture correction that makes the documented package
+entry budget apply to every encountered file before path, extension, duplicate,
+or role diagnostics can allocate or continue traversal.
+**Acceptance:** package discovery stops on the 65th encountered file regardless
+of whether earlier entries are valid, forbidden, unsafe, duplicate, unreferenced,
+or otherwise rejected. It never enumerates the rest of that directory/tree and
+never accumulates more than a bounded diagnostic set. Existing 64-file,
+64-directory, expanded-byte, per-file, reparse, path, content, image, digest,
+and valid-package behavior remains unchanged. Deterministic fixtures prove
+over-limit all-valid, all-forbidden, mixed valid/forbidden, and repeated-invalid
+entry sets fail with the stable package-count diagnostic without materializing
+or sorting an unbounded collection.
+**Verification:** Tier 1 Launcher Experience catalog Release fixture only. No
+aggregate, native renderer/adapter change, launcher domain work, schema/budget
+change, capture, network, or unrelated hardening.
+**Stop:** the correction requires changing the documented 64-file contract,
+filesystem-wide pre-enumeration, or a new package/archive ingestion design.
+
 ### DLV-136 — Make the production overlay reachable by the planner UI smoke
 
-**State:** Ready immediately after DLV-140; take this before DLV-133
+**State:** Ready immediately after DLV-141; take this before DLV-133
 **Owner/outcome:** platform lane for the smallest production-host change that
 lets the supported Windows computer-control surface discover, activate, and
 capture the exact visible `Game Bar Alternative` main window after `--show`.
@@ -686,10 +717,11 @@ manufacture adjacent work.
 1. DLV-130 owns the normalized public launcher data contract; no other lane
    edits that broker/bridge/SDK boundary until it is accepted.
 2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
-   catalog. DLV-137 closes its bounded package-validation review gaps, DLV-140
-   closes the committed DLV-132 responsive/production-host evidence gaps, then
-   DLV-136 restores required planner UI-smoke reachability before DLV-133
-   continues platform presentation work.
+   catalog. DLV-137 closes most package-validation gaps, DLV-140 closes the
+   committed DLV-132 responsive/production-host evidence gaps, and DLV-141
+   closes the remaining all-entry file-budget gap. DLV-136 then restores
+   required planner UI-smoke reachability before DLV-133 continues platform
+   presentation work.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.
