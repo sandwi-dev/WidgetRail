@@ -48,6 +48,8 @@ public sealed class GameLauncherWidget : Widget
     private long _fixedRowsRevision;
     private string? _pendingRestoredSavedId;
     private bool _preferLibraryContentFocus;
+    private string? _heroSavedId;
+    private int _heroIndex;
     private readonly SortedSet<string> _knownSources = new(StringComparer.OrdinalIgnoreCase);
 
     public GameLauncherWidget()
@@ -97,21 +99,7 @@ public sealed class GameLauncherWidget : Widget
         var navigation = _navigation.Value;
         lock (_gate)
         {
-            state = new(
-                _library.Snapshot,
-                _organization,
-                StatusLocked(_library.Snapshot),
-                _launchingSavedId,
-                new Dictionary<string, GameLauncherLaunchState>(
-                    _launchStates, StringComparer.Ordinal),
-                _organizationBusy,
-                LifecycleState == WidgetLifecycleState.Interactive,
-                _query,
-                _recentMode,
-                _favoriteFilter,
-                navigation.Route,
-                _fixedRows,
-                _sourceObservations);
+            state = CapturePresentationStateLocked(navigation.Route);
             if (navigation.Route == GameLauncherRoute.Details && _detailsSelection is { } selected)
                 details = GameLauncherDetailsPolicy.Project(selected, _library.Snapshot,
                     _fixedRows, _organization, _launchingSavedId, _launchStates,
@@ -177,6 +165,7 @@ public sealed class GameLauncherWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        SelectHeroForSource(action.SourceElementId);
         var routeBeforeBack = _navigation.Value.Route;
         if (_navigation.TryHandleBack(action, action.SourceElementId))
         {
@@ -392,6 +381,45 @@ public sealed class GameLauncherWidget : Widget
                 }});
                 return;
         }
+    }
+
+    public override async ValueTask<bool> OnControllerInputAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (input.Context == ControllerInputContext.OpenWidget &&
+            input.Phase is ControllerEventPhase.Pressed or ControllerEventPhase.Repeated &&
+            _navigation.Value.Route == GameLauncherRoute.Library)
+        {
+            GameLauncherPresentationState state;
+            lock (_gate) state = CapturePresentationStateLocked(GameLauncherRoute.Library);
+            var model = GameLauncherHeroRailPolicy.Project(
+                state, state.HeroSavedId, state.HeroIndex);
+            var selected = GameLauncherHeroRailPolicy.SelectFromInput(
+                model, input.FocusedElementId, input.Button);
+            if (selected is not null)
+            {
+                var index = Enumerable.Range(0, model.Items.Count)
+                    .First(candidate => ReferenceEquals(model.Items[candidate], selected));
+                var changed = false;
+                lock (_gate)
+                {
+                    if (_navigation.Value.Route == GameLauncherRoute.Library &&
+                        (!string.Equals(_heroSavedId, selected.Display.SavedId,
+                                StringComparison.Ordinal) || _heroIndex != index))
+                    {
+                        _heroSavedId = selected.Display.SavedId;
+                        _heroIndex = index;
+                        changed = true;
+                    }
+                }
+                if (changed) Invalidate();
+            }
+        }
+        return await base.OnControllerInputAsync(input, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private void TryMovePage(
@@ -1166,6 +1194,25 @@ public sealed class GameLauncherWidget : Widget
             item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution);
     }
 
+    private GameLauncherPresentationState CapturePresentationStateLocked(
+        GameLauncherRoute route) => new(
+        _library.Snapshot,
+        _organization,
+        StatusLocked(_library.Snapshot),
+        _launchingSavedId,
+        new Dictionary<string, GameLauncherLaunchState>(
+            _launchStates, StringComparer.Ordinal),
+        _organizationBusy,
+        LifecycleState == WidgetLifecycleState.Interactive,
+        _query,
+        _recentMode,
+        _favoriteFilter,
+        route,
+        _fixedRows,
+        _sourceObservations,
+        _heroSavedId,
+        _heroIndex);
+
     private void OpenDetails(string sourceElementId)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -1178,6 +1225,7 @@ public sealed class GameLauncherWidget : Widget
         lock (_gate)
         {
             _detailsSelection = selection;
+            _heroSavedId = selection.SavedId;
             _preferLibraryContentFocus = false;
         }
         if (_navigation.Push(GameLauncherRoute.Details, sourceElementId) !=
@@ -1196,6 +1244,29 @@ public sealed class GameLauncherWidget : Widget
         }
         return GameLauncherDetailsPolicy.ResolveActionSource(
             selection, sourceElementId, _library.Snapshot, fixedRows);
+    }
+
+    private void SelectHeroForSource(string sourceElementId)
+    {
+        if (_navigation.Value.Route != GameLauncherRoute.Library) return;
+        GameLauncherFixedRows fixedRows;
+        lock (_gate) fixedRows = _fixedRows;
+        var selected = _library.Snapshot.Items.Concat(fixedRows.All)
+            .FirstOrDefault(item => string.Equals(
+                GameLauncherIdentity.FocusId("grid", item.Key), sourceElementId,
+                StringComparison.Ordinal));
+        if (selected is null) return;
+        var changed = false;
+        lock (_gate)
+        {
+            if (!string.Equals(_heroSavedId, selected.Value.SavedId,
+                    StringComparison.Ordinal))
+            {
+                _heroSavedId = selected.Value.SavedId;
+                changed = true;
+            }
+        }
+        if (changed) Invalidate();
     }
 
     private void CloseDetails(bool preferLibraryContentFocus = false)

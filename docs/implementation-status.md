@@ -3103,6 +3103,34 @@ game focus, while final partial rows expose no looping continuation. Focused
 Release evidence passes Game Launcher 60/60. No Widget SDK, protocol, provider,
 native host, or launch-authority contract changed.
 
+### Game Launcher built-in hero rail (DLV-128)
+
+The Library route now composes one bounded selected-game hero above one
+horizontal cover rail while preserving the existing installed-only cursor,
+query, organization, details, and exact-SavedId action paths. Controller
+Left/Right projects the adjacent bounded rail identity into private in-memory
+selection state before native focus movement; it never calls the launch
+capability. A, View, X, Y, LB, and RB remain authored on the exact focused tile.
+The hero reuses only the selected row's opaque trusted artwork handle and falls
+back to a semantic Play glyph; snapshots and private state contain no URL, path,
+image bytes, or provider identity.
+
+Responsibility changed from `GameLauncherPresentation` owning Library ordering
+and three responsive grids to `GameLauncherHeroRailPolicy` owning the bounded
+recent/manual/catalog rail projection plus deterministic nearest-index fallback,
+and `GameLauncherHeroRailPresentation` owning hero semantics and fallback.
+`GameLauncherWidget` remains the sole lifecycle, cursor, committed organization,
+launch, and invalidation owner; its only new responsibility is the two-field
+in-memory hero selection and controller admission that feeds the pure policy.
+There is no new task, lock, resource, capability, protocol, or native layout
+owner. Focused Release evidence is recorded with the closing milestone commit.
+The root moves from 1,279 to 1,350 physical lines because it remains the one
+cohesive lifecycle/cursor/capability/action owner and now admits focused-element
+selection; the general presenter falls from 747 to 694 lines, while the new
+271-line hero policy/component contains the extracted ordering and composition.
+Final focused evidence passes Game Launcher 62/62 and the documentation contract
+across 61 Markdown files.
+
 ### Complete scenario verification discovery (DLV-125)
 
 The canonical verification manifest now represents the existing

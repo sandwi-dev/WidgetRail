@@ -29,8 +29,8 @@ provider identity, infer games from titles, or cache a complete library.
   `WidgetCursorResource` appends or prepends complete provider pages, retains at
   most 192 provider rows for this widget, remembers at most 256 opaque traversal
   cursors, and serializes only that retained cursor window. Recent and manually
-  added rows are composed in separate fixed sections and never enter provider
-  page, cursor, or viewport-anchor accounting.
+  added rows are composed as bounded fixed prefixes in the visible rail and
+  never enter provider page, cursor, or viewport-anchor accounting.
 - A 10,000-item library takes 157 bounded pages. Crossing a boundary requests
   focus on the entering keyed tile and retains the authored viewport anchor.
   While focus is inside a multi-page results scroll, LB requests the available
@@ -45,9 +45,11 @@ provider identity, infer games from titles, or cache a complete library.
   immediate or multi-hop loops within the finite traversal evidence, stale
   generations, malformed pages, cancellation, and traversal beyond the explicit
   bound fail closed while preserving the last good window.
-- The responsive grid authors five maximum columns with a 980 by 700 preferred
-  surface and 420 by 340 minimum. Native layout chooses the actual compact,
-  standard, or wide column count at the active client size and scale.
+- The Library route uses the built-in `hero-rail` presentation at its 980 by 700
+  preferred surface and 420 by 340 minimum. One bounded selected-game hero sits
+  above one horizontal cover rail. Left/Right updates only the selected hero;
+  it never dispatches launch or loses the cursor anchor. Add games, Add running
+  app, and Hidden retain one bounded responsive vertical grid.
 - **Library sources** lists every normalized source relevant to the current
   provider revision as Healthy, Degraded, Unavailable, or Refreshing. A partial
   source failure keeps healthy and last-good usable games visible and leaves
@@ -70,6 +72,14 @@ with explicit feedback. **B** returns to the
 originating tile and retained collection offset. A removed or replaced identity
 keeps only its sanitized display projection, becomes visibly unavailable, and
 cannot launch or mutate a different same-title row.
+
+The hero reuses the focused row's generation-bound opaque artwork handle and a
+semantic Play fallback when artwork is absent. It shows only the normalized
+title, exact source, current availability/launch state, favorite state,
+preferred-variant state, and bounded group count already present in managed
+state. It introduces no network request, raw path, provider metadata, or launch
+authority. A and the View/X/Y/LB/RB shortcuts continue to originate from the
+focused tile's exact SavedId.
 
 ## Artwork, state, and launch authority
 

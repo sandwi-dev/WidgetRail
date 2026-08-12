@@ -247,6 +247,8 @@ public sealed class GameLauncherTests
         var busy = Snapshot(widget, 951);
         var busyTile = Nodes(busy.Root).Single(node => node.Id == tile.Id);
         Assert.IsTrue(busyTile.IsBusy);
+        Assert.AreEqual("Pending", Nodes(busy.Root).Single(node =>
+            node.Id == "game-launcher.hero.state").Text);
         Assert.AreEqual(0, busyTile.Shortcuts.Count,
             "A busy game must not advertise shortcuts it cannot dispatch.");
         Assert.IsFalse(Nodes(busy.Root).Any(node =>
@@ -2120,6 +2122,8 @@ public sealed class GameLauncherTests
         var returned = Snapshot(widget, 43);
         Assert.AreEqual(tiles[1].Id, returned.InitialFocusId);
         Assert.IsTrue(Nodes(returned.Root).Any(node => node.Id == tiles[1].Id));
+        Assert.AreEqual("Windows", Nodes(returned.Root).Single(node =>
+            node.Id == "game-launcher.hero.source").Text);
         Assert.AreEqual(collectionRevision, widget.Collection.Revision);
         Assert.AreEqual(collectionAnchor, widget.Collection.Anchor);
         await Background(widget);
@@ -2385,7 +2389,7 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task ArtworkAndResponsiveGridRemainSemanticAndBounded()
+    public async Task ArtworkAndHeroRailRemainSemanticAndBounded()
     {
         var host = new FakeHost(1)
         {
@@ -2400,12 +2404,47 @@ public sealed class GameLauncherTests
         var snapshot = widget.RenderSnapshot("launcher.test", 6);
 
         Assert.AreEqual(WidgetSurfaceMode.Wide, snapshot.Surface?.Mode);
-        var grid = Nodes(snapshot.Root).Single(node => node.Id == "game-launcher.library.grid");
-        Assert.AreEqual(ViewNodeKind.Grid, grid.Kind);
-        Assert.AreEqual(5, grid.GridMaximumColumns);
-        Assert.AreEqual("library.art.0123456789abcdef0123456789abcdef",
-            Nodes(snapshot.Root).Single(node => node.ArtworkHandle is not null).ArtworkHandle);
+        var rail = Nodes(snapshot.Root).Single(node =>
+            node.Id == GameLauncherPresentation.ScrollId);
+        Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
+        Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
+        Assert.AreEqual(2, Nodes(snapshot.Root).Count(node =>
+            node.ArtworkHandle == "library.art.0123456789abcdef0123456789abcdef"));
+        Assert.AreEqual("Game 00000", Nodes(snapshot.Root).Single(node =>
+            node.Id == "game-launcher.hero.title").Text);
         Assert.IsLessThan(100, Nodes(snapshot.Root).Count());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RailFocusUpdatesHeroWithoutLaunchAndActionsRemainExact()
+    {
+        var host = new FakeHost(20);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var first = Snapshot(widget, 9_000);
+        var tiles = Nodes(first.Root).Where(node =>
+                node.ActionId == "game-launcher.launch")
+            .ToArray();
+        Assert.AreEqual("Game 00000", Nodes(first.Root).Single(node =>
+            node.Id == "game-launcher.hero.title").Text);
+
+        Assert.IsFalse(await Route(
+            widget, first, ControllerButton.DPadRight, tiles[0].Id));
+        var moved = Snapshot(widget, 9_001);
+        Assert.AreEqual("Game 00001", Nodes(moved.Root).Single(node =>
+            node.Id == "game-launcher.hero.title").Text);
+        Assert.AreEqual(0, host.Launches.Count,
+            "Focus movement must never authorize launch.");
+
+        var movedSecond = Nodes(moved.Root).Where(node =>
+                node.ActionId == "game-launcher.launch")
+            .ElementAt(1);
+        Assert.IsTrue(await Route(
+            widget, moved, ControllerButton.A, movedSecond.Id));
+        await WaitUntil(() => host.Launches.Count == 1);
+        CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
         await Background(widget);
     }
 
