@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <array>
+#include <algorithm>
 #include <cstdint>
 #include <cwctype>
 #include <filesystem>
@@ -11,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fs = std::filesystem;
 using gba::host_testing::Fail;
@@ -185,6 +187,17 @@ std::string TransitionNeedle(const std::wstring_view target) {
     return " to=" + WideToUtf8(target) + " extent=";
 }
 
+std::uint64_t TimingField(
+    const std::string_view record, const std::string_view field) {
+    const auto start = record.find(field);
+    Require(start != std::string_view::npos,
+            "Composition timing record omitted " + std::string(field));
+    const auto valueStart = start + field.size();
+    const auto valueEnd = record.find_first_not_of("0123456789", valueStart);
+    Require(valueEnd != valueStart, "Composition timing field was empty");
+    return std::stoull(std::string(record.substr(valueStart, valueEnd - valueStart)));
+}
+
 void RunRetentionScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker);
@@ -219,6 +232,52 @@ void RunRetentionScenario(const Arguments& arguments) {
              std::to_string(exitCode) + " log=" + ReadUtf8(logPath));
     }
     FenceWindow(window);
+    std::vector<std::uint64_t> drawTimings;
+    std::vector<std::uint64_t> commitTimings;
+    std::vector<std::uint64_t> geometryTimings;
+    const auto recordComposition = [&](const std::size_t after,
+                                       const std::wstring_view label) {
+        constexpr std::string_view placementNeedle =
+            "Composition placement committed content=complete";
+        constexpr std::string_view frameNeedle =
+            "Composition frame committed content=complete";
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    const auto pending = ReadUtf8(logPath);
+                    return pending.find(placementNeedle, after) != std::string::npos ||
+                        pending.find(frameNeedle, after) != std::string::npos;
+                }),
+                "Production transition omitted a committed complete-content surface for " +
+                    WideToUtf8(label));
+        const auto log = ReadUtf8(logPath);
+        const auto placementAt = log.find(placementNeedle, after);
+        const auto frameAt = log.find(frameNeedle, after);
+        const auto composedAt = placementAt == std::string::npos
+            ? frameAt
+            : frameAt == std::string::npos
+                ? placementAt
+                : std::min(placementAt, frameAt);
+        Require(composedAt != std::string::npos,
+                "Committed composition record disappeared during validation");
+        const auto composedEnd = log.find('\n', composedAt);
+        const auto composed = log.substr(
+            composedAt,
+            composedEnd == std::string::npos
+                ? std::string::npos
+                : composedEnd - composedAt);
+        const bool geometryPlacement =
+            composed.find("order=commit-place") != std::string::npos ||
+            composed.find("order=clip-commit-place") != std::string::npos;
+        const bool sameGeometryCommit =
+            composed.find("order=commit-no-geometry") != std::string::npos;
+        Require((geometryPlacement &&
+                    composed.find("waited=true") != std::string::npos) ||
+                    (sameGeometryCommit &&
+                     composed.find("waited=false") != std::string::npos),
+                "Composition did not commit before exposing changed content or geometry");
+        drawTimings.push_back(TimingField(composed, "draw-us="));
+        commitTimings.push_back(TimingField(composed, "commit-us="));
+        geometryTimings.push_back(TimingField(composed, "geometry-us="));
+    };
 
     const auto waitForPaint = [&](const std::size_t after,
                                   const Target& target,
@@ -267,6 +326,9 @@ void RunRetentionScenario(const Arguments& arguments) {
         }
         waitForPaint(before, target, target.id, "admitted");
         const auto log = ReadUtf8(logPath);
+        const auto admittedAt = log.find(admittedNeedle, before);
+        Require(admittedAt != std::string::npos,
+                "Admitted paint trace disappeared before composition validation");
         const auto transition = log.find(TransitionNeedle(target.id), before);
         Require(transition != std::string::npos,
                 "Transition diagnostics omitted the destination identity for " +
@@ -279,11 +341,18 @@ void RunRetentionScenario(const Arguments& arguments) {
                     record.find("sizing=retained-until-snapshot") != std::string::npos,
                 "Transition diagnostics omitted retained content and extent authority for " +
                     WideToUtf8(target.label));
+        recordComposition(admittedAt, target.label);
     };
 
     const auto audioBefore = ReadUtf8(logPath).size();
     SendKey(window, VK_RETURN);
     waitForPaint(audioBefore, kTargets[0], kTargets[0].id, "admitted");
+    const auto audioLog = ReadUtf8(logPath);
+    const auto audioAdmittedAt = audioLog.find(
+        "Widget presentation paint target=audio-mixer content=admitted", audioBefore);
+    Require(audioAdmittedAt != std::string::npos,
+            "Audio Mixer admitted trace disappeared before composition validation");
+    recordComposition(audioAdmittedAt, kTargets[0].label);
     SendKey(window, VK_DOWN);
     FenceWindow(window);
     for (std::size_t index = 1; index < kTargets.size(); ++index)
@@ -316,8 +385,35 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto log = ReadUtf8(logPath);
     Require(log.find("Render-target resize failed") == std::string::npos,
             "A production switch forced render-target recreation.");
-    Require(log.find("target=animated-resize-in-place") != std::string::npos,
-            "Production diagnostics omitted the existing in-place resize decision.");
+    Require(log.find("DirectComposition complete-content presentation owner active") !=
+                std::string::npos,
+            "Production host did not activate its DirectComposition owner.");
+    Require(log.find("target=composition-surface-commit") != std::string::npos,
+            "Production extent diagnostics omitted the compositor commit decision.");
+    Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
+                log.find("Overlay render target resized in place") == std::string::npos,
+            "Production transition fell back to direct HWND presentation.");
+    Require(drawTimings.size() == kTargets.size() &&
+                commitTimings.size() == drawTimings.size() &&
+                geometryTimings.size() == drawTimings.size(),
+            "Production timing distribution omitted a widget transition.");
+    constexpr std::uint64_t kTransitionBudgetMicroseconds = 100000;
+    Require(*std::max_element(drawTimings.begin(), drawTimings.end()) <=
+                kTransitionBudgetMicroseconds,
+            "Complete destination drawing exceeded the bounded transition budget.");
+    Require(*std::max_element(commitTimings.begin(), commitTimings.end()) <=
+                kTransitionBudgetMicroseconds,
+            "Synchronous replacement commit exceeded the bounded transition budget.");
+    Require(*std::max_element(geometryTimings.begin(), geometryTimings.end()) <=
+                kTransitionBudgetMicroseconds,
+            "Coordinated commit and HWND geometry exceeded the bounded transition budget.");
+    std::cout << "Composition transition timing us draw-max="
+              << *std::max_element(drawTimings.begin(), drawTimings.end())
+              << " commit-max="
+              << *std::max_element(commitTimings.begin(), commitTimings.end())
+              << " geometry-max="
+              << *std::max_element(geometryTimings.begin(), geometryTimings.end())
+              << " samples=" << drawTimings.size() << '\n';
     host.reset();
     installation.reset();
 }

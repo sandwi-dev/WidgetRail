@@ -26,16 +26,17 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile><WarningLevel>Level4</WarningLevel><SDLCheck>true</SDLCheck><LanguageStandard>stdcpp20</LanguageStandard><ConformanceMode>true</ConformanceMode><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions><AdditionalIncludeDirectories>$(NuGetPackageRoot)microsoft.gameinput\3.5.262\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>USING_GAMEINPUT;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <Link><SubSystem>Windows</SubSystem><AdditionalLibraryDirectories>$(NuGetPackageRoot)microsoft.gameinput\3.5.262\native\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>user32.lib;gdi32.lib;d2d1.lib;dwrite.lib;dwmapi.lib;gameinput.lib;shcore.lib;xinput9_1_0.lib;windowsapp.lib;winhttp.lib;windowscodecs.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+    <Link><SubSystem>Windows</SubSystem><AdditionalLibraryDirectories>$(NuGetPackageRoot)microsoft.gameinput\3.5.262\native\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>user32.lib;gdi32.lib;d2d1.lib;dwrite.lib;dwmapi.lib;d3d11.lib;dxgi.lib;dcomp.lib;gameinput.lib;shcore.lib;xinput9_1_0.lib;windowsapp.lib;winhttp.lib;windowscodecs.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
     <Manifest><AdditionalManifestFiles>app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile><WarningLevel>Level4</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><LanguageStandard>stdcpp20</LanguageStandard><ConformanceMode>true</ConformanceMode><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions><AdditionalIncludeDirectories>$(NuGetPackageRoot)microsoft.gameinput\3.5.262\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>USING_GAMEINPUT;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
-    <Link><SubSystem>Windows</SubSystem><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalLibraryDirectories>$(NuGetPackageRoot)microsoft.gameinput\3.5.262\native\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>user32.lib;gdi32.lib;d2d1.lib;dwrite.lib;dwmapi.lib;gameinput.lib;shcore.lib;xinput9_1_0.lib;windowsapp.lib;winhttp.lib;windowscodecs.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+    <Link><SubSystem>Windows</SubSystem><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalLibraryDirectories>$(NuGetPackageRoot)microsoft.gameinput\3.5.262\native\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><AdditionalDependencies>user32.lib;gdi32.lib;d2d1.lib;dwrite.lib;dwmapi.lib;d3d11.lib;dxgi.lib;dcomp.lib;gameinput.lib;shcore.lib;xinput9_1_0.lib;windowsapp.lib;winhttp.lib;windowscodecs.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
     <Manifest><AdditionalManifestFiles>app.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles></Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="OverlayCompositionSurface.cpp" />
     <ClCompile Include="OverlayState.cpp" />
     <ClCompile Include="WidgetBridgeClient.cpp" />
     <ClCompile Include="RemoteImageCache.cpp" />
@@ -53,6 +54,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OverlayState.h" />
+    <ClInclude Include="OverlayCompositionSurface.h" />
     <ClInclude Include="WidgetBridgeClient.h" />
     <ClInclude Include="RemoteImageCache.h" />
     <ClInclude Include="DeclarativeLayout.h" />
