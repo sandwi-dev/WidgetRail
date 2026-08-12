@@ -87,6 +87,16 @@ That snapshot is historical evidence, not implementation authority.
   disappear as the current filtered/page slice changes, and the search test
   simulates cancel without exercising host TextEntry cancel/focus. DLV-179/180
   own those corrections before the full branch prefix can integrate.
+- DLV-179 `84c8780` is cleanly committed but rejected and remains held. It
+  makes collection selection mutually exclusive and keeps proven sources stable
+  across selection and cursor paging, but the bounded catalog is process-local:
+  after restart, a still-current source first encountered on a later page
+  disappears until revisited. Its restart fixture collapses to one page and it
+  does not explicitly traverse Clear. DLV-183 owns that narrow correction after
+  the widgets lane completes the already-next visible DLV-181 milestone.
+- DLV-180 stopped before task-specific edits because production TextEntry
+  open/cancel/focus restoration is native-host-owned. It is now serialized as a
+  platform evidence seam instead of blocking the widgets lane.
 
 ## Execution protocol
 
@@ -125,41 +135,35 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-179: make Game Launcher collection identity exclusive and stable
+### Current assignment — DLV-181: Game Launcher distinct unavailable and degraded states
 
-**State:** Assigned correction after rejected DLV-175 and dependent DLV-178.
-The widgets task must begin immediately from clean branch `20ca347`; the whole
-Launcher/media prefix remains held until its remaining corrections are accepted.
+**State:** Assigned. Begin immediately from clean widgets commit `84c8780`;
+DLV-179's rejected source-catalog correction is queued next and does not
+interrupt this new visible milestone.
 
-**Baseline/dependencies:** widgets branch `20ca347`; accepted product `d58e50e`.
-This correction owns only Game Launcher collection selection/source-option
-state, focused tests, and directly affected implementation/public docs. DLV-176
-and DLV-177 are accepted held dependencies and must not be changed. Do not edit
+**Baseline/dependencies:** widgets branch `84c8780`; accepted product `d58e50e`.
+The full Launcher/media prefix remains held. Own only Game Launcher presentation
+of existing provider/library availability, focused tests, and directly affected
+implementation/public docs. Do not edit collection identity/catalog policy,
 YT Music, Media Sessions, native host, provider authority, public protocol,
 reviewer docs, or Launcher Experience pack schemas.
 
-**User-visible outcome:** exactly one collection is visibly selected and its
-query matches that label; switching or paging never makes other known non-empty
-source collections disappear from the strip.
+**User-visible outcome:** loading, empty, offline, stale/degraded source,
+permission denied, busy, disabled, and retry states are visibly distinct and
+controller reachable; a failed source does not erase healthy or last-good games.
 
-**Objective/acceptance:** model All/Recent/Favorites/Manual/Source as one
-mutually exclusive selection; legacy Favorite/Recent/Source actions must either
-select one truthful mode or represent a combination explicitly, never apply a
-hidden intersection. Preserve a bounded stable catalog of sources proven to
-contain at least one current game across selection and cursor-page changes;
-remove a source only after authoritative refresh proves it empty or absent, and
-never admit observation-only empty sources. Tests must traverse Recent→Favorite,
-Favorite→Recent, Source→other Source, paging, refresh removal, Clear, and restart
-while comparing selected label to the exact outgoing query. Keep collection
-policy in the extracted immutable owner and do not regrow the Launcher root.
+**Objective/acceptance:** deliver GL-UX-006 using existing typed provider and
+library state. Disabled/busy tiles remain navigable and expose a visible and
+accessible reason. Mixed-source failure preserves healthy results and safe
+last-good content; retry affects only the failed/current operation and cannot
+let a late failure replace newer healthy state. Empty is never used as a generic
+failure. Preserve exact focus and collection/query state across failure/retry.
 
-**Verification/stop:** Tier 1 Game Launcher and directly affected managed suite;
-Tier 2 extend the installed generic-worker organization route through two
-non-empty sources, one empty observed source, selection, page change, and
-refresh removal. No aggregate, capture, remote service, credential, native/
-provider authority change, broad fixture rewrite, or security hardening. Stop
-and report if stable authoritative membership needs a new provider/public SDK
-seam rather than guessing from incomplete rows.
+**Verification/stop:** Tier 1 Game Launcher plus one installed generic-worker
+mixed-source failure/recovery route. No provider authority, collection-catalog
+correction, native change, account, remote service, capture, aggregate, broad
+fixture rewrite, or security work. Stop if the required typed state does not
+exist at the owned managed boundary and report the exact missing seam.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -464,26 +468,17 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-179 — DLV-180: prove host TextEntry cancel and collection restoration.**
-   Preserve DLV-178's search behavior, but exercise the existing installed host
-   TextEntry open/type/cancel route rather than injecting a null action. Cancel
-   must retain committed query and restore focus to the exact search action.
-   Clear must restore Recent, Manual, and a non-default Source selection as well
-   as Favorites/All, with the exact outgoing query matching the selected label.
-   Details/action-sheet Back returns to the originating result without leaking
-   collection shortcuts. Tier 1 Game Launcher plus one installed generic-worker
-   host-TextEntry route; no native change, provider, remote metadata, public
-   protocol, capture, aggregate, or security work. Stop if real cancel/focus is
-   native-only and report the exact missing evidence seam.
-2. **Ready after DLV-180 — DLV-181: Game Launcher distinct unavailable and degraded states.**
-   Deliver GL-UX-006 for the current installed library: loading, empty, offline,
-   stale/degraded source, permission denied, busy, disabled, and retry states
-   remain distinct, controller reachable, and preserve last-good games when
-   safe. Disabled/busy tiles stay navigable with visible and accessible reason;
-   no generic failure may erase healthy-source content. Tier 1 Launcher plus one
-   installed mixed-source failure/recovery route; no provider authority, native,
-   account, remote service, capture, aggregate, or security work.
-3. **Ready after DLV-181 — DLV-182: Game Launcher launch-progress and return outcome.**
+1. **Ready after DLV-181 — DLV-183: persist truthful Game Launcher source collections.**
+   Correct rejected DLV-179 without undoing its single exclusive collection
+   selection. Retain a bounded persisted catalog of sources proven to have at
+   least one current game—or consume an existing authoritative private seam—so
+   a restart whose first page omits a still-current later-page source does not
+   hide that source. Observation-only empty sources remain excluded; an
+   authoritative refresh may remove a now-empty/absent source. Explicitly
+   traverse Clear and compare the visible label with the exact outgoing query.
+   Tier 1 Launcher plus the installed two-source paging/restart/removal route;
+   no public SDK/provider authority, native, capture, aggregate, or root regrowth.
+2. **Ready after DLV-183 — DLV-182: Game Launcher launch-progress and return outcome.**
    Make exact focused launch visibly progress only through Pending, Request
    accepted, Launcher started, Running, Ended, or Failed; late results from a
    replaced source, newer launch, or deactivated worker cannot reorder Recent
@@ -492,6 +487,15 @@ for adoption.
    truthful retry path. Tier 1 Launcher/Broker plus the smallest installed exact-
    launch route; no new source authority, raw command, native layout, capture,
    aggregate, account, or security work.
+3. **Ready after DLV-182 — DLV-184: Game Launcher compact first-page fit.**
+   Deliver GL-UX-007 through the existing managed responsive presentation so a
+   420×340 logical-DIP first page keeps the focused game, primary action,
+   collection navigation, truthful status, and controller help visible without
+   clipped text or unreachable controls. Larger layouts retain their current
+   information hierarchy and exact focus/action identity. Tier 1 Launcher plus
+   deterministic compact/standard/wide semantic-layout fixtures; no native
+   work-area policy, new renderer/protocol, screenshot gate, theme-pack schema,
+   aggregate, or cosmetic redesign beyond the responsive Launcher surface.
 
 ## Platform lane
 
@@ -620,7 +624,15 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after approved platform-worktree recovery — DLV-168: tray UIA Invoke completion contract.**
+1. **Ready after approved platform-worktree recovery — DLV-180: production TextEntry cancel/focus evidence.**
+   Add the smallest production-host fixture or private host-driving seam needed
+   to open Game Launcher's existing TextEntry, type, cancel, and prove focus
+   returns to the exact search action while committed query remains unchanged.
+   Reuse the existing modal and action contract; do not add a second text-entry
+   owner or managed/native product behavior. Tier 1 focused modal/focus tests
+   plus one real installed generic-worker cancel route; no screenshot gate,
+   renderer/layout redesign, public protocol, aggregate, or widget behavior.
+2. **Ready after DLV-180 — DLV-168: tray UIA Invoke completion contract.**
    Reproduce the PID 26524 behavior where an enabled tray item's existing UIA
    `InvokePattern` successfully selects Network Controls, YT Music, or Spotify
    but returns `Unrecognized error` to the caller. Correct only the native tray
@@ -629,7 +641,7 @@ missing private seam rather than adding parallel presentation authority.
    and pointer/controller behavior is unchanged. Tier 1 focused accessibility,
    tray, and action tests plus one real-host UIA route; no renderer/layout,
    screenshot, managed widget, protocol, aggregate, or assistive-tool workaround.
-2. **Ready after DLV-168 — DLV-160: author-to-production pack lifecycle.** In
+3. **Ready after DLV-168 — DLV-160: author-to-production pack lifecycle.** In
    one isolated deterministic route, scaffold both reference packs, validate,
    preview, pack, install, select, activate in the ordinary host, replace with a
    new exact version, reject a corrupted reload to last-good, safe-start once,
@@ -653,6 +665,7 @@ missing private seam rather than adding parallel presentation authority.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
+| DLV-180 Game Launcher TextEntry cancel/focus route | Production open/cancel/focus restoration is native-host-owned, while the platform worktree is stopped in an unresolved substantive merge. | User-authorized bounded platform recovery, then the assigned private production-host fixture. |
 | Trusted fixed-video/PiP surface | One paused visible WebView2 surface measured about 348.7 MiB private memory and 4% CPU against the 128-MiB gate. | User changes the budget or authorizes a content/process-specific bounded experiment. |
 | Audio default input/output selection | No documented supported Windows setter is established; undocumented PolicyConfig/registry/Shell mutation is forbidden. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | Tool/owned no-taskbar OverlayHost is omitted; making it discoverable adds taskbar/Alt-Tab eligibility. HWND/UIA input is sufficient for planner smoke. | User accepts shell presence or the supported control tool gains tool-window discovery. |
