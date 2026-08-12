@@ -170,13 +170,14 @@ remains off until the publisher-trust gates in Phase 4.
   catalog revision. Native tray/session teardown verification follows in
   DLV-124; remote discovery, signing, updater, and marketplace trust remain
   separate Phase-4 work.
-- Restore the newly confirmed Game Launcher production route before adding
-  store breadth. DLV-126 owns the repeated top-control
-  `missing_collection_anchor` failure, dishonest/nonfunctional contextual
-  shortcuts, and last-row Down escaping to footer controls while more games
-  exist. DLV-127 concurrently keeps the tray stationary and fits the full shell
-  to the active work area while cycling between small and large widgets. These
-  visible regressions outrank verifier cleanup and internal decomposition.
+- Live-verify the newly rebuilt Game Launcher production route before adding
+  store breadth. Accepted DLV-126 `a45166c`, integrated through `2c58ba7`, owns
+  the repeated top-control `missing_collection_anchor` failure, contextual
+  shortcut actionability, and last-row continuation while more games exist.
+  Packaged PID 16824 is the current user-test build. DLV-127 concurrently keeps
+  the tray stationary and fits the full shell to the active work area while
+  cycling between small and large widgets. These visible regressions outrank
+  verifier cleanup and internal decomposition.
 - Finish the evidence matrix for the implemented packaged-regression fixes:
   transparent native client pixels outside content surfaces (GBA-036), a fresh
   Now Playing read/subscription generation on Retry (GBA-037), lazy Games

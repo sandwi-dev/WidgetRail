@@ -83,8 +83,9 @@ Branch: `codex/impl-widgets`
 
 ### DLV-126 — Restore Game Launcher controls, shortcuts, and collection continuation
 
-**State:** Assigned after the clean widgets lane merges exact accepted main
-containing DLV-123 and this planner assignment
+**State:** Accepted as `a45166c`, integrated through `2c58ba7`, rebuilt and
+packaged on exact main, and visibly running as planner PID 16824 for the user's
+live shortcut/control/continuation verdict
 **Baseline/dependencies:** accepted main `8c40a6d`; live user report against
 planner-launched Release PID 36488. `overlay.log` repeatedly records
 `missing_collection_anchor` at
@@ -142,12 +143,12 @@ aggregate or capture.
 navigation behavior needs a native focus-engine contract change, or the Add/
 filter/sort behavior requires a new product choice or unsupported provider API.
 
-### Widgets ready queue
+### Widgets current assignment
 
 ### DLV-125 — Restore the canonical verifier manifest and close DLV-123 evidence
 
-**State:** Ready after DLV-126; do not let this internal release-evidence repair
-preempt the newly confirmed visible Game Launcher regressions
+**State:** Assigned after committed DLV-126; the widgets lane took this item
+immediately without waiting for planner review, as required
 **Baseline/dependencies:** accepted DLV-123 `552d250`, integrated through
 `8c40a6d`; its focused Release evidence passes Catalog 35/35, diagnostics 17/17,
 Settings 57/57, Bridge 83/83, generic-worker conformance 6/6, and docs 59, but
@@ -180,7 +181,9 @@ aggregates.
 runner cannot invoke it without a material architecture/schema change, or the
 aggregate exposes an unrelated product failure requiring planner triage.
 
-**Queue note:** no later independent widgets item is pre-authorized after
+### Widgets ready queue
+
+No later independent widgets item is pre-authorized after
 DLV-125. Game Launcher store breadth lacks a supported consumer API, Audio endpoint selection
 lacks a supported setter, YouTube is blocked at the trusted-media cost gate,
 and Spotify/YT Music account work needs authentication or live evidence. A
@@ -302,6 +305,7 @@ continue immediately in their respective lanes.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-126 | `a45166c` | `2c58ba7` | Game Launcher derives warm anchors from the exact rendered non-hidden rows, publishes shortcuts/help only for actionable game tiles, and retains host-owned single-step collection continuation. Focused Release evidence is 60/60; exact main is rebuilt, packaged, and visibly running as PID 16824 for the user's top-control, shortcut, and paging verdict. |
 | DLV-123 | `552d250` | `8c40a6d` | Disabled Community widgets now expose an exact path-free nested uninstall confirmation in Settings; built-in/enabled/stale/resident identities fail closed, all package versions retire together, unrelated widgets and private data remain, and one catalog revision is published. Focused Release evidence is green; the inherited verifier-manifest omission is isolated to DLV-125. |
 | DLV-121 | `fb0ad51` | `a758508` | The Audio Mixer production fixture now traverses the real clipped/revealed controls instead of directly focusing an absent offscreen UIA node; live product behavior is unchanged and still awaits user verification. |
 | DLV-118 | `5d86cd6` | `4bc0baa` | Small and wide widget surfaces retain one selected tray identity, explicit reachable overflow, exact order, and synchronous catalog replacement without stale tray dispatch. |
