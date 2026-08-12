@@ -30,6 +30,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Library starts curated and catalog is a bounded vertical controller picker", RendersControllerStrip),
     ("One saved app uses one full-width icon-led focus target", OneAppUsesCompactTile),
     ("Resolved application pixels replace the semantic fallback icon", ResolvedIconRenders),
+    ("Game and application artwork survives refresh and warm restart", ArtworkSurvivesRefreshAndWarmRestart),
     ("Many saved apps retain a compact vertical focus list", ManyAppsUseCompactRail),
     ("Maximum curated long names remain bounded and controller reachable", MaximumLongLibraryIsBounded),
     ("Library feedback uses a non-focusable lifecycle-bound toast", ToastFeedbackIsLifecycleBound),
@@ -1035,6 +1036,101 @@ static async Task ResolvedIconRenders()
     Assert.Equal(ProtocolConstants.CursorCollectionVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
+}
+
+static async Task ArtworkSurvivesRefreshAndWarmRestart()
+{
+    const string gameHandleOne = "library.art.11111111111111111111111111111111";
+    const string appHandleOne = "library.art.22222222222222222222222222222222";
+    const string gameHandleTwo = "library.art.33333333333333333333333333333333";
+    const string appHandleTwo = "library.art.44444444444444444444444444444444";
+    var current = new[]
+    {
+        App("game", "Trusted Game", WidgetAppLibraryKind.Game, gameHandleOne),
+        App("application", "Explicit Application", artworkHandle: appHandleOne),
+        App("no-art", "No Artwork", WidgetAppLibraryKind.Game),
+    };
+    var privateState = ProjectedState(
+        selectedSavedId: "saved-game",
+        ("saved-game", "Trusted Game", WidgetAppLibraryKind.Game),
+        ("saved-application", "Explicit Application", WidgetAppLibraryKind.Application),
+        ("saved-no-art", "No Artwork", WidgetAppLibraryKind.Game));
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = privateState,
+        Pages = { [0] = Page(current, null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.CuratedItems.Count == 3 &&
+                          widget.CuratedItems.All(item =>
+                              !item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+
+    AssertArtwork(Snapshot(widget, 640), "Trusted Game", gameHandleOne);
+    AssertArtwork(Snapshot(widget, 641), "Explicit Application", appHandleOne);
+    AssertFallback(Snapshot(widget, 642), "No Artwork", disabled: false);
+
+    current =
+    [
+        App("game-refresh", "Trusted Game", WidgetAppLibraryKind.Game, gameHandleTwo) with
+            { SavedId = "saved-game" },
+        App("application-refresh", "Explicit Application", artworkHandle: appHandleTwo) with
+            { SavedId = "saved-application" },
+        App("no-art-refresh", "No Artwork", WidgetAppLibraryKind.Game) with
+            { SavedId = "saved-no-art" },
+    ];
+    fake.Pages[0] = Page(current, null);
+    await widget.OnActionAsync(new("games.retry", "games.root"));
+    await WaitUntil(() => widget.CuratedItems.Any(item =>
+        item.AppId == "game-refresh"));
+    AssertArtwork(Snapshot(widget, 643), "Trusted Game", gameHandleTwo);
+    AssertArtwork(Snapshot(widget, 644), "Explicit Application", appHandleTwo);
+    AssertFallback(Snapshot(widget, 645), "No Artwork", disabled: false);
+    await Background(widget);
+
+    var discovery = new TaskCompletionSource<WidgetAppLibraryPage>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var restartedHost = new FakeAppLibraryHost
+    {
+        PrivateState = privateState,
+        Pages = { [0] = Page(current, null) },
+        ReadHandler = (_, token) => new ValueTask<WidgetAppLibraryPage>(
+            discovery.Task.WaitAsync(token)),
+    };
+    var restarted = Create(restartedHost);
+    await Interactive(restarted);
+    await WaitUntil(() => restarted.ViewState == GamesAppsViewState.Ready &&
+                          restarted.CuratedItems.Count == 3);
+    AssertFallback(Snapshot(restarted, 646), "Trusted Game", disabled: true);
+    AssertFallback(Snapshot(restarted, 647), "Explicit Application", disabled: true);
+
+    discovery.SetResult(Page(current, null));
+    await WaitUntil(() => restarted.CuratedItems.All(item =>
+        !item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+    AssertArtwork(Snapshot(restarted, 648), "Trusted Game", gameHandleTwo);
+    AssertArtwork(Snapshot(restarted, 649), "Explicit Application", appHandleTwo);
+    AssertFallback(Snapshot(restarted, 650), "No Artwork", disabled: false);
+    await Background(restarted);
+
+    static void AssertArtwork(ViewSnapshot snapshot, string title, string handle)
+    {
+        var tile = ActionSurfaces(snapshot.Root).Single(row => TileTitle(row) == title);
+        Assert.True(tile.IsDisabled != true);
+        var artwork = Nodes(tile).Single(node => node.Id == tile.Id + ".artwork");
+        Assert.Equal(handle, artwork.ArtworkHandle);
+        Assert.True(artwork.Glyph is null);
+        Assert.Valid(snapshot);
+    }
+
+    static void AssertFallback(ViewSnapshot snapshot, string title, bool disabled)
+    {
+        var tile = ActionSurfaces(snapshot.Root).Single(row => TileTitle(row) == title);
+        Assert.Equal(disabled, tile.IsDisabled == true);
+        var artwork = Nodes(tile).Single(node => node.Id == tile.Id + ".artwork");
+        Assert.True(artwork.ArtworkHandle is null);
+        Assert.Equal(WidgetGlyph.Play, artwork.Glyph);
+        Assert.Valid(snapshot);
+    }
 }
 
 static async Task ManyAppsUseCompactRail()

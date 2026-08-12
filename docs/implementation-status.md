@@ -3958,3 +3958,17 @@ Focused Release evidence passes Spotify 50/50 and Widget SDK 89/89. The
 isolated Community-package recovery route also launches the current Spotify and
 YT Music packages in AppContainer workers and leaves the real user catalog
 unchanged.
+
+### Games & Apps artwork availability audit (DLV-170)
+
+No managed product gap reproduced. Trusted Steam artwork and explicit
+Application icons remain lazy provider demands, cross the broker only as opaque
+generation-bound handles, and retain bounded decoded caches. Games & Apps
+projects current handles into the existing AppTile, shows a semantic Play-glyph
+fallback while saved-first rows await authority, restores current handles after
+refresh and worker restart, and leaves a current row enabled when artwork is
+absent.
+
+Focused Release evidence passes Windows App Library Provider 75/75 and Games &
+Apps 64/64. The dedicated installed generic-AppContainer Games & Apps normalized
+app-library acceptance also passes through two worker generations.
