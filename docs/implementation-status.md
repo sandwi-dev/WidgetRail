@@ -2960,6 +2960,21 @@ with C++ installed:
   stalled. No public protocol, renderer, compositor, focus graph, UI behavior,
   screenshot, or aggregate work was added.
 
+- DLV-112/116 establish one host-owned local widget package import operation
+  for the exact bundled Settings presentation, without granting filesystem or
+  installer authority to the worker. The responsibility and evidence map is:
+
+  | Concern | Before DLV-112/116 | After DLV-112/116 |
+  | --- | --- | --- |
+  | Visible action admission | No native consumer could distinguish a future Settings install action from ordinary worker input. | One private `LocalWidgetPackageImport` contract claims only `host.install-local-widget` from `installed.install-local` in `installed.widgets`, bound to the current rendered node, snapshot instance, bundled package/publisher identity, runtime/presentation generations, and Interactive lifecycle. Controller, pointer, and UIA use that same admission seam. |
+  | Picker and operation lifetime | No host-owned local package picker or exact operation owner existed. | The native owner serializes one `.gbarwidget` picker and one submitted operation, revalidates origin after the modal interval, cancels on overlay close/shutdown, ignores stale completions, and exposes only path-free status. |
+  | Package publication | Local installation was available only through CLI flows. | The bridge opens one locked non-reparse regular-file stream and uses the existing `WidgetCatalog` installer and catalog lock; successful publication remains disabled and emits one catalog revision. No worker receives the selected path. |
+  | Verification | Native completion assertions added with DLV-112 used `assert` and disappeared under Release `/DNDEBUG`; no production caller seam was exercised. | Release-hard checks cover exact action admission, forged identities, generations, scope/action/source, lifecycle, repeat/cancel/stale operation handling, malformed/wrong-operation/path-bearing completion frames, and path-free results. Managed import-prefix and catalog scenarios cover invalid, duplicate, stale, cancellation, locked-source, reparse, disabled publication, and revision behavior. |
+
+  The visible **Install local widget** Settings control remains a subsequent
+  widgets-lane consumer; these milestones do not change Settings presentation,
+  auto-enable packages, add remote acquisition, or create a public capability.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:

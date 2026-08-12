@@ -2,10 +2,17 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
 namespace {
+
+void Require(const bool condition, const char* message) {
+    if (condition) return;
+    std::cerr << "WidgetBridgeCatalogTests failed: " << message << '\n';
+    std::exit(EXIT_FAILURE);
+}
 
 std::string Descriptor(const int index) {
     return "{\"id\":\"widget-" + std::to_string(index) +
@@ -436,10 +443,16 @@ int main() {
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"installed-disabled","widgetId":"fixture","version":"1.2.3","message":"Local widget package installed disabled. Review it before enabling."}
     })json", error);
-    assert(localPackage && error.empty());
-    assert(localPackage->status == gba::LocalWidgetPackageInstallStatus::InstalledDisabled);
-    assert(localPackage->widgetId == L"fixture" && localPackage->version == L"1.2.3");
-    assert(localPackage->safeMessage.find(L"\\") == std::wstring::npos);
+    Require(localPackage && error.empty(),
+            "valid local package completion framing was rejected");
+    Require(localPackage->status ==
+                gba::LocalWidgetPackageInstallStatus::InstalledDisabled,
+            "installed-disabled completion status changed");
+    Require(localPackage->widgetId == L"fixture" &&
+                localPackage->version == L"1.2.3",
+            "installed completion identity changed");
+    Require(localPackage->safeMessage.find(L"\\") == std::wstring::npos,
+            "local completion exposed a path");
 
     error.clear();
     const auto cancelledPackage =
@@ -447,16 +460,41 @@ int main() {
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","status":"cancelled","widgetId":"","version":"","message":"Local widget package install was cancelled."}
     })json", error);
-    assert(cancelledPackage && error.empty());
-    assert(cancelledPackage->status == gba::LocalWidgetPackageInstallStatus::Cancelled);
-    assert(cancelledPackage->widgetId.empty() && cancelledPackage->version.empty());
+    Require(cancelledPackage && error.empty(),
+            "valid local package cancellation framing was rejected");
+    Require(cancelledPackage->status ==
+                gba::LocalWidgetPackageInstallStatus::Cancelled,
+            "cancelled completion status changed");
+    Require(cancelledPackage->widgetId.empty() &&
+                cancelledPackage->version.empty(),
+            "cancelled completion carried package identity");
 
     error.clear();
-    assert(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.gbarwidget","path":"C:\\\\private\\\\package.gbarwidget"}
-    })json", error));
-    assert(!error.empty());
+    })json", error),
+            "path-bearing local package completion was admitted");
+    Require(!error.empty(),
+            "path-bearing completion rejection omitted its diagnostic");
+
+    error.clear();
+    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        "type":"widget-invalidated","requestId":0,
+        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":"","version":"","message":"Install failed"}
+    })json", error),
+            "wrong-operation local package fixture was admitted");
+    Require(!error.empty(),
+            "wrong-operation rejection omitted its diagnostic");
+
+    error.clear();
+    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        "type":"local-widget-package-install-completed","requestId":0,
+        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":"","version":"","message":"Install failed","extra":"malformed"}
+    })json", error),
+            "malformed local package completion was admitted");
+    Require(!error.empty(),
+            "malformed completion rejection omitted its diagnostic");
     gba::WidgetArtworkResultQueue artworkResults;
     for (std::size_t index = 0;
          index < gba::WidgetArtworkResultQueue::MaximumResults; ++index) {

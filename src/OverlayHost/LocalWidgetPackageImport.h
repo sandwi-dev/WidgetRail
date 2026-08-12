@@ -22,6 +22,28 @@ struct LocalWidgetPackageOrigin final {
     WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
 };
 
+enum class LocalWidgetPackageActionDisposition {
+    Unrelated,
+    Refused,
+    Admitted,
+};
+
+/// Private host/Settings invocation contract. These identifiers are not a
+/// community-widget capability: only the exact bundled Settings presentation
+/// may use them, and every current identity/scope field is re-admitted before
+/// the picker opens.
+struct LocalWidgetPackageActionInvocation final {
+    std::optional<LocalWidgetPackageOrigin> origin;
+    std::wstring snapshotInstanceId;
+    std::wstring activeInputScopeId;
+    std::wstring actionId;
+    std::wstring sourceElementId;
+    std::wstring protocolButton;
+    bool pressed{};
+    bool enabled{};
+    bool busy{};
+};
+
 enum class LocalWidgetPackagePickerStatus { Selected, Cancelled, Failed };
 
 struct LocalWidgetPackagePickerResult final {
@@ -63,6 +85,11 @@ struct LocalWidgetPackageImportResult final {
     std::wstring safeMessage;
 };
 
+struct LocalWidgetPackageActionResult final {
+    bool claimed{};
+    LocalWidgetPackageImportResult import;
+};
+
 class LocalWidgetPackageImport final {
 public:
     using OriginProvider = std::function<std::optional<LocalWidgetPackageOrigin>()>;
@@ -76,11 +103,27 @@ public:
         OriginProvider currentOrigin,
         Submit submit);
 
+    static constexpr std::wstring_view ActionId = L"host.install-local-widget";
+    static constexpr std::wstring_view SourceElementId = L"installed.install-local";
+    static constexpr std::wstring_view InputScopeId = L"installed.widgets";
+
+    [[nodiscard]] LocalWidgetPackageActionResult Invoke(
+        HWND owner,
+        const LocalWidgetPackageActionInvocation& invocation);
     [[nodiscard]] LocalWidgetPackageImportResult Begin(HWND owner);
     void CancelPicker() noexcept;
-    [[nodiscard]] bool active() const noexcept { return active_; }
+    [[nodiscard]] std::optional<std::wstring> CancelActiveOperation() noexcept;
+    [[nodiscard]] bool Complete(std::wstring_view operationId) noexcept;
+    [[nodiscard]] bool active() const noexcept {
+        return active_ || !activeOperationId_.empty();
+    }
+    [[nodiscard]] std::wstring_view activeOperationId() const noexcept {
+        return activeOperationId_;
+    }
 
     [[nodiscard]] static bool Admit(const LocalWidgetPackageOrigin& origin) noexcept;
+    [[nodiscard]] static LocalWidgetPackageActionDisposition Classify(
+        const LocalWidgetPackageActionInvocation& invocation) noexcept;
 
 private:
     [[nodiscard]] static bool SameOrigin(
@@ -92,6 +135,7 @@ private:
     OriginProvider currentOrigin_;
     Submit submit_;
     bool active_{};
+    std::wstring activeOperationId_;
 };
 
 } // namespace gba::packages

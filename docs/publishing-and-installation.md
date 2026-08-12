@@ -264,6 +264,17 @@ selected path is never sent to a widget worker or returned in the result. This
 host prerequisite is not yet a visible Settings control and does not add remote
 acquisition, enablement, consent, publisher proof, or signing authority.
 
+The private consumer contract is intentionally closed: only an enabled,
+non-busy element with action `host.install-local-widget`, element ID
+`installed.install-local`, and active input scope `installed.widgets` can be
+claimed. Controller, pointer, and UI Automation activation all enter the same
+native admission path. The host then binds that rendered element to the current
+`settings.default` snapshot and exact bundled package, publisher, instance,
+runtime generation, presentation generation, and `Interactive` lifecycle.
+Ordinary or partially matching actions are never forwarded as install requests.
+This naming contract exists solely for the forthcoming built-in Settings view;
+it is not a public widget action or package capability.
+
 The default catalog is
 `%LOCALAPPDATA%\GameBarAlternative\widgets`. Every catalog command accepts the
 same explicit override:

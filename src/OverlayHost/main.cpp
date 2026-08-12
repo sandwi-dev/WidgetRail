@@ -1407,12 +1407,20 @@ private:
                             std::move(artwork.pngBase64));
                 }
                 for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
-                    if (result.operationId == activeLocalWidgetPackageOperation_)
-                        activeLocalWidgetPackageOperation_.clear();
+                    if (!localWidgetPackageImport_.Complete(result.operationId)) {
+                        AppendDiagnostic(
+                            L"Dropped stale local widget package result operation=" +
+                            result.operationId);
+                        continue;
+                    }
                     lastLocalWidgetPackageInstallResult_ = result;
-                    if (result.status != gba::LocalWidgetPackageInstallStatus::Cancelled)
+                    if (result.status != gba::LocalWidgetPackageInstallStatus::Cancelled) {
+                        lastActionWidgetId_ = L"settings";
+                        lastActionMessage_ = result.safeMessage;
+                        lastActionExpiresAt_ = GetTickCount64() + 5000;
                         AppendDiagnostic(L"Local widget package import: " +
                                          result.safeMessage);
+                    }
                 }
                 if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
                     const auto& current = appearanceState_.current();
@@ -1681,10 +1689,9 @@ private:
 
     void Shutdown() {
         localWidgetPackageImport_.CancelPicker();
-        if (!activeLocalWidgetPackageOperation_.empty()) {
+        if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
             (void)bridge_.CancelLocalWidgetPackageInstall(
-                activeLocalWidgetPackageOperation_);
-            activeLocalWidgetPackageOperation_.clear();
+                *operation);
         }
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
@@ -2364,12 +2371,36 @@ private:
             *lifecycle};
     }
 
-    [[nodiscard]] gba::packages::LocalWidgetPackageImportResult
-    BeginLocalWidgetPackageImport() {
-        auto result = localWidgetPackageImport_.Begin(window_);
-        if (result.status == gba::packages::LocalWidgetPackageImportStatus::Submitted)
-            activeLocalWidgetPackageOperation_ = result.operationId;
-        return result;
+    [[nodiscard]] bool TryInvokeLocalWidgetPackageImport(
+        const gba::WidgetSnapshot& snapshot,
+        const gba::WidgetNode& node,
+        const std::wstring_view protocolButton,
+        const gba::input::NavigationEventPhase phase) {
+        const auto action = localWidgetPackageImport_.Invoke(
+            window_,
+            {
+                CurrentLocalWidgetPackageImportOrigin(),
+                snapshot.instanceId,
+                snapshot.activeInputScopeId,
+                node.actionId,
+                node.id,
+                std::wstring(protocolButton),
+                phase == gba::input::NavigationEventPhase::Pressed,
+                !node.isDisabled,
+                node.isBusy,
+            });
+        if (!action.claimed) return false;
+        lastActionWidgetId_ = L"settings";
+        if (action.import.status !=
+            gba::packages::LocalWidgetPackageImportStatus::Cancelled) {
+            lastActionMessage_ = action.import.safeMessage;
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            if (!lastActionMessage_.empty())
+                AppendDiagnostic(L"Local widget package action: " +
+                                 lastActionMessage_);
+        }
+        InvalidateRect(window_, nullptr, FALSE);
+        return true;
     }
 
     gba::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
@@ -2812,10 +2843,9 @@ private:
 
     void HideOverlay() {
         localWidgetPackageImport_.CancelPicker();
-        if (!activeLocalWidgetPackageOperation_.empty()) {
+        if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
             (void)bridge_.CancelLocalWidgetPackageInstall(
-                activeLocalWidgetPackageOperation_);
-            activeLocalWidgetPackageOperation_.clear();
+                *operation);
         }
         (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
@@ -4187,6 +4217,13 @@ private:
             if (resolved->protocolButton == L"a" &&
                 OpenTextEntryModal(request.widgetId, *snapshot, resolved->nodeId))
                 continue;
+            if (const auto* node = gba::input::FindNodeInInputScope(
+                    *snapshot, resolved->nodeId, snapshot->activeInputScopeId);
+                node && TryInvokeLocalWidgetPackageImport(
+                    *snapshot, *node, resolved->protocolButton,
+                    gba::input::NavigationEventPhase::Pressed)) {
+                continue;
+            }
 
             const auto handled = bridge_.SendControllerInput(
                 request.widgetId, resolved->protocolButton, L"openWidget", resolved->nodeId,
@@ -4841,6 +4878,12 @@ private:
             if (isOpen && visibleFocus && protocolButton == L"a" &&
                 phase == gba::input::NavigationEventPhase::Pressed &&
                 OpenTextEntryModal(widget, *snapshot, *visibleFocus)) return;
+            if (isOpen && visibleFocus) {
+                const auto* focusedNode = gba::input::FindNodeInInputScope(
+                    *snapshot, *visibleFocus, snapshot->activeInputScopeId);
+                if (focusedNode && TryInvokeLocalWidgetPackageImport(
+                        *snapshot, *focusedNode, protocolButton, phase)) return;
+            }
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
@@ -6120,7 +6163,6 @@ private:
     gba::WidgetSessionCoordinator sessions_;
     gba::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;
     gba::packages::LocalWidgetPackageImport localWidgetPackageImport_;
-    std::wstring activeLocalWidgetPackageOperation_;
     std::optional<gba::LocalWidgetPackageInstallResult>
         lastLocalWidgetPackageInstallResult_;
     gba::PlatformAppearanceState appearanceState_;

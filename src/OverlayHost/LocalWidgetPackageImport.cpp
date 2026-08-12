@@ -96,8 +96,26 @@ LocalWidgetPackageImport::LocalWidgetPackageImport(
       currentOrigin_(std::move(currentOrigin)),
       submit_(std::move(submit)) {}
 
+LocalWidgetPackageActionResult LocalWidgetPackageImport::Invoke(
+    HWND owner,
+    const LocalWidgetPackageActionInvocation& invocation) {
+    const auto disposition = Classify(invocation);
+    if (disposition == LocalWidgetPackageActionDisposition::Unrelated)
+        return {};
+    if (disposition == LocalWidgetPackageActionDisposition::Refused)
+        return {true, {LocalWidgetPackageImportStatus::Refused, {},
+            L"The local widget package action is no longer current."}};
+    const auto current = currentOrigin_ ? currentOrigin_() : std::nullopt;
+    if (!invocation.origin || !current ||
+        !SameOrigin(*invocation.origin, *current)) {
+        return {true, {LocalWidgetPackageImportStatus::Refused, {},
+            L"Settings changed before the package picker opened."}};
+    }
+    return {true, Begin(owner)};
+}
+
 LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner) {
-    if (active_ || picker_.active())
+    if (active_ || picker_.active() || !activeOperationId_.empty())
         return {LocalWidgetPackageImportStatus::Busy, {},
                 L"A local widget package picker is already open."};
     auto origin = currentOrigin_ ? currentOrigin_() : std::nullopt;
@@ -126,12 +144,26 @@ LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner) {
         !submit_(selected.path, *current, operationId))
         return {LocalWidgetPackageImportStatus::TransportFailed, {},
                 L"The local widget package install request could not be submitted."};
+    activeOperationId_ = operationId;
     return {LocalWidgetPackageImportStatus::Submitted, operationId,
             L"Installing the selected widget package disabled."};
 }
 
 void LocalWidgetPackageImport::CancelPicker() noexcept {
     picker_.Cancel();
+}
+
+std::optional<std::wstring>
+LocalWidgetPackageImport::CancelActiveOperation() noexcept {
+    if (activeOperationId_.empty()) return std::nullopt;
+    return std::exchange(activeOperationId_, {});
+}
+
+bool LocalWidgetPackageImport::Complete(
+    const std::wstring_view operationId) noexcept {
+    if (operationId.empty() || operationId != activeOperationId_) return false;
+    activeOperationId_.clear();
+    return true;
 }
 
 bool LocalWidgetPackageImport::Admit(const LocalWidgetPackageOrigin& origin) noexcept {
@@ -142,6 +174,23 @@ bool LocalWidgetPackageImport::Admit(const LocalWidgetPackageOrigin& origin) noe
            origin.instanceId == L"settings.default" &&
            !origin.runtimeGeneration.empty() &&
            !origin.presentationGeneration.empty();
+}
+
+LocalWidgetPackageActionDisposition LocalWidgetPackageImport::Classify(
+    const LocalWidgetPackageActionInvocation& invocation) noexcept {
+    const bool reservedAction = invocation.actionId == ActionId;
+    const bool reservedSource = invocation.sourceElementId == SourceElementId;
+    if (!reservedAction && !reservedSource)
+        return LocalWidgetPackageActionDisposition::Unrelated;
+    if (!reservedAction || !reservedSource || !invocation.origin ||
+        !Admit(*invocation.origin) ||
+        invocation.snapshotInstanceId != invocation.origin->instanceId ||
+        invocation.activeInputScopeId != InputScopeId ||
+        invocation.protocolButton != L"a" || !invocation.pressed ||
+        !invocation.enabled || invocation.busy) {
+        return LocalWidgetPackageActionDisposition::Refused;
+    }
+    return LocalWidgetPackageActionDisposition::Admitted;
 }
 
 bool LocalWidgetPackageImport::SameOrigin(
