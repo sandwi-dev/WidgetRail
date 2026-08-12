@@ -38,6 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
+    ("Local widget installation is an exact host-owned disabled-review action", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Built-in widgets remain visible and read-only without community packages", BuiltInWidgetInventory),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
@@ -831,6 +832,57 @@ static async Task InstalledWidgetReview()
     Assert.Valid(second);
     Assert.Valid(details);
     Assert.Valid(permissions);
+}
+
+static async Task LocalWidgetInstallationAction()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+
+    var initial = Snapshot(widget);
+    var install = Button(initial.Root, "installed.install-local");
+    Assert.Equal("host.install-local-widget", install.ActionId);
+    Assert.Equal("Install local widget", install.Text);
+    Assert.True(install.IsDisabled != true, "Local package installation was disabled.");
+    Assert.True(install.IsBusy != true, "Local package installation was unexpectedly busy.");
+    Assert.Equal("installed.widgets", initial.ActiveInputScopeId);
+    Assert.Equal("installed.install-local", initial.InitialFocusId);
+    Assert.Equal(1, Buttons(initial.Root).Count(button =>
+        button.ActionId == "host.install-local-widget"));
+    Assert.Equal("installed.back", install.Focus!.Down);
+    Assert.Equal("installed.install-local", Button(initial.Root, "installed.back").Focus!.Up);
+    Assert.Contains("installed disabled for review",
+        Text(initial.Root, "installed.install-local.help").Text!);
+    Assert.True(!JsonSerializer.Serialize(initial).Contains(temp.Path, StringComparison.OrdinalIgnoreCase),
+        "The Settings snapshot exposed a local package path.");
+
+    var beforeForgery = JsonSerializer.Serialize(initial);
+    await Action(widget, "host.install-local-widget", "installed.install-local");
+    await Action(widget, "host.install-local-widget", "forged.source");
+    Assert.Equal(beforeForgery, JsonSerializer.Serialize(Snapshot(widget)));
+
+    // Model the accepted host operation boundary: publication happens outside
+    // the worker, remains disabled, and the next exact activation reloads it.
+    WriteInstalledWidget(catalogRoot, "dev.test.local-import", "dev.publisher.local",
+        "Local import", [], []);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    var refreshed = Snapshot(widget);
+    Assert.Contains("Local import", Button(refreshed.Root, "installed.item.0").Text!);
+    Assert.Contains("Disabled", Button(refreshed.Root, "installed.item.0").Text!);
+    Assert.Equal(false, (await new WidgetCatalog(catalogRoot).DiscoverAsync())
+        .Widgets.Single().Enabled);
+    Assert.Equal("host.install-local-widget",
+        Button(refreshed.Root, "installed.install-local").ActionId);
+    Assert.Equal("installed.install-local",
+        Button(refreshed.Root, "installed.item.0").Focus!.Up);
+    Assert.HasShortcut(refreshed.Root, "installed.widgets", ControllerButton.B, "back");
+    Assert.Valid(initial);
+    Assert.Valid(refreshed);
 }
 
 static async Task InstalledWidgetLocalDataClear()
@@ -1954,8 +2006,8 @@ static async Task Activate(SettingsWidget widget)
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
 }
 
-static ValueTask Action(SettingsWidget widget, string action) =>
-    widget.OnActionAsync(new WidgetActionEvent(action, "test"));
+static ValueTask Action(SettingsWidget widget, string action, string sourceElementId = "test") =>
+    widget.OnActionAsync(new WidgetActionEvent(action, sourceElementId));
 
 static ViewSnapshot Snapshot(SettingsWidget widget) => widget.Render().CreateSnapshot("settings-test", 1);
 

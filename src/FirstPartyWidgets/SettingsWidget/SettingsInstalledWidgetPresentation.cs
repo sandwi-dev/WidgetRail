@@ -34,6 +34,17 @@ internal static class SettingsInstalledWidgetPresentation
                     : diagnostic ?? "Installed widget catalog is unavailable.",
                 "installed.help", "Installed widget help")
                 .Classes(valid ? "page-help" : "diagnostic-error"),
+            UI.Button(
+                    "Install local widget",
+                    "host.install-local-widget",
+                    "installed.install-local")
+                .Busy(busy)
+                .Classes("setting-row", "primary-button"),
+            UI.Text(
+                    "Choose one local .gbarwidget in the host picker. Successful packages are installed disabled for review; the selected path is never shared with this widget.",
+                    "installed.install-local.help",
+                    "Local widget installation safety")
+                .Classes("page-help"),
         };
 
         if (builtIn.Count != 0)
@@ -95,7 +106,7 @@ internal static class SettingsInstalledWidgetPresentation
             ? $"installed.builtin.item.{selectedBuiltInIndex}"
             : builtIn.Count != 0
                 ? "installed.builtin.item.0"
-                : visible.Length == 0 ? "installed.back" : $"installed.item.{start}";
+                : visible.Length == 0 ? "installed.install-local" : $"installed.item.{start}";
         return SettingsPresentation.View(header, scope, initialFocus, "installed.widgets");
     }
 

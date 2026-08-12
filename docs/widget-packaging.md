@@ -423,8 +423,10 @@ revalidates the exact current `Interactive` bundled Settings generation before
 publication. Success remains disabled and produces a semantic catalog reload.
 Cancel, stale origin, duplicate selection/version, changing or reparse-point
 source, and installer failure leave no newly admitted catalog state and return
-only a bounded path-free status. The visible Settings action is a separate
-consumer milestone.
+only a bounded path-free status. Settings → Installed widgets exposes that
+closed operation as **Install local widget**; the worker receives neither the
+selected path nor package-install authority, and the published package appears
+disabled for explicit review.
 
 ## Version selection and rollback
 
