@@ -407,6 +407,10 @@ rejected when its assigned automated acceptance criteria otherwise pass.
 - When review finds a correction after the task has advanced, place that
   correction immediately after the assignment already in progress and before
   later Ready work. Do not interrupt the in-progress assignment.
+- If an assignment hits its stop condition before task-specific edits, promptly
+  reclassify or re-own the blocked item and dispatch the first later independent
+  same-lane Ready assignment. Never let an ownership/evidence-seam mismatch idle
+  a lane that already has pre-authorized independent work.
 - When a lane reaches a dependency on accepted main, instruct integration only
   at a clean committed boundary.
 - Monitor active work with bounded waits. Use the heartbeat as a fallback

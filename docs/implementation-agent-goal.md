@@ -177,6 +177,15 @@ A task may be skipped for a documented blocker only when:
 - The exact blocker is reported.
 - Another pre-authorized Ready assignment exists.
 
+When all four conditions hold, skipping is the required action: report the
+blocked assignment, leave it untouched, and immediately take the first later
+same-lane Ready assignment whose own dependencies are present. Wording such as
+`Ready after DLV-x` expresses queue order, not a dependency, unless the
+assignment's baseline/dependencies section explicitly consumes DLV-x output.
+Do not idle the lane merely because an earlier Ready assignment stopped before
+task-specific edits. The planner will reclassify or re-own that blocker
+asynchronously.
+
 If a blocker is discovered after editing begins, do not discard, hide, or mix
 the partial changes with another assignment. Stop and request planner direction.
 
