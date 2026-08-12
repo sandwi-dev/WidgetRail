@@ -18,6 +18,8 @@ internal sealed record SettingsInstalledWidgetState(
     WidgetCatalogRepairCandidate? SelectedRepair)
 {
     public PlatformWidgetLocalDataInspection? LocalData { get; init; }
+    public PlatformWidgetPackageUninstallInspection? PackageUninstall { get; init; }
+    public string? DetailsFocusId { get; init; }
     public static SettingsInstalledWidgetState Empty { get; } = new(
         new WidgetCatalogSnapshot([]),
         new WidgetCatalogHealthSnapshot(null, []),
@@ -92,7 +94,18 @@ internal static class SettingsInstalledWidgetPolicy
             VersionPage: versionPage,
             SelectedInstalledId: selectedInstalled,
             SelectedBuiltInId: selectedBuiltIn,
-            SelectedRepair: null);
+            SelectedRepair: null)
+        {
+            LocalData = selectedInstalled is not null || selectedBuiltIn is not null
+                ? current.LocalData
+                : null,
+            PackageUninstall = selectedInstalled is not null
+                ? current.PackageUninstall
+                : null,
+            DetailsFocusId = selectedInstalled is not null
+                ? current.DetailsFocusId
+                : null,
+        };
         return new(state, page);
     }
 
@@ -145,6 +158,8 @@ internal static class SettingsInstalledWidgetPolicy
                 SelectedInstalledId = state.Catalog.Widgets[index].Id,
                 SelectedBuiltInId = null,
                 LocalData = null,
+                PackageUninstall = null,
+                DetailsFocusId = null,
                 VersionPage = 0,
             },
             SettingsPage.InstalledWidgetDetails);
@@ -167,6 +182,8 @@ internal static class SettingsInstalledWidgetPolicy
                 SelectedBuiltInId = state.BuiltIns[index].Id,
                 SelectedInstalledId = null,
                 LocalData = null,
+                PackageUninstall = null,
+                DetailsFocusId = null,
                 VersionPage = 0,
             },
             SettingsPage.InstalledWidgetDetails);

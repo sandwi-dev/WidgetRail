@@ -15,6 +15,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private const string RetryAuthorityRecoveryOperation = "retry-authority-recovery";
     private const string InspectWidgetLocalDataOperation = "inspect-widget-local-data";
     private const string ClearWidgetLocalDataOperation = "clear-widget-local-data";
+    private const string InspectWidgetPackageUninstallOperation = "inspect-widget-package-uninstall";
+    private const string UninstallWidgetPackageOperation = "uninstall-widget-package";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
@@ -24,6 +26,10 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         ValueTask<PlatformWidgetLocalDataInspection>>? _localDataInspection;
     private readonly Func<string, string, CancellationToken,
         ValueTask<PlatformWidgetLocalDataClearResult>>? _localDataClear;
+    private readonly Func<string, CancellationToken,
+        ValueTask<PlatformWidgetPackageUninstallInspection>>? _packageUninstallInspection;
+    private readonly Func<string, string, string, string, CancellationToken,
+        ValueTask<PlatformWidgetPackageUninstallResult>>? _packageUninstall;
     private readonly TimeSpan _requestTimeout;
     private readonly NamedPipeServerStream _pipe;
     private readonly CancellationTokenSource _lifetime = new();
@@ -39,7 +45,11 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<string, CancellationToken,
             ValueTask<PlatformWidgetLocalDataInspection>>? localDataInspection = null,
         Func<string, string, CancellationToken,
-            ValueTask<PlatformWidgetLocalDataClearResult>>? localDataClear = null)
+            ValueTask<PlatformWidgetLocalDataClearResult>>? localDataClear = null,
+        Func<string, CancellationToken,
+            ValueTask<PlatformWidgetPackageUninstallInspection>>? packageUninstallInspection = null,
+        Func<string, string, string, string, CancellationToken,
+            ValueTask<PlatformWidgetPackageUninstallResult>>? packageUninstall = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
@@ -48,6 +58,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         _authorityRecoveryRetry = authorityRecoveryRetry;
         _localDataInspection = localDataInspection;
         _localDataClear = localDataClear;
+        _packageUninstallInspection = packageUninstallInspection;
+        _packageUninstall = packageUninstall;
         _requestTimeout = ValidateTimeout(
             requestTimeout ?? TimeSpan.FromSeconds(2), nameof(requestTimeout));
         ChannelNonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -186,6 +198,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             {
                 ValidateConfirmationToken(request.ConfirmationToken);
                 ValidateWidgetId(request.WidgetId);
+                if (request.PublisherId is not null || request.ActiveVersion is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
                 var result = _localDataClear is null
                     ? new PlatformWidgetLocalDataClearResult(
                         PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported")
@@ -195,6 +209,40 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 ValidateLocalDataClearResult(result);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
                 receiptOperation = ClearWidgetLocalDataOperation;
+                break;
+            }
+            case InspectWidgetPackageUninstallOperation:
+            {
+                ValidateWidgetId(request.WidgetId);
+                if (request.ConfirmationToken is not null || request.PublisherId is not null ||
+                    request.ActiveVersion is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _packageUninstallInspection is null
+                    ? new PlatformWidgetPackageUninstallInspection(
+                        request.WidgetId!, request.WidgetId!, string.Empty, string.Empty,
+                        0, false, "inspection_unsupported", null)
+                    : await _packageUninstallInspection(request.WidgetId!, cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidatePackageUninstallInspection(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = InspectWidgetPackageUninstallOperation;
+                break;
+            }
+            case UninstallWidgetPackageOperation:
+            {
+                ValidateWidgetId(request.WidgetId);
+                ValidateConfirmationToken(request.ConfirmationToken);
+                ValidatePackageIdentity(request.PublisherId, request.ActiveVersion);
+                var result = _packageUninstall is null
+                    ? new PlatformWidgetPackageUninstallResult(
+                        PlatformWidgetPackageUninstallStatus.Refused, "uninstall_unsupported")
+                    : await _packageUninstall(
+                            request.WidgetId!, request.PublisherId!, request.ActiveVersion!,
+                            request.ConfirmationToken!, cancellationToken)
+                        .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidatePackageUninstallResult(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = UninstallWidgetPackageOperation;
                 break;
             }
             default:
@@ -313,6 +361,33 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     {
         if (result is null || !Enum.IsDefined(result.Status) || !IsToken(result.Code, 64))
             throw new PlatformDiagnosticsException("invalid_local_data_result");
+    }
+
+    internal static void ValidatePackageUninstallInspection(
+        PlatformWidgetPackageUninstallInspection result)
+    {
+        if (result is null || !IsToken(result.WidgetId, 128) ||
+            !IsSafeRecoveryLabel(result.DisplayName) ||
+            !IsToken(result.StatusCode, 64) || result.VersionCount is < 0 or > 512 ||
+            result.PublisherId.Length > 128 || result.ActiveVersion.Length > 64 ||
+            (result.PublisherId.Length != 0 && !IsToken(result.PublisherId, 128)) ||
+            (result.ActiveVersion.Length != 0 && !IsToken(result.ActiveVersion, 64)) ||
+            result.CanUninstall != (result.ConfirmationToken is not null) ||
+            result.ConfirmationToken is { } token && !IsConfirmationToken(token))
+            throw new PlatformDiagnosticsException("invalid_package_uninstall_inspection");
+    }
+
+    internal static void ValidatePackageUninstallResult(
+        PlatformWidgetPackageUninstallResult result)
+    {
+        if (result is null || !Enum.IsDefined(result.Status) || !IsToken(result.Code, 64))
+            throw new PlatformDiagnosticsException("invalid_package_uninstall_result");
+    }
+
+    internal static void ValidatePackageIdentity(string? publisherId, string? activeVersion)
+    {
+        if (!IsToken(publisherId, 128) || !IsToken(activeVersion, 64))
+            throw new PlatformDiagnosticsException("invalid_package_identity");
     }
 
     internal static void ValidateWidgetId(string? value)
@@ -446,7 +521,9 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private sealed record DiagnosticsRequest(
         string Operation,
         string? ConfirmationToken = null,
-        string? WidgetId = null);
+        string? WidgetId = null,
+        string? PublisherId = null,
+        string? ActiveVersion = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 }
@@ -518,6 +595,40 @@ public sealed class PlatformDiagnosticsPipeClient(
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask<PlatformWidgetPackageUninstallInspection>
+        InspectWidgetPackageUninstallAsync(
+            string widgetId,
+            CancellationToken cancellationToken = default)
+    {
+        PlatformDiagnosticsPipeServer.ValidateWidgetId(widgetId);
+        return await ExecuteAsync<PlatformWidgetPackageUninstallInspection>(
+            new DiagnosticsRequest("inspect-widget-package-uninstall", WidgetId: widgetId),
+            "inspect-widget-package-uninstall",
+            PlatformDiagnosticsPipeServer.ValidatePackageUninstallInspection,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<PlatformWidgetPackageUninstallResult> UninstallWidgetPackageAsync(
+        string widgetId,
+        string publisherId,
+        string activeVersion,
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        PlatformDiagnosticsPipeServer.ValidateWidgetId(widgetId);
+        PlatformDiagnosticsPipeServer.ValidatePackageIdentity(publisherId, activeVersion);
+        if (!IsConfirmationToken(confirmationToken))
+            throw new ArgumentException("Package uninstall confirmation token is invalid.",
+                nameof(confirmationToken));
+        return await ExecuteAsync<PlatformWidgetPackageUninstallResult>(
+            new DiagnosticsRequest(
+                "uninstall-widget-package", confirmationToken, widgetId,
+                publisherId, activeVersion),
+            "uninstall-widget-package",
+            PlatformDiagnosticsPipeServer.ValidatePackageUninstallResult,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private async ValueTask<T> ExecuteAsync<T>(
         DiagnosticsRequest request,
         string receiptOperation,
@@ -571,7 +682,9 @@ public sealed class PlatformDiagnosticsPipeClient(
     private sealed record DiagnosticsRequest(
         string Operation,
         string? ConfirmationToken = null,
-        string? WidgetId = null);
+        string? WidgetId = null,
+        string? PublisherId = null,
+        string? ActiveVersion = null);
     private sealed record DiagnosticsAcknowledgement(bool Accepted);
     private sealed record DiagnosticsReceipt(string Operation);
 

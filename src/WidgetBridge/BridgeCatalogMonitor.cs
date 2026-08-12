@@ -126,8 +126,17 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         SignalReload();
     }
 
-    public async Task<BridgeCatalogReloadResult> ReloadNowAsync(
-        CancellationToken cancellationToken = default)
+    public Task<BridgeCatalogReloadResult> ReloadNowAsync(
+        CancellationToken cancellationToken = default) =>
+        ReloadNowCoreAsync(forceRevision: false, cancellationToken);
+
+    internal Task<BridgeCatalogReloadResult> ReloadAfterMutationAsync(
+        CancellationToken cancellationToken = default) =>
+        ReloadNowCoreAsync(forceRevision: true, cancellationToken);
+
+    private async Task<BridgeCatalogReloadResult> ReloadNowCoreAsync(
+        bool forceRevision,
+        CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         await _reloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -189,7 +198,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
             {
                 _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
                 _retainedLastGood = false;
-                if (!_current.IsEquivalentTo(loaded.Catalog))
+                if (forceRevision || !_current.IsEquivalentTo(loaded.Catalog))
                 {
                     _current = loaded.Catalog;
                     checked { ++_revision; }

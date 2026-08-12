@@ -26,6 +26,7 @@ public enum SettingsPage
     InstalledWidgetVersions,
     InstalledWidgetRecovery,
     InstalledWidgetLocalData,
+    InstalledWidgetUninstall,
     Permissions,
     PermissionDiagnostics,
     PackageCapabilities,
@@ -48,6 +49,7 @@ public sealed class SettingsWidget : Widget
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
     private readonly IPlatformDiagnosticsService _diagnosticsService;
+    private readonly SettingsInstalledWidgetUninstallOperation _packageUninstall;
     private readonly string? _bundledWidgetRoot;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _stateLock = new();
@@ -83,6 +85,7 @@ public sealed class SettingsWidget : Widget
         _consentStore = consentStore ?? new ConsentStore(
             Path.Combine(paths.RootDirectory, "consent"));
         _diagnosticsService = diagnostics ?? UnavailablePlatformDiagnosticsService.Instance;
+        _packageUninstall = new SettingsInstalledWidgetUninstallOperation(_diagnosticsService);
         _bundledWidgetRoot = string.IsNullOrWhiteSpace(bundledWidgetRoot)
             ? null
             : Path.GetFullPath(bundledWidgetRoot);
@@ -161,6 +164,9 @@ public sealed class SettingsWidget : Widget
             SettingsPage.InstalledWidgetLocalData =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetLocalData(
                     header, busy, installedState),
+            SettingsPage.InstalledWidgetUninstall =>
+                SettingsInstalledWidgetPresentation.RenderInstalledWidgetUninstall(
+                    header, busy, installedState),
             SettingsPage.Permissions =>
                 SettingsPermissionPresentation.RenderPermissionPackages(
                     header, busy, permissionState),
@@ -199,6 +205,12 @@ public sealed class SettingsWidget : Widget
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (action.ActionId == "installed.uninstall.cancel" ||
+                action.ActionId == "back" && CurrentPage == SettingsPage.InstalledWidgetUninstall)
+            {
+                CancelInstalledWidgetUninstall();
+                return;
+            }
             if (SettingsNavigationPolicy.TryResolve(
                     action.ActionId,
                     CurrentPage,
@@ -228,6 +240,9 @@ public sealed class SettingsWidget : Widget
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.local-data.open": OpenInstalledWidgetLocalData(); break;
                 case "installed.local-data.clear": await ClearSelectedWidgetLocalDataAsync(
+                    cancellationToken).ConfigureAwait(false); break;
+                case "installed.uninstall.open": OpenInstalledWidgetUninstall(); break;
+                case "installed.uninstall.confirm": await UninstallSelectedWidgetAsync(
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
@@ -1091,6 +1106,7 @@ public sealed class SettingsWidget : Widget
         }
         Invalidate();
         await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
+        await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SelectBuiltInWidgetAsync(int index, CancellationToken cancellationToken)
@@ -1133,6 +1149,103 @@ public sealed class SettingsWidget : Widget
                             _installedState.SelectedBuiltIn?.Id;
             if (!string.Equals(currentId, inspection.WidgetId, StringComparison.Ordinal)) return;
             _installedState = _installedState with { LocalData = inspection };
+        }
+        Invalidate();
+    }
+
+    private async Task InspectSelectedWidgetUninstallAsync(CancellationToken cancellationToken)
+    {
+        string? widgetId;
+        lock (_stateLock)
+            widgetId = _installedState.SelectedInstalled?.Id;
+        if (widgetId is null) return;
+        try
+        {
+            var inspection = await _packageUninstall.InspectAsync(widgetId, cancellationToken)
+                .ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                if (!string.Equals(_installedState.SelectedInstalled?.Id,
+                        inspection.WidgetId, StringComparison.Ordinal)) return;
+                _installedState = _installedState with { PackageUninstall = inspection };
+            }
+            Invalidate();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+    }
+
+    private void OpenInstalledWidgetUninstall()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails ||
+                !SettingsInstalledWidgetUninstallPolicy.TryOpen(
+                    _installedState, out var transition)) return;
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private void CancelInstalledWidgetUninstall()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetUninstall) return;
+            var transition = SettingsInstalledWidgetUninstallPolicy.Cancel(_installedState);
+            _installedState = transition.State;
+            _page = transition.Page;
+        }
+        Invalidate();
+    }
+
+    private async Task UninstallSelectedWidgetAsync(CancellationToken cancellationToken)
+    {
+        PlatformWidgetPackageUninstallInspection? displayed;
+        lock (_stateLock)
+            displayed = _page == SettingsPage.InstalledWidgetUninstall
+                ? _installedState.PackageUninstall
+                : null;
+        if (displayed is not { CanUninstall: true, ConfirmationToken: not null }) return;
+
+        SetOperation("Checking current installed package…", busy: true, error: false);
+        try
+        {
+            var execution = await _packageUninstall.ExecuteAsync(displayed, cancellationToken)
+                .ConfigureAwait(false);
+            string? warning = null;
+            if (execution.ReloadCatalog)
+            {
+                warning = await ReloadInstalledWidgetsAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (warning is null)
+                    warning = await ReloadPermissionsAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
+            }
+            lock (_stateLock)
+            {
+                if (!execution.ReloadCatalog)
+                {
+                    _installedState = _installedState with
+                    {
+                        PackageUninstall = execution.Current,
+                    };
+                }
+                _page = execution.ReloadCatalog
+                    ? SettingsPage.InstalledWidgets
+                    : SettingsPage.InstalledWidgetDetails;
+                _busy = false;
+                _error = warning is not null || execution.Error;
+                _status = warning ?? execution.Status;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SetOperation("Widget uninstall cancelled", busy: false, error: true);
+            return;
         }
         Invalidate();
     }
@@ -1222,6 +1335,7 @@ public sealed class SettingsWidget : Widget
             return;
         }
         Invalidate();
+        await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private void OpenInstalledWidgetVersions()
@@ -1367,6 +1481,7 @@ public sealed class SettingsWidget : Widget
             return;
         }
         Invalidate();
+        await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static bool TryThemeIndex(string action, out int index)

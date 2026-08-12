@@ -40,11 +40,40 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>
             localDataClear,
         WidgetProcessCompanionContext context)
+        : this(
+            snapshotProvider, authorityRecoveryRetry, localDataInspection, localDataClear,
+            static (id, token) => ValueTask.FromResult(
+                new PlatformWidgetPackageUninstallInspection(
+                    id, id, string.Empty, string.Empty, 0, false,
+                    "inspection_unsupported", null)),
+            static (_, _, _, _, token) => ValueTask.FromResult(
+                new PlatformWidgetPackageUninstallResult(
+                    PlatformWidgetPackageUninstallStatus.Refused,
+                    "uninstall_unsupported")),
+            context)
+    {
+    }
+
+    public DiagnosticsWidgetProcessCompanion(
+        Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> snapshotProvider,
+        Func<string, CancellationToken, ValueTask<PlatformAuthorityRecoveryRetryResult>>
+            authorityRecoveryRetry,
+        Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>
+            localDataInspection,
+        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>
+            localDataClear,
+        Func<string, CancellationToken, ValueTask<PlatformWidgetPackageUninstallInspection>>
+            packageUninstallInspection,
+        Func<string, string, string, string, CancellationToken,
+            ValueTask<PlatformWidgetPackageUninstallResult>> packageUninstall,
+        WidgetProcessCompanionContext context)
     {
         ArgumentNullException.ThrowIfNull(snapshotProvider);
         ArgumentNullException.ThrowIfNull(authorityRecoveryRetry);
         ArgumentNullException.ThrowIfNull(localDataInspection);
         ArgumentNullException.ThrowIfNull(localDataClear);
+        ArgumentNullException.ThrowIfNull(packageUninstallInspection);
+        ArgumentNullException.ThrowIfNull(packageUninstall);
         ArgumentNullException.ThrowIfNull(context);
         if (context.IsolationPolicy != WidgetWorkerIsolationPolicy.HostTrustedJobOnly)
             throw new InvalidOperationException(
@@ -54,7 +83,9 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             pipeName, snapshotProvider,
             authorityRecoveryRetry: authorityRecoveryRetry,
             localDataInspection: localDataInspection,
-            localDataClear: localDataClear);
+            localDataClear: localDataClear,
+            packageUninstallInspection: packageUninstallInspection,
+            packageUninstall: packageUninstall);
         WorkerArguments =
         [
             "--diagnostics-pipe", pipeName,

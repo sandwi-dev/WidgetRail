@@ -313,15 +313,32 @@ internal static class SettingsInstalledWidgetPresentation
             .FocusUp("installed.details.permissions")
             .FocusDown("installed.details.local-data").Busy(busy).Disabled(!canToggle)
             .Classes(package.Enabled ? "danger-button" : "primary-button");
+        var canUninstall = !package.Enabled && state.PackageUninstall is { } uninstall &&
+            SettingsInstalledWidgetUninstallPolicy.Matches(package, uninstall) &&
+            uninstall is { CanUninstall: true, ConfirmationToken: not null };
         var localDataButton = LocalDataButton(state, busy)
             .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.permissions")
-            .FocusDown("installed.details.back");
+            .FocusDown(canUninstall ? SettingsInstalledWidgetUninstallPolicy.FocusId :
+                "installed.details.back");
+        var uninstallButton = UI.Button(
+                "Uninstall widget", "installed.uninstall.open",
+                SettingsInstalledWidgetUninstallPolicy.FocusId)
+            .FocusUp("installed.details.local-data")
+            .FocusDown("installed.details.back")
+            .Busy(busy).Classes("danger-button");
         versionsButton = versionsButton.FocusDown("installed.details.permissions");
         var back = UI.Button("Back", "back", "installed.details.back")
-            .FocusUp("installed.details.local-data")
+            .FocusUp(canUninstall ? SettingsInstalledWidgetUninstallPolicy.FocusId :
+                "installed.details.local-data")
             .Classes("secondary-button");
-        return SettingsPresentation.View(header,
-            SettingsPresentation.PageScope("installed.details",
+        var controls = new List<WidgetElement>
+        {
+            versionsButton, permissionsButton, actionButton, localDataButton,
+        };
+        if (canUninstall) controls.Add(uninstallButton);
+        controls.Add(back);
+        var details = new List<WidgetElement>
+        {
                 UI.Text(package.Name, "installed.details.heading", "Installed widget name").Classes("page-heading"),
                 UI.Text("Trust: Unsigned · publisher unverified", "installed.details.trust",
                     "Unsigned package trust status").Classes("diagnostic-error"),
@@ -359,12 +376,60 @@ internal static class SettingsInstalledWidgetPresentation
                             ? "Enabling confirms review of these exact unsigned bytes and declared capabilities, not publisher identity. Capability access still requires separate consent."
                             : "Install a version that supports this host API and architecture before enabling. Capability consent is a separate decision.",
                     "installed.details.status", "Package enabled status").Classes("page-help"),
-                versionsButton,
-                permissionsButton,
-                actionButton,
-                localDataButton,
-                back),
-            canToggle ? "installed.details.toggle" : "installed.details.back", "installed.details");
+        };
+        details.AddRange(controls);
+        return SettingsPresentation.View(header,
+            SettingsPresentation.PageScope("installed.details", details.ToArray()),
+            canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
+                ? SettingsInstalledWidgetUninstallPolicy.FocusId
+                : canToggle ? "installed.details.toggle" : "installed.details.back",
+            "installed.details");
+    }
+
+    public static WidgetView RenderInstalledWidgetUninstall(
+        StackElement header,
+        bool busy,
+        SettingsInstalledWidgetState state)
+    {
+        var package = state.SelectedInstalled;
+        var inspection = state.PackageUninstall;
+        if (package is null || package.Enabled || inspection is not
+            { CanUninstall: true, ConfirmationToken: not null } ||
+            !SettingsInstalledWidgetUninstallPolicy.Matches(package, inspection))
+            return SettingsPresentation.View(header,
+                SettingsPresentation.PageScope("installed.uninstall.confirm",
+                    UI.Text("Package changed", "installed.uninstall.heading",
+                        "Package changed").Classes("page-heading"),
+                    UI.Text("Return to details and inspect the current installed package again.",
+                        "installed.uninstall.help", "Package changed help")
+                        .Classes("diagnostic-error"),
+                    UI.Button("Back", "installed.uninstall.cancel",
+                        "installed.uninstall.cancel").Classes("secondary-button")),
+                "installed.uninstall.cancel", "installed.uninstall.confirm");
+
+        return SettingsPresentation.View(header,
+            SettingsPresentation.PageScope("installed.uninstall.confirm",
+                UI.Text("Uninstall widget?", "installed.uninstall.heading",
+                    "Confirm widget uninstall").Classes("page-heading"),
+                UI.Text(inspection.DisplayName, "installed.uninstall.name",
+                    "Selected widget").Classes("diagnostic-line"),
+                UI.Text($"Package ID: {inspection.WidgetId}", "installed.uninstall.id",
+                    "Package ID").Classes("diagnostic-line"),
+                UI.Text($"Publisher authority: {inspection.PublisherId}",
+                    "installed.uninstall.publisher", "Package publisher authority")
+                    .Classes("diagnostic-line"),
+                UI.Text($"Active version: {inspection.ActiveVersion}; installed versions: {inspection.VersionCount}",
+                    "installed.uninstall.version", "Installed package versions")
+                    .Classes("diagnostic-line"),
+                UI.Text(
+                    "This removes every immutable installed version of this disabled Community widget. It preserves widget-private local data, credentials, provider data, themes, settings, and user files. Use the separate Clear local data action if you also choose to remove overlay-owned private state.",
+                    "installed.uninstall.help", "Widget uninstall scope")
+                    .Classes("page-help"),
+                UI.Button("Uninstall widget", "installed.uninstall.confirm",
+                    "installed.uninstall.action").Busy(busy).Classes("danger-button"),
+                UI.Button("Cancel", "installed.uninstall.cancel",
+                    "installed.uninstall.cancel").Classes("secondary-button")),
+            "installed.uninstall.cancel", "installed.uninstall.confirm");
     }
 
     public static WidgetView RenderInstalledWidgetLocalData(

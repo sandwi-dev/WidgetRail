@@ -420,6 +420,14 @@ indication and an opaque confirmation token—never the stored document. This
 action does not remove packages, credentials, provider data, themes, overlay
 preferences, geometry, artwork caches, logs, or user files. The store still has
 no platform disk quota.
+
+To remove a disabled Community package, return to its Installed widgets details
+and choose **Uninstall widget**. The nested confirmation removes every installed
+immutable package version while preserving private state, credentials, provider
+data, themes, settings, and user files. Built-in and enabled packages cannot be
+uninstalled. Clear local data and package uninstall remain deliberately
+separate choices.
+
 For a local desktop companion, use only the implemented [exact-port JSON and
 write-only private-secret services](community-companion-services.md); those
 narrow broker grants do not make direct sockets or Credential Manager available

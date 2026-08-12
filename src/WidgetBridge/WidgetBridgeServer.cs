@@ -23,6 +23,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeDiagnosticsProjection _diagnostics;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
+    private readonly BridgeWidgetPackageUninstallService _packageUninstall;
     private readonly BridgeLocalWidgetPackageImportService? _localPackageImport;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
@@ -88,6 +89,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
             _registry, _platformBackend, _catalogMonitor);
+        _packageUninstall = new BridgeWidgetPackageUninstallService(
+            _catalogMonitor is null
+                ? null
+                : new GameBarAlternative.WidgetCatalog.WidgetCatalog(
+                    _catalogMonitor.InstalledCatalogRoot),
+            _catalogMonitor);
         _localPackageImport = _catalogMonitor is null
             ? null
             : new BridgeLocalWidgetPackageImportService(
@@ -122,6 +129,19 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         string confirmationToken,
         CancellationToken cancellationToken = default) =>
         _localData.ClearAsync(widgetId, confirmationToken, cancellationToken);
+    internal ValueTask<PlatformWidgetPackageUninstallInspection>
+        InspectWidgetPackageUninstallAsync(
+            string widgetId,
+            CancellationToken cancellationToken = default) =>
+        _packageUninstall.InspectAsync(widgetId, cancellationToken);
+    internal ValueTask<PlatformWidgetPackageUninstallResult> UninstallWidgetPackageAsync(
+        string widgetId,
+        string publisherId,
+        string activeVersion,
+        string confirmationToken,
+        CancellationToken cancellationToken = default) =>
+        _packageUninstall.UninstallAsync(
+            widgetId, publisherId, activeVersion, confirmationToken, cancellationToken);
 
     public async Task RunAsync(TimeSpan acceptTimeout, CancellationToken cancellationToken = default)
     {
@@ -615,6 +635,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     _authorityRecovery.RetryAsync,
                     _localData.InspectAsync,
                     _localData.ClearAsync,
+                    _packageUninstall.InspectAsync,
+                    _packageUninstall.UninstallAsync,
                     context)
                 : _consentStore is null || _platformBackend is null
                     ? null
