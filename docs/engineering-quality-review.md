@@ -2,9 +2,8 @@
 
 Status: living independent quality audit; active findings require disposition<br>
 Date: 2026-08-11<br>
-Last reassessed: 2026-08-11 against integrated `main` `64e3586` and unintegrated
-DLV-087 candidates `8c2949c`/`376e67c`; prior retained evidence remains scoped
-to the commits named in each finding<br>
+Last reassessed: 2026-08-11 against integrated `main` `5b8556a`; prior retained
+evidence remains scoped to the commits named in each finding<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, UI/UX foundations, and product readiness
 
@@ -12,6 +11,30 @@ verification credibility, UI/UX foundations, and product readiness
 
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
+
+### Current review delta — accepted complete-surface compositor
+
+DLV-025 `16f9f47`, integrated through `5b8556a`, replaces visible HWND-target
+extent interpolation with one cohesive 213-line DirectComposition surface
+owner. A complete detached destination update is ended and committed before
+changed HWND geometry is exposed; same-size repaints reuse the surface and the
+legacy HWND render target is retained only as an initialization/device/failure
+fallback. The design stays on the Windows-10-compatible surface API, adds no
+public protocol, widget special case, timer, or second permanent renderer, and
+makes reduced-motion behavior immediate rather than maintaining a separate
+animation branch.
+
+Independent review covered all nine changed files and found one explicit
+surface lifecycle, bounded resource/failure handling, and no whitespace,
+generated, reviewer-document, or cross-lane contamination. Retained focused
+evidence covers targeting, transition policy, delayed startup, rapid reversal,
+reload, and production-shaped Audio Mixer, Network Controls, Spotify, and Games
+& Apps handoffs. The fresh accepted-main Release build succeeded and PID 25164
+activated DirectComposition without fallback or immediate error. Its first live
+complete-content handoffs measured draw <= 5.921 ms, commit <= 16.017 ms, and
+coordinated geometry <= 18.437 ms. This closes the implementation decision but
+not the user's visual acceptance: GBA-004 remains Verifying until live cycling
+shows that the former black/gray bands, flicker, and stutter are gone.
 
 ### Current review delta — Game Launcher `TextEntry` regression
 

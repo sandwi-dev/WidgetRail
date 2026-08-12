@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
-| GBA-004 | P1 | Split: cold-start fix Verifying; DLV-025 Assigned | OverlayHost UI thread / presentation / composition | Accepted DLV-078 `6d30f5e`, integrated through `a072d6f`, retains inert last-good pixels until the cold destination snapshot is admitted while revoking stale authority immediately. The separate real Games & Apps extent-animation gray/black-band defect is now assigned to the user-authorized Windows-10-compatible DirectComposition surface gate in DLV-025. |
+| GBA-004 | P1 | Verifying on accepted DLV-025 Release | OverlayHost UI thread / presentation / composition | Accepted DLV-078 `6d30f5e`, integrated through `a072d6f`, retains inert last-good pixels until the cold destination snapshot is admitted. Accepted DLV-025 `16f9f47`, integrated through `5b8556a`, commits a complete DirectComposition destination before exposing changed HWND geometry. Fresh PID 25164 activated the composed path without fallback; the user must verify the former black-band/flicker reproduction. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -288,6 +288,20 @@ longer interprets capture pixels. Focused evidence passes the exact host fixture
 plus 54 targeting and 56 transition checks. Keep this sub-fix Verifying until
 the freshly relaunched packaged overlay passes live widget cycling. DLV-025's
 separate HWND resize/compositor tearing remains blocked and is not claimed fixed.
+
+DLV-025 `16f9f47`, integrated through `5b8556a`, now implements the authorized
+Windows-10-compatible compositor decision. One native surface owner renders the
+entire detached destination, ends the update, commits and waits, then exposes
+the final HWND geometry; ordinary same-size repaints reuse that owner and the
+old HWND render target remains failure fallback only. The production-shaped
+switch fixture covers Audio Mixer, Network Controls, Spotify, Games & Apps,
+delayed startup, reversal, and reload without entering fallback. The freshly
+built main Release is running as PID 25164; its initial live handoffs reported
+complete-content draw no higher than 5.921 ms, commit no higher than 16.017 ms,
+and coordinated geometry no higher than 18.437 ms, with no immediate compositor
+error. Automated evidence establishes ordering and timing, not the user's
+visual result, so GBA-004 remains Verifying until live cycling confirms the
+former black/gray bands and flicker are gone.
 
 **Acceptance:**
 
