@@ -81,50 +81,60 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### DLV-110 — Ship advanced widget templates by complexity
+### DLV-111 — Make installed theme versions manageable in Settings
 
-**State:** Assigned after accepted DLV-109
-**Baseline:** accepted DLV-109 widgets boundary merged with accepted main through
-`bc484f0`
-**Dependencies:** transactional scaffold DLV-046, canonical author journey
-DLV-048, compatibility baseline DLV-047/050, and DLV-108/109 scenario path
-**Owner:** widgets lane; scaffold template inventory, generated sibling tests,
-offline SDK feed, examples, and author documentation
-**Concurrency:** Managed/tooling only; no native, capability-authority, or
-package-trust redesign.
+**State:** Assigned after accepted DLV-110
+**Baseline:** accepted DLV-110 `e90e729` integrated into main through `4e02184`
+plus the planner assignment commit
+**Dependencies:** immutable theme install/discovery, exact theme pinning,
+Settings Appearance picker, and no-poll theme reload
+**Owner:** widgets lane; `PlatformSettings` theme mutation policy, Settings
+Appearance presentation/actions, `gbar theme` parity, focused managed tests,
+and directly affected theme documentation
+**Concurrency:** Managed Settings/tooling only; no native renderer, compositor,
+public widget capability, signing, remote update, or package-trust redesign.
 
-**Developer-visible outcome:** Authors can choose `basic`, `data`, `media`, or
-`multipage` starters and receive readable production-helper examples plus a
-working credential-free scenario test, instead of stretching one trivial
-template into an advanced widget.
+**User-visible outcome:** Settings groups installed theme versions, clearly
+identifies the exact active version, lets the user select an older valid version,
+and removes an inactive user-installed version after confirmation. Built-in and
+currently selected versions remain visibly protected instead of requiring
+manual filesystem cleanup.
 
-**Objective:** Add the smallest distinct template set that demonstrates public
-resource/error states, optimistic media commands/progress, and responsive route
-navigation without copying first-party application-sized classes.
+**Objective:** Complete the smallest safe controller-first theme-version
+management slice over the existing immutable catalog and exact appearance pin.
 
-**In scope:** strict versioned inventory, transactional generation, stable
-template selection, offline build, fake services, sibling `MSTest.Sdk` 4.3.2
-tests, semantic scenarios, package/validate commands, and compiled docs.
+**In scope:** grouped ID/version presentation; stable controller focus and Back;
+exact valid-version selection; explicit confirmation for removal; an atomic
+catalog-owned inactive-version retire operation; CLI `theme remove` parity for
+an exact ID/version; invalid inactive versions remaining reviewable/removable;
+watcher-driven reconciliation; safe actionable failure feedback; affected docs.
 
-**Out of scope:** companion/network credentials, third-party login, store
-adapters, source generators/analyzers, external publication, native previews,
-or compatibility shims for unreleased templates.
+**Out of scope:** importing or updating packages, file pickers, remote discovery,
+automatic updates, gallery/signing/revocation, graphical preview, arbitrary
+asset support, built-in removal, selected-version removal, compatibility shims,
+or native UI changes.
 
-**Acceptance:** every template generates atomically into an external directory,
-builds offline, runs its scenario/tests, validates and packages deterministically,
-and remains small enough that domain behavior is findable without framework
-internals; malformed selection leaves no partial target.
+**Acceptance:** Settings can traverse one/many IDs and versions at compact and
+standard profiles, select an exact valid version without rewriting immutable
+content, and remove only the confirmed inactive user version. Built-in or
+selected versions are non-actionable; malformed identities, reparse paths,
+concurrent catalog changes, cancellation, and deletion failure preserve the
+appearance record and unrelated versions. Success publishes one coherent
+catalog/settings refresh with deterministic focus. CLI and Settings use the
+same mutation policy rather than duplicating filesystem rules.
 
-**Verification:** Tier 1 scaffold/CLI/template/docs and generated MSTest suites.
-Tier 2 runs the complete external-directory journey for all four profiles once.
+**Verification:** Tier 1 PlatformSettings, Settings, CLI theme, and docs suites.
+Tier 2 uses one temporary catalog with multiple IDs/versions and proves exact
+selection, inactive removal, watcher reconciliation, cancellation/failure, and
+unchanged unrelated content. No aggregate or capture.
 
-**Stop:** completion requires credentials, a new public authority, duplicated
-SDK primitives, or a repository checkout reference.
+**Stop:** safe removal requires deleting a selected/built-in theme, following an
+untrusted reparse point, weakening immutable install rules, or adding a new
+public/remote authority.
 
-**Queue note:** DLV-108 `f51a983` and DLV-109 `5db3426` are accepted and
-integrated through `bc484f0`. DLV-110 is active. Its next visible successor will
-be selected after its template/API evidence is reviewed; do not manufacture a
-fourth template or another framework abstraction merely to fill the queue.
+**Queue note:** DLV-110 `e90e729` is accepted and integrated through `4e02184`.
+DLV-111 is the next visible widgets milestone; internal SDK expansion may not
+displace it.
 
 ## Platform lane
 
@@ -219,6 +229,7 @@ than three safe platform Ready items exist.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-110 | `e90e729` | `4e02184` | Basic, data, media, and multipage starters now generate atomically outside the checkout with MSTest.Sdk 4.3.2 scenarios, isolated preview, validation, and deterministic packaging. |
 | DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |
 | DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |
 | DLV-104/106 | `99e4932` and `f119a1f` | `1ef4666` and `dde4981` | Bounded Game Launcher collection viewport and atomic tray focus ownership. |

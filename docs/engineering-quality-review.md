@@ -4579,6 +4579,15 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ## 2026-08-11 accepted integration delta
 
+- **DLV-110 (`e90e729`, integrated through `4e02184`)** replaces the single
+  trivial scaffold with basic, data, media, and multipage profiles over the
+  existing public SDK. The strict versioned inventory stays transactional; each
+  generated external project uses `MSTest.Sdk` 4.3.2, isolated semantic preview,
+  validation, and deterministic packaging without repository project
+  references. Agent evidence passes Gbar CLI 57/57, generated scenarios 9/9,
+  compatibility 12/12, and documentation 58 files. This does not migrate legacy
+  test runners or claim an externally published SDK release.
+
 - **DLV-107 (`b662e9a`, integrated through `0e0bf77`)** replaces the rejected
   mixed color-key/composition-alpha path with one fixed transparent HWND
   container, alpha-zero premultiplied clear, one composition effect opacity

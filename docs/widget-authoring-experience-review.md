@@ -149,6 +149,15 @@ media, and multipage templates. Native pixels, screenshot tooling, real
 credentials/hardware, external publication, and a universal widget framework
 remain outside this sequence.
 
+Accepted DLV-110 `e90e729`, integrated through `4e02184`, closes that template
+slice. Each profile is a small public-SDK example with one generated
+`MSTest.Sdk` 4.3.2 semantic scenario; all four generate into an external
+directory, build from the local offline feed, execute through isolated preview,
+validate, and produce byte-identical packages. The versioned inventory remains
+transactional and an invalid profile publishes no target. This is evidence for
+the local author journey, not an externally published SDK or a substitute for
+native visual, credential, or hardware evidence.
+
 `gbar render` is now also strictly data-only. It rejects DLL input before
 resolving a type or touching an output path, closing the full-trust author-code
 escape and making `gbar dev` the only executable CLI integration path. An
