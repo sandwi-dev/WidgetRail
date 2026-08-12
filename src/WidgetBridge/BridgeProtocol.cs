@@ -32,6 +32,9 @@ internal static class BridgeMessageTypes
     public const string QuickAction = "quick-action";
     public const string ControllerInput = "controller-input";
     public const string ConnectProtectedWifi = "connect-protected-wifi";
+    public const string InstallLocalWidgetPackage = "install-local-widget-package";
+    public const string CancelLocalWidgetPackageInstall = "cancel-local-widget-package-install";
+    public const string LocalWidgetPackageInstallCompleted = "local-widget-package-install-completed";
     public const string ControllerInputResult = "controller-input-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidation = "widget-invalidated";
@@ -64,6 +67,24 @@ internal sealed record BridgeProtectedWifiRequest(
     string RuntimeGeneration,
     string SourceElementId,
     int SecretLength);
+internal sealed record BridgeLocalWidgetPackageOrigin(
+    string WidgetId,
+    string PackageId,
+    string PublisherId,
+    string InstanceId,
+    string RuntimeGeneration,
+    string PresentationGeneration);
+internal sealed record BridgeLocalWidgetPackageInstallRequest(
+    string OperationId,
+    string PackagePath,
+    BridgeLocalWidgetPackageOrigin Origin);
+internal sealed record BridgeLocalWidgetPackageInstallCancelRequest(string OperationId);
+internal sealed record BridgeLocalWidgetPackageInstallCompleted(
+    string OperationId,
+    string Status,
+    string WidgetId,
+    string Version,
+    string Message);
 internal sealed record BridgeInvalidation(string WidgetId, long Revision);
 internal sealed record BridgeHostEffect(
     string WidgetId,

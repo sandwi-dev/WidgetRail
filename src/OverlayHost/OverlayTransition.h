@@ -37,6 +37,10 @@ public:
     [[nodiscard]] OverlayExtentTransitionSample Sample(
         std::uint64_t timestampMilliseconds,
         bool reducedMotion) noexcept;
+    /// Retires an interrupted visible extent without scheduling a terminal
+    /// sample. The next visible presentation begins from its authoritative
+    /// current extent instead of hidden, stale animation geometry.
+    void Cancel() noexcept;
     [[nodiscard]] bool active() const noexcept { return active_; }
 
 private:

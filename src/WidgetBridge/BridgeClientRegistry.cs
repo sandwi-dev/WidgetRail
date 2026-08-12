@@ -700,6 +700,31 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             "Protected Wi-Fi authority is stale or unavailable.");
     }
 
+    internal BridgeClientPublication<ConfiguredWidget> AdmitLocalWidgetPackageImport(
+        BridgeLocalWidgetPackageOrigin origin)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(origin.WidgetId, out var registration) &&
+                !registration.IsRetiring &&
+                registration.HostLifecycle == WidgetLifecycleState.Interactive &&
+                WidgetBridgeServer.IsTrustedSettings(registration.Configured))
+            {
+                var descriptor = registration.Configured.PublicDescriptor();
+                if (string.Equals(descriptor.Id, origin.WidgetId, StringComparison.Ordinal) &&
+                    string.Equals(registration.Configured.PackageId, origin.PackageId, StringComparison.Ordinal) &&
+                    string.Equals(registration.Configured.PublisherId, origin.PublisherId, StringComparison.Ordinal) &&
+                    string.Equals(descriptor.InstanceId, origin.InstanceId, StringComparison.Ordinal) &&
+                    string.Equals(descriptor.RuntimeGeneration, origin.RuntimeGeneration, StringComparison.Ordinal) &&
+                    string.Equals(descriptor.PresentationGeneration, origin.PresentationGeneration, StringComparison.Ordinal))
+                    return AdmitPublicationLocked(registration, registration.Configured);
+            }
+        }
+        throw new BridgeProtocolException(
+            "Local widget package import authority is stale or unavailable.");
+    }
+
     internal BridgeClientPublication<ConfiguredWidget>? TryAdmitArtwork(
         string widgetId,
         string expectedWorkerFingerprint)

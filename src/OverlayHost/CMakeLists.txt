@@ -21,6 +21,7 @@ add_executable(OverlayHost WIN32
     OverlayProcessOwner.cpp
     OverlayState.cpp
     WidgetBridgeClient.cpp
+    LocalWidgetPackageImport.cpp
     WidgetSessionCoordinator.cpp
     RemoteImageCache.cpp
     ScrollEvidenceProbe.cpp
@@ -260,6 +261,15 @@ if(GBA_BUILD_TESTS)
         GBA_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(WidgetBridgeCatalogTests PRIVATE windowsapp user32)
     add_test(NAME WidgetBridgeCatalogTests COMMAND WidgetBridgeCatalogTests)
+
+    add_executable(LocalWidgetPackageImportTests
+        LocalWidgetPackageImportTests.cpp LocalWidgetPackageImport.cpp)
+    target_compile_features(LocalWidgetPackageImportTests PRIVATE cxx_std_20)
+    target_compile_options(LocalWidgetPackageImportTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(LocalWidgetPackageImportTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(LocalWidgetPackageImportTests PRIVATE user32 ole32 uuid)
+    add_test(NAME LocalWidgetPackageImportTests COMMAND LocalWidgetPackageImportTests)
 
     add_executable(SliderInteractionTests SliderInteractionTests.cpp SliderInteraction.cpp)
     target_compile_features(SliderInteractionTests PRIVATE cxx_std_20)

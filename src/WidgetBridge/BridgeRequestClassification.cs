@@ -14,6 +14,8 @@ internal enum BridgeRequestKind
     Action,
     ControllerInput,
     ConnectProtectedWifi,
+    InstallLocalWidgetPackage,
+    CancelLocalWidgetPackageInstall,
     QuickAction,
     Stop,
     Malformed,
@@ -103,6 +105,10 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.ConnectProtectedWifi => Widget(
                     BridgeJson.FromElement<BridgeProtectedWifiRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.ConnectProtectedWifi),
+                BridgeMessageTypes.InstallLocalWidgetPackage => LocalPackageInstall(
+                    request.Payload),
+                BridgeMessageTypes.CancelLocalWidgetPackageInstall => LocalPackageCancel(
+                    request.Payload),
                 BridgeMessageTypes.QuickAction => Widget(
                     BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.QuickAction),
@@ -132,5 +138,19 @@ internal static class BridgeRequestClassifier
         if (!AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
         return BridgeRequestKey.Global(BridgeRequestKind.ResolveArtwork);
+    }
+
+    private static BridgeRequestKey LocalPackageInstall(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallRequest>(payload);
+        _ = BridgeRequestKey.Widget(
+            BridgeRequestKind.GetSnapshot, request.Origin.WidgetId);
+        return BridgeRequestKey.Global(BridgeRequestKind.InstallLocalWidgetPackage);
+    }
+
+    private static BridgeRequestKey LocalPackageCancel(JsonElement payload)
+    {
+        _ = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallCancelRequest>(payload);
+        return BridgeRequestKey.Global(BridgeRequestKind.CancelLocalWidgetPackageInstall);
     }
 }

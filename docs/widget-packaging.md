@@ -415,6 +415,17 @@ validation, policy, and extraction; remote installs use the downloader's
 locked, digest-verified temporary-file stream. A rejected policy never
 publishes the staged version.
 
+The native local-import prerequisite uses this same catalog-owned operation
+lock and installer. Its host picker accepts only one existing filesystem
+`.gbarwidget`; the bridge opens it without following a reparse point and without
+write sharing, keeps that handle through validation/extraction/publication, and
+revalidates the exact current `Interactive` bundled Settings generation before
+publication. Success remains disabled and produces a semantic catalog reload.
+Cancel, stale origin, duplicate selection/version, changing or reparse-point
+source, and installer failure leave no newly admitted catalog state and return
+only a bounded path-free status. The visible Settings action is a separate
+consumer milestone.
+
 ## Version selection and rollback
 
 The CLI exposes the same catalog contract without deleting package bytes:
@@ -441,8 +452,8 @@ use `version select` to move forward to a newer installed version.
 - Online catalog metadata, release discovery, automatic updates, and revocation
 - Version removal and garbage collection of old versions (Settings and CLI
   exact-version selection/rollback are implemented)
-- A graphical/file-picker installer (controller review/enablement exists after
-  CLI installation)
+- The visible Settings action that invokes the implemented host-owned local
+  file picker/import prerequisite
 
 Until signing is implemented, successful structural validation proves package
 shape and archive containment—not publisher authenticity or benign behavior.

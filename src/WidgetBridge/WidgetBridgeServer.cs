@@ -23,6 +23,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeDiagnosticsProjection _diagnostics;
     private readonly BridgeAuthorityRecoveryProjection _authorityRecovery;
     private readonly BridgeWidgetLocalDataService _localData;
+    private readonly BridgeLocalWidgetPackageImportService? _localPackageImport;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
     private readonly Action<string, BrokerCapabilityDiagnostic>? _capabilityDiagnosticSink;
@@ -87,6 +88,16 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
             _registry, _platformBackend, _catalogMonitor);
+        _localPackageImport = _catalogMonitor is null
+            ? null
+            : new BridgeLocalWidgetPackageImportService(
+                _registry,
+                new GameBarAlternative.WidgetCatalog.WidgetCatalog(
+                    _catalogMonitor.InstalledCatalogRoot),
+                _catalogMonitor,
+                result => SendEventAsync(
+                    BridgeMessageTypes.LocalWidgetPackageInstallCompleted,
+                    result));
         _diagnostics = new BridgeDiagnosticsProjection(
             new WidgetBridgeDiagnosticsSource(
                 _registry,
@@ -228,6 +239,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             _channel = null;
             try
             {
+                if (_localPackageImport is not null)
+                    await _localPackageImport.DisposeAsync().ConfigureAwait(false);
                 await _registry.DisposeAsync().ConfigureAwait(false);
             }
             finally
@@ -244,6 +257,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        if (_localPackageImport is not null)
+            await _localPackageImport.DisposeAsync().ConfigureAwait(false);
         await _registry.DisposeAsync().ConfigureAwait(false);
         _writeGate.Dispose();
     }
@@ -402,6 +417,36 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.ConnectProtectedWifi:
             throw new BridgeProtocolException(
                 "Protected Wi-Fi requests require the dedicated secret-frame owner.");
+        case BridgeMessageTypes.InstallLocalWidgetPackage:
+        {
+            if (_localPackageImport is null)
+                throw new BridgeProtocolException(
+                    "Local widget package installation is unavailable.");
+            var installRequest = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallRequest>(
+                request.Payload);
+            _localPackageImport.Start(installRequest, _sessionCancellation);
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged,
+                request.RequestId,
+                new { operationId = installRequest.OperationId },
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CancelLocalWidgetPackageInstall:
+        {
+            if (_localPackageImport is null)
+                throw new BridgeProtocolException(
+                    "Local widget package installation is unavailable.");
+            var cancelRequest = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallCancelRequest>(
+                request.Payload);
+            var cancelled = _localPackageImport.Cancel(cancelRequest.OperationId);
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged,
+                request.RequestId,
+                new { operationId = cancelRequest.OperationId, cancelled },
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.QuickAction:
         {
             var quickRequest = BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload);

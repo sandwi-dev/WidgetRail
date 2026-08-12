@@ -187,6 +187,32 @@ void ReducedMotionExtentSnapsImmediately() {
     Check(!frame.active, "mid-flight reduced preference cancels extent work");
 }
 
+void HiddenExtentRetiresWithoutTerminalFrameWork() {
+    gba::OverlayExtentTransitionTimeline timeline;
+    timeline.Begin(10, 980.0F, 700.0F, 540.0F, 620.0F, false);
+    const auto presented = timeline.Sample(55, false);
+    Check(presented.active,
+          "visible extent is active before the host becomes hidden");
+
+    timeline.Cancel();
+    Check(!timeline.active(),
+          "hidden extent retirement owns no future controller cadence");
+    const auto hidden = timeline.Sample(5000, false);
+    Near(hidden.widthDip, presented.widthDip,
+         "hidden retirement does not synthesize a terminal width frame");
+    Near(hidden.heightDip, presented.heightDip,
+         "hidden retirement does not synthesize a terminal height frame");
+    Check(!hidden.active,
+          "sampling retired hidden state cannot restart frame work");
+
+    timeline.Begin(6000, 540.0F, 620.0F, 820.0F, 430.0F, false);
+    const auto reopened = timeline.Sample(6000, false);
+    Near(reopened.widthDip, 540.0F,
+         "reopened extent begins from current authoritative width");
+    Near(reopened.heightDip, 620.0F,
+         "reopened extent begins from current authoritative height");
+}
+
 void ClockAndDecisionsAreStable() {
     gba::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -224,6 +250,7 @@ int main() {
     RepeatedContentRevealIsContinuous();
     ExtentTransitionIsBoundedAndRetargetable();
     ReducedMotionExtentSnapsImmediately();
+    HiddenExtentRetiresWithoutTerminalFrameWork();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;

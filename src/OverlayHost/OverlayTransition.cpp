@@ -73,6 +73,10 @@ OverlayExtentTransitionSample OverlayExtentTransitionTimeline::Sample(
     return {SanitizeExtent(widthDip_), SanitizeExtent(heightDip_), active_};
 }
 
+void OverlayExtentTransitionTimeline::Cancel() noexcept {
+    active_ = false;
+}
+
 void OverlayTransitionTimeline::BeginOpen(
     const std::uint64_t timestampMilliseconds,
     const bool reducedMotion) noexcept {

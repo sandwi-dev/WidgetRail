@@ -19,6 +19,7 @@
 #include "PressedInteraction.h"
 #include "RemoteImageCache.h"
 #include "ScrollEvidenceProbe.h"
+#include "LocalWidgetPackageImport.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
@@ -375,6 +376,23 @@ public:
               [this] {
                   if (window_)
                       PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
+              }),
+          localWidgetPackageImport_(
+              localWidgetPackagePicker_,
+              [this] { return CurrentLocalWidgetPackageImportOrigin(); },
+              [this](const std::wstring_view path,
+                     const gba::packages::LocalWidgetPackageOrigin& origin,
+                     const std::wstring_view operationId) {
+                  gba::LocalWidgetPackageInstallOrigin requestOrigin{
+                      origin.widgetId,
+                      origin.packageId,
+                      origin.publisherId,
+                      origin.instanceId,
+                      origin.runtimeGeneration,
+                      origin.presentationGeneration};
+                  const auto submitted = bridge_.BeginLocalWidgetPackageInstall(
+                      path, requestOrigin, operationId);
+                  return submitted.value_or(false);
               }) {}
     ~OverlayApp() { Shutdown(); }
 
@@ -420,7 +438,11 @@ public:
         windowClass.lpfnWndProc = WindowProc;
         windowClass.hInstance = instance_;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+        // This HWND is a premultiplied DirectComposition target. A class brush
+        // is an independent opaque presentation owner and can become visible
+        // in uncovered client pixels while a hidden host is reopened. The
+        // separate backdrop window remains the only full-monitor black owner.
+        windowClass.hbrBackground = nullptr;
         windowClass.lpszClassName = kWindowClass;
         if (!RegisterClassExW(&windowClass)) {
             return FailWin32(L"RegisterClassExW", GetLastError());
@@ -513,7 +535,7 @@ public:
             AppendDiagnostic(
                 L"DirectComposition complete-content presentation owner active "
                 L"alpha=premultiplied-clear hwnd=no-redirection "
-                L"opacity=composition-effect");
+                L"opacity=composition-effect hwnd-background=none");
         } else {
             EnableLegacyLayeredFallback();
             AppendDiagnostic(
@@ -1384,6 +1406,22 @@ private:
                             artwork.widgetId, artwork.artworkHandle,
                             std::move(artwork.pngBase64));
                 }
+                for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
+                    if (!localWidgetPackageImport_.Complete(result.operationId)) {
+                        AppendDiagnostic(
+                            L"Dropped stale local widget package result operation=" +
+                            result.operationId);
+                        continue;
+                    }
+                    lastLocalWidgetPackageInstallResult_ = result;
+                    if (result.status != gba::LocalWidgetPackageInstallStatus::Cancelled) {
+                        lastActionWidgetId_ = L"settings";
+                        lastActionMessage_ = result.safeMessage;
+                        lastActionExpiresAt_ = GetTickCount64() + 5000;
+                        AppendDiagnostic(L"Local widget package import: " +
+                                         result.safeMessage);
+                    }
+                }
                 if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
                     const auto& current = appearanceState_.current();
                     if (!current || *revision > current->revision) {
@@ -1650,6 +1688,11 @@ private:
     }
 
     void Shutdown() {
+        localWidgetPackageImport_.CancelPicker();
+        if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
+            (void)bridge_.CancelLocalWidgetPackageInstall(
+                *operation);
+        }
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
         compositionSurface_.Reset();
@@ -2308,6 +2351,58 @@ private:
         return descriptor ? descriptor->name : WidgetName(id);
     }
 
+    [[nodiscard]] std::optional<gba::packages::LocalWidgetPackageOrigin>
+    CurrentLocalWidgetPackageImportOrigin() const {
+        if (state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget ||
+            state_.activeWidget() != L"settings") return std::nullopt;
+        const auto* descriptor = sessions_.FindDescriptor(L"settings");
+        const auto lifecycle = sessions_.Lifecycle(L"settings");
+        if (!descriptor || !lifecycle ||
+            *lifecycle != gba::WidgetLifecycleState::Interactive)
+            return std::nullopt;
+        return gba::packages::LocalWidgetPackageOrigin{
+            descriptor->id,
+            L"org.gbar.firstparty.settings",
+            L"org.gbar.firstparty",
+            descriptor->instanceId,
+            descriptor->runtimeGeneration,
+            descriptor->presentationGeneration,
+            *lifecycle};
+    }
+
+    [[nodiscard]] bool TryInvokeLocalWidgetPackageImport(
+        const gba::WidgetSnapshot& snapshot,
+        const gba::WidgetNode& node,
+        const std::wstring_view protocolButton,
+        const gba::input::NavigationEventPhase phase) {
+        const auto action = localWidgetPackageImport_.Invoke(
+            window_,
+            {
+                CurrentLocalWidgetPackageImportOrigin(),
+                snapshot.instanceId,
+                snapshot.activeInputScopeId,
+                node.actionId,
+                node.id,
+                std::wstring(protocolButton),
+                phase == gba::input::NavigationEventPhase::Pressed,
+                !node.isDisabled,
+                node.isBusy,
+            });
+        if (!action.claimed) return false;
+        lastActionWidgetId_ = L"settings";
+        if (action.import.status !=
+            gba::packages::LocalWidgetPackageImportStatus::Cancelled) {
+            lastActionMessage_ = action.import.safeMessage;
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            if (!lastActionMessage_.empty())
+                AppendDiagnostic(L"Local widget package action: " +
+                                 lastActionMessage_);
+        }
+        InvalidateRect(window_, nullptr, FALSE);
+        return true;
+    }
+
     gba::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
         const auto* descriptor = sessions_.FindDescriptor(id);
         if (descriptor) {
@@ -2747,6 +2842,11 @@ private:
     }
 
     void HideOverlay() {
+        localWidgetPackageImport_.CancelPicker();
+        if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
+            (void)bridge_.CancelLocalWidgetPackageInstall(
+                *operation);
+        }
         (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
@@ -2779,6 +2879,26 @@ private:
         if (restoreTarget && IsWindow(restoreTarget)) {
             SetForegroundWindow(restoreTarget);
         }
+    }
+
+    void RetireCompositionMotionForHiddenState() {
+        const bool retiredInFlightCompositionMotion =
+            extentTransition_.active() || compositionMotionFinalPlacement_.has_value() ||
+            compositionMotionPresentedExtentDip_.has_value();
+        extentTransition_.Cancel();
+        animatedExtentDip_.reset();
+        compositionMotionFinalPlacement_.reset();
+        compositionMotionPresentedExtentDip_.reset();
+        compositionContentPlacement_.reset();
+        compositionMotionSourceWidth_ = 0;
+        compositionMotionSourceHeight_ = 0;
+        compositionMotionPixelsPerDipX_ = 1.0F;
+        compositionMotionPixelsPerDipY_ = 1.0F;
+        compositionMotionCommitCount_ = 0;
+        AppendDiagnostic(
+            L"Composition motion retired state=hidden in-flight=" +
+            std::wstring(retiredInFlightCompositionMotion ? L"true" : L"false") +
+            L" future-work=false geometry=discarded");
     }
 
     void ScheduleActionFeedbackExpiry(
@@ -2929,6 +3049,7 @@ private:
             lastControllerReadPath_ = gba::input::ControllerReadPath::None;
             lastControllerForegroundExclusive_.reset();
             lastForegroundOwnership_.reset();
+            RetireCompositionMotionForHiddenState();
             overlayTransition_.BeginClose(
                 GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
             SetTimer(window_, kControllerTimer, 16, nullptr);
@@ -4096,6 +4217,13 @@ private:
             if (resolved->protocolButton == L"a" &&
                 OpenTextEntryModal(request.widgetId, *snapshot, resolved->nodeId))
                 continue;
+            if (const auto* node = gba::input::FindNodeInInputScope(
+                    *snapshot, resolved->nodeId, snapshot->activeInputScopeId);
+                node && TryInvokeLocalWidgetPackageImport(
+                    *snapshot, *node, resolved->protocolButton,
+                    gba::input::NavigationEventPhase::Pressed)) {
+                continue;
+            }
 
             const auto handled = bridge_.SendControllerInput(
                 request.widgetId, resolved->protocolButton, L"openWidget", resolved->nodeId,
@@ -4750,6 +4878,12 @@ private:
             if (isOpen && visibleFocus && protocolButton == L"a" &&
                 phase == gba::input::NavigationEventPhase::Pressed &&
                 OpenTextEntryModal(widget, *snapshot, *visibleFocus)) return;
+            if (isOpen && visibleFocus) {
+                const auto* focusedNode = gba::input::FindNodeInInputScope(
+                    *snapshot, *visibleFocus, snapshot->activeInputScopeId);
+                if (focusedNode && TryInvokeLocalWidgetPackageImport(
+                        *snapshot, *focusedNode, protocolButton, phase)) return;
+            }
             const auto handled = bridge_.SendControllerInput(
                 widget, protocolButton,
                 isOpen ? L"openWidget" : L"dashboardQuickAction",
@@ -6027,6 +6161,10 @@ private:
     gba::input::TextEntryModal textEntryModal_;
     gba::WidgetBridgeClient bridge_;
     gba::WidgetSessionCoordinator sessions_;
+    gba::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;
+    gba::packages::LocalWidgetPackageImport localWidgetPackageImport_;
+    std::optional<gba::LocalWidgetPackageInstallResult>
+        lastLocalWidgetPackageInstallResult_;
     gba::PlatformAppearanceState appearanceState_;
     gba::NativeRenderStyle canvasStyle_;
     gba::NativeRenderStyle backdropStyle_;

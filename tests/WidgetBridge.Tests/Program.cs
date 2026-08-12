@@ -73,6 +73,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry releases refused and failed-start residency", BridgeClientRegistryScenarios.BudgetRefusalAndFailedStartReleaseReservations),
     ("Client registry terminal disposal serializes with operations", BridgeClientRegistryScenarios.TerminalDisposalSerializesWithConcurrentOperation),
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
+    ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
+    ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
+    ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
     ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
@@ -100,6 +103,17 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Worker residency budget refuses count overcommit and releases failures", WorkerResidencyCountIsBounded),
     ("Worker residency reports memory guidance without private-size refusal", WorkerResidencyMemoryIsAdvisory),
 };
+
+var testPrefixIndex = Array.IndexOf(args, "--test-prefix");
+if (testPrefixIndex >= 0)
+{
+    if (testPrefixIndex + 1 >= args.Length)
+        throw new ArgumentException("Missing --test-prefix value.");
+    var prefix = args[testPrefixIndex + 1];
+    tests = tests.Where(test => test.Name.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+    if (tests.Length == 0)
+        throw new ArgumentException($"No WidgetBridge tests matched prefix '{prefix}'.");
+}
 
 var failures = new List<string>();
 foreach (var test in tests)
@@ -679,6 +693,52 @@ static Task RequestClassificationIsClosed()
     });
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
     Assert.Equal<string?>(null, artwork.WidgetId);
+
+    var localInstall = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.InstallLocalWidgetPackage,
+        RequestId = 8,
+        Payload = BridgeJson.ToElement(new BridgeLocalWidgetPackageInstallRequest(
+            "11111111-2222-3333-4444-555555555555",
+            @"C:\fixture.gbarwidget",
+            new BridgeLocalWidgetPackageOrigin(
+                "settings", "org.gbar.firstparty.settings", "org.gbar.firstparty",
+                "settings.default", new string('a', 64), new string('b', 64)))),
+    });
+    Assert.Equal(BridgeRequestKind.InstallLocalWidgetPackage, localInstall.Kind);
+    Assert.Equal<string?>(null, localInstall.WidgetId);
+
+    var localCancel = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.CancelLocalWidgetPackageInstall,
+        RequestId = 9,
+        Payload = BridgeJson.ToElement(new BridgeLocalWidgetPackageInstallCancelRequest(
+            "11111111-2222-3333-4444-555555555555")),
+    });
+    Assert.Equal(BridgeRequestKind.CancelLocalWidgetPackageInstall, localCancel.Kind);
+    Assert.Equal<string?>(null, localCancel.WidgetId);
+
+    var forgedLocalInstall = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.InstallLocalWidgetPackage,
+        RequestId = 10,
+        Payload = BridgeJson.ToElement(new
+        {
+            operationId = "11111111-2222-3333-4444-555555555555",
+            packagePath = @"C:\fixture.gbarwidget",
+            origin = new
+            {
+                widgetId = "settings",
+                packageId = "org.gbar.firstparty.settings",
+                publisherId = "org.gbar.firstparty",
+                instanceId = "settings.default",
+                runtimeGeneration = new string('a', 64),
+                presentationGeneration = new string('b', 64),
+            },
+            workerPath = @"C:\forbidden.exe",
+        }),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, forgedLocalInstall.Kind);
 
     var malformedArtwork = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
@@ -1871,6 +1931,175 @@ static async Task CatalogReconciliationPreservesCompatibleWorkers()
         "Worker-affecting declaration change did not advance runtime generation.");
 }
 
+static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
+{
+    using var root = new TemporaryDirectory("gba-local-package-import");
+    using var trusted = TemporaryCatalog.Create(
+        id: "settings",
+        packageId: "org.gbar.firstparty.settings",
+        publisherId: "org.gbar.firstparty",
+        instanceId: "settings.default",
+        declaredCapabilities: []);
+    var initial = BridgeCatalog.Load(trusted.Path);
+    await using var registry = new RegistryFixture(initial);
+    await registry.SetLifecycleAsync("settings", WidgetLifecycleState.Interactive);
+    var publicSettings = initial.Widgets.Single();
+    var origin = new BridgeLocalWidgetPackageOrigin(
+        publicSettings.Id, "org.gbar.firstparty.settings", "org.gbar.firstparty",
+        publicSettings.InstanceId, publicSettings.RuntimeGeneration,
+        publicSettings.PresentationGeneration);
+    var installedRoot = Path.Combine(root.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(installedRoot);
+    await using var monitor = new BridgeCatalogMonitor(
+        trusted.Path, installedRoot, Environment.ProcessPath!, initial);
+    var revisions = 0;
+    monitor.Changed += (_, _) => ++revisions;
+    var completion = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var service = new BridgeLocalWidgetPackageImportService(
+        registry.Registry, catalog, monitor,
+        result => { completion.TrySetResult(result); return Task.CompletedTask; });
+    var packagePath = await CreateWidgetPackageAsync(
+        root.Path, "dev.example.local", "1.2.3");
+    service.Start(new BridgeLocalWidgetPackageInstallRequest(
+        "11111111-2222-3333-4444-555555555555", packagePath, origin),
+        CancellationToken.None);
+    var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+    Assert.Equal("installed-disabled", result.Status);
+    Assert.Equal("dev.example.local", result.WidgetId);
+    Assert.Equal("1.2.3", result.Version);
+    Assert.True(!result.Message.Contains(packagePath, StringComparison.OrdinalIgnoreCase) &&
+                !result.Message.Contains('\\') && !result.Message.Contains('/'),
+        "Local package completion exposed a filesystem path.");
+    var snapshot = await catalog.DiscoverAsync();
+    var installed = snapshot.Widgets.Single(widget => widget.Id == "dev.example.local");
+    Assert.False(installed.Enabled, "Local import enabled a package without review.");
+    Assert.Equal("1.2.3", installed.ActiveVersion.Version.ToString());
+    Assert.Equal(1L, monitor.Revision);
+    Assert.Equal(1, revisions);
+}
+
+static async Task LocalPackageImportFailuresPreserveCatalog()
+{
+    using var root = new TemporaryDirectory("gba-local-package-failures");
+    var installedRoot = Path.Combine(root.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(installedRoot);
+    var origin = new BridgeLocalWidgetPackageOrigin(
+        "settings", "org.gbar.firstparty.settings", "org.gbar.firstparty",
+        "settings.default", new string('a', 64), new string('b', 64));
+    var operation = 0;
+    var originCurrent = true;
+    var beforePublish = new Func<CancellationToken, Task>(_ => Task.CompletedTask);
+
+    async Task<BridgeLocalWidgetPackageInstallCompleted> RunAsync(
+        string packagePath,
+        Func<string, Stream>? opener = null,
+        Func<CancellationToken, Task>? prePublish = null,
+        Action<BridgeLocalWidgetPackageImportService>? started = null)
+    {
+        var completion = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var service = new BridgeLocalWidgetPackageImportService(
+            catalog,
+            _ => originCurrent
+                ? NoopDisposable.Instance
+                : throw new BridgeProtocolException("Synthetic stale origin."),
+            _ => Task.CompletedTask,
+            result => { completion.TrySetResult(result); return Task.CompletedTask; },
+            opener,
+            prePublish ?? beforePublish);
+        var operationId = $"00000000-0000-0000-0000-{++operation:000000000000}";
+        service.Start(new BridgeLocalWidgetPackageInstallRequest(
+            operationId, packagePath, origin), CancellationToken.None);
+        started?.Invoke(service);
+        return await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    var invalid = Path.Combine(root.Path, "invalid.gbarwidget");
+    await File.WriteAllTextAsync(invalid, "not a package");
+    var invalidResult = await RunAsync(invalid);
+    Assert.Equal("failed", invalidResult.Status);
+    Assert.Equal(0, (await catalog.DiscoverAsync()).Widgets.Count);
+    Assert.True(!invalidResult.Message.Contains(root.Path, StringComparison.OrdinalIgnoreCase),
+        "Invalid-package diagnostic exposed its source path.");
+
+    var valid = await CreateWidgetPackageAsync(root.Path, "dev.example.stable", "1.0.0");
+    var first = await RunAsync(valid);
+    Assert.Equal("installed-disabled", first.Status);
+    var beforeDuplicate = (await catalog.DiscoverAsync()).Widgets.Single()
+        .ActiveVersion.ContentDigest;
+    var duplicate = await RunAsync(valid);
+    Assert.Equal("failed", duplicate.Status);
+    var afterDuplicate = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal(beforeDuplicate, afterDuplicate.ActiveVersion.ContentDigest);
+    Assert.False(afterDuplicate.Enabled, "Duplicate import changed enabled state.");
+
+    var stalePackage = await CreateWidgetPackageAsync(
+        root.Path, "dev.example.stale", "1.0.0");
+    originCurrent = true;
+    var stale = await RunAsync(
+        stalePackage,
+        prePublish: _ => { originCurrent = false; return Task.CompletedTask; });
+    Assert.Equal("failed", stale.Status);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.All(
+        widget => widget.Id != "dev.example.stale"),
+        "Stale Settings origin published a package.");
+    originCurrent = true;
+
+    var lockedPackage = await CreateWidgetPackageAsync(
+        root.Path, "dev.example.locked", "1.0.0");
+    var lockEntered = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var lockRelease = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var lockedTask = RunAsync(
+        lockedPackage,
+        prePublish: async token =>
+        {
+            lockEntered.TrySetResult();
+            await lockRelease.Task.WaitAsync(token);
+        });
+    await lockEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    _ = Assert.Throws<IOException>(() =>
+    {
+        using var writer = new FileStream(
+            lockedPackage, FileMode.Open, FileAccess.Write, FileShare.None);
+    });
+    lockRelease.TrySetResult();
+    Assert.Equal("installed-disabled", (await lockedTask).Status);
+
+    var cancelPackage = await CreateWidgetPackageAsync(
+        root.Path, "dev.example.cancel", "1.0.0");
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    BridgeLocalWidgetPackageImportService? active = null;
+    var cancelTask = RunAsync(
+        cancelPackage,
+        prePublish: async token =>
+        {
+            entered.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        },
+        started: service => active = service);
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    Assert.True(active!.Cancel("00000000-0000-0000-0000-000000000006"),
+        "Active local import did not accept exact cancellation.");
+    Assert.Equal("cancelled", (await cancelTask).Status);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.All(
+        widget => widget.Id != "dev.example.cancel"),
+        "Cancelled package was published.");
+
+    var linkTarget = await CreateWidgetPackageAsync(
+        root.Path, "dev.example.reparse", "1.0.0");
+    var link = Path.Combine(root.Path, "reparse.gbarwidget");
+    File.CreateSymbolicLink(link, linkTarget);
+    var reparse = await RunAsync(link);
+    Assert.Equal("failed", reparse.Status);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.All(
+        widget => widget.Id != "dev.example.reparse"),
+        "Reparse-point package was published.");
+}
+
 static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     GameBarAlternative.WidgetCatalog.WidgetCatalog catalog,
     string packageDirectory,
@@ -1882,7 +2111,24 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     WidgetGlyph icon = WidgetGlyph.Connection,
     string version = "1.0.0")
 {
-    var packagePath = Path.Combine(packageDirectory, $"{id}-{version}.gbarwidget");
+    var packagePath = await CreateWidgetPackageAsync(
+        packageDirectory, id, version, styleSource, permissions, residencyPolicy, icon);
+    var installed = await catalog.InstallAsync(packagePath);
+    if (enabled) await catalog.SetEnabledAsync(id, true);
+    return installed;
+}
+
+static async Task<string> CreateWidgetPackageAsync(
+    string packageDirectory,
+    string id,
+    string version,
+    string styleSource = "button { color: #abcdef; }",
+    IReadOnlyList<string>? permissions = null,
+    WidgetResidencyPolicy? residencyPolicy = null,
+    WidgetGlyph icon = WidgetGlyph.Connection)
+{
+    var packagePath = Path.Combine(
+        packageDirectory, $"{id}-{version}-{Guid.NewGuid():N}.gbarwidget");
     var manifest = new WidgetManifest
     {
         Id = id,
@@ -1909,9 +2155,7 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
         WriteArchiveEntry(archive, "styles/default.gbss",
             System.Text.Encoding.UTF8.GetBytes(styleSource));
     }
-    var installed = await catalog.InstallAsync(packagePath);
-    if (enabled) await catalog.SetEnabledAsync(id, true);
-    return installed;
+    return packagePath;
 }
 
 static void WriteArchiveEntry(ZipArchive archive, string path, ReadOnlySpan<byte> content)
@@ -3147,6 +3391,12 @@ file sealed class TemporaryDirectory : IDisposable
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
     }
+}
+
+file sealed class NoopDisposable : IDisposable
+{
+    internal static NoopDisposable Instance { get; } = new();
+    public void Dispose() { }
 }
 
 file sealed class StalledAdmissionFixture

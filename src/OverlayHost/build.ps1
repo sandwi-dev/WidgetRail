@@ -15,6 +15,7 @@ param(
     [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetSessionTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
+    [switch]$LocalPackageImportTestsOnly,
     [switch]$WidgetSurfaceTestsOnly
 )
 
@@ -117,6 +118,7 @@ $trayLayoutTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-layout-tes
 $hostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\host-accessibility-tests'
 $accessibilityEventsTestObjectDirectory = Join-Path $outputDirectory 'obj\accessibility-events-tests'
 $bridgeCatalogTestObjectDirectory = Join-Path $outputDirectory 'obj\bridge-catalog-tests'
+$localPackageImportTestObjectDirectory = Join-Path $outputDirectory 'obj\local-package-import-tests'
 $textEntryModalTestObjectDirectory = Join-Path $outputDirectory 'obj\text-entry-modal-tests'
 $rendererTestObjectDirectory = Join-Path $outputDirectory 'obj\renderer-tests'
 $semanticChurnTestObjectDirectory = Join-Path $outputDirectory 'obj\semantic-churn-performance-tests'
@@ -126,7 +128,7 @@ $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surfa
 $widgetSessionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-session-coordinator-tests'
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -296,6 +298,24 @@ function Invoke-TextEntryModalTests {
     }
 }
 
+function Invoke-LocalPackageImportTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'LocalWidgetPackageImportTests.cpp'),
+        (Join-Path $projectDirectory 'LocalWidgetPackageImport.cpp'),
+        "/Fo:$localPackageImportTestObjectDirectory\",
+        "/Fe:$outputDirectory\LocalWidgetPackageImportTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib', 'ole32.lib', 'uuid.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "LocalWidgetPackageImportTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'LocalWidgetPackageImportTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "LocalWidgetPackageImportTests failed with exit code $LASTEXITCODE."
+    }
+}
+
 function Invoke-CompositionTests {
     $placementArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
@@ -453,9 +473,16 @@ function Invoke-WidgetSwitchHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests build failed with exit code $LASTEXITCODE."
     }
+    & dotnet publish `
+        (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $widgetSwitchFixtureOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Widget switch fixture publish failed with exit code $LASTEXITCODE."
+    }
     $fixture = Join-Path $widgetSwitchFixtureOutput 'WidgetSwitchFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
-        throw 'WidgetSwitchFixture.exe is unavailable; run one packaged focused build first.'
+        throw 'Widget switch fixture publish omitted WidgetSwitchFixture.exe.'
     }
     & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
         --installation $outputDirectory `
@@ -548,6 +575,14 @@ if ($ProcessOwnerTestsOnly) {
         throw 'ProcessOwnerTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-OverlayProcessOwnerTests
+    return
+}
+
+if ($LocalPackageImportTestsOnly) {
+    if ($SkipTests) {
+        throw 'LocalPackageImportTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-LocalPackageImportTests
     return
 }
 
@@ -692,6 +727,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+    (Join-Path $projectDirectory 'LocalWidgetPackageImport.cpp'),
     (Join-Path $projectDirectory 'WidgetSessionCoordinator.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
     (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
@@ -733,7 +769,7 @@ $hostArguments = $common + @(
     'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
     'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',
-    'uiautomationcore.lib', 'advapi32.lib'
+    'uiautomationcore.lib', 'advapi32.lib', 'uuid.lib'
 )
 
 & $cl $hostArguments

@@ -39,6 +39,7 @@
     <ClCompile Include="OverlayCompositionSurface.cpp" />
     <ClCompile Include="OverlayState.cpp" />
     <ClCompile Include="WidgetBridgeClient.cpp" />
+    <ClCompile Include="LocalWidgetPackageImport.cpp" />
     <ClCompile Include="WidgetSessionCoordinator.cpp" />
     <ClCompile Include="RemoteImageCache.cpp" />
     <ClCompile Include="DeclarativeLayout.cpp" />
@@ -57,6 +58,7 @@
     <ClInclude Include="OverlayState.h" />
     <ClInclude Include="OverlayCompositionSurface.h" />
     <ClInclude Include="WidgetBridgeClient.h" />
+    <ClInclude Include="LocalWidgetPackageImport.h" />
     <ClInclude Include="WidgetSessionCoordinator.h" />
     <ClInclude Include="RemoteImageCache.h" />
     <ClInclude Include="DeclarativeLayout.h" />

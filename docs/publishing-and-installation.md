@@ -2,9 +2,10 @@
 
 Status: deterministic pack/install/catalog commands, bounded HTTPS release
 downloads, immutable version pin/rollback CLI, live last-good bridge catalog
-revisions, and controller package review/enablement are implemented; publisher
-signing, automatic update discovery, and version removal/garbage collection are
-not
+revisions, controller package review/enablement, and the host-owned local-file
+picker/import prerequisite are implemented; the visible Settings import action,
+publisher signing, automatic update discovery, and version removal/garbage
+collection are not
 
 ## Recommended workflow today: share source and immutable releases on GitHub
 
@@ -249,6 +250,30 @@ source path during the command cannot substitute different package bytes. A
 policy rejection removes staging and leaves the installed catalog unchanged.
 Remote installation applies the same pre-publish policy to its already locked,
 digest-verified temporary-file stream.
+
+The native host now has the matching private `.gbarwidget` picker/import
+boundary for the forthcoming Settings action. It admits one modal
+`IFileOpenDialog` only while the exact bundled Settings instance is current and
+`Interactive`, revalidates instance plus runtime/presentation generations after
+selection and immediately before catalog publication, and cancels with the
+overlay lifecycle. The bridge opens the selected regular file without following
+reparse points and without write sharing, feeds that one stream to the same
+`WidgetCatalog` installer, leaves every successful package disabled, and emits
+one semantic catalog revision. Completion status is bounded and path-free; the
+selected path is never sent to a widget worker or returned in the result. This
+host prerequisite is not yet a visible Settings control and does not add remote
+acquisition, enablement, consent, publisher proof, or signing authority.
+
+The private consumer contract is intentionally closed: only an enabled,
+non-busy element with action `host.install-local-widget`, element ID
+`installed.install-local`, and active input scope `installed.widgets` can be
+claimed. Controller, pointer, and UI Automation activation all enter the same
+native admission path. The host then binds that rendered element to the current
+`settings.default` snapshot and exact bundled package, publisher, instance,
+runtime generation, presentation generation, and `Interactive` lifecycle.
+Ordinary or partially matching actions are never forwarded as install requests.
+This naming contract exists solely for the forthcoming built-in Settings view;
+it is not a public widget action or package capability.
 
 The default catalog is
 `%LOCALAPPDATA%\GameBarAlternative\widgets`. Every catalog command accepts the
