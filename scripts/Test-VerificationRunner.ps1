@@ -7,9 +7,12 @@ Import-Module (Join-Path $PSScriptRoot 'VerificationRunner.psm1') -Force
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $manifestPath = Join-Path $PSScriptRoot 'verification-steps.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$manifestProjects = @($manifest.steps.arguments | ForEach-Object { $_ } |
+$manifestProjectReferences = @($manifest.steps |
+    Where-Object { $_.arguments[0] -in @('run', 'test') } |
+    ForEach-Object { $_.arguments } | ForEach-Object { $_ } |
     Where-Object { $_ -is [string] -and $_.EndsWith('.csproj', [StringComparison]::OrdinalIgnoreCase) } |
-    ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique)
+    ForEach-Object { $_.Replace('\', '/') })
+$manifestProjects = @($manifestProjectReferences | Sort-Object -Unique)
 $testProjects = @(Get-ChildItem (Join-Path $repositoryRoot 'tests') -Recurse -Filter '*.csproj' -File |
     Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' } |
     Where-Object { $_.Directory.Name.EndsWith('.Tests', [StringComparison]::Ordinal) } |
@@ -18,6 +21,11 @@ $testProjects = @(Get-ChildItem (Join-Path $repositoryRoot 'tests') -Recurse -Fi
 $missingProjects = @($testProjects | Where-Object { $_ -notin $manifestProjects })
 if ($missingProjects.Count -ne 0) {
     throw "Verification manifest omits test project: $($missingProjects[0])"
+}
+$duplicateProjects = @($manifestProjectReferences | Group-Object |
+    Where-Object Count -ne 1)
+if ($duplicateProjects.Count -ne 0) {
+    throw "Verification manifest repeats project: $($duplicateProjects[0].Name)"
 }
 $duplicateIds = @($manifest.steps | Group-Object id | Where-Object Count -ne 1)
 if ($manifest.schemaVersion -ne 1 -or $duplicateIds.Count -ne 0) {
