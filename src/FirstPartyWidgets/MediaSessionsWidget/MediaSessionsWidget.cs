@@ -43,7 +43,6 @@ public sealed class MediaSessionsWidget : Widget
         WidgetMediaSessionCommand,
         CommandExecution,
         bool> _transportCommand;
-    private CancellationTokenSource? _runLifetime;
     private Task? _progressLoop;
     private long _runGeneration;
 
@@ -169,6 +168,7 @@ public sealed class MediaSessionsWidget : Widget
         var selectedPill = SessionElementId(selected.SessionId);
         var togglePending = pending is WidgetMediaSessionCommand.TogglePlayPause or
             WidgetMediaSessionCommand.Play or WidgetMediaSessionCommand.Pause;
+        var reconnectId = model.LiveUpdatesAvailable ? null : "media.retry.live";
         var previous = UI.Button("", "media.previous", "media.previous")
             .Icon(WidgetGlyph.Previous, selected.CanPrevious ? "Previous track" : "Previous unavailable")
             .Disabled(!selected.CanPrevious || pending == WidgetMediaSessionCommand.Previous)
@@ -190,6 +190,12 @@ public sealed class MediaSessionsWidget : Widget
             .Busy(pending == WidgetMediaSessionCommand.Next)
             .FocusUp(selectedPill).FocusLeft("media.play-toggle")
             .Classes("media-transport", "media-next");
+        if (reconnectId is not null)
+        {
+            previous = previous.FocusDown(reconnectId);
+            toggle = toggle.FocusDown(reconnectId);
+            next = next.FocusDown(reconnectId);
+        }
 
         WidgetElement artwork = string.IsNullOrWhiteSpace(selected.ArtworkPngBase64)
             ? UI.Icon(WidgetGlyph.Music, "media.artwork-placeholder",
@@ -202,7 +208,8 @@ public sealed class MediaSessionsWidget : Widget
                     ImageFit.Cover)
                 .Classes("media-artwork", "media-artwork-image");
 
-        var root = UI.Stack("media.root",
+        var content = new List<WidgetElement>
+        {
                 header,
                 UI.HorizontalScroll("media.session-scroll", pills).Classes("media-session-list"),
                 UI.Row("media.now-playing",
@@ -223,7 +230,14 @@ public sealed class MediaSessionsWidget : Widget
                                     .Classes("media-timeline"))
                             .Classes("media-track-details"))
                     .Classes("media-now-playing"),
-                UI.Row("media.controls", previous, toggle, next).Classes("media-controls"))
+                UI.Row("media.controls", previous, toggle, next).Classes("media-controls"),
+        };
+        if (reconnectId is not null)
+            content.Add(UI.Button("Try again", "media.retry", reconnectId)
+                .Icon(WidgetGlyph.Refresh, "Reconnect live media updates")
+                .FocusUp("media.play-toggle")
+                .Classes("media-retry"));
+        var root = UI.Stack("media.root", content.ToArray())
             .InputScope("media-sessions")
             .Classes("media-sessions-widget");
         if (selected.CanPrevious) root = root.Shortcut(ControllerButton.LeftBumper, "media.previous");
@@ -249,7 +263,7 @@ public sealed class MediaSessionsWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        StartActiveRun(activeLifetime);
+        StartActiveRun();
         _progressLoop = RunPeriodicUpdatesWhileActiveAsync(
             TimeSpan.FromMilliseconds(250),
             _ =>
@@ -266,14 +280,12 @@ public sealed class MediaSessionsWidget : Widget
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        StopActiveRun();
         _progressLoop = null;
         return ValueTask.CompletedTask;
     }
 
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        StopActiveRun();
         _progressLoop = null;
         return ValueTask.CompletedTask;
     }
@@ -296,7 +308,7 @@ public sealed class MediaSessionsWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         if (action.ActionId == "media.retry")
         {
-            if (IsActive) StartActiveRun(ActiveCancellationToken, rejectIfLoading: true);
+            if (IsActive) StartActiveRun();
             return;
         }
         if (action.ActionId == "media.select")
@@ -432,44 +444,40 @@ public sealed class MediaSessionsWidget : Widget
         long RunGeneration,
         long SnapshotRevision);
 
-    private void StartActiveRun(
-        CancellationToken activeLifetime,
-        bool rejectIfLoading = false)
+    private WidgetOperationHandle StartActiveRun()
     {
-        if (rejectIfLoading)
-        {
-            // Controller repeats and stale rendered snapshots can deliver a
-            // second activation before the loading snapshot reaches the host.
-            // Admit the reload atomically so the fresh native request survives.
-            var admitted = _model.Update(state => state.ReloadInFlight
-                ? (state, false)
-                : (state with { ReloadInFlight = true }, true)).Result;
-            if (!admitted) return;
-        }
-        var prior = Interlocked.Exchange(ref _runLifetime, null);
-        prior?.Cancel();
-        prior?.Dispose();
-        var lifetime = CancellationTokenSource.CreateLinkedTokenSource(activeLifetime);
-        _runLifetime = lifetime;
-        var generation = Interlocked.Increment(ref _runGeneration);
-        _model.Update(state => state with
-        {
-            ReloadInFlight = true,
-            ViewState = MediaSessionsViewState.Loading,
-            Status = "Loading Windows media sessions…",
-            LiveUpdatesAvailable = false,
-        });
-        _ = ObserveAsync(generation, lifetime.Token);
-    }
-
-    private void StopActiveRun()
-    {
-        var lifetime = Interlocked.Exchange(ref _runLifetime, null);
-        lifetime?.Cancel();
-        lifetime?.Dispose();
-        _model.Update(state => state.ReloadInFlight
-            ? state with { ReloadInFlight = false }
-            : state);
+        return Operations.RunSingleFlight(
+            "media.reload",
+            async context =>
+            {
+                var generation = context.Generation;
+                Interlocked.Exchange(ref _runGeneration, generation);
+                _model.Update(state => state with
+                {
+                    ReloadInFlight = true,
+                    ViewState = state.Sessions.Count == 0
+                        ? MediaSessionsViewState.Loading
+                        : MediaSessionsViewState.Ready,
+                    Status = state.Sessions.Count == 0
+                        ? "Loading Windows media sessions…"
+                        : "Refreshing current media…",
+                    LiveUpdatesAvailable = false,
+                });
+                try
+                {
+                    await ObserveAsync(generation, context.CancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    _model.Update(state =>
+                        Interlocked.Read(ref _runGeneration) == generation &&
+                        state.ReloadInFlight
+                            ? state with { ReloadInFlight = false }
+                            : state);
+                }
+            },
+            WidgetOperationLifetime.Active);
     }
 
     private async Task ObserveAsync(long generation, CancellationToken cancellationToken)
@@ -498,12 +506,17 @@ public sealed class MediaSessionsWidget : Widget
             var hasCurrentSnapshot = false;
             try
             {
-                Apply(await HostServices.Media.GetSessionsAsync(cancellationToken)
-                    .ConfigureAwait(false), generation, liveUpdatesAvailable: true);
+                var sessions = await HostServices.Media.GetSessionsAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                Apply(sessions, generation, liveUpdatesAvailable: true);
                 hasCurrentSnapshot = true;
                 await foreach (var change in subscription.ReadAllAsync(cancellationToken)
                                    .WithCancellation(cancellationToken).ConfigureAwait(false))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     Apply(change.Sessions, generation, liveUpdatesAvailable: true);
+                }
                 SetLiveUpdateFailure(
                     new WidgetCapabilityException("channel_closed", "Media service disconnected."),
                     generation);
@@ -526,8 +539,10 @@ public sealed class MediaSessionsWidget : Widget
     {
         try
         {
-            Apply(await HostServices.Media.GetSessionsAsync(cancellationToken).ConfigureAwait(false),
-                generation, liveUpdatesAvailable: false);
+            var sessions = await HostServices.Media.GetSessionsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            Apply(sessions, generation, liveUpdatesAvailable: false);
             SetLiveUpdateFailure(subscriptionError, generation);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -684,11 +699,22 @@ public sealed class MediaSessionsWidget : Widget
         return new WidgetView(root, "media.retry", Surface: CompactSurface);
     }
 
-    private void SetError(MediaSessionsViewState state, string status, long generation)
+    private void SetLoadFailure(Exception exception, long generation)
     {
+        var (state, status) = ClassifyFailure(exception, liveUpdatesOnly: false);
+        var (_, retainedStatus) = ClassifyFailure(exception, liveUpdatesOnly: true);
         _model.Update(current =>
         {
             if (Interlocked.Read(ref _runGeneration) != generation) return current;
+            if (current.Sessions.Count != 0)
+                return current with
+                {
+                    ViewState = MediaSessionsViewState.Ready,
+                    Status = retainedStatus,
+                    PendingCommand = null,
+                    LiveUpdatesAvailable = false,
+                    ReloadInFlight = false,
+                };
             return current with
             {
                 ViewState = state,
@@ -701,19 +727,19 @@ public sealed class MediaSessionsWidget : Widget
         });
     }
 
-    private void SetLoadFailure(Exception exception, long generation)
-    {
-        var (state, status) = ClassifyFailure(exception, liveUpdatesOnly: false);
-        SetError(state, status, generation);
-    }
-
     private void SetLiveUpdateFailure(Exception exception, long generation)
     {
         var (_, status) = ClassifyFailure(exception, liveUpdatesOnly: true);
         _model.Update(state =>
         {
             if (Interlocked.Read(ref _runGeneration) != generation) return state;
-            return state with { LiveUpdatesAvailable = false, Status = status };
+            return state with
+            {
+                LiveUpdatesAvailable = false,
+                Status = state.Sessions.Count == 0
+                    ? "No active Windows media sessions · live updates unavailable"
+                    : status,
+            };
         });
     }
 
@@ -738,13 +764,15 @@ public sealed class MediaSessionsWidget : Widget
             "lifecycle_denied" => (MediaSessionsViewState.LifecycleDenied,
                 liveUpdatesOnly ? "Current media shown · live updates are paused" :
                     "Media access is paused"),
-            "channel_closed" => (MediaSessionsViewState.ChannelClosed,
+            "channel_closed" or "request_canceled" or "request_limit" =>
+                (MediaSessionsViewState.ChannelClosed,
                 liveUpdatesOnly ? "Current media shown · live updates disconnected" :
                     "Media service disconnected"),
             "platform_unavailable" => (MediaSessionsViewState.ServiceUnavailable,
                 liveUpdatesOnly ? "Current media shown · live updates unavailable" :
                     "Windows media controls unavailable"),
-            "malformed_event" or "malformed_response" or "unsupported_protocol" =>
+            "malformed_event" or "malformed_response" or "unsupported_protocol" or
+                "protocol_violation" or "invalid_backend_data" or "response_too_large" =>
                 (MediaSessionsViewState.Error,
                     liveUpdatesOnly ? "Current media shown · live update response was invalid" :
                         "Media response was invalid"),

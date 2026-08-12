@@ -117,6 +117,14 @@ verifiers, access/refresh tokens, or credential-vault contents into logs or an
 issue. A successful local Client-ID write is public configuration; it is not
 evidence that the package version or running provider was refreshed.
 
+For Now Playing load failures, `overlay.log` may contain a bounded
+`Media Sessions diagnostic` line with `stage=snapshot-read`,
+`subscription-open`, or `subscription-read` and a sanitized broker `code`.
+The line deliberately omits player/session identity, media metadata, process
+details, and provider bodies. `platform_unavailable`, `permission_denied`,
+`lifecycle_denied`, and `channel_closed` therefore identify the owning boundary
+without exposing which application is playing media.
+
 ## Manifest validation fails
 
 - JSON property names and casing are strict; unknown members fail.

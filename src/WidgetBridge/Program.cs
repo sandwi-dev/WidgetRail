@@ -55,6 +55,8 @@ internal static class Program
             };
             catalogMonitor.Start();
             var settingsStore = new PlatformSettingsStore(settingsPaths);
+            await using var mediaDiagnostics = new MediaSessionsDiagnosticLog(
+                Path.Combine(settingsPaths.RootDirectory, "overlay.log"));
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,
                 new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
@@ -78,7 +80,7 @@ internal static class Program
                         new WidgetConfigurationStore(settingsPaths))));
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
-                catalogMonitor, residencyBudget);
+                catalogMonitor, residencyBudget, mediaDiagnostics.Record);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

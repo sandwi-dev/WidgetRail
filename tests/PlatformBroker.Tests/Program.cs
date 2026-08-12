@@ -49,6 +49,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipe framing rejects oversized payloads before allocation", PipeFramesAreBounded),
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
+    ("Pipe diagnostics preserve bounded Media Sessions stage and code", PipeMediaDiagnosticsAreTyped),
     ("Pipe Spotify authorization timeout is exact and callback-bounded", PipeSpotifyAuthorizationTimeoutIsExact),
     ("Pipe Spotify connect remains live when foreground loss backgrounds the widget", PipeSpotifyConnectSurvivesBackground),
     ("Pipe loopback timeout extends only the declared long operation", PipeLoopbackTimeoutIsOperationSpecific),
@@ -3216,6 +3217,84 @@ static async Task PipeRequestsAreBound()
         PlatformCapabilities.AudioSessionsList,
         new { });
     Assert.Equal("lifecycle_denied", denied.ErrorCode);
+}
+
+static async Task PipeMediaDiagnosticsAreTyped()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(
+        identity, PlatformCapabilities.MediaSessionsReadV1, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetMediaSessions([
+        new MediaSessionSummary(
+            "media-one", "Player", "Track", "Artist", MediaPlaybackStatus.Playing,
+            1_000, 10_000, 1, 1, true, true, true, true, true, true),
+    ]);
+    var diagnostics = new List<BrokerCapabilityDiagnostic>();
+    var pipeName = $"gba-broker-media-diagnostic-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(
+        pipeName,
+        identity,
+        [PlatformCapabilities.MediaSessionsReadV1],
+        store,
+        backend,
+        appLibraryArtworkRegistry: null,
+        options: TransportOptions(),
+        channelNonce: new string('M', 64),
+        diagnosticSink: diagnostic => diagnostics.Add(diagnostic));
+    var serverTask = server.RunAsync();
+    await using var client = new BrokerPipeClient(
+        pipeName, identity, server.ChannelNonce, TransportOptions());
+    await client.ConnectAsync();
+
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    var response = await client.RequestAsync(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet,
+        new { });
+    Assert.True(response.Succeeded);
+    Assert.True(diagnostics.Any(item => item == new BrokerCapabilityDiagnostic(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet,
+        "request",
+        null)));
+
+    await using var subscription = await client.SubscribeAsync(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged);
+    Assert.True(diagnostics.Any(item => item == new BrokerCapabilityDiagnostic(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged,
+        "subscription-open",
+        null)));
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged,
+        new MediaSessionsChangedEvent([])));
+    _ = await subscription.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(diagnostics.Any(item => item == new BrokerCapabilityDiagnostic(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged,
+        "subscription-read",
+        null)));
+
+    server.SetLifecycle(BrokerLifecycleState.Background);
+    var denied = await client.RequestAsync(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet,
+        new { });
+    Assert.Equal("lifecycle_denied", denied.ErrorCode);
+    Assert.True(diagnostics.Any(item => item == new BrokerCapabilityDiagnostic(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsGet,
+        "request",
+        "lifecycle_denied")));
+
+    await subscription.DisposeAsync();
+    await client.DisposeAsync();
+    await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
 }
 
 static async Task PipeCancellationIsObserved()

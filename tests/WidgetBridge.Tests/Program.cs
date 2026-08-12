@@ -75,6 +75,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
+    ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
@@ -455,6 +456,64 @@ static async Task DiagnosticsAreSettingsOnly()
     Assert.Equal(
         Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
         companion.WorkerArguments[pidIndex + 1]);
+}
+
+static async Task MediaSessionDiagnosticsAreBounded()
+{
+    using var temporary = new TemporaryDirectory("gba-media-diagnostics");
+    var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
+    await using (var diagnostics = new MediaSessionsDiagnosticLog(path))
+    {
+        diagnostics.Record(
+            "media-sessions",
+            PlatformCapabilities.MediaSessionsReadV1,
+            PlatformCapabilities.MediaSessionsGet,
+            "request",
+            "channel_closed");
+        diagnostics.Record(
+            "media-sessions",
+            PlatformCapabilities.MediaSessionsReadV1,
+            PlatformCapabilities.MediaSessionsGet,
+            "request",
+            "channel_closed");
+        diagnostics.Record(
+            "media-sessions",
+            PlatformCapabilities.MediaSessionsReadV1,
+            PlatformCapabilities.MediaSessionsGet,
+            "request",
+            null);
+        diagnostics.Record(
+            "media-sessions",
+            PlatformCapabilities.MediaSessionsReadV1,
+            PlatformCapabilities.MediaSessionsGet,
+            "request",
+            "platform_unavailable");
+        diagnostics.Record(
+            "unsafe widget/path",
+            PlatformCapabilities.MediaSessionsReadV1,
+            PlatformCapabilities.MediaSessionsChanged,
+            "subscription-read",
+            "secret=player.exe");
+        diagnostics.Record(
+            "media-sessions",
+            PlatformCapabilities.AppLibraryReadV1,
+            "query",
+            "request",
+            "platform_unavailable");
+    }
+
+    var lines = File.ReadAllLines(path);
+    Assert.Equal(2, lines.Length);
+    Assert.True(lines[0].Contains(
+        "widget=media-sessions stage=snapshot-read code=channel_closed",
+        StringComparison.Ordinal), "First transition was not recorded.");
+    Assert.True(lines[1].Contains(
+        "widget=media-sessions stage=snapshot-read code=platform_unavailable",
+        StringComparison.Ordinal), "Reset transition was not recorded.");
+    Assert.True(lines.All(line =>
+        !line.Contains("player.exe", StringComparison.OrdinalIgnoreCase) &&
+        !line.Contains("secret", StringComparison.OrdinalIgnoreCase)),
+        "Unsafe diagnostic content crossed the bounded log boundary.");
 }
 
 static ConfiguredWidget DiagnosticCandidate() => new()

@@ -2808,6 +2808,25 @@ with C++ installed:
   an unrelated unavailable-launch workflow; the final acceptance mode is
   intentionally bounded to TextEntry admission and committed search.
 
+- DLV-103 makes Now Playing activation and Retry one SDK-owned Active
+  SingleFlight generation. The widget opens the changed-event subscription
+  before its current snapshot read, rejects cancellation-ignoring late reads or
+  events, treats an empty snapshot as success, retains last-good sessions when
+  refresh or the live channel fails, and exposes one reconnect action without
+  creating a detached task/lifecycle owner. Bridge records only bounded,
+  transition-deduplicated Media Sessions stage/code diagnostics in
+  `overlay.log`; player/session identity, media metadata, provider bodies,
+  process details, and credentials remain excluded. A production-shaped
+  installed AppContainer route covers success, empty, lifecycle channel
+  replacement, transient failure followed by Retry, stale completion, and
+  teardown. Retained focused Release run
+  `20260812T010704Z-4039ada8` passed Widget SDK 87/87, PlatformBroker 55/55,
+  Windows Media 13/13 (including one sanitized live GSMTC probe), Now Playing
+  20/20, WidgetBridge 79/79, and 57 documentation files in 37.8 seconds. The
+  separate bounded installed route passed from the same final production/test
+  implementation. This is scoped dirty-worktree evidence, not a canonical
+  aggregate or a substitute for the user's next packaged visual check.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:

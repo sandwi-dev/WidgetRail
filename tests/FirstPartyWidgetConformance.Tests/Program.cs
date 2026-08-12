@@ -145,6 +145,22 @@ if (args.Contains("--full-application-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--media-sessions-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        mediaSessionsOnly: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await MediaSessionsPackageRunsIsolated(
+        installed.Catalog,
+        deployment.Packages.Single());
+    Console.WriteLine("PASS installed Media Sessions lifecycle and retry acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -1824,6 +1840,114 @@ static async Task RunCatalogAsync(
     }
 }
 
+static async Task MediaSessionsPackageRunsIsolated(
+    BridgeCatalog catalog,
+    PackageFixture package)
+{
+    var configured = catalog.GetConfigured(package.Manifest.Id);
+    var backend = CreateBackend();
+    using var consentRoot = new TemporaryDirectory("gba-media-installed-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId,
+        configured.PublisherId,
+        configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+
+    backend.SetMediaSessions([]);
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged,
+        new MediaSessionsChangedEvent([])));
+    _ = await WaitForSnapshotAsync(client, "Nothing is playing");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    backend.MediaSessionsHandler = _ => Task.FromException<IReadOnlyList<MediaSessionSummary>>(
+        new BrokerException("platform_unavailable", "controlled transient failure"));
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var unavailable = await WaitForSnapshotAsync(client, "Windows media controls unavailable");
+    var retry = Nodes(unavailable.Root).Single(node => node.ActionId == "media.retry");
+
+    backend.MediaSessionsHandler = null;
+    backend.SetMediaSessions([
+        new MediaSessionSummary(
+            "media-recovered", "Conformance Player", "Recovered Song",
+            "Conformance Artist", MediaPlaybackStatus.Playing, 5_000, 180_000,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+            true, true, true, true, true),
+    ]);
+    await client.SendActionAsync(new WidgetActionEvent("media.retry", retry.Id));
+    _ = await WaitForSnapshotAsync(client, "Recovered Song");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    var readStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var readCanceled = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var staleRead = new TaskCompletionSource<IReadOnlyList<MediaSessionSummary>>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.MediaSessionsHandler = token =>
+    {
+        readStarted.TrySetResult();
+        token.Register(() => readCanceled.TrySetResult());
+        return staleRead.Task;
+    };
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var background = client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await readCanceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    staleRead.SetResult([
+        new MediaSessionSummary(
+            "media-stale", "Conformance Player", "Stale Song", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, true,
+            true, true, true, true, true),
+    ]);
+    await background.WaitAsync(TimeSpan.FromSeconds(2));
+
+    backend.MediaSessionsHandler = null;
+    backend.SetMediaSessions([
+        new MediaSessionSummary(
+            "media-current", "Conformance Player", "Current Song", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, true,
+            true, true, true, true, true),
+    ]);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var current = await WaitForSnapshotAsync(client, "Current Song");
+    Assert.True(!Nodes(current.Root).Any(node =>
+            (node.Text ?? string.Empty).Contains("Stale Song", StringComparison.Ordinal)),
+        "A cancellation-ignoring stale Media Sessions read reached the replacement generation.");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
+    Assert.True(!client.IsRunning, "The installed Media Sessions worker did not stop cleanly.");
+}
+
 static async Task ExerciseTextEntryAsync(
     PackageFixture package,
     WidgetProcessClient client,
@@ -2515,7 +2639,8 @@ file sealed class Deployment : IDisposable
         bool includeEvidencePackages = false,
         bool ytMusicOnly = false,
         bool communityRecoveryOnly = false,
-        bool fullApplicationOnly = false)
+        bool fullApplicationOnly = false,
+        bool mediaSessionsOnly = false)
     {
         var temporary = new TemporaryDirectory("gba-firstparty-conformance");
         try
@@ -2540,7 +2665,18 @@ file sealed class Deployment : IDisposable
                         typeof(FullApplicationWidget),
                         "helper-ready:"),
                 }
-                : new List<PackageSpec>
+                : mediaSessionsOnly
+                    ? new List<PackageSpec>
+                    {
+                        new PackageSpec(
+                            "media-sessions",
+                            "src/FirstPartyWidgets/MediaSessionsWidget",
+                            "MediaSessions",
+                            WidgetGlyph.Music,
+                            typeof(MediaSessionsWidget),
+                            "Conformance Song"),
+                    }
+                    : new List<PackageSpec>
                 {
                 new PackageSpec("media-sessions", "src/FirstPartyWidgets/MediaSessionsWidget", "MediaSessions", WidgetGlyph.Music,
                     typeof(MediaSessionsWidget), "Conformance Song"),

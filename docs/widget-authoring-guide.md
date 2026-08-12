@@ -946,9 +946,14 @@ and explicit `Invalidate()`.
 Now Playing's `MediaSessionsWidget` is the medium production reference: all of
 its render-facing state shares one model, and repeated selection of the current
 session is equality-suppressed while a real selection change invalidates once.
-Its transport path combines that model with the coordinator below. Domain
-projection, provider-event merge, error copy, and rollback stay explicit widget
-policy.
+Its transport path combines that model with an Active-lifetime SingleFlight
+operation: initial activation and repeated Retry join one current generation,
+deactivation drains the subscription/read, and cancellation-ignoring results
+are rejected before publication. Snapshot reads and event subscriptions remain
+independent, so a subscription failure can retain a valid current snapshot and
+a transient refresh failure retains last-good sessions with a reconnect action.
+Domain projection, provider-event merge, error copy, and rollback stay explicit
+widget policy.
 
 ### Optimistic commands
 
