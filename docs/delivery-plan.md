@@ -429,11 +429,12 @@ selection requires a material UX choice.
 
 ### DLV-131 — Freeze the data-only Launcher Experience Pack schema
 
-**State:** Assigned after the platform lane preserves the stopped DLV-124
-experiment on a separate `codex/` investigation branch, restores its clean
-`codex/impl-platform-switch` boundary, and merges exact accepted main `d792e30`;
-platform leads this shared schema/catalog foundation and then continues directly
-to DLV-132
+**State:** Implemented as `100c646` but not accepted or integrated. Review found
+the advertised WebP contract rejects ordinary `VP8`/`VP8L` files, package and
+catalog limits are reached only after unbounded enumeration/sorting work, and
+the deterministic malformed-package fixtures do not cover several named
+assignment boundaries. DLV-137 is the queued correction after already-active
+DLV-132.
 **Baseline/dependencies:** `docs/game-launcher-requirements.md` experience
 architecture, GL-THEME-001 through GL-THEME-012, GL-SEC-004, and delivery step
 1. It does not depend on DLV-130 because packs bind semantic slot names, never
@@ -470,7 +471,8 @@ network, or implementation of CLI commands owned by DLV-135.
 
 ### DLV-132 — Render host-owned launcher slots with validated responsive layout
 
-**State:** Ready after DLV-136
+**State:** Assigned from clean `100c646` before the DLV-131 review completed;
+finish and commit this coherent in-progress milestone, then take DLV-137
 **Owner/outcome:** platform lane for the native recipe adapter and declarative
 layout/paint/focus/pointer/UIA support needed by validated launcher slots. A
 fixed semantic fixture must render the bottom hero rail and the left vertical
@@ -492,7 +494,7 @@ fixture. No aggregate, capture, pack CLI, Game Launcher domain code, or motion.
 
 ### DLV-133 — Add launcher-scoped style, artwork, and recovery ownership
 
-**State:** Ready after DLV-132
+**State:** Ready after DLV-136
 **Owner/outcome:** platform lane for the launcher-only cascade after global user
 appearance, sealed static pack assets, revision-bound selected-game background,
 decode-before-crossfade, bounded focus effects, user parameter overrides,
@@ -509,10 +511,38 @@ crossfade and degrade effects before focus latency. Tier 1 style/asset/recovery
 groups and Tier 2 production-host lifecycle fixture; no animated media, audio,
 remote assets, gallery, network, screenshot, or aggregate.
 
+### DLV-137 — Close the Launcher Experience package-validation gaps
+
+**State:** Ready immediately after the already-active DLV-132; this is the
+DLV-131 review correction and precedes DLV-136 and DLV-133
+**Baseline/dependencies:** committed DLV-131 `100c646` plus the completed
+DLV-132 commit; do not change DLV-132 renderer behavior
+**Owner/outcome:** platform lane for the smallest catalog/file-guard/parser and
+focused-fixture correction needed to make the documented static package
+contract truthful and bounded before DLV-131 or its dependent history can be
+integrated.
+**Acceptance:** valid bounded lossy `VP8`, lossless `VP8L`, and extended `VP8X`
+WebP assets report exact dimensions and validate; truncated, malformed, zero-
+dimension, or oversized variants fail with stable diagnostics. Package and
+catalog discovery stop at documented file, directory, installed-version, and
+expanded-byte admission budgets without first materializing or sorting an
+unbounded tree. Deterministic fixtures cover duplicate/unknown fields, missing
+critical slots, slot reuse, overlap, out-of-bounds/focus/Back geometry, grid/
+node/depth limits, file/count/expanded/image limits, reparse/path escape,
+remote/executable/archive content, cross-widget selectors, and exact recovery.
+Duplicate-field and boundary failures retain useful stable paths. Preserve all
+four built-ins, the public schema/value types, deterministic digest, and valid
+reference recipes.
+**Verification:** Tier 1 Launcher Experience catalog Release build and focused
+fixtures only. No aggregate, native renderer/adapter change, launcher domain
+work, capture, network, new media dependency, or unrelated hardening.
+**Stop:** accepting standard WebP requires a new decode/runtime dependency or
+the correction needs a public schema/budget change rather than validation of
+the already documented format.
+
 ### DLV-136 — Make the production overlay reachable by the planner UI smoke
 
-**State:** Ready immediately after accepted DLV-131; take this before DLV-132
-without interrupting the active assignment
+**State:** Ready immediately after DLV-137; take this before DLV-133
 **Owner/outcome:** platform lane for the smallest production-host change that
 lets the supported Windows computer-control surface discover, activate, and
 capture the exact visible `Game Bar Alternative` main window after `--show`.
@@ -554,8 +584,9 @@ manufacture adjacent work.
 1. DLV-130 owns the normalized public launcher data contract; no other lane
    edits that broker/bridge/SDK boundary until it is accepted.
 2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
-   catalog. DLV-136 restores the required planner UI-smoke reachability before
-   DLV-132 and DLV-133 consume the schema in platform order.
+   catalog. Already-active DLV-132 finishes first; DLV-137 closes the bounded
+   package-validation review gaps, then DLV-136 restores required planner
+   UI-smoke reachability before DLV-133 continues platform presentation work.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.
