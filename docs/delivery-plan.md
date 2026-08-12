@@ -476,7 +476,9 @@ catalog, persistence, public API, compositor, or reviewer-document changes.
 Retained focused Release evidence passes TrayLayout 54, HostAccessibility 34,
 AccessibilityProvider 150, ControllerNavigation 107, OverlayPlacement 108,547,
 RealHostAccessibility 271, OverlayState traversal, and the host build. Live
-compact/wide confirmation remains with the user.
+compact/wide confirmation remains with the user. The clean main native-only
+Release refresh passed its complete focused host build and visibly launched as
+responsive PID 9228 from exact planner tip `c836960`.
 
 ### DLV-107 — Restore transparent composition and professional widget motion
 

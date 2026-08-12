@@ -25,7 +25,9 @@ catalog/persistence, public widget APIs, preferred extents, or compositor
 ownership. Retained focused Release evidence covers exact-fit, N+1, large
 catalogs, first/middle/last selection, compact scaling, pointer, keyboard,
 controller, and native UIA projection. User confirmation in the freshly
-launched compact and wide overlay remains the final visual check.
+launched compact and wide overlay remains the final visual check. The clean
+main native-only Release refresh passed and exact planner tip `c836960` is
+visibly running as responsive PID 9228.
 
 ### Current review delta — complete-surface compositor rejected live
 
