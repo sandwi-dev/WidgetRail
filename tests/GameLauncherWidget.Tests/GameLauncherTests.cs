@@ -143,6 +143,52 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task ExperiencePickerPersistsExactSelectionAndBackRestoresLibraryFocus()
+    {
+        var privateState = new WidgetTestPrivateState();
+        var host = new FakeHost(3, privateState);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "experience warm state");
+
+        var library = Snapshot(widget, 680);
+        var origin = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.experiences.open");
+        await widget.OnActionAsync(new(origin.ActionId!, origin.Id));
+        var picker = Snapshot(widget, 681);
+        Assert.AreEqual(4, Nodes(picker.Root).Count(node =>
+            node.ActionId?.StartsWith("game-launcher.experience.select.",
+                StringComparison.Ordinal) == true));
+
+        await widget.OnActionAsync(new(
+            "game-launcher.experience.select.carousel",
+            "game-launcher.experience.carousel"));
+        Assert.AreEqual("carousel", widget.Organization.ExperienceId);
+        await widget.OnActionAsync(new(
+            "game-launcher.experiences.back",
+            "game-launcher.experiences.back"));
+        var selected = Snapshot(widget, 682);
+        Assert.IsTrue(Nodes(selected.Root).Any(node =>
+            node.StyleClasses.Contains("game-launcher-experience--carousel",
+                StringComparer.Ordinal)));
+        Assert.AreEqual(origin.Id, selected.InitialFocusId);
+        await Background(widget);
+
+        var restartedHost = new FakeHost(3, privateState);
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        await Bounded(restarted.WhenWarmStateIdleAsync(),
+            "restarted experience warm state");
+        Assert.AreEqual("carousel", restarted.Organization.ExperienceId);
+        Assert.IsTrue(Nodes(Snapshot(restarted, 683).Root).Any(node =>
+            node.StyleClasses.Contains("game-launcher-experience--carousel",
+                StringComparer.Ordinal)));
+        await Background(restarted);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task EveryTopControlKeepsPendingAndCommittedSnapshotsValid()
     {
         var displays = Enumerable.Range(0, 3)

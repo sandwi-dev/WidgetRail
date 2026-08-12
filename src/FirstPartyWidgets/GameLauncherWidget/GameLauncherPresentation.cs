@@ -48,6 +48,7 @@ internal static class GameLauncherPresentation
             GameLauncherRoute.AddGames => "Add games",
             GameLauncherRoute.Running => "Add running app",
             GameLauncherRoute.Hidden => "Hidden games",
+            GameLauncherRoute.Experiences => "Launcher experience",
             _ => "Game Launcher",
         };
         var header = UI.Stack("game-launcher.header",
@@ -74,12 +75,14 @@ internal static class GameLauncherPresentation
                 {
                     GameLauncherRoute.AddGames => "game-launcher.add.back",
                     GameLauncherRoute.Running => "game-launcher.running.back",
+                    GameLauncherRoute.Experiences => "game-launcher.experiences.back",
                     _ => "game-launcher.hidden.back",
                 },
                 state.Route switch
                 {
                     GameLauncherRoute.AddGames => "game-launcher.add.back",
                     GameLauncherRoute.Running => "game-launcher.running.back",
+                    GameLauncherRoute.Experiences => "game-launcher.experiences.back",
                     _ => "game-launcher.hidden.back",
                 })
                 .Disabled(!state.Interactive));
@@ -90,6 +93,13 @@ internal static class GameLauncherPresentation
                 .Disabled(!state.Interactive));
             filterControls.Add(UI.Button("Add running app", "game-launcher.running.open",
                     "game-launcher.running.open")
+                .Disabled(!state.Interactive));
+            filterControls.Add(UI.Button(
+                    "Experience: " + GameLauncherExperienceIdentity.Label(
+                        GameLauncherExperienceIdentity.Parse(
+                            state.Organization.ExperienceId)),
+                    "game-launcher.experiences.open",
+                    "game-launcher.experiences.open")
                 .Disabled(!state.Interactive));
             filterControls.Add(UI.Button(
                     $"Hidden ({state.Organization.ExcludedSavedIds.Count})",
@@ -152,7 +162,29 @@ internal static class GameLauncherPresentation
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
-        if ((state.Route is GameLauncherRoute.AddGames or GameLauncherRoute.Running) &&
+        if (state.Route == GameLauncherRoute.Experiences)
+        {
+            var selected = GameLauncherExperienceIdentity.Parse(
+                state.Organization.ExperienceId);
+            var choices = Enum.GetValues<GameLauncherExperience>()
+                .Select(experience => UI.ToggleButton(
+                        GameLauncherExperienceIdentity.Label(experience),
+                        experience == selected,
+                        "game-launcher.experience.select." +
+                            GameLauncherExperienceIdentity.Id(experience),
+                        "game-launcher.experience." +
+                            GameLauncherExperienceIdentity.Id(experience))
+                    .Disabled(!state.Interactive))
+                .ToArray();
+            content = UI.Stack("game-launcher.content",
+                    UI.Text("Choose a layout. Content, actions, and game identity stay the same.",
+                        "game-launcher.experiences.help", "Launcher experience help"),
+                    UI.VerticalScroll("game-launcher.experiences.list", choices))
+                .Classes("game-launcher-content");
+            initialFocus = "game-launcher.experience." +
+                GameLauncherExperienceIdentity.Id(selected);
+        }
+        else if ((state.Route is GameLauncherRoute.AddGames or GameLauncherRoute.Running) &&
             snapshot.Items.Count != 0)
         {
             var tiles = snapshot.Items.Select(item => ManualTile(
@@ -427,8 +459,11 @@ internal static class GameLauncherPresentation
         content = content.AddClasses("game-launcher-main");
         var root = UI.Stack("game-launcher.root", header, sourceStatus, queryControls, content)
             .Classes("game-launcher-widget");
-        return new WidgetView(root, initialFocus,
-            Surface: Surface);
+        var view = new WidgetView(root, initialFocus, Surface: Surface);
+        return state.Route == GameLauncherRoute.Library
+            ? GameLauncherExperienceProjection.Project(view,
+                GameLauncherExperienceIdentity.Parse(state.Organization.ExperienceId))
+            : view;
     }
 
     private static WidgetElement SourceStatus(

@@ -31,9 +31,50 @@ internal enum GameLauncherRoute
 {
     Library,
     Details,
+    Experiences,
     AddGames,
     Running,
     Hidden,
+}
+
+internal enum GameLauncherExperience
+{
+    HeroRail,
+    CoverWall,
+    Carousel,
+    CompactGrid,
+}
+
+internal static class GameLauncherExperienceIdentity
+{
+    internal const string HeroRail = "hero-rail";
+
+    internal static string Id(GameLauncherExperience experience) => experience switch
+    {
+        GameLauncherExperience.CoverWall => "cover-wall",
+        GameLauncherExperience.Carousel => "carousel",
+        GameLauncherExperience.CompactGrid => "compact-grid",
+        _ => HeroRail,
+    };
+
+    internal static string Label(GameLauncherExperience experience) => experience switch
+    {
+        GameLauncherExperience.CoverWall => "Cover Wall",
+        GameLauncherExperience.Carousel => "Carousel",
+        GameLauncherExperience.CompactGrid => "Compact Grid",
+        _ => "Hero Rail",
+    };
+
+    internal static GameLauncherExperience Parse(string? value) => value switch
+    {
+        "cover-wall" => GameLauncherExperience.CoverWall,
+        "carousel" => GameLauncherExperience.Carousel,
+        "compact-grid" => GameLauncherExperience.CompactGrid,
+        _ => GameLauncherExperience.HeroRail,
+    };
+
+    internal static bool IsValid(string? value) => value is
+        HeroRail or "cover-wall" or "carousel" or "compact-grid";
 }
 
 internal enum GameLauncherLaunchState

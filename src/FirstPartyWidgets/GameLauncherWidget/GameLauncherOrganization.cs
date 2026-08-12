@@ -26,6 +26,7 @@ internal sealed record GameLauncherPrivateState(
     public IReadOnlyList<string> RecentSavedIds { get; init; } = [];
     public IReadOnlyList<string> ManualSavedIds { get; init; } = [];
     public IReadOnlyList<string> ExcludedSavedIds { get; init; } = [];
+    public string ExperienceId { get; init; } = GameLauncherExperienceIdentity.HeroRail;
 }
 
 internal sealed record GameLauncherStateMutation(
@@ -98,6 +99,9 @@ internal static class GameLauncherOrganizationPolicy
             if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
                 !excluded.Add(savedId))
                 return GameLauncherPrivateState.Empty;
+        var experienceId = GameLauncherExperienceIdentity.IsValid(state.ExperienceId)
+            ? state.ExperienceId
+            : GameLauncherExperienceIdentity.HeroRail;
         return state with
         {
             Items = state.Items.ToArray(),
@@ -109,7 +113,19 @@ internal static class GameLauncherOrganizationPolicy
             RecentSavedIds = state.RecentSavedIds.ToArray(),
             ManualSavedIds = state.ManualSavedIds.ToArray(),
             ExcludedSavedIds = state.ExcludedSavedIds.ToArray(),
+            ExperienceId = experienceId,
         };
+    }
+
+    internal static GameLauncherStateMutation SelectExperience(
+        GameLauncherPrivateState state,
+        GameLauncherExperience experience)
+    {
+        state = Normalize(state);
+        var id = GameLauncherExperienceIdentity.Id(experience);
+        return string.Equals(state.ExperienceId, id, StringComparison.Ordinal)
+            ? GameLauncherStateMutation.Reject(state)
+            : GameLauncherStateMutation.Apply(state with { ExperienceId = id });
     }
 
     internal static GameLauncherPrivateState ProjectPage(

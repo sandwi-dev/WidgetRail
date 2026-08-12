@@ -26,6 +26,20 @@ per-source detail. Both branches retain the same route, collection, action, and
 focus identities; reopening or resizing does not create a second responsive page
 tree or reset the collection offset.
 
+The Library's controller-reachable **Experience** action selects Hero Rail,
+Cover Wall, Carousel, or Compact Grid. The selected built-in profile is stored
+with the widget's bounded private state and an unavailable value recovers only
+that setting to Hero Rail; favorites, variants, recent history, manual entries,
+and exclusions remain intact. Game Launcher partitions the one current view
+into details, game-rail, collection, source, operation, and controller-hint
+slots. The partition moves the existing elements without creating action IDs,
+SavedIds, focus IDs, provider authority, or another retained library.
+
+These slot markers are a private first-party host seam, not a public widget or
+pack authoring API. Until the ordinary OverlayHost render path adopts that seam,
+the declarative fallback remains usable and selection persists, but production
+does not yet apply the four native slot layouts.
+
 The hero reuses only the selected row's opaque trusted artwork handle and otherwise
 shows a semantic fallback. It names the exact source, availability, favorite,
 preferred-variant, grouping, and launch state. A, View, X, Y, LB, and RB continue

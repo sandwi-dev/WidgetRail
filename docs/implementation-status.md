@@ -3451,6 +3451,45 @@ No production source or alternate automation surface is retained. A product UX
 decision is required to permit taskbar/Alt-Tab presence or a supported control-
 tool change is required to admit the existing tool/owned overlay identity.
 
+### Game Launcher native-experience managed boundary (DLV-134 partial)
+
+Game Launcher now owns one bounded persisted built-in experience selection and
+one pure semantic-state partition. Hero Rail, Cover Wall, Carousel, and Compact
+Grid snapshots contain the same exact action/source-element pairs,
+SavedId-derived collection keys, focus IDs, collection anchor, source truth,
+and cursor window. The controller-reachable picker persists through the
+existing private-state CAS path. An absent or invalid experience selection
+falls back to Hero Rail without resetting unrelated organization state.
+
+The managed snapshot marks six host-owned slot roots: details panel, game rail,
+collection tabs, source status, operation status, and controller hints. The
+projector only moves existing elements and adds non-authorizing wrappers; it
+does not add a public protocol field or pack-authored action surface. Focused
+Release evidence passes 68/68 Game Launcher tests, including all four profiles,
+long-title and missing-art fallback, deterministic repeated projection,
+selection persistence/recovery, and the existing 2,000/10,000-item bounded
+cursor cases.
+
+The bounded production-shaped conformance group completed 5/6 in 83.1
+seconds. Its unchanged installed Game Launcher route still returned 64
+provider rows plus the retained manual row as `Unavailable` after 10 app-
+library refreshes and two reads, so no launch action was admitted. That
+provider/current-resolution limitation is outside this managed projection
+change; the failed run is retained and was not repeated.
+
+Production adoption remains blocked on a platform-owned private hook. The
+ordinary host currently calls `DeclarativeRenderer::Render` directly in
+`OverlayHost/main.cpp`; `LauncherExperienceAdapter::RenderExperience` is used
+only by focused tests and the sealed host proof. The missing hook must map the
+first-party marker plus six slot roots to the selected native preset, feed the
+same admitted snapshot/focus/options/work-area into the adapter, and use the
+returned render geometry plus canonical semantic snapshot for pointer, focus,
+scroll, and UIA publication. It must preserve the original instance, sequence,
+input scope, cursor scroll/anchor semantics, and exact node actions. No public
+WidgetProtocol/WidgetSdk expansion is required. Until that hook exists, the
+ordinary declarative rendering path remains the safe fallback and DLV-134 is
+not complete.
+
 ### Launcher Experience deterministic authoring toolchain (DLV-135)
 
 `gbar launcher-theme` now owns one focused data-only command surface for
@@ -3515,7 +3554,6 @@ focused widget, hides it through the production host toggle, and re-shows the
 resident owner with focused UIA contained by the committed surface. No
 aggregate, capture, managed widget, window-identity, or compositor-owner change
 was made.
-
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

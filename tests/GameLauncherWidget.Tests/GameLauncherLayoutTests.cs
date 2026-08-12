@@ -80,15 +80,35 @@ public sealed class GameLauncherLayoutTests
                 StringComparer.Ordinal).Count(), $"{scenario.Name}: duplicate semantic ID");
 
             var root = snapshot.Root;
-            Assert.AreEqual(4, root.Children.Count,
+            var projected = root.StyleClasses.Contains(
+                GameLauncherExperienceProjection.MarkerClass, StringComparer.Ordinal);
+            Assert.AreEqual(projected ? 6 : 4, root.Children.Count,
                 $"{scenario.Name}: fixed/main root ownership changed");
-            CollectionAssert.AreEqual(new[]
+            if (projected)
             {
-                "game-launcher.header",
-                "game-launcher.sources",
-                "game-launcher.query",
-            }, root.Children.Take(3).Select(child => child.Id).ToArray(),
-                $"{scenario.Name}: fixed chrome order changed");
+                CollectionAssert.AreEquivalent(new[]
+                {
+                    "game-launcher-slot--details-panel",
+                    "game-launcher-slot--game-rail",
+                    "game-launcher-slot--collection-tabs",
+                    "game-launcher-slot--source-status",
+                    "game-launcher-slot--operation-status",
+                    "game-launcher-slot--controller-hints",
+                }, root.Children.SelectMany(child => child.StyleClasses)
+                    .Where(value => value.StartsWith(
+                        "game-launcher-slot--", StringComparison.Ordinal)).ToArray(),
+                    $"{scenario.Name}: semantic launcher slots changed");
+            }
+            else
+            {
+                CollectionAssert.AreEqual(new[]
+                {
+                    "game-launcher.header",
+                    "game-launcher.sources",
+                    "game-launcher.query",
+                }, root.Children.Take(3).Select(child => child.Id).ToArray(),
+                    $"{scenario.Name}: fixed chrome order changed");
+            }
             foreach (var fixedId in new[]
                      {
                          "game-launcher.header", "game-launcher.sources",
@@ -97,8 +117,8 @@ public sealed class GameLauncherLayoutTests
                 Assert.IsTrue(nodes.Single(node => node.Id == fixedId).StyleClasses.Contains(
                     "game-launcher-fixed", StringComparer.Ordinal),
                     $"{scenario.Name}: {fixedId} is not fixed chrome");
-            Assert.IsTrue(root.Children[^1].StyleClasses.Contains(
-                "game-launcher-main", StringComparer.Ordinal),
+            Assert.IsTrue(nodes.Single(node => node.Id == "game-launcher.content")
+                .StyleClasses.Contains("game-launcher-main", StringComparer.Ordinal),
                 $"{scenario.Name}: main region does not own remaining height");
 
             Assert.AreEqual(ResponsiveVisibility.CompactOnly,
@@ -125,7 +145,7 @@ public sealed class GameLauncherLayoutTests
                 Assert.IsTrue(collection[0].StyleClasses.Contains(
                     "game-launcher-scroll", StringComparer.Ordinal),
                     $"{scenario.Name}: collection viewport does not own remaining height");
-                Assert.IsTrue(Nodes(root.Children[^1]).Any(node => node.Id == collection[0].Id),
+                Assert.IsTrue(nodes.Any(node => node.Id == collection[0].Id),
                     $"{scenario.Name}: collection viewport escaped the main region");
             }
             if (scenario.State.Route == GameLauncherRoute.Library)
@@ -196,6 +216,107 @@ public sealed class GameLauncherLayoutTests
             ".game-launcher-rail { flex-shrink: 0; min-height: 178px;");
         StringAssert.Contains(styles,
             ".game-launcher-footer { flex-shrink: 0; flex-wrap: wrap;");
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public void EveryExperienceProjectsTheSameExactGameAuthorityAndSemanticSlots()
+    {
+        var items = Enumerable.Range(0, 64)
+            .Select(index => GameLauncherItem.From(Item(
+                $"app-{index:D3}", $"saved-{index:D3}",
+                index == 0 ? new string('L', 96) : $"Game {index:D3}",
+                "Fixture", artworkHandle: null)))
+            .ToArray();
+        var display = items.Select(item => new GameLauncherDisplayItem(
+            item.Value.SavedId, item.Presentation.DisplayName,
+            item.Presentation.Source.DisplayName)).ToArray();
+        var collection = Snapshot(WidgetPagedResourceStatus.Ready, items,
+            after: "cursor.after");
+        string[]? baselineActions = null;
+        string[]? baselineItems = null;
+
+        foreach (var experience in Enum.GetValues<GameLauncherExperience>())
+        {
+            var organization = new GameLauncherPrivateState(
+                GameLauncherPrivateState.CurrentVersion, display)
+            {
+                ExperienceId = GameLauncherExperienceIdentity.Id(experience),
+            };
+            var view = GameLauncherPresentation.Render(State(
+                collection, organization, GameLauncherRoute.Library, []));
+            var snapshot = new PresentationWidget(view).RenderSnapshot(
+                "game-launcher.experience", 1);
+            Assert.IsTrue(snapshot.Root.StyleClasses.Contains(
+                GameLauncherExperienceProjection.MarkerClass, StringComparer.Ordinal));
+            Assert.IsTrue(snapshot.Root.StyleClasses.Contains(
+                "game-launcher-experience--" +
+                    GameLauncherExperienceIdentity.Id(experience),
+                StringComparer.Ordinal));
+            var nodes = Nodes(snapshot.Root).ToArray();
+            var actions = nodes.Where(node => !string.IsNullOrEmpty(node.ActionId))
+                .Select(node => $"{node.Id}\0{node.ActionId}").Order().ToArray();
+            var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
+                .Select(node => $"{node.Id}\0{node.CollectionItemKey}").Order().ToArray();
+            baselineActions ??= actions;
+            baselineItems ??= collectionItems;
+            CollectionAssert.AreEqual(baselineActions, actions,
+                $"{experience}: experience changed exact action authority");
+            CollectionAssert.AreEqual(baselineItems, collectionItems,
+                $"{experience}: experience changed SavedId-derived collection identity");
+            Assert.AreEqual(GameLauncherIdentity.FocusId("grid", items[0].Key),
+                snapshot.InitialFocusId);
+            Assert.AreEqual(new string('L', 96),
+                nodes.Single(node => node.Id == "game-launcher.hero.title").Text);
+            var heroArtwork = nodes.Single(node =>
+                node.Id == "game-launcher.hero.artwork");
+            Assert.IsNull(heroArtwork.ArtworkHandle);
+            Assert.IsNotNull(heroArtwork.Glyph);
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public void ExperienceSelectionPersistsAndUnavailableSelectionFallsBackAtomically()
+    {
+        var display = new GameLauncherDisplayItem("saved-one", "One", "Fixture");
+        var baseline = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            FavoriteSavedIds = [display.SavedId],
+        };
+        foreach (var experience in Enum.GetValues<GameLauncherExperience>())
+        {
+            var changed = GameLauncherOrganizationPolicy.SelectExperience(
+                baseline, experience).State;
+            var restored = JsonSerializer.Deserialize<GameLauncherPrivateState>(
+                JsonSerializer.Serialize(changed));
+            var normalized = GameLauncherOrganizationPolicy.Normalize(restored);
+            Assert.AreEqual(GameLauncherExperienceIdentity.Id(experience),
+                normalized.ExperienceId);
+            CollectionAssert.AreEqual(new[] { display.SavedId },
+                normalized.FavoriteSavedIds.ToArray());
+        }
+
+        var unavailable = GameLauncherOrganizationPolicy.Normalize(
+            baseline with { ExperienceId = "missing-experience" });
+        Assert.AreEqual(GameLauncherExperienceIdentity.HeroRail,
+            unavailable.ExperienceId);
+        CollectionAssert.AreEqual(new[] { display.SavedId },
+            unavailable.FavoriteSavedIds.ToArray(),
+            "experience recovery must not reset unrelated launcher state");
+
+        var picker = GameLauncherPresentation.Render(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, []), unavailable,
+            GameLauncherRoute.Experiences, []));
+        var pickerSnapshot = new PresentationWidget(picker).RenderSnapshot(
+            "game-launcher.experience-picker", 2);
+        var choices = Nodes(pickerSnapshot.Root).Where(node =>
+                node.ActionId?.StartsWith("game-launcher.experience.select.",
+                    StringComparison.Ordinal) == true)
+            .ToArray();
+        Assert.AreEqual(4, choices.Length);
+        Assert.AreEqual(1, choices.Count(node => node.IsSelected == true));
+        Assert.IsTrue(Nodes(pickerSnapshot.Root).Any(node =>
+            node.ActionId == "game-launcher.experiences.back"));
     }
 
     [TestMethod, Timeout(30_000)]
