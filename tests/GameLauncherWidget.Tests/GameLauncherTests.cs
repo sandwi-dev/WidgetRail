@@ -10,6 +10,157 @@ namespace GameBarAlternative.Tests.GameLauncher;
 [TestClass]
 public sealed class GameLauncherTests
 {
+    [TestMethod, Timeout(30_000)]
+    public async Task ExactTitleOverrideChangesPresentationAndSearchButNeverLaunchIdentity()
+    {
+        var privateState = new WidgetTestPrivateState();
+        var host = new FakeHost(3, privateState);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 1);
+        var game = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, game.Id));
+        var sheet = Snapshot(widget, 2);
+        var edit = Nodes(sheet.Root).Single(node =>
+            node.ActionId == GameLauncherActionSheet.EditTitleAction);
+        await widget.OnActionAsync(new(edit.ActionId!, edit.Id));
+        var editor = Snapshot(widget, 3);
+        Assert.AreEqual(GameLauncherTitleEditor.ScopeId, editor.ActiveInputScopeId);
+        Assert.AreEqual(ViewNodeKind.TextEntry, Nodes(editor.Root).Single(node =>
+            node.Id == GameLauncherTitleEditor.EntryId).Kind);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            GameLauncherTitleEditor.CommitAction, GameLauncherTitleEditor.EntryId)
+            { CommittedText = "  Couch   Champion  " });
+        await Bounded(widget.WhenLibraryIdleAsync(), "title projection refresh");
+        Assert.AreEqual("Couch Champion", widget.Organization.TitleOverrides.Single().Title);
+        Assert.AreEqual("Game 00001", widget.Organization.Items.Single(item =>
+            item.SavedId == "saved-00001").DisplayName);
+
+        await widget.OnActionAsync(new(GameLauncherTitleEditor.CloseAction,
+            GameLauncherTitleEditor.EntryId));
+        await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+        library = Snapshot(widget, 4);
+        var renamed = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Couch Champion", StringComparison.Ordinal));
+        Assert.IsFalse((renamed.AccessibilityLabel ?? string.Empty).Contains(
+            "Game 00000", StringComparison.Ordinal));
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "Couch Champion" });
+        await Bounded(widget.WhenLibraryIdleAsync(), "override-only search");
+        var searched = Snapshot(widget, 5);
+        renamed = Nodes(searched.Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        await widget.OnActionAsync(new("game-launcher.launch", renamed.Id));
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
+        await Background(widget);
+
+        var restartedHost = new FakeHost(3, privateState)
+        {
+            ItemFactory = index => WithPresentation(Item(index),
+                displayName: $"Provider {index:D5}"),
+        };
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        var restartedView = Snapshot(restarted, 6);
+        var retained = Nodes(restartedView.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Couch Champion", StringComparison.Ordinal));
+        await restarted.OnActionAsync(new(GameLauncherActionSheet.OpenAction, retained.Id));
+        sheet = Snapshot(restarted, 7);
+        edit = Nodes(sheet.Root).Single(node =>
+            node.ActionId == GameLauncherActionSheet.EditTitleAction);
+        await restarted.OnActionAsync(new(edit.ActionId!, edit.Id));
+        await restarted.OnActionAsync(new(GameLauncherTitleEditor.ResetAction,
+            GameLauncherTitleEditor.ResetAction));
+        await Bounded(restarted.WhenLibraryIdleAsync(), "title reset refresh");
+        Assert.AreEqual(0, restarted.Organization.TitleOverrides.Count);
+        Assert.AreEqual("Provider 00001", restarted.Organization.Items.Single(item =>
+            item.SavedId == "saved-00001").DisplayName);
+        await restarted.OnActionAsync(new(GameLauncherTitleEditor.CloseAction,
+            GameLauncherTitleEditor.EntryId));
+        await restarted.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+        Assert.IsTrue(Nodes(Snapshot(restarted, 8).Root).Any(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Provider 00001", StringComparison.Ordinal)));
+        await Background(restarted);
+    }
+
+    [TestMethod]
+    public void TitlePolicyIsBoundedExactAndCasReplaysOnlyRequestedSavedId()
+    {
+        var a = new GameLauncherDisplayItem("saved-a", "Provider A", "Steam");
+        var b = new GameLauncherDisplayItem("saved-b", "Provider B", "Windows");
+        var baseline = GameLauncherPrivateState.Empty with { Items = [a, b] };
+        var set = GameLauncherTitlePolicy.Set(baseline, a, "  Custom   A ");
+        Assert.IsTrue(set.Accepted);
+        Assert.AreEqual("Custom A", set.State.TitleOverrides.Single().Title);
+        Assert.AreEqual("Provider A", set.State.Items.Single(item =>
+            item.SavedId == a.SavedId).DisplayName);
+        Assert.AreEqual("Provider B", GameLauncherTitlePolicy.DisplayName(
+            set.State, b.SavedId, b.DisplayName));
+
+        var boundedItems = Enumerable.Range(0,
+                GameLauncherPrivateState.MaximumTitleOverrides)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-title-{index:D2}", $"Provider {index:D2}", "Local"))
+            .ToArray();
+        var bounded = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, boundedItems)
+        {
+            TitleOverrides = boundedItems.Select((item, index) =>
+                new GameLauncherTitleOverride(item.SavedId,
+                    $"Custom {index:D2} " + new string('T', 80))).ToArray(),
+        };
+        Assert.IsLessThanOrEqualTo(
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
+            JsonSerializer.SerializeToUtf8Bytes(
+                GameLauncherOrganizationPolicy.Normalize(bounded)).Length);
+
+        var malformed = GameLauncherOrganizationPolicy.Normalize(set.State with
+        {
+            FavoriteSavedIds = [b.SavedId],
+            TitleOverrides = [new(a.SavedId, new string('X', 97))],
+        });
+        Assert.AreEqual(0, malformed.TitleOverrides.Count);
+        CollectionAssert.AreEqual(new[] { b.SavedId },
+            malformed.FavoriteSavedIds.ToArray());
+
+        GameLauncherPrivateState? written = null;
+        var writes = 0;
+        var result = GameLauncherStateStore.SaveAsync(
+            state => GameLauncherTitlePolicy.Set(state, a, "CAS title"),
+            (candidate, _, _) =>
+            {
+                if (++writes == 1)
+                    return ValueTask.FromException<WidgetPrivateStateMutation>(
+                        new WidgetCapabilityException("state_conflict", "conflict"));
+                written = candidate;
+                return ValueTask.FromResult(new WidgetPrivateStateMutation(3));
+            },
+            _ => ValueTask.FromResult(new WidgetPrivateStateValue<GameLauncherPrivateState>(
+                true, baseline with { FavoriteSavedIds = [b.SavedId] }, 2)),
+            baseline, 1, default).GetAwaiter().GetResult();
+        Assert.IsTrue(result.Saved);
+        Assert.AreEqual("CAS title", written!.TitleOverrides.Single().Title);
+        CollectionAssert.AreEqual(new[] { b.SavedId }, written.FavoriteSavedIds.ToArray());
+    }
+
     [TestMethod]
     public void CategoryCapacityIsGovernedByBytesBeforePracticalSafetyCeilings()
     {
@@ -44,6 +195,16 @@ public sealed class GameLauncherTests
         Assert.IsTrue(expanded.Accepted,
             "An ordinary ninth membership was rejected by a prototype count cap.");
         Assert.AreEqual(9, expanded.State.Categories[0].SavedIds.Count);
+
+        var sheet = GameLauncherActionSheet.Render(new GameLauncherDetailsState(
+            new("saved-000", GameLauncherIdentity.Key("saved-000"),
+                GameLauncherIdentity.FocusId("grid", GameLauncherIdentity.Key("saved-000")),
+                "Game 00", "Local", false),
+            "Game 00", "Local", "Available", "Ready", false, false, 0, "Ready",
+            "Choose another variant", true, true, true, true, false), categories)
+            .CreateSnapshot("capacity", 1);
+        Assert.AreEqual(UI.MaximumActionSheetItems,
+            Nodes(sheet.Root).Count(node => node.ActionId is not null));
 
         var oversizedItems = Enumerable.Range(0, GameLauncherPrivateState.MaximumItems)
             .Select(index => new GameLauncherDisplayItem(

@@ -814,6 +814,64 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
         await client.SendActionAsync(new WidgetActionEvent(exact.ActionId!, exact.Id));
         await WaitForSnapshotAsync(client, "Request accepted");
         Assert.Equal(before + 1, backend.AppLibraryLaunchCalls);
+
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.open", exact.Id));
+        var sheet = await WaitForActionSnapshotAsync(
+            client, "game-launcher.actions.edit-title", "Edit title");
+        var editTitle = Nodes(sheet.Root).Single(node =>
+            node.ActionId == "game-launcher.actions.edit-title");
+        await client.SendActionAsync(new WidgetActionEvent(
+            editTitle.ActionId!, editTitle.Id));
+        _ = await WaitForNodeTextSnapshotAsync(client,
+            "game-launcher.title.provider",
+            "Provider title · Conformance Game 00001");
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.title.commit", "game-launcher.title.entry")
+            { CommittedText = "Installed Champion" });
+        _ = await WaitForActionSnapshotAsync(
+            client, "game-launcher.title.reset", "Reset title", requireEnabled: true);
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.title.close", "game-launcher.title.entry"));
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.close", "game-launcher.actions.favorite"));
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+        await client.StopAsync();
+    }
+
+    await using (var client = CreateClient())
+    {
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+        var library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Installed Champion");
+        var exact = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Installed Champion", StringComparison.Ordinal));
+        var before = backend.AppLibraryLaunchCalls;
+        await client.SendActionAsync(new WidgetActionEvent(exact.ActionId!, exact.Id));
+        await WaitForSnapshotAsync(client, "Request accepted");
+        Assert.Equal(before + 1, backend.AppLibraryLaunchCalls);
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.open", exact.Id));
+        var sheet = await WaitForActionSnapshotAsync(
+            client, "game-launcher.actions.edit-title", "Edit title");
+        var editTitle = Nodes(sheet.Root).Single(node =>
+            node.ActionId == "game-launcher.actions.edit-title");
+        await client.SendActionAsync(new WidgetActionEvent(
+            editTitle.ActionId!, editTitle.Id));
+        _ = await WaitForActionSnapshotAsync(
+            client, "game-launcher.title.reset", "Reset title", requireEnabled: true);
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.title.reset", "game-launcher.title.reset"));
+        _ = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.title.entry", "Conformance Game 00001");
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.title.close", "game-launcher.title.entry"));
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.close", "game-launcher.actions.favorite"));
+        _ = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
         await client.StopAsync();
     }

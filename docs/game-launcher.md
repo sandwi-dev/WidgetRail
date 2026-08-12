@@ -210,8 +210,8 @@ complete library.
 
 X toggles the focused current game as a favorite. Y opens the controller-complete
 action sheet with the current favorite toggle, hide action, variant step,
-preferred-variant state, exact category membership, and source refresh. It does not duplicate View's full
-details route or expose a content operation. LB starts an explicit variant
+preferred-variant state, exact category membership, and source refresh. It does
+not duplicate View's full details route or expose a content operation. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating
 the same pair removes the second tile from that group. RB marks a member of an
 existing group as preferred. Recent-first order takes precedence while enabled;
@@ -222,14 +222,23 @@ tile continues to resolve and launch its own exact SavedId. A disabled retained
 row preserves organization while its source is missing, and reappearance of the
 same SavedId restores the choice. A replacement SavedId is independent.
 
+**Edit title** in the Y action sheet opens a scoped controller TextEntry for the
+exact focused SavedId. The normalized custom title is limited to 96 characters
+and changes presentation and search only; provider title, source, availability,
+artwork, capability, launch identity, and every other variant remain unchanged.
+**Reset title** removes only that exact override and immediately restores the
+current provider title. Override-only search matches are resolved through the
+same bounded exact-SavedId capability before display or launch.
+
 **Categories** provides All Games plus practical local named collections. Names
 normalize whitespace and Unicode compatibility form, are limited to 32
 characters, and must be unique ignoring case. The shared 64-KiB private-state
 budget—not the old four-member/eight-total prototype cap—is the ordinary
 admission boundary; focused coverage retains 32 categories and 256 compact
-exact SavedId memberships. Create, rename, open, and delete remain in one bounded controller route; deleting a
-category removes only that category and never hides, removes, launches, or
-merges a game. The Y action sheet adds or removes the exact focused game.
+exact SavedId memberships. Create, rename, open, and delete remain in one bounded
+controller route; deleting a category removes only that category and never hides,
+removes, launches, or merges a game. The Y action sheet adds or removes the exact
+focused game.
 
 From All Games or a category, LT and RT cycle once through All Games and every
 category in saved order. The same exact SavedId keeps focus when it exists in

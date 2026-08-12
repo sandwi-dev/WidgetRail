@@ -140,7 +140,7 @@ internal static class GameLauncherCategoryPolicy
                 GameLauncherPrivateState.MaximumCategoryMemberships))
             return GameLauncherStateMutation.Reject(state);
         if (included) members.Add(display.SavedId); else members.Remove(display.SavedId);
-        var withDisplay = WithDisplay(state, display);
+        var withDisplay = GameLauncherOrganizationPolicy.RetainDisplay(state, display);
         return ApplyIfFits(state, withDisplay with
         {
             Categories = withDisplay.Categories.Select(candidate => candidate.Id == id
@@ -175,23 +175,6 @@ internal static class GameLauncherCategoryPolicy
             ? (current + 1) % count
             : (current + count - 1) % count;
         return next == 0 ? null : categories[next - 1].Id;
-    }
-
-    private static GameLauncherPrivateState WithDisplay(
-        GameLauncherPrivateState state,
-        GameLauncherDisplayItem display)
-    {
-        var items = state.Items.Where(item => item.SavedId != display.SavedId)
-            .Prepend(display).ToList();
-        while (items.Count > GameLauncherPrivateState.MaximumItems)
-        {
-            var referenced = GameLauncherOrganizationPolicy.ReferencedSavedIds(state)
-                .Append(display.SavedId).ToHashSet(StringComparer.Ordinal);
-            var removable = items.FindLastIndex(item => !referenced.Contains(item.SavedId));
-            if (removable < 0) return state;
-            items.RemoveAt(removable);
-        }
-        return state with { Items = items };
     }
 
     private static IReadOnlyList<GameLauncherCategory> Reset(out bool reset)

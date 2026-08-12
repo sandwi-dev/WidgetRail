@@ -83,6 +83,17 @@ internal static class GameLauncherHeroRailPolicy
                 .ToArray();
         foreach (var row in manual) used.Add(row.Display.SavedId);
 
+        var titleMatches = state.FixedRows.TitleMatches
+            .Where(item => !used.Contains(item.Value.SavedId) &&
+                !excluded.Contains(item.Value.SavedId))
+            .Select(item => RowFor(item.Value.SavedId, resolved, stored))
+            .Where(row => row is not null && Matches(
+                row.Display, state.Query, state.FavoriteFilter, favorites))
+            .Select(row => row!)
+            .Take(GameLauncherPrivateState.MaximumTitleOverrides)
+            .ToArray();
+        foreach (var row in titleMatches) used.Add(row.Display.SavedId);
+
         var catalog = snapshot.Items
             .Where(item => !used.Contains(item.Value.SavedId) &&
                 !excluded.Contains(item.Value.SavedId))
@@ -115,6 +126,7 @@ internal static class GameLauncherHeroRailPolicy
 
         var rows = recent.Select(row => row with { CollectionItem = false })
             .Concat(manual.Select(row => row with { CollectionItem = false }))
+            .Concat(titleMatches.Select(row => row with { CollectionItem = false }))
             .Concat(catalog)
             .Concat(unavailable)
             .Select(row => new GameLauncherHeroRailItem(

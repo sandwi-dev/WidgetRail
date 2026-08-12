@@ -21,10 +21,11 @@ internal sealed record GameLauncherDisplayItem(
 
 internal sealed record GameLauncherFixedRows(
     IReadOnlyList<GameLauncherItem> Recent,
-    IReadOnlyList<GameLauncherItem> Manual)
+    IReadOnlyList<GameLauncherItem> Manual,
+    IReadOnlyList<GameLauncherItem> TitleMatches)
 {
-    internal static GameLauncherFixedRows Empty { get; } = new([], []);
-    internal IEnumerable<GameLauncherItem> All => Recent.Concat(Manual);
+    internal static GameLauncherFixedRows Empty { get; } = new([], [], []);
+    internal IEnumerable<GameLauncherItem> All => Recent.Concat(Manual).Concat(TitleMatches);
 }
 
 internal enum GameLauncherRoute

@@ -276,7 +276,9 @@ internal static class GameLauncherPresentation
         {
             var category = GameLauncherCategoryPolicy.Find(
                 state.Organization, state.ActiveCategoryId);
-            var resolved = snapshot.Items.ToDictionary(
+            var resolved = snapshot.Items.Concat(state.FixedRows.All)
+                .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
+                .ToDictionary(
                 item => item.Value.SavedId, StringComparer.Ordinal);
             var stored = state.Organization.Items.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);
@@ -344,7 +346,9 @@ internal static class GameLauncherPresentation
         }
         else if (state.Route == GameLauncherRoute.Hidden)
         {
-            var resolved = snapshot.Items.ToDictionary(
+            var resolved = snapshot.Items.Concat(state.FixedRows.All)
+                .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
+                .ToDictionary(
                 item => item.Value.SavedId, StringComparer.Ordinal);
             var stored = state.Organization.Items.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);

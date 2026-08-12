@@ -13,6 +13,8 @@ internal sealed record GameLauncherCategory(
     string Name,
     IReadOnlyList<string> SavedIds);
 
+internal sealed record GameLauncherTitleOverride(string SavedId, string Title);
+
 internal sealed record GameLauncherPrivateState(
     int Version,
     IReadOnlyList<GameLauncherDisplayItem> Items)
@@ -29,6 +31,8 @@ internal sealed record GameLauncherPrivateState(
     internal const int MaximumCategoryNameLength = 32;
     internal const int MaximumCategoryMembers = 512;
     internal const int MaximumCategoryMemberships = 2048;
+    internal const int MaximumTitleOverrides = 32;
+    internal const int MaximumTitleLength = 96;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
 
     public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
@@ -37,6 +41,7 @@ internal sealed record GameLauncherPrivateState(
     public IReadOnlyList<string> ManualSavedIds { get; init; } = [];
     public IReadOnlyList<string> ExcludedSavedIds { get; init; } = [];
     public IReadOnlyList<GameLauncherCategory> Categories { get; init; } = [];
+    public IReadOnlyList<GameLauncherTitleOverride> TitleOverrides { get; init; } = [];
     public string ExperienceId { get; init; } = GameLauncherExperienceIdentity.HeroRail;
 }
 
@@ -115,6 +120,8 @@ internal static class GameLauncherOrganizationPolicy
             : GameLauncherExperienceIdentity.HeroRail;
         var categories = GameLauncherCategoryPolicy.Normalize(
             state.Categories, display, out _);
+        var titleOverrides = GameLauncherTitlePolicy.Normalize(
+            state.TitleOverrides, display, out _);
         var normalized = state with
         {
             Items = state.Items.ToArray(),
@@ -127,11 +134,15 @@ internal static class GameLauncherOrganizationPolicy
             ManualSavedIds = state.ManualSavedIds.ToArray(),
             ExcludedSavedIds = state.ExcludedSavedIds.ToArray(),
             Categories = categories,
+            TitleOverrides = titleOverrides,
             ExperienceId = experienceId,
         };
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
             normalized = normalized with { Categories = [] };
+        if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
+            normalized = normalized with { TitleOverrides = [] };
         return normalized;
     }
 
@@ -174,7 +185,7 @@ internal static class GameLauncherOrganizationPolicy
         var contains = favorites.Contains(display.SavedId, StringComparer.Ordinal);
         if (favorite && !contains) favorites.Add(display.SavedId);
         if (!favorite && contains) favorites.Remove(display.SavedId);
-        var candidate = WithDisplay(state, display) with { FavoriteSavedIds = favorites };
+        var candidate = RetainDisplay(state, display) with { FavoriteSavedIds = favorites };
         return AcceptIfBounded(state, candidate);
     }
 
@@ -182,7 +193,7 @@ internal static class GameLauncherOrganizationPolicy
         GameLauncherPrivateState state,
         GameLauncherDisplayItem display)
     {
-        state = WithDisplay(Normalize(state), display);
+        state = RetainDisplay(Normalize(state), display);
         var recent = state.RecentSavedIds.Where(savedId =>
                 !string.Equals(savedId, display.SavedId, StringComparison.Ordinal))
             .Prepend(display.SavedId)
@@ -210,7 +221,7 @@ internal static class GameLauncherOrganizationPolicy
         }
         if (!included && contains) manual.Remove(display.SavedId);
         if (included == contains) return GameLauncherStateMutation.Reject(state);
-        var candidate = WithDisplay(state, display) with { ManualSavedIds = manual };
+        var candidate = RetainDisplay(state, display) with { ManualSavedIds = manual };
         return AcceptIfBounded(state, candidate);
     }
 
@@ -230,7 +241,7 @@ internal static class GameLauncherOrganizationPolicy
         }
         if (!excluded && contains) exclusions.Remove(display.SavedId);
         if (excluded == contains) return GameLauncherStateMutation.Reject(state);
-        var candidate = WithDisplay(state, display) with { ExcludedSavedIds = exclusions };
+        var candidate = RetainDisplay(state, display) with { ExcludedSavedIds = exclusions };
         return AcceptIfBounded(state, candidate);
     }
 
@@ -268,7 +279,7 @@ internal static class GameLauncherOrganizationPolicy
         var id = involved.Select(group => group.Id).Order(StringComparer.Ordinal).FirstOrDefault() ??
             GameLauncherIdentity.GroupId(first.SavedId, second.SavedId);
         groups.Add(new(id, members, second.SavedId));
-        var candidate = WithDisplay(WithDisplay(state, first), second) with
+        var candidate = RetainDisplay(RetainDisplay(state, first), second) with
         {
             VariantGroups = groups,
         };
@@ -337,6 +348,7 @@ internal static class GameLauncherOrganizationPolicy
             .Concat(state.ManualSavedIds)
             .Concat(state.ExcludedSavedIds)
             .Concat(state.Categories.SelectMany(category => category.SavedIds))
+            .Concat(state.TitleOverrides.Select(title => title.SavedId))
             .Distinct(StringComparer.Ordinal).ToArray();
 
     internal static GameLauncherVariantGroup? GroupFor(
@@ -344,7 +356,7 @@ internal static class GameLauncherOrganizationPolicy
         string savedId) => state.VariantGroups.FirstOrDefault(group =>
             group.SavedIds.Contains(savedId, StringComparer.Ordinal));
 
-    private static GameLauncherStateMutation AcceptIfBounded(
+    internal static GameLauncherStateMutation AcceptIfBounded(
         GameLauncherPrivateState baseline,
         GameLauncherPrivateState candidate)
     {
@@ -354,7 +366,7 @@ internal static class GameLauncherOrganizationPolicy
             : GameLauncherStateMutation.Apply(normalized);
     }
 
-    private static GameLauncherPrivateState WithDisplay(
+    internal static GameLauncherPrivateState RetainDisplay(
         GameLauncherPrivateState state,
         GameLauncherDisplayItem display)
     {

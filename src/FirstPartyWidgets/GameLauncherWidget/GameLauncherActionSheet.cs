@@ -5,11 +5,13 @@ namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
 
 internal static class GameLauncherActionSheet
 {
+    private const int FixedActionCount = 7;
     internal const string ScopeId = "game-launcher.actions.scope";
     internal const string CloseAction = "game-launcher.actions.close";
     internal const string OpenAction = "game-launcher.actions.open";
     internal const string RefreshSourceAction = "game-launcher.actions.refresh-source";
     internal const string ManageCategoriesAction = "game-launcher.actions.categories";
+    internal const string EditTitleAction = "game-launcher.actions.edit-title";
     internal const string CategoryActionPrefix = "game-launcher.actions.category.";
     internal const string InitialFocusId = "game-launcher.actions.favorite";
 
@@ -53,7 +55,8 @@ internal static class GameLauncherActionSheet
                 state.Preferred ? "Already the preferred variant" : "Prefer this variant",
                 IsDisabled: !available || state.GroupSize < 2 || state.Preferred),
         };
-        items.AddRange(categories.Select(category =>
+        items.AddRange(categories.Take(UI.MaximumActionSheetItems - FixedActionCount)
+            .Select(category =>
         {
             var included = GameLauncherCategoryPolicy.Contains(
                 category, state.Selection.SavedId);
@@ -67,6 +70,13 @@ internal static class GameLauncherActionSheet
                     : $"Add {state.DisplayName} to {category.Name}",
                 IsDisabled: !available);
         }));
+        items.Add(new(
+            "game-launcher.actions.edit-title",
+            "Edit title",
+            EditTitleAction,
+            WidgetGlyph.Settings,
+            "Set or reset the display and search title for this exact game",
+            IsDisabled: !available));
         items.Add(new(
             "game-launcher.actions.categories",
             "Manage categories",

@@ -3762,3 +3762,24 @@ Focused Release evidence passes Game Launcher 75/75. The ordinary generic
 AppContainer worker route creates and assigns a category, restarts, cycles
 RT to the retained category, LT to All Games, RT back to the category, and
 observes one exact launch revalidation.
+
+### Exact per-game title override (DLV-157)
+
+Game Launcher now exposes **Edit title** from the existing Y action sheet. A
+separate scoped TextEntry stores one normalized, 96-character-bounded title by
+exact SavedId; **Reset title** removes that mapping. `GameLauncherTitlePolicy`
+alone validates, normalizes, applies, searches, and produces immutable render
+projection while the existing widget/state-store adapter remains the sole
+lifecycle, provider-effect, and two-attempt CAS owner.
+
+Provider titles remain separately retained in private display recovery. Custom
+titles affect current/warm/category/details/hero presentation and search only.
+Override-only search performs one bounded exact-SavedId resolve; launch still
+uses current AppId/SavedId capability evidence and never consumes title text.
+Malformed title fields reset without clearing favorites/categories, a rejected
+byte-budget mutation preserves committed state, and CAS replay reapplies only
+the requested SavedId override.
+
+Focused Release evidence passes Game Launcher 77/77. The ordinary generic
+AppContainer worker route edits a title, restarts, renders and exactly launches
+the retained override, resets it, and restores the provider title.
