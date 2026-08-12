@@ -224,8 +224,9 @@ same final shell bounds without changing tray capacity during one transition.
 **Acceptance:** tray center/baseline and selected item bounds are invariant
 through every frame of small↔Game Launcher and small↔Spotify cycles; semantic,
 pointer, and painted tray bounds agree; final host bounds remain within the
-named work area at compact, current 1316x896-class, 1080p, 150%, and monitor-
-change profiles; top header, bottom guide, and tray remain reachable; no black
+selected monitor's live Windows work area, with representative compact, 720p,
+1080p, 150%-scale, taskbar-reserved, and monitor-change profiles; top header,
+bottom guide, and tray remain reachable; no black
 border, flash, stale input, focus transfer, or six→eight→six tray-capacity churn
 occurs during the same identity switch. Record timing/geometry/state evidence,
 not screenshots.
