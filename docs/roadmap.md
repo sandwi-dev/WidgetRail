@@ -177,8 +177,8 @@ remains off until the publisher-trust gates in Phase 4.
   Packaged PID 16824 is the current Game Launcher user-test build. Accepted
   DLV-127 `df07d7c`, integrated through `2ac0a5a`, now keeps one shared tray and
   shell fitted to the active work area while preferred widget size remains an
-  inner body hint. Rebuild and live-check that exact main next. These visible
-  regressions outrank verifier cleanup and internal decomposition.
+  inner body hint. Rebuilt exact-main PID 18392 is the current live-check build.
+  These visible regressions outrank verifier cleanup and internal decomposition.
 - Finish the evidence matrix for the implemented packaged-regression fixes:
   transparent native client pixels outside content surfaces (GBA-036), a fresh
   Now Playing read/subscription generation on Retry (GBA-037), lazy Games

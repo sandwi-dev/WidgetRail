@@ -4829,8 +4829,9 @@ below.
    DLV-126 restores protocol-valid top controls, actionable contextual
    shortcuts, and collection continuation on packaged PID 16824. Accepted
    DLV-127 keeps the tray stationary and fits the overlay to the active work
-   area; rebuild and relaunch exact main next. Both use functional/log/geometry
-   evidence, while the user's live visual verdict remains the closing gate.
+   area; rebuilt exact-main PID 18392 is visibly running. Both use functional/
+   log/geometry evidence, while the user's live visual verdict remains the
+   closing gate.
 2. **Live-check accepted DLV-049 and DLV-051.** DLV-049 is integrated as
    `a8bcb27` and binds the exact four-session reverse edge to DLV-021's corrected
    geometry; DLV-051 is integrated as `822d29c` and authors Spotify seek Left to
