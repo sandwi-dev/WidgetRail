@@ -2836,6 +2836,27 @@ private:
                              std::to_wstring(GetLastError()));
             return OverlayShowResult::Failed;
         }
+        const auto bodyTarget = DesiredWidgetSurfaceTarget();
+        AppendDiagnostic(
+            L"Overlay work-area placement work=" +
+            std::to_wstring(work.left) + L"," + std::to_wstring(work.top) + L"," +
+            std::to_wstring(work.right) + L"," + std::to_wstring(work.bottom) +
+            L" host=" + std::to_wstring(compositionSurface_.available()
+                ? compositionContainer->x : placement->x) + L"," +
+            std::to_wstring(compositionSurface_.available()
+                ? compositionContainer->y : placement->y) + L"," +
+            std::to_wstring(compositionSurface_.available()
+                ? compositionContainer->width : placement->width) + L"," +
+            std::to_wstring(compositionSurface_.available()
+                ? compositionContainer->height : placement->height) +
+            L" dpi=" + std::to_wstring(dpi) +
+            L" interface-scale=" + std::to_wstring(interfaceScale) +
+            L" surface=" +
+            (state_.surface() == gba::Surface::Widget ? L"widget" : L"dashboard") +
+            L" shell=" +
+            (state_.surface() == gba::Surface::Widget ? L"shared" : L"dashboard") +
+            L" body-preferred=" + std::to_wstring(bodyTarget.panelWidthDip) + L"x" +
+            std::to_wstring(bodyTarget.panelHeightDip));
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
@@ -3017,11 +3038,13 @@ private:
         if (state_.surface() != gba::Surface::Widget) {
             return {kPanelWidth, kDashboardHeight};
         }
-        const auto target = DesiredWidgetSurfaceTarget();
-        return {
-            static_cast<int>(std::lround(target.windowWidthDip)),
-            static_cast<int>(std::lround(target.windowHeightDip)),
-        };
+        // Widget surface hints size only the responsive body inside host chrome.
+        // A widget-selected HWND/surface extent made the host-owned tray move,
+        // changed its capacity, and could exceed the active work area while the
+        // fixed composition container stayed behind. Keep one shared shell for
+        // every admitted or retained widget; ShowOverlay remains the sole owner
+        // that clamps this design extent to live rcWork/DPI/interface scale.
+        return {kPanelWidth, kWidgetPanelHeight};
     }
 
     [[nodiscard]] gba::OverlayPresentationExtent
@@ -3255,7 +3278,8 @@ private:
         if (state_.surface() == gba::Surface::Widget) {
             surfaceGeometry = gba::ComputeOverlaySurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
-                DesiredWidgetSurfaceTarget().panelWidthDip);
+                DesiredWidgetSurfaceTarget().panelWidthDip,
+                DesiredWidgetSurfaceTarget().panelHeightDip);
         }
         const auto trayTarget = HitTrayTarget(
             x, y, metrics->viewportWidthDip, metrics->viewportHeightDip,
@@ -3307,7 +3331,8 @@ private:
         if (state_.surface() == gba::Surface::Widget) {
             surface = gba::ComputeOverlaySurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
-                DesiredWidgetSurfaceTarget().panelWidthDip);
+                DesiredWidgetSurfaceTarget().panelWidthDip,
+                DesiredWidgetSurfaceTarget().panelHeightDip);
             if (surface && contains({
                     surface->panelX, surface->panelY, surface->panelWidth,
                     surface->footerY - surface->panelY})) return true;
@@ -4429,7 +4454,10 @@ private:
         const auto geometry = gba::ComputeOverlaySurfaceGeometry(
             metrics->viewportWidthDip,
             metrics->viewportHeightDip,
-            IsBridgeWidget(widget) ? widgetSurface.panelWidthDip : 720.0F);
+            IsBridgeWidget(widget) ? widgetSurface.panelWidthDip : 720.0F,
+            IsBridgeWidget(widget)
+                ? std::optional<float>{widgetSurface.panelHeightDip}
+                : std::nullopt);
         if (!geometry) return false;
 
         const auto target = gba::input::ResolveResponsiveFocusPersistenceTarget(
@@ -5854,7 +5882,10 @@ private:
         const bool bridgeWidget = IsBridgeWidget(widget);
         const auto widgetSurface = DesiredWidgetSurfaceTarget();
         const auto geometry = gba::ComputeOverlaySurfaceGeometry(
-            width, height, bridgeWidget ? widgetSurface.panelWidthDip : 720.0F);
+            width, height, bridgeWidget ? widgetSurface.panelWidthDip : 720.0F,
+            bridgeWidget
+                ? std::optional<float>{widgetSurface.panelHeightDip}
+                : std::nullopt);
         if (!geometry) return;
         const auto trayLayout = gba::shell::ComputeTrayLayout(
             width, height, state_.order().size(), state_.selectedSlot(),
@@ -6017,12 +6048,29 @@ private:
                             [&](const gba::shell::TrayTileLayout& tile) {
                                 return tile.slot == state_.selectedSlot();
                             });
+                    const gba::shell::TrayTileLayout* selectedTrayItem = nullptr;
+                    if (trayLayout) {
+                        const auto selected = std::find_if(
+                            trayLayout->tiles.begin(), trayLayout->tiles.end(),
+                            [&](const gba::shell::TrayTileLayout& tile) {
+                                return tile.slot == state_.selectedSlot();
+                            });
+                        if (selected != trayLayout->tiles.end()) {
+                            selectedTrayItem = &*selected;
+                        }
+                    }
                     const std::wstring trayState = trayLayout
                         ? L"\n" + std::to_wstring(trayLayout->totalCount) + L"\n" +
                             std::to_wstring(trayLayout->tiles.size()) + L"\n" +
                             (trayLayout->previousOverflow ? L"1" : L"0") + L"\n" +
                             (trayLayout->nextOverflow ? L"1" : L"0") + L"\n" +
-                            (selectedTrayItemVisible ? L"1" : L"0")
+                            (selectedTrayItemVisible ? L"1" : L"0") + L"\n" +
+                            std::to_wstring(width) + L"x" +
+                            std::to_wstring(height) + L"\n" +
+                            std::to_wstring(trayLayout->stripBounds.x) + L"," +
+                            std::to_wstring(trayLayout->stripBounds.y) + L"," +
+                            std::to_wstring(trayLayout->stripBounds.width) + L"," +
+                            std::to_wstring(trayLayout->stripBounds.height)
                         : L"\nmissing";
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
@@ -6056,7 +6104,32 @@ private:
                             L" tray-next=" +
                             (trayLayout && trayLayout->nextOverflow ? L"true" : L"false") +
                             L" tray-selected-visible=" +
-                            (selectedTrayItemVisible ? L"true" : L"false"));
+                            (selectedTrayItemVisible ? L"true" : L"false") +
+                            L" shell-bounds=0,0," + std::to_wstring(width) + L"," +
+                            std::to_wstring(height) +
+                            L" body-bounds=" + std::to_wstring(geometry->panelX) + L"," +
+                            std::to_wstring(geometry->panelY) + L"," +
+                            std::to_wstring(geometry->panelWidth) + L"," +
+                            std::to_wstring(geometry->panelHeight) +
+                            L" viewport-bounds=" +
+                            std::to_wstring(geometry->widgetViewportX) + L"," +
+                            std::to_wstring(geometry->widgetViewportY) + L"," +
+                            std::to_wstring(geometry->widgetViewportWidth) + L"," +
+                            std::to_wstring(geometry->widgetViewportHeight) +
+                            L" tray-bounds=" +
+                            (trayLayout
+                                ? std::to_wstring(trayLayout->stripBounds.x) + L"," +
+                                    std::to_wstring(trayLayout->stripBounds.y) + L"," +
+                                    std::to_wstring(trayLayout->stripBounds.width) + L"," +
+                                    std::to_wstring(trayLayout->stripBounds.height)
+                                : std::wstring{L"missing"}) +
+                            L" tray-selected-bounds=" +
+                            (selectedTrayItem
+                                ? std::to_wstring(selectedTrayItem->bounds.x) + L"," +
+                                    std::to_wstring(selectedTrayItem->bounds.y) + L"," +
+                                    std::to_wstring(selectedTrayItem->bounds.width) + L"," +
+                                    std::to_wstring(selectedTrayItem->bounds.height)
+                                : std::wstring{L"missing"}));
                     }
                 }
                 declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;

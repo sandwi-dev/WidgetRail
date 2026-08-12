@@ -451,6 +451,7 @@ int main() {
         PhysicalRect{0, 0, 800, 600},
         PhysicalRect{0, 0, 1024, 728},
         PhysicalRect{0, 0, 1280, 680},
+        PhysicalRect{0, 0, 1316, 896},
         PhysicalRect{0, 0, 1366, 728},
         PhysicalRect{0, 0, 1920, 1040},
         PhysicalRect{0, 0, 2560, 1040},
@@ -542,6 +543,22 @@ int main() {
           std::abs(standardSurface->footerY -
                    (standardSurface->panelY + standardSurface->panelHeight - 55.0F)) < 0.001F,
           "standard widget footer preserves established chrome height");
+    const auto compactBody = ComputeOverlaySurfaceGeometry(
+        1180.0F, 700.0F, 560.0F, 420.0F);
+    const auto wideBody = ComputeOverlaySurfaceGeometry(
+        1180.0F, 700.0F, 1120.0F, 620.0F);
+    Check(compactBody && wideBody,
+          "compact and wide bodies resolve inside one shared shell");
+    CheckNear(compactBody->trayY, wideBody->trayY,
+              "widget body preference cannot move the shared tray baseline");
+    CheckNear(compactBody->trayHeight, wideBody->trayHeight,
+              "widget body preference cannot resize the shared tray band");
+    Check(compactBody->panelHeight < wideBody->panelHeight &&
+              wideBody->panelY + wideBody->panelHeight <= wideBody->trayY,
+          "body height preference is clamped below the stationary tray");
+    Check(compactBody->panelWidth < wideBody->panelWidth &&
+              wideBody->panelX + wideBody->panelWidth <= 1180.0F,
+          "body width preference is clamped inside the shared shell");
     Check(!ComputeOverlaySurfaceGeometry(0, 700, 880),
           "zero surface width fails closed");
     Check(!ComputeOverlaySurfaceGeometry(1180, 700, -1),
@@ -549,6 +566,9 @@ int main() {
     Check(!ComputeOverlaySurfaceGeometry(
               std::numeric_limits<float>::infinity(), 700, 880),
           "non-finite surface width fails closed");
+    Check(!ComputeOverlaySurfaceGeometry(
+              1180, 700, 880, std::numeric_limits<float>::infinity()),
+          "non-finite preferred panel height fails closed");
 
     std::cout << "OverlayPlacementTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

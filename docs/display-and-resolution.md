@@ -73,19 +73,22 @@ responsive reflow; it does not silently reduce the user's chosen zoom. The
 physical-pixel ratio is passed to declarative layout for deterministic edge
 snapping.
 
-The shell computes its panel, widget viewport, and tray from the current
-logical extent. Geometry remains finite, non-negative, and contained even for
-tiny or portrait inputs. At pathological sizes, content may clip or collapse
-because no useful space exists; containment is a safety guarantee, not a claim
-that a 1×1 display is usable.
+The host computes one shared widget shell from the current `rcWork`, monitor
+DPI, and interface scale. Every admitted or retained widget uses that same
+logical shell and bottom tray band; surface hints change only the centered body
+panel and its bounded viewport. Geometry remains finite, non-negative, and
+contained even for tiny or portrait inputs. At pathological sizes, content may
+clip or collapse because no useful space exists; containment is a safety
+guarantee, not a claim that a 1×1 display is usable.
 
 The tray inventory is not clipped to the tiles that fit the current widget
 extent. At compact widths the host keeps the selected stable identity visible
 and reserves named previous/next overflow controls for the adjacent off-page
 items; controller, pointer, and UI Automation consume that same layout. Moving
-between compact and wide surfaces or replacing the catalog preserves the exact
-persisted order and one selected/focus owner. Catalog replacement is painted on
-the host UI thread before a later pointer message can target the new slot map.
+between compact and wide body hints cannot move the tray or change its capacity.
+Replacing the catalog preserves the exact persisted order and one selected/
+focus owner. Catalog replacement is painted on the host UI thread before a
+later pointer message can target the new slot map.
 
 ## Widget author contract
 
@@ -123,9 +126,10 @@ geometry from a different surface generation.
 
 `WidgetView.Surface` may publish a bounded `Adaptive`, `Compact`, `Standard`,
 or `Wide` presentation hint plus optional preferred/minimum logical dimensions.
-It is never a fixed-size request. The shell clamps the resolved surface against
-the selected monitor and its own chrome after applying interface/accessibility
-scale; declarative layout and Scroll then handle the final viewport.
+It is never a fixed-size request. The shell is independently fitted to the
+selected monitor's live work area after interface/accessibility scale. The host
+then clamps the requested body inside the space above its stationary guide and
+tray; declarative layout and Scroll handle the final viewport.
 
 Surface dimensions describe the useful floating **widget panel**, including
 the host footer inside that panel. They do not include the persistent icon tray,
@@ -147,25 +151,24 @@ requested logical surface fits in a fixed physical work area. Widgets must use
 responsive layout and semantic Scroll rather than treating either pair as a
 guaranteed measurement.
 
-Snapshots without `Surface` retain the package-API-1 compatibility canvas
-(1180×700 shell with an 880-DIP panel). A worker-starting message is never
-sizing authority. When another widget presentation has already been admitted,
-the host keeps that one bounded snapshot and its exact surface painted as
-visual-only content until the destination publishes a valid snapshot. Input
-and accessibility authority still transfer immediately to the destination;
-the retained controls are neither actionable nor projected to UI Automation.
-Only the first widget open, where no committed presentation exists, uses the
-stable compact startup surface.
+Snapshots without `Surface` retain the package-API-1 compatibility body
+(an 880×522-DIP panel) inside the shared 1180×700 design shell. A worker-starting
+message is never body-sizing authority. When another widget presentation has
+already been admitted, the host keeps that bounded snapshot painted as
+visual-only content inside the same final shell until the destination publishes
+a valid snapshot. Input and accessibility authority still transfer immediately
+to the destination; the retained controls are neither actionable nor projected
+to UI Automation. Only the first widget open, where no committed presentation
+exists, uses the compact startup body hint.
 
-After snapshot admission, full motion eases the host-owned logical extent from
-the currently presented size to the destination size over 140 ms on the
-existing controller cadence. Interrupted visible switches retarget from that
-presented size rather than restarting from stale geometry. Reduced motion snaps
-to the destination immediately. DirectComposition renders one complete
-destination surface and transforms it inside the fixed transparent host
-container; animation ticks neither redraw content nor resize the HWND. Hiding
-retires an interrupted extent and its presented geometry, so reopen starts from
-the current authoritative widget extent and schedules no hidden frame work.
+Widget-to-widget switching does not resize or transform the host-owned shell,
+guide, or tray. Snapshot admission may reflow the body from its retained hint to
+the destination hint, but both are clipped to the same bounded body viewport
+above the stationary tray. DirectComposition continues to render and commit one
+complete premultiplied destination surface inside the single transparent host
+container; there is no second presentation owner. The existing dashboard/open
+shell timeline remains separate. Hiding retires any pending presentation state
+and schedules no hidden frame work.
 The composition HWND has no class background brush; the separate backdrop is
 the only opaque full-monitor owner. Unknown, partial, non-finite, and
 out-of-range native hint data cannot escape the sizing policy and falls back to
@@ -191,14 +194,14 @@ The native Release suite currently proves these policy/math seams:
   extent stability across identical snapshots;
 - 1280×720, portrait, offset-ultrawide, and combined 200%-DPI/125%-interface/
   150%-text surface clamping with host tray/footer/controller reservations;
-- 108,547 placement checks across dense logical boundaries for
+- 111,253 placement checks across dense logical boundaries for
   panel, widget viewport, adaptive footer, and persistent tray geometry;
 - declarative compact/clipping behavior for constrained viewports, including
   portrait cases and non-integer physical-pixel scale;
 - deterministic controller-focus recovery when resize/reflow clips the
   preferred control, with hidden controls excluded from explicit navigation
   and action dispatch; and
-- targeting checks covering admitted/retained/first-open content and extent
+- targeting checks covering admitted/retained/first-open content and body-hint
   authority plus in-place render-target resize planning;
 - transition checks covering the 140 ms extent curve, exact endpoint, reduced
   motion, interrupted retargeting from presented geometry, and the existing
@@ -212,11 +215,11 @@ The native Release suite currently proves these policy/math seams:
 The production `WidgetSwitchHostTests` fixture drives the real OverlayHost HWND
 through eight production-shaped widget identities. Its isolated workers signal
 and delay selected first renders so checks occur during—not after—the startup
-interval. The matrix asserts retained source content and source extent before
-admission, coherent destination reveal and host-side resizing afterward, rapid
-reversal, same-identity refresh, persistent tray chrome, compact selected-item
-and overflow semantics, and synchronous catalog addition/removal without stale
-tray focus or dispatch.
+interval. The matrix asserts retained source content before admission, coherent
+destination reveal in the same shell afterward, rapid reversal, same-identity
+refresh, exact retained/admitted tray bounds, stable widget-switch tray
+capacity, live work-area/DPI re-resolution, contained HWND placement, and
+synchronous catalog addition/removal without stale tray focus or dispatch.
 
 Run the native contract suite with:
 

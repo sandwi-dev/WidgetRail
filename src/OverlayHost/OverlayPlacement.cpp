@@ -253,10 +253,14 @@ std::optional<OverlayRenderMetrics> ComputeOverlayRenderMetrics(
 std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     const float viewportWidthDip,
     const float viewportHeightDip,
-    const float preferredPanelWidthDip) noexcept {
+    const float preferredPanelWidthDip,
+    const std::optional<float> preferredPanelHeightDip) noexcept {
     if (!std::isfinite(viewportWidthDip) || !std::isfinite(viewportHeightDip) ||
         !std::isfinite(preferredPanelWidthDip) || viewportWidthDip <= 0.0F ||
-        viewportHeightDip <= 0.0F || preferredPanelWidthDip <= 0.0F) {
+        viewportHeightDip <= 0.0F || preferredPanelWidthDip <= 0.0F ||
+        (preferredPanelHeightDip &&
+            (!std::isfinite(*preferredPanelHeightDip) ||
+             *preferredPanelHeightDip <= 0.0F))) {
         return std::nullopt;
     }
 
@@ -273,7 +277,10 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     const float preferredPanelBottom = std::max(
         panelY, viewportHeightDip - trayReservation);
     const float panelBottom = std::min(preferredPanelBottom, trayY);
-    const float panelHeight = panelBottom - panelY;
+    const float availablePanelHeight = panelBottom - panelY;
+    const float panelHeight = preferredPanelHeightDip
+        ? std::min(*preferredPanelHeightDip, availablePanelHeight)
+        : availablePanelHeight;
 
     const float contentInset = std::min(
         1.0F, std::min(panelWidth, panelHeight) * 0.1F);
