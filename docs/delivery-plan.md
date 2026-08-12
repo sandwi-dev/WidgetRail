@@ -168,32 +168,27 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-187: prove offline browsing and exact local launch
+### Current assignment — DLV-190: extract Launcher launch-persistence coordination
 
-**State:** In progress from clean widgets commit `3814471`. Finish and commit
-this visible milestone before taking the queued DLV-190 architecture correction.
+**State:** In progress from clean widgets commit `629f8e2`. DLV-187 is accepted
+held and the lane advanced immediately to this queued architecture correction.
 
-**Baseline/dependencies:** widgets branch `3814471`; accepted product `0c321a3`.
-DLV-181/183/189/186 are accepted held; DLV-182/184/185 remain rejected and
-unintegrated. Own only existing Game Launcher offline/last-good presentation,
-exact typed resolve/launch admission, focused provider fakes/installed route,
-and directly affected implementation/public docs. Do not edit launch-generation
-coordinator structure, compact presentation, new adapters/public protocol,
-native host, reviewer docs, or pack schemas.
+**Baseline/dependencies:** widgets branch `629f8e2`; accepted product `0c321a3`.
+DLV-181/183/189/186/187 are accepted held; DLV-182/184/185 remain rejected and
+unintegrated. Correct rejected DLV-185 while retaining its proven blocked-write
+behavior. Move launch admission generation, accepted-observation Recent commit,
+CAS conflict reconciliation, and local Recent restoration behind one focused
+coordinator/policy outside `GameLauncherWidget`; the root stays a thin lifecycle/
+action/committed-view adapter and must not grow.
 
-**User-visible outcome:** the user can browse retained installed games during a
-network/source refresh failure and launch only an exact locally revalidated game;
-missing/stale records remain non-authorizing and focus does not jump.
+**Objective/acceptance:** preserve the exact blocked cancellation-ignoring
+persistence barrier, rejected/inactive admission, unrelated-state CAS replay,
+exact SavedId, retry focus, and close-threshold behavior while removing the root
+regrowth that caused DLV-185 rejection.
 
-**Objective/acceptance:** close GL-CAT-007 for current installed sources. A failed
-network/source catalog refresh retains bounded last-good browsing, exact
-collection/tile focus, and locally revalidated launch only where current typed
-authority confirms Installed plus Launch. Offline state cannot silently
-authorize stale/missing records; recovery cannot duplicate or reorder Recent.
-
-**Verification/stop:** Tier 1 Launcher/provider fakes plus one installed offline/
-recovery exact-SavedId route. No remote account, new adapter, public protocol,
-launch-coordinator refactor, native layout, capture, aggregate, or security work.
+**Verification/stop:** Tier 1 Launcher plus the exact installed launch route. No
+behavior expansion, broker/public protocol, compact UI, native host, capture,
+aggregate, cosmetic file split, or graph of coordinators.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -498,18 +493,7 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-187 — DLV-190: extract Launcher launch-persistence coordination.**
-   Correct rejected DLV-185 while retaining its proven blocked-write behavior.
-   Move launch admission generation, accepted-observation Recent commit, CAS
-   conflict reconciliation, and local Recent restoration behind one focused
-   coordinator/policy outside `GameLauncherWidget`; the root remains the thin
-   lifecycle/action/committed-view adapter and must not grow. Preserve the exact
-   blocked cancellation-ignoring persistence barrier, rejected/inactive
-   admission, unrelated-state CAS replay, exact SavedId, retry focus, and close-
-   threshold evidence. Tier 1 Launcher plus the exact installed launch route;
-   no behavior expansion, broker/public protocol, compact UI, native, capture,
-   aggregate, cosmetic file split, or graph of coordinators.
-2. **Ready after DLV-190 — DLV-191: controller-reachable Launcher experience switch.**
+1. **Ready after DLV-190 — DLV-191: controller-reachable Launcher experience switch.**
    Close GL-UX-009 using only the already accepted trusted experience catalog,
    selection, preview, and safe built-in recovery owners. The Launcher root must
    expose one controller-reachable Switch experience action; candidate preview
@@ -519,7 +503,7 @@ for adoption.
    new pack schema, renderer/protocol, executable/remote content, gallery,
    capture, aggregate, or duplicate Settings/catalog authority. Stop before edits
    if no existing managed/private action seam can invoke the accepted owner.
-3. **Ready after DLV-191 — DLV-192: Launcher manual presentation override feasibility slice.**
+2. **Ready after DLV-191 — DLV-192: Launcher manual presentation override feasibility slice.**
    Deliver only GL-CAT-009 fields already supportable by existing bounded private
    state and trusted opaque artwork handles: title/category/hidden/preferred
    behavior must remain exact and resettable, and add artwork/background only if

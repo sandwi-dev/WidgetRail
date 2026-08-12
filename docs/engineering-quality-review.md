@@ -279,7 +279,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-180 is integrated and live on PID 30500; DLV-181/183/189/186 are accepted held. DLV-187 offline exact-local-launch is active. | DLV-190 must correct DLV-185's root growth before the widget prefix integrates. Platform DLV-168 is active; DLV-188 retains the user's switch-border/flicker verdict. |
+| Visible UI and controller behavior | DLV-180 is integrated and live on PID 30500; DLV-181/183/189/186/187 are accepted held. DLV-187 proves offline last-good browsing and exact local revalidation without product/root changes. | DLV-190 is active to correct DLV-185's root growth before the widget prefix integrates. Platform DLV-168 is active; DLV-188 retains the user's switch-border/flicker verdict. |
 | Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. DLV-180's native TextEntry path is integrated as `0c321a3`. | Complete active DLV-168, then DLV-160 and the live switch-continuity verdict DLV-188. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -309,13 +309,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active DLV-187, then DLV-190's extracted generation-safe launch/
-   persistence coordinator. DLV-181/183/189/186 are accepted held.
+1. Review active DLV-190's extracted generation-safe launch/persistence
+   coordinator. DLV-181/183/189/186/187 are accepted held.
 2. Review active DLV-168's tray UIA completion contract before DLV-160; DLV-180
    is accepted, integrated, focused-package verified, and live on PID 30500.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 39248 visible for the user's dashboard, Spotify, Settings, and Game Launcher
+4. Keep PID 30500 visible for the user's dashboard, Spotify, Settings, and Game Launcher
    library verdict.
 5. DLV-176/177 now prove cancellation-ignoring late failures cannot mutate a
    later Active generation or replacement session; keep them held until the

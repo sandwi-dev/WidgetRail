@@ -118,7 +118,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-097 | P1 | Architecture correction ready DLV-190 | Game Launcher exact launch progression / stale completion | DLV-185 functionally closes the cancellation-ignoring Recent race and rejected-admission generation gap, but regrows the already oversized Launcher root by roughly 42 lines. DLV-190 must extract that launch/persistence coordinator without changing behavior. |
 | GBA-098 | P1 | Accepted held `6f7fa78` | Game Launcher compact first-page fit | DLV-189 restores the same Search TextEntry to 420×340 semantic focus order, preserves compact status/source/collections/Play/help and expanded layout identities, and accurately leaves physical clipping to live validation. |
 | GBA-099 | P2 | Accepted held `3814471` | Game Launcher owned/not-installed presentation | DLV-186 keeps typed owned games controller-focusable and non-launching; Install guidance appears only with an existing explicit Install capability and adds no operation/provider authority. |
-| GBA-100 | P1 | In progress DLV-187 | Game Launcher offline browse / exact local launch | GL-CAT-007 requires bounded last-good browsing and locally revalidated exact-SavedId launch during source/network failure without authorizing stale missing records or corrupting Recent. |
+| GBA-100 | P1 | Accepted held `629f8e2` | Game Launcher offline browse / exact local launch | DLV-187 proves retained last-good browsing, exact collection/tile focus, fresh Installed+Launch exact-SavedId revalidation, stale/missing denial, recovery, and unchanged Recent state in focused and installed AppContainer routes. It is held behind the unintegrated widgets prefix. |
 
 ## Operational use
 
