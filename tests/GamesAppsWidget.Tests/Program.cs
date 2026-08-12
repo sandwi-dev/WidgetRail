@@ -7,6 +7,9 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Visible lifecycle discovers trusted games before catalog browsing", LoadsFirstPage),
     ("Trusted games auto-curate idempotently with bounded feedback", AutoCuratesTrustedGames),
+    ("Windows package games auto-curate with exact source truth",
+        WindowsPackageGameProjectsTruthfully),
+    ("Epic games auto-curate with exact source truth", EpicGameProjectsTruthfully),
     ("Broker-shaped opaque IDs survive reconciliation and persistence", BrokerOpaqueIdsPersist),
     ("Automatic discovery walks bounded pages for trusted games", AutoCuratesGamesBeyondFirstPage),
     ("Refresh preserves order and focus while appending newly trusted games", RefreshAppendsGames),
@@ -39,6 +42,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Removing a focused app selects the nearest surviving row", RemovalSelectsNearestRow),
     ("Interactive A launches only the selected opaque app", LaunchesSelectedApp),
     ("Launch revalidates a rotated opaque app ID from the selected SavedId", LaunchRevalidatesRotatedAppId),
+    ("Unavailable and stale resolutions never authorize launch",
+        UnavailableAndStaleNeverLaunch),
     ("Confirmed launches move the exact curated app to recent-first", SuccessfulLaunchOrdersRecentFirst),
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
@@ -113,12 +118,9 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
                 "Windows"),
         ], "running-revision"),
         ConfirmRunningHandler = request => request.Revision == "running-revision"
-            ? new WidgetAppLibraryItem(
-                "app-current", "Visible app", WidgetAppLibraryKind.Application)
-            {
-                SavedId = request.SavedId,
-                SourceAttribution = "Windows",
-            }
+            ? InstalledItem(
+                "app-current", request.SavedId, "Visible app",
+                WidgetAppLibraryKind.Application, "source-windows", "Windows")
             : null,
     };
     var widget = Create(fake);
@@ -156,12 +158,9 @@ static async Task MalformedRunningConfirmationPreservesLibrary()
             new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
                 "Windows"),
         ], "running-revision"),
-        ConfirmRunningHandler = request => new WidgetAppLibraryItem(
-            "bad/app", "Visible app", WidgetAppLibraryKind.Application)
-        {
-            SavedId = request.SavedId,
-            SourceAttribution = "Windows",
-        },
+        ConfirmRunningHandler = request => InstalledItem(
+            "bad/app", request.SavedId, "Visible app",
+            WidgetAppLibraryKind.Application, "source-windows", "Windows"),
     };
     var widget = Create(fake);
     await Interactive(widget);
@@ -242,6 +241,51 @@ static async Task AutoCuratesTrustedGames()
     Assert.SequenceEqual(["game-a", "game-b"],
         widget.CuratedItems.Select(item => item.AppId));
     Assert.False(Nodes(Snapshot(widget, 201).Root).Any(node => node.Id == "games.toast"));
+    await Background(widget);
+}
+
+static async Task WindowsPackageGameProjectsTruthfully()
+{
+    var game = InstalledItem(
+        "app-xbox", "saved-xbox", "Package Game", WidgetAppLibraryKind.Game,
+        "source-microsoft-games-installed", "Xbox / Microsoft Store");
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([game], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+        widget.CuratedItems.Any(item => item.SavedId == game.SavedId));
+
+    var current = widget.CuratedItems.Single(item => item.SavedId == game.SavedId);
+    Assert.Equal(WidgetAppLibraryKind.Game, current.Presentation.Kind);
+    Assert.Equal("Xbox / Microsoft Store",
+        current.Presentation.Source.DisplayName);
+    Assert.True(ActionSurfaces(Snapshot(widget, 910).Root).Any(node =>
+        node.AccessibilityLabel?.Contains(
+            "Xbox / Microsoft Store", StringComparison.Ordinal) == true));
+    await Background(widget);
+}
+
+static async Task EpicGameProjectsTruthfully()
+{
+    var game = InstalledItem(
+        "app-epic", "saved-epic", "Epic Game", WidgetAppLibraryKind.Game,
+        "source-epic-installed", "Epic");
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([game], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+        widget.CuratedItems.Any(item => item.SavedId == game.SavedId));
+
+    var current = widget.CuratedItems.Single(item => item.SavedId == game.SavedId);
+    Assert.Equal("Epic", current.Presentation.Source.DisplayName);
+    Assert.True(ActionSurfaces(Snapshot(widget, 911).Root).Any(node =>
+        node.AccessibilityLabel?.Contains("Epic", StringComparison.Ordinal) == true));
     await Background(widget);
 }
 
@@ -370,7 +414,7 @@ static async Task DisappearanceRetainsOrder()
     ], null);
     await widget.OnActionAsync(new("games.retry", "games.root"));
     Assert.SequenceEqual(["Beta", "Alpha", "Gamma"],
-        widget.CuratedItems.Select(item => item.DisplayName));
+        widget.CuratedItems.Select(item => item.Presentation.DisplayName));
     var absent = Snapshot(widget, 219);
     var staleBeta = ActionSurfaces(absent.Root).Single(tile => TileTitle(tile) == "Beta");
     Assert.True(staleBeta.IsDisabled == true);
@@ -467,7 +511,7 @@ static async Task IdentityReplacementIsNewGame()
     ], null);
     await widget.OnActionAsync(new("games.retry", "games.root"));
     Assert.SequenceEqual(["Same title", "Same title"],
-        widget.CuratedItems.Select(item => item.DisplayName));
+        widget.CuratedItems.Select(item => item.Presentation.DisplayName));
     Assert.False(widget.CuratedItems.Any(item => item.AppId is "application" or "unknown"));
     var replacementSnapshot = Snapshot(widget, 211);
     await widget.OnActionAsync(new("games.launch", staleElementId));
@@ -481,7 +525,7 @@ static async Task IdentityReplacementIsNewGame()
     await BackToLibrary(widget);
     Assert.SequenceEqual(["replacement", "Same title", "application"],
         widget.CuratedItems.Select(item => item.AppId.StartsWith("pending.", StringComparison.Ordinal)
-            ? item.DisplayName
+            ? item.Presentation.DisplayName
             : item.AppId));
     await Background(widget);
 }
@@ -968,7 +1012,7 @@ static async Task ManyAppsUseCompactRail()
     await Interactive(widget);
     await OpenCatalog(widget);
     foreach (var app in apps)
-        await AddFromOpenCatalog(widget, app.DisplayName);
+        await AddFromOpenCatalog(widget, app.Presentation.DisplayName);
     await BackToLibrary(widget);
 
     var snapshot = Snapshot(widget, 63);
@@ -1337,6 +1381,47 @@ static async Task LaunchRevalidatesRotatedAppId()
     await Background(widget);
 }
 
+static async Task UnavailableAndStaleNeverLaunch()
+{
+    foreach (var state in new[]
+             {
+                 WidgetAppLibraryAvailabilityState.Unavailable,
+                 WidgetAppLibraryAvailabilityState.StaleSource,
+             })
+    {
+        var original = App("opaque-old", "Alpha") with { SavedId = "saved-alpha" };
+        var fake = new FakeAppLibraryHost
+        {
+            Pages = { [0] = Page([original], null) },
+        };
+        var widget = Create(fake);
+        await Interactive(widget);
+        await AddFromCatalog(widget, "Alpha");
+        await BackToLibrary(widget);
+        fake.ResolveHandler = (request, _) => ValueTask.FromResult(
+            new ResolveSavedWidgetAppLibraryItemsResponse([
+                original with
+                {
+                    AppId = "opaque-current",
+                    Presentation = original.Presentation with
+                    {
+                        Availability = new(state, false,
+                            state == WidgetAppLibraryAvailabilityState.Unavailable
+                                ? "unavailable" : "stale"),
+                        Capabilities = new([]),
+                    },
+                },
+            ]));
+
+        var alpha = ActionSurfaces(Snapshot(widget, 241).Root)
+            .Single(tile => TileTitle(tile) == "Alpha");
+        await widget.OnActionAsync(new("games.launch", alpha.Id));
+
+        Assert.Equal(0, fake.LaunchedIds.Count);
+        await Background(widget);
+    }
+}
+
 static async Task SuccessfulLaunchOrdersRecentFirst()
 {
     var fake = new FakeAppLibraryHost
@@ -1659,7 +1744,7 @@ static async Task CurrentStateSurvivesRestart()
 
     var warm = Snapshot(restarted, 322);
     Assert.SequenceEqual(["Gamma", "Beta"],
-        restarted.CuratedItems.Select(item => item.DisplayName));
+        restarted.CuratedItems.Select(item => item.Presentation.DisplayName));
     Assert.True(restarted.CuratedItems.All(item =>
         item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
     Assert.Equal(LibraryElementId("saved-gamma"), warm.InitialFocusId);
@@ -1707,7 +1792,7 @@ static async Task WarmStartPrecedesAuthorityResolution()
 
     var warm = Snapshot(widget, 301);
     Assert.SequenceEqual(["Beta", "Alpha"],
-        widget.CuratedItems.Select(item => item.DisplayName));
+        widget.CuratedItems.Select(item => item.Presentation.DisplayName));
     Assert.True(widget.CuratedItems.All(item =>
         item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
     var warmBeta = ActionSurfaces(warm.Root).Single(tile => TileTitle(tile) == "Beta");
@@ -1749,7 +1834,8 @@ static async Task WarmStartSurvivesRefreshFailure()
         .Contains("refresh unavailable", StringComparison.Ordinal));
 
     Assert.Equal(GamesAppsViewState.Ready, widget.ViewState);
-    Assert.SequenceEqual(["Alpha"], widget.CuratedItems.Select(item => item.DisplayName));
+    Assert.SequenceEqual(["Alpha"], widget.CuratedItems.Select(
+        item => item.Presentation.DisplayName));
     var snapshot = Snapshot(widget, 304);
     var alpha = ActionSurfaces(snapshot.Root).Single(tile => TileTitle(tile) == "Alpha");
     Assert.True(alpha.IsDisabled == true);
@@ -1783,7 +1869,8 @@ static async Task WarmStartRejectsLateResolution()
         { SavedId = "saved-a" }], null));
     await backgrounding.WaitAsync(TimeSpan.FromSeconds(1));
 
-    Assert.SequenceEqual(["Alpha"], widget.CuratedItems.Select(item => item.DisplayName));
+    Assert.SequenceEqual(["Alpha"], widget.CuratedItems.Select(
+        item => item.Presentation.DisplayName));
     Assert.True(widget.CuratedItems.Single().AppId.StartsWith(
         "pending.", StringComparison.Ordinal));
 }
@@ -2389,12 +2476,43 @@ static WidgetAppLibraryItem App(
     string name,
     WidgetAppLibraryKind kind = WidgetAppLibraryKind.Application,
     string? artworkHandle = null) =>
-    new(id, name, kind)
-    {
-        SavedId = "saved-" + id,
-        ArtworkHandle = artworkHandle,
-        SourceAttribution = kind == WidgetAppLibraryKind.Game ? "Steam" : "Windows",
-    };
+    InstalledItem(
+        id,
+        "saved-" + id,
+        name,
+        kind,
+        kind == WidgetAppLibraryKind.Game ? "source-steam" : "source-windows",
+        kind == WidgetAppLibraryKind.Game ? "Steam" : "Windows",
+        artworkHandle,
+        "fixture");
+
+static WidgetAppLibraryItem InstalledItem(
+    string appId,
+    string savedId,
+    string displayName,
+    WidgetAppLibraryKind kind,
+    string sourceId,
+    string sourceDisplayName,
+    string? artworkHandle = null,
+    string artworkRevision = "fixture")
+{
+    WidgetAppLibraryArtwork[] artwork = artworkHandle is null ? [] :
+    [
+        new(WidgetAppLibraryArtworkRole.Tile, artworkHandle, artworkRevision,
+            kind == WidgetAppLibraryKind.Game
+                ? WidgetAppLibraryArtworkFallback.Game
+                : WidgetAppLibraryArtworkFallback.Application),
+    ];
+    return new(appId, savedId, new(
+        displayName,
+        kind,
+        new(sourceId, sourceDisplayName),
+        new(WidgetAppLibraryAvailabilityState.Installed, true, "installed"),
+        new(artwork),
+        Metadata: null,
+        new([WidgetAppLibraryAction.Launch]),
+        ActiveOperation: null));
+}
 
 static WidgetAppLibraryPage Page(IReadOnlyList<WidgetAppLibraryItem> items, int? next) =>
     new(items, null, next is null ? null : Cursor(next.Value), "test-revision");

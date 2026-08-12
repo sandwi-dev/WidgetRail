@@ -101,6 +101,11 @@ internal sealed class AppLibraryArtworkRegistry
             var projected = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var item in items)
             {
+                if (string.IsNullOrEmpty(item.ArtworkRevision))
+                {
+                    RemoveProviderLocked(session, item.ProviderAppId);
+                    continue;
+                }
                 var key = new RegistrationIdentity(
                     item.ProviderAppId, item.StableProviderIdentity, item.ArtworkRevision);
                 var handle = session.ByProviderIdentity.TryGetValue(
@@ -129,6 +134,14 @@ internal sealed class AppLibraryArtworkRegistry
             }
             return projected;
         }
+    }
+
+    private void RemoveProviderLocked(Session session, string providerAppId)
+    {
+        if (session.ByProviderIdentity.Remove(providerAppId, out var existing))
+            _registrations.Remove(existing.Handle);
+        if (session.Recency.Remove(providerAppId, out var node))
+            session.LeastRecent.Remove(node);
     }
 
     private void End(Session session)

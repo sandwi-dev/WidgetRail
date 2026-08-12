@@ -21,6 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancelled section refresh preserves committed state", SettingsPolicyScenarios.CancelledSectionRefreshPreservesCommittedState),
     ("Settings uses a bounded controller-scroll surface", ControllerScrollSurface),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
+    ("Epic installed-game discovery is explicit and persisted", EpicSourceOptIn),
     ("Settings composites expose controller semantics", CompositeControls),
     ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
@@ -94,7 +95,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.game-sources", "category.diagnostics", "settings.refresh", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -147,6 +148,32 @@ static async Task NestedScopesAndBack()
     Assert.HasShortcut(themes.Root, "theme.picker", ControllerButton.B, "back");
     await Action(widget, "back");
     Assert.Equal(SettingsPage.Appearance, widget.CurrentPage);
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+}
+
+static async Task EpicSourceOptIn()
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    await Action(widget, "open.app-library-sources");
+    var initial = Snapshot(widget);
+    Assert.Equal(SettingsPage.AppLibrarySources, widget.CurrentPage);
+    Assert.Equal("app-library.sources.page", initial.ActiveInputScopeId);
+    Assert.True(Button(initial.Root, "app-library.epic.toggle").IsSelected is not true,
+        "Epic opt-in started selected.");
+    Assert.HasShortcut(initial.Root, "app-library.sources.page", ControllerButton.B,
+        "back");
+
+    await Action(widget, "app-library.epic.toggle");
+    Assert.Equal(true, (await Store(temp.Path).LoadAsync())
+        .AppLibrary.EpicInstalledGamesEnabled);
+    Assert.Equal(true, Button(Snapshot(widget).Root,
+        "app-library.epic.toggle").IsSelected);
+
+    await Action(widget, "app-library.epic.toggle");
+    Assert.Equal(false, (await Store(temp.Path).LoadAsync())
+        .AppLibrary.EpicInstalledGamesEnabled);
     await Action(widget, "back");
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
 }

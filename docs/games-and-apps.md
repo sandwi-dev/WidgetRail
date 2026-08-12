@@ -222,8 +222,12 @@ Catalog usable.
 opaque cursor with its direction, and a page size of 1–64. It returns
 `WidgetAppLibraryPage`, containing sanitized `WidgetAppLibraryItem` records,
 opaque Before/After cursors, and a provider revision. Each item has a short-lived
-`AppId` for launch, a durable `SavedId` for private state, and a sanitized source
-label. Cursors are traversal-only: never parse them or use them as launch or
+`AppId` for launch, a durable `SavedId` for private state, and one authoritative
+versioned `Presentation`. That immutable value carries the sanitized title and
+closed kind, opaque source reference, closed availability/launchability,
+role-keyed artwork, optional revisioned metadata with attribution, a closed
+capability set, and an optional current operation. No legacy scalar aliases are
+retained. Cursors are traversal-only: never parse them or use them as launch or
 durable identity.
 `ResolveSavedAsync` accepts at most 64 unique SavedIds, refreshes the provider,
 preserves request order, and omits apps that are no longer available. A
@@ -232,8 +236,9 @@ package IDs; it remains stable across worker/host restarts and package updates,
 but it cannot be correlated or reused by another widget package. The widget
 instance ID is intentionally not part of this durable authority.
 
-Current items may set `ArtworkHandle`, an opaque generation-bound registration
-that is neither a path nor a URL. Pass it to `UI.Artwork`,
+Current items may include a Tile artwork role in `Presentation.Artwork`; its
+handle is an opaque generation-bound registration that is neither a path nor a
+URL. Pass it to `UI.Artwork`,
 `Button.LeadingArtwork`, or `TileArtwork.FromHandle` and retain a semantic glyph
 fallback when it is absent. The host asks the trusted provider for pixels only
 when the artwork is rendered. Demand is admitted quickly and provider I/O runs
@@ -274,12 +279,19 @@ Read requires Visible or Interactive. Launch is a control operation and
 requires Interactive; it cannot use dashboard-gesture authority. Declaration,
 user consent, authenticated package/publisher/instance identity, current
 lifecycle, payload validation, and provider validation are independent gates.
+The SDK validates source, availability, artwork, metadata, capabilities, and
+operation values through separate focused owners before one narrow relationship
+composer runs. Games & Apps additionally requires a freshly resolved
+`Installed` row with matching explicit launchability and `Launch` capability;
+unavailable, stale-source, and retained last-good display rows never authorize
+launch.
 
 ## Trusted Windows provider boundary
 
-The current provider merges three bounded trusted Windows sources: current-user/
+The current provider merges five bounded trusted Windows sources: current-user/
 all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
-namespace, and registered Steam libraries. It:
+namespace, installed Microsoft/Xbox package registrations, and registered Steam
+libraries, plus explicitly enabled local Epic installed manifests. It:
 
 - treats Windows-installed and Steam libraries as ordinary implementations of
   one private source contract, with source-owned discovery, exact resolution,
@@ -291,11 +303,23 @@ namespace, and registered Steam libraries. It:
 - enumerates at most 2,048 AppsFolder items on one bounded process-wide Shell
   STA lane, retains only a canonical AppUserModelID (AUMID) plus sanitized
   display text, and treats a malformed/disappearing item as an isolated skip;
+- enumerates at most 4,096 current-user packages through the supported Windows
+  [`PackageManager.FindPackagesForUser`](https://learn.microsoft.com/windows/uwp/api/windows.management.deployment.packagemanager.findpackagesforuser)
+  API and classifies at most 1,024 applications as games only when the package's
+  bounded [`MicrosoftGame.config`](https://learn.microsoft.com/gaming/gdk/docs/features/common/game-config/microsoftgameconfig-overview)
+  names that exact registered application ID through its documented
+  [`Executable Id`](https://learn.microsoft.com/gaming/gdk/docs/reference/system/microsoftgameconfig/elements/microsoftgameconfig-element-executable);
+  an icon, title, package name, or install path is never treated as game evidence;
 - discovers at most 32 Steam library roots and 4,096 bounded
   `appmanifest_<id>.acf` files, accepts only a matching positive numeric AppId
   plus sanitized name, classifies those registrations as games, and prefers an
   exact duplicate registration with current trusted local artwork before the
   deterministic manifest-path tie-break;
+- when enabled in **Settings > Game sources**, reads at most 4,096 bounded
+  `.item` files only from Epic's fixed ProgramData installed-manifest directory;
+  unknown format versions, duplicate identities, unsafe/reparse paths, partial
+  writes, unsupported application records, and missing exact executables fail
+  closed without exposing manifest fields;
 - sanitizes display names, deduplicates the same trusted target identity, and
   serves the normalized catalog through revision-bound pages of at most 64;
 - assigns random opaque IDs that stay stable only while that registration
@@ -315,7 +339,9 @@ Launch does not trust a stale opaque-ID lookup by itself. Immediately before
 launch, the provider re-enumerates the exact source on the Shell STA lane.
 A shortcut must still have one matching scope, target identity, full path, and
 content fingerprint; AppsFolder must still expose exactly one matching
-canonical AUMID and revalidation key. Shortcuts use only Shell `open` on the
+canonical AUMID and revalidation key. A Microsoft/Xbox game must still expose
+the same package generation, exact AUMID, and matching game-configuration
+evidence. Shortcuts use only Shell `open` on the
 exact fully qualified `.lnk`, without supplied arguments, working directory,
 elevation verb, or owner window. AppsFolder activation uses
 `IApplicationActivationManager.ActivateApplication` with the exact revalidated
@@ -325,13 +351,19 @@ platform and Shell failures are sanitized before returning to widget code.
 Steam launch also re-reads the exact manifest, requires the same identity,
 location, and content hash, then opens only
 `steam://rungameid/<numeric-id>` without widget-supplied arguments.
+Epic launch likewise re-reads the exact current manifest and executable
+evidence, then constructs the fixed Epic launcher URI from validated
+provider-private catalog components. Widget code never supplies a URI, path,
+argument, or Epic identifier.
 
 ## Honest limitations
 
 - Discovery covers bounded Start Menu `.lnk`, current-user AppsFolder/AUMID,
-  and registered Steam manifests. Xbox, Epic, GOG, and other launcher catalogs
-  are not integrated; AppsFolder coverage is not a promise that every package,
-  alias, launcher-owned game, or machine policy will be visible.
+  installed Microsoft/Xbox package registrations with explicit game evidence,
+  registered Steam manifests, and explicitly enabled installed-only Epic
+  manifests. GOG and other launcher catalogs are not integrated; package
+  registration is not a promise that every alias,
+  launcher-owned game, account-owned title, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
   source-aware grouping, additional evidence-backed game sources, and broader
   source reconciliation remain tracked as [GBA-033](known-issues.md).
@@ -341,8 +373,9 @@ location, and content hash, then opens only
   over-budget artwork uses the host semantic Play glyph; broad Catalog
   discovery intentionally does not rasterize hundreds of icons.
 - The public kind enum supports Unknown, Application, and Game. Start Menu and
-  AppsFolder entries remain conservative Applications; only reviewed Steam
-  manifests are classified as Games. Filename/path guessing is not used.
+  AppsFolder entries remain conservative Applications; reviewed Steam manifests
+  and exact Microsoft game-configuration evidence are classified as Games.
+  Filename/path/title/icon guessing is not used.
 - There is no search, grouping, install/uninstall,
   game history, foreground switching, running-program capture, file picker, or
   arbitrary executable/path launch.
@@ -372,7 +405,8 @@ constrained Shell/packaged/Steam activation, STA queue cancellation,
 direct normalized adapter contracts, duplicate-name separation, independently
 retained last-good source state, stale-generation rejection, terminal drain,
 source-failure isolation, sanitized errors, and non-mutating real Start Menu,
-AppsFolder, and Steam scans. Broker, SDK, bridge, Settings, and first-party conformance suites
+AppsFolder, package-registration, and Steam scans. Broker, SDK, bridge, Settings,
+and first-party conformance suites
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
 data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.

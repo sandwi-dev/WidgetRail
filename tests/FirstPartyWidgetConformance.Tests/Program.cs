@@ -161,6 +161,24 @@ if (args.Contains("--media-sessions-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--games-apps-installed-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    var package = deployment.Packages.Single(candidate =>
+        candidate.Manifest.Id == "org.gbar.firstparty.games-apps");
+    await RunCatalogAsync(
+        installed.Catalog,
+        [package],
+        candidate => candidate.Manifest.Id,
+        "installed-normalized-app-library");
+    Console.WriteLine("PASS installed Games & Apps normalized app-library acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -1736,10 +1754,11 @@ static async Task RunCatalogAsync(
 {
     foreach (var package in packages)
     {
+        SimulatedPlatformBrokerBackend? backend = null;
         try
         {
             var configured = catalog.GetConfigured(widgetId(package));
-            var backend = CreateBackend(
+            backend = CreateBackend(
                 spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify",
                 gameLibraryCount: package.Manifest.Id == "org.gbar.firstparty.game-launcher"
                     ? 10_000 : 2);
@@ -1834,7 +1853,9 @@ static async Task RunCatalogAsync(
         catch (Exception exception)
         {
             throw new InvalidOperationException(
-                $"{package.Manifest.Name} failed through the {route} generic-worker route.",
+                $"{package.Manifest.Name} failed through the {route} generic-worker route " +
+                $"after app-library refresh/read calls " +
+                $"{backend?.AppLibraryRefreshCalls}/{backend?.AppLibraryReadCalls}.",
                 exception);
         }
     }
@@ -2459,9 +2480,11 @@ static SimulatedPlatformBrokerBackend CreateBackend(
         backend.SetAppLibrary(
         [
             new AppLibraryItemSummary(
-                "game-conformance", "Conformance Trusted Game", AppLibraryKind.Game),
+                "game-conformance", "saved-game-conformance",
+                AppLibraryPresentation("Conformance Trusted Game", AppLibraryKind.Game, "Steam")),
             new AppLibraryItemSummary(
-                "app-conformance", "Conformance Library App", AppLibraryKind.Application),
+                "app-conformance", "saved-app-conformance",
+                AppLibraryPresentation("Conformance Library App", AppLibraryKind.Application, "Windows")),
         ]);
     }
     backend.SetAvailableWifiNetworks(
@@ -2487,6 +2510,20 @@ static SimulatedPlatformBrokerBackend CreateBackend(
     ]);
     return backend;
 }
+
+static AppLibraryItemPresentation AppLibraryPresentation(
+    string displayName,
+    AppLibraryKind kind,
+    string sourceDisplayName) =>
+    new(
+        displayName,
+        kind,
+        new AppLibrarySourceReference($"source-{sourceDisplayName.ToLowerInvariant()}", sourceDisplayName),
+        new AppLibraryAvailabilitySummary(AppLibraryAvailabilityState.Installed, true, "installed"),
+        new AppLibraryArtworkSet([]),
+        Metadata: null,
+        new AppLibraryCapabilitySet([AppLibraryAction.Launch]),
+        ActiveOperation: null);
 
 static async Task<ViewSnapshot> WaitForSnapshotAsync(
     WidgetProcessClient client,

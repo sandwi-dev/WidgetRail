@@ -352,6 +352,109 @@ public enum AppLibraryKind
     Game,
 }
 
+public enum AppLibraryAvailabilityState
+{
+    Installed,
+    Unavailable,
+    StaleSource,
+}
+
+public sealed record AppLibraryAvailabilitySummary(
+    AppLibraryAvailabilityState State,
+    bool IsLaunchable,
+    string StatusCode);
+
+public enum AppLibraryArtworkRole { Tile, Cover, Hero, Logo }
+public enum AppLibraryArtworkFallback { Application, Game }
+
+public sealed record AppLibraryArtworkSummary(
+    AppLibraryArtworkRole Role,
+    string Handle,
+    string Revision,
+    AppLibraryArtworkFallback Fallback);
+
+public sealed record AppLibraryArtworkSet(
+    [property: JsonRequired] IReadOnlyList<AppLibraryArtworkSummary> Items);
+
+public sealed record AppLibraryMetadataAttribution(
+    string Provider,
+    string RecordRevision,
+    string Attribution,
+    long RetrievedAtUnixMilliseconds);
+
+public sealed record AppLibraryMetadataSummary(
+    string Revision,
+    [property: JsonRequired] AppLibraryMetadataAttribution Attribution)
+{
+    public string? SortTitle { get; init; }
+    public string? Version { get; init; }
+    public long? LastPlayedAtUnixMilliseconds { get; init; }
+    public long? PlaytimeMinutes { get; init; }
+    public IReadOnlyList<string> Categories { get; init; } = [];
+    public string? Description { get; init; }
+}
+
+public enum AppLibraryAction
+{
+    Launch,
+    Install,
+    Pause,
+    Resume,
+    Cancel,
+    Update,
+    Repair,
+    Move,
+    Import,
+    Uninstall,
+    CloudSync,
+    OpenSourceClient,
+    ManageAddOns,
+}
+
+public sealed record AppLibraryCapabilitySet(
+    [property: JsonRequired] IReadOnlyList<AppLibraryAction> Actions);
+
+public enum AppLibraryOperationKind
+{
+    Launch,
+    Install,
+    Update,
+    Repair,
+    Move,
+    Import,
+    Uninstall,
+    CloudSync,
+}
+
+public enum AppLibraryOperationState
+{
+    Pending,
+    RequestAccepted,
+    LauncherStarted,
+    Running,
+    Paused,
+    Completed,
+    Failed,
+}
+
+public sealed record AppLibraryOperationSummary(
+    string OperationId,
+    AppLibraryOperationKind Kind,
+    AppLibraryOperationState State,
+    string StatusCode);
+
+public sealed record AppLibrarySourceReference(string SourceId, string DisplayName);
+
+public sealed record AppLibraryItemPresentation(
+    string DisplayName,
+    AppLibraryKind Kind,
+    [property: JsonRequired] AppLibrarySourceReference Source,
+    [property: JsonRequired] AppLibraryAvailabilitySummary Availability,
+    [property: JsonRequired] AppLibraryArtworkSet Artwork,
+    AppLibraryMetadataSummary? Metadata,
+    [property: JsonRequired] AppLibraryCapabilitySet Capabilities,
+    AppLibraryOperationSummary? ActiveOperation);
+
 /// <summary>
 /// One launchable application projected for an authenticated widget. AppId is
 /// a short-lived launch token. SavedId is a durable, authority-scoped opaque
@@ -361,21 +464,14 @@ public enum AppLibraryKind
 /// </summary>
 public sealed record AppLibraryItemSummary(
     string AppId,
-    string DisplayName,
-    AppLibraryKind Kind)
+    string SavedId,
+    [property: JsonRequired] AppLibraryItemPresentation Presentation)
 {
-    [JsonRequired]
-    public string SavedId { get; init; } = string.Empty;
+    public const int CurrentPresentationVersion = 1;
 
-    /// <summary>
-    /// Opaque, generation-bound host artwork registration. It is not a path,
-    /// URL, provider identity, launch token, or persisted image payload.
-    /// </summary>
-    public string? ArtworkHandle { get; init; }
-
-    /// <summary>Sanitized source label such as Windows or Steam.</summary>
     [JsonRequired]
-    public string SourceAttribution { get; init; } = string.Empty;
+    public int PresentationVersion { get; init; } = CurrentPresentationVersion;
+
 }
 
 /// <summary>
@@ -389,7 +485,11 @@ public sealed record AppLibraryBackendItemSummary(
     string DisplayName,
     AppLibraryKind Kind,
     [property: JsonIgnore] string ArtworkRevision = "",
-    string SourceAttribution = "Windows");
+    string SourceAttribution = "Windows")
+{
+    [JsonIgnore]
+    public string SourceIdentity { get; init; } = string.Empty;
+}
 
 public enum AppLibrarySortOrder
 {
@@ -434,6 +534,17 @@ public enum AppLibrarySourceHealth
     Refreshing,
 }
 
+public enum AppLibrarySourceAccountState
+{
+    NotApplicable,
+    SignedOut,
+    SigningIn,
+    Ready,
+    Expired,
+    Denied,
+    Unavailable,
+}
+
 /// <summary>
 /// Bounded value-only health for one normalized local app-library source.
 /// SourceId is observation-only and cannot address or control an adapter.
@@ -443,7 +554,12 @@ public sealed record AppLibrarySourceSummary(
     string DisplayName,
     AppLibrarySourceHealth Health,
     long Revision,
-    string StatusCode);
+    string StatusCode)
+{
+    public AppLibrarySourceAccountState AccountState { get; init; } =
+        AppLibrarySourceAccountState.NotApplicable;
+    public long? LastSuccessfulRefreshAtUnixMilliseconds { get; init; }
+}
 
 /// <summary>
 /// Sanitized host-only evidence from one exact app-library launch adapter.

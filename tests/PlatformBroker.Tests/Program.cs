@@ -19,6 +19,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Connection details are separately consented bounded and invalidation-only", NetworkConnectionDetailsContracts),
     ("Available Wi-Fi operations enforce lifecycle payload and event contracts", AvailableWifiContracts),
     ("Recent activity is a sanitized read-only capability", RecentActivityContracts),
+    ("Normalized app-library simulator rows preserve one presentation contract",
+        NormalizedAppLibrarySimulatorRoundTrip),
     ("App library enumeration is opaque paged consent and lifecycle gated", AppLibraryContracts),
     ("Running app observation is separately consented opaque and stale-safe",
         RunningAppContracts),
@@ -280,8 +282,10 @@ static async Task AppLibraryIconsAreBounded()
     Assert.True(page.Sources.All(source => source.SourceId.StartsWith(
         "source-", StringComparison.Ordinal)));
     Assert.True(page.Items.All(item =>
-        AppLibraryArtworkRegistry.IsHandle(item.ArtworkHandle)));
-    Assert.Equal(33, page.Items.Select(item => item.ArtworkHandle).Distinct().Count());
+        AppLibraryArtworkRegistry.IsHandle(
+            item.Presentation.Artwork.Items.Single().Handle)));
+    Assert.Equal(33, page.Items.Select(item =>
+        item.Presentation.Artwork.Items.Single().Handle).Distinct().Count());
     Assert.Equal(0, backend.AppLibraryIconCalls);
 
     var resolvePayload = await broker.ExecuteAsync(new BrokerRequestEnvelope(
@@ -295,11 +299,11 @@ static async Task AppLibraryIconsAreBounded()
     var resolved = resolvePayload.Deserialize<ResolveSavedAppLibraryItemsSummary>(
         BrokerJson.StrictOptions)!;
     Assert.Equal(33, resolved.Items.Count);
-    Assert.True(resolved.Items.All(item => item.ArtworkHandle is not null));
+    Assert.True(resolved.Items.All(item => item.Presentation.Artwork.Items.Count == 1));
     Assert.Equal(0, backend.AppLibraryIconCalls);
 
-    var firstHandle = resolved.Items[0].ArtworkHandle!;
-    var neighborHandle = resolved.Items[1].ArtworkHandle!;
+    var firstHandle = resolved.Items[0].Presentation.Artwork.Items.Single().Handle;
+    var neighborHandle = resolved.Items[1].Presentation.Artwork.Items.Single().Handle;
     Assert.Equal(png, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
     Assert.Equal(1, backend.AppLibraryIconCalls);
 
@@ -330,9 +334,10 @@ static async Task AppLibraryIconsAreBounded()
         JsonSerializer.SerializeToElement(
             AppQuery(64, refresh: true), BrokerJson.StrictOptions)));
     var rotated = rotatedPayload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
-    Assert.True(rotated.Items[0].ArtworkHandle != firstHandle,
+    Assert.True(rotated.Items[0].Presentation.Artwork.Items.Single().Handle != firstHandle,
         "Changed trusted artwork revision reused its decoded-cache handle.");
-    Assert.Equal(neighborHandle, rotated.Items[1].ArtworkHandle);
+    Assert.Equal(neighborHandle,
+        rotated.Items[1].Presentation.Artwork.Items.Single().Handle);
     Assert.Equal(null, await artwork.ResolveAsync(identity, firstHandle, CancellationToken.None));
 
     for (var index = 0; index < 10_000; index++)
@@ -1026,6 +1031,52 @@ static async Task RecentActivityContracts()
     Assert.Equal(PlatformCapabilities.RecentActivitiesChanged, change.EventType);
 }
 
+static async Task NormalizedAppLibrarySimulatorRoundTrip()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibrary(
+    [
+        new AppLibraryItemSummary(
+            "backend-game", "backend-stable-game",
+            new AppLibraryItemPresentation(
+                "Normalized Game",
+                AppLibraryKind.Game,
+                new AppLibrarySourceReference("source-steam", "Steam"),
+                new AppLibraryAvailabilitySummary(
+                    AppLibraryAvailabilityState.Installed, true, "installed"),
+                new AppLibraryArtworkSet([]),
+                Metadata: null,
+                new AppLibraryCapabilitySet([AppLibraryAction.Launch]),
+                ActiveOperation: null)),
+    ]);
+    await using var broker = Broker(identity, store, backend,
+        PlatformCapabilities.AppLibraryReadV1);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.AppLibraryReadV1,
+        ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+
+    var response = await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.AppLibraryReadV1,
+        PlatformCapabilities.AppLibraryList,
+        AppQuery(64, refresh: true)));
+    Assert.True(response.Succeeded,
+        $"Normalized simulator page failed: {response.ErrorCode}");
+    var page = response.Payload!.Value.Deserialize<AppLibraryCursorPageSummary>(
+        BrokerJson.StrictOptions)!;
+    Assert.Equal(1, page.Items.Count);
+    Assert.Equal("Normalized Game", page.Items[0].Presentation.DisplayName);
+    Assert.Equal("source-steam", page.Items[0].Presentation.Source.SourceId);
+    Assert.Equal(AppLibraryAvailabilityState.Installed,
+        page.Items[0].Presentation.Availability.State);
+    Assert.Equal(AppLibraryAction.Launch,
+        page.Items[0].Presentation.Capabilities.Actions.Single());
+    Assert.Equal(AppLibrarySourceAccountState.NotApplicable,
+        page.Sources.Single().AccountState);
+}
+
 static async Task AppLibraryContracts()
 {
     using var temp = new TemporaryDirectory();
@@ -1075,7 +1126,22 @@ static async Task AppLibraryContracts()
     Assert.True(savedAppId.StartsWith("saved-", StringComparison.Ordinal));
     Assert.True(publicAppId != "app-000",
         "A provider-global ID escaped the widget-scoped broker projection.");
-    Assert.Equal("Launchable 000", firstItem.GetProperty("displayName").GetString());
+    var firstPresentation = firstItem.GetProperty("presentation");
+    Assert.Equal(AppLibraryItemSummary.CurrentPresentationVersion,
+        firstItem.GetProperty("presentationVersion").GetInt32());
+    Assert.Equal("Launchable 000", firstPresentation.GetProperty("displayName").GetString());
+    Assert.Equal("game", firstPresentation.GetProperty("kind").GetString());
+    Assert.Equal("Windows",
+        firstPresentation.GetProperty("source").GetProperty("displayName").GetString());
+    Assert.Equal("installed",
+        firstPresentation.GetProperty("availability").GetProperty("state").GetString());
+    Assert.True(firstPresentation.GetProperty("availability")
+        .GetProperty("isLaunchable").GetBoolean());
+    Assert.Equal("launch", firstPresentation.GetProperty("capabilities")
+        .GetProperty("actions")[0].GetString());
+    Assert.Equal(JsonValueKind.Null, firstPresentation.GetProperty("metadata").ValueKind);
+    Assert.Equal(JsonValueKind.Null,
+        firstPresentation.GetProperty("activeOperation").ValueKind);
     var json = firstPayload.GetRawText();
     Assert.True(!json.Contains(".lnk", StringComparison.OrdinalIgnoreCase));
     Assert.True(!json.Contains("C:\\\\", StringComparison.OrdinalIgnoreCase));
@@ -1097,7 +1163,7 @@ static async Task AppLibraryContracts()
         AppQuery(64, before, AppLibraryCursorDirection.Before)));
     Assert.True(reversed.Succeeded);
     Assert.Equal("Launchable 000", reversed.Payload!.Value.GetProperty("items")[0]
-        .GetProperty("displayName").GetString());
+        .GetProperty("presentation").GetProperty("displayName").GetString());
 
     var allSavedIds = firstPayload.GetProperty("items").EnumerateArray()
         .Concat(second.Payload.Value.GetProperty("items").EnumerateArray())
@@ -1131,7 +1197,7 @@ static async Task AppLibraryContracts()
     Assert.Equal(savedAppId, filteredItems[0].GetProperty("savedId").GetString());
     publicAppId = filteredItems[0].GetProperty("appId").GetString()!;
     Assert.Equal("Launchable 000",
-        filteredItems[0].GetProperty("displayName").GetString());
+        filteredItems[0].GetProperty("presentation").GetProperty("displayName").GetString());
 
     var noMatch = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.AppLibraryReadV1,
@@ -1235,7 +1301,7 @@ static async Task AppLibraryContracts()
         AppQuery(64, refresh: true)));
     Assert.True(refreshed.Succeeded);
     Assert.Equal("Changed", refreshed.Payload!.Value.GetProperty("items")[0]
-        .GetProperty("displayName").GetString());
+        .GetProperty("presentation").GetProperty("displayName").GetString());
     Assert.Equal(4, backend.AppLibraryRefreshCalls);
 
     var staleToken = await broker.HandleAsync(Request(identity,
@@ -1358,7 +1424,7 @@ static async Task AppLibraryCursorBounds()
         Assert.True(payload.GetRawText().Length < BrokerJson.MaximumResponseBytes);
         page = payload.Deserialize<AppLibraryCursorPageSummary>(BrokerJson.StrictOptions)!;
         Assert.True(page.Items.Count is > 0 and <= 64);
-        firstHandle ??= page.Items[0].ArtworkHandle;
+        firstHandle ??= page.Items[0].Presentation.Artwork.Items.Single().Handle;
         firstSavedId ??= page.Items[0].SavedId;
         Assert.True(artwork.RegistrationCount <=
             AppLibraryArtworkRegistry.MaximumRegistrationsPerSession);
@@ -1379,7 +1445,7 @@ static async Task AppLibraryCursorBounds()
             BrokerJson.StrictOptions)));
     var previous = previousPayload.Deserialize<AppLibraryCursorPageSummary>(
         BrokerJson.StrictOptions)!;
-    Assert.Equal("Game 09920", previous.Items[0].DisplayName);
+    Assert.Equal("Game 09920", previous.Items[0].Presentation.DisplayName);
     Assert.Equal(64, previous.Items.Count);
 
     var lastSavedId = page.Items[^1].SavedId;
@@ -1394,7 +1460,7 @@ static async Task AppLibraryCursorBounds()
         BrokerJson.StrictOptions)!;
     Assert.Equal(2, resolved.Items.Count);
     Assert.True(resolved.Items.All(item =>
-        artwork.IsCurrent(identity, item.ArtworkHandle!)));
+        artwork.IsCurrent(identity, item.Presentation.Artwork.Items.Single().Handle)));
     broker.SetLifecycle(BrokerLifecycleState.Interactive);
     var launch = await broker.HandleAsync(Request(
         identity, PlatformCapabilities.AppLibraryLaunchV1,
@@ -1596,7 +1662,7 @@ static async Task AppLibrarySavedIdsAreDurableAndScoped()
     Assert.Equal(1, resolvedItems.GetArrayLength());
     Assert.Equal(savedId, resolvedItems[0].GetProperty("savedId").GetString());
     Assert.Equal("Durable App Renamed",
-        resolvedItems[0].GetProperty("displayName").GetString());
+        resolvedItems[0].GetProperty("presentation").GetProperty("displayName").GetString());
     Assert.True(oldLaunchId != resolvedItems[0].GetProperty("appId").GetString());
     Assert.True(!resolved.Payload.Value.GetRawText().Contains(
         stableProviderIdentity, StringComparison.Ordinal));

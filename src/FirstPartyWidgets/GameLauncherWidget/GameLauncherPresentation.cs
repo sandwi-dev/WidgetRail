@@ -238,7 +238,8 @@ internal static class GameLauncherPresentation
                     row.Display.DisplayName,
                     row.Display.SourceAttribution,
                     row.Display.SavedId,
-                    row.Current?.Value.ArtworkHandle,
+                    row.Current?.Presentation.Artwork.Find(
+                        WidgetAppLibraryArtworkRole.Tile)?.Handle,
                     state.LaunchingSavedId,
                     state.LaunchStates.GetValueOrDefault(row.Display.SavedId),
                     resolved: row.Current is not null,
@@ -506,8 +507,9 @@ internal static class GameLauncherPresentation
         IReadOnlyDictionary<string, GameLauncherDisplayItem> stored)
     {
         if (resolved.TryGetValue(savedId, out var current))
-            return new(current, new(current.Value.SavedId, current.Value.DisplayName,
-                current.Value.SourceAttribution));
+            return new(current, new(current.Value.SavedId,
+                current.Presentation.DisplayName,
+                current.Presentation.Source.DisplayName));
         return stored.TryGetValue(savedId, out var display)
             ? new(null, display)
             : null;
@@ -546,8 +548,8 @@ internal static class GameLauncherPresentation
         bool runningRoute,
         bool interactive)
     {
-        var automatic = item.Value.Kind == WidgetAppLibraryKind.Game;
-        var kind = item.Value.Kind switch
+        var automatic = item.Presentation.Kind == WidgetAppLibraryKind.Game;
+        var kind = item.Presentation.Kind switch
         {
             WidgetAppLibraryKind.Game => "Game",
             WidgetAppLibraryKind.Application => "Application",
@@ -559,15 +561,17 @@ internal static class GameLauncherPresentation
         var actionId = automatic
             ? "game-launcher.manual.included"
             : "game-launcher.manual.toggle";
-        return UI.AppTile(item.Value.DisplayName, state,
+        return UI.AppTile(item.Presentation.DisplayName, state,
                 actionId,
                 GameLauncherIdentity.FocusId("add", item.Key),
-                subtitle: $"{kind} · {item.Value.SourceAttribution}",
-                artwork: item.Value.ArtworkHandle is { Length: > 0 }
-                    ? TileArtwork.FromHandle(new WidgetArtworkHandle(item.Value.ArtworkHandle),
-                        item.Value.DisplayName, ImageFit.Cover)
-                    : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Value.DisplayName),
-                accessibilityLabel: $"{item.Value.DisplayName}, {kind}, " +
+                subtitle: $"{kind} · {item.Presentation.Source.DisplayName}",
+                artwork: item.Presentation.Artwork.Find(
+                        WidgetAppLibraryArtworkRole.Tile) is { } tileArtwork
+                    ? TileArtwork.FromHandle(new WidgetArtworkHandle(tileArtwork.Handle),
+                        item.Presentation.DisplayName, ImageFit.Cover)
+                    : TileArtwork.FromGlyph(
+                        WidgetGlyph.Play, item.Presentation.DisplayName),
+                accessibilityLabel: $"{item.Presentation.DisplayName}, {kind}, " +
                     (automatic ? "Included automatically" : included
                         ? runningRoute ? "Already included" : "Added, remove from library"
                         : "Available, add to library"),
@@ -580,8 +584,9 @@ internal static class GameLauncherPresentation
     private static WidgetElement HiddenTile(PresentedRow row, bool interactive)
     {
         var current = row.Current;
-        var artwork = current?.Value.ArtworkHandle is { Length: > 0 } handle
-            ? TileArtwork.FromHandle(new WidgetArtworkHandle(handle),
+        var artwork = current?.Presentation.Artwork.Find(
+                WidgetAppLibraryArtworkRole.Tile) is { } tileArtwork
+            ? TileArtwork.FromHandle(new WidgetArtworkHandle(tileArtwork.Handle),
                 row.Display.DisplayName, ImageFit.Cover)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, row.Display.DisplayName);
         var availability = current is null ? "Unavailable · Restore" : "Hidden · Restore";

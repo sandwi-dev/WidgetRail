@@ -92,6 +92,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Spotify playback control rejects failed acknowledgements", SpotifyAcknowledgementFailure),
     ("Spotify service fails closed without a host capability client", SpotifyUnavailableClient),
     ("App library host service uses opaque paged read and launch contracts", AppLibraryPlatformService),
+    ("App library values and relationship composer validate independently",
+        AppLibraryPresentationValidationTests.Run),
     ("Community services expose exact loopback and write-only secret contracts", CommunityPlatformServices),
     ("Private state canonicalizes JSON and exposes typed revision CAS helpers", PrivateStateServiceContracts),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
@@ -255,18 +257,17 @@ static async Task AppLibraryPlatformService()
                 Assert.Equal(1, request.Query.FavoriteSavedIds.Count);
                 Assert.Equal("saved-durable", request.Query.FavoriteSavedIds[0]);
                 return ValueTask.FromResult(new WidgetAppLibraryPage(
-                    [new WidgetAppLibraryItem(
-                        "app-opaque", "Launchable App", WidgetAppLibraryKind.Application)
-                    {
-                        SavedId = "saved-durable",
-                        SourceAttribution = "Windows",
-                    }],
+                    [RichAppLibraryItem("app-opaque", "saved-durable")],
                     "cursor-32", null, "revision-2")
                 {
                     Sources =
                     [
                         new("source-windows", "Windows",
-                            WidgetAppLibrarySourceHealth.Healthy, 4, "healthy"),
+                            WidgetAppLibrarySourceHealth.Healthy, 4, "healthy")
+                        {
+                            AccountState = WidgetAppLibrarySourceAccountState.Ready,
+                            LastSuccessfulRefreshAtUnixMilliseconds = 1_700_000_000_000,
+                        },
                         new("source-steam", "Steam",
                             WidgetAppLibrarySourceHealth.Degraded, 7,
                             "source_degraded"),
@@ -282,13 +283,12 @@ static async Task AppLibraryPlatformService()
                 Assert.Equal("saved-missing", request.SavedIds[0]);
                 Assert.Equal("saved-durable", request.SavedIds[1]);
                 return ValueTask.FromResult(new ResolveSavedWidgetAppLibraryItemsResponse(
-                    [new WidgetAppLibraryItem(
-                        "app-current", "Launchable App", WidgetAppLibraryKind.Application)
-                    {
-                        SavedId = "saved-durable",
-                        ArtworkHandle = "library.art.0123456789abcdef0123456789abcdef",
-                        SourceAttribution = "Windows",
-                    }]));
+                    [InstalledAppLibraryItem(
+                        "app-current", "saved-durable", "Launchable App",
+                        WidgetAppLibraryKind.Application,
+                        "source-windows", "Windows",
+                        "library.art.0123456789abcdef0123456789abcdef",
+                        "art-revision-1")]));
             })
         .WithResponse(
             WidgetAppLibraryCapabilities.Launch,
@@ -306,12 +306,10 @@ static async Task AppLibraryPlatformService()
                 Assert.Equal("saved-running", request.SavedId);
                 Assert.Equal("running-revision", request.Revision);
                 return ValueTask.FromResult(new ConfirmWidgetRunningAppResponse(
-                    new WidgetAppLibraryItem(
-                        "app-current", "Visible app", WidgetAppLibraryKind.Application)
-                    {
-                        SavedId = request.SavedId,
-                        SourceAttribution = "Windows",
-                    }));
+                    InstalledAppLibraryItem(
+                        "app-current", request.SavedId, "Visible app",
+                        WidgetAppLibraryKind.Application,
+                        "source-windows", "Windows")));
             })
         .Build();
     var widget = WidgetTestHost.Attach(new CapabilityWidget(), services);
@@ -329,12 +327,38 @@ static async Task AppLibraryPlatformService()
     Assert.Equal(1, page.Items.Count);
     Assert.Equal("app-opaque", page.Items[0].AppId);
     Assert.Equal("saved-durable", page.Items[0].SavedId);
-    Assert.Equal("Launchable App", page.Items[0].DisplayName);
-    Assert.Equal(WidgetAppLibraryKind.Application, page.Items[0].Kind);
+    Assert.Equal("Launchable App", page.Items[0].Presentation.DisplayName);
+    Assert.Equal(WidgetAppLibraryKind.Application, page.Items[0].Presentation.Kind);
+    Assert.Equal(WidgetAppLibraryItem.CurrentPresentationVersion,
+        page.Items[0].PresentationVersion);
+    Assert.Equal("source-windows", page.Items[0].Presentation.Source.SourceId);
+    Assert.Equal(WidgetAppLibraryAvailabilityState.Installed,
+        page.Items[0].Presentation.Availability.State);
+    Assert.True(page.Items[0].Presentation.Availability.IsLaunchable,
+        "Normalized availability should preserve explicit launchability.");
+    Assert.Equal(4, page.Items[0].Presentation.Artwork.Items.Count);
+    Assert.Equal("library.art.tile", page.Items[0].Presentation.Artwork
+        .Find(WidgetAppLibraryArtworkRole.Tile)?.Handle);
+    Assert.Equal(WidgetAppLibraryArtworkFallback.Game,
+        page.Items[0].Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Hero)?.Fallback);
+    Assert.Equal("metadata-revision", page.Items[0].Presentation.Metadata?.Revision);
+    Assert.Equal("metadata-record", page.Items[0].Presentation.Metadata?.Attribution.RecordRevision);
+    Assert.Equal(2, page.Items[0].Presentation.Metadata?.Categories.Count);
+    Assert.Equal(13, page.Items[0].Presentation.Capabilities.Actions.Count);
+    Assert.True(page.Items[0].Presentation.Capabilities.Supports(
+        WidgetAppLibraryAction.ManageAddOns),
+        "The complete closed capability set should round-trip.");
+    Assert.Equal(WidgetAppLibraryOperationKind.Update,
+        page.Items[0].Presentation.ActiveOperation?.Kind);
+    Assert.Equal(WidgetAppLibraryOperationState.Running,
+        page.Items[0].Presentation.ActiveOperation?.State);
     Assert.Equal("cursor-32", page.Before);
     Assert.Equal<string?>(null, page.After);
     Assert.Equal("revision-2", page.Revision);
     Assert.Equal(2, page.Sources.Count);
+    Assert.Equal(WidgetAppLibrarySourceAccountState.Ready, page.Sources[0].AccountState);
+    Assert.Equal(1_700_000_000_000,
+        page.Sources[0].LastSuccessfulRefreshAtUnixMilliseconds);
     Assert.Equal(WidgetAppLibrarySourceHealth.Degraded, page.Sources[1].Health);
     Assert.Equal("source_degraded", page.Sources[1].StatusCode);
     Assert.Equal(0, (await widget.AppLibrary.ResolveSavedAsync([])).Count);
@@ -344,30 +368,58 @@ static async Task AppLibraryPlatformService()
     Assert.Equal("app-current", resolved[0].AppId);
     Assert.Equal("saved-durable", resolved[0].SavedId);
     Assert.Equal("library.art.0123456789abcdef0123456789abcdef",
-        resolved[0].ArtworkHandle);
+        resolved[0].Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile)?.Handle);
     var running = await widget.AppLibrary.ObserveRunningAsync();
     Assert.Equal(1, running.Items.Count);
     Assert.Equal("saved-running", running.Items[0].SavedId);
     var confirmed = await widget.AppLibrary.ConfirmRunningAsync(
         running.Items[0].SavedId, running.Revision);
     Assert.Equal("app-current", confirmed?.AppId);
-    var validConfirmation = new WidgetAppLibraryItem(
-        "app-current", "Visible app", WidgetAppLibraryKind.Application)
-    {
-        SavedId = "saved-running",
-        SourceAttribution = "Windows",
-    };
+    var validConfirmation = InstalledAppLibraryItem(
+        "app-current", "saved-running", "Visible app",
+        WidgetAppLibraryKind.Application, "source-windows", "Windows");
     var malformedConfirmations = new[]
     {
         validConfirmation with { AppId = "bad/app" },
+        validConfirmation with { PresentationVersion = 2 },
         validConfirmation with { SavedId = "saved-other" },
-        validConfirmation with { Kind = (WidgetAppLibraryKind)999 },
-        validConfirmation with { DisplayName = "" },
-        validConfirmation with { DisplayName = new string('D', 161) },
-        validConfirmation with { DisplayName = "bad\nname" },
-        validConfirmation with { SourceAttribution = "" },
-        validConfirmation with { SourceAttribution = new string('S', 65) },
-        validConfirmation with { SourceAttribution = "bad\rsource" },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { Kind = (WidgetAppLibraryKind)999 } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { DisplayName = "" } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { DisplayName = new string('D', 161) } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { DisplayName = "bad\nname" } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { Source = validConfirmation.Presentation.Source with { DisplayName = "" } } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { Source = validConfirmation.Presentation.Source with
+                { DisplayName = new string('S', 65) } } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+            { Source = validConfirmation.Presentation.Source with
+                { DisplayName = "bad\rsource" } } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            Availability = new(WidgetAppLibraryAvailabilityState.Unavailable,
+                true, "unavailable"),
+        } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            Availability = new(WidgetAppLibraryAvailabilityState.StaleSource,
+                false, "stale"),
+            Capabilities = new([WidgetAppLibraryAction.Launch]),
+        } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            Capabilities = new([]),
+        } },
+        validConfirmation with { Presentation = validConfirmation.Presentation with
+        {
+            ActiveOperation = new("operation-update",
+                WidgetAppLibraryOperationKind.Update,
+                WidgetAppLibraryOperationState.Running, "updating"),
+        } },
     };
     foreach (var malformedConfirmation in malformedConfirmations)
     {
@@ -420,11 +472,10 @@ static async Task AppLibraryPlatformService()
             .WithResponse(
                 WidgetAppLibraryCapabilities.ResolveSaved,
                 new ResolveSavedWidgetAppLibraryItemsResponse(
-                    [new WidgetAppLibraryItem(
-                        "app-current", "Wrong app", WidgetAppLibraryKind.Application)
-                    {
-                        SavedId = "saved-not-requested",
-                    }]))
+                    [InstalledAppLibraryItem(
+                        "app-current", "saved-not-requested", "Wrong app",
+                        WidgetAppLibraryKind.Application,
+                        "source-windows", "Windows")]))
             .Build());
     Assert.Throws<WidgetCapabilityException>(() =>
         malformed.AppLibrary.ResolveSavedAsync(["saved-requested"])
@@ -456,6 +507,72 @@ static async Task AppLibraryPlatformService()
             .Build());
     Assert.Throws<WidgetCapabilityException>(() =>
         malformedRunning.AppLibrary.ObserveRunningAsync().GetAwaiter().GetResult());
+}
+
+static WidgetAppLibraryItem RichAppLibraryItem(string appId, string savedId) =>
+    new(
+        appId,
+        savedId,
+        new WidgetAppLibraryPresentation(
+            "Launchable App",
+            WidgetAppLibraryKind.Application,
+            new WidgetAppLibrarySourceReference("source-windows", "Windows"),
+            new WidgetAppLibraryAvailability(
+                WidgetAppLibraryAvailabilityState.Installed, true, "installed"),
+            new WidgetAppLibraryArtworkSet(
+            [
+                new(WidgetAppLibraryArtworkRole.Tile, "library.art.tile", "art-tile",
+                    WidgetAppLibraryArtworkFallback.Application),
+                new(WidgetAppLibraryArtworkRole.Cover, "library.art.cover", "art-cover",
+                    WidgetAppLibraryArtworkFallback.Game),
+                new(WidgetAppLibraryArtworkRole.Hero, "library.art.hero", "art-hero",
+                    WidgetAppLibraryArtworkFallback.Game),
+                new(WidgetAppLibraryArtworkRole.Logo, "library.art.logo", "art-logo",
+                    WidgetAppLibraryArtworkFallback.Application),
+            ]),
+            new WidgetAppLibraryMetadata(
+                "metadata-revision",
+                new WidgetAppLibraryMetadataAttribution(
+                    "Windows", "metadata-record", "Windows App Library", 1_700_000_000_000))
+            {
+                SortTitle = "Launchable App",
+                Version = "1.2.3",
+                LastPlayedAtUnixMilliseconds = 1_699_999_000_000,
+                PlaytimeMinutes = 120,
+                Categories = ["Application", "Utility"],
+                Description = "A normalized application record.",
+            },
+            new WidgetAppLibraryCapabilitySet(Enum.GetValues<WidgetAppLibraryAction>()),
+            new WidgetAppLibraryOperation(
+                "operation-update", WidgetAppLibraryOperationKind.Update,
+                WidgetAppLibraryOperationState.Running, "updating")));
+
+static WidgetAppLibraryItem InstalledAppLibraryItem(
+    string appId,
+    string savedId,
+    string displayName,
+    WidgetAppLibraryKind kind,
+    string sourceId,
+    string sourceDisplayName,
+    string? artworkHandle = null,
+    string artworkRevision = "fixture")
+{
+    WidgetAppLibraryArtwork[] artwork = artworkHandle is null ? [] :
+    [
+        new(WidgetAppLibraryArtworkRole.Tile, artworkHandle, artworkRevision,
+            kind == WidgetAppLibraryKind.Game
+                ? WidgetAppLibraryArtworkFallback.Game
+                : WidgetAppLibraryArtworkFallback.Application),
+    ];
+    return new(appId, savedId, new(
+        displayName,
+        kind,
+        new(sourceId, sourceDisplayName),
+        new(WidgetAppLibraryAvailabilityState.Installed, true, "installed"),
+        new(artwork),
+        Metadata: null,
+        new([WidgetAppLibraryAction.Launch]),
+        ActiveOperation: null));
 }
 
 static async Task CommunityPlatformServices()

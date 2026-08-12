@@ -33,11 +33,20 @@ ctor GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest(string De
 ctor GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
 ctor GameBarAlternative.WidgetSdk.WidgetActionEvent(string ActionId, string SourceElementId, GameBarAlternative.WidgetProtocol.ControllerButton? ControllerButton = null, GameBarAlternative.WidgetProtocol.ControllerEventPhase Phase = GameBarAlternative.WidgetProtocol.ControllerEventPhase.Pressed, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, double? RequestedValue = null, string? InputScopeId = null)
 ctor GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs(GameBarAlternative.WidgetSdk.WidgetActionEvent Action, System.Exception Exception)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole Role, string Handle, string Revision, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback Fallback)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork> Items)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability(GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState State, bool IsLaunchable, string StatusCode)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryAction> Actions)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery Query, string? Cursor, GameBarAlternative.WidgetSdk.WidgetCursorDirection? Direction, int Limit, bool Refresh = false)
-ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryItem(string AppId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAppLibraryKind Kind)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryItem(string AppId, string SavedId, GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation Presentation)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata(string Revision, GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution Attribution)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution(string Provider, string RecordRevision, string Attribution, long RetrievedAtUnixMilliseconds)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation(string OperationId, GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind Kind, GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState State, string StatusCode)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryPage(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> Items, string? Before, string? After, string Revision)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation(string DisplayName, GameBarAlternative.WidgetSdk.WidgetAppLibraryKind Kind, GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference Source, GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability Availability, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet Artwork, GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? Metadata, GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet Capabilities, GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? ActiveOperation)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery(bool InstalledOnly = true, GameBarAlternative.WidgetSdk.WidgetAppLibraryKind? Kind = null, string? SourceAttribution = null, GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder Sort = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibrarySource(string SourceId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth Health, long Revision, string StatusCode)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference(string SourceId, string DisplayName)
 ctor GameBarAlternative.WidgetSdk.WidgetArtworkHandle(string value)
 ctor GameBarAlternative.WidgetSdk.WidgetAudioDevice(string DeviceId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection Direction, bool IsDefault)
 ctor GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAudioDevice> Devices, bool IsAvailable = true)
@@ -171,12 +180,56 @@ enum GameBarAlternative.WidgetSdk.ToastTone.Success = GameBarAlternative.WidgetS
 enum GameBarAlternative.WidgetSdk.ToastTone.Warning = GameBarAlternative.WidgetSdk.ToastTone.Warning
 enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess = GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess
 enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.KeepOpen = GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.KeepOpen
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Cancel = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Cancel
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.CloudSync = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.CloudSync
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Import = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Import
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Install = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Install
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Launch = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Launch
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.ManageAddOns = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.ManageAddOns
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Move = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Move
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.OpenSourceClient = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.OpenSourceClient
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Pause = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Pause
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Repair = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Repair
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Resume = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Resume
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Uninstall = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Uninstall
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Update = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Update
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback.Application = GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback.Application
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback.Game = GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback.Game
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Cover = GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Cover
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Hero = GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Hero
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Logo = GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Logo
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Tile = GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole.Tile
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState.Installed = GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState.Installed
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState.StaleSource = GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState.StaleSource
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState.Unavailable = GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState.Unavailable
 enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Application = GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Application
 enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Game = GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Game
 enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Unknown = GameBarAlternative.WidgetSdk.WidgetAppLibraryKind.Unknown
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.CloudSync = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.CloudSync
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Import = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Import
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Install = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Install
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Launch = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Launch
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Move = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Move
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Repair = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Repair
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Uninstall = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Uninstall
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Update = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind.Update
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Completed = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Completed
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Failed = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Failed
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.LauncherStarted = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.LauncherStarted
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Paused = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Paused
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Pending = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Pending
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.RequestAccepted = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.RequestAccepted
+enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Running = GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState.Running
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayName
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayNameDescending = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.DisplayNameDescending
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.SourceThenDisplayName = GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder.SourceThenDisplayName
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Denied = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Denied
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Expired = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Expired
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.NotApplicable = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.NotApplicable
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Ready = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Ready
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.SignedOut = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.SignedOut
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.SigningIn = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.SigningIn
+enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Unavailable = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState.Unavailable
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Degraded = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Degraded
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Healthy = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Healthy
 enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing = GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth.Refreshing
@@ -366,6 +419,7 @@ field const int GameBarAlternative.WidgetSdk.UI.MaximumToastMessageCharacters = 
 field const int GameBarAlternative.WidgetSdk.UI.MaximumToastTitleCharacters = 120
 field const int GameBarAlternative.WidgetSdk.Widget.ActionQueueCapacity = 16
 field const int GameBarAlternative.WidgetSdk.Widget.ControllerActionQueueCapacity = 16
+field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.CurrentPresentationVersion = 1
 field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.MaximumFavoriteSavedIds = 128
 field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.MaximumSearchTextLength = 96
 field const int GameBarAlternative.WidgetSdk.WidgetAppLibraryService.MaximumPageSize = 64
@@ -729,21 +783,63 @@ method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Deconstruct(out 
 method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole Role, out string Handle, out string Revision, out GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback Fallback) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.Deconstruct(out System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork> Items) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.Find(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole role) -> GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork?
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState State, out bool IsLaunchable, out string StatusCode) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.Deconstruct(out System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryAction> Actions) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.Supports(GameBarAlternative.WidgetSdk.WidgetAppLibraryAction action) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery Query, out string? Cursor, out GameBarAlternative.WidgetSdk.WidgetCursorDirection? Direction, out int Limit, out bool Refresh) -> void
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryItem
-method GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Deconstruct(out string AppId, out string DisplayName, out GameBarAlternative.WidgetSdk.WidgetAppLibraryKind Kind) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Deconstruct(out string AppId, out string SavedId, out GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation Presentation) -> void
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Deconstruct(out string Revision, out GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution Attribution) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.Deconstruct(out string Provider, out string RecordRevision, out string Attribution, out long RetrievedAtUnixMilliseconds) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.Deconstruct(out string OperationId, out GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind Kind, out GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState State, out string StatusCode) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryPage
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Deconstruct(out System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> Items, out string? Before, out string? After, out string Revision) -> void
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Deconstruct(out string DisplayName, out GameBarAlternative.WidgetSdk.WidgetAppLibraryKind Kind, out GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference Source, out GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability Availability, out GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet Artwork, out GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? Metadata, out GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet Capabilities, out GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? ActiveOperation) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Deconstruct(out bool InstalledOnly, out GameBarAlternative.WidgetSdk.WidgetAppLibraryKind? Kind, out string? SourceAttribution, out GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder Sort) -> void
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Equals(object? obj) -> bool
@@ -760,6 +856,11 @@ method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Deconstruct(out strin
 method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.Deconstruct(out string SourceId, out string DisplayName) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetArtworkHandle.Equals(object obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetArtworkHandle.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetArtworkHandle.ToString() -> string
@@ -1524,16 +1625,34 @@ method static GameBarAlternative.WidgetSdk.WidgetActionEvent.op_Equality(GameBar
 method static GameBarAlternative.WidgetSdk.WidgetActionEvent.op_Inequality(GameBarAlternative.WidgetSdk.WidgetActionEvent? left, GameBarAlternative.WidgetSdk.WidgetActionEvent? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.op_Equality(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? left, GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.op_Inequality(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? left, GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? left, GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? left, GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference? left, GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference? left, GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetArtworkHandle.op_Equality(GameBarAlternative.WidgetSdk.WidgetArtworkHandle left, GameBarAlternative.WidgetSdk.WidgetArtworkHandle right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetArtworkHandle.op_Inequality(GameBarAlternative.WidgetSdk.WidgetArtworkHandle left, GameBarAlternative.WidgetSdk.WidgetArtworkHandle right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAudioDevice.op_Equality(GameBarAlternative.WidgetSdk.WidgetAudioDevice? left, GameBarAlternative.WidgetSdk.WidgetAudioDevice? right) -> bool
@@ -1802,11 +1921,20 @@ method virtual GameBarAlternative.WidgetSdk.Widget.OnControllerInputAsync(GameBa
 method virtual GameBarAlternative.WidgetSdk.WidgetActionEvent.Equals(GameBarAlternative.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs
 method virtual GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Equals(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryPage? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibrarySource? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetArtworkHandle.Equals(GameBarAlternative.WidgetSdk.WidgetArtworkHandle other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAudioDevice.Equals(GameBarAlternative.WidgetSdk.WidgetAudioDevice? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged.Equals(GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged? other) -> bool
@@ -1936,14 +2064,28 @@ property GameBarAlternative.WidgetSdk.IWidgetCapabilityClient GameBarAlternative
 property GameBarAlternative.WidgetSdk.ToastTone GameBarAlternative.WidgetSdk.ToastElement.Tone { get; }
 property GameBarAlternative.WidgetSdk.Widget GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.Widget { get; }
 property GameBarAlternative.WidgetSdk.WidgetActionEvent GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Action { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Fallback { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Role { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Artwork { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Availability { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.State { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Capabilities { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? GameBarAlternative.WidgetSdk.ConfirmWidgetRunningAppResponse.Item { get; set; }
-property GameBarAlternative.WidgetSdk.WidgetAppLibraryKind GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Kind { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryKind GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Kind { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryKind GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate.Kind { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryKind? GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Kind { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata? GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Metadata { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Attribution { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation? GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.ActiveOperation { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.Kind { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.State { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Presentation { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Query { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryService GameBarAlternative.WidgetSdk.WidgetHostServices.AppLibrary { get; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.Sort { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.AccountState { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Health { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Source { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection GameBarAlternative.WidgetSdk.WidgetAudioDevice.Direction { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAudioInput? GameBarAlternative.WidgetSdk.WidgetAudioInputChanged.Input { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAudioOutput? GameBarAlternative.WidgetSdk.WidgetAudioOutputChanged.Output { get; set; }
@@ -2031,6 +2173,8 @@ property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetProto
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetProtocol.ControllerShortcut> GameBarAlternative.WidgetSdk.ScrollElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetProtocol.ControllerShortcut> GameBarAlternative.WidgetSdk.StackElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetProtocol.WidgetQuickAction>? GameBarAlternative.WidgetSdk.WidgetView.QuickActions { get; set; }
+property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryAction> GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
+property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork> GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> GameBarAlternative.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem> GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibrarySource> GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Sources { get; set; }
@@ -2063,6 +2207,7 @@ property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.Widg
 property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> GameBarAlternative.WidgetSdk.WidgetPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest.SavedIds { get; set; }
+property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Categories { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.FavoriteSavedIds { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetElement.StyleClasses { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> GameBarAlternative.WidgetSdk.WidgetNetworkConnectionDetails.DefaultGateways { get; set; }
@@ -2132,6 +2277,7 @@ property bool GameBarAlternative.WidgetSdk.SetWidgetWifiRadioRequest.Enabled { g
 property bool GameBarAlternative.WidgetSdk.TextEntryElement.IsDisabled { get; set; }
 property bool GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.ContinuePlaying { get; set; }
 property bool GameBarAlternative.WidgetSdk.Widget.IsActive { get; }
+property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.IsLaunchable { get; set; }
 property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Refresh { get; set; }
 property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.InstalledOnly { get; set; }
 property bool GameBarAlternative.WidgetSdk.WidgetAudioDevice.IsDefault { get; set; }
@@ -2239,6 +2385,7 @@ property double? GameBarAlternative.WidgetSdk.ControllerInputEvent.RequestedValu
 property double? GameBarAlternative.WidgetSdk.WidgetActionEvent.RequestedValue { get; set; }
 property int GameBarAlternative.WidgetSdk.TextEntryElement.MaximumLength { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Limit { get; set; }
+property int GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.PresentationVersion { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetAvailableWifiNetwork.SignalPercent { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.RetainedCursorCount { get; }
 property int GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.RetainedItemCount { get; }
@@ -2285,6 +2432,7 @@ property long GameBarAlternative.WidgetSdk.ControllerInputEvent.SnapshotSequence
 property long GameBarAlternative.WidgetSdk.Widget.Revision { get; }
 property long GameBarAlternative.WidgetSdk.WidgetActionEvent.MonotonicTimestampMicroseconds { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetActionEvent.Sequence { get; set; }
+property long GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.RetrievedAtUnixMilliseconds { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetInvalidatedEventArgs.Revision { get; set; }
@@ -2308,6 +2456,9 @@ property long GameBarAlternative.WidgetSdk.WidgetSpotifyPlaybackSummary.Captured
 property long GameBarAlternative.WidgetSdk.WidgetSpotifyPlaybackSummary.DurationMilliseconds { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetSpotifyPlaybackSummary.ProgressMilliseconds { get; set; }
 property long GameBarAlternative.WidgetSdk.WidgetTestPrivateState.Revision { get; }
+property long? GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.LastPlayedAtUnixMilliseconds { get; set; }
+property long? GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.PlaytimeMinutes { get; set; }
+property long? GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.LastSuccessfulRefreshAtUnixMilliseconds { get; set; }
 property long? GameBarAlternative.WidgetSdk.WidgetPrivateSecretMetadata.LastWrittenUnixMilliseconds { get; set; }
 property long? GameBarAlternative.WidgetSdk.WidgetSpotifyPlaybackCommand.PositionMilliseconds { get; set; }
 property static GameBarAlternative.WidgetSdk.WidgetCapabilityEvent<GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged> GameBarAlternative.WidgetSdk.WidgetAudioCapabilities.DevicesChanged { get; }
@@ -2429,14 +2580,24 @@ property string GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackReques
 property string GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.DeviceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetActionEvent.ActionId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetActionEvent.SourceElementId { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Handle { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Revision { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.StatusCode { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.AppId { get; set; }
-property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.DisplayName { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.SavedId { get; set; }
-property string GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.SourceAttribution { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Revision { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.Attribution { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.Provider { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution.RecordRevision { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.OperationId { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation.StatusCode { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Revision { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.DisplayName { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.DisplayName { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.SourceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySource.StatusCode { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.DisplayName { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference.SourceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetArtworkHandle.Value { get; }
 property string GameBarAlternative.WidgetSdk.WidgetAudioDevice.DeviceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetAudioDevice.DisplayName { get; set; }
@@ -2542,7 +2703,9 @@ property string? GameBarAlternative.WidgetSdk.TextEntryElement.AccessibilityLabe
 property string? GameBarAlternative.WidgetSdk.WidgetActionEvent.CommittedText { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetActionEvent.InputScopeId { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Cursor { get; set; }
-property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.ArtworkHandle { get; set; }
+property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Description { get; set; }
+property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.SortTitle { get; set; }
+property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata.Version { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.After { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryPage.Before { get; set; }
 property string? GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.SearchText { get; set; }
@@ -2588,8 +2751,15 @@ type enum GameBarAlternative.WidgetSdk.IconButtonVariant : System.IComparable, S
 type enum GameBarAlternative.WidgetSdk.StatusTone : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.ToastTone : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryOperationState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySortOrder : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceAccountState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceHealth : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAudioDeviceDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetBluetoothDiscoveryState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2677,12 +2847,21 @@ type sealed class GameBarAlternative.WidgetSdk.ToastElement : GameBarAlternative
 type sealed class GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest : System.IEquatable<GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest>
 type sealed class GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>
 type sealed class GameBarAlternative.WidgetSdk.WidgetActionEvent : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetActionEvent>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryCapabilitySet>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryItem : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadata>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryMetadataAttribution>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryOperation>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryPage : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryPage>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryService
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibrarySource : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibrarySource>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibrarySourceReference>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAudioDevice : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAudioDevice>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAudioDevicesChanged>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAudioInput : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAudioInput>

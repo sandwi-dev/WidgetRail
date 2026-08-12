@@ -14,6 +14,18 @@ tray. Both consume the same normalized installed-game records, opaque SavedIds,
 and fresh launch resolution. The widget does not discover stores, retain raw
 provider identity, infer games from titles, or cache a complete library.
 
+Each current row is projected from one versioned immutable app-library
+presentation: item/source, availability, role-keyed artwork, optional attributed
+metadata, closed capabilities, and optional operation state. Game Launcher does
+not retain legacy scalar aliases. It uses Tile artwork for rows and Hero artwork
+for the hero only when those roles are present, and enables launch only when the
+current availability and explicit Launch capability agree. Unknown or malformed
+presentation versions fail closed before they can enter widget state.
+The SDK validates each focused value independently, then composes only their
+relationships. Game Launcher also explicitly requires the freshly resolved
+availability state to be `Installed`; unavailable, stale-source, and retained
+last-good rows cannot reach launch even if malformed input claims otherwise.
+
 ## Collection and controller behavior
 
 - **Search installed games** opens one host-owned text-entry modal. Keyboard or
@@ -100,6 +112,23 @@ shutdown drains catalog scans, running observation, and all artwork permits
 before it disposes any source or clears committed catalog state.
 Candidate locator sets remain staged until the matching Steam source generation
 commits, so cancellation or a newer refresh cannot retire current row artwork.
+
+Installed Microsoft/Xbox package games enter the same normalized library only
+when supported Windows package registration plus bounded
+`MicrosoftGame.config` evidence identifies the exact registered application as
+a game. Package names, locations, AUMIDs, configuration bytes, and account data
+remain provider-private. Exact AppsFolder duplicates collapse by the same stable
+launch identity, while distinct registered variants remain separate rows. A
+failed package refresh may retain a disabled last-good display row, but launch
+requires a fresh matching package generation and AUMID.
+
+Epic installed-game discovery is separately opt-in under **Settings > Game
+sources**. It reads only bounded local installed manifests from the fixed
+provider-owned ProgramData location and performs no Epic login or network
+request. The source reports disabled, unavailable, or degraded status
+explicitly. Raw manifest fields, install paths, catalog IDs, and launch URIs
+never enter widget state; activation requires a fresh exact manifest and
+executable match before the host constructs its constrained Epic launcher URI.
 
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains

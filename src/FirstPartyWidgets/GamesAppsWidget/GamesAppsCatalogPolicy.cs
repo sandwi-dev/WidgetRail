@@ -70,9 +70,16 @@ internal static class GamesAppsCatalogPolicy
         return items.Where(item => item is not null &&
                 !string.IsNullOrWhiteSpace(item.AppId) &&
                 !string.IsNullOrWhiteSpace(item.SavedId) &&
-                !string.IsNullOrWhiteSpace(item.DisplayName) && ids.Add(item.AppId))
+                !string.IsNullOrWhiteSpace(item.Presentation.DisplayName) && ids.Add(item.AppId))
             .Take(maximum)
-            .Select(item => item with { DisplayName = NormalizeDisplayName(item.DisplayName) })
+            .Select(item =>
+            {
+                var displayName = NormalizeDisplayName(item.Presentation.DisplayName);
+                return item with
+                {
+                    Presentation = item.Presentation with { DisplayName = displayName },
+                };
+            })
             .ToArray();
     }
 

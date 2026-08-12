@@ -43,15 +43,43 @@ public sealed class WindowsAppLibraryProvider :
     private long _catalogRevision;
 
     public WindowsAppLibraryProvider() : this(
-        new WindowsStartMenuApplicationSource(),
-        new WindowsAppsFolderApplicationSource(),
-        new WindowsSteamApplicationSource(),
-        new WindowsShellLauncher(),
-        new WindowsPackagedAppLauncher(),
-        new WindowsSteamLauncher(),
-        new WindowsAppIconSource(),
-        ShellStaExecutor.Shared)
+        _ => false)
     {
+    }
+
+    internal WindowsAppLibraryProvider(
+        Func<CancellationToken, bool> epicEnabled) : this(
+        CreateDefaultSources(epicEnabled), ShellStaExecutor.Shared)
+    {
+    }
+
+    private static IReadOnlyList<IGameLibrarySource> CreateDefaultSources(
+        Func<CancellationToken, bool> epicEnabled)
+    {
+        ArgumentNullException.ThrowIfNull(epicEnabled);
+        var packagedLauncher = new WindowsPackagedAppLauncher();
+        var iconSource = new WindowsAppIconSource();
+        return
+        [
+            new WindowsInstalledGameLibrarySource(
+                new WindowsStartMenuApplicationSource(),
+                new WindowsAppsFolderApplicationSource(),
+                new WindowsShellLauncher(),
+                packagedLauncher,
+                iconSource),
+            new WindowsPackageGameLibrarySource(
+                new WindowsPackageGameApplicationSource(),
+                packagedLauncher,
+                iconSource),
+            new SteamGameLibrarySource(
+                new WindowsSteamApplicationSource(),
+                new WindowsSteamLauncher()),
+            new EpicGameLibrarySource(
+                new EpicInstalledGameApplicationSource(
+                    EpicInstalledGameApplicationSource.DefaultManifestRoot,
+                    epicEnabled),
+                new WindowsEpicLauncher()),
+        ];
     }
 
     internal WindowsAppLibraryProvider(IStartMenuApplicationSource source) :
@@ -321,7 +349,10 @@ public sealed class WindowsAppLibraryProvider :
                 entry.app.DisplayName,
                 ToBrokerKind(entry.registration.Kind),
                 ArtworkRevision(entry.registration.ArtworkRevision),
-                entry.registration.Attribution)).ToArray();
+                entry.registration.Attribution)
+            {
+                SourceIdentity = entry.registration.SourceIdentity,
+            }).ToArray();
             var before = offset > 0
                 ? CreateCursor(Math.Max(0, offset - request.Limit),
                     AppLibraryCursorDirection.Before, _catalogRevision, queryHash)
@@ -676,6 +707,7 @@ public sealed class WindowsAppLibraryProvider :
         {
             GameLibrarySourceHealth.Healthy => "healthy",
             GameLibrarySourceHealth.Degraded => "source_degraded",
+            GameLibrarySourceHealth.Disabled => "source_disabled",
             _ => "source_unavailable",
         });
 

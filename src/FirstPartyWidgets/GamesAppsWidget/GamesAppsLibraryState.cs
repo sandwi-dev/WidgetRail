@@ -87,7 +87,7 @@ internal static class GamesAppsLibraryPolicy
         foreach (var item in catalog)
         {
             if (savedIds.Count >= MaximumCuratedItems) break;
-            if (item.Kind != WidgetAppLibraryKind.Game ||
+            if (GamesAppsAppLibraryPresentation.Kind(item) != WidgetAppLibraryKind.Game ||
                 excluded.Contains(item.SavedId) || !savedSet.Add(item.SavedId))
                 continue;
             savedIds.Add(item.SavedId);
@@ -97,14 +97,16 @@ internal static class GamesAppsLibraryPolicy
         }
         var visible = savedIds.Where(savedId =>
                 bySaved.TryGetValue(savedId, out var item) &&
-                (!automaticSet.Contains(savedId) || item.Kind == WidgetAppLibraryKind.Game))
+                (!automaticSet.Contains(savedId) ||
+                    GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game))
             .Select(savedId => bySaved[savedId]).ToArray();
         var displayBySaved = state.DisplayItems.ToDictionary(
             item => item.SavedId, StringComparer.Ordinal);
         foreach (var savedId in savedIds)
         {
             if (!bySaved.TryGetValue(savedId, out var item)) continue;
-            if (automaticSet.Contains(savedId) && item.Kind != WidgetAppLibraryKind.Game)
+            if (automaticSet.Contains(savedId) &&
+                GamesAppsAppLibraryPresentation.Kind(item) != WidgetAppLibraryKind.Game)
             {
                 displayBySaved.Remove(savedId);
                 continue;
@@ -238,7 +240,7 @@ internal static class GamesAppsLibraryPolicy
                 state, GamesAppsLibraryMutationRejection.None);
 
         var excluded = state.ExcludedGameSavedIds.ToList();
-        if (item.Kind == WidgetAppLibraryKind.Game &&
+        if (GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game &&
             !TryAddExcludedGame(excluded, item.SavedId))
             return new GamesAppsLibraryMutation(
                 state, GamesAppsLibraryMutationRejection.ExclusionStorageFull);
@@ -289,7 +291,8 @@ internal static class GamesAppsLibraryPolicy
         foreach (var item in candidates ?? [])
         {
             if (!saved.Contains(item.SavedId) || excluded.Contains(item.SavedId)) continue;
-            if (automatic.Contains(item.SavedId) && item.Kind != WidgetAppLibraryKind.Game)
+            if (automatic.Contains(item.SavedId) &&
+                GamesAppsAppLibraryPresentation.Kind(item) != WidgetAppLibraryKind.Game)
                 display.Remove(item.SavedId);
             else
                 display[item.SavedId] = ToDisplayItem(item);
@@ -315,7 +318,8 @@ internal static class GamesAppsLibraryPolicy
         var items = state.SavedIds.Where(savedId =>
                 !excluded.Contains(savedId) &&
                 (bySaved.TryGetValue(savedId, out var item)
-                    ? !automatic.Contains(savedId) || item.Kind == WidgetAppLibraryKind.Game
+                    ? !automatic.Contains(savedId) ||
+                        GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game
                     : displayBySaved.ContainsKey(savedId)))
             .Select(savedId =>
             {
@@ -370,8 +374,8 @@ internal static class GamesAppsLibraryPolicy
     internal static GamesAppsPersistedDisplayItem ToDisplayItem(
         WidgetAppLibraryItem item) => new(
             item.SavedId,
-            NormalizeDisplayName(item.DisplayName),
-            item.Kind);
+            NormalizeDisplayName(GamesAppsAppLibraryPresentation.DisplayName(item)),
+            GamesAppsAppLibraryPresentation.Kind(item));
 
     internal static IReadOnlyList<WidgetAppLibraryItem> NormalizeResolved(
         IReadOnlyList<WidgetAppLibraryItem>? items,
@@ -383,14 +387,19 @@ internal static class GamesAppsLibraryPolicy
         var bySaved = (items ?? [])
             .Where(item => item is not null && IsOpaqueId(item.AppId) &&
                 IsOpaqueId(item.SavedId) && requested.Contains(item.SavedId) &&
-                !string.IsNullOrWhiteSpace(item.DisplayName) && seenApp.Add(item.AppId) &&
+                !string.IsNullOrWhiteSpace(item.Presentation.DisplayName) &&
+                seenApp.Add(item.AppId) &&
                 seenSaved.Add(item.SavedId))
             .ToDictionary(item => item.SavedId, item => item, StringComparer.Ordinal);
         return requestedSavedIds.Where(bySaved.ContainsKey).Select(savedId =>
         {
             var item = bySaved[savedId];
-            var name = item.DisplayName.Trim();
-            return item with { DisplayName = name.Length > 120 ? name[..120] : name };
+            var name = item.Presentation.DisplayName.Trim();
+            name = name.Length > 120 ? name[..120] : name;
+            return item with
+            {
+                Presentation = item.Presentation with { DisplayName = name },
+            };
         }).ToArray();
     }
 
@@ -418,11 +427,18 @@ internal static class GamesAppsLibraryPolicy
 
     private static WidgetAppLibraryItem ProjectedItem(GamesAppsPersistedDisplayItem item) => new(
         PendingAppId(item.SavedId),
-        item.DisplayName,
-        item.Kind)
-    {
-        SavedId = item.SavedId,
-    };
+        item.SavedId,
+        new WidgetAppLibraryPresentation(
+            item.DisplayName,
+            item.Kind,
+            new WidgetAppLibrarySourceReference("source-retained", "Saved library"),
+            new WidgetAppLibraryAvailability(
+                WidgetAppLibraryAvailabilityState.StaleSource,
+                false, "revalidation_required"),
+            new WidgetAppLibraryArtworkSet([]),
+            Metadata: null,
+            new WidgetAppLibraryCapabilitySet([]),
+            ActiveOperation: null));
 
     private static string PendingAppId(string savedId)
     {

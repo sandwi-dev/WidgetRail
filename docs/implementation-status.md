@@ -3217,6 +3217,124 @@ temporary catalog cleanup, and child-host Job exit. Persistent build-server
 arguments remain covered by their existing separate test. No production dev
 session, timeout, verifier schema, or aggregate behavior changed.
 
+### Normalized app-library presentation contract (DLV-130)
+
+The app-library capability now publishes one versioned immutable presentation
+per opaque AppId/SavedId pair. Item/source identity, closed availability,
+role-keyed artwork, optional attributed metadata, closed capabilities, and an
+optional operation are separate focused values; the removed title/kind/source/
+artwork scalar constructors and accessors have no compatibility facade. The SDK
+validates the complete shape, cross-checks explicit launchability with the
+Launch capability, and rejects unknown versions, enums, duplicate roles or
+actions, unsafe provenance, and malformed operations as `malformed_response`.
+Game Launcher and Games & Apps consume this same model, keep retained rows
+explicitly non-authorizing, and enable launch only after fresh exact resolution.
+
+The trusted provider supplies only currently proven installed/source/artwork
+facts. Broker projection preserves an exact sanitized page source ID when one
+exists and never exposes provider identity, paths, commands, AUMIDs, Steam IDs,
+or artwork bytes. During installed acceptance, a no-artwork row exposed that the
+registry had generated a handle with an empty revision; registry admission now
+keeps that row's artwork set empty and retires any prior handle instead. The
+production Bridge fixture directly covers a multi-source Game/Application page,
+including the no-artwork Game fallback.
+
+Retained dirty-worktree Release run `20260812T085816Z-dc9417d9` passes Widget
+SDK 88/88, API compatibility 12/12, Windows app-library provider 62/62, Games &
+Apps 59/59, Game Launcher 62/62, Bridge 83/83, and 61-document validation. After
+the empty-artwork correction, focused run `20260812T091559Z-f1574fba` passes
+broker 56/56 and Bridge 83/83. The exact bounded command
+`dotnet run --project tests/FirstPartyWidgetConformance.Tests/FirstPartyWidgetConformance.Tests.csproj --configuration Release -- --games-apps-installed-acceptance`
+passes the installed generic-worker/AppContainer Games & Apps route. No canonical
+aggregate, native layout, external provider, credential, content-operation, or
+package-schema work was run or changed.
+
+### Supported Windows and Xbox installed-game source (DLV-138)
+
+The trusted Windows app-library provider now includes a separate installed
+Microsoft/Xbox package-game source beside conservative Start Menu/AppsFolder
+applications and Steam. It enumerates current-user packages through the
+supported Windows `PackageManager` API and classifies an exact registered
+application as a Game only when a bounded, non-reparse `MicrosoftGame.config`
+names that application ID. Microsoft documents that configuration as the
+game-specific packaging manifest and its `Executable Id` as the application ID;
+titles, icons, package names, and locations are never classification evidence.
+
+The source keeps package family/full name, install location, AUMID, and
+configuration bytes provider-private. It normalizes the exact AUMID to the same
+stable identity as AppsFolder, so duplicate launch registrations collapse while
+distinct application variants remain separate. Refresh commits add/remove/
+update generations atomically. A failed package read retains bounded last-good
+display with explicit unavailable source health but clears exact source
+authority, and launch must reread the same package generation, application ID,
+and game evidence before constrained packaged activation.
+
+Focused Release verification covers installed/non-game/mismatched evidence,
+AppsFolder deduplication, multiple variants, add/remove/update, failure-retained
+display without authority, exact launch revalidation, cancellation, and catalog
+bounds in the Windows provider suite. Games & Apps and Game Launcher fixtures
+cover automatic Game projection, exact source attribution, semantic artwork
+fallback, and opaque launch routing. No network, credential, account-owned game,
+install/update operation, external helper, native, capture, or aggregate work is
+included.
+
+### Opt-in Epic installed-game source (DLV-139)
+
+Settings now exposes a controller/keyboard-reachable **Game sources** page with
+an explicit Epic installed-games toggle, persisted in the host-owned platform
+settings document. When disabled the provider performs no Epic manifest I/O
+and reports `source_disabled`. When enabled, the normalized Windows app-library
+provider reads only the fixed ProgramData Epic installed-manifest directory,
+with bounded count/bytes/depth and strict format-version, duplicate-property,
+identity, non-reparse install path, relative executable, and stable-read checks.
+
+Epic AppName, catalog namespace/item ID, manifest path, install location, and
+executable evidence remain provider-private. The provider derives its own
+stable identity, and the broker continues deriving the authority-scoped
+SavedId. Refresh generations reconcile additions/removals/updates independently
+of Windows, Microsoft/Xbox, and Steam. Disabled, unavailable, and corrupt states
+are explicit; stale display can never mint launch authority. Activation rereads
+the exact manifest and executable revision and only then constructs the fixed
+Epic launcher URI from validated components. No login, credentials, network
+library, client automation, installation, update, uninstall, arbitrary command,
+public protocol change, helper binary, native work, capture, or aggregate is in
+scope.
+
+Focused Release evidence passes Windows app-library provider 71/71, platform
+settings 16/16, Settings 58/58, Games & Apps 61/61, Game Launcher 64/64,
+WidgetBridge 83/83, and the 61-document contract. Authored local fixtures cover
+disabled/no-read, valid, duplicate, unknown-schema, unsafe-path, changed-during-
+read, add/remove, stale launch, unavailable last-good display, exact status, and
+constrained URI cases. The normalized cross-process DTO did not change, so no
+installed-worker rerun was required.
+
+### Normalized app-library validation ownership correction (DLV-142)
+
+The public normalized app-library shape is unchanged, but SDK validation no
+longer lives in one catch-all presentation method. Focused internal validators
+now own presentation identity, source reference and source status, availability,
+artwork roles/revisions, metadata provenance/timestamps, capability vocabulary,
+and operation identity/state. Each can be tested without constructing an
+unrelated rich presentation. One narrow composer owns only cross-value rules:
+launchability must agree with the explicit `Launch` capability, and an active
+operation requires its matching capability, with `Resume` required for a
+paused operation. Availability validation separately
+requires `Unavailable` and `StaleSource` values to be non-launchable.
+
+Games & Apps and Game Launcher now also state the final admission explicitly:
+only a freshly resolved `Installed` item with matching launchability and Launch
+capability can reach host launch. Focused fixtures reject unavailable, stale,
+retained-last-good, missing-capability, mismatched-operation, unknown enum, and
+unknown presentation-version values as `malformed_response` without changing
+the normalized DTO, opaque identity, provider projections, or DLV-138/DLV-139
+behavior.
+
+Focused Release evidence passes WidgetSdk 89/89, PlatformBroker 56/56,
+WidgetBridge 83/83, Windows app-library provider 71/71, Games & Apps 62/62,
+Game Launcher 65/65, the installed Games & Apps normalized app-library
+acceptance route, and the 65-document contract. No canonical aggregate, native,
+network, external-provider, credential, or capture suite was run.
+
 ### Launcher Experience catalog boundary correction (DLV-137)
 
 The Launcher Experience file guard now reads standard lossy `VP8`, lossless

@@ -1402,9 +1402,12 @@ var restored = await HostServices.AppLibrary.ResolveSavedAsync(
     cancellationToken);
 
 if (LifecycleState == WidgetLifecycleState.Interactive && restored.Count != 0)
-    await HostServices.AppLibrary.LaunchAsync(
-        restored[0].AppId,
-        cancellationToken);
+{
+    var item = restored[0];
+    if (item.Presentation.Availability.IsLaunchable &&
+        item.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch))
+        await HostServices.AppLibrary.LaunchAsync(item.AppId, cancellationToken);
+}
 ```
 
 `QueryAsync` permits 1–64 items per request and returns opaque Before/After
@@ -1423,13 +1426,31 @@ an opaque provider-lifetime token and never persist it. `SavedId` is the
 non-reversible publisher/package-scoped value for private state. The current
 Windows provider exposes bounded Start Menu `.lnk` plus current-user
 AppsFolder/AUMID registrations and conservatively reports them as Application.
-Current entries may include an opaque `ArtworkHandle`; the native host resolves
-it lazily only against the exact current trusted registration and keeps decoded
-pixels in a bounded memory cache. No image bytes enter snapshots or private
-state. Paths, AUMIDs, arguments, launcher identifiers, and activation PIDs
-remain provider-private. The provider includes reviewed Steam manifests as
-games but uses a semantic fallback because that source supplies no trusted icon
-surface; Xbox and other store adapters remain unsupported. See the
+Each item has one versioned `Presentation`: sanitized title and closed kind,
+opaque source reference, closed availability and launchability, role-keyed
+artwork, optional revisioned/attributed metadata, a closed capability set, and
+an optional operation. There are no legacy scalar aliases. Treat missing
+metadata and artwork roles as explicit absence; never infer capabilities from
+title, source, artwork, or availability text. Unknown versions, enum values,
+duplicate roles/actions, inconsistent launchability, and malformed provenance
+fail closed as `malformed_response`.
+
+Validation is value-scoped: source, availability, artwork, metadata,
+capabilities, and operation records each own their local enum, identifier,
+count, status, and timestamp rules. The presentation relationship check only
+composes those already-valid values. Launch requires `Installed`, explicit
+launchability, and the `Launch` capability together; `Unavailable`,
+`StaleSource`, and retained last-good rows never authorize launch.
+
+Current entries may include opaque artwork handles under `Presentation.Artwork`;
+select the required role with `Find(WidgetAppLibraryArtworkRole.Tile)` (or
+`Cover`, `Hero`, or `Logo`). The native host resolves a handle lazily only
+against the exact current trusted registration and keeps decoded pixels in a
+bounded memory cache. No image bytes enter snapshots or private state. Paths,
+AUMIDs, arguments, launcher identifiers, and activation PIDs remain
+provider-private. The provider includes reviewed Steam manifests as games and
+uses semantic fallback when a role is absent. Xbox and other store adapters
+remain unsupported. See the
 [Games & Apps reference](games-and-apps.md).
 
 For an optional **Add running app** route, declare

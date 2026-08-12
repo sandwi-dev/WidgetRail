@@ -822,13 +822,12 @@ static async Task TrustedArtworkDemandIsExact()
     await consent.SetDecisionAsync(
         identity, PlatformCapabilities.AppLibraryLaunchV1, ConsentDecision.Grant);
     var backend = new SimulatedPlatformBrokerBackend();
-    backend.SetAppLibraryBackend([
-        new AppLibraryBackendItemSummary(
-            "provider-one", "stable-one", "Artwork App", AppLibraryKind.Application,
-            "artwork-a"),
-        new AppLibraryBackendItemSummary(
-            "provider-two", "stable-two", "Second App", AppLibraryKind.Application,
-            "artwork-two"),
+    backend.SetAppLibrary([
+        BridgeAppLibraryItem("provider-one", "stable-one", "Artwork App", "artwork-a"),
+        BridgeAppLibraryItem("provider-two", "stable-two", "Second App", "artwork-two"),
+        BridgeAppLibraryItem(
+            "provider-game", "stable-game", "Trusted Game", string.Empty,
+            AppLibraryKind.Game, "source-steam", "Steam"),
     ]);
     var iconStarted = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously);
@@ -865,7 +864,7 @@ static async Task TrustedArtworkDemandIsExact()
             firstHandle.StartsWith("library.art.", StringComparison.Ordinal),
             "Worker snapshot did not carry one bounded opaque artwork handle.");
         Assert.Equal(0, backend.AppLibraryIconCalls);
-        Assert.Equal(2, backend.AppLibraryRefreshCalls);
+        Assert.Equal(3, backend.AppLibraryRefreshCalls);
         Assert.Equal(2, backend.AppLibraryReadCalls);
         var launched = await client.RequestAsync(
             BridgeMessageTypes.Action,
@@ -906,13 +905,14 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal(BridgeMessageTypes.Acknowledged, stale.Type);
         await staleStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        backend.SetAppLibraryBackend([
-            new AppLibraryBackendItemSummary(
-                "provider-one", "stable-one", "Replacement", AppLibraryKind.Application,
-                "artwork-b"),
-            new AppLibraryBackendItemSummary(
-                "provider-two", "stable-two", "Second App", AppLibraryKind.Application,
-                "artwork-two"),
+        backend.SetAppLibrary([
+            BridgeAppLibraryItem(
+                "provider-one", "stable-one", "Replacement", "artwork-b"),
+            BridgeAppLibraryItem(
+                "provider-two", "stable-two", "Second App", "artwork-two"),
+            BridgeAppLibraryItem(
+                "provider-game", "stable-game", "Trusted Game", string.Empty,
+                AppLibraryKind.Game, "source-steam", "Steam"),
         ]);
         _ = await client.RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
@@ -985,6 +985,34 @@ static async Task TrustedArtworkDemandIsExact()
         }
     }
 }
+
+static AppLibraryItemSummary BridgeAppLibraryItem(
+    string appId,
+    string savedId,
+    string displayName,
+    string artworkRevision,
+    AppLibraryKind kind = AppLibraryKind.Application,
+    string sourceId = "source-windows",
+    string sourceDisplayName = "Windows") => new(
+    appId,
+    savedId,
+    new AppLibraryItemPresentation(
+        displayName,
+        kind,
+        new AppLibrarySourceReference(sourceId, sourceDisplayName),
+        new AppLibraryAvailabilitySummary(
+            AppLibraryAvailabilityState.Installed, true, "installed"),
+        new AppLibraryArtworkSet(
+        [
+            new AppLibraryArtworkSummary(
+                AppLibraryArtworkRole.Tile, "simulated-artwork", artworkRevision,
+                kind == AppLibraryKind.Game
+                    ? AppLibraryArtworkFallback.Game
+                    : AppLibraryArtworkFallback.Application),
+        ]),
+        Metadata: null,
+        new AppLibraryCapabilitySet([AppLibraryAction.Launch]),
+        ActiveOperation: null));
 
 static IEnumerable<ViewNode> Flatten(ViewNode root)
 {
@@ -3035,7 +3063,8 @@ file sealed class BridgeTestWidget : Widget
         {
             children.Add(UI.Button("Load artwork", "artwork.load", "artwork.load"));
             children.Add(UI.Button("Launch app", "artwork.launch", "artwork.launch"));
-            children.Add(_artworkItem?.ArtworkHandle is { } handle
+            children.Add(_artworkItem?.Presentation.Artwork.Find(
+                    WidgetAppLibraryArtworkRole.Tile)?.Handle is { } handle
                 ? UI.Artwork(
                     new WidgetArtworkHandle(handle), "artwork.image", "Application icon",
                     ImageFit.Contain)
@@ -3072,7 +3101,19 @@ file sealed class BridgeTestWidget : Widget
     {
         if (_artworkFixture && current == WidgetLifecycleState.Interactive)
         {
-            var query = new WidgetAppLibraryQuery();
+            var gamePage = await HostServices.AppLibrary.QueryAsync(
+                new WidgetAppLibraryQuery(Kind: WidgetAppLibraryKind.Game),
+                limit: 64, refresh: true,
+                cancellationToken: stateLifetime);
+            var game = gamePage.Items.Single();
+            if (game.Presentation.Source.SourceId != "source-steam" ||
+                game.Presentation.Source.DisplayName != "Steam" ||
+                game.Presentation.Kind != WidgetAppLibraryKind.Game ||
+                game.Presentation.Artwork.Items.Count != 0)
+                throw new InvalidOperationException(
+                    "Normalized multi-source no-artwork game projection was not preserved.");
+
+            var query = new WidgetAppLibraryQuery(Kind: WidgetAppLibraryKind.Application);
             var first = await HostServices.AppLibrary.QueryAsync(
                 query, limit: 1, refresh: true,
                 cancellationToken: stateLifetime);
@@ -3094,9 +3135,18 @@ file sealed class BridgeTestWidget : Widget
                 query, limit: 1, refresh: true,
                 cancellationToken: stateLifetime);
             _artworkItem = refreshed.Items.Single();
-            if (_artworkItem.ArtworkHandle is null)
+            var presentation = _artworkItem.Presentation;
+            if (_artworkItem.PresentationVersion !=
+                    WidgetAppLibraryItem.CurrentPresentationVersion ||
+                presentation.Source.DisplayName != "Windows" ||
+                presentation.Availability.State != WidgetAppLibraryAvailabilityState.Installed ||
+                !presentation.Availability.IsLaunchable ||
+                !presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch) ||
+                presentation.Metadata is not null ||
+                presentation.ActiveOperation is not null ||
+                presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile) is null)
                 throw new InvalidOperationException(
-                    "Artwork fixture received an item without a registered handle.");
+                    "Artwork fixture did not receive the normalized launchable presentation.");
             Invalidate();
         }
     }

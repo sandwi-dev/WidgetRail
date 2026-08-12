@@ -75,7 +75,7 @@ internal static class GameLauncherHeroRailPolicy
                 .Where(savedId => !used.Contains(savedId) && !excluded.Contains(savedId))
                 .Select(savedId => RowFor(savedId, resolved, stored))
                 .Where(row => row is not null &&
-                    row.Current?.Value.Kind != WidgetAppLibraryKind.Game &&
+                    row.Current?.Presentation.Kind != WidgetAppLibraryKind.Game &&
                     Matches(row.Display, state.Query, state.FavoriteFilter, favorites))
                 .Select(row => row!)
                 .OrderBy(row => row, RowComparer(state.Query.Sort))
@@ -93,8 +93,8 @@ internal static class GameLauncherHeroRailPolicy
             .ThenBy(value => preferred.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
             .ThenBy(value => value.index)
             .Select(value => new RailRow(value.item, new(
-                value.item.Value.SavedId, value.item.Value.DisplayName,
-                value.item.Value.SourceAttribution), CollectionItem: true))
+                value.item.Value.SavedId, value.item.Presentation.DisplayName,
+                value.item.Presentation.Source.DisplayName), CollectionItem: true))
             .ToArray();
 
         var liveIds = state.FixedRows.All.Concat(snapshot.Items)
@@ -175,8 +175,9 @@ internal static class GameLauncherHeroRailPolicy
         IReadOnlyDictionary<string, GameLauncherDisplayItem> stored)
     {
         if (resolved.TryGetValue(savedId, out var current))
-            return new(current, new(current.Value.SavedId, current.Value.DisplayName,
-                current.Value.SourceAttribution));
+            return new(current, new(current.Value.SavedId,
+                current.Presentation.DisplayName,
+                current.Presentation.Source.DisplayName));
         return stored.TryGetValue(savedId, out var display) ? new(null, display) : null;
     }
 
@@ -237,8 +238,9 @@ internal static class GameLauncherHeroRailPresentation
         if (selected.Preferred) traits.Add("Preferred variant");
         if (selected.GroupSize > 1) traits.Add($"{selected.GroupSize} grouped variants");
         var metadata = traits.Count == 0 ? state : state + " · " + string.Join(" · ", traits);
-        WidgetElement artwork = selected.Current?.Value.ArtworkHandle is { Length: > 0 } handle
-            ? UI.Artwork(new WidgetArtworkHandle(handle), "game-launcher.hero.artwork",
+        WidgetElement artwork = selected.Current?.Presentation.Artwork.Find(
+                WidgetAppLibraryArtworkRole.Hero) is { } hero
+            ? UI.Artwork(new WidgetArtworkHandle(hero.Handle), "game-launcher.hero.artwork",
                 $"Artwork for {title}", ImageFit.Cover)
             : UI.Icon(WidgetGlyph.Play, "game-launcher.hero.artwork",
                 $"Artwork unavailable for {title}");

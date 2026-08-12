@@ -13,15 +13,14 @@ public sealed class GameLauncherLayoutTests
     public void EveryRouteHasOneFixedChromeAndOneBoundedCollectionViewport()
     {
         var items = Enumerable.Range(0, 64)
-            .Select(index => GameLauncherItem.From(new WidgetAppLibraryItem(
-                $"app-{index:D3}", $"Game {index:D3}", WidgetAppLibraryKind.Game)
-            {
-                SavedId = $"saved-{index:D3}",
-                SourceAttribution = index % 2 == 0 ? "Steam" : "Windows",
-            }))
+            .Select(index => GameLauncherItem.From(Item(
+                $"app-{index:D3}", $"saved-{index:D3}", $"Game {index:D3}",
+                index % 2 == 0 ? "Steam" : "Windows")))
             .ToArray();
         var display = items.Select(item => new GameLauncherDisplayItem(
-            item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution))
+            item.Value.SavedId,
+            item.Value.Presentation.DisplayName,
+            item.Value.Presentation.Source.DisplayName))
             .ToArray();
         var organized = new GameLauncherPrivateState(
             GameLauncherPrivateState.CurrentVersion, display)
@@ -204,20 +203,19 @@ public sealed class GameLauncherLayoutTests
     {
         var title = new string('T', 96);
         var source = new string('S', 64);
-        var item = GameLauncherItem.From(new WidgetAppLibraryItem(
-            "app-details", title, WidgetAppLibraryKind.Game)
-        {
-            SavedId = "saved-details",
-            SourceAttribution = source,
-        });
+        var item = GameLauncherItem.From(Item(
+            "app-details", "saved-details", title, source));
         var selection = new GameLauncherDetailsSelection(
             item.Value.SavedId, item.Key,
             GameLauncherIdentity.FocusId("grid", item.Key),
-            item.Value.DisplayName, item.Value.SourceAttribution,
+            item.Value.Presentation.DisplayName,
+            item.Value.Presentation.Source.DisplayName,
             PageBumpers: false);
         var organization = new GameLauncherPrivateState(
             GameLauncherPrivateState.CurrentVersion,
-            [new(item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution)])
+            [new(item.Value.SavedId,
+                item.Value.Presentation.DisplayName,
+                item.Value.Presentation.Source.DisplayName)])
         {
             FavoriteSavedIds = [item.Value.SavedId],
             VariantGroups = [new("variant.details",
@@ -283,21 +281,19 @@ public sealed class GameLauncherLayoutTests
     {
         var longTitle = new string('H', 96);
         var items = Enumerable.Range(0, 20).Select(index =>
-            GameLauncherItem.From(new WidgetAppLibraryItem(
-                $"app-hero-{index:D2}", index == 7 ? longTitle : $"Hero {index:D2}",
-                WidgetAppLibraryKind.Game)
-            {
-                SavedId = $"saved-hero-{index:D2}",
-                SourceAttribution = index % 2 == 0 ? "Steam" : "Windows",
-                ArtworkHandle = index == 7
-                    ? null
-                    : $"hero.art.{index:D2}.0123456789abcdef0123456789abcdef",
-            })).ToArray();
+            GameLauncherItem.From(Item(
+                $"app-hero-{index:D2}", $"saved-hero-{index:D2}",
+                index == 7 ? longTitle : $"Hero {index:D2}",
+                index % 2 == 0 ? "Steam" : "Windows",
+                index == 7 ? null :
+                    $"hero.art.{index:D2}.0123456789abcdef0123456789abcdef")))
+            .ToArray();
         var organization = new GameLauncherPrivateState(
             GameLauncherPrivateState.CurrentVersion,
             items.Select(item => new GameLauncherDisplayItem(
-                item.Value.SavedId, item.Value.DisplayName,
-                item.Value.SourceAttribution)).ToArray())
+                item.Value.SavedId,
+                item.Value.Presentation.DisplayName,
+                item.Value.Presentation.Source.DisplayName)).ToArray())
         {
             FavoriteSavedIds = [items[7].Value.SavedId],
             VariantGroups = [new("variant.hero",
@@ -385,6 +381,41 @@ public sealed class GameLauncherLayoutTests
         foreach (var child in root.Children)
         foreach (var node in VisibleNodes(child, compact))
             yield return node;
+    }
+
+    private static WidgetAppLibraryItem Item(
+        string appId,
+        string savedId,
+        string displayName,
+        string source,
+        string? artworkHandle = null)
+    {
+        WidgetAppLibraryArtwork[] artwork = artworkHandle is null ? [] :
+        [
+            new(WidgetAppLibraryArtworkRole.Tile, artworkHandle, "fixture",
+                WidgetAppLibraryArtworkFallback.Game),
+        ];
+        var item = new WidgetAppLibraryItem(appId, savedId, new(
+            displayName,
+            WidgetAppLibraryKind.Game,
+            new("source-fixture", source),
+            new(WidgetAppLibraryAvailabilityState.Installed, true, "installed"),
+            new(artwork),
+            Metadata: null,
+            new([WidgetAppLibraryAction.Launch]),
+            ActiveOperation: null));
+        if (artworkHandle is null) return item;
+        return item with
+        {
+            Presentation = item.Presentation with
+            {
+                Artwork = new([
+                    item.Presentation.Artwork.Items.Single(),
+                    new(WidgetAppLibraryArtworkRole.Hero, artworkHandle, "fixture",
+                        WidgetAppLibraryArtworkFallback.Game),
+                ]),
+            },
+        };
     }
 
     private sealed class PresentationWidget(WidgetView view) : Widget

@@ -339,10 +339,11 @@ internal static class GameLauncherOrganizationPolicy
 
     private static GameLauncherDisplayItem Display(GameLauncherItem item) => new(
         item.Value.SavedId,
-        item.Value.DisplayName.Length <= 96
-            ? item.Value.DisplayName : item.Value.DisplayName[..96],
-        item.Value.SourceAttribution.Length <= 64
-            ? item.Value.SourceAttribution : item.Value.SourceAttribution[..64]);
+        item.Presentation.DisplayName.Length <= 96
+            ? item.Presentation.DisplayName : item.Presentation.DisplayName[..96],
+        item.Presentation.Source.DisplayName.Length <= 64
+            ? item.Presentation.Source.DisplayName :
+                item.Presentation.Source.DisplayName[..64]);
 
     private static bool ValidDisplay(GameLauncherDisplayItem? item) => item is not null &&
         ValidSavedId(item.SavedId) && item.DisplayName is { Length: > 0 and <= 96 } &&
