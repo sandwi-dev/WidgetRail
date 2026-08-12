@@ -318,6 +318,20 @@ internal static class SettingsPolicyScenarios
                 node.Id == "installed.repair.item.0").IsBusy == true,
             "Busy installed recovery remained actionable.");
 
+        var readyFirst = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
+            header, busy: true, SettingsInstalledWidgetState.Empty);
+        var readySecond = SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
+            header, busy: true, SettingsInstalledWidgetState.Empty);
+        Equal(SnapshotJson(readyFirst), SnapshotJson(readySecond),
+            "Local-install presentation changed for the same immutable input.");
+        var ready = readyFirst.CreateSnapshot("settings-policy", 1);
+        var install = Nodes(ready.Root).Single(node =>
+            node.Id == "installed.install-local");
+        Equal("host.install-local-widget", install.ActionId,
+            "Local-install presentation changed the private host action.");
+        Require(install.IsBusy == true,
+            "Busy Settings state left local package selection actionable.");
+
         var permissionFirst = SettingsPermissionPresentation.RenderPermissionPackages(
             header,
             busy: false,
