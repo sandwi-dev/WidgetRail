@@ -102,6 +102,14 @@ authority. The ordinary host still bypasses `LauncherExperienceAdapter`, so
 integrating the picker alone would ship a visible no-op. DLV-145 now owns the
 private native adoption hook; the pair is reviewed and integrated together.
 
+DLV-145 commit `7a566be` is held for correction. Its focused production seam
+and 1,540 checks are coherent, but the fresh production-host fixture received
+no projectable game rail and deliberately passed ordinary fallback. That is
+valid fallback evidence, not evidence that the real installed widget adopts any
+native preset. DLV-146 must seed a deterministic test-only trusted app-library
+item behind the normal broker boundary and make all four production adoptions
+unconditional before the pair can enter main.
+
 ### Launcher Experience authoring toolchain accepted
 
 DLV-135 widgets commit `3c93abb` is independently integrated as `e6dc10e`.
@@ -171,7 +179,7 @@ its change is accepted.
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
 | Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 25004 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, and the DLV-135 local authoring workflow are accepted. DLV-134's managed six-slot boundary is held. | Active native production adoption DLV-145, then paired projection acceptance and a production-evidence-based visible successor. |
+| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, and the DLV-135 local authoring workflow are accepted. DLV-134 and DLV-145 are held. | DLV-146 deterministic real-host adoption proof, then paired projection acceptance and a production-evidence-based visible successor. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -200,9 +208,9 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active DLV-145 against held `e847502`, including exact SavedId/action/
-   focus/scroll agreement across all four ordinary-host native experiences.
-2. Integrate DLV-134 and DLV-145 as one visible product outcome.
+1. Review DLV-146's deterministic success path against held `e847502` and
+   `7a566be`; ordinary fallback must remain a separate scenario.
+2. Integrate DLV-134, DLV-145, and DLV-146 as one visible product outcome.
 3. Keep DLV-135's semantic preview claim separate from ordinary-overlay
    production adoption.
 4. Keep PID 9192 visible for the user's dashboard, Spotify, and installed-

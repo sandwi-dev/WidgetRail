@@ -100,7 +100,8 @@ the scalable path.
   author loop and reliable production-window targeting remain unfinished.
 - Layout recipes: reusable primitives, Launcher Experience native presets, and
   DLV-135 scaffold/validate/preview/pack/inspect/install/list/remove tooling
-  exist; ordinary-host production state projection remains DLV-145.
+  exist; ordinary-host production state projection remains held behind DLV-146
+  because DLV-145's live fixture proved only fallback.
 - Documentation examples: canonical starters compile, but many prose snippets
   are still not extracted into API-checked projects.
 
@@ -223,8 +224,9 @@ The authoring platform is ready for external preview when a new developer can:
 
 ## Prioritized review queue
 
-1. Review active DLV-145 with held DLV-134 as the first production projection
-   of normalized Game Launcher state into every accepted native experience.
+1. Review DLV-146 with held DLV-134/DLV-145 as the first deterministic
+   production projection of normalized Game Launcher state into every accepted
+   native experience.
 2. Keep accepted DLV-135's semantic/offscreen preview claim distinct from live
    ordinary-overlay adoption and use DLV-145 evidence to scope its next visual
    author-loop improvement.

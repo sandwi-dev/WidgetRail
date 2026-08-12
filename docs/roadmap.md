@@ -339,11 +339,11 @@ eligibility; credential-free structural work continues independently.
 
 ## Current execution priorities
 
-1. Complete active platform DLV-145 against held managed DLV-134 `e847502` so
-   real Game Launcher state drives all four accepted native experiences with
-   unchanged action, focus, cursor, and provider authority.
+1. Complete DLV-146's deterministic production-adoption correction over held
+   DLV-134 `e847502` and DLV-145 `7a566be`; provider-unavailable ordinary
+   fallback is useful coverage but cannot prove the visible native experience.
 2. DLV-135 author tooling is accepted through `e6dc10e`; retain its explicit
-   semantic/offscreen preview boundary until DLV-145 is accepted.
+   semantic/offscreen preview boundary until DLV-146 closes DLV-145 acceptance.
 3. Integrate the DLV-134/DLV-145 pair as one visible product outcome, then use
    production evidence to select the next visible launcher recovery or
    experience-management milestone.
