@@ -117,6 +117,24 @@ internal static class Program
                     MinimumWidth = 320,
                     MinimumHeight = 420,
                 });
+            if (value.StartsWith("now-playing.", StringComparison.Ordinal))
+                return new("now-playing", "Now Playing", "now-playing-surface", 180, new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Adaptive,
+                    PreferredWidth = 760,
+                    PreferredHeight = 480,
+                    MinimumWidth = 420,
+                    MinimumHeight = 320,
+                });
+            if (value.StartsWith("yt-music.", StringComparison.Ordinal))
+                return new("yt-music", "YT Music", "yt-music-surface", 240, new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Adaptive,
+                    PreferredWidth = 900,
+                    PreferredHeight = 600,
+                    MinimumWidth = 540,
+                    MinimumHeight = 380,
+                });
             if (value.StartsWith("spotify.", StringComparison.Ordinal))
                 return new("spotify", "Spotify", "spotify-surface", 240, new WidgetSurfaceHints
                 {
@@ -143,6 +161,15 @@ internal static class Program
                     PreferredHeight = 700,
                     MinimumWidth = 620,
                     MinimumHeight = 480,
+                });
+            if (value.StartsWith("settings.", StringComparison.Ordinal))
+                return new("settings", "Settings", "settings-surface", 0, new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Standard,
+                    PreferredWidth = 700,
+                    PreferredHeight = 650,
+                    MinimumWidth = 420,
+                    MinimumHeight = 380,
                 });
             throw new ArgumentException($"Unsupported switch fixture instance {value}.");
         }

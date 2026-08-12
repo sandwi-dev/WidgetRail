@@ -122,6 +122,50 @@ struct CompositionGeometryPlan final {
         const CompositionGeometryPlan&) noexcept = default;
 };
 
+struct CompositionMotionPlan final {
+    unsigned int containerWidth{};
+    unsigned int containerHeight{};
+    float scaleX{1.0F};
+    float scaleY{1.0F};
+    float offsetX{};
+    float offsetY{};
+    bool retainsTransparentContainer{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CompositionMotionPlan&,
+        const CompositionMotionPlan&) noexcept = default;
+};
+
+/// One fully rendered destination surface is transformed inside a transparent
+/// client container. The container is the per-axis union of source and target,
+/// so no animation tick resizes the HWND or recreates/redraws the surface.
+[[nodiscard]] constexpr CompositionMotionPlan PlanCompositionMotion(
+    const unsigned int sourceWidth,
+    const unsigned int sourceHeight,
+    const unsigned int targetWidth,
+    const unsigned int targetHeight,
+    const float presentedWidth,
+    const float presentedHeight) noexcept {
+    if (sourceWidth == 0 || sourceHeight == 0 ||
+        targetWidth == 0 || targetHeight == 0 ||
+        presentedWidth <= 0.0F || presentedHeight <= 0.0F) return {};
+    const auto containerWidth = sourceWidth > targetWidth ? sourceWidth : targetWidth;
+    const auto containerHeight = sourceHeight > targetHeight ? sourceHeight : targetHeight;
+    const float scaleX = presentedWidth / static_cast<float>(targetWidth);
+    const float scaleY = presentedHeight / static_cast<float>(targetHeight);
+    const float visualWidth = static_cast<float>(targetWidth) * scaleX;
+    const float visualHeight = static_cast<float>(targetHeight) * scaleY;
+    return {
+        containerWidth,
+        containerHeight,
+        scaleX,
+        scaleY,
+        (static_cast<float>(containerWidth) - visualWidth) * 0.5F,
+        (static_cast<float>(containerHeight) - visualHeight) * 0.5F,
+        containerWidth != targetWidth || containerHeight != targetHeight,
+    };
+}
+
 /// Geometry never reveals pixels that have not been committed. When replacing
 /// a live surface, shrink either dimension before the visual commit and grow
 /// or move only after the complete destination surface is committed.

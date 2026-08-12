@@ -2848,6 +2848,28 @@ with C++ installed:
   implementation. This is scoped dirty-worktree evidence, not a canonical
   aggregate or a substitute for the user's next packaged visual check.
 
+- DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
+  The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
+  the existing Windows-10-compatible DirectComposition owner clears its
+  premultiplied surface to alpha zero, paints only authored panel/tray pixels,
+  and uses one effect-group opacity owner while the separate backdrop remains
+  the sole dimming layer. A complete detached destination surface is committed
+  before a bounded 140 ms visual transform; motion ticks commit only transform
+  state with no `WaitForCommitCompletion`, surface redraw, sleep, or HWND
+  resize. Pointer hit testing and UI Automation bounds share that presented
+  transform, and unused client pixels return `HTTRANSPARENT`. The existing
+  color-key HWND renderer remains the one explicit fallback and is enabled only
+  after the composition owner is reset. Focused Release evidence passes the
+  native host build, Placement 108547, Targeting 64, Transition 56, Chrome 45,
+  Accessibility Provider 152, Focus Navigation 49, Host Accessibility 34, and
+  Declarative Renderer 4777 checks. The production-host temporal matrix passed
+  Audio Mixer, Game Launcher, Now Playing, Games & Apps, Network Controls,
+  YT Music, Spotify, and Settings with eight complete destination samples:
+  draw max 2681 us, surface commit max 1491 us, fixed-container placement max
+  1641 us, and nonblocking visual commit max 68 us. No aggregate, capture,
+  screenshot, delay, public protocol change, or second renderer was used;
+  packaged visual confirmation remains the planner/user gate.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:

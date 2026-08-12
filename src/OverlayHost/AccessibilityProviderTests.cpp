@@ -873,6 +873,18 @@ int main() {
           transformedRootBounds.left == 120 && transformedRootBounds.top == 240 &&
           transformedRootBounds.right == 720 && transformedRootBounds.bottom == 690,
           "real UIA client observes transformed root bounds");
+    host.Publish(finalHostTree, {120, 240, 1.5, 480, 540, 1.2, 1.8, 20, 10});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    RECT composedBounds{};
+    Check(SUCCEEDED(clientTrayItem->get_CurrentBoundingRectangle(&composedBounds)) &&
+          composedBounds.left == 164 && composedBounds.top == 646 &&
+          composedBounds.right == 240 && composedBounds.bottom == 761,
+          "composed nonuniform motion keeps actionable UIA bounds on presented pixels");
+    RECT composedRootBounds{};
+    Check(SUCCEEDED(clientRoot->get_CurrentBoundingRectangle(&composedRootBounds)) &&
+          composedRootBounds.left == 140 && composedRootBounds.top == 250 &&
+          composedRootBounds.right == 620 && composedRootBounds.bottom == 790,
+          "composed root follows visual offset and presented extent");
 
     auto presentedSliderTree = Tree(L"generation-4", 13);
     host.Publish(presentedSliderTree, {120, 240, 1.5, 600, 450});

@@ -50,15 +50,16 @@ struct Target final {
     std::uint32_t firstSnapshotDelayMilliseconds;
 };
 
-constexpr std::array<Target, 4> kTargets{{
+constexpr std::array<Target, 8> kTargets{{
     {L"audio-mixer", L"Audio Mixer", VK_RETURN, 0},
-    {L"network-controls", L"Network Controls", VK_RIGHT, 0},
-    {L"spotify", L"Spotify", VK_RIGHT, 240},
+    {L"game-launcher", L"Game Launcher", VK_RIGHT, 420},
+    {L"now-playing", L"Now Playing", VK_RIGHT, 180},
     {L"games-apps", L"Games & Apps", VK_RIGHT, 320},
+    {L"network-controls", L"Network Controls", VK_RIGHT, 0},
+    {L"yt-music", L"YT Music", VK_RIGHT, 240},
+    {L"spotify", L"Spotify", VK_RIGHT, 240},
+    {L"settings", L"Settings", VK_RIGHT, 0},
 }};
-
-constexpr Target kGameLauncherTarget{
-    L"game-launcher", L"Game Launcher", VK_LEFT, 420};
 
 class TemporaryInstallation final {
 public:
@@ -105,7 +106,10 @@ public:
             ".network-surface { background: #225f83; }\n"
             ".spotify-surface { background: #176f3a; }\n"
             ".games-surface { background: #8a5c18; }\n"
-            ".launcher-surface { background: #54418a; }\n");
+            ".launcher-surface { background: #54418a; }\n"
+            ".now-playing-surface { background: #315f65; }\n"
+            ".yt-music-surface { background: #8b2635; }\n"
+            ".settings-surface { background: #3e4b5b; }\n");
 
         const std::string worker = JsonEscape(fs::absolute(fixtureWorker).wstring());
         const auto widget = [&](const char* id, const char* packageId, const char* name,
@@ -129,14 +133,20 @@ public:
             "  \"widgets\":[\n" +
             widget("audio-mixer", "org.gbar.tests.audio", "Audio Mixer",
                    "audio-mixer.default", "volume") + ",\n" +
-            widget("network-controls", "org.gbar.tests.network", "Network Controls",
-                   "network-controls.default", "wifi") + ",\n" +
-            widget("spotify", "org.gbar.tests.spotify", "Spotify",
-                   "spotify.default", "music") + ",\n" +
+            widget("game-launcher", "org.gbar.tests.launcher", "Game Launcher",
+                   "game-launcher.default", "play") + ",\n" +
+            widget("now-playing", "org.gbar.tests.now-playing", "Now Playing",
+                   "now-playing.default", "music") + ",\n" +
             widget("games-apps", "org.gbar.tests.games", "Games & Apps",
                    "games-apps.default", "play") + ",\n" +
-            widget("game-launcher", "org.gbar.tests.launcher", "Game Launcher",
-                   "game-launcher.default", "play") +
+            widget("network-controls", "org.gbar.tests.network", "Network Controls",
+                   "network-controls.default", "wifi") + ",\n" +
+            widget("yt-music", "org.gbar.tests.yt-music", "YT Music",
+                   "yt-music.default", "music") + ",\n" +
+            widget("spotify", "org.gbar.tests.spotify", "Spotify",
+                   "spotify.default", "music") + ",\n" +
+            widget("settings", "org.gbar.tests.settings", "Settings",
+                   "settings.default", "settings") +
             "\n  ],\n  \"bundledWidgets\":[]\n}\n";
         WriteUtf8(root_ / L"widget-catalog.json", catalog);
     }
@@ -241,6 +251,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     std::vector<std::uint64_t> drawTimings;
     std::vector<std::uint64_t> commitTimings;
     std::vector<std::uint64_t> geometryTimings;
+    std::vector<std::uint64_t> motionCommitTimings;
     const auto recordComposition = [&](const std::size_t after,
                                        const std::wstring_view label) {
         constexpr std::string_view placementNeedle =
@@ -271,18 +282,67 @@ void RunRetentionScenario(const Arguments& arguments) {
                 ? std::string::npos
                 : composedEnd - composedAt);
         const bool geometryPlacement =
-            composed.find("order=commit-place") != std::string::npos ||
-            composed.find("order=clip-commit-place") != std::string::npos;
+            composed.find("order=commit-place") != std::string::npos;
+        const bool motionPlacement =
+            composed.find("order=commit-motion-container") != std::string::npos;
         const bool sameGeometryCommit =
             composed.find("order=commit-no-geometry") != std::string::npos;
-        Require((geometryPlacement &&
-                    composed.find("waited=true") != std::string::npos) ||
+        Require(((geometryPlacement || motionPlacement) &&
+                    composed.find("waited=false") != std::string::npos) ||
                     (sameGeometryCommit &&
                      composed.find("waited=false") != std::string::npos),
                 "Composition did not commit before exposing changed content or geometry");
+        Require(composed.find("alpha=premultiplied-clear") != std::string::npos ||
+                    sameGeometryCommit,
+                "Changed composition geometry omitted its transparent alpha contract");
         drawTimings.push_back(TimingField(composed, "draw-us="));
         commitTimings.push_back(TimingField(composed, "commit-us="));
         geometryTimings.push_back(TimingField(composed, "geometry-us="));
+        if (motionPlacement) {
+            constexpr std::string_view finalNeedle = "Composition motion final steps=";
+            Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                        return ReadUtf8(logPath).find(finalNeedle, composedAt) !=
+                            std::string::npos;
+                    }), "Composition motion did not reach one final HWND handoff for " +
+                        WideToUtf8(label));
+            const auto settledLog = ReadUtf8(logPath);
+            const auto startAt = settledLog.find("Composition motion start", composedAt);
+            const auto finalAt = settledLog.find(finalNeedle, composedAt);
+            Require(startAt != std::string::npos && finalAt != std::string::npos &&
+                        startAt < finalAt,
+                    "Composition motion ordering omitted start-before-final evidence");
+            const auto motion = settledLog.substr(startAt, finalAt - startAt);
+            Require(motion.find("destination=complete waited=false redraw=false") !=
+                        std::string::npos,
+                    "Composition motion did not retain a complete nonblocking destination");
+            Require(motion.find("Composition frame committed") == std::string::npos,
+                    "Composition motion redrew the complete surface on an animation tick");
+            std::size_t stepAt{};
+            std::size_t steps{};
+            while ((stepAt = motion.find("Composition motion step index=", stepAt)) !=
+                    std::string::npos) {
+                const auto stepEnd = motion.find('\n', stepAt);
+                const auto record = motion.substr(
+                    stepAt, stepEnd == std::string::npos
+                        ? std::string::npos : stepEnd - stepAt);
+                Require(record.find("waited=false redraw=false") != std::string::npos,
+                        "Composition motion step blocked or redrew the destination");
+                motionCommitTimings.push_back(TimingField(record, "commit-us="));
+                ++steps;
+                stepAt = stepEnd == std::string::npos ? motion.size() : stepEnd + 1;
+            }
+            Require(steps >= 2 && steps <= 16,
+                    "Composition motion used an unbounded or missing commit cadence");
+            const auto finalEnd = settledLog.find('\n', finalAt);
+            const auto finalRecord = settledLog.substr(
+                finalAt, finalEnd == std::string::npos
+                    ? std::string::npos : finalEnd - finalAt);
+            Require(finalRecord.find("geometry=retained-container") != std::string::npos &&
+                        finalRecord.find(
+                            "waited=false redraw=false alpha=premultiplied-clear") !=
+                            std::string::npos,
+                    "Composition motion final handoff was not transparent and nonblocking");
+        }
     };
 
     const auto waitForPaint = [&](const std::size_t after,
@@ -328,7 +388,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                     std::error_code signalError;
                     return fs::exists(signal, signalError);
                 }), "Worker did not enter its first snapshot request for " +
-                        WideToUtf8(target.label));
+                        WideToUtf8(target.label) + "; log=" + ReadUtf8(logPath));
         waitForPaint(before, target, previous.id, "retained");
         const auto duringStartup = ReadUtf8(logPath);
         const std::string admittedNeedle =
@@ -384,11 +444,6 @@ void RunRetentionScenario(const Arguments& arguments) {
     recordComposition(audioAdmittedAt, kTargets[0].label);
     SendKey(window, VK_DOWN);
     FenceWindow(window);
-    switchTo(kGameLauncherTarget, kTargets[0]);
-
-    const auto returnBefore = ReadUtf8(logPath).size();
-    SendKey(window, VK_RIGHT);
-    waitForPaint(returnBefore, kTargets[0], kTargets[0].id, "admitted");
     for (std::size_t index = 1; index < kTargets.size(); ++index)
         switchTo(kTargets[index], kTargets[index - 1]);
 
@@ -407,14 +462,33 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 std::error_code ignored;
                 return fs::exists(restartSignal, ignored);
-            }), "Games & Apps refresh did not enter its delayed first snapshot request.");
+            }), "Final widget refresh did not enter its first snapshot request.");
     waitForPaint(restartBefore, kTargets.back(), kTargets.back().id, "retained");
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 const auto log = ReadUtf8(logPath);
                 return log.size() > restartBefore &&
-                    log.find("Games & Apps reloaded", restartBefore) != std::string::npos;
-            }), "Same-identity runtime refresh omitted its bounded completion record.");
+                    log.find("Settings reloaded", restartBefore) != std::string::npos;
+            }), "Same-identity Settings refresh omitted its bounded completion record.");
     waitForPaint(restartBefore, kTargets.back(), kTargets.back().id, "admitted");
+
+    RECT hostBounds{};
+    Require(GetWindowRect(window, &hostBounds) != FALSE,
+            Win32Error("GetWindowRect(composition host)"));
+    const auto packPoint = [](const LONG x, const LONG y) {
+        return MAKELPARAM(
+            static_cast<WORD>(static_cast<short>(x)),
+            static_cast<WORD>(static_cast<short>(y)));
+    };
+    const auto unusedHit = SendMessageW(
+        window, WM_NCHITTEST, 0,
+        packPoint(hostBounds.left + 1, hostBounds.top + 1));
+    const auto authoredHit = SendMessageW(
+        window, WM_NCHITTEST, 0,
+        packPoint(
+            (hostBounds.left + hostBounds.right) / 2,
+            (hostBounds.top + hostBounds.bottom) / 2));
+    Require(unusedHit == HTTRANSPARENT && authoredHit == HTCLIENT,
+            "Fixed composition container did not exclude transparent client pixels from hit testing");
 
     const auto log = ReadUtf8(logPath);
     Require(log.find("Render-target resize failed") == std::string::npos,
@@ -422,12 +496,16 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(log.find("DirectComposition complete-content presentation owner active") !=
                 std::string::npos,
             "Production host did not activate its DirectComposition owner.");
-    Require(log.find("target=composition-surface-commit") != std::string::npos,
-            "Production extent diagnostics omitted the compositor commit decision.");
+    Require(log.find(
+                "alpha=premultiplied-clear hwnd=no-redirection "
+                "opacity=composition-effect") !=
+                std::string::npos &&
+                log.find("target=composition-motion") != std::string::npos,
+            "Production extent diagnostics omitted the alpha or motion decision.");
     Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                 log.find("Overlay render target resized in place") == std::string::npos,
             "Production transition fell back to direct HWND presentation.");
-    Require(drawTimings.size() == kTargets.size() + 1 &&
+    Require(drawTimings.size() == kTargets.size() &&
                 commitTimings.size() == drawTimings.size() &&
                 geometryTimings.size() == drawTimings.size(),
             "Production timing distribution omitted a widget transition.");
@@ -441,12 +519,21 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(*std::max_element(geometryTimings.begin(), geometryTimings.end()) <=
                 kTransitionBudgetMicroseconds,
             "Coordinated commit and HWND geometry exceeded the bounded transition budget.");
+    Require(!motionCommitTimings.empty(),
+            "Production matrix omitted composition motion samples.");
+    const auto maximumMotionCommit =
+        *std::max_element(motionCommitTimings.begin(), motionCommitTimings.end());
+    Require(maximumMotionCommit <= kTransitionBudgetMicroseconds,
+            "Nonblocking composition motion commits exceeded the transition budget; max-us=" +
+                std::to_string(maximumMotionCommit));
     std::cout << "Composition transition timing us draw-max="
               << *std::max_element(drawTimings.begin(), drawTimings.end())
               << " commit-max="
               << *std::max_element(commitTimings.begin(), commitTimings.end())
               << " geometry-max="
               << *std::max_element(geometryTimings.begin(), geometryTimings.end())
+              << " motion-commit-max="
+              << maximumMotionCommit
               << " samples=" << drawTimings.size() << '\n';
     host.reset();
     installation.reset();
