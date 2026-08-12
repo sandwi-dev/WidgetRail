@@ -1,4 +1,5 @@
 #include "OverlayPlacement.h"
+#include "OverlayTargeting.h"
 
 #include <cstdlib>
 #include <cmath>
@@ -75,9 +76,101 @@ void SurfaceContained(
           "widget content never overlaps host footer chrome");
 }
 
+void ColdDashboardProfilesUseOneBottomAnchor() {
+    struct Profile final {
+        gba::PhysicalRect work;
+        unsigned int dpi;
+        float interfaceScale;
+    };
+    constexpr std::array profiles{
+        Profile{{0, 0, 854, 680}, 96, 1.0F},
+        Profile{{0, 0, 1280, 680}, 96, 1.0F},
+        Profile{{0, 0, 1920, 1040}, 96, 1.0F},
+        Profile{{0, 0, 2560, 1400}, 96, 1.0F},
+        Profile{{0, 0, 1920, 1040}, 120, 1.0F},
+        Profile{{0, 0, 2560, 1320}, 96, 1.5F},
+        Profile{{1920, 100, 7040, 1320}, 120, 1.05F},
+        Profile{{-3440, -200, 0, 1240}, 144, 1.0F},
+    };
+    for (const auto& profile : profiles) {
+        const auto dashboard = gba::ComputeOverlayPlacement(
+            profile.work, profile.dpi,
+            1180.0F * profile.interfaceScale,
+            180.0F * profile.interfaceScale);
+        const auto host = gba::ComputeOverlayPlacement(
+            profile.work, profile.dpi,
+            1180.0F * profile.interfaceScale,
+            700.0F * profile.interfaceScale);
+        Check(dashboard.has_value() && host.has_value(),
+              "cold dashboard and shared host placements resolve");
+        FullyContained(*dashboard, profile.work);
+        FullyContained(*host, profile.work);
+        const auto presentation = gba::PlanCompositionMotion(
+            static_cast<unsigned int>(host->width),
+            static_cast<unsigned int>(host->height),
+            static_cast<unsigned int>(dashboard->width),
+            static_cast<unsigned int>(dashboard->height),
+            static_cast<float>(dashboard->width),
+            static_cast<float>(dashboard->height),
+            gba::CompositionVerticalAnchor::Bottom);
+        const float visibleLeft = static_cast<float>(host->x) + presentation.offsetX;
+        const float visibleTop = static_cast<float>(host->y) + presentation.offsetY;
+        const float visibleRight = visibleLeft + dashboard->width * presentation.scaleX;
+        const float visibleBottom = visibleTop + dashboard->height * presentation.scaleY;
+        Check(std::abs(visibleBottom - static_cast<float>(host->y + host->height)) <= 0.01F,
+              "first visible dashboard content shares the host bottom edge");
+        Check(visibleLeft >= profile.work.left && visibleTop >= profile.work.top &&
+              visibleRight <= profile.work.right && visibleBottom <= profile.work.bottom,
+              "first visible dashboard content remains in live rcWork");
+
+        const float localPointerX = dashboard->width * 0.5F;
+        const float localPointerY = dashboard->height - 48.0F;
+        const float hostPointerX = presentation.offsetX +
+            localPointerX * presentation.scaleX;
+        const float hostPointerY = presentation.offsetY +
+            localPointerY * presentation.scaleY;
+        CheckNear(
+            (hostPointerX - presentation.offsetX) / presentation.scaleX,
+            localPointerX,
+            "bottom-anchored pointer inverse retains dashboard x");
+        CheckNear(
+            (hostPointerY - presentation.offsetY) / presentation.scaleY,
+            localPointerY,
+            "bottom-anchored pointer inverse retains tray y");
+
+        const float titleTop = visibleTop + 10.0F * presentation.scaleY;
+        const float trayBottom = visibleBottom - 14.0F * presentation.scaleY;
+        Check(titleTop >= visibleTop && trayBottom <= visibleBottom &&
+              trayBottom > titleTop,
+              "dashboard title and tray UIA transforms share visible content bounds");
+
+        const auto widget = gba::PlanCompositionMotion(
+            static_cast<unsigned int>(host->width),
+            static_cast<unsigned int>(host->height),
+            static_cast<unsigned int>(host->width),
+            static_cast<unsigned int>(host->height),
+            static_cast<float>(host->width),
+            static_cast<float>(host->height),
+            gba::CompositionVerticalAnchor::Bottom);
+        Check(widget.offsetY == 0.0F,
+              "first full widget retains the same shared-host bottom anchor");
+        const auto reshown = gba::PlanCompositionMotion(
+            static_cast<unsigned int>(host->width),
+            static_cast<unsigned int>(host->height),
+            static_cast<unsigned int>(dashboard->width),
+            static_cast<unsigned int>(dashboard->height),
+            static_cast<float>(dashboard->width),
+            static_cast<float>(dashboard->height),
+            gba::CompositionVerticalAnchor::Bottom);
+        Check(reshown.offsetY == presentation.offsetY,
+              "dashboard re-show restores the exact cold bottom anchor");
+    }
+}
+
 } // namespace
 
 int main() {
+    ColdDashboardProfilesUseOneBottomAnchor();
     using namespace gba;
 
     Check(ResolveControllerGuideDensity(800.0F, 1.0F) ==

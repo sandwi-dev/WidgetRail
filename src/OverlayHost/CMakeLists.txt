@@ -358,6 +358,17 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(WidgetSwitchHostTests PRIVATE
         user32 gdi32 windowscodecs ole32)
 
+    # Cold-start dashboard placement coverage launches a fresh production host
+    # and inspects its first committed HWND/UIA geometry.
+    add_executable(ColdDashboardHostTests
+        ColdDashboardHostTests.cpp OverlayHostTestSupport.cpp)
+    target_compile_features(ColdDashboardHostTests PRIVATE cxx_std_20)
+    target_compile_options(ColdDashboardHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(ColdDashboardHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ColdDashboardHostTests PRIVATE
+        user32 ole32 oleaut32 uiautomationcore)
+
     # Real-product Audio Mixer focus/scroll coverage runs the production host
     # against a deterministic worker built from the first-party widget.
     add_executable(AudioMixerScrollHostTests

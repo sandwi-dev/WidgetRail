@@ -136,6 +136,11 @@ struct CompositionMotionPlan final {
         const CompositionMotionPlan&) noexcept = default;
 };
 
+enum class CompositionVerticalAnchor {
+    Center,
+    Bottom,
+};
+
 /// One fully rendered destination surface is transformed inside a transparent
 /// client container. The container is the per-axis union of source and target,
 /// so no animation tick resizes the HWND or recreates/redraws the surface.
@@ -145,7 +150,9 @@ struct CompositionMotionPlan final {
     const unsigned int targetWidth,
     const unsigned int targetHeight,
     const float presentedWidth,
-    const float presentedHeight) noexcept {
+    const float presentedHeight,
+    const CompositionVerticalAnchor verticalAnchor =
+        CompositionVerticalAnchor::Center) noexcept {
     if (sourceWidth == 0 || sourceHeight == 0 ||
         targetWidth == 0 || targetHeight == 0 ||
         presentedWidth <= 0.0F || presentedHeight <= 0.0F) return {};
@@ -155,13 +162,17 @@ struct CompositionMotionPlan final {
     const float scaleY = presentedHeight / static_cast<float>(targetHeight);
     const float visualWidth = static_cast<float>(targetWidth) * scaleX;
     const float visualHeight = static_cast<float>(targetHeight) * scaleY;
+    const float remainingHeight =
+        static_cast<float>(containerHeight) - visualHeight;
     return {
         containerWidth,
         containerHeight,
         scaleX,
         scaleY,
         (static_cast<float>(containerWidth) - visualWidth) * 0.5F,
-        (static_cast<float>(containerHeight) - visualHeight) * 0.5F,
+        verticalAnchor == CompositionVerticalAnchor::Bottom
+            ? remainingHeight
+            : remainingHeight * 0.5F,
         containerWidth != targetWidth || containerHeight != targetHeight,
     };
 }
