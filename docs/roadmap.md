@@ -341,15 +341,17 @@ eligibility; credential-free structural work continues independently.
 
 1. Correct and accept the committed DLV-130/138/139 normalized app-library and
    provider prefix through DLV-142.
-2. Continue visible platform launcher style/recovery through DLV-133.
-3. Immediately follow DLV-133 with DLV-143 so the first cold-start dashboard
+2. Immediately follow DLV-142 with DLV-144 so Spotify's selected responsive
+   first page restores its usable navigation hierarchy and complete controls.
+3. Continue visible platform launcher style/recovery through DLV-133.
+4. Immediately follow DLV-133 with DLV-143 so the first cold-start dashboard
    frame is bottom-anchored before later platform work.
-4. Independently review the committed Windows/Xbox and opt-in Epic installed-
+5. Independently review the committed Windows/Xbox and opt-in Epic installed-
    game adapters while their prefix remains held.
-5. Continue production experience
+6. Continue production experience
    projection, then author tooling.
-6. Keep user-reported visible regressions ahead of internal refactors.
-7. Continue other credential-free roadmap features while account, hardware,
+7. Keep user-reported visible regressions ahead of internal refactors.
+8. Continue other credential-free roadmap features while account, hardware,
    or supported-API work is blocked.
 
 ## Explicit blockers

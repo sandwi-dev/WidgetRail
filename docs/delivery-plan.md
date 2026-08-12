@@ -393,6 +393,47 @@ semantics beyond the documented closed vocabulary, or DLV-138 has already
 published a conflicting contract that cannot be corrected without a material
 provider/API decision.
 
+### DLV-144 — Restore Spotify's usable responsive player layout
+
+**State:** Ready immediately after the already-active DLV-142. This fresh
+user-visible correction precedes later widgets features or refactoring; do not
+interrupt or mix it into DLV-142.
+**Baseline/dependencies:** completed DLV-142 branch plus accepted host geometry
+from DLV-127. The user's accepted-Release screenshot shows the authored compact
+Spotify branch at the approximately `978x466` inner viewport: horizontal tabs
+replace the established rail hierarchy and the primary transport row is clipped
+below the visible player panel. Current Spotify tests prove only that expanded
+and compact nodes exist, not that the selected branch fits a real host viewport.
+**Owner/outcome:** widgets lane for Spotify presentation, surface hints, styles,
+and focused responsive fixtures. Restore a deliberate controller-first first
+page at the actual host envelope: navigation and the complete player transport
+remain visible or predictably focus-scrollable, with no content hidden behind
+the shell or tray.
+**Acceptance:** at minimum-width `620x400`, intermediate `760x440`, accepted
+`978x466`, preferred `980x560`, and wider work-area fixtures at 100%, 125%, and
+150% scale, the selected branch has one title/status, one destination control,
+artwork/metadata, seek control and times, primary transport row, and required
+footer/actions wholly inside the body or inside one focus-revealing scroll
+viewport. Horizontal tabs are used only where their player composition fits;
+the accepted standard viewport retains the established rail/compact hierarchy
+unless a demonstrably clearer layout fits all controls. Seek Left reaches the
+selected destination navigation edge, Back/shortcuts stay truthful, and Player,
+Queue, Playlists, and Devices preserve focus and scroll position across branch
+changes. No clipped controls, pixel-offset compensation, duplicate semantic
+branches, fixed shell sizing, account/network work, or provider behavior change.
+**Architecture/verification:** keep responsive composition in
+`SpotifyPresentation` and GBSS; provide a before/after responsibility map and do
+not grow the 1,275-line `SpotifyWidget` root. Add focused real-layout semantic
+fixtures that execute responsive selection and assert selected-node bounds and
+focus reveal, not source-string existence alone. Tier 1 Spotify and smallest
+SDK responsive/scroll fixtures; Tier 2 production-host semantic fixture only if
+a shared contract changes. No aggregate, capture automation, credentials, or
+live Spotify dependency.
+**Stop:** focused evidence proves that `ResponsiveVisibility` selects the wrong
+generic branch or that the native scroll/layout engine cannot reveal a valid
+focused descendant. Record the exact shared failure and return it for a bounded
+platform/SDK assignment instead of compensating inside Spotify.
+
 ### Widgets held dependent milestone
 
 ### DLV-139 — Add opt-in Epic installed-game discovery
@@ -426,8 +467,9 @@ helper binary.
 revalidated without relying on account secrets, arbitrary executable/protocol
 input, or an undocumented mutable Epic database.
 
-**Queue depth note:** DLV-142 is the current widgets assignment. DLV-138 and
-DLV-139 are complete but held as one unaccepted prefix with DLV-130. GOG/Amazon
+**Queue depth note:** DLV-142 is the current widgets assignment and DLV-144 is
+Ready immediately afterward. DLV-138 and DLV-139 are complete but held as one
+unaccepted prefix with DLV-130. GOG/Amazon
 adapters are not Ready until that prefix is accepted and a stable bounded local
 installed-record and launch-revalidation contract is evidenced; DLV-135/134
 remain dependency-ordered behind the platform experience work.

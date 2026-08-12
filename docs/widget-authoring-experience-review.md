@@ -1,7 +1,7 @@
 # Widget Authoring Experience Review
 
 Status: active independent assessment<br>
-Last reassessed: 2026-08-12 against integrated `main` `2f766fe` and returned
+Last reassessed: 2026-08-12 against integrated `main` `aa0a600` and returned
 DLV-130 `da08c44`<br>
 Scope: public Widget SDK APIs, tooling, examples, packages, diagnostics, and the
 experience of building basic through full application-scale widgets
@@ -114,6 +114,23 @@ the scalable path.
 - Clear separation between ordinary widget authors and trusted capability-
   provider authors.
 - A real third-party GitHub repository onboarding proof.
+
+## Current contract review: responsive branch fit
+
+Spotify now demonstrates a concrete authoring gap. Its snapshot publishes both
+expanded and compact branches and labels them correctly, yet the accepted host
+selects the compact branch at an approximately `978x466` inner viewport where
+the horizontal navigation consumes vertical space and the primary transport
+row is clipped below the player panel. The existing test proves tree presence,
+not that responsive selection, layout, focus reveal, and shell bounds agree.
+
+DLV-144 should fix the Spotify presentation first and add an executed semantic
+layout fixture over representative width, height, and scale combinations. If
+that proves a framework defect, the follow-up SDK/host improvement should give
+authors one preview/assertion path that reports which branch was selected,
+selected-node bounds, overflow, and whether focus can reveal every interactive
+descendant. Authors should not need screenshots or native-host source reading
+to discover that a valid responsive tree is unusable at a real viewport.
 
 ## Current contract review: normalized app library
 

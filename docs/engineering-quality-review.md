@@ -1,7 +1,7 @@
 # Engineering Quality Review
 
 Status: active independent quality audit<br>
-Last reassessed: 2026-08-12 against integrated `main` `2f766fe`<br>
+Last reassessed: 2026-08-12 against integrated `main` `aa0a600`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, accessibility, and product readiness
 
@@ -78,6 +78,21 @@ known launcher/app-library issue. DLV-136 stopped at evidence-only `83edb39`
 because direct discovery would add taskbar/Alt-Tab eligibility; no product
 window change is warranted for planner automation.
 
+### Spotify responsive tests do not prove usable branch fit
+
+Fresh user evidence from the accepted Release shows Spotify selecting its
+authored compact branch at the approximately `978x466` inner viewport. That
+branch replaces the established rail hierarchy with horizontal tabs while its
+primary transport row is clipped below the visible player panel. This is not a
+provider failure: the current presentation deliberately publishes expanded and
+compact branches, and the current tests assert their presence and visibility
+tags without executing real host branch selection or proving selected-node
+bounds and focus reveal. DLV-144 is Ready immediately after DLV-142 to correct
+the Spotify presentation and add proportional real-layout semantic evidence.
+If the focused fixture identifies a generic visibility or native scroll defect,
+the widget lane must stop and return that exact shared seam rather than add a
+Spotify-only offset.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -116,7 +131,7 @@ one class automatically.
 | `GamesAppsWidget` | 1,376-line root | **Conditional exception.** Sole lifecycle/provider-effect/action/committed-state adapter over separate presentation, catalog, persistence, reconciliation, and app-library projection policies. Reopen for store/domain growth. |
 | `AudioMixerWidget` | 1,702-line root | **Conditional exception.** One state/action/effect/selection/status/invalidation transaction owner over separate provider session, command transition, and presenter. Reopen for another coordination domain. |
 | `SettingsWidget` | 1,503-line root | **Conditional exception.** One lifecycle/service-effect/committed-state adapter over separate section, permission, installed-package, and theme policies. Reopen for another service lifecycle or material unrelated growth. |
-| `SpotifyWidget` | 1,275-line non-partial root | **Conditional exception.** Sole lifecycle/provider-call/resource/task/committed-state/invalidation owner over value policies and snapshot presenter. Reopen if policy/presentation or another coordination owner returns. |
+| `SpotifyWidget` | 1,275-line non-partial root plus focused presentation owner | **Active conditional exception.** DLV-144 must keep responsive composition in `SpotifyPresentation`/GBSS, provide a before/after responsibility map, and add no layout or responsive policy to the root. Reopen if another coordination owner returns. |
 | `NetworkControlsWidget` | approximately 1,500 lines at last focused audit | **Conditional exception.** Singular lifecycle/host-command/committed-state/invalidation adapter over separate provider, command, identity, action, and presenter seams. Remeasure on next touch. |
 | `UI` SDK facade | approximately 1,471 lines across component-family partials | **Cohesive stateless exception.** No lifecycle, task, lock, resource, or mutable model. Reopen if component families share hidden state. |
 | `WidgetBridgeServer` | 887-line file; focused registry/dispatcher/recovery owners exist | **Conditional exception.** Retain session/framing/routing/write ownership only; reopen if catalog/residency/diagnostics policy returns. |
@@ -132,7 +147,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | Many focused corrections are integrated, but several user-reported navigation, clipping, transition, shortcut, and recovery issues remain Verifying. | Fresh accepted Release plus user/live computer-control verification; visible defects stay ahead of internal cleanup. |
+| Visible UI and controller behavior | Many focused corrections are integrated, but several user-reported navigation, clipping, transition, shortcut, and recovery issues remain Verifying; Spotify's selected compact first page currently clips transport controls. | DLV-143 and DLV-144, then fresh accepted Release plus user/live computer-control verification; visible defects stay ahead of internal cleanup. |
 | Launcher platform | Data-only pack validation and four native responsive presets are accepted. Normalized managed presentation is returned for correction; Windows/Xbox and Epic imports are committed but held. | DLV-142, accepted DLV-138/139, launcher style/recovery, DLV-143 cold-start placement, production state projection, then author tooling. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -173,7 +188,9 @@ its change is accepted.
    ordered behind accepted platform and managed contracts.
 5. Review DLV-143 immediately after DLV-133 as the next visible platform
    correction; cold process start must be the production-host evidence path.
-6. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
+6. Review DLV-144 immediately after DLV-142 as the next visible widgets
+   correction; require executed responsive fit and focus-reveal evidence.
+7. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.
 
 If no implementation or live evidence changes, record no material review
