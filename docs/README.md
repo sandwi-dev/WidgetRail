@@ -20,10 +20,11 @@ evidence:
   authoring, reference, operations, and research pages will move only in
   complete validated groups rather than through piecemeal path churn.
 
-The active [delivery plan](delivery-plan.md) is intentionally compact. Its
-timestamped predecessors live under
-[`history/delivery-plan/`](history/delivery-plan/), so routine planner and
-implementation turns do not spend context on completed hourly work.
+The active [delivery plan](delivery-plan.md), [engineering review](engineering-quality-review.md),
+[widget-authoring review](widget-authoring-experience-review.md), and
+[roadmap](roadmap.md) are intentionally operational. Timestamped predecessors
+live in their matching [`history/`](history/README.md) directories so routine
+planner and implementation turns do not spend context on closed evidence.
 
 ## Start here
 
@@ -161,7 +162,7 @@ implementation turns do not spend context on completed hourly work.
 - [Plugin-platform research](plugin-platform.md)
 - [PS5 control-center interaction research](ps5-control-center-research.md)
 - [Visual design system](visual-design-system.md)
-- [Prototype roadmap](roadmap.md)
+- [Product roadmap](roadmap.md)
 
 The source of truth wins if a document and code disagree. Protocol types live
 under `src/WidgetProtocol`, the author-facing SDK under `src/WidgetSdk`, GBSS

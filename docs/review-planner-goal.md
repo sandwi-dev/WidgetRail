@@ -358,6 +358,14 @@ After every accepted implementation milestone is integrated into local `main`:
    or visible failure copy. This is a live product inspection requested by the
    user, not synthetic capture-harness engineering; do not debug the capture
    tool when its frame is not credible.
+   If the supported tool omits the visible OverlayHost from window discovery,
+   do not treat that omission as an interaction blocker. Resolve the exact
+   planner-owned OverlayHost HWND, use its existing UI-Automation tree to read
+   current tray/control bounds, and send ordinary coordinate mouse or keyboard
+   input to the visible surface. Re-read bounds before every pointer action
+   because widget transitions may move the shell. This is a bounded planner
+   smoke fallback only; do not change the product's taskbar/Alt-Tab identity or
+   build a parallel screenshot harness merely to satisfy automation discovery.
 8. Immediately after the interactive pass, inspect `overlay.log` and directly
    relevant worker/provider logs for the exact launched PID/session and smoke
    interval. Correlate visible failures with typed protocol, worker, capability,
@@ -366,6 +374,8 @@ After every accepted implementation milestone is integrated into local `main`:
    visible-first priority. Do not implement the fix yourself. If interaction
    automation cannot reach a widget or a credible live frame cannot be
    obtained, record that widget as not inspected rather than claiming it passed.
+   A desktop tool taking foreground may hide the overlay normally; correlate
+   the admitted widget and hide transition in the log before calling it a crash.
 
 Do not launch rejected, partial, dirty, or unintegrated implementation work. Do
 not hide the window. If an already-running OverlayHost prevents the new binary
