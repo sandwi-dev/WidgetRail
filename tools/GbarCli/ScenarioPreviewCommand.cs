@@ -1,5 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
+using System.Text;
+using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetRuntime;
+using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.GbarCli;
 
@@ -40,26 +45,51 @@ internal static class ScenarioPreviewCommand
         if (scenarioName is null)
         {
             await output.WriteLineAsync($"Scenarios in {manifestPath}:");
-            foreach (var scenario in manifest.Scenarios)
+            foreach (var declaration in manifest.Scenarios)
             {
-                var suffix = scenario.Description is null
+                var suffix = declaration.Description is null
                     ? string.Empty
-                    : $" - {scenario.Description}";
-                await output.WriteLineAsync($"  {scenario.Name}{suffix}");
+                    : $" - {declaration.Description}";
+                await output.WriteLineAsync($"  {declaration.Name}{suffix}");
             }
             await output.WriteLineAsync(
-                "Scenario execution is disabled until an isolated preview process is available; listing does not load the provider assembly.");
+                "Listing does not load the provider assembly. Select one name with --scenario to execute it in the isolated preview worker.");
             return 0;
         }
 
         ValidateScenarioName(scenarioName, "--scenario");
-        _ = manifest.Scenarios.SingleOrDefault(item =>
+        var scenario = manifest.Scenarios.SingleOrDefault(item =>
             string.Equals(item.Name, scenarioName, StringComparison.Ordinal)) ??
             throw new CliUsageException(
                 $"Scenario '{scenarioName}' was not declared. Available: {string.Join(", ", manifest.Scenarios.Select(item => item.Name))}.");
-        throw new CliOperationException(
-            "Scenario execution is unavailable because isolated preview execution is not yet implemented. " +
-            "Manifest listing and validation remain available without loading provider assemblies.");
+        var root = Path.GetDirectoryName(manifestPath)!;
+        var assemblyPath = Path.GetFullPath(Path.Combine(root, manifest.Assembly));
+        EnsureContained(root, assemblyPath);
+        RejectPathReparsePoints(root, assemblyPath);
+        if (!File.Exists(assemblyPath))
+            throw new CliOperationException("The declared scenario assembly does not exist.");
+        var instance = parsed.Option("--instance") ?? $"preview.{scenarioName}";
+        ValidateInstance(instance);
+        var destination = parsed.Option("--output") is { } requestedOutput
+            ? ValidateOutput(requestedOutput, manifestPath, assemblyPath)
+            : null;
+        var result = await ExecuteAsync(Path.GetDirectoryName(assemblyPath)!, assemblyPath, manifest.ProviderType,
+            scenario, instance, cancellationToken).ConfigureAwait(false);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(result, JsonOptions);
+        if (bytes.Length > WidgetRuntimeProtocol.DefaultMaximumMessageBytes)
+            throw new CliOperationException("Scenario result exceeded the semantic preview bound.");
+        if (destination is null)
+        {
+            await output.WriteLineAsync(Encoding.UTF8.GetString(bytes));
+        }
+        else
+        {
+            await WriteResultAsync(destination, bytes, cancellationToken)
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(
+                $"Scenario '{scenarioName}' completed in an isolated preview worker ({bytes.Length} bytes).");
+        }
+        return 0;
     }
 
     internal const string HelpText = """
@@ -81,10 +111,159 @@ internal static class ScenarioPreviewCommand
           }
 
         Manifest listing validates bounded declarations without resolving or
-        loading the provider assembly. --scenario execution is intentionally
-        disabled until factories can run in an isolated, forcibly terminable
-        preview process. The CLI never executes scenario code in-process.
+        loading the provider assembly. --scenario executes the one declared
+        factory in a capability-free AppContainer/Job worker, transitions it
+        through the normal lifecycle, and emits a versioned semantic result.
+        The CLI never loads or executes scenario code in-process.
         """;
+
+    private static async Task<WidgetScenarioResult> ExecuteAsync(
+        string root,
+        string assemblyPath,
+        string providerType,
+        ScenarioDeclaration scenario,
+        string instance,
+        CancellationToken cancellationToken)
+    {
+        var executable = Path.Combine(
+            Path.GetDirectoryName(typeof(CliApplication).Assembly.Location)!, "gbar.exe");
+        if (!File.Exists(executable))
+            throw new CliOperationException("The isolated preview worker executable is unavailable.");
+        var isolationDigest = Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(Path.GetFullPath(root))))[..32];
+        var diagnostics = new List<WidgetScenarioDiagnostic>(4);
+        await using var client = new WidgetProcessClient(new WidgetProcessOptions
+        {
+            ExecutablePath = executable,
+            Arguments =
+            [
+                "__scenario-worker",
+                "--scenario-root", root,
+                "--scenario-assembly", assemblyPath,
+                "--provider-type", providerType,
+                "--scenario-factory", scenario.Factory,
+            ],
+            WidgetInstanceId = instance,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            MaximumRestartAttempts = 0,
+            IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+            IsolationKey = "scenario-preview:" + isolationDigest,
+            ContentLeaseFactory = _ => PinnedDirectoryContentLease.Acquire(root),
+            StartupExitDiagnostics = new Dictionary<int, string> { [72] = "invalid_scenario" },
+        });
+        client.Failed += (_, failure) =>
+        {
+            if (diagnostics.Count < 4)
+                diagnostics.Add(new("worker", failure.DiagnosticCode ??
+                    failure.Reason.ToString().ToLowerInvariant()));
+        };
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible, deadline.Token)
+                .ConfigureAwait(false);
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive, deadline.Token)
+                .ConfigureAwait(false);
+            var first = await client.GetSnapshotAsync(deadline.Token).ConfigureAwait(false);
+            var second = await client.GetSnapshotAsync(deadline.Token).ConfigureAwait(false);
+            if (!Equivalent(first, second))
+                throw new CliOperationException(
+                    "Scenario rendering was not deterministic across repeated snapshots.");
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Background, deadline.Token)
+                .ConfigureAwait(false);
+            return new(WidgetScenarioResult.CurrentVersion, scenario.Name, second,
+                diagnostics.ToArray());
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested)
+        {
+            throw new CliOperationException(
+                "Scenario execution exceeded the 10-second isolated-worker deadline.");
+        }
+        catch (Exception exception) when (exception is WidgetProcessException or
+                                           WidgetProcessAdmissionException or
+                                           WidgetProtocolViolationException or
+                                           UnauthorizedAccessException)
+        {
+            throw new CliOperationException("The isolated scenario worker failed safely.");
+        }
+        catch (IOException)
+        {
+            throw new CliOperationException("The isolated scenario worker disconnected.");
+        }
+    }
+
+    private static bool Equivalent(ViewSnapshot left, ViewSnapshot right) =>
+        SnapshotJson.Serialize(left with { Sequence = 0 })
+            .AsSpan()
+            .SequenceEqual(SnapshotJson.Serialize(right with { Sequence = 0 }));
+
+    private static async Task WriteResultAsync(
+        string destination,
+        byte[] bytes,
+        CancellationToken cancellationToken)
+    {
+        var directory = Path.GetDirectoryName(destination)!;
+        Directory.CreateDirectory(directory);
+        var temporary = Path.Combine(
+            directory, $".{Path.GetFileName(destination)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await File.WriteAllBytesAsync(temporary, bytes, cancellationToken)
+                .ConfigureAwait(false);
+            File.Move(temporary, destination, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+    }
+
+    private static string ValidateOutput(
+        string destination,
+        string manifestPath,
+        string assemblyPath)
+    {
+        var path = Path.GetFullPath(destination);
+        if (string.Equals(path, manifestPath, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(path, assemblyPath, StringComparison.OrdinalIgnoreCase))
+            throw new CliUsageException("Scenario output cannot overwrite scenario inputs.");
+        return path;
+    }
+
+    private static void ValidateInstance(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 128 ||
+            value.Any(character => !(char.IsAsciiLetterOrDigit(character) ||
+                character is '-' or '_' or '.')))
+            throw new CliUsageException(
+                "--instance must be 1-128 ASCII letters, digits, dots, hyphens, or underscores.");
+    }
+
+    private static void EnsureContained(string root, string path)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        if (Path.IsPathRooted(relative) || relative is "." or ".." ||
+            relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+            relative.StartsWith($"..{Path.AltDirectorySeparatorChar}", StringComparison.Ordinal))
+            throw new CliOperationException("Scenario assembly escaped the scenario directory.");
+    }
+
+    private static void RejectPathReparsePoints(string root, string path)
+    {
+        var current = Path.GetFullPath(root);
+        RejectReparsePoint(current, "Scenario directory");
+        foreach (var segment in Path.GetRelativePath(current, path).Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            if (File.Exists(current) || Directory.Exists(current))
+                RejectReparsePoint(current, "Scenario assembly path");
+        }
+    }
 
     private static string ResolveManifest(string source)
     {

@@ -93,7 +93,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans),
     ("Render previews a valid snapshot", RenderSnapshot),
     ("Render rejects assembly execution and unbounded snapshot inputs", RenderFailsClosed),
-    ("Scenario manifests are bounded and execution fails closed", ScenarioPreviewTests.Run),
+    ("Scenario manifests are bounded and isolated execution is declared", ScenarioPreviewTests.Run),
     ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
     ("Snapshot preview exposes cursor anchors without artwork authority", CursorPreviewIsOpaque),
     ("Pack produces reproducible catalog-valid archives", PackIsReproducible),

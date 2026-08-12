@@ -86,6 +86,21 @@ foreach (var contract in requiredAuthorityRecoveryContracts)
     if (!quickstart.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/widget-quickstart.md is missing '{contract}'.");
 
+string[] requiredScenarioContracts =
+[
+    "WidgetScenarioDefinition",
+    "--scenario running",
+    "AppContainer/Job worker",
+    "Created -> Visible -> Interactive -> Background ->",
+    "The CLI process never loads the assembly",
+];
+foreach (var contract in requiredScenarioContracts)
+    if (!guide.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"docs/widget-authoring-guide.md is missing '{contract}'.");
+if (!quickstart.Contains("--scenario muted", StringComparison.Ordinal) ||
+    !quickstart.Contains("WidgetScenarioResult", StringComparison.Ordinal))
+    failures.Add("docs/widget-quickstart.md is missing the executable scenario workflow.");
+
 var publishing = File.ReadAllText(Path.Combine(
     repository, "docs", "publishing-and-installation.md"));
 var cliReadme = File.ReadAllText(Path.Combine(

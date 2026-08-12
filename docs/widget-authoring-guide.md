@@ -1556,9 +1556,8 @@ tests with `SnapshotJson.Serialize`; use `gbar dev` when widget code must execut
 through the production AppContainer/worker boundary. Running a downloaded
 repository's test code is not a sandbox.
 
-Named scenario manifests are implemented as a bounded discovery contract. Add
-`gbar.scenarios.json` at the widget root to describe the states an eventual
-isolated preview worker should expose:
+Named scenario manifests are a bounded discovery and isolated-execution
+contract. Add `gbar.scenarios.json` at the widget root:
 
 ```json
 {
@@ -1589,15 +1588,35 @@ viewport, or render native pixels. The assembly, provider, and factory fields
 reserve the version-1 declaration shape; listing alone does not prove that the
 referenced code exists or implements a valid factory.
 
-Selected scenario execution currently fails closed. Do not publish or depend on
-`gbar preview --scenario ...` or `--output` as a working author workflow. A
-scenario provider is developer code: executing it in the CLI process would give
-it that process's ambient filesystem, network, process, and user authority, and
-an in-process timeout could not safely terminate arbitrary managed work. That is
-not a sandbox. Factory execution and snapshot output remain disabled until the
-platform has a dedicated AppContainer preview worker with bounded IPC,
-lifecycle, termination, and output validation. Continue using transport-free
-unit tests with typed fakes for executable state coverage.
+Declare a public static, parameterless factory returning the versioned SDK
+contract and select it by its manifest name:
+
+```csharp
+public static WidgetScenarioDefinition Running()
+{
+    var services = new WidgetTestHostServicesBuilder()
+        .WithResponse(
+            WidgetAudioCapabilities.GetOutput,
+            new WidgetAudioOutput(0.50, IsMuted: false))
+        .Build();
+    return new WidgetScenarioDefinition(new ClockWidget(), services);
+}
+```
+
+```powershell
+& $gbar preview .\scratch\Clock --scenario running `
+  --output .\scratch\Clock\fixtures\running.scenario.json
+```
+
+The CLI process never loads the assembly. A dedicated capability-free
+AppContainer/Job worker pins the exact build-output tree, invokes only the
+declared factory, drives Created -> Visible -> Interactive -> Background ->
+Destroyed, validates repeated deterministic snapshots, and emits a bounded v1
+`WidgetScenarioResult` with sanitized diagnostics. A crash, hang, cancellation,
+bad factory, stale result, or malformed snapshot terminates that process tree.
+No broker companion, credentials, native pixels, or neighboring filesystem
+authority are supplied. This remains author-controlled executable code, not a
+general sandbox for downloaded repositories.
 
 For transport-free unit tests, configure typed fakes and drive real lifecycle
 hooks:
@@ -1830,9 +1849,8 @@ During local development:
 
 - `gbar validate` reports manifest/GBSS JSON paths and source-located styling
   diagnostics.
-- `gbar preview` validates and lists named scenario declarations without loading
-  their provider assembly. Selected execution and snapshot output fail closed
-  until an AppContainer preview worker exists.
+- `gbar preview` lists declarations without loading their assembly and executes
+  one selected factory in the bounded AppContainer/Job semantic worker.
 - `gbar render` catches snapshot validation and displays the semantic tree.
 - `gbar replay` isolates focus/action contract failures without the overlay.
 - Overlay Settings → **Diagnostics** reports bounded bridge, catalog,

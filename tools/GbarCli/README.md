@@ -15,6 +15,8 @@ dotnet build .\\VolumeControl\\VolumeControl.csproj -c Release
 dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Release -- .\\VolumeControl\\fixtures\\ready.snapshot.json
 gbar validate .\\VolumeControl
 gbar dev .\\VolumeControl
+gbar preview .\\VolumeControl
+gbar preview .\\VolumeControl --scenario ready --output .\\VolumeControl\\fixtures\\ready.scenario.json
 gbar render .\\VolumeControl\\fixtures\\ready.snapshot.json --output snapshot.json
 gbar replay .\\VolumeControl\\fixtures\\ready.snapshot.json .\\VolumeControl\\replays\\smoke.json
 gbar pack .\\VolumeControl --configuration Release --output .\\VolumeControl-1.0.0.gbarwidget
@@ -251,10 +253,14 @@ untrusted widget safe and do not claim to prevent DNS rebinding; install only
 from publishers you trust.
 
 `gbar render` and scenario listing never load widget/provider assemblies.
-`gbar dev` is the executable integration path because it retains the production
-community worker boundary. Snapshot fixtures should come from author-controlled
-typed-fake tests or an isolated worker capture, not by executing downloaded code
-inside a test or CLI process.
+`gbar preview <directory> --scenario <name>` loads one declared public static
+factory only in a capability-free AppContainer/Job worker, drives the normal
+Visible, Interactive, and Background lifecycle, validates two deterministic
+snapshots, and writes a bounded versioned semantic result. The CLI process never
+loads the scenario assembly. The exact build-output tree is pinned for the
+worker session; neighboring files are not granted. This is credential-free
+semantic preview, not native pixels, controller replay, or a general desktop
+sandbox. Use only author-controlled scenario code.
 
 Exit code 0 means success, 1 means validation/runtime failure, and 2 means the
 command was used incorrectly.

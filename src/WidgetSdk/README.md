@@ -348,6 +348,13 @@ so double attachment and attachment after `OnCreatedAsync` remain invalid.
 Its lifecycle helpers call the same host-validated transitions as production;
 `Created` and `Destroying` cannot be requested through `SetLifecycleStateAsync`.
 
+For a credential-free CLI preview, expose one public static parameterless
+factory returning `WidgetScenarioDefinition` and declare it in
+`gbar.scenarios.json`. `gbar preview <directory> --scenario <name>` invokes it
+only in the capability-free AppContainer/Job worker. The returned
+`WidgetHostServices` supplies typed fakes; the output is a validated,
+deterministic `WidgetScenarioResult`, not native pixels.
+
 When a widget combines a current snapshot with future events, open the typed
 acknowledged subscription first (`OpenSessionsSubscriptionAsync` or
 `OpenStatusSubscriptionAsync`), fetch current state second, then consume

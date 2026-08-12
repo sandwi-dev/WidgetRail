@@ -2697,9 +2697,20 @@ with C++ installed:
   general desktop token; direct resource access is limited to the generic
   runtime plus exact session-verified package files. OS capability APIs remain
   brokered.
-- `gbar render` accepts only bounded data-only snapshots; DLL input and selected
-  scenario execution fail closed. Executable integration uses the isolated
-  `gbar dev` AppContainer path until a dedicated scenario worker exists.
+- `gbar render` accepts only bounded data-only snapshots. Named credential-free
+  scenarios now execute in a dedicated AppContainer/Job worker with an exact
+  pinned content lease, typed fake services, normal lifecycle, deterministic
+  repeated-snapshot validation, sanitized diagnostics, and bounded teardown;
+  the CLI process never loads author assemblies. `gbar dev` remains the
+  interactive production-host integration path.
+
+  The DLV-108 focused Release evidence passes the new discoverable
+  `MSTest.Sdk` 4.3.2 scenario suite 6/6, CLI 56/56, Widget SDK 88/88, public API
+  compatibility 12/12, generic worker 10/10, and documentation across 58
+  Markdown files. The Runtime suite's first 73/74 run hit its unchanged
+  cancellation-ignoring gesture-revoke race; one bounded no-build rerun passed
+  74/74, including exact content identity, AppContainer authority, Job process-
+  tree kill-on-close, lifecycle, malformed snapshot, and hung destruction.
 - Universal controller suppression is unresolved for games using background
   Raw Input or direct HID access.
 - The quarantined XInput Guide fallback depends on an undocumented system-DLL

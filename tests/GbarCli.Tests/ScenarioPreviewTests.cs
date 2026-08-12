@@ -5,22 +5,21 @@ internal static class ScenarioPreviewTests
 {
     internal static async Task Run()
     {
-        await ExplainsTheFailClosedContractAsync();
+        await ExplainsTheIsolatedContractAsync();
         await ListsWithoutResolvingTheAssemblyAsync();
-        await ScenarioExecutionFailsClosedAsync();
+        await MissingAssemblyFailsWithoutWritingAsync();
         await RejectsMalformedAndUnboundedDeclarationsAsync();
     }
 
-    private static async Task ExplainsTheFailClosedContractAsync()
+    private static async Task ExplainsTheIsolatedContractAsync()
     {
         var help = await RunCliAsync("preview", "help");
         Equal(0, help.Code);
         Contains("gbar.scenarios.json", help.Output);
         Contains("without resolving or", help.Output);
         Contains("loading the provider assembly", help.Output);
-        Contains("execution is intentionally", help.Output);
-        Contains("isolated, forcibly terminable", help.Output);
-        Contains("never executes scenario code in-process", help.Output);
+        Contains("capability-free AppContainer/Job worker", help.Output);
+        Contains("never loads or executes scenario code in-process", help.Output);
     }
 
     private static async Task ListsWithoutResolvingTheAssemblyAsync()
@@ -34,7 +33,7 @@ internal static class ScenarioPreviewTests
         Equal(0, listed.Code);
         Contains("playing - Authenticated playback without OAuth", listed.Output);
         Contains("empty - No active playback", listed.Output);
-        Contains("listing does not load the provider assembly", listed.Output);
+        Contains("Listing does not load the provider assembly", listed.Output);
         False(File.Exists(Path.Combine(temp.Path, ScenarioDirectory.MissingAssembly)),
             "Listing unexpectedly required or created the provider assembly.");
 
@@ -44,7 +43,7 @@ internal static class ScenarioPreviewTests
         Contains("Available: playing, empty", unknown.Error);
     }
 
-    private static async Task ScenarioExecutionFailsClosedAsync()
+    private static async Task MissingAssemblyFailsWithoutWritingAsync()
     {
         using var temp = new ScenarioDirectory();
         await temp.WriteManifestAsync(Scenario("playing", "Playing"));
@@ -55,8 +54,7 @@ internal static class ScenarioPreviewTests
             "--output", destination, "--instance", "preview.playing");
 
         Equal(1, result.Code);
-        Contains("isolated preview execution is not yet implemented", result.Error);
-        Contains("without loading provider assemblies", result.Error);
+        Contains("declared scenario assembly does not exist", result.Error);
         DoesNotContain(ScenarioDirectory.MissingAssembly, result.Error);
         False(File.Exists(destination),
             "Fail-closed execution unexpectedly wrote a snapshot.");
@@ -66,7 +64,7 @@ internal static class ScenarioPreviewTests
         var overwrite = await RunCliAsync(
             "preview", temp.Path, "--scenario", "playing", "--output", manifestPath);
         Equal(1, overwrite.Code);
-        Contains("isolated preview execution is not yet implemented", overwrite.Error);
+        Contains("declared scenario assembly does not exist", overwrite.Error);
         Equal(before, await File.ReadAllTextAsync(manifestPath));
     }
 

@@ -18,6 +18,10 @@ public static class CliApplication
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
 
+        if (args.Length != 0 && args[0] == "__scenario-worker")
+            return await ScenarioPreviewWorkerCommand.RunAsync(args[1..], cancellationToken)
+                .ConfigureAwait(false);
+
         if (args.Length == 0 || args[0] is "help" or "--help" or "-h")
         {
             await output.WriteLineAsync(HelpText);

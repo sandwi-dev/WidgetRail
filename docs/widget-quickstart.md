@@ -3,8 +3,9 @@
 Status: implemented offline scaffold and local package workflow
 
 This guide creates a controller-first C# widget, validates its manifest and
-GBSS, lists bounded scenario declarations, renders a protocol snapshot, and
-replays input without opening the native overlay.
+GBSS, executes a bounded credential-free semantic scenario in the isolated
+worker, renders a protocol snapshot, and replays input without opening the
+native overlay.
 
 ## Prerequisites
 
@@ -44,9 +45,9 @@ The blocks marked as the **canonical offline author journey** in this guide are
 kept in lockstep with one external temporary-directory fixture. That fixture
 generates the project from the checked-in release unit, compiles and executes
 the source shown below, and runs every marked CLI phase through removal. The
-`gbar dev`, scenario-preview, capability, AppContainer, and authority-recovery
-sections are advanced or host-integration guidance, not part of that
-credential-free offline proof.
+`gbar dev`, capability, AppContainer, and authority-recovery sections are
+advanced or host-integration guidance. Scenario preview has its own two-fixture
+external-directory AppContainer proof.
 
 <!-- canonical-author-journey:create-build-test -->
 ```powershell
@@ -295,7 +296,7 @@ for downloaded repository code.
 ## List named scenario declarations
 
 Create `scratch\VolumeControl\gbar.scenarios.json` to describe a bounded set of
-states for the future isolated preview runner:
+credential-free semantic states:
 
 ```json
 {
@@ -316,16 +317,25 @@ Validate and list the declarations:
 
 The listing path validates manifest syntax and limits but does not load the
 assembly, resolve `providerType`, invoke `factory`, or prove that the referenced
-code exists. Selected execution currently fails closed: do not use
-`gbar preview --scenario ...` or `--output` as a working command.
+code exists. Build the widget, then execute exactly one declared scenario:
+
+```powershell
+& $gbar preview .\scratch\VolumeControl `
+  --scenario muted `
+  --output .\scratch\VolumeControl\fixtures\muted.scenario.json
+```
 
 Executing a scenario provider inside the CLI would give developer code the
 process's ambient filesystem, network, process, and user authority. An
 in-process timeout is not a sandbox and cannot safely terminate arbitrary work.
-Factory execution remains disabled until a dedicated AppContainer preview
-worker can own bounded IPC, lifecycle, termination, and snapshot validation.
-Use typed-fake unit tests for executable state coverage and `gbar render` only
-for the resulting data-only snapshot fixtures. See the
+The preview command therefore loads the selected public static factory only in
+a forcibly terminable AppContainer/Job worker. The worker receives the pinned
+exact build-output tree and the typed fake services returned by
+`WidgetScenarioDefinition`; it has no broker companion or ambient OS
+capability. It transitions Visible -> Interactive -> Background, validates two
+identical semantic snapshots, destroys the worker, and emits a bounded v1
+`WidgetScenarioResult`. This is not native rendering or a sandbox for arbitrary
+downloaded repositories. See the
 [widget authoring guide](widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test)
 for the complete contract.
 
@@ -352,8 +362,8 @@ errors before host integration.
    `InitialFocusId` inside it. The host owns/restores current focus.
 6. Handle semantic action IDs in `OnActionAsync`.
 7. Call `Invalidate()` only when visible state changes.
-8. Rebuild, validate, list scenario declarations, inspect data-only snapshots,
-   and replay.
+8. Rebuild, validate, run credential-free scenarios, inspect data-only
+   snapshots, and replay.
 
 Author in logical DIPs and responsive GBSS. Do not assume a fixed physical
 resolution, DPI, aspect ratio, widget width, or positive desktop coordinates.

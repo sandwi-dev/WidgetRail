@@ -109,6 +109,9 @@ ctor GameBarAlternative.WidgetSdk.WidgetResourceSnapshot<TValue>(GameBarAlternat
 ctor GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate(string SavedId, string DisplayName, GameBarAlternative.WidgetSdk.WidgetAppLibraryKind Kind, string SourceAttribution)
 ctor GameBarAlternative.WidgetSdk.WidgetRunningAppObservation(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate> Items, string Revision)
 ctor GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile(string ProfileId, string DisplayName, bool IsConnected, int? SignalPercent)
+ctor GameBarAlternative.WidgetSdk.WidgetScenarioDefinition(GameBarAlternative.WidgetSdk.Widget widget, GameBarAlternative.WidgetSdk.WidgetHostServices hostServices, int version = 1)
+ctor GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic(string stage, string code)
+ctor GameBarAlternative.WidgetSdk.WidgetScenarioResult(int version, string scenario, GameBarAlternative.WidgetProtocol.ViewSnapshot snapshot, System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic> diagnostics)
 ctor GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary(GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationState State, System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> RequestedScopes, System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> GrantedScopes, string? DisplayMessage)
 ctor GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary(bool IsConfigured, string RedirectUri)
 ctor GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary(string DeviceId, string Name, string Type, bool IsActive, bool IsRestricted, bool SupportsVolume, int? VolumePercent, bool IsLocalHost)
@@ -393,6 +396,8 @@ field const int GameBarAlternative.WidgetSdk.WidgetPagedResource<TItem>.MaximumC
 field const int GameBarAlternative.WidgetSdk.WidgetPagedResource<TItem>.MaximumCachePages = 8
 field const int GameBarAlternative.WidgetSdk.WidgetPagedResource<TItem>.MaximumPageSize = 100
 field const int GameBarAlternative.WidgetSdk.WidgetResourceError.MaximumMessageLength = 256
+field const int GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.CurrentVersion = 1
+field const int GameBarAlternative.WidgetSdk.WidgetScenarioResult.CurrentVersion = 1
 field const int GameBarAlternative.WidgetSdk.WidgetSpotifyService.MaximumClientIdCharacters = 128
 field const int GameBarAlternative.WidgetSdk.WidgetSpotifyService.MaximumCollectionOffset = 100000
 field const int GameBarAlternative.WidgetSdk.WidgetSpotifyService.MaximumCollectionPageSize = 50
@@ -1181,6 +1186,18 @@ method GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.Deconstruct(out st
 method GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetScenarioDefinition
+method GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic
+method GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetScenarioResult.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetScenarioResult
+method GameBarAlternative.WidgetSdk.WidgetScenarioResult.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetScenarioResult.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetScenarioResult.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary
 method GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationState State, out System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> RequestedScopes, out System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> GrantedScopes, out string? DisplayMessage) -> void
 method GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.Equals(object? obj) -> bool
@@ -1628,6 +1645,12 @@ method static GameBarAlternative.WidgetSdk.WidgetRunningAppObservation.op_Equali
 method static GameBarAlternative.WidgetSdk.WidgetRunningAppObservation.op_Inequality(GameBarAlternative.WidgetSdk.WidgetRunningAppObservation? left, GameBarAlternative.WidgetSdk.WidgetRunningAppObservation? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.op_Equality(GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile? left, GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.op_Inequality(GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile? left, GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.op_Equality(GameBarAlternative.WidgetSdk.WidgetScenarioDefinition? left, GameBarAlternative.WidgetSdk.WidgetScenarioDefinition? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.op_Inequality(GameBarAlternative.WidgetSdk.WidgetScenarioDefinition? left, GameBarAlternative.WidgetSdk.WidgetScenarioDefinition? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.op_Equality(GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic? left, GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.op_Inequality(GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic? left, GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetScenarioResult.op_Equality(GameBarAlternative.WidgetSdk.WidgetScenarioResult? left, GameBarAlternative.WidgetSdk.WidgetScenarioResult? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetScenarioResult.op_Inequality(GameBarAlternative.WidgetSdk.WidgetScenarioResult? left, GameBarAlternative.WidgetSdk.WidgetScenarioResult? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.op_Equality(GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary? left, GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.op_Inequality(GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary? left, GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary.op_Equality(GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary? left, GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary? right) -> bool
@@ -1822,6 +1845,9 @@ method virtual GameBarAlternative.WidgetSdk.WidgetResourceSnapshot<TValue>.Equal
 method virtual GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate.Equals(GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetRunningAppObservation.Equals(GameBarAlternative.WidgetSdk.WidgetRunningAppObservation? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.Equals(GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.Equals(GameBarAlternative.WidgetSdk.WidgetScenarioDefinition? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.Equals(GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetScenarioResult.Equals(GameBarAlternative.WidgetSdk.WidgetScenarioResult? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.Equals(GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary.Equals(GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary.Equals(GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary? other) -> bool
@@ -1860,6 +1886,7 @@ property GameBarAlternative.WidgetProtocol.ResponsiveVisibility GameBarAlternati
 property GameBarAlternative.WidgetProtocol.ScrollAxis GameBarAlternative.WidgetSdk.ScrollElement.Axis { get; set; }
 property GameBarAlternative.WidgetProtocol.SliderInteractionMode? GameBarAlternative.WidgetSdk.ScrubberElement.ControllerInteractionMode { get; set; }
 property GameBarAlternative.WidgetProtocol.SliderInteractionMode? GameBarAlternative.WidgetSdk.SliderElement.ControllerInteractionMode { get; set; }
+property GameBarAlternative.WidgetProtocol.ViewSnapshot GameBarAlternative.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property GameBarAlternative.WidgetProtocol.WidgetGlyph GameBarAlternative.WidgetSdk.IconElement.Glyph { get; set; }
 property GameBarAlternative.WidgetProtocol.WidgetGlyph GameBarAlternative.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
 property GameBarAlternative.WidgetProtocol.WidgetGlyph? GameBarAlternative.WidgetSdk.ActionSheetItem.Glyph { get; set; }
@@ -1873,6 +1900,7 @@ property GameBarAlternative.WidgetSdk.ControllerInputContext GameBarAlternative.
 property GameBarAlternative.WidgetSdk.ControllerInputOrigin GameBarAlternative.WidgetSdk.ControllerInputEvent.Origin { get; set; }
 property GameBarAlternative.WidgetSdk.IWidgetCapabilityClient GameBarAlternative.WidgetSdk.WidgetHostServices.Capabilities { get; }
 property GameBarAlternative.WidgetSdk.ToastTone GameBarAlternative.WidgetSdk.ToastElement.Tone { get; }
+property GameBarAlternative.WidgetSdk.Widget GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.Widget { get; }
 property GameBarAlternative.WidgetSdk.WidgetActionEvent GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Action { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryItem? GameBarAlternative.WidgetSdk.ConfirmWidgetRunningAppResponse.Item { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryKind GameBarAlternative.WidgetSdk.WidgetAppLibraryItem.Kind { get; set; }
@@ -1904,6 +1932,7 @@ property GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem> GameBa
 property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.CollectionItemElement.Child { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.WidgetView.Root { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetHostServices GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
 property GameBarAlternative.WidgetSdk.WidgetLoopbackHttpService GameBarAlternative.WidgetSdk.WidgetHostServices.Loopback { get; }
 property GameBarAlternative.WidgetSdk.WidgetMediaPlaybackStatus GameBarAlternative.WidgetSdk.WidgetMediaSession.PlaybackStatus { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetMediaService GameBarAlternative.WidgetSdk.WidgetHostServices.Media { get; }
@@ -1987,6 +2016,7 @@ property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.W
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetPagedViewport<TItem>> GameBarAlternative.WidgetSdk.WidgetPagedResourceOptions<TItem>.Viewports { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetRecentActivity> GameBarAlternative.WidgetSdk.WidgetRecentActivitiesChanged.Activities { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate> GameBarAlternative.WidgetSdk.WidgetRunningAppObservation.Items { get; set; }
+property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic> GameBarAlternative.WidgetSdk.WidgetScenarioResult.Diagnostics { get; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> GameBarAlternative.WidgetSdk.ConnectWidgetSpotifyRequest.RequestedScopes { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.GrantedScopes { get; set; }
 property System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationScope> GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary.RequestedScopes { get; set; }
@@ -2187,6 +2217,8 @@ property int GameBarAlternative.WidgetSdk.WidgetPagedResourceOptions<TItem>.Maxi
 property int GameBarAlternative.WidgetSdk.WidgetPagedResourceOptions<TItem>.MaximumCachedPages { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetPagedResourceOptions<TItem>.PageSize { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetPagedResourceOptions<TItem>.PaginationThreshold { get; set; }
+property int GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.Version { get; }
+property int GameBarAlternative.WidgetSdk.WidgetScenarioResult.Version { get; }
 property int GameBarAlternative.WidgetSdk.WidgetSpotifyPlaylistItemsRequest.Limit { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetSpotifyPlaylistItemsRequest.Offset { get; set; }
 property int GameBarAlternative.WidgetSdk.WidgetSpotifyPlaylistItemsSummary.Limit { get; set; }
@@ -2409,6 +2441,9 @@ property string GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate.SourceAtt
 property string GameBarAlternative.WidgetSdk.WidgetRunningAppObservation.Revision { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.DisplayName { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile.ProfileId { get; set; }
+property string GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.Code { get; }
+property string GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic.Stage { get; }
+property string GameBarAlternative.WidgetSdk.WidgetScenarioResult.Scenario { get; }
 property string GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary.RedirectUri { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary.DeviceId { get; set; }
 property string GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary.Name { get; set; }
@@ -2681,6 +2716,9 @@ type sealed class GameBarAlternative.WidgetSdk.WidgetResourceSnapshot<TValue> : 
 type sealed class GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetRunningAppCandidate>
 type sealed class GameBarAlternative.WidgetSdk.WidgetRunningAppObservation : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetRunningAppObservation>
 type sealed class GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetSavedNetworkProfile>
+type sealed class GameBarAlternative.WidgetSdk.WidgetScenarioDefinition : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetScenarioDefinition>
+type sealed class GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetScenarioDiagnostic>
+type sealed class GameBarAlternative.WidgetSdk.WidgetScenarioResult : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetScenarioResult>
 type sealed class GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetSpotifyAuthorizationSummary>
 type sealed class GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetSpotifyConfigurationSummary>
 type sealed class GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetSpotifyDeviceSummary>
