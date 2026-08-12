@@ -3103,6 +3103,18 @@ game focus, while final partial rows expose no looping continuation. Focused
 Release evidence passes Game Launcher 60/60. No Widget SDK, protocol, provider,
 native host, or launch-authority contract changed.
 
+### Complete scenario verification discovery (DLV-125)
+
+The canonical verification manifest now represents the existing
+`WidgetScenario.Tests` `MSTest.Sdk` 4.3.2 project exactly once. Its dedicated
+managed step uses the bounded Microsoft Testing Platform invocation, requires at
+least nine discoverable cases, preserves the current result schema and lane
+selection, and changes no existing step ID or timeout. The verifier self-test
+passes complete project discovery and fail-closed result fixtures; the scenario
+project passes 9/9 both directly and through the manifest-selected runner. The
+required single clean exact-commit aggregate is closing-commit evidence rather
+than a dirty-worktree run.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/
