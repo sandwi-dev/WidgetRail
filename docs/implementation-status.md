@@ -885,6 +885,23 @@ each authority transition. The production-shaped Audio Mixer to 420-ms cold
 Game Launcher fixture proves both retained and admitted frames stay tray-owned
 until an explicit Up/A entry.
 
+DLV-118 closes the remaining compact-tray catalog churn seam. The responsibility
+map for the touched `OverlayApp` hotspot is:
+
+| Concern | Before DLV-118 | After DLV-118 |
+| --- | --- | --- |
+| Catalog-to-shell transition | `ApplyWidgetCatalogChange` mutated `OverlayState`, persisted, and synchronized lifecycle directly, bypassing the normal shell transition owner. | Catalog inventory changes enter `ApplyStateTransition`; descriptor-only replacements still synchronize lifecycle and invalidate visible chrome. |
+| Published tray frame | Open-widget diagnostics and paint recomputed layout independently, and catalog events could return before replacement pixels were committed. | One per-frame `TrayLayout` feeds the diagnostic and painted tray; a visible catalog event synchronously commits that invalidated frame before later pointer messages. |
+| Verification | Deterministic layout cases did not use the installed eight-item production order, and the production switch fixture did not churn the catalog. | Release-hard layout/state checks prove complete overflow reachability at Audio Mixer, Network Controls, and Game Launcher extents; the eight-widget production fixture proves compact selection/overflow, rapid cycling, and add/remove republish with exact focus/order retention. |
+
+Focused Release evidence passes `TrayLayoutTests` (283 checks),
+`OverlayStateTests`, `HostAccessibilityTests` (34 checks), and
+`OverlayTargetingTests` (64 checks). The production-host matrix passes all eight
+transitions plus catalog add/remove; maximum complete-content timings were
+2,717 us draw, 1,325 us commit, 1,531 us coordinated geometry, and 218 us
+nonblocking motion commit. No widget tree, compositor, capture, public protocol,
+or aggregate work was used.
+
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
 overlay. Both windows are topmost only while visible. Ordinary controller reads

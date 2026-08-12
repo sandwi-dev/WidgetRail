@@ -107,6 +107,14 @@ its A/select behavior when enabled. Pointer hit testing uses the renderer's clip
 geometry, so it cannot activate hidden or offscreen controls. The UI remains
 controller-first and no raw pointer event crosses into widget code.
 
+Catalog replacement enters the same shell state transition as controller and
+pointer selection. The host commits the replacement tray before accepting the
+next pointer message, so persisted order, selected identity, painted tiles,
+overflow targets, and UI Automation never describe different catalog frames.
+The deduplicated `Widget presentation paint` diagnostic includes the total and
+visible tray counts, previous/next overflow state, and whether the selected
+identity is visible.
+
 When Left/Right changes the selected widget from the tray, the outgoing
 snapshot may remain visible while a cold destination starts, but it is rendered
 without a widget focus ring and exposes no widget UIA descendants. Input and

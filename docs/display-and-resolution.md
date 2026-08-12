@@ -79,6 +79,14 @@ tiny or portrait inputs. At pathological sizes, content may clip or collapse
 because no useful space exists; containment is a safety guarantee, not a claim
 that a 1×1 display is usable.
 
+The tray inventory is not clipped to the tiles that fit the current widget
+extent. At compact widths the host keeps the selected stable identity visible
+and reserves named previous/next overflow controls for the adjacent off-page
+items; controller, pointer, and UI Automation consume that same layout. Moving
+between compact and wide surfaces or replacing the catalog preserves the exact
+persisted order and one selected/focus owner. Catalog replacement is painted on
+the host UI thread before a later pointer message can target the new slot map.
+
 ## Widget author contract
 
 Use the public declarative layout and GBSS primitives:
@@ -202,12 +210,13 @@ The native Release suite currently proves these policy/math seams:
   DPI/topology/settings refresh policy.
 
 The production `WidgetSwitchHostTests` fixture drives the real OverlayHost HWND
-through Audio Mixer, Network Controls, Spotify, and Games & Apps. Its isolated
-Spotify and Games workers signal and delay their first render so captures occur
-during—not after—the startup interval. The matrix asserts retained source
-content and source extent before admission, coherent destination reveal and
-host-side resizing afterward, rapid reversal, same-identity refresh, persistent
-tray chrome, and the absence of a cleared black or unmasked square frame.
+through eight production-shaped widget identities. Its isolated workers signal
+and delay selected first renders so checks occur during—not after—the startup
+interval. The matrix asserts retained source content and source extent before
+admission, coherent destination reveal and host-side resizing afterward, rapid
+reversal, same-identity refresh, persistent tray chrome, compact selected-item
+and overflow semantics, and synchronous catalog addition/removal without stale
+tray focus or dispatch.
 
 Run the native contract suite with:
 

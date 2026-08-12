@@ -1,5 +1,6 @@
 #include "OverlayState.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <set>
@@ -178,6 +179,37 @@ int main() {
         Send(large, Command::NavigateLeft);
     Check(large.selectedWidget() == largeCatalog.front(),
           "Left reaches the first widget through the same stable order");
+
+    const std::vector<std::wstring> productionOrder{
+        L"settings", L"now-playing", L"games-apps", L"game-launcher",
+        L"audio-mixer", L"network-controls", L"yt-music", L"spotify",
+    };
+    OverlayState catalogTray({}, productionOrder);
+    Send(catalogTray, Command::ToggleOverlay);
+    for (int index = 0; index < 4; ++index)
+        Send(catalogTray, Command::NavigateRight);
+    Check(catalogTray.selectedWidget() == L"audio-mixer" &&
+              catalogTray.activeWidget() == L"audio-mixer" &&
+              catalogTray.focusRegion() == FocusRegion::Tray,
+          "production compact selection begins with one exact tray focus owner");
+    auto reorderedDiscovery = productionOrder;
+    std::reverse(reorderedDiscovery.begin(), reorderedDiscovery.end());
+    reorderedDiscovery.push_back(L"catalog-probe");
+    (void)catalogTray.SetAvailableWidgets(reorderedDiscovery);
+    Check(catalogTray.order() ==
+              std::vector<std::wstring>{
+                  L"settings", L"now-playing", L"games-apps", L"game-launcher",
+                  L"audio-mixer", L"network-controls", L"yt-music", L"spotify",
+                  L"catalog-probe"} &&
+              catalogTray.selectedWidget() == L"audio-mixer" &&
+              catalogTray.activeWidget() == L"audio-mixer" &&
+              catalogTray.focusRegion() == FocusRegion::Tray,
+          "catalog replacement preserves order, compact selection, and tray focus by identity");
+    (void)catalogTray.SetAvailableWidgets(productionOrder);
+    Check(catalogTray.order() == productionOrder &&
+              catalogTray.selectedWidget() == L"audio-mixer" &&
+              catalogTray.activeWidget() == L"audio-mixer",
+          "catalog removal retires only the removed identity without shifting selection");
 
     OverlayState empty({}, {});
     Send(empty, Command::ToggleOverlay);

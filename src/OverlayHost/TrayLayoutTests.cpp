@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
+#include <vector>
 
 namespace {
 
@@ -14,6 +16,43 @@ void Check(const bool condition, const char* message) {
         std::cerr << "FAIL: " << message << '\n';
         std::exit(EXIT_FAILURE);
     }
+}
+
+void CheckCompleteReachability(
+    const float width,
+    const float height,
+    const std::size_t count,
+    const std::size_t initialSelection,
+    const std::optional<gba::shell::TrayBand> band,
+    const char* message) {
+    std::vector<bool> reached(count);
+    std::vector<std::size_t> pending{initialSelection};
+    reached[initialSelection] = true;
+    for (std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
+        const auto selected = pending[cursor];
+        const auto layout = gba::shell::ComputeTrayLayout(
+            width, height, count, selected, band);
+        Check(layout.has_value(), "reachable tray state produced no layout");
+        Check(std::any_of(
+                  layout->tiles.begin(), layout->tiles.end(),
+                  [selected](const auto& tile) { return tile.slot == selected; }),
+              "reachable tray state omitted its selected identity");
+        const auto discover = [&](const std::size_t slot) {
+            Check(slot < count, "tray projection exposed an invalid catalog slot");
+            if (!reached[slot]) {
+                reached[slot] = true;
+                pending.push_back(slot);
+            }
+        };
+        for (const auto& tile : layout->tiles) discover(tile.slot);
+        if (layout->previousOverflow)
+            discover(layout->previousOverflow->targetSlot);
+        if (layout->nextOverflow)
+            discover(layout->nextOverflow->targetSlot);
+    }
+    Check(std::all_of(reached.begin(), reached.end(), [](const bool value) {
+              return value;
+          }), message);
 }
 
 } // namespace
@@ -108,6 +147,19 @@ int main() {
     Check(embedded && embedded->stripBounds.y == 420 &&
           embedded->stripBounds.height == 90,
           "widget-surface tray uses the supplied final band");
+
+    const auto productionBand = [](const float height) {
+        return gba::shell::TrayBand{height - 112.0F, height - 14.0F};
+    };
+    CheckCompleteReachability(
+        592, 698, 8, 0, productionBand(698),
+        "Audio Mixer compact overflow reaches the complete production catalog");
+    CheckCompleteReachability(
+        632, 878, 8, 4, productionBand(878),
+        "Network Controls compact overflow reaches both catalog edges");
+    CheckCompleteReachability(
+        1052, 878, 8, 7, productionBand(878),
+        "Game Launcher wide tray reaches every identity without overflow loss");
     const auto compact = gba::shell::ComputeTrayLayout(40, 120, 4, 2);
     Check(compact && compact->tiles.size() == 1 &&
           compact->tiles[0].slot == 2 && compact->tiles[0].bounds.width == 28,

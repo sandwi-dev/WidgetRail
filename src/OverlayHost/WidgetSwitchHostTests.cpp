@@ -129,7 +129,7 @@ public:
                 "\"--first-snapshot-signal\",\"" + startupSignal + "\"],"
                 "\"declaredCapabilities\":[],\"quickActions\":[]}";
         };
-        const std::string catalog =
+        catalog_ =
             "{\n  \"catalogVersion\":1,\n"
             "  \"genericWorkerExecutable\":\"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
             "  \"widgets\":[\n" +
@@ -150,7 +150,12 @@ public:
             widget("settings", "org.gbar.tests.settings", "Settings",
                    "settings.default", "settings") +
             "\n  ],\n  \"bundledWidgets\":[]\n}\n";
-        WriteUtf8(root_ / L"widget-catalog.json", catalog);
+        catalogWithProbe_ =
+            catalog_.substr(0, catalog_.find("\n  ],\n")) + ",\n" +
+            widget("catalog-probe", "org.gbar.tests.catalog-probe", "Catalog Probe",
+                   "catalog-probe.default", "settings") +
+            "\n  ],\n  \"bundledWidgets\":[]\n}\n";
+        WriteUtf8(root_ / L"widget-catalog.json", catalog_);
     }
 
     ~TemporaryInstallation() {
@@ -167,6 +172,11 @@ public:
     [[nodiscard]] fs::path StartupSignal(const std::wstring_view widgetId) const {
         return startupSignalRoot_ / (std::wstring(widgetId) + L".started");
     }
+    void PublishCatalogProbe(const bool present) const {
+        WriteUtf8(
+            root_ / L"widget-catalog.json",
+            present ? catalogWithProbe_ : catalog_);
+    }
 
 private:
     fs::path root_;
@@ -174,6 +184,8 @@ private:
     fs::path readyPath_;
     fs::path startupSignalRoot_;
     std::wstring processProfile_;
+    std::string catalog_;
+    std::string catalogWithProbe_;
 };
 
 Arguments ParseArguments(const int argc, wchar_t** argv) {
@@ -365,6 +377,10 @@ void RunRetentionScenario(const Arguments& arguments) {
                         lineEnd == std::string::npos
                             ? std::string::npos
                             : lineEnd - recordAt);
+                    if (record.find("tray-total=8") == std::string::npos ||
+                        record.find("tray-selected-visible=true") ==
+                            std::string::npos)
+                        return false;
                     if (authority != "retained") return true;
                     return record.find("semantics=inert") != std::string::npos &&
                         record.find("input-owner=tray") != std::string::npos &&
@@ -420,6 +436,13 @@ void RunRetentionScenario(const Arguments& arguments) {
                         std::string::npos,
                 "Admitted destination did not preserve ordered tray focus authority for " +
                     WideToUtf8(target.label));
+        if (std::wstring_view(target.id) == L"game-launcher") {
+            Require(admittedRecord.find("tray-selected-visible=true") !=
+                        std::string::npos &&
+                        admittedRecord.find("tray-next=true") != std::string::npos,
+                    "The large destination's transition retained neither its selected identity nor explicit overflow; record=" +
+                        admittedRecord);
+        }
         const auto transition = log.find(TransitionNeedle(target.id), before);
         Require(transition != std::string::npos,
                 "Transition diagnostics omitted the destination identity for " +
@@ -443,7 +466,55 @@ void RunRetentionScenario(const Arguments& arguments) {
         "Widget presentation paint target=audio-mixer content=admitted", audioBefore);
     Require(audioAdmittedAt != std::string::npos,
             "Audio Mixer admitted trace disappeared before composition validation");
+    const auto audioAdmittedEnd = audioLog.find('\n', audioAdmittedAt);
+    const auto audioAdmittedRecord = audioLog.substr(
+        audioAdmittedAt,
+        audioAdmittedEnd == std::string::npos
+            ? std::string::npos
+            : audioAdmittedEnd - audioAdmittedAt);
+    Require(audioAdmittedRecord.find("tray-total=8") != std::string::npos &&
+                audioAdmittedRecord.find("tray-visible=6") != std::string::npos &&
+                audioAdmittedRecord.find("tray-previous=false") != std::string::npos &&
+                audioAdmittedRecord.find("tray-next=true") != std::string::npos &&
+                audioAdmittedRecord.find("tray-selected-visible=true") !=
+                    std::string::npos,
+            "Compact production tray did not retain the selected first identity and explicit overflow");
     recordComposition(audioAdmittedAt, kTargets[0].label);
+
+    const auto addedCatalogBefore = ReadUtf8(logPath).size();
+    installation->PublishCatalogProbe(true);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current = ReadUtf8(logPath);
+                const auto paint = current.find(
+                    "Widget presentation paint target=audio-mixer content=admitted",
+                    addedCatalogBefore);
+                if (paint == std::string::npos) return false;
+                const auto end = current.find('\n', paint);
+                const auto record = current.substr(
+                    paint, end == std::string::npos ? std::string::npos : end - paint);
+                return record.find("tray-total=9") != std::string::npos &&
+                    record.find("selected=audio-mixer") != std::string::npos &&
+                    record.find("tray-selected-visible=true") != std::string::npos &&
+                    record.find("tray-next=true") != std::string::npos;
+            }), "Production catalog addition did not synchronously republish the compact tray; log=" +
+                    ReadUtf8(logPath).substr(addedCatalogBefore));
+
+    const auto removedCatalogBefore = ReadUtf8(logPath).size();
+    installation->PublishCatalogProbe(false);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current = ReadUtf8(logPath);
+                const auto paint = current.find(
+                    "Widget presentation paint target=audio-mixer content=admitted",
+                    removedCatalogBefore);
+                if (paint == std::string::npos) return false;
+                const auto end = current.find('\n', paint);
+                const auto record = current.substr(
+                    paint, end == std::string::npos ? std::string::npos : end - paint);
+                return record.find("tray-total=8") != std::string::npos &&
+                    record.find("selected=audio-mixer") != std::string::npos &&
+                    record.find("tray-selected-visible=true") != std::string::npos;
+            }), "Production catalog removal did not preserve exact compact tray focus; log=" +
+                    ReadUtf8(logPath).substr(removedCatalogBefore));
     SendKey(window, VK_DOWN);
     FenceWindow(window);
     for (std::size_t index = 1; index < kTargets.size(); ++index)
