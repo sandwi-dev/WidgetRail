@@ -3143,6 +3143,24 @@ project passes 9/9 both directly and through the manifest-selected runner. The
 required single clean exact-commit aggregate is closing-commit evidence rather
 than a dirty-worktree run.
 
+### Deterministic Gbar dev cancellation fixture (DLV-129)
+
+The retained clean aggregate `20260812T074036Z-37ce8dc0` passed 57/58 Gbar CLI
+cases and timed out only while the dev retention fixture waited 30 seconds for a
+cold nested Release generation after preceding dev/process-tree cases. An exact
+isolated run passed without production changes, identifying cross-test build
+scheduling rather than a dev-session lifecycle defect.
+
+The fixture now prepares one catalog-valid package directory using the existing
+isolated builder and unchanged 90-second product build deadline before starting
+its lifecycle assertions. A new exact-name runner filter executes only this case;
+ordinary complete-suite discovery and counts are unchanged. Three consecutive
+bounded focused runs pass 1/1 and prove authenticated Ready publication,
+last-good retention after an invalid declared style change, caller cancellation,
+temporary catalog cleanup, and child-host Job exit. Persistent build-server
+arguments remain covered by their existing separate test. No production dev
+session, timeout, verifier schema, or aggregate behavior changed.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/
