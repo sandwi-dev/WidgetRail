@@ -261,19 +261,14 @@ command and proves Ready, retained-last-good, cancellation, temporary-catalog
 cleanup, and child-host exit. No unrelated Gbar tests, verifier schema changes,
 aggregate rerun, product feature work, or broad test migration.
 
-### Widgets held prefix
+### Widgets accepted integration prefix
 
 ### DLV-130 — Publish the normalized launcher presentation contract
 
-**State:** Implemented as `da08c44` but not accepted or integrated. The
-normalized broker/Bridge/SDK/provider/widget migration is coherent and the
-focused suites are green, but the SDK still validates source, availability,
-artwork, metadata, capabilities, and operations through one catch-all
-`IsValidPresentation` method. This misses the assignment's explicit separate-
-validation-owner boundary and permits under-specified availability/capability
-combinations. DLV-142 is the current correction after committed DLV-138 and
-DLV-139; DLV-130 and its dependent widgets history remain unintegrated until
-then.
+**State:** Accepted with DLV-142 correction and integrated with DLV-138/139
+through planner merge `a3f883e`. The normalized model is the sole public
+representation; focused validators own its subdomains and the presentation
+composer owns only cross-value relationships.
 **Baseline/dependencies:** exact accepted main `d792e30`, including DLV-128 and
 DLV-129, plus
 `docs/game-launcher-requirements.md` delivery step 1. This is the smallest
@@ -320,9 +315,8 @@ depends on an unselected external provider or destructive-operation UX.
 
 ### DLV-138 — Import supported Windows and Xbox installed games
 
-**State:** Implemented as `c82f111` and awaiting independent review. It remains
-unintegrated with DLV-130 and DLV-139 until DLV-142 closes the normalized-
-contract validation gap.
+**State:** Accepted as `c82f111` and integrated with the corrected normalized
+contract through planner merge `a3f883e`.
 **Baseline/dependencies:** committed DLV-130 normalized launcher presentation
 contract and the existing trusted Windows app-library provider/opaque launch
 authority
@@ -353,13 +347,13 @@ external helper.
 or launch requires a new credential, undocumented setter/database, raw public
 identifier, or product choice about license/account ownership.
 
-### Widgets current assignment
+### Widgets accepted correction
 
 ### DLV-142 — Separate normalized launcher validation ownership
 
-**State:** Assigned next. This is the DLV-130 review correction after the
-already-completed DLV-138 and DLV-139 milestones; no later widgets work may
-start before it is committed and independently accepted.
+**State:** Accepted as `ecfdd18` and integrated with DLV-130/138/139 through
+planner merge `a3f883e`. Focused Widget SDK, Games & Apps, and Game Launcher
+evidence passed 89/89, 62/62, and 65/65 respectively.
 **Baseline/dependencies:** committed DLV-130 `da08c44` plus the completed
 DLV-138 `c82f111` and DLV-139 `2281548` commits; do not broaden Windows/Xbox or
 Epic discovery or add another provider
@@ -395,9 +389,11 @@ provider/API decision.
 
 ### DLV-144 — Restore Spotify's usable responsive player layout
 
-**State:** Ready immediately after the already-active DLV-142. This fresh
-user-visible correction precedes later widgets features or refactoring; do not
-interrupt or mix it into DLV-142.
+**State:** Accepted as `bbed0bc` and integrated through planner merge
+`abb1e8d`. Spotify passed 49/49; the refreshed accepted Release published all
+eight first pages with every named UIA rectangle inside the host and no worker,
+protocol, provider, or presentation failure in the launch interval. The user's
+live visual verdict remains the final regression gate.
 **Baseline/dependencies:** completed DLV-142 branch plus accepted host geometry
 from DLV-127. The user's accepted-Release screenshot shows the authored compact
 Spotify branch at the approximately `978x466` inner viewport: horizontal tabs
@@ -438,9 +434,8 @@ platform/SDK assignment instead of compensating inside Spotify.
 
 ### DLV-139 — Add opt-in Epic installed-game discovery
 
-**State:** Implemented as `2281548` and awaiting independent review. It remains
-unintegrated with DLV-130 and DLV-138 until DLV-142 closes the normalized-
-contract validation gap.
+**State:** Accepted as `2281548` and integrated with the corrected normalized
+contract through planner merge `a3f883e`.
 **Baseline/dependencies:** accepted-shape DLV-130 source model and the source-
 adapter/provider ownership proven by DLV-138
 **Owner/outcome:** widgets lane for one explicitly enabled trusted Epic
@@ -467,17 +462,16 @@ helper binary.
 revalidated without relying on account secrets, arbitrary executable/protocol
 input, or an undocumented mutable Epic database.
 
-**Queue depth note:** DLV-142 is the current widgets assignment and DLV-144 is
-Ready immediately afterward. DLV-138 and DLV-139 are complete but held as one
-unaccepted prefix with DLV-130. GOG/Amazon
-adapters are not Ready until that prefix is accepted and a stable bounded local
-installed-record and launch-revalidation contract is evidenced; DLV-135/134
-remain dependency-ordered behind the platform experience work.
+**Queue depth note:** DLV-130/138/139/142 and visible DLV-144 are accepted.
+DLV-134 is the current widgets assignment because its user-visible production
+projection now has every dependency integrated. DLV-135 is Ready next. GOG and
+Amazon adapters remain planned until a separately evidenced bounded local
+installed-record and launch-revalidation contract exists.
 
 ### DLV-135 — Add the deterministic Launcher Experience authoring toolchain
 
-**State:** Planned; becomes same-lane Ready after accepted DLV-130 and accepted
-platform DLV-131 are integrated into main
+**State:** Ready immediately after DLV-134; DLV-130 and platform DLV-131 are
+integrated
 **Owner/outcome:** widgets lane for `gbar launcher-theme new`, `validate`,
 `preview`, `pack`, `inspect`, `install`, `list`, and `remove`, sharing the exact
 production manifest/recipe/GBSS/asset/digest/catalog validators. Authors can
@@ -490,10 +484,12 @@ executables, path escape/reparse points, oversized assets, missing critical
 slots, action/provider bindings, and inaccessible branches. Focused CLI/catalog
 tests only; no gallery, signing, automatic update, animated media, or network.
 
+### Widgets current assignment
+
 ### DLV-134 — Project Game Launcher state into all four native experiences
 
-**State:** Planned; becomes same-lane Ready after accepted DLV-130, DLV-132,
-and DLV-133 are integrated into main
+**State:** Assigned. Consume accepted main `abb1e8d` at a clean boundary;
+DLV-130/132/133 and the corrected installed-source prefix are integrated.
 **Owner/outcome:** widgets lane for the Game Launcher semantic-state adapter,
 experience selection/settings surface, and the `hero-rail`, `cover-wall`,
 `carousel`, and `compact-grid` production projections. All four presentations
@@ -654,13 +650,13 @@ paint, and accessibility as separate testable concerns. Tier 1 native layout,
 renderer, focus, pointer, and UIA groups; Tier 2 one production-host semantic
 fixture. No aggregate, capture, pack CLI, Game Launcher domain code, or motion.
 
-### Platform current assignment
+### Platform accepted milestone
 
 ### DLV-133 — Add launcher-scoped style, artwork, and recovery ownership
 
-**State:** Assigned next. DLV-136 no longer blocks visible platform work because
-the planner proved direct coordinate input plus UI-Automation inspection against
-the exact visible Release without changing the product window identity.
+**State:** Accepted as `4c58eba` and integrated through planner merge `483f8e4`.
+Launcher Experience tests passed 1,361 checks and the production-host semantic
+presentation lifecycle proof exited 0.
 **Baseline/dependencies:** exact accepted main `2f766fe`, including the accepted
 DLV-131/132/137/140/141 Launcher Experience catalog and production-host semantic
 foundation. DLV-136 `83edb39` is evidence only and is not a product dependency.
@@ -680,11 +676,12 @@ crossfade and degrade effects before focus latency. Tier 1 style/asset/recovery
 groups and Tier 2 production-host lifecycle fixture; no animated media, audio,
 remote assets, gallery, network, screenshot, or aggregate.
 
+### Platform current assignment
+
 ### DLV-143 — Bottom-anchor the first cold-start dashboard frame
 
-**State:** Ready immediately after the already-active DLV-133. This fresh
-user-visible correction precedes later platform presentation or refactoring
-work; do not interrupt or mix it into DLV-133.
+**State:** Assigned on the platform lane after accepted DLV-133. This fresh
+user-visible correction precedes later platform presentation or refactoring.
 **Baseline/dependencies:** accepted planner main `4beb961` plus the completed
 DLV-133 commit. User screenshot from the exact accepted Release and PID 17576
 startup log at 02:43:32 on 2026-08-12. The first composition commits content
@@ -872,18 +869,12 @@ manufacture adjacent work.
 
 ## Serialized integration queue
 
-1. DLV-130 owns the normalized public launcher data contract. DLV-138 and
-   DLV-139 are committed on that shape, but DLV-142 must close validation
-   ownership before the complete widgets prefix is accepted or later work
-   begins.
-2. DLV-131/132 plus DLV-137/140/141 are accepted and integrated through
-   `2f766fe`. DLV-136 stopped without product change; DLV-133 may now continue
-   visible platform presentation work independently. DLV-143 is the next
-   platform assignment and closes the cold-start centered-dashboard regression
-   before later platform work.
-3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
-   provided the planner rebases at a clean boundary and confirms exclusive
-   files. DLV-134 waits for accepted DLV-130/132/133.
+1. DLV-130/138/139/142 are accepted and integrated through `a3f883e`; DLV-144
+   is accepted through `abb1e8d`.
+2. DLV-131/132/133/137/140/141 are accepted. DLV-143 is the active platform
+   assignment closing the cold-start centered-dashboard regression.
+3. DLV-134 is the active widgets assignment. DLV-135 follows after it at a
+   clean boundary so the visible production projection lands before tooling.
 4. External metadata/artwork sources and trusted store/content adapters remain
    later delivery steps and cannot broaden these M1 assignments.
 

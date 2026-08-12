@@ -1,8 +1,7 @@
 # Widget Authoring Experience Review
 
 Status: active independent assessment<br>
-Last reassessed: 2026-08-12 against integrated `main` `aa0a600` and returned
-DLV-130 `da08c44`<br>
+Last reassessed: 2026-08-12 against integrated `main` `abb1e8d`<br>
 Scope: public Widget SDK APIs, tooling, examples, packages, diagnostics, and the
 experience of building basic through full application-scale widgets
 
@@ -117,20 +116,13 @@ the scalable path.
 
 ## Current contract review: responsive branch fit
 
-Spotify now demonstrates a concrete authoring gap. Its snapshot publishes both
-expanded and compact branches and labels them correctly, yet the accepted host
-selects the compact branch at an approximately `978x466` inner viewport where
-the horizontal navigation consumes vertical space and the primary transport
-row is clipped below the player panel. The existing test proves tree presence,
-not that responsive selection, layout, focus reveal, and shell bounds agree.
-
-DLV-144 should fix the Spotify presentation first and add an executed semantic
-layout fixture over representative width, height, and scale combinations. If
-that proves a framework defect, the follow-up SDK/host improvement should give
-authors one preview/assertion path that reports which branch was selected,
-selected-node bounds, overflow, and whether focus can reveal every interactive
-descendant. Authors should not need screenshots or native-host source reading
-to discover that a valid responsive tree is unusable at a real viewport.
+Accepted DLV-144 gives Spotify's compact branch the same controller rail, one
+focus-revealing player viewport, and shared focus identities across responsive
+branches. Its 49/49 suite executes named width, height, and scale envelopes;
+the refreshed accepted Release reports every first-page UIA rectangle inside
+the host. This closes the immediate widget defect. A public preview/assertion
+path should still report selected branch, selected-node bounds, overflow, and
+focus reveal so authors do not need screenshots or native-host source reading.
 
 ## Current contract review: normalized app library
 
@@ -141,19 +133,14 @@ capabilities, and optional active operation. Games & Apps and Game Launcher
 consume the normalized value, and private provider identifiers, paths,
 commands, package identities, URLs, and bytes remain hidden.
 
-It is returned for DLV-142 because one SDK service method still validates every
-subdomain. Public contract shape alone is not enough: source, availability,
-artwork, metadata provenance, capabilities, and operations must have focused
-validators and tests, while a small presentation composer owns only their
-relationships. This matters to authors because diagnostics should point to the
-invalid value they supplied and because adding one metadata or operation field
-must not require understanding a monolithic validator.
-
-DLV-142 must also prove the authority invariant in author-facing terms:
-presentation is not permission. Only a current launchable availability value
-paired with explicit `Launch` capability can be passed to the fresh host
-resolution/activation route. Stale, unavailable, retained-last-good, or merely
-displayed entries never authorize launch.
+Accepted DLV-142 now gives source, availability, artwork, metadata provenance,
+capabilities, and operations focused validators while a small composer owns
+only their relationships. Diagnostics can identify the invalid subvalue and
+new fields no longer require understanding one monolithic validator. The
+author-facing invariant is explicit: presentation is not permission. Only a
+current launchable availability paired with `Launch` capability can reach fresh
+host resolution; stale, unavailable, retained-last-good, or merely displayed
+entries never authorize launch.
 
 ## Recommended public architecture
 
@@ -234,18 +221,13 @@ The authoring platform is ready for external preview when a new developer can:
 
 ## Prioritized review queue
 
-1. Accept DLV-142 only with focused validators and explicit stale/unavailable
-   launch denial.
-2. Review committed DLV-138 and DLV-139 as the first normalized multi-source
-   installed-game proofs,
-   including bounded cancellation, source health, deduplication, warm state,
-   opt-in local-manifest parsing, and fresh opaque launch resolution.
-3. Keep the UIA-guided coordinate-input first-page smoke after each accepted
+1. Review active DLV-134 as the first production projection of normalized Game
+   Launcher state into every accepted native experience.
+2. Keep DLV-135 author tooling Ready immediately after that projection.
+3. Keep the UIA-guided first-page smoke after each accepted
    Release; do not require a taskbar-visible production window merely for tool
    discovery. Use exact logs for real author diagnostics.
-4. Keep Launcher Experience author tooling behind the accepted catalog,
-   renderer/style, and production projection dependencies.
-5. Schedule external-repository SDK consumption and advanced application sample
+4. Schedule external-repository SDK consumption and advanced application sample
    before calling the platform public-ready.
 
 Avoid reopening installed-widget security absent a reproducible P0 or threat-

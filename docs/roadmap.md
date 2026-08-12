@@ -339,19 +339,15 @@ eligibility; credential-free structural work continues independently.
 
 ## Current execution priorities
 
-1. Correct and accept the committed DLV-130/138/139 normalized app-library and
-   provider prefix through DLV-142.
-2. Immediately follow DLV-142 with DLV-144 so Spotify's selected responsive
-   first page restores its usable navigation hierarchy and complete controls.
-3. Continue visible platform launcher style/recovery through DLV-133.
-4. Immediately follow DLV-133 with DLV-143 so the first cold-start dashboard
-   frame is bottom-anchored before later platform work.
-5. Independently review the committed Windows/Xbox and opt-in Epic installed-
-   game adapters while their prefix remains held.
-6. Continue production experience
-   projection, then author tooling.
-7. Keep user-reported visible regressions ahead of internal refactors.
-8. Continue other credential-free roadmap features while account, hardware,
+1. Complete active DLV-143 so the first cold-start dashboard frame is bottom-
+   anchored before later platform work.
+2. Complete active DLV-134 so real Game Launcher state drives all four accepted
+   native experiences with unchanged action and focus authority.
+3. Keep DLV-135 author tooling Ready immediately after DLV-134.
+4. Keep accepted Spotify DLV-144 live-verifying on PID 25644 and queue any user-
+   observed correction ahead of later feature work.
+5. Keep user-reported visible regressions ahead of internal refactors.
+6. Continue other credential-free roadmap features while account, hardware,
    or supported-API work is blocked.
 
 ## Explicit blockers
