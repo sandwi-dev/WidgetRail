@@ -222,13 +222,21 @@ tile continues to resolve and launch its own exact SavedId. A disabled retained
 row preserves organization while its source is missing, and reappearance of the
 same SavedId restores the choice. A replacement SavedId is independent.
 
-**Categories** provides All Games plus up to four local named collections. Names
+**Categories** provides All Games plus practical local named collections. Names
 normalize whitespace and Unicode compatibility form, are limited to 32
-characters, and must be unique ignoring case. At most eight exact SavedId
-memberships are retained in total, with at most four per category. Create,
-rename, open, and delete remain in one bounded controller route; deleting a
+characters, and must be unique ignoring case. The shared 64-KiB private-state
+budget—not the old four-member/eight-total prototype cap—is the ordinary
+admission boundary; focused coverage retains 32 categories and 256 compact
+exact SavedId memberships. Create, rename, open, and delete remain in one bounded controller route; deleting a
 category removes only that category and never hides, removes, launches, or
 merges a game. The Y action sheet adds or removes the exact focused game.
+
+From All Games or a category, LT and RT cycle once through All Games and every
+category in saved order. The same exact SavedId keeps focus when it exists in
+the destination; otherwise focus moves to the first current member or the
+truthful empty-category action. Search entry, category management, details, and
+the game action sheet retain their own input scope and never receive this
+shortcut.
 
 Category views reuse the bounded app-library query/cursor owner and retain only
 sanitized last-good display rows for temporarily missing members. Those rows are

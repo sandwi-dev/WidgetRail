@@ -61,10 +61,12 @@ to return to the originating Library or details scope. It contains no launch or
 duplicate details action and adds no provider or content authority.
 
 The same sheet projects exact category membership. A separate bounded route owns
-create, rename, browse, and delete for up to four 32-character names and eight
-total SavedId memberships. Category policy/projection is immutable and separate
-from the widget lifecycle adapter. Missing members retain sanitized display only;
-Play always requires fresh exact provider resolution.
+create, rename, browse, and delete under the shared 64-KiB organization budget;
+focused coverage retains 32 categories and 256 compact memberships. LT/RT cycles
+All Games and saved category order while keeping the same exact member focused
+when possible. Category policy/projection is immutable and separate from the
+widget lifecycle adapter. Missing members retain sanitized display only; Play
+always requires fresh exact provider resolution.
 
 Variant organization remains the existing explicit two-game policy. Details
 labels the first step **Choose another variant**, returns to the Library with the

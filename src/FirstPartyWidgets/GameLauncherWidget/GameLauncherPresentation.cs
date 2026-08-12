@@ -212,7 +212,8 @@ internal static class GameLauncherPresentation
             };
             management.AddRange(categoryRows);
             content = UI.Stack("game-launcher.content",
-                    UI.Text("Create up to 4 local categories. Membership uses exact saved game identity.",
+                    UI.Text("Create local categories within the shared 64 KiB " +
+                            "organization budget. Membership uses exact saved game identity.",
                         "game-launcher.categories.help", "Category help"),
                     UI.VerticalScroll("game-launcher.categories.list",
                         management.ToArray()))
@@ -305,7 +306,8 @@ internal static class GameLauncherPresentation
                     var current = row.Current;
                     var group = GameLauncherOrganizationPolicy.GroupFor(
                         state.Organization, row.Display.SavedId);
-                    return Tile(row.Display.DisplayName, row.Display.SourceAttribution,
+                    return Tile(
+                        row.Display.DisplayName, row.Display.SourceAttribution,
                         row.Display.SavedId,
                         current?.Presentation.Artwork.Find(
                             WidgetAppLibraryArtworkRole.Tile)?.Handle,
@@ -319,7 +321,8 @@ internal static class GameLauncherPresentation
                         group?.SavedIds.Count ?? 0,
                         state.Interactive && !state.OrganizationBusy,
                         GameLauncherIdentity.Key(row.Display.SavedId),
-                        pageBumpers: false);
+                        pageBumpers: false,
+                        collectionSwitch: state.Organization.Categories.Count != 0);
                 }).ToArray();
                 var scroll = UI.VerticalScroll(ScrollId,
                         UI.ResponsiveGrid("game-launcher.category.grid", 170, 5, tiles)
@@ -333,8 +336,10 @@ internal static class GameLauncherPresentation
                         UI.ControllerHint(ControllerButton.Y, "Game actions",
                             "game-launcher.category.hint.actions"))
                     .Classes("game-launcher-content");
+                var focused = rows.FirstOrDefault(row => string.Equals(
+                    row.Display.SavedId, state.HeroSavedId, StringComparison.Ordinal)) ?? rows[0];
                 initialFocus ??= GameLauncherIdentity.FocusId(
-                    "grid", GameLauncherIdentity.Key(rows[0].Display.SavedId));
+                    "grid", GameLauncherIdentity.Key(focused.Display.SavedId));
             }
         }
         else if (state.Route == GameLauncherRoute.Hidden)
@@ -405,7 +410,8 @@ internal static class GameLauncherPresentation
                     state.Interactive && !state.OrganizationBusy,
                     row.Key,
                     rail.PageBumpers,
-                    row.CollectionItem))
+                    row.CollectionItem,
+                    collectionSwitch: state.Organization.Categories.Count != 0))
                 .ToArray();
             var scroll = UI.HorizontalScroll(ScrollId, tiles)
                 .Classes("game-launcher-scroll", "game-launcher-rail");
@@ -581,6 +587,26 @@ internal static class GameLauncherPresentation
             initialFocus = "game-launcher.empty.action";
         }
 
+        if (state.Route is GameLauncherRoute.Library or GameLauncherRoute.Category &&
+            state.Organization.Categories.Count != 0 && state.Interactive &&
+            !state.OrganizationBusy)
+        {
+            content = UI.Stack("game-launcher.collection.scope",
+                    content,
+                    UI.Row("game-launcher.collection.hints",
+                        UI.ControllerHint(ControllerButton.LeftTrigger,
+                            "Previous collection",
+                            "game-launcher.collection.hint.previous"),
+                        UI.ControllerHint(ControllerButton.RightTrigger,
+                            "Next collection",
+                            "game-launcher.collection.hint.next"))
+                        .Classes("game-launcher-footer"))
+                .Shortcut(ControllerButton.LeftTrigger,
+                    actionId: "game-launcher.collection.previous")
+                .Shortcut(ControllerButton.RightTrigger,
+                    actionId: "game-launcher.collection.next")
+                .Classes("game-launcher-content");
+        }
         content = content.AddClasses("game-launcher-main");
         var root = UI.Stack("game-launcher.root", header, sourceStatus, queryControls, content)
             .Classes("game-launcher-widget");
@@ -778,7 +804,8 @@ internal static class GameLauncherPresentation
         bool interactive,
         WidgetCollectionItemKey key,
         bool pageBumpers,
-        bool collectionItem = true)
+        bool collectionItem = true,
+        bool collectionSwitch = false)
     {
         var id = GameLauncherIdentity.FocusId("grid", key);
         var launching = string.Equals(savedId, launchingSavedId, StringComparison.Ordinal);
@@ -815,6 +842,12 @@ internal static class GameLauncherPresentation
             tile = tile
                 .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
                 .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer");
+        if (interactive && resolved && !launching && collectionSwitch)
+            tile = tile
+                .Shortcut(ControllerButton.LeftTrigger,
+                    actionId: "game-launcher.collection.previous")
+                .Shortcut(ControllerButton.RightTrigger,
+                    actionId: "game-launcher.collection.next");
         return collectionItem ? tile.CollectionItem(key) : tile;
     }
 

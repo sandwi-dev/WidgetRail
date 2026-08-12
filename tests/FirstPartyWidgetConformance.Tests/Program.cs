@@ -759,17 +759,54 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
         var library = await WaitForActionSnapshotAsync(
             client, "game-launcher.categories.open", "Categories (1)");
-        var openCategories = Nodes(library.Root).Single(node =>
-            node.ActionId == "game-launcher.categories.open");
-        await client.SendActionAsync(new WidgetActionEvent(
-            openCategories.ActionId!, openCategories.Id));
-        var categories = await WaitForSnapshotAsync(
-            client, "Installed Favorites · 1 games");
-        var open = Nodes(categories.Root).Single(node =>
-            node.ActionId?.StartsWith(
-                "game-launcher.category.open.", StringComparison.Ordinal) == true);
-        await client.SendActionAsync(new WidgetActionEvent(open.ActionId!, open.Id));
+        var libraryGame = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Conformance Game 00001", StringComparison.Ordinal));
+        var handled = await client.SendControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.RightTrigger,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: libraryGame.Id,
+            Sequence: 170,
+            ActiveInputScopeId: library.ActiveInputScopeId,
+            SnapshotSequence: library.Sequence));
+        Assert.True(handled, "RT did not open the retained installed category.");
+        _ = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.title", "Installed Favorites");
         var category = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        var categoryGame = Nodes(category.Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        handled = await client.SendControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.LeftTrigger,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: categoryGame.Id,
+            Sequence: 171,
+            ActiveInputScopeId: category.ActiveInputScopeId,
+            SnapshotSequence: category.Sequence));
+        Assert.True(handled, "LT did not return to All Games.");
+        _ = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.title", "Game Launcher");
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.categories.open", "Categories (1)");
+        libraryGame = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Conformance Game 00001", StringComparison.Ordinal));
+        handled = await client.SendControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.RightTrigger,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: libraryGame.Id,
+            Sequence: 172,
+            ActiveInputScopeId: library.ActiveInputScopeId,
+            SnapshotSequence: library.Sequence));
+        Assert.True(handled, "RT did not wrap back to the retained category.");
+        _ = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.title", "Installed Favorites");
+        category = await WaitForActionSnapshotAsync(
             client, "game-launcher.launch", "Conformance Game 00001");
         var exact = Nodes(category.Root).Single(node =>
             node.ActionId == "game-launcher.launch");

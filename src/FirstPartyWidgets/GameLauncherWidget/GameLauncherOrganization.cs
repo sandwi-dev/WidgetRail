@@ -25,10 +25,10 @@ internal sealed record GameLauncherPrivateState(
     internal const int MaximumExcludedItems = 32;
     internal const int MaximumGroups = 16;
     internal const int MaximumVariantsPerGroup = 4;
-    internal const int MaximumCategories = 4;
+    internal const int MaximumCategories = 64;
     internal const int MaximumCategoryNameLength = 32;
-    internal const int MaximumCategoryMembers = 4;
-    internal const int MaximumCategoryMemberships = 8;
+    internal const int MaximumCategoryMembers = 512;
+    internal const int MaximumCategoryMemberships = 2048;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
 
     public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];

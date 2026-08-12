@@ -10,6 +10,174 @@ namespace GameBarAlternative.Tests.GameLauncher;
 [TestClass]
 public sealed class GameLauncherTests
 {
+    [TestMethod]
+    public void CategoryCapacityIsGovernedByBytesBeforePracticalSafetyCeilings()
+    {
+        var items = Enumerable.Range(0, 32)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-{index:D3}", $"Game {index:D2}", "Local"))
+            .ToArray();
+        var categories = Enumerable.Range(0, 32)
+            .Select(index => new GameLauncherCategory(
+                "category." + index.ToString("x32"),
+                $"Collection {index:D2}",
+                Enumerable.Range(0, 8)
+                    .Select(offset => items[(index + offset) % items.Length].SavedId)
+                    .ToArray()))
+            .ToArray();
+        var state = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, items)
+        {
+            Categories = categories,
+        };
+
+        var normalized = GameLauncherOrganizationPolicy.Normalize(state);
+        Assert.AreEqual(32, normalized.Categories.Count);
+        Assert.AreEqual(256, normalized.Categories.Sum(category =>
+            category.SavedIds.Count));
+        Assert.IsLessThanOrEqualTo(
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
+            JsonSerializer.SerializeToUtf8Bytes(normalized).Length);
+
+        var expanded = GameLauncherCategoryPolicy.SetMembership(
+            normalized, normalized.Categories[0].Id, items[31], included: true);
+        Assert.IsTrue(expanded.Accepted,
+            "An ordinary ninth membership was rejected by a prototype count cap.");
+        Assert.AreEqual(9, expanded.State.Categories[0].SavedIds.Count);
+
+        var oversizedItems = Enumerable.Range(0, GameLauncherPrivateState.MaximumItems)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-{index:D3}-" + new string('s', 114),
+                new string('N', 96), new string('S', 64)))
+            .ToArray();
+        var organized = oversizedItems.Take(
+            GameLauncherPrivateState.MaximumOrganizedItems).ToArray();
+        var oversizedBase = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, oversizedItems)
+        {
+            FavoriteSavedIds = organized.Select(item => item.SavedId).ToArray(),
+            VariantGroups = organized.Chunk(GameLauncherPrivateState.MaximumVariantsPerGroup)
+                .Select((members, index) => new GameLauncherVariantGroup(
+                    "variant." + index.ToString("x20"),
+                    members.Select(item => item.SavedId).ToArray(),
+                    members[^1].SavedId))
+                .ToArray(),
+            RecentSavedIds = oversizedItems.Skip(
+                    GameLauncherPrivateState.MaximumOrganizedItems)
+                .Take(GameLauncherPrivateState.MaximumRecentItems)
+                .Select(item => item.SavedId).ToArray(),
+            ManualSavedIds = oversizedItems.Skip(
+                    GameLauncherPrivateState.MaximumOrganizedItems +
+                    GameLauncherPrivateState.MaximumRecentItems)
+                .Take(GameLauncherPrivateState.MaximumManualItems)
+                .Select(item => item.SavedId).ToArray(),
+            ExcludedSavedIds = oversizedItems.Skip(
+                    GameLauncherPrivateState.MaximumOrganizedItems +
+                    GameLauncherPrivateState.MaximumRecentItems +
+                    GameLauncherPrivateState.MaximumManualItems)
+                .Take(GameLauncherPrivateState.MaximumExcludedItems)
+                .Select(item => item.SavedId).ToArray(),
+        };
+        var rejected = GameLauncherCategoryPolicy.Create(
+            oversizedBase, GameLauncherCategoryPolicy.NewId(), "Byte boundary");
+        Assert.IsFalse(rejected.Accepted);
+        Assert.AreEqual(0, rejected.State.Categories.Count);
+        Assert.AreEqual(oversizedBase.Items.Count, rejected.State.Items.Count);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CollectionTriggersWrapPreserveExactFocusAndRespectModalOwnership()
+    {
+        var displays = Enumerable.Range(0, 3)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-{index:D5}", $"Game {index:D5}", "Conformance"))
+            .ToArray();
+        var categories = new[]
+        {
+            new GameLauncherCategory(
+                "category." + 1.ToString("x32"), "Alpha",
+                [displays[0].SavedId, displays[1].SavedId]),
+            new GameLauncherCategory(
+                "category." + 2.ToString("x32"), "Beta", [displays[1].SavedId]),
+            new GameLauncherCategory(
+                "category." + 3.ToString("x32"), "Empty", []),
+        };
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, displays)
+        {
+            Categories = categories,
+        };
+        var host = new FakeHost(3, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var library = Snapshot(widget, 30);
+        var selected = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
+        Assert.IsTrue(await Route(widget, library, ControllerButton.RightTrigger,
+            selected.Id));
+        await WaitUntil(() => Nodes(Snapshot(widget, 300).Root).Any(node =>
+            node.Id == "game-launcher.title" && node.Text == "Alpha"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "first category switch");
+        var alpha = Snapshot(widget, 31);
+        Assert.AreEqual("Alpha", Nodes(alpha.Root).Single(node =>
+            node.Id == "game-launcher.title").Text);
+        Assert.AreEqual(selected.Id, alpha.InitialFocusId);
+
+        Assert.IsTrue(await Route(widget, alpha, ControllerButton.RightTrigger,
+            selected.Id));
+        await WaitUntil(() => Nodes(Snapshot(widget, 301).Root).Any(node =>
+            node.Id == "game-launcher.title" && node.Text == "Beta"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "second category switch");
+        var beta = Snapshot(widget, 32);
+        Assert.AreEqual("Beta", Nodes(beta.Root).Single(node =>
+            node.Id == "game-launcher.title").Text);
+        Assert.AreEqual(selected.Id, beta.InitialFocusId);
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, selected.Id));
+        var sheet = Snapshot(widget, 33);
+        Assert.IsFalse(await Route(widget, sheet, ControllerButton.RightTrigger,
+            GameLauncherActionSheet.InitialFocusId));
+        Assert.AreEqual(GameLauncherActionSheet.ScopeId, Snapshot(widget, 34).ActiveInputScopeId);
+        await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+
+        beta = Snapshot(widget, 35);
+        Assert.IsTrue(await Route(widget, beta, ControllerButton.RightTrigger, selected.Id));
+        await WaitUntil(() => Nodes(Snapshot(widget, 302).Root).Any(node =>
+            node.Id == "game-launcher.title" && node.Text == "Empty"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "empty category switch");
+        var empty = Snapshot(widget, 36);
+        Assert.AreEqual("Empty", Nodes(empty.Root).Single(node =>
+            node.Id == "game-launcher.title").Text);
+        Assert.AreEqual("game-launcher.category.empty.action", empty.InitialFocusId);
+
+        Assert.IsTrue(await Route(widget, empty, ControllerButton.RightTrigger,
+            "game-launcher.category.empty.action"));
+        await WaitUntil(() => Nodes(Snapshot(widget, 303).Root).Any(node =>
+            node.Id == "game-launcher.title" && node.Text == "Game Launcher"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "wrap to all games");
+        library = Snapshot(widget, 37);
+        Assert.AreEqual("Game Launcher", Nodes(library.Root).Single(node =>
+            node.Id == "game-launcher.title").Text);
+        Assert.IsFalse(await Route(widget, library, ControllerButton.RightTrigger,
+            "game-launcher.search"), "Search TextEntry leaked LT/RT collection input.");
+
+        Assert.IsTrue(await Route(widget, library, ControllerButton.LeftTrigger,
+            selected.Id));
+        await WaitUntil(() => Nodes(Snapshot(widget, 304).Root).Any(node =>
+            node.Id == "game-launcher.title" && node.Text == "Empty"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "reverse wrap to empty");
+        empty = Snapshot(widget, 38);
+        Assert.AreEqual("Empty", Nodes(empty.Root).Single(node =>
+            node.Id == "game-launcher.title").Text);
+        await Background(widget);
+    }
+
     [TestMethod, Timeout(30_000)]
     public async Task CategoriesCreateAssignBrowseRestartRenameDeleteAndRevalidate()
     {

@@ -4,6 +4,12 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
 
+internal enum GameLauncherCollectionDirection
+{
+    Previous,
+    Next,
+}
+
 internal static class GameLauncherCategoryPolicy
 {
     internal static bool RequiresReset(GameLauncherPrivateState? state)
@@ -148,6 +154,28 @@ internal static class GameLauncherCategoryPolicy
 
     internal static bool Contains(GameLauncherCategory category, string savedId) =>
         category.SavedIds.Contains(savedId, StringComparer.Ordinal);
+
+    internal static string? Cycle(
+        IReadOnlyList<GameLauncherCategory> categories,
+        string? currentCategoryId,
+        GameLauncherCollectionDirection direction)
+    {
+        ArgumentNullException.ThrowIfNull(categories);
+        if (categories.Count == 0) return null;
+        var current = 0;
+        if (currentCategoryId is not null)
+            for (var index = 0; index < categories.Count; index++)
+                if (categories[index].Id == currentCategoryId)
+                {
+                    current = index + 1;
+                    break;
+                }
+        var count = categories.Count + 1;
+        var next = direction == GameLauncherCollectionDirection.Next
+            ? (current + 1) % count
+            : (current + count - 1) % count;
+        return next == 0 ? null : categories[next - 1].Id;
+    }
 
     private static GameLauncherPrivateState WithDisplay(
         GameLauncherPrivateState state,

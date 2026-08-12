@@ -446,6 +446,18 @@ public sealed class GameLauncherWidget : Widget
             case "game-launcher.categories.open":
                 OpenCategories(action.SourceElementId);
                 return;
+            case "game-launcher.collection.previous":
+                await SwitchCollectionAsync(
+                        GameLauncherCollectionDirection.Previous,
+                        action.SourceElementId)
+                    .ConfigureAwait(false);
+                return;
+            case "game-launcher.collection.next":
+                await SwitchCollectionAsync(
+                        GameLauncherCollectionDirection.Next,
+                        action.SourceElementId)
+                    .ConfigureAwait(false);
+                return;
             case "game-launcher.categories.back":
                 if (_navigation.Value.Route != GameLauncherRoute.Categories) return;
                 lock (_gate) _preferLibraryContentFocus = true;
@@ -1556,7 +1568,8 @@ public sealed class GameLauncherWidget : Widget
                 state => GameLauncherCategoryPolicy.Create(state, id, normalized),
                 $"Created category {normalized}",
                 cancellationToken,
-                "Category name already exists or the category limit was reached")
+                "Category was not saved · name already exists, organization changed, " +
+                    "or the 64 KiB budget was reached")
             .ConfigureAwait(false);
     }
 
@@ -1580,7 +1593,8 @@ public sealed class GameLauncherWidget : Widget
                     state, categoryId, normalized),
                 $"Renamed category to {normalized}",
                 cancellationToken,
-                "Category name already exists or the category changed")
+                "Category was not renamed · name already exists, organization changed, " +
+                    "or the 64 KiB budget was reached")
             .ConfigureAwait(false);
     }
 
@@ -1623,8 +1637,71 @@ public sealed class GameLauncherWidget : Widget
                     ? $"Removed {display.DisplayName} from {categoryName}"
                     : $"Added {display.DisplayName} to {categoryName}",
                 cancellationToken,
-                "Category membership was not saved")
+                "Category membership was not saved · organization changed or reached " +
+                    "the 64 KiB budget")
             .ConfigureAwait(false);
+    }
+
+    private async Task SwitchCollectionAsync(
+        GameLauncherCollectionDirection direction,
+        string sourceElementId)
+    {
+        var route = _navigation.Value.Route;
+        if (LifecycleState != WidgetLifecycleState.Interactive || ActionSheetIsOpen() ||
+            route is not (GameLauncherRoute.Library or GameLauncherRoute.Category)) return;
+
+        string? focusedSavedId = null;
+        if (ResolveActionSource(sourceElementId) is { } exactSource)
+            focusedSavedId = DisplayForSource(exactSource)?.SavedId;
+
+        GameLauncherPrivateState organization;
+        string? currentCategoryId;
+        lock (_gate)
+        {
+            if (_organizationBusy) return;
+            organization = _organization;
+            currentCategoryId = route == GameLauncherRoute.Category
+                ? _activeCategoryId
+                : null;
+            focusedSavedId ??= _heroSavedId;
+        }
+        if (organization.Categories.Count == 0) return;
+        var targetCategoryId = GameLauncherCategoryPolicy.Cycle(
+            organization.Categories, currentCategoryId, direction);
+
+        Operations.Cancel("game-launcher.launch-lifecycle");
+        if (targetCategoryId is null)
+        {
+            if (route != GameLauncherRoute.Category) return;
+            lock (_gate)
+            {
+                _activeCategoryId = null;
+                _heroSavedId = focusedSavedId;
+                _preferLibraryContentFocus = true;
+            }
+            if (_navigation.Back(sourceElementId) == WidgetNavigationResult.Changed)
+                await ReturnToLibraryAsync(preferContentFocus: true).ConfigureAwait(false);
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (GameLauncherCategoryPolicy.Find(_organization, targetCategoryId) is null)
+                return;
+            _activeCategoryId = targetCategoryId;
+            _heroSavedId = focusedSavedId;
+            _query = InstalledGames;
+            _favoriteFilter = false;
+            _recentMode = GameLauncherRecentMode.Off;
+            _fixedRows = GameLauncherFixedRows.Empty;
+            _fixedRowsRevision++;
+            _preferLibraryContentFocus = false;
+        }
+        if (route == GameLauncherRoute.Library &&
+            _navigation.Push(GameLauncherRoute.Category, sourceElementId) !=
+                WidgetNavigationResult.Changed)
+            return;
+        ReloadQuery();
     }
 
     private GameLauncherDisplayItem? DisplayForSavedLocked(string savedId) =>

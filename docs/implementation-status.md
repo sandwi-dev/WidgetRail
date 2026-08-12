@@ -3741,3 +3741,24 @@ Responsibility changed as follows:
 Focused Release evidence passes Game Launcher 73/73. One ordinary generic
 AppContainer worker route creates and assigns a category, restarts the worker,
 browses the retained exact member, and observes one exact launch revalidation.
+
+### Scalable categories and direct switching (DLV-156)
+
+Category admission now uses the existing exact serialized 64-KiB private-state
+boundary before generous validation-work ceilings. The former four-category,
+four-member, and eight-total prototype caps are removed; focused state evidence
+retains 32 categories and 256 compact exact SavedId memberships and rejects an
+over-budget mutation without changing the last committed organization.
+
+`GameLauncherCategoryPolicy` also owns the immutable ordered collection cycle.
+The existing widget navigation/query adapter applies that decision: LT/RT wrap
+through All Games and category order, preserve the focused exact member when it
+exists, and fall back to the first member or an explicit empty-category action.
+Search TextEntry, category management, details, and the action sheet expose no
+collection-switch shortcut. No provider, launch authority, SDK/protocol, native,
+or held Launcher Experience state changed.
+
+Focused Release evidence passes Game Launcher 75/75. The ordinary generic
+AppContainer worker route creates and assigns a category, restarts, cycles
+RT to the retained category, LT to All Games, RT back to the category, and
+observes one exact launch revalidation.
