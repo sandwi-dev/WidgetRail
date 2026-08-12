@@ -120,6 +120,25 @@ WidgetBridge 79/79, documentation 57/57, and the installed AppContainer
 lifecycle/retry route. The fully packaged Release is visibly running as PID
 32140 for live recurrence testing.
 
+### Current review delta — visible layout and focus corrections
+
+Accepted DLV-104 `99e4932`, integrated through `1ef4666`, gives Game Launcher
+one explicit responsive vertical ownership model: fixed header/source/query/
+footer regions and one bounded collection viewport with stable anchor/focus
+identity. Compact heading/source branches do not duplicate application state.
+Focused Game Launcher 46/46, renderer 4,777, shared geometry 589, docs 58/58,
+and package validation pass. Final clipping closure remains the user's live
+packaged check; malformed capture output is not an acceptance input.
+
+Accepted DLV-106 `f119a1f`, integrated through `dde4981`, also closes the
+outgoing-focus authority gap during cold tray switches. Retained pixels may
+remain, but committed widget focus is cleared and only current destination tray
+semantics are published until explicit entry. The production-host Audio Mixer
+to Game Launcher fixture proves input owner, visual focus, semantic focus, and
+UIA remain tray-owned across retained and admitted frames. DLV-107 is already
+active on the same platform lane and owns the separate black-perimeter/motion
+regression; DLV-106 did not broaden into compositor redesign.
+
 ### Current review delta — trusted artwork failure presentation
 
 The packaged DLV-100 session corrected TextEntry admission but exposed a
