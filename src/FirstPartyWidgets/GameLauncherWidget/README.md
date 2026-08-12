@@ -54,6 +54,12 @@ the existing organization policy. B restores the originating tile and collection
 offset. If that exact identity disappears, the route remains display-only and all
 authority-bearing actions fail closed.
 
+Y opens one nested `UI.ActionSheet` for the exact focused game. The sheet shows
+the current favorite, hide, variant, preferred-variant, and source-refresh
+actions, routes them through the same organization and cursor owners, and uses B
+to return to the originating Library or details scope. It contains no launch or
+duplicate details action and adds no provider or content authority.
+
 Variant organization remains the existing explicit two-game policy. Details
 labels the first step **Choose another variant**, returns to the Library with the
 first identity named in status, and labels a valid second step **Group with

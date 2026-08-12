@@ -398,7 +398,7 @@ public sealed class GameLauncherTests
             shortcuts[ControllerButton.View].ActionId);
         Assert.AreEqual("game-launcher.favorite",
             shortcuts[ControllerButton.X].ActionId);
-        Assert.AreEqual("game-launcher.hide",
+        Assert.AreEqual(GameLauncherActionSheet.OpenAction,
             shortcuts[ControllerButton.Y].ActionId);
         Assert.AreEqual("game-launcher.variant",
             shortcuts[ControllerButton.LeftBumper].ActionId);
@@ -408,7 +408,7 @@ public sealed class GameLauncherTests
                  {
                      "game-launcher.hint.details",
                      "game-launcher.hint.favorite",
-                     "game-launcher.hint.hide",
+                     "game-launcher.hint.actions",
                      "game-launcher.hint.variant",
                      "game-launcher.hint.prefer",
                  })
@@ -435,6 +435,88 @@ public sealed class GameLauncherTests
         var completed = Snapshot(widget, 952);
         Assert.AreEqual(5, Nodes(completed.Root).Single(node =>
             node.Id == tile.Id).Shortcuts.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task YActionSheetIsScopedCurrentAndRoutesExistingOwners()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 960);
+        var tiles = Nodes(library.Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, tiles[0].Id));
+        var sheet = Snapshot(widget, 961);
+        Assert.AreEqual(GameLauncherActionSheet.ScopeId, sheet.ActiveInputScopeId);
+        Assert.AreEqual(GameLauncherActionSheet.InitialFocusId, sheet.InitialFocusId);
+        var sheetRoot = Nodes(sheet.Root).Single(node =>
+            node.Id == "game-launcher.actions.sheet");
+        Assert.AreEqual(GameLauncherActionSheet.ScopeId, sheetRoot.InputScopeId);
+        Assert.AreEqual(GameLauncherActionSheet.CloseAction,
+            sheetRoot.Shortcuts.Single(shortcut =>
+                shortcut.Button == ControllerButton.B).ActionId);
+        Assert.AreEqual("Add favorite", Nodes(sheet.Root).Single(node =>
+            node.Id == GameLauncherActionSheet.InitialFocusId).Text);
+        Assert.AreEqual("Hide game", Nodes(sheet.Root).Single(node =>
+            node.Id == "game-launcher.actions.hide").Text);
+        Assert.AreEqual("Choose another variant", Nodes(sheet.Root).Single(node =>
+            node.Id == "game-launcher.actions.variant").Text);
+        Assert.AreEqual("Refresh Steam source", Nodes(sheet.Root).Single(node =>
+            node.Id == "game-launcher.actions.refresh-source").Text);
+        Assert.IsFalse(Nodes(sheet.Root).Any(node =>
+            node.ActionId is "game-launcher.launch" or "game-launcher.details.open"));
+
+        await widget.OnActionAsync(new("game-launcher.favorite",
+            GameLauncherActionSheet.InitialFocusId));
+        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains("saved-00000"));
+        Assert.AreEqual("Remove favorite", Nodes(Snapshot(widget, 962).Root).Single(node =>
+            node.Id == GameLauncherActionSheet.InitialFocusId).Text);
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId, ControllerButton.B,
+            ControllerEventPhase.Pressed, InputScopeId: GameLauncherActionSheet.ScopeId));
+        var returned = Snapshot(widget, 963);
+        Assert.AreEqual(tiles[0].Id, returned.InitialFocusId);
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, tiles[0].Id));
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.actions.variant"));
+        Assert.IsFalse(Nodes(Snapshot(widget, 964).Root).Any(node =>
+            node.Id == "game-launcher.actions.sheet"));
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, tiles[1].Id));
+        Assert.AreEqual("Group with selected game", Nodes(Snapshot(widget, 965).Root)
+            .Single(node => node.Id == "game-launcher.actions.variant").Text);
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.actions.variant"));
+        Assert.AreEqual(1, widget.Organization.VariantGroups.Count);
+        var grouped = Snapshot(widget, 966);
+        Assert.AreEqual("Choose another variant", Nodes(grouped.Root)
+            .Single(node => node.Id == "game-launcher.actions.variant").Text);
+        var prefer = Nodes(grouped.Root).Single(node =>
+            node.Id == "game-launcher.actions.prefer");
+        Assert.IsTrue(prefer.Text is "Prefer variant" or "Preferred variant");
+        Assert.AreEqual(prefer.Text == "Preferred variant", prefer.IsDisabled is true);
+
+        var queriesBefore = host.Queries.Count;
+        await widget.OnActionAsync(new(GameLauncherActionSheet.RefreshSourceAction,
+            "game-launcher.actions.refresh-source"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "action-sheet source refresh");
+        Assert.IsTrue(host.Queries.Count > queriesBefore);
+        Assert.IsFalse(Nodes(Snapshot(widget, 967).Root).Any(node =>
+            node.Id == "game-launcher.actions.sheet"));
+
+        var currentSecond = Nodes(Snapshot(widget, 968).Root).Single(node =>
+            node.Id == tiles[1].Id);
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, currentSecond.Id));
+        await widget.OnActionAsync(new("game-launcher.hide", "game-launcher.actions.hide"));
+        Assert.IsTrue(widget.Organization.ExcludedSavedIds.Contains("saved-00001"));
+        Assert.IsFalse(Nodes(Snapshot(widget, 969).Root).Any(node =>
+            node.Id == "game-launcher.actions.sheet"));
         await Background(widget);
     }
 
@@ -2243,6 +2325,19 @@ public sealed class GameLauncherTests
             node.Id == "game-launcher.details.source").Text!, "Windows");
         Assert.AreEqual("game-launcher.details.launch", details.InitialFocusId);
 
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction,
+            "game-launcher.details.launch"));
+        var detailSheet = Snapshot(widget, 411);
+        Assert.AreEqual(GameLauncherActionSheet.ScopeId, detailSheet.ActiveInputScopeId);
+        StringAssert.Contains(Nodes(detailSheet.Root).Single(node =>
+            node.Id == "game-launcher.actions.sheet.title").Text!, "Shared title");
+        Assert.IsFalse(Nodes(detailSheet.Root).Any(node =>
+            node.ActionId == "game-launcher.details.open"));
+        await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+        Assert.IsTrue(Nodes(Snapshot(widget, 412).Root).Any(node =>
+            node.Id == "game-launcher.details.root"));
+
         await widget.OnActionAsync(new("game-launcher.favorite",
             "game-launcher.details.favorite"));
         Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains(
@@ -2295,7 +2390,7 @@ public sealed class GameLauncherTests
             shortcut.ActionId == "game-launcher.favorite"));
         Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
             shortcut.Button == ControllerButton.Y &&
-            shortcut.ActionId == "game-launcher.hide"));
+            shortcut.ActionId == GameLauncherActionSheet.OpenAction));
         Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
             shortcut.Button == ControllerButton.LeftBumper &&
             shortcut.ActionId == "game-launcher.variant"));

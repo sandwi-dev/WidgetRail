@@ -324,7 +324,7 @@ internal static class GameLauncherPresentation
                 hintItems.Add(UI.ControllerHint(
                     ControllerButton.X, "Favorite", "game-launcher.hint.favorite"));
                 hintItems.Add(UI.ControllerHint(
-                    ControllerButton.Y, "Hide selected", "game-launcher.hint.hide"));
+                    ControllerButton.Y, "Game actions", "game-launcher.hint.actions"));
             }
             if (rail.PageBumpers)
             {
@@ -687,7 +687,7 @@ internal static class GameLauncherPresentation
             tile = tile
                 .Shortcut(ControllerButton.View, actionId: "game-launcher.details.open")
                 .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
-                .Shortcut(ControllerButton.Y, actionId: "game-launcher.hide");
+                .Shortcut(ControllerButton.Y, actionId: GameLauncherActionSheet.OpenAction);
         if (interactive && resolved && !launching && !pageBumpers)
             tile = tile
                 .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")

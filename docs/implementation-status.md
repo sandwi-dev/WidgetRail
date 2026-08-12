@@ -3687,3 +3687,12 @@ was made.
    the Web Playback SDK local-audio host as a separate later security and
    performance slice.
 10. Run the documented controller/game/presentation/anti-cheat matrix.
+### Game Launcher scoped action sheet (DLV-151)
+
+The focused game's Y shortcut now opens one bounded SDK `ActionSheet` scope.
+Its immutable projection reuses the existing details and organization state for
+current favorite, hide, variant, preferred-variant, and source-refresh actions.
+B returns to the existing Library or details owner, while View remains the sole
+full-details route. The sheet adds no launch, content, or provider authority.
+
+Focused Release coverage passes Game Launcher 70/70.

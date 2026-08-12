@@ -188,7 +188,8 @@ neighbor or private state. Process/window/path identity never enters the worker,
 private state, or launch path, and a denied or unavailable observation does not
 disable the normal complete-library route.
 
-Y hides the focused current game by its exact opaque SavedId. **Hidden** opens a
+Y opens one scoped game-action sheet for the focused current game's exact opaque
+SavedId. Its **Hide game** action adds that identity to **Hidden**, which opens a
 bounded nested route containing at most 32 exclusions, each with an explicit
 **Restore** action. Current rows may show refreshed display and artwork, while a
 missing row keeps only its sanitized display projection; neither kind can launch
@@ -207,7 +208,10 @@ the same fixed non-authorizing slice. Search, source, favorites, and display sor
 filter the fixed sections without expanding provider queries or caching the
 complete library.
 
-X toggles the focused current game as a favorite and Y hides it. LB starts an explicit variant
+X toggles the focused current game as a favorite. Y opens the controller-complete
+action sheet with the current favorite toggle, hide action, variant step,
+preferred-variant state, and source refresh. It does not duplicate View's full
+details route or expose a content operation. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating
 the same pair removes the second tile from that group. RB marks a member of an
 existing group as preferred. Recent-first order takes precedence while enabled;

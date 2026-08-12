@@ -44,6 +44,7 @@ public sealed class GameLauncherWidget : Widget
     private GameLauncherFixedRows _fixedRows = GameLauncherFixedRows.Empty;
     private IReadOnlyList<WidgetAppLibrarySource> _sourceObservations = [];
     private GameLauncherDetailsSelection? _detailsSelection;
+    private GameLauncherDetailsSelection? _actionSheetSelection;
     private string? _runningRevision;
     private long _fixedRowsRevision;
     private string? _pendingRestoredSavedId;
@@ -95,6 +96,7 @@ public sealed class GameLauncherWidget : Widget
     {
         GameLauncherPresentationState state;
         GameLauncherDetailsState? details = null;
+        GameLauncherDetailsState? actionSheet = null;
         bool preferLibraryContentFocus;
         var navigation = _navigation.Value;
         lock (_gate)
@@ -105,19 +107,32 @@ public sealed class GameLauncherWidget : Widget
                     _fixedRows, _organization, _launchingSavedId, _launchStates,
                     _status, _variantSeedSavedId, _organizationBusy,
                     LifecycleState == WidgetLifecycleState.Interactive);
+            if (_actionSheetSelection is { } actionSelection)
+                actionSheet = GameLauncherDetailsPolicy.Project(actionSelection,
+                    _library.Snapshot, _fixedRows, _organization, _launchingSavedId,
+                    _launchStates, _status, _variantSeedSavedId, _organizationBusy,
+                    LifecycleState == WidgetLifecycleState.Interactive);
             preferLibraryContentFocus = _preferLibraryContentFocus;
         }
-        var view = details is null
+        var view = actionSheet is not null
+            ? GameLauncherActionSheet.Render(actionSheet)
+            : details is null
             ? GameLauncherPresentation.Render(state)
             : GameLauncherDetailsPresentation.Render(details);
-        var root = _navigation.Scope(navigation, (StackElement)view.Root);
+        var root = actionSheet is not null
+            ? view.Root
+            : _navigation.Scope(navigation, (StackElement)view.Root);
         return view with
         {
             Root = root,
-            InitialFocusId = preferLibraryContentFocus
+            InitialFocusId = actionSheet is not null
+                ? view.InitialFocusId
+                : preferLibraryContentFocus
                 ? view.InitialFocusId
                 : navigation.InitialFocusId ?? view.InitialFocusId,
-            ActiveInputScopeId = navigation.InputScopeId,
+            ActiveInputScopeId = actionSheet is not null
+                ? GameLauncherActionSheet.ScopeId
+                : navigation.InputScopeId,
         };
     }
 
@@ -147,6 +162,7 @@ public sealed class GameLauncherWidget : Widget
             _fixedRows = GameLauncherFixedRows.Empty;
             _sourceObservations = [];
             _detailsSelection = null;
+            _actionSheetSelection = null;
             _fixedRowsRevision++;
             _status = "Game Launcher is paused";
         }
@@ -166,6 +182,16 @@ public sealed class GameLauncherWidget : Widget
     {
         ArgumentNullException.ThrowIfNull(action);
         SelectHeroForSource(action.SourceElementId);
+        if (ActionSheetIsOpen() && action.ActionId is not
+            (GameLauncherActionSheet.CloseAction or
+             GameLauncherActionSheet.RefreshSourceAction or
+             "game-launcher.favorite" or "game-launcher.hide" or
+             "game-launcher.variant" or "game-launcher.prefer")) return;
+        if (action.ActionId == GameLauncherActionSheet.CloseAction)
+        {
+            CloseActionSheet();
+            return;
+        }
         var routeBeforeBack = _navigation.Value.Route;
         if (_navigation.TryHandleBack(action, action.SourceElementId))
         {
@@ -186,6 +212,16 @@ public sealed class GameLauncherWidget : Widget
         }
         switch (action.ActionId)
         {
+            case GameLauncherActionSheet.OpenAction:
+                OpenActionSheet(action.SourceElementId);
+                return;
+            case GameLauncherActionSheet.RefreshSourceAction:
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    ResolveActionSource(action.SourceElementId) is null) return;
+                CloseActionSheet();
+                Operations.Cancel("game-launcher.launch-lifecycle");
+                _ = _library.Refresh();
+                return;
             case "game-launcher.details.open":
                 OpenDetails(action.SourceElementId);
                 return;
@@ -218,9 +254,12 @@ public sealed class GameLauncherWidget : Widget
                         GameLauncherRoute.Details) ||
                     ResolveActionSource(action.SourceElementId) is not { } hideSource) return;
                 if (await SetHiddenAsync(hideSource, hidden: true, cancellationToken)
-                        .ConfigureAwait(false) &&
-                    _navigation.Value.Route == GameLauncherRoute.Details)
-                    CloseDetails(preferLibraryContentFocus: true);
+                        .ConfigureAwait(false))
+                {
+                    CloseActionSheet();
+                    if (_navigation.Value.Route == GameLauncherRoute.Details)
+                        CloseDetails(preferLibraryContentFocus: true);
+                }
                 return;
             case "game-launcher.restore":
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -233,8 +272,11 @@ public sealed class GameLauncherWidget : Widget
                 if (ResolveActionSource(action.SourceElementId) is { } variantSource)
                 {
                     var detailsRoute = _navigation.Value.Route == GameLauncherRoute.Details;
+                    var sheetOpen = ActionSheetIsOpen();
                     var result = await ToggleVariantAsync(variantSource, cancellationToken)
                         .ConfigureAwait(false);
+                    if (sheetOpen && result == GameLauncherVariantActionResult.Started)
+                        CloseActionSheet();
                     if (detailsRoute && result == GameLauncherVariantActionResult.Started &&
                         _navigation.Value.Route == GameLauncherRoute.Details)
                         CloseDetails();
@@ -1275,7 +1317,7 @@ public sealed class GameLauncherWidget : Widget
         GameLauncherFixedRows fixedRows;
         lock (_gate)
         {
-            selection = _detailsSelection;
+            selection = _actionSheetSelection ?? _detailsSelection;
             fixedRows = _fixedRows;
         }
         return GameLauncherDetailsPolicy.ResolveActionSource(
@@ -1313,6 +1355,51 @@ public sealed class GameLauncherWidget : Widget
             _preferLibraryContentFocus = preferLibraryContentFocus;
         }
         _navigation.Back();
+    }
+
+    private void OpenActionSheet(string sourceElementId)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive ||
+            _navigation.Value.Route is not (GameLauncherRoute.Library or
+                GameLauncherRoute.Details)) return;
+        GameLauncherDetailsSelection? selection;
+        if (_navigation.Value.Route == GameLauncherRoute.Details)
+        {
+            lock (_gate) selection = _detailsSelection;
+        }
+        else
+        {
+            GameLauncherFixedRows fixedRows;
+            lock (_gate) fixedRows = _fixedRows;
+            selection = GameLauncherDetailsPolicy.Select(
+                sourceElementId, _library.Snapshot, fixedRows);
+        }
+        if (selection is null) return;
+        lock (_gate)
+        {
+            _actionSheetSelection = selection;
+            _heroSavedId = selection.SavedId;
+        }
+        Invalidate();
+    }
+
+    private bool ActionSheetIsOpen()
+    {
+        lock (_gate) return _actionSheetSelection is not null;
+    }
+
+    private void CloseActionSheet()
+    {
+        var changed = false;
+        lock (_gate)
+        {
+            if (_actionSheetSelection is not null)
+            {
+                _actionSheetSelection = null;
+                changed = true;
+            }
+        }
+        if (changed) Invalidate();
     }
 
     private GameLauncherDisplayItem? DisplayForSavedLocked(string savedId) =>

@@ -124,7 +124,9 @@ internal static class GameLauncherDetailsPolicy
         GameLauncherFixedRows fixedRows)
     {
         if (selection is null || !sourceElementId.StartsWith(
-                "game-launcher.details.", StringComparison.Ordinal))
+                "game-launcher.details.", StringComparison.Ordinal) &&
+            !sourceElementId.StartsWith(
+                "game-launcher.actions.", StringComparison.Ordinal))
             return sourceElementId;
         return collection.Items.Concat(fixedRows.All).Any(item =>
             item.Key == selection.Key && string.Equals(item.Value.SavedId,
@@ -189,10 +191,10 @@ internal static class GameLauncherDetailsPresentation
                     UI.Row("game-launcher.details.hints",
                         UI.ControllerHint(ControllerButton.A, "Launch", "game-launcher.details.hint.launch"),
                         UI.ControllerHint(ControllerButton.X, "Favorite", "game-launcher.details.hint.favorite"),
-                        UI.ControllerHint(ControllerButton.Y, "Hide", "game-launcher.details.hint.hide"))))
+                        UI.ControllerHint(ControllerButton.Y, "Game actions", "game-launcher.details.hint.actions"))))
             .Classes("game-launcher-scroll", "game-launcher-main")
             .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
-            .Shortcut(ControllerButton.Y, actionId: "game-launcher.hide");
+            .Shortcut(ControllerButton.Y, actionId: GameLauncherActionSheet.OpenAction);
         if (!state.Selection.PageBumpers)
             scroll = scroll
                 .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
