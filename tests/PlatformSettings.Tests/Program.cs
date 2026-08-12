@@ -20,6 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme version mutation is exact protected and bounded", ThemeVersionMutation),
     ("Theme layers apply platform widget and user precedence", ThemeLayerPrecedence),
     ("Invalid reload retains the last valid theme and revision", InvalidReloadRetainsLastGood),
+    ("Launcher experience packages are strict bounded and catalog-isolated", LauncherExperienceCatalogTests.Run),
     ("Built-in theme gives CodeText bounded Windows monospace wrapping", CodeTextThemeTests.Run),
 };
 

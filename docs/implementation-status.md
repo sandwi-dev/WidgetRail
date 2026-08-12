@@ -6,6 +6,19 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-131 adds a launcher-only `LauncherExperienceCatalog` without changing global
+`ThemeCatalog` semantics. Its strict schema accepts only the eight documented
+host-owned launcher slots, bounded region/grid/stack/overlay/inset recipes,
+closed host parameters, launcher-scoped GBSS, and sealed local static images.
+Duplicate/unknown fields, slot reuse, missing critical slots, overlap, geometry
+and focus/Back failures, remote or executable/archive content, unsafe paths,
+reparse points, excessive files/bytes/dimensions, and cross-widget selectors
+fail with stable path-specific diagnostics. Four code-owned recovery descriptors
+cover hero rail, cover wall, carousel, and compact grid; the bottom-rail and
+left-rail/glass-panel reference structures validate through the same recipe
+rules. Focused Platform Settings Release evidence passes 17/17, including the
+separate catalog, deterministic content digest, and invalid-selection recovery.
+
 DLV-101 removes the arbitrary private-worker 256 MiB and one-active-process
 ceilings while preserving the security and transport boundary. Every Windows
 worker is still created suspended, assigned before resume to one non-breakaway
