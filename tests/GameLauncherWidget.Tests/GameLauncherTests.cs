@@ -1861,6 +1861,303 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task ViewOpensExactDetailsAndBackRestoresOriginTile()
+    {
+        var host = new FakeHost(2)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                DisplayName = "Shared title",
+                SourceAttribution = index == 0 ? "Steam" : "Windows",
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 40);
+        var tiles = Nodes(library.Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+
+        Assert.IsTrue(tiles[1].Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.View &&
+            shortcut.ActionId == "game-launcher.details.open"));
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+        var details = Snapshot(widget, 41);
+        Assert.AreEqual("Shared title", Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.title").Text);
+        StringAssert.Contains(Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.source").Text!, "Windows");
+        Assert.AreEqual("game-launcher.details.launch", details.InitialFocusId);
+
+        await widget.OnActionAsync(new("game-launcher.favorite",
+            "game-launcher.details.favorite"));
+        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains(
+            "saved-00001", StringComparer.Ordinal));
+
+        await widget.OnActionAsync(new("game-launcher.launch",
+            "game-launcher.details.launch"));
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
+
+        var afterLaunch = Snapshot(widget, 42);
+        var collectionRevision = widget.Collection.Revision;
+        var collectionAnchor = widget.Collection.Anchor;
+        var back = afterLaunch.Root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.B);
+        await widget.OnActionAsync(new(back.ActionId, "game-launcher.details.launch",
+            ControllerButton.B, ControllerEventPhase.Pressed,
+            InputScopeId: afterLaunch.ActiveInputScopeId));
+        var returned = Snapshot(widget, 43);
+        Assert.AreEqual(tiles[1].Id, returned.InitialFocusId);
+        Assert.IsTrue(Nodes(returned.Root).Any(node => node.Id == tiles[1].Id));
+        Assert.AreEqual(collectionRevision, widget.Collection.Revision);
+        Assert.AreEqual(collectionAnchor, widget.Collection.Anchor);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsPreserveContextShortcutsAndFailClosedWhenIdentityDisappears()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 44);
+        var tile = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        Assert.IsTrue(tile.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.View &&
+            shortcut.ActionId == "game-launcher.details.open"));
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        var details = Snapshot(widget, 45);
+        var detailScroll = Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.scroll");
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.X &&
+            shortcut.ActionId == "game-launcher.favorite"));
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.Y &&
+            shortcut.ActionId == "game-launcher.hide"));
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftBumper &&
+            shortcut.ActionId == "game-launcher.variant"));
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightBumper &&
+            shortcut.ActionId == "game-launcher.prefer"));
+
+        host.QueryHandler = (_, _) => ValueTask.FromResult(
+            new WidgetAppLibraryPage([], null, null, "removed"));
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "details disappearance refresh");
+        var unavailable = Snapshot(widget, 46);
+        StringAssert.Contains(Nodes(unavailable.Root).Single(node =>
+            node.Id == "game-launcher.details.availability").Text!, "Unavailable");
+        Assert.IsTrue(Nodes(unavailable.Root).Single(node =>
+            node.Id == "game-launcher.details.launch").IsDisabled);
+        await widget.OnActionAsync(new("game-launcher.launch",
+            "game-launcher.details.launch"));
+        Assert.AreEqual(0, host.Launches.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task PagedDetailsDoNotReplaceLibraryBumperSemantics()
+    {
+        var host = new FakeHost(LauncherWidget.PageSize + 1);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 47);
+        var tile = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch");
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        var details = Snapshot(widget, 48);
+        var scroll = Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.scroll");
+        Assert.IsFalse(scroll.Shortcuts.Any(shortcut => shortcut.Button is
+            ControllerButton.LeftBumper or ControllerButton.RightBumper));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsVariantSelectionNamesEachExactStepAndReturnsForSecondChoice()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 49);
+        var tiles = Nodes(library.Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[0].Id));
+        var firstDetails = Snapshot(widget, 50);
+        Assert.AreEqual("Choose another variant", Nodes(firstDetails.Root).Single(node =>
+            node.Id == "game-launcher.details.variant").Text);
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.details.variant"));
+
+        var returned = Snapshot(widget, 51);
+        Assert.IsFalse(Nodes(returned.Root).Any(node =>
+            node.Id == "game-launcher.details.root"));
+        Assert.AreEqual(tiles[0].Id, returned.InitialFocusId);
+        StringAssert.Contains(Nodes(returned.Root).Single(node =>
+            node.Id == "game-launcher.status").Text!,
+            "Variant selection started with Game 00000");
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+        var secondDetails = Snapshot(widget, 52);
+        Assert.AreEqual("Group with selected game", Nodes(secondDetails.Root).Single(node =>
+            node.Id == "game-launcher.details.variant").Text);
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.details.variant"));
+
+        var group = widget.Organization.VariantGroups.Single();
+        CollectionAssert.AreEquivalent(new[] { "saved-00000", "saved-00001" },
+            group.SavedIds.ToArray());
+        StringAssert.Contains(Nodes(Snapshot(widget, 53).Root).Single(node =>
+            node.Id == "game-launcher.details.feedback").Text!,
+            "Grouped Game 00000 with Game 00001");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsVariantRemovalAndSameIdentityRemainExplicit()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tiles = Nodes(Snapshot(widget, 54).Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[0].Id));
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[1].Id));
+        Assert.AreEqual(1, widget.Organization.VariantGroups.Count);
+
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[0].Id));
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+        var removal = Snapshot(widget, 55);
+        Assert.AreEqual("Remove from variant group", Nodes(removal.Root).Single(node =>
+            node.Id == "game-launcher.details.variant").Text);
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.details.variant"));
+        Assert.AreEqual(0, widget.Organization.VariantGroups.Count);
+        StringAssert.Contains(Nodes(Snapshot(widget, 56).Root).Single(node =>
+            node.Id == "game-launcher.details.feedback").Text!,
+            "Removed Game 00001 from its variant group");
+
+        var details = Snapshot(widget, 57);
+        var back = details.Root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.B);
+        await widget.OnActionAsync(new(back.ActionId, "game-launcher.details.variant",
+            ControllerButton.B, ControllerEventPhase.Pressed,
+            InputScopeId: details.ActiveInputScopeId));
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[0].Id));
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[0].Id));
+        var same = Snapshot(widget, 58);
+        var sameAction = Nodes(same.Root).Single(node =>
+            node.Id == "game-launcher.details.variant");
+        Assert.AreEqual("Choose a different game", sameAction.Text);
+        Assert.IsTrue(sameAction.IsDisabled);
+        await widget.OnActionAsync(new("game-launcher.variant", sameAction.Id));
+        StringAssert.Contains(Nodes(Snapshot(widget, 59).Root).Single(node =>
+            node.Id == "game-launcher.details.feedback").Text!,
+            "Choose a different game");
+        Assert.AreEqual(0, widget.Organization.VariantGroups.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task StaleVariantSeedFailsClosedAndHideClosesOnlyAfterCommit()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tiles = Nodes(Snapshot(widget, 60).Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[0].Id));
+        host.QueryHandler = (_, _) => ValueTask.FromResult(new WidgetAppLibraryPage(
+            [Item(1)], null, null, "second-only"));
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "stale seed refresh");
+        var second = Nodes(Snapshot(widget, 61).Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        await widget.OnActionAsync(new("game-launcher.details.open", second.Id));
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.details.variant"));
+        Assert.AreEqual(0, widget.Organization.VariantGroups.Count);
+        StringAssert.Contains(Nodes(Snapshot(widget, 62).Root).Single(node =>
+            node.Id == "game-launcher.details.feedback").Text!,
+            "first selected game is no longer available");
+
+        await widget.OnActionAsync(new("game-launcher.hide", "game-launcher.details.hide"));
+        Assert.IsTrue(widget.Organization.ExcludedSavedIds.Contains(
+            "saved-00001", StringComparer.Ordinal));
+        Assert.IsFalse(Nodes(Snapshot(widget, 63).Root).Any(node =>
+            node.Id == "game-launcher.details.root"));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsVariantConflictReplaysExactPairAndPreservesConcurrentState()
+    {
+        var privateState = new WidgetTestPrivateState();
+        var host = new FakeHost(3, privateState);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tiles = Nodes(Snapshot(widget, 64).Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[0].Id));
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+
+        var concurrent = widget.Organization with
+        {
+            FavoriteSavedIds = ["saved-00002"],
+        };
+        privateState.SimulateExternalWriteJson(JsonSerializer.Serialize(concurrent));
+        await widget.OnActionAsync(new("game-launcher.variant",
+            "game-launcher.details.variant"));
+
+        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains(
+            "saved-00002", StringComparer.Ordinal));
+        CollectionAssert.AreEquivalent(new[] { "saved-00000", "saved-00001" },
+            widget.Organization.VariantGroups.Single().SavedIds.ToArray());
+        StringAssert.Contains(Nodes(Snapshot(widget, 65).Root).Single(node =>
+            node.Id == "game-launcher.details.feedback").Text!, "Grouped");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CanceledDetailsVariantDoesNotClaimACommittedGroup()
+    {
+        var host = new FakeHost(2);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tiles = Nodes(Snapshot(widget, 66).Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+        await widget.OnActionAsync(new("game-launcher.variant", tiles[0].Id));
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await widget.OnActionAsync(new("game-launcher.variant",
+                "game-launcher.details.variant"), canceled.Token));
+
+        Assert.AreEqual(0, widget.Organization.VariantGroups.Count);
+        StringAssert.Contains(Nodes(Snapshot(widget, 67).Root).Single(node =>
+            node.Id == "game-launcher.details.feedback").Text!,
+            "Organization change was not saved");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task AdjacentFailureRetainsLastGoodWindow()
     {
         var host = new FakeHost(300);

@@ -187,6 +187,85 @@ public sealed class GameLauncherLayoutTests
             ".game-launcher-footer { flex-shrink: 0; flex-wrap: wrap;");
     }
 
+    [TestMethod, Timeout(30_000)]
+    public void DetailsProjectionIsBoundedDeterministicAndPreservesLongLabels()
+    {
+        var title = new string('T', 96);
+        var source = new string('S', 64);
+        var item = GameLauncherItem.From(new WidgetAppLibraryItem(
+            "app-details", title, WidgetAppLibraryKind.Game)
+        {
+            SavedId = "saved-details",
+            SourceAttribution = source,
+        });
+        var selection = new GameLauncherDetailsSelection(
+            item.Value.SavedId, item.Key,
+            GameLauncherIdentity.FocusId("grid", item.Key),
+            item.Value.DisplayName, item.Value.SourceAttribution,
+            PageBumpers: false);
+        var organization = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion,
+            [new(item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution)])
+        {
+            FavoriteSavedIds = [item.Value.SavedId],
+            VariantGroups = [new("variant.details",
+                [item.Value.SavedId, "saved-other"], item.Value.SavedId)],
+        };
+        var collection = Snapshot(WidgetPagedResourceStatus.Ready, [item]);
+        var state = GameLauncherDetailsPolicy.Project(selection, collection,
+            GameLauncherFixedRows.Empty, organization, null,
+            new Dictionary<string, GameLauncherLaunchState>(), "Ready", null,
+            false, true);
+        var view = GameLauncherDetailsPresentation.Render(state);
+        var first = new PresentationWidget(view).RenderSnapshot("details.layout", 1);
+        var second = new PresentationWidget(view).RenderSnapshot("details.layout", 2);
+
+        Assert.AreEqual(JsonSerializer.Serialize(first.Root),
+            JsonSerializer.Serialize(second.Root));
+        Assert.AreEqual(title, Nodes(first.Root).Single(node =>
+            node.Id == "game-launcher.details.title").Text);
+        StringAssert.Contains(Nodes(first.Root).Single(node =>
+            node.Id == "game-launcher.details.source").Text!, source);
+        Assert.AreEqual(1, Nodes(first.Root).Count(node =>
+            node.Kind == ViewNodeKind.Scroll && node.ScrollAxis == ScrollAxis.Vertical));
+        Assert.IsLessThan(40, Nodes(first.Root).Count());
+        Assert.AreEqual(WidgetSurfaceMode.Wide, first.Surface?.Mode);
+        foreach (var profile in new[]
+                 {
+                     (Name: "compact", Width: 420, Height: 340, Scale: 1.0),
+                     (Name: "standard", Width: 640, Height: 480, Scale: 1.25),
+                     (Name: "wide-150", Width: 980, Height: 700, Scale: 1.5),
+                 })
+        {
+            var nodes = Nodes(first.Root).ToArray();
+            Assert.IsTrue(nodes.Any(node =>
+                node.Id == "game-launcher.details.launch" && node.IsDisabled is not true),
+                $"{profile.Name}: launch is not reachable at {profile.Scale:P0}.");
+            Assert.IsTrue(nodes.Any(node =>
+                node.Id == "game-launcher.details.variant" &&
+                node.Text == "Choose another variant"),
+                $"{profile.Name}: variant selection is not semantically reachable.");
+            Assert.AreEqual(1, nodes.Count(node => node.Id ==
+                "game-launcher.details.scroll"),
+                $"{profile.Name}: details scroll ownership changed.");
+        }
+
+        var busyState = GameLauncherDetailsPolicy.Project(selection, collection,
+            GameLauncherFixedRows.Empty, organization, item.Value.SavedId,
+            new Dictionary<string, GameLauncherLaunchState>(), "Pending",
+            item.Value.SavedId, true, true);
+        var busy = new PresentationWidget(
+            GameLauncherDetailsPresentation.Render(busyState))
+            .RenderSnapshot("details.busy", 3);
+        Assert.IsTrue(Nodes(busy.Root).Single(node =>
+            node.Id == "game-launcher.details.launch").IsBusy);
+        Assert.IsTrue(Nodes(busy.Root).Where(node => node.ActionId is
+                "game-launcher.launch" or "game-launcher.favorite" or
+                "game-launcher.hide" or "game-launcher.variant" or
+                "game-launcher.prefer")
+            .All(node => node.IsDisabled is true));
+    }
+
     private static GameLauncherPresentationState State(
         WidgetCursorResourceSnapshot<GameLauncherItem> collection,
         GameLauncherPrivateState organization,

@@ -28,6 +28,7 @@ internal sealed record GameLauncherFixedRows(
 internal enum GameLauncherRoute
 {
     Library,
+    Details,
     AddGames,
     Running,
     Hidden,
@@ -40,6 +41,13 @@ internal enum GameLauncherLaunchState
     Running,
     Failed,
     Ended,
+}
+
+internal enum GameLauncherVariantActionResult
+{
+    Rejected,
+    Started,
+    Completed,
 }
 
 internal static class GameLauncherIdentity
