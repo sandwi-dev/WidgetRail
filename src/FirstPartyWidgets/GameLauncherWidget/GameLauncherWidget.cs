@@ -906,7 +906,7 @@ public sealed class GameLauncherWidget : Widget
                 .Select(item => GameLauncherTitlePolicy.Project(organization, item))
                 .Where(item => MatchesFixedQuery(item, query))
                 .Select(GameLauncherItem.From)
-                .Take(GameLauncherPrivateState.MaximumTitleOverrides)
+                .Take(WidgetAppLibraryService.MaximumSavedItems)
                 .ToArray();
             rawFixedRows = new(recent, manual,
                 titleMatches.Select(item => resolvedBySavedId[item.Value.SavedId])

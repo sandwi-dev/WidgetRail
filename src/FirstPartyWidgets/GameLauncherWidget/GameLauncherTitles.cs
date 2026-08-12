@@ -25,7 +25,7 @@ internal static class GameLauncherTitlePolicy
     {
         reset = false;
         if (overrides is null ||
-            overrides.Count > GameLauncherPrivateState.MaximumTitleOverrides)
+            overrides.Count > GameLauncherPrivateState.MaximumTitleValidationItems)
             return Reset(out reset);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var result = new GameLauncherTitleOverride[overrides.Count];
@@ -63,9 +63,6 @@ internal static class GameLauncherTitlePolicy
         var clear = normalized is null || string.Equals(
             normalized, providerDisplay.DisplayName, StringComparison.Ordinal);
         if (clear && existing is null || !clear && existing?.Title == normalized)
-            return GameLauncherStateMutation.Reject(state);
-        if (!clear && existing is null &&
-            state.TitleOverrides.Count >= GameLauncherPrivateState.MaximumTitleOverrides)
             return GameLauncherStateMutation.Reject(state);
         var retained = GameLauncherOrganizationPolicy.RetainDisplay(state, providerDisplay);
         if (!retained.Items.Any(item => item.SavedId == providerDisplay.SavedId))

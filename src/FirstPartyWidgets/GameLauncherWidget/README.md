@@ -68,10 +68,13 @@ when possible. Category policy/projection is immutable and separate from the
 widget lifecycle adapter. Missing members retain sanitized display only; Play
 always requires fresh exact provider resolution.
 
-The game action sheet also opens one scoped **Edit title** TextEntry. Its bounded
-exact-SavedId override changes presentation/search only, retains the provider
-title separately for recovery, and can be removed with **Reset title**. Search
-resolves an override-only match by exact SavedId; launch authority remains the
+The game action sheet also opens one scoped **Edit title** TextEntry. Its
+96-character-bounded exact-SavedId override changes presentation/search only,
+retains the provider title separately for recovery, and can be removed with
+**Reset title**. Override capacity is governed by the shared encoded 64-KiB
+private-state boundary rather than a small library-count cap; generous validation
+ceilings bound malformed input work. Search resolves at most one service-bounded
+batch of override-only matches by exact SavedId; launch authority remains the
 current provider item and never consumes the custom title.
 
 Variant organization remains the existing explicit two-game policy. Details

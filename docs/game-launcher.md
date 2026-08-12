@@ -229,6 +229,11 @@ artwork, capability, launch identity, and every other variant remain unchanged.
 **Reset title** removes only that exact override and immediately restores the
 current provider title. Override-only search matches are resolved through the
 same bounded exact-SavedId capability before display or launch.
+The number of retained overrides is governed by the shared encoded 64-KiB
+private-state boundary, not a prototype title-count cap. Validation work remains
+finite, while search, resolution, and each current presentation stay within the
+existing service and render-window bounds. Invalid title entries reset the title
+slice only; favorites, hidden/recent rows, variants, and categories remain intact.
 
 **Categories** provides All Games plus practical local named collections. Names
 normalize whitespace and Unicode compatibility form, are limited to 32

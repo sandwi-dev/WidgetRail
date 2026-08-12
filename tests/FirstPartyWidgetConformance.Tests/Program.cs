@@ -875,6 +875,53 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
         await client.StopAsync();
     }
+
+    var largeItems = Enumerable.Range(0, 257).Select(index => new
+    {
+        SavedId = $"saved-retained-{index:D3}",
+        DisplayName = $"Retained {index:D3}",
+        SourceAttribution = "Installed",
+    }).ToArray();
+    var largeState = JsonSerializer.SerializeToUtf8Bytes(new
+    {
+        Version = 5,
+        Items = largeItems,
+        FavoriteSavedIds = Array.Empty<string>(),
+        VariantGroups = Array.Empty<object>(),
+        RecentSavedIds = Array.Empty<string>(),
+        ManualSavedIds = Array.Empty<string>(),
+        ExcludedSavedIds = Array.Empty<string>(),
+        Categories = Array.Empty<object>(),
+        TitleOverrides = largeItems.Select((item, index) => new
+        {
+            item.SavedId,
+            Title = $"Custom {index:D3}",
+        }).ToArray(),
+        ExperienceId = "hero-rail",
+    });
+    Assert.True(largeState.Length <= CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
+        "The 257-title installed fixture exceeded the shared private-state boundary.");
+    var currentState = await backend.ReadPrivateStateAsync(identity, CancellationToken.None);
+    _ = await backend.WritePrivateStateAsync(identity, new(
+        Convert.ToBase64String(largeState), currentState.Revision), CancellationToken.None);
+
+    await using (var client = CreateClient())
+    {
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+        _ = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        var retained = await backend.ReadPrivateStateAsync(identity, CancellationToken.None);
+        using var document = JsonDocument.Parse(Convert.FromBase64String(
+            retained.CanonicalJsonBase64 ?? throw new InvalidOperationException(
+                "The installed worker cleared the large retained title state.")));
+        Assert.Equal(257, document.RootElement.GetProperty("TitleOverrides")
+            .GetArrayLength());
+        Assert.True(Convert.FromBase64String(retained.CanonicalJsonBase64!).Length <=
+            CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
+            "The installed worker persisted an oversized title state.");
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+        await client.StopAsync();
+    }
 }
 
 static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)

@@ -3831,3 +3831,22 @@ an exact local pack with recipe, GBSS, and sealed art; switches global
 appearance; atomically replaces the exact version; retains it after removal
 with one diagnostic; and activates built-in recovery. Its inherited DLV-148
 motion window remains the separate timing/degradation assertion.
+
+### Byte-budget-driven title override capacity (DLV-159)
+
+The prototype 32-title ceiling is removed. Exact-SavedId title overrides and
+their retained sanitized display rows now use generous 1,024-entry validation
+work ceilings, while the existing encoded 64-KiB private-state limit remains the
+actual admission boundary. Search resolution and unavailable-row presentation
+remain capped to the existing 64-item app-library service batch.
+
+Focused state evidence retains 257 compact exact titles below 64 KiB and proves
+that a later over-budget mutation rejects without changing the committed bytes.
+Malformed, duplicate, and missing-display title fields reset only the title
+slice while preserving favorites, hidden/recent/manual rows, variants, and
+categories. Rename/reset/restart/search/category/CAS/exact-launch behavior stays
+under the same `GameLauncherTitlePolicy` and widget effect owners.
+
+Focused Release evidence passes Game Launcher 77/77 and documentation 66 files.
+The ordinary generic AppContainer route also passes after retaining 257 exact
+title overrides through a fresh worker session under the 64-KiB boundary.

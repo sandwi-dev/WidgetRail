@@ -90,7 +90,7 @@ internal static class GameLauncherHeroRailPolicy
             .Where(row => row is not null && Matches(
                 row.Display, state.Query, state.FavoriteFilter, favorites))
             .Select(row => row!)
-            .Take(GameLauncherPrivateState.MaximumTitleOverrides)
+            .Take(WidgetAppLibraryService.MaximumSavedItems)
             .ToArray();
         foreach (var row in titleMatches) used.Add(row.Display.SavedId);
 
@@ -122,6 +122,7 @@ internal static class GameLauncherHeroRailPolicy
                 !liveIds.Contains(item.SavedId) &&
                 Matches(item, state.Query, state.FavoriteFilter, favorites))
             .Select(item => new RailRow(null, item, CollectionItem: false))
+            .Take(WidgetAppLibraryService.MaximumSavedItems)
             .ToArray();
 
         var rows = recent.Select(row => row with { CollectionItem = false })

@@ -20,7 +20,7 @@ internal sealed record GameLauncherPrivateState(
     IReadOnlyList<GameLauncherDisplayItem> Items)
 {
     internal const int CurrentVersion = 5;
-    internal const int MaximumItems = 128;
+    internal const int MaximumItems = 1024;
     internal const int MaximumOrganizedItems = 32;
     internal const int MaximumRecentItems = 32;
     internal const int MaximumManualItems = 32;
@@ -31,7 +31,7 @@ internal sealed record GameLauncherPrivateState(
     internal const int MaximumCategoryNameLength = 32;
     internal const int MaximumCategoryMembers = 512;
     internal const int MaximumCategoryMemberships = 2048;
-    internal const int MaximumTitleOverrides = 32;
+    internal const int MaximumTitleValidationItems = 1024;
     internal const int MaximumTitleLength = 96;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
 
@@ -139,11 +139,14 @@ internal static class GameLauncherOrganizationPolicy
         };
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
-            normalized = normalized with { Categories = [] };
+            normalized = normalized with { TitleOverrides = [] };
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
-            normalized = normalized with { TitleOverrides = [] };
-        return normalized;
+            normalized = normalized with { Categories = [] };
+        return JsonSerializer.SerializeToUtf8Bytes(normalized).Length <=
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes
+            ? normalized
+            : GameLauncherPrivateState.Empty;
     }
 
     internal static GameLauncherStateMutation SelectExperience(

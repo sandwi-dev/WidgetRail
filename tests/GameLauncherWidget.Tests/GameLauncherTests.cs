@@ -115,31 +115,71 @@ public sealed class GameLauncherTests
         Assert.AreEqual("Provider B", GameLauncherTitlePolicy.DisplayName(
             set.State, b.SavedId, b.DisplayName));
 
-        var boundedItems = Enumerable.Range(0,
-                GameLauncherPrivateState.MaximumTitleOverrides)
+        var boundedItems = Enumerable.Range(0, 257)
             .Select(index => new GameLauncherDisplayItem(
-                $"saved-title-{index:D2}", $"Provider {index:D2}", "Local"))
+                $"saved-title-{index:D3}", $"Provider {index:D3}", "Local"))
             .ToArray();
         var bounded = new GameLauncherPrivateState(
             GameLauncherPrivateState.CurrentVersion, boundedItems)
         {
             TitleOverrides = boundedItems.Select((item, index) =>
                 new GameLauncherTitleOverride(item.SavedId,
-                    $"Custom {index:D2} " + new string('T', 80))).ToArray(),
+                    $"Custom {index:D3}")).ToArray(),
         };
+        var normalizedBounded = GameLauncherOrganizationPolicy.Normalize(bounded);
+        Assert.AreEqual(257, normalizedBounded.TitleOverrides.Count,
+            "The 257th ordinary title was rejected before the byte boundary.");
         Assert.IsLessThanOrEqualTo(
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
-            JsonSerializer.SerializeToUtf8Bytes(
-                GameLauncherOrganizationPolicy.Normalize(bounded)).Length);
+            JsonSerializer.SerializeToUtf8Bytes(normalizedBounded).Length);
 
-        var malformed = GameLauncherOrganizationPolicy.Normalize(set.State with
+        var related = baseline with
         {
-            FavoriteSavedIds = [b.SavedId],
+            FavoriteSavedIds = [a.SavedId],
+            VariantGroups = [new("variant." + new string('a', 20),
+                [a.SavedId, b.SavedId], a.SavedId)],
+            RecentSavedIds = [a.SavedId],
+            ManualSavedIds = [b.SavedId],
+            ExcludedSavedIds = [b.SavedId],
+            Categories = [new("category." + new string('b', 32), "Favorites",
+                [a.SavedId, b.SavedId])],
+        };
+        AssertOnlyTitlesReset(related with
+        {
             TitleOverrides = [new(a.SavedId, new string('X', 97))],
         });
-        Assert.AreEqual(0, malformed.TitleOverrides.Count);
-        CollectionAssert.AreEqual(new[] { b.SavedId },
-            malformed.FavoriteSavedIds.ToArray());
+        AssertOnlyTitlesReset(related with
+        {
+            TitleOverrides = [new(a.SavedId, "One"), new(a.SavedId, "Two")],
+        });
+        AssertOnlyTitlesReset(related with
+        {
+            TitleOverrides = [new("saved-missing", "Missing")],
+        });
+
+        var byteBounded = GameLauncherPrivateState.Empty;
+        GameLauncherStateMutation? rejected = null;
+        for (var index = 0;
+             index < GameLauncherPrivateState.MaximumTitleValidationItems;
+             index++)
+        {
+            var display = new GameLauncherDisplayItem(
+                $"saved-byte-{index:D4}", $"Provider {index:D4}", "Local");
+            var mutation = GameLauncherTitlePolicy.Set(
+                byteBounded, display, new string((char)('A' + index % 26), 96));
+            if (!mutation.Accepted)
+            {
+                rejected = mutation;
+                break;
+            }
+            byteBounded = mutation.State;
+        }
+        Assert.IsGreaterThanOrEqualTo(257, byteBounded.TitleOverrides.Count);
+        Assert.IsNotNull(rejected, "The encoded byte boundary was not enforced.");
+        CollectionAssert.AreEqual(
+            JsonSerializer.SerializeToUtf8Bytes(byteBounded),
+            JsonSerializer.SerializeToUtf8Bytes(rejected!.State),
+            "Byte-budget rejection changed the committed state.");
 
         GameLauncherPrivateState? written = null;
         var writes = 0;
@@ -159,6 +199,22 @@ public sealed class GameLauncherTests
         Assert.IsTrue(result.Saved);
         Assert.AreEqual("CAS title", written!.TitleOverrides.Single().Title);
         CollectionAssert.AreEqual(new[] { b.SavedId }, written.FavoriteSavedIds.ToArray());
+
+        static void AssertOnlyTitlesReset(GameLauncherPrivateState state)
+        {
+            var normalized = GameLauncherOrganizationPolicy.Normalize(state);
+            Assert.AreEqual(0, normalized.TitleOverrides.Count);
+            CollectionAssert.AreEqual(state.FavoriteSavedIds.ToArray(),
+                normalized.FavoriteSavedIds.ToArray());
+            CollectionAssert.AreEqual(state.RecentSavedIds.ToArray(),
+                normalized.RecentSavedIds.ToArray());
+            CollectionAssert.AreEqual(state.ManualSavedIds.ToArray(),
+                normalized.ManualSavedIds.ToArray());
+            CollectionAssert.AreEqual(state.ExcludedSavedIds.ToArray(),
+                normalized.ExcludedSavedIds.ToArray());
+            Assert.AreEqual(state.VariantGroups.Count, normalized.VariantGroups.Count);
+            Assert.AreEqual(state.Categories.Count, normalized.Categories.Count);
+        }
     }
 
     [TestMethod]
@@ -206,7 +262,7 @@ public sealed class GameLauncherTests
         Assert.AreEqual(UI.MaximumActionSheetItems,
             Nodes(sheet.Root).Count(node => node.ActionId is not null));
 
-        var oversizedItems = Enumerable.Range(0, GameLauncherPrivateState.MaximumItems)
+        var oversizedItems = Enumerable.Range(0, 128)
             .Select(index => new GameLauncherDisplayItem(
                 $"saved-{index:D3}-" + new string('s', 114),
                 new string('N', 96), new string('S', 64)))
@@ -1296,7 +1352,7 @@ public sealed class GameLauncherTests
     [TestMethod]
     public void PrivateProjectionIsBoundedAndContainsNoLaunchAuthority()
     {
-        var items = Enumerable.Range(0, GameLauncherPrivateState.MaximumItems)
+        var items = Enumerable.Range(0, 128)
             .Select(index => new GameLauncherDisplayItem(
                 $"saved-{index:D3}-" + new string('s', 114),
                 new string((char)('a' + index % 26), 96),
@@ -1343,9 +1399,13 @@ public sealed class GameLauncherTests
         Assert.AreEqual(0, normalizedState.Categories.Count,
             "Over-budget categories were not reset atomically.");
         Assert.AreEqual(items.Length, normalizedState.Items.Count);
+        var validationOverflow = Enumerable.Range(
+                0, GameLauncherPrivateState.MaximumItems + 1)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-validation-{index:D4}", $"Game {index:D4}", "Local"))
+            .ToArray();
         Assert.AreEqual(0, GameLauncherOrganizationPolicy.Normalize(
-            state with { Items = [.. items, items[0] with { SavedId = "saved-overflow" }] })
-            .Items.Count);
+            GameLauncherPrivateState.Empty with { Items = validationOverflow }).Items.Count);
         var text = System.Text.Encoding.UTF8.GetString(json);
         Assert.IsFalse(text.Contains("AppId", StringComparison.Ordinal));
         Assert.IsFalse(text.Contains("Artwork", StringComparison.Ordinal));
