@@ -19,6 +19,21 @@ left-rail/glass-panel reference structures validate through the same recipe
 rules. Focused Platform Settings Release evidence passes 17/17, including the
 separate catalog, deterministic content digest, and invalid-selection recovery.
 
+DLV-132 adds a focused native launcher recipe resolver and adapter without
+changing `OverlayApp`, existing widget layout, or renderer ownership. The pure
+resolver selects compact/standard/wide against the live logical work area,
+keeps the eight slot types bounded, validates critical focus/Back extents, and
+atomically falls back to the matching built-in hero rail, cover wall, carousel,
+or compact grid. The adapter accepts only host-created slot snapshots and sends
+them through the existing `DeclarativeRenderer`; its exact result continues to
+own paint, pointer, controller-focus, and UIA geometry. Paint order and canonical
+semantic order remain separate. The focused Release fixture passes 257 checks
+covering the two reference structures, all four built-ins, compact/720p/1080p/
+taskbar-reserved/monitor-offset/150%-scale profiles, invalid-recipe recovery,
+long-title/missing-art rendering, exact actions/Back, and a real offscreen D2D/
+focus/pointer/accessibility projection. The affected production host Release
+also compiles without packaging.
+
 DLV-101 removes the arbitrary private-worker 256 MiB and one-active-process
 ceilings while preserving the security and transport boundary. Every Windows
 worker is still created suspended, assigned before resume to one non-breakaway
