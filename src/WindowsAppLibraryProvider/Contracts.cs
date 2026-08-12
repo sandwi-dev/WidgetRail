@@ -143,6 +143,39 @@ internal interface IWindowsPackageGameApplicationSource
         CancellationToken cancellationToken);
 }
 
+internal sealed record EpicGameRegistration(
+    string IdentityKey,
+    string DisplayName,
+    string AppName,
+    string CatalogNamespace,
+    string CatalogItemId,
+    string ManifestPath,
+    string InstallLocation,
+    string LaunchExecutable,
+    string RevalidationKey);
+
+internal sealed record EpicApplicationSourceCandidate(
+    GameLibrarySourceHealth Health,
+    IReadOnlyList<EpicGameRegistration> Registrations);
+
+internal interface IEpicApplicationSource
+{
+    EpicApplicationSourceCandidate Enumerate(CancellationToken cancellationToken);
+    EpicGameRegistration? ReadExact(
+        string manifestPath,
+        string appName,
+        CancellationToken cancellationToken);
+}
+
+internal interface IWindowsEpicLauncher
+{
+    void Launch(
+        string catalogNamespace,
+        string catalogItemId,
+        string appName,
+        CancellationToken cancellationToken);
+}
+
 internal interface IWindowsPackageRegistrationCatalog
 {
     IReadOnlyList<WindowsPackageRegistrationCandidate> Enumerate(

@@ -16,6 +16,7 @@ internal enum SettingsPreferenceKind
     ContrastHigh,
     BoldText,
     ReducedTransparency,
+    EpicInstalledGames,
     Theme,
 }
 
@@ -25,8 +26,18 @@ internal readonly record struct SettingsPreferenceMutation(
     string? ThemeId = null,
     string? ThemeVersion = null)
 {
-    public PlatformSettingsDocument Apply(PlatformSettingsDocument current) =>
-        current with { Appearance = Apply(current.Appearance) };
+    public PlatformSettingsDocument Apply(PlatformSettingsDocument current) => Kind switch
+    {
+        SettingsPreferenceKind.EpicInstalledGames => current with
+        {
+            AppLibrary = current.AppLibrary with
+            {
+                EpicInstalledGamesEnabled =
+                    !current.AppLibrary.EpicInstalledGamesEnabled,
+            },
+        },
+        _ => current with { Appearance = Apply(current.Appearance) },
+    };
 
     private AppearanceSettings Apply(AppearanceSettings appearance) => Kind switch
     {
@@ -160,6 +171,9 @@ internal static class SettingsPreferencePolicy
             "transparency.reduced" => new(
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
+            "app-library.epic.toggle" => new(
+                SettingsPreferenceKind.EpicInstalledGames,
+                "Epic installed-game discovery preference saved"),
             _ => default,
         };
         return mutation.SuccessStatus is not null;

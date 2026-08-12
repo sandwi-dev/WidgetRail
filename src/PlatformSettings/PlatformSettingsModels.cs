@@ -79,6 +79,13 @@ public sealed record AppearanceSettings
     };
 }
 
+public sealed record AppLibrarySourceSettings
+{
+    public bool EpicInstalledGamesEnabled { get; init; }
+
+    public static AppLibrarySourceSettings Default { get; } = new();
+}
+
 public sealed record PlatformSettingsDocument
 {
     public const int CurrentSchemaVersion = 1;
@@ -89,10 +96,14 @@ public sealed record PlatformSettingsDocument
     [JsonRequired]
     public required AppearanceSettings Appearance { get; init; }
 
+    public AppLibrarySourceSettings AppLibrary { get; init; } =
+        AppLibrarySourceSettings.Default;
+
     public static PlatformSettingsDocument Default { get; } = new()
     {
         SchemaVersion = CurrentSchemaVersion,
         Appearance = AppearanceSettings.Default,
+        AppLibrary = AppLibrarySourceSettings.Default,
     };
 }
 
@@ -144,6 +155,8 @@ public static class PlatformSettingsValidator
             Add("$.appearance", "required", "Appearance settings are required.");
             return errors;
         }
+        if (document.AppLibrary is null)
+            Add("$.appLibrary", "required", "App-library source settings are required.");
 
         var appearance = document.Appearance;
         if (!ThemeIdentity.IsValid(appearance.ThemeId))

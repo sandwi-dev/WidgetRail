@@ -43,6 +43,8 @@ internal static class SettingsPresentation
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(
                 header, state.Settings, state.Busy),
             SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy),
+            SettingsPage.AppLibrarySources => RenderAppLibrarySources(
+                header, state.Settings, state.Busy),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
             SettingsPage.Reset => RenderReset(header, state.Busy),
@@ -97,6 +99,9 @@ internal static class SettingsPresentation
         var installedWidgets = UI.Button(
                 "Installed widgets", "open.installed-widgets", "category.installed-widgets")
             .Busy(busy).Classes("category-card");
+        var gameSources = UI.Button(
+                "Game sources", "open.app-library-sources", "category.game-sources")
+            .Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
             .Classes("category-card");
         var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
@@ -109,7 +114,7 @@ internal static class SettingsPresentation
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
                     "settings.summary", "Selected theme").Classes("settings-summary"),
                 UI.ResponsiveGrid("settings.category-grid", 250, 2,
-                        appearance, accessibility, overlay, installedWidgets,
+                        appearance, accessibility, overlay, installedWidgets, gameSources,
                         diagnostics, refresh, reset)
                     .Classes("category-grid")).Classes("category-list"),
             "category.appearance",
@@ -240,6 +245,30 @@ internal static class SettingsPresentation
                     "overlay.help", "Overlay settings help").Classes("page-help")),
             "interface.stepper.decrement",
             "overlay.page");
+    }
+
+    private static WidgetView RenderAppLibrarySources(
+        StackElement header,
+        PlatformSettingsDocument settings,
+        bool busy)
+    {
+        var epic = UI.ToggleButton(
+                "Epic installed games",
+                settings.AppLibrary.EpicInstalledGamesEnabled,
+                "app-library.epic.toggle",
+                "app-library.epic.toggle")
+            .Busy(busy).Classes("setting-row");
+        return View(header,
+            PageScope("app-library.sources.page",
+                UI.Text("Game sources", "app-library.sources.heading",
+                    "Installed game sources").Classes("page-heading"),
+                epic,
+                UI.Text(
+                    "Epic discovery is opt-in, reads installed manifests locally, and never signs in or uses the network.",
+                    "app-library.sources.help", "Installed game source help")
+                    .Classes("page-help")),
+            "app-library.epic.toggle",
+            "app-library.sources.page");
     }
 
     private static WidgetView RenderDiagnostics(
@@ -598,6 +627,7 @@ internal static class SettingsNavigationPolicy
             "open.accessibility" => SettingsPage.Accessibility,
             "open.visual-accessibility" => SettingsPage.AccessibilityVisual,
             "open.overlay" => SettingsPage.Overlay,
+            "open.app-library-sources" => SettingsPage.AppLibrarySources,
             "open.installed-widgets" => SettingsPage.InstalledWidgets,
             "open.permissions" => SettingsPage.Permissions,
             "open.diagnostics" => SettingsPage.Diagnostics,
@@ -613,6 +643,7 @@ internal static class SettingsNavigationPolicy
             "open.accessibility" or
             "open.visual-accessibility" or
             "open.overlay" or
+            "open.app-library-sources" or
             "open.installed-widgets" or
             "open.permissions" or
             "open.diagnostics" or
@@ -631,6 +662,7 @@ internal static class SettingsNavigationPolicy
             SettingsPage.ThemeVersion => SettingsPage.ThemePicker,
             SettingsPage.ThemeRemoval => SettingsPage.ThemeVersion,
             SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
+            SettingsPage.AppLibrarySources => SettingsPage.Root,
             SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,
             SettingsPage.InstalledWidgetVersions => SettingsPage.InstalledWidgetDetails,
             SettingsPage.InstalledWidgetRecovery => SettingsPage.InstalledWidgets,

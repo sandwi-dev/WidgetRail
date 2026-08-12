@@ -282,10 +282,10 @@ lifecycle, payload validation, and provider validation are independent gates.
 
 ## Trusted Windows provider boundary
 
-The current provider merges four bounded trusted Windows sources: current-user/
+The current provider merges five bounded trusted Windows sources: current-user/
 all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
 namespace, installed Microsoft/Xbox package registrations, and registered Steam
-libraries. It:
+libraries, plus explicitly enabled local Epic installed manifests. It:
 
 - treats Windows-installed and Steam libraries as ordinary implementations of
   one private source contract, with source-owned discovery, exact resolution,
@@ -309,6 +309,11 @@ libraries. It:
   plus sanitized name, classifies those registrations as games, and prefers an
   exact duplicate registration with current trusted local artwork before the
   deterministic manifest-path tie-break;
+- when enabled in **Settings > Game sources**, reads at most 4,096 bounded
+  `.item` files only from Epic's fixed ProgramData installed-manifest directory;
+  unknown format versions, duplicate identities, unsafe/reparse paths, partial
+  writes, unsupported application records, and missing exact executables fail
+  closed without exposing manifest fields;
 - sanitizes display names, deduplicates the same trusted target identity, and
   serves the normalized catalog through revision-bound pages of at most 64;
 - assigns random opaque IDs that stay stable only while that registration
@@ -340,13 +345,18 @@ platform and Shell failures are sanitized before returning to widget code.
 Steam launch also re-reads the exact manifest, requires the same identity,
 location, and content hash, then opens only
 `steam://rungameid/<numeric-id>` without widget-supplied arguments.
+Epic launch likewise re-reads the exact current manifest and executable
+evidence, then constructs the fixed Epic launcher URI from validated
+provider-private catalog components. Widget code never supplies a URI, path,
+argument, or Epic identifier.
 
 ## Honest limitations
 
 - Discovery covers bounded Start Menu `.lnk`, current-user AppsFolder/AUMID,
   installed Microsoft/Xbox package registrations with explicit game evidence,
-  and registered Steam manifests. Epic, GOG, and other launcher catalogs are
-  not integrated; package registration is not a promise that every alias,
+  registered Steam manifests, and explicitly enabled installed-only Epic
+  manifests. GOG and other launcher catalogs are not integrated; package
+  registration is not a promise that every alias,
   launcher-owned game, account-owned title, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
   source-aware grouping, additional evidence-backed game sources, and broader

@@ -59,6 +59,7 @@ static Task DefaultsAreSafe()
         Assert.Equal(ContrastPreference.System, settings.Appearance.Contrast);
         Assert.Equal(false, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
+        Assert.Equal(false, settings.AppLibrary.EpicInstalledGamesEnabled);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
     }
 }
@@ -69,6 +70,7 @@ static async Task SettingsRoundTrip()
     var store = Store(temp.Path);
     var updated = await store.UpdateAsync(current => current with
     {
+        AppLibrary = current.AppLibrary with { EpicInstalledGamesEnabled = true },
         Appearance = current.Appearance with
         {
             ThemeId = "dev.example.slate",
@@ -84,6 +86,7 @@ static async Task SettingsRoundTrip()
     });
     Assert.Equal("dev.example.slate", updated.Appearance.ThemeId);
     Assert.Equal("1.2.3", updated.Appearance.ThemeVersion);
+    Assert.Equal(true, updated.AppLibrary.EpicInstalledGamesEnabled);
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.Equal(updated, reloaded);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);

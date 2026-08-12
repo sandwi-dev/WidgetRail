@@ -71,7 +71,9 @@ internal static class Program
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(),
                 new WindowsMediaPlatformBackend(),
-                new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider(),
+                new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
+                    cancellationToken => settingsStore.LoadAsync(cancellationToken)
+                        .GetAwaiter().GetResult().AppLibrary.EpicInstalledGamesEnabled),
                 communityBackend,
                 communityBackend,
                 communityBackend,

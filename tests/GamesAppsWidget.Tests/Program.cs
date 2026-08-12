@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Trusted games auto-curate idempotently with bounded feedback", AutoCuratesTrustedGames),
     ("Windows package games auto-curate with exact source truth",
         WindowsPackageGameProjectsTruthfully),
+    ("Epic games auto-curate with exact source truth", EpicGameProjectsTruthfully),
     ("Broker-shaped opaque IDs survive reconciliation and persistence", BrokerOpaqueIdsPersist),
     ("Automatic discovery walks bounded pages for trusted games", AutoCuratesGamesBeyondFirstPage),
     ("Refresh preserves order and focus while appending newly trusted games", RefreshAppendsGames),
@@ -262,6 +263,27 @@ static async Task WindowsPackageGameProjectsTruthfully()
     Assert.True(ActionSurfaces(Snapshot(widget, 910).Root).Any(node =>
         node.AccessibilityLabel?.Contains(
             "Xbox / Microsoft Store", StringComparison.Ordinal) == true));
+    await Background(widget);
+}
+
+static async Task EpicGameProjectsTruthfully()
+{
+    var game = InstalledItem(
+        "app-epic", "saved-epic", "Epic Game", WidgetAppLibraryKind.Game,
+        "source-epic-installed", "Epic");
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([game], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+        widget.CuratedItems.Any(item => item.SavedId == game.SavedId));
+
+    var current = widget.CuratedItems.Single(item => item.SavedId == game.SavedId);
+    Assert.Equal("Epic", current.Presentation.Source.DisplayName);
+    Assert.True(ActionSurfaces(Snapshot(widget, 911).Root).Any(node =>
+        node.AccessibilityLabel?.Contains("Epic", StringComparison.Ordinal) == true));
     await Background(widget);
 }
 

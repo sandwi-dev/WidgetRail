@@ -17,6 +17,7 @@ internal enum GameLibrarySourceHealth
     Healthy,
     Degraded,
     Unavailable,
+    Disabled,
 }
 
 [Flags]

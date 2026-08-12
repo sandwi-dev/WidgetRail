@@ -43,12 +43,20 @@ public sealed class WindowsAppLibraryProvider :
     private long _catalogRevision;
 
     public WindowsAppLibraryProvider() : this(
-        CreateDefaultSources(), ShellStaExecutor.Shared)
+        _ => false)
     {
     }
 
-    private static IReadOnlyList<IGameLibrarySource> CreateDefaultSources()
+    internal WindowsAppLibraryProvider(
+        Func<CancellationToken, bool> epicEnabled) : this(
+        CreateDefaultSources(epicEnabled), ShellStaExecutor.Shared)
     {
+    }
+
+    private static IReadOnlyList<IGameLibrarySource> CreateDefaultSources(
+        Func<CancellationToken, bool> epicEnabled)
+    {
+        ArgumentNullException.ThrowIfNull(epicEnabled);
         var packagedLauncher = new WindowsPackagedAppLauncher();
         var iconSource = new WindowsAppIconSource();
         return
@@ -66,6 +74,11 @@ public sealed class WindowsAppLibraryProvider :
             new SteamGameLibrarySource(
                 new WindowsSteamApplicationSource(),
                 new WindowsSteamLauncher()),
+            new EpicGameLibrarySource(
+                new EpicInstalledGameApplicationSource(
+                    EpicInstalledGameApplicationSource.DefaultManifestRoot,
+                    epicEnabled),
+                new WindowsEpicLauncher()),
         ];
     }
 
@@ -694,6 +707,7 @@ public sealed class WindowsAppLibraryProvider :
         {
             GameLibrarySourceHealth.Healthy => "healthy",
             GameLibrarySourceHealth.Degraded => "source_degraded",
+            GameLibrarySourceHealth.Disabled => "source_disabled",
             _ => "source_unavailable",
         });
 

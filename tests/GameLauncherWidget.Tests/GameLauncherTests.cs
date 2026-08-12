@@ -11,6 +11,31 @@ namespace GameBarAlternative.Tests.GameLauncher;
 public sealed class GameLauncherTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task EpicGameProjectsExactSourceAndLaunchIdentity()
+    {
+        var host = new FakeHost(1)
+        {
+            ItemFactory = _ => InstalledItem(
+                "app-epic", "saved-epic", "Epic Game",
+                WidgetAppLibraryKind.Game,
+                "source-epic-installed", "Epic"),
+        };
+        host.ResolveHandler = _ => [host.ItemFactory(0)];
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var item = widget.Collection.Items.Single();
+        Assert.AreEqual("Epic", item.Presentation.Source.DisplayName);
+        var tile = Nodes(Snapshot(widget, 2).Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        StringAssert.Contains(tile.AccessibilityLabel!, "Epic");
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        Assert.AreEqual("app-epic", host.Launches.Single());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task WindowsPackageGameProjectsExactSourceAndLaunchIdentity()
     {
         var host = new FakeHost(1)

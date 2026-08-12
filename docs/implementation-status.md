@@ -3250,6 +3250,36 @@ fallback, and opaque launch routing. No network, credential, account-owned game,
 install/update operation, external helper, native, capture, or aggregate work is
 included.
 
+### Opt-in Epic installed-game source (DLV-139)
+
+Settings now exposes a controller/keyboard-reachable **Game sources** page with
+an explicit Epic installed-games toggle, persisted in the host-owned platform
+settings document. When disabled the provider performs no Epic manifest I/O
+and reports `source_disabled`. When enabled, the normalized Windows app-library
+provider reads only the fixed ProgramData Epic installed-manifest directory,
+with bounded count/bytes/depth and strict format-version, duplicate-property,
+identity, non-reparse install path, relative executable, and stable-read checks.
+
+Epic AppName, catalog namespace/item ID, manifest path, install location, and
+executable evidence remain provider-private. The provider derives its own
+stable identity, and the broker continues deriving the authority-scoped
+SavedId. Refresh generations reconcile additions/removals/updates independently
+of Windows, Microsoft/Xbox, and Steam. Disabled, unavailable, and corrupt states
+are explicit; stale display can never mint launch authority. Activation rereads
+the exact manifest and executable revision and only then constructs the fixed
+Epic launcher URI from validated components. No login, credentials, network
+library, client automation, installation, update, uninstall, arbitrary command,
+public protocol change, helper binary, native work, capture, or aggregate is in
+scope.
+
+Focused Release evidence passes Windows app-library provider 71/71, platform
+settings 16/16, Settings 58/58, Games & Apps 61/61, Game Launcher 64/64,
+WidgetBridge 83/83, and the 61-document contract. Authored local fixtures cover
+disabled/no-read, valid, duplicate, unknown-schema, unsafe-path, changed-during-
+read, add/remove, stale launch, unavailable last-good display, exact status, and
+constrained URI cases. The normalized cross-process DTO did not change, so no
+installed-worker rerun was required.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

@@ -118,6 +118,14 @@ launch identity, while distinct registered variants remain separate rows. A
 failed package refresh may retain a disabled last-good display row, but launch
 requires a fresh matching package generation and AUMID.
 
+Epic installed-game discovery is separately opt-in under **Settings > Game
+sources**. It reads only bounded local installed manifests from the fixed
+provider-owned ProgramData location and performs no Epic login or network
+request. The source reports disabled, unavailable, or degraded status
+explicitly. Raw manifest fields, install paths, catalog IDs, and launch URIs
+never enter widget state; activation requires a fresh exact manifest and
+executable match before the host constructs its constrained Epic launcher URI.
+
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains
 below 64 KiB. At most 32 distinct SavedIds may participate in favorites or explicit
