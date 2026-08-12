@@ -2207,12 +2207,26 @@ private:
             focusedElementId_.clear();
             lastWidgetRenderResult_ = {};
         }
-        const auto before = state_.persistent();
-        if (state_.SetAvailableWidgets(change.availableWidgetIds) &&
-            before != state_.persistent() && !performanceState_) {
-            SavePersistentState(state_.persistent());
+        bool trayStateChanged = false;
+        ApplyStateTransition([&] {
+            trayStateChanged = state_.SetAvailableWidgets(change.availableWidgetIds);
+            return trayStateChanged;
+        });
+        if (!trayStateChanged) {
+            // Descriptor-only replacement can still change the rendered tray
+            // name/icon projection. Keep lifecycle ownership synchronized and
+            // publish the new catalog even when stable IDs and selection did
+            // not move.
+            SyncWidgetActivity();
+            if (state_.surface() != gba::Surface::Hidden && window_)
+                InvalidateRect(window_, nullptr, FALSE);
         }
-        SyncWidgetActivity();
+        if (state_.surface() != gba::Surface::Hidden && window_) {
+            // Catalog events and pointer messages share this UI thread. Commit
+            // the replacement tray before returning to the message queue so
+            // old pixels can never dispatch through new slot geometry.
+            UpdateWindow(window_);
+        }
         if (!runtimeRevealWidget.empty() &&
             state_.surface() == gba::Surface::Widget &&
             state_.activeWidget() == runtimeRevealWidget) {
@@ -5461,15 +5475,21 @@ private:
         const float width,
         const float height,
         const gba::OverlaySurfaceGeometry* surfaceGeometry = nullptr,
-        const gba::accessibility::DashboardSemantics* dashboard = nullptr) {
-        const auto layout = gba::shell::ComputeTrayLayout(
-            width, height, state_.order().size(), state_.selectedSlot(),
-            surfaceGeometry
-                ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
-                    surfaceGeometry->trayY,
-                    surfaceGeometry->trayY + surfaceGeometry->trayHeight,
-                }}
-                : std::nullopt);
+        const gba::accessibility::DashboardSemantics* dashboard = nullptr,
+        const gba::shell::TrayLayout* frameLayout = nullptr) {
+        const auto computedLayout = frameLayout
+            ? std::optional<gba::shell::TrayLayout>{}
+            : gba::shell::ComputeTrayLayout(
+                width, height, state_.order().size(), state_.selectedSlot(),
+                surfaceGeometry
+                    ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
+                        surfaceGeometry->trayY,
+                        surfaceGeometry->trayY + surfaceGeometry->trayHeight,
+                    }}
+                    : std::nullopt);
+        const auto* layout = frameLayout
+            ? frameLayout
+            : computedLayout ? &*computedLayout : nullptr;
         if (!layout) return;
         const auto& stripBounds = layout->stripBounds;
         const D2D1_ROUNDED_RECT strip{
@@ -5836,6 +5856,10 @@ private:
         const auto geometry = gba::ComputeOverlaySurfaceGeometry(
             width, height, bridgeWidget ? widgetSurface.panelWidthDip : 720.0F);
         if (!geometry) return;
+        const auto trayLayout = gba::shell::ComputeTrayLayout(
+            width, height, state_.order().size(), state_.selectedSlot(),
+            gba::shell::TrayBand{
+                geometry->trayY, geometry->trayY + geometry->trayHeight});
         const float panelLeft = geometry->panelX;
         const float panelTop = geometry->panelY;
         const float panelWidth = geometry->panelWidth;
@@ -5987,12 +6011,25 @@ private:
                             : retainedCommittedSnapshot || focusedElementId_.empty()
                                 ? L"none"
                                 : L"widget:" + focusedElementId_;
+                    const bool selectedTrayItemVisible = trayLayout &&
+                        std::any_of(
+                            trayLayout->tiles.begin(), trayLayout->tiles.end(),
+                            [&](const gba::shell::TrayTileLayout& tile) {
+                                return tile.slot == state_.selectedSlot();
+                            });
+                    const std::wstring trayState = trayLayout
+                        ? L"\n" + std::to_wstring(trayLayout->totalCount) + L"\n" +
+                            std::to_wstring(trayLayout->tiles.size()) + L"\n" +
+                            (trayLayout->previousOverflow ? L"1" : L"0") + L"\n" +
+                            (trayLayout->nextOverflow ? L"1" : L"0") + L"\n" +
+                            (selectedTrayItemVisible ? L"1" : L"0")
+                        : L"\nmissing";
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
                         (retainedCommittedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
-                        L"\n" + semanticFocus;
+                        L"\n" + semanticFocus + trayState;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
                         AppendDiagnostic(
@@ -6009,7 +6046,17 @@ private:
                             (renderedFocusId.empty()
                                 ? std::wstring{L"none"}
                                 : std::wstring{renderedFocusId}) +
-                            L" semantic-focus=" + semanticFocus);
+                            L" semantic-focus=" + semanticFocus +
+                            L" tray-total=" +
+                            std::to_wstring(trayLayout ? trayLayout->totalCount : 0) +
+                            L" tray-visible=" +
+                            std::to_wstring(trayLayout ? trayLayout->tiles.size() : 0) +
+                            L" tray-previous=" +
+                            (trayLayout && trayLayout->previousOverflow ? L"true" : L"false") +
+                            L" tray-next=" +
+                            (trayLayout && trayLayout->nextOverflow ? L"true" : L"false") +
+                            L" tray-selected-visible=" +
+                            (selectedTrayItemVisible ? L"true" : L"false"));
                     }
                 }
                 declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;
@@ -6077,7 +6124,8 @@ private:
             }
             if (contentLayerPushed) renderTarget_->PopLayer();
             DrawWidgetFooter(*geometry);
-            DrawIconStrip(width, height, &*geometry);
+            DrawIconStrip(width, height, &*geometry, nullptr,
+                          trayLayout ? &*trayLayout : nullptr);
             return;
         }
 
@@ -6092,7 +6140,8 @@ private:
                      D2D1::RectF(panelLeft + 30, 146, panelLeft + panelWidth - 30, 202),
                      secondaryBrush_.Get());
         DrawWidgetFooter(*geometry);
-        DrawIconStrip(width, height, &*geometry);
+        DrawIconStrip(width, height, &*geometry, nullptr,
+                      trayLayout ? &*trayLayout : nullptr);
     }
 
     HINSTANCE instance_{};
