@@ -279,12 +279,12 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-169 fixes Spotify terminal wrapping and explicit adjacent focus; DLV-170/171 found no managed artwork or Launcher control/continuation gap. PID 39248 admitted all eight first pages with contained UIA geometry and no error-class host/worker/protocol/broker/provider record. DLV-176/177 corrections are independently accepted but held. | DLV-179 fixes conflicting collection modes but restart stability remains rejected; DLV-183 owns that correction after assigned visible state work DLV-181. Native TextEntry evidence DLV-180 is serialized behind platform recovery; DLV-182/184 keep visible Launcher progression and compact fit queued. |
-| Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. | Recover the conflicted platform worktree with user authorization, then run DLV-160 end-to-end author lifecycle. |
+| Visible UI and controller behavior | DLV-169 fixes Spotify terminal wrapping and explicit adjacent focus; DLV-170/171 found no managed artwork or Launcher control/continuation gap. PID 39248 admitted all eight first pages with contained UIA geometry and no error-class host/worker/protocol/broker/provider record. DLV-176/177 corrections are independently accepted but held. | DLV-179 fixes conflicting collection modes but restart stability remains rejected; DLV-183 owns that correction after assigned visible state work DLV-181. Native TextEntry evidence DLV-180 is assigned on the recovered platform lane; DLV-182/184 keep visible Launcher progression and compact fit queued. |
+| Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. The isolated platform merge was user-authorized and cleanly aborted back to `c2a8172`. | Complete assigned DLV-180, then DLV-168 and DLV-160 in queue order. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
-| Accessibility | Deterministic semantic and real-host UIA coverage is substantial. PID 26524 exposed a truthful-completion gap: tray Invoke selects successfully but returns a COM error. | DLV-168 after platform recovery, then physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
+| Accessibility | Deterministic semantic and real-host UIA coverage is substantial. PID 26524 exposed a truthful-completion gap: tray Invoke selects successfully but returns a COM error. | DLV-168 after assigned DLV-180, then physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
 | Performance | Bounded queues/caches/snapshots and event-driven helpers exist; transition logs expose some expensive first paints. | Named hidden/idle/interactive CPU/GPU/memory/latency baselines and regression budgets on accepted artifacts. |
 | Verification | Focused suites are credible and tiered; exact aggregate runs are intentionally rare. | One clean immutable-input Tier-3 result at the next named checkpoint, not per milestone. |
 | Authentication/hardware | Correctly isolated from unrelated work. | User-authorized accounts and physical audio/Bluetooth/controller/display/game evidence. |
@@ -312,8 +312,8 @@ its change is accepted.
 1. Complete visible DLV-181, then review DLV-183's restart-stable truthful
    source catalog. Run native DLV-180 after authorized platform recovery before
    reconsidering the held widget prefix.
-2. Keep platform stopped until the user authorizes bounded abort of the failed
-   merge; then review DLV-168's tray UIA completion contract before DLV-160.
+2. Review assigned native DLV-180 from clean platform baseline `c2a8172`, then
+   DLV-168's tray UIA completion contract before DLV-160.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
 4. Keep PID 39248 visible for the user's dashboard, Spotify, Settings, and Game Launcher

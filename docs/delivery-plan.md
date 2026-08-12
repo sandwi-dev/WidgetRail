@@ -503,14 +503,36 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — blocked recovery before DLV-160
+### Current assignment — DLV-180: production TextEntry cancel/focus evidence
 
-**State:** Blocked by an unresolved substantive merge in the isolated platform
-worktree after clean DLV-152 commit `c2a8172`. DLV-160 has not started. Do not
-edit, resolve, abort, reset, or dispatch this lane until the user authorizes
-recovery. Recommended bounded recovery is `git merge --abort` in only the
-platform worktree, verify clean `c2a8172`, then begin DLV-160 without merging
-main because its dependencies are already in branch history.
+**State:** Assigned after user-authorized bounded recovery. The conflicted merge
+was aborted only in the isolated platform worktree; it is clean at preserved
+DLV-152 commit `c2a8172`. Do not merge main. Begin DLV-180 immediately.
+
+**Baseline/dependencies:** platform branch `c2a8172`; accepted product
+`d58e50e`; held managed Launcher behavior through widgets `84c8780`. DLV-180
+owns only the existing native TextEntry modal/focus owner, the smallest private
+production-host fixture, focused native tests, and directly affected
+implementation documentation. It may inspect the held managed action contract
+but must not merge or edit the widgets branch, public protocol, Launcher
+collection/presentation behavior, renderer/layout, or reviewer-owned docs.
+
+**User-visible outcome:** canceling Game Launcher search preserves the committed
+query and returns focus to the exact search action through the real installed
+host route, rather than only through managed action injection.
+
+**Objective/acceptance:** open the existing production TextEntry from the
+installed Game Launcher action, type an uncommitted value, cancel through the
+same host path used by keyboard/controller, and prove no commit action fires,
+the prior query remains, and exact search focus is restored once. Reuse one
+existing modal/focus authority; add no second text-entry implementation or
+widget-specific host behavior. Failure/cancel/close must remain distinguishable.
+
+**Verification/stop:** Tier 1 focused native modal/focus/action suites plus one
+real installed generic-worker Game Launcher cancel route. No screenshot gate,
+renderer/layout redesign, public protocol, managed widget change, main merge,
+aggregate, or security work. Stop if the held managed action contract cannot be
+consumed without a substantive cross-branch conflict and report exact evidence.
 
 ### Accepted milestone — DLV-152: custom-pack production matrix
 
@@ -624,15 +646,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after approved platform-worktree recovery — DLV-180: production TextEntry cancel/focus evidence.**
-   Add the smallest production-host fixture or private host-driving seam needed
-   to open Game Launcher's existing TextEntry, type, cancel, and prove focus
-   returns to the exact search action while committed query remains unchanged.
-   Reuse the existing modal and action contract; do not add a second text-entry
-   owner or managed/native product behavior. Tier 1 focused modal/focus tests
-   plus one real installed generic-worker cancel route; no screenshot gate,
-   renderer/layout redesign, public protocol, aggregate, or widget behavior.
-2. **Ready after DLV-180 — DLV-168: tray UIA Invoke completion contract.**
+1. **Ready after DLV-180 — DLV-168: tray UIA Invoke completion contract.**
    Reproduce the PID 26524 behavior where an enabled tray item's existing UIA
    `InvokePattern` successfully selects Network Controls, YT Music, or Spotify
    but returns `Unrecognized error` to the caller. Correct only the native tray
@@ -641,7 +655,7 @@ missing private seam rather than adding parallel presentation authority.
    and pointer/controller behavior is unchanged. Tier 1 focused accessibility,
    tray, and action tests plus one real-host UIA route; no renderer/layout,
    screenshot, managed widget, protocol, aggregate, or assistive-tool workaround.
-3. **Ready after DLV-168 — DLV-160: author-to-production pack lifecycle.** In
+2. **Ready after DLV-168 — DLV-160: author-to-production pack lifecycle.** In
    one isolated deterministic route, scaffold both reference packs, validate,
    preview, pack, install, select, activate in the ordinary host, replace with a
    new exact version, reject a corrupted reload to last-good, safe-start once,
@@ -665,7 +679,6 @@ missing private seam rather than adding parallel presentation authority.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
-| DLV-180 Game Launcher TextEntry cancel/focus route | Production open/cancel/focus restoration is native-host-owned, while the platform worktree is stopped in an unresolved substantive merge. | User-authorized bounded platform recovery, then the assigned private production-host fixture. |
 | Trusted fixed-video/PiP surface | One paused visible WebView2 surface measured about 348.7 MiB private memory and 4% CPU against the 128-MiB gate. | User changes the budget or authorizes a content/process-specific bounded experiment. |
 | Audio default input/output selection | No documented supported Windows setter is established; undocumented PolicyConfig/registry/Shell mutation is forbidden. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | Tool/owned no-taskbar OverlayHost is omitted; making it discoverable adds taskbar/Alt-Tab eligibility. HWND/UIA input is sufficient for planner smoke. | User accepts shell presence or the supported control tool gains tool-window discovery. |
