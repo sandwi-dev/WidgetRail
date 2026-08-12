@@ -239,6 +239,11 @@ public sealed class LauncherExperienceValidator
                 errors.Add(new(relative, "invalid_image", "Image metadata is invalid or unsupported."));
                 continue;
             }
+            if (!LauncherExperienceFileGuard.IsSingleFrameImage(bytes, extension))
+            {
+                errors.Add(new(relative, "multi_frame_image", "Animated or multi-frame images are not supported."));
+                continue;
+            }
             if (width > MaximumImageDimension || height > MaximumImageDimension)
                 errors.Add(new(relative, "image_dimensions", $"Image dimensions may not exceed {MaximumImageDimension} by {MaximumImageDimension}."));
         }

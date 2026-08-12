@@ -3451,6 +3451,44 @@ No production source or alternate automation surface is retained. A product UX
 decision is required to permit taskbar/Alt-Tab presence or a supported control-
 tool change is required to admit the existing tool/owned overlay identity.
 
+### Launcher Experience deterministic authoring toolchain (DLV-135)
+
+`gbar launcher-theme` now owns one focused data-only command surface for
+`new`, `validate`, `preview`, `pack`, `inspect`, `install`, `list`, and
+`remove`. `CliApplication` retains dispatch/error ownership; the command owner
+handles author workflow and deterministic preview composition; and the
+`LauncherExperienceCatalog` assembly owns archive capture, package safety,
+content validation, digest, immutable installation, exact removal, and the
+catalog mutation lock. No validation schema or validator was copied into the
+Gbar root; its starter document is accepted only after production validation.
+
+| Responsibility | Before DLV-135 | After DLV-135 |
+| --- | --- | --- |
+| CLI root | No Launcher Experience command. | One dispatch/error mapping; no package or preview state. |
+| Author orchestration | Authors hand-authored directories with no supported command owner. | Focused `LauncherTheme*Command` owners handle scaffold, preview, and catalog workflow. |
+| Package/catalog boundary | Production validator admitted expanded directories; catalog discovered and loaded them. | `LauncherExperienceArchive` captures bounded archive bytes, reuses that validator, and owns deterministic pack plus locked immutable install/remove. |
+| Native rendering | Existing offscreen adapter fixture only. | Unchanged; ordinary-overlay adoption remains DLV-145. |
+
+Scaffolding publishes a complete valid project atomically. Packing uses ordinal
+entries and fixed ZIP metadata, and two independent identical projects produce
+byte-identical `.gbarlauncher` archives and digests. Archive inspection captures
+bounded bytes and materializes them privately through the existing production
+validator. Local installation grants presentation data only, never actions,
+SavedIds, provider bindings, paths, game authority, or content authority.
+
+Preview emits a deterministic 132-frame data contract: eleven fixture states
+across all four accepted presets and compact/standard/wide surfaces. It covers
+empty, 20-game, 2,000-game, offline, long-title, missing-art, active-operation,
+150%-scale, reduced-motion, reduced-transparency, and high-contrast states; the
+large fixture retains only 64 rows. This is offscreen authoring evidence, not a
+claim that the ordinary overlay applies the pack. Production adoption remains
+owned by platform DLV-145.
+
+Focused Release evidence passes 61/61 Gbar CLI cases, 17/17 Platform
+Settings/catalog cases, the existing native offscreen Launcher Experience
+fixture's 1,361 checks, and the documentation contract across 66 Markdown
+files. No canonical aggregate is required.
+
 ### Cold dashboard first-commit anchor (DLV-143)
 
 The existing DirectComposition placement owner now bottom-aligns every

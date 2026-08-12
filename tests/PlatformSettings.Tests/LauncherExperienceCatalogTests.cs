@@ -3,7 +3,7 @@ using GameBarAlternative.LauncherExperienceCatalog;
 
 internal static class LauncherExperienceCatalogTests
 {
-    public static Task Run()
+    public static async Task Run()
     {
         BuiltInsAndReferenceRecipesValidate();
         ValidPackagesDiscoverWithStableDigest();
@@ -13,7 +13,7 @@ internal static class LauncherExperienceCatalogTests
         WebPVariantsReportExactDimensions();
         PackageAndCatalogBudgetsFailFast();
         InvalidSelectionUsesBuiltInRecovery();
-        return Task.CompletedTask;
+        await ArchiveAndCatalogMutationsAreDeterministic();
     }
 
     private static void BuiltInsAndReferenceRecipesValidate()
@@ -316,6 +316,37 @@ internal static class LauncherExperienceCatalogTests
         var recovery = catalog.ResolveOrRecovery("dev.missing.pack", "1.0.0", LauncherLayoutPreset.CompactGrid);
         Equal("org.gbar.builtin.compact-grid", recovery.Descriptor.Id);
         True(recovery.Descriptor.IsBuiltIn, "Missing selection did not resolve to a built-in recovery descriptor.");
+    }
+
+    private static async Task ArchiveAndCatalogMutationsAreDeterministic()
+    {
+        using var temp = new TempDirectory();
+        var source = WritePackage(
+            Path.Combine(temp.Path, "source"), "dev.example.archive", "1.0.0", BottomRecipe());
+        var firstPath = Path.Combine(temp.Path, "first.gbarlauncher");
+        var secondPath = Path.Combine(temp.Path, "second.gbarlauncher");
+        var first = await LauncherExperienceArchive.PackAsync(source, firstPath, CancellationToken.None);
+        var second = await LauncherExperienceArchive.PackAsync(source, secondPath, CancellationToken.None);
+        Equal(first.Sha256, second.Sha256);
+        SequenceEqual(File.ReadAllBytes(firstPath), File.ReadAllBytes(secondPath));
+        var inspected = await LauncherExperienceArchive.InspectArchiveAsync(firstPath, CancellationToken.None);
+        Equal("dev.example.archive", inspected.Package.Manifest.Id);
+        Equal(first.Inspection.Package.Descriptor.ContentDigest, inspected.Package.Descriptor.ContentDigest);
+
+        var catalogRoot = Path.Combine(temp.Path, "catalog");
+        var installed = await LauncherExperienceArchive.InstallAsync(
+            inspected, catalogRoot, CancellationToken.None);
+        True(Directory.Exists(installed), "Installed archive was not published.");
+        ThrowsCode(() => LauncherExperienceArchive.InstallAsync(
+            inspected, catalogRoot, CancellationToken.None).GetAwaiter().GetResult(), "immutable_version");
+        await LauncherExperienceArchive.RemoveAsync(
+            catalogRoot, "dev.example.archive", "1.0.0", CancellationToken.None);
+        True(!Directory.Exists(installed), "Exact installed version was not removed.");
+
+        var imagePath = Path.Combine(source, "assets", "preview.png");
+        File.WriteAllBytes(imagePath, [.. File.ReadAllBytes(imagePath), .. "acTL"u8.ToArray()]);
+        HasPathCode(new LauncherExperienceValidator().ValidateDirectory(source).Diagnostics,
+            "assets/preview.png", "multi_frame_image");
     }
 
     private static string WritePackage(string root, string id, string version, string recipe)

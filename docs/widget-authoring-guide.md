@@ -1979,6 +1979,7 @@ Do not design or advertise a widget around any of these yet:
 - [Capabilities](capabilities.md)
 - [Display and resolution](display-and-resolution.md)
 - [Packaging contract](widget-packaging.md)
+- [Launcher Experience Pack authoring](launcher-experience-packs.md)
 - [Publishing and installation](publishing-and-installation.md)
 - [Security and trust](security-and-trust.md)
 - [Performance](performance.md)

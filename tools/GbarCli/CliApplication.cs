@@ -51,6 +51,7 @@ public static class CliApplication
                 "version" => await VersionCommand.RunAsync(args[1..], output, cancellationToken),
                 "config" => await ConfigCommand.RunAsync(args[1..], output, cancellationToken),
                 "theme" => await ThemeCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
+                "launcher-theme" => await LauncherThemeCommand.RunAsync(args[1..], output, cancellationToken),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'. Run 'gbar help'."),
             };
         }
@@ -67,6 +68,11 @@ public static class CliApplication
         catch (ThemePackageException exception)
         {
             await error.WriteLineAsync($"error {exception.Code}: {exception.Message}");
+            return 1;
+        }
+        catch (LauncherExperienceCatalog.LauncherExperiencePackageException exception)
+        {
+            await error.WriteLineAsync($"error {exception.Code} at {exception.DiagnosticPath}: {exception.Message}");
             return 1;
         }
         catch (PlatformSettings.PlatformSettingsException exception)
@@ -127,6 +133,14 @@ public static class CliApplication
           gbar theme install <file.gbartheme|https-url|github:owner/repository@tag/asset.gbartheme> [--sha256 <64-hex>] [--settings-root <root>]
           gbar theme list [--settings-root <root>]
           gbar theme remove <exact-id> <exact-version> [--settings-root <root>]
+          gbar launcher-theme new <Name> [--output <directory>] [--id <id>] [--publisher <id>] [--version <version>] [--preset <hero-rail|cover-wall|carousel|compact-grid>]
+          gbar launcher-theme validate <directory|file.gbarlauncher>
+          gbar launcher-theme preview <directory|file.gbarlauncher> [--output <preview.json>]
+          gbar launcher-theme pack <directory> [--output <file.gbarlauncher>]
+          gbar launcher-theme inspect <file.gbarlauncher>
+          gbar launcher-theme install <file.gbarlauncher> [--catalog <root>]
+          gbar launcher-theme list [--catalog <root>]
+          gbar launcher-theme remove <exact-id> <exact-version> [--catalog <root>]
 
         render is data-only and never loads widget assemblies. Use gbar dev for
         isolated AppContainer execution of author code.

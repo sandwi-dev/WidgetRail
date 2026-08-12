@@ -5,6 +5,8 @@ For an end-to-end walkthrough, see the repository
 limitations, see [publishing and installation](../../docs/publishing-and-installation.md).
 Global-theme authors should use [theme packaging and
 distribution](../../docs/theme-packaging.md).
+Launcher Experience authors should use the dedicated
+[data-only pack format](../../docs/launcher-experience-packs.md).
 
 The prototype CLI makes the controller-widget development loop usable before
 the graphical simulator exists. It has no third-party runtime dependencies.
@@ -41,6 +43,15 @@ gbar theme pack .\OceanNight --output .\dev.example.ocean-night-1.0.0.gbartheme
 gbar theme inspect .\dev.example.ocean-night-1.0.0.gbartheme
 gbar theme install .\dev.example.ocean-night-1.0.0.gbartheme
 gbar theme list
+
+gbar launcher-theme new "Deep Space" --id dev.example.deep-space --publisher dev.example
+gbar launcher-theme validate .\DeepSpace
+gbar launcher-theme preview .\DeepSpace --output .\deep-space.preview.json
+gbar launcher-theme pack .\DeepSpace --output .\dev.example.deep-space-1.0.0.gbarlauncher
+gbar launcher-theme inspect .\dev.example.deep-space-1.0.0.gbarlauncher
+gbar launcher-theme install .\dev.example.deep-space-1.0.0.gbarlauncher
+gbar launcher-theme list
+gbar launcher-theme remove dev.example.deep-space 1.0.0
 ```
 
 ## Commands
@@ -232,6 +243,41 @@ identity; obtain it through an independent trusted channel. Packages are not
 signed and there is no revocation service yet. Legacy schema-version-1 local
 theme directories remain readable by the runtime, but `theme pack` accepts
 only the publisher-bearing public schema.
+
+### Launcher Experience authoring and distribution
+
+`gbar launcher-theme` is the data-only Game Launcher presentation workflow. It
+uses `LauncherExperienceValidator` for source directories and materialized
+archives, so commands do not carry a second manifest, recipe, GBSS, asset, or
+digest schema.
+
+- `launcher-theme new` atomically publishes a minimal valid project with strict
+  `launcher.json`, compact/standard/wide recipe branches, launcher-scoped GBSS,
+  and a sealed static preview asset. The requested output must not exist.
+- `validate` accepts a directory or `.gbarlauncher`; `pack` writes a
+  byte-reproducible ZIP with ordinal entries and fixed metadata; and `inspect`
+  reports identity, publisher claim, version, preset, sizes, content digest,
+  and archive digest without executing anything.
+- `preview` writes a deterministic schema-version-1 offscreen fixture document.
+  It covers all four presets across compact, standard, and wide surfaces for
+  empty, 20-game, 2,000-game, offline, long-title, missing-art,
+  active-operation, 150%-scale, reduced-motion, reduced-transparency, and
+  high-contrast states. The 2,000-game case retains only a bounded 64-row
+  semantic window. The document contains no actions, SavedIds, provider
+  bindings, paths, or game/content authority.
+- `install`, `list`, and `remove` use the production catalog under
+  `%LOCALAPPDATA%\GameBarAlternative\launcher-experiences`, or an isolated
+  `--catalog <root>`. Installed `<id>/<version>` content is immutable; removal
+  requires an exact canonical ID/version and cannot remove built-in recovery
+  presets.
+
+The archive admits only strict JSON, launcher-scoped GBSS, and bounded static
+PNG/JPEG/WebP. URLs, HTML/JavaScript, executables, links/reparse points, path
+escape/collisions, animated or multi-frame images, oversized content,
+pack-authored actions/provider bindings, and inaccessible recipe branches fail
+closed. Installation grants presentation data only. Preview is deterministic
+authoring evidence, not an ordinary-overlay preview: production overlay
+adoption remains owned by the private native Launcher Experience hook.
 
 Packaging and catalog commands only inspect bytes and metadata; they never load
 or execute a widget assembly. Packages are not signed, and a digest proves

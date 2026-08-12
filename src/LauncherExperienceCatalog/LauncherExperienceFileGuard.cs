@@ -133,6 +133,40 @@ internal static class LauncherExperienceFileGuard
         }
         return false;
     }
+
+    public static bool IsSingleFrameImage(ReadOnlySpan<byte> bytes, string extension)
+    {
+        if (extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
+            return bytes.IndexOf("acTL"u8) < 0;
+        if (extension.Equals(".webp", StringComparison.OrdinalIgnoreCase))
+        {
+            if (bytes.Length < 20) return false;
+            var riffEnd = Math.Min(bytes.Length, checked((int)Math.Min(int.MaxValue,
+                (long)BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4, 4)) + 8)));
+            var offset = 12;
+            while (offset + 8 <= riffEnd)
+            {
+                var chunk = bytes.Slice(offset, 4);
+                var length = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 4, 4));
+                var dataStart = offset + 8L;
+                var dataEnd = dataStart + length;
+                if (dataEnd > riffEnd) return false;
+                if (chunk.SequenceEqual("ANIM"u8) || chunk.SequenceEqual("ANMF"u8)) return false;
+                if (chunk.SequenceEqual("VP8X"u8) && length >= 1 && (bytes[(int)dataStart] & 0x02) != 0)
+                    return false;
+                var next = dataEnd + (length & 1);
+                if (next > int.MaxValue) return false;
+                offset = (int)next;
+            }
+            return true;
+        }
+        if (!extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)) return false;
+        if (bytes.IndexOf("MPF\0"u8) >= 0) return false;
+        for (var index = 2; index + 1 < bytes.Length; index++)
+            if (bytes[index] == 0xff && bytes[index + 1] == 0xd8) return false;
+        return true;
+    }
 }
 
 public sealed class LauncherExperiencePackageException(

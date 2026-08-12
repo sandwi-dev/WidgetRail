@@ -2,10 +2,48 @@
 
 Launcher Experience Packs are launcher-only, presentation-only data packages.
 They are separate from global `.gbartheme` packages and never change the shell,
-Settings, or another widget. The production schema/catalog validates an
-expanded package directory, and the native host maps validated recipes to
-host-owned semantic slots. Authoring, archive installation, selection, and
-Game Launcher state projection arrive through later milestones.
+Settings, or another widget. The production schema/catalog validates expanded
+package directories and deterministic `.gbarlauncher` archives, and the native
+host maps validated recipes to host-owned semantic slots. The CLI owns the
+complete local authoring/package/catalog workflow. Ordinary-overlay adoption of
+an authored pack remains a separate private native-host integration; the data-
+only preview does not claim that production path.
+
+## Authoring workflow
+
+```powershell
+gbar launcher-theme new "Deep Space" `
+  --id dev.example.deep-space `
+  --publisher dev.example `
+  --preset hero-rail
+gbar launcher-theme validate .\DeepSpace
+gbar launcher-theme preview .\DeepSpace --output .\deep-space.preview.json
+gbar launcher-theme pack .\DeepSpace `
+  --output .\dev.example.deep-space-1.0.0.gbarlauncher
+gbar launcher-theme inspect .\dev.example.deep-space-1.0.0.gbarlauncher
+gbar launcher-theme install .\dev.example.deep-space-1.0.0.gbarlauncher
+gbar launcher-theme list
+gbar launcher-theme remove dev.example.deep-space 1.0.0
+```
+
+Every command uses the same production directory validator. Archive inspection
+materializes captured bounded bytes into a private directory and reuses that
+validator rather than approximating the manifest, recipe, GBSS, image, or
+digest contract. `new` and preview output publish by one rename and never
+overwrite an existing path. Packing sorts entries ordinally and fixes ZIP
+timestamps and metadata, so identical source bytes produce identical archives
+and SHA-256 digests. Installed ID/version directories are immutable.
+
+Preview emits a bounded deterministic offscreen fixture document, not widget
+code or a browser page. It enumerates Hero Rail, Cover Wall, Carousel, and
+Compact Grid over compact, standard, and wide surfaces for empty, 20-game,
+2,000-game, offline, long-title, missing-art, active-operation, 150%-scale,
+reduced-motion, reduced-transparency, and high-contrast states. The large case
+records only a 64-row retained window. It carries semantic slot names and
+presentation state, never actions, SavedIds, provider bindings, paths, or game
+authority. The native offscreen fixture verifies the existing rendering
+contract independently; the ordinary overlay does not apply authored packs
+until its private adoption hook is accepted.
 
 ## Package boundary
 
@@ -123,6 +161,14 @@ match its catalog directories. Invalid, deleted, or incompatible selections can
 resolve to one of four code-owned recovery descriptors (`hero-rail`,
 `cover-wall`, `carousel`, or `compact-grid`) without trusting rejected package
 content. Packs do not receive action or provider authority through recovery.
+
+The default installed catalog is
+`%LOCALAPPDATA%\GameBarAlternative\launcher-experiences`; `--catalog <root>`
+creates isolated author/test state. `list` includes the four code-owned recovery
+presets and installed versions. `remove` accepts only an exact canonical
+package ID/version, revalidates it under the catalog mutation lock, and refuses
+to remove a built-in. There is no URL install, automatic update, signing,
+gallery, action binding, or provider/content capability in this workflow.
 
 ## Native host contract
 

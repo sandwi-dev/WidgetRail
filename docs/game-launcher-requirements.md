@@ -482,7 +482,8 @@ from focus, actions, hit testing, and accessibility rather than merely hidden.
 
 A Launcher Experience Pack is a new, launcher-specific data package. It is not
 the existing global `.gbartheme`, and installing one must not change the shell,
-Settings, or another widget. The proposed extension is `.gbarlauncher` with an
+Settings, or another widget. The implemented local archive extension is
+`.gbarlauncher` with an
 exact ID/version selection stored under Game Launcher's public configuration.
 
 ### Pack composition
@@ -660,9 +661,11 @@ accepted; raising package limits is not implicit permission to add media.
 - **GL-THEME-008 (M1):** Packing is deterministic; installed ID/version content
   is immutable; remote install requires an exact release asset and independently
   obtained SHA-256 as the current theme workflow does.
-- **GL-THEME-009 (M1):** Preview renders fixture libraries for empty, 20-game,
-  2,000-game, offline, signed-out, download-active, long-title, and missing-art
-  states at compact/standard/wide sizes and accessibility settings.
+- **GL-THEME-009 (M1):** Preview emits the deterministic offscreen fixture
+  contract for empty, 20-game, 2,000-game, offline, active-operation,
+  long-title, and missing-art states at compact/standard/wide sizes plus 150%
+  scale, reduced motion, reduced transparency, and high contrast. Ordinary-
+  overlay pack adoption remains a separate private native-host milestone.
 - **GL-THEME-010 (M1):** Invalid selection/reload retains the last-good
   experience. Holding the documented safe-start controller gesture while
   opening Game Launcher bypasses the selected pack for that activation.
