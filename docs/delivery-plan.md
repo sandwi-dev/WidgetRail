@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 06:46 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 07:36 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -67,66 +67,61 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-147: opt-in GOG installed-game source
+### Current assignment — DLV-153: correct unsupported GOG launch authority
 
-**State:** Assigned. Consume current planner main at a clean committed boundary
-before task-specific edits. If the equivalent cherry-picked Launcher
-Experience chain conflicts with the widgets ancestry, stop and report rather
-than resolving a material conflict.
+**State:** Assigned correction after DLV-147 commit `2972500` and held DLV-149
+commit `f282237`. DLV-147's focused tests are green, but the implementation did
+not satisfy its explicit supported-contract stop condition and is not accepted.
+DLV-149 is independently coherent at first review and remains held for DLV-150.
 
-**Baseline/dependencies:** accepted product baseline `4aa7284`. Reuse the
-normalized app-library contract, exact SavedId authority, accepted Windows/
-Xbox/Steam/Epic source patterns, host-owned source enablement, artwork
-fallback, and fresh launch revalidation. DLV-148 is native Launcher Experience
-presentation work and is concurrent; it must not touch the provider, Settings,
-or managed app-library projects.
+**Baseline/dependencies:** continue from clean widgets `f282237`; do not rewrite
+DLV-147 or DLV-149. Official GOG documentation describes client-owned file
+tasks and says games must remain launchable without Galaxy, but it documents no
+external `GalaxyClient.exe /command=runGame /gameId /path` integration contract.
+The fixed registry/info-file reader may remain as explicitly best-effort local
+installed evidence; it cannot grant Launch or claim a supported client API.
+DLV-148 remains concurrent and native-only.
 
-**Owner:** widgets lane for the trusted C# Windows app-library provider, one
-focused GOG installed-registration reader and exact launcher adapter, the
-existing Settings app-library preference surface, focused provider/Settings/
-Games & Apps/Game Launcher tests, and directly affected feature/status docs.
+**Owner:** widgets lane for the GOG source/reader/launcher correction, focused
+provider and installed-worker tests, and directly affected GOG feature/status
+documentation. Do not change DLV-149 selection behavior in this correction.
 
-**User-visible outcome:** a user can explicitly enable local GOG installed-game
-discovery in Settings; current installed GOG games then appear in Games & Apps
-and Game Launcher with `GOG` attribution, stable opaque identity, honest source
-health, and exact current launch behavior. With the toggle off, no GOG
-registration I/O occurs.
+**User-visible outcome:** opt-in GOG discovery remains useful and honest: the
+two widgets may show validated locally installed GOG games with GOG attribution,
+but those rows do not expose Play until a supported exact launch contract is
+implemented. The UI must not imply that a disabled action is a transient error.
 
-**Objective/scope:** add only credential-free installed-game truth from a
-fixed, provider-owned local registration surface with a documented stable GOG
-game identity and supported exact launcher route. Registration paths,
-commands, install locations, provider IDs, and protocol details remain inside
-the trusted provider. Emit normalized presentation and opaque SavedIds only;
-re-read and exactly match the current registration before launch. A missing,
-malformed, stale, disabled, or unavailable GOG installation must degrade only
-that source and retain unrelated source content.
+**Objective/scope:** remove `WindowsGogLauncher` and every production/test/doc
+claim that the undocumented Galaxy command line is supported. GOG normalized
+items must carry no Launch action/capability/authority and must never reach
+`Process.Start`. Retain disabled zero-I/O, bounded fixed registry/info reading,
+opaque identity, source health, same-title separation, cancellation, stale
+display, and failure isolation. Describe this as best-effort installed evidence,
+not an official API or proof that every GOG installation will be found.
 
-**Acceptance:** the preference is persisted and controller/keyboard reachable
-with precise no-network/no-login copy. Disabled, client-missing, empty,
-malformed, duplicate, mixed-validity, cancellation, and refreshed-registration
-fixtures are deterministic and bounded. Two same-title GOG records remain
-distinct; a removed/replaced record cannot launch through retained display.
-Only validated current installed games expose Launch. Both widgets consume the
-same normalized source without GOG-specific presentation or authority logic.
-If no supported stable local registration plus launch contract can be
-established, retain the evidence and stop before adding registry heuristics or
-free-form command execution.
+**Acceptance:** no `/command=runGame`, `/gameId`, `/path`, Galaxy process start,
+GOG Launch action, or launcher-started evidence remains. Provider tests require
+validated GOG items to be installed but non-launchable; both widgets render the
+same disabled/unavailable action truth without a GOG-specific UI branch. The
+installed generic-worker route proves the GOG row reaches the widget while an
+attempted Play cannot cross the broker/provider boundary. DLV-147's remaining
+disabled, malformed, duplicate, mixed-validity, cancellation, same-title,
+refresh, and stale-source cases remain green. Documentation names the support
+boundary precisely and does not call the registry or client route supported.
 
-**Architecture/verification:** follow the accepted Epic separation: focused
-registration reader, source adapter, and launcher owner; no GOG policy in
-`WindowsAppLibraryProvider`, `GamesAppsWidget`, `GameLauncherWidget`, or the
-shared validator. Provide a before/after responsibility map because the
-Settings and widget roots are registered hotspots. Tier 1 focused provider,
-Settings, Games & Apps, Game Launcher, and SDK Release suites only when
-affected. Tier 2 one generic-worker/broker conformance route for disabled,
-enabled, and stale launch. No aggregate, account, network, owned-but-not-
-installed catalog, content operations, helper binary, capture, or native edit.
+**Architecture/verification:** keep the focused reader/source separation and
+remove the now-invalid launcher owner rather than replacing it with direct game
+executable parsing, Start Menu title correlation, URI guessing, raw file-task
+arguments, or another heuristic. Tier 1 provider, Games & Apps, and Game
+Launcher focused Release suites. Tier 2 the one installed generic-worker route.
+No aggregate, account, network, helper, public protocol, DLV-149 behavior,
+native, capture, or reviewer-document edit.
 
-**Stop:** the only available source is an undocumented mutable database, a
-user-selected path, raw executable/argument string, arbitrary URI, credential,
-network API, or helper executable; a public protocol change is required; or a
-material conflict appears while consuming current main. Report the exact
-missing supported contract rather than implementing a heuristic.
+**Stop:** preserving launch requires any undocumented client switch, raw game
+executable/arguments, title/path correlation, arbitrary URI, credential,
+network API, helper executable, or public protocol change. Remove launch and
+report the future supported-contract blocker instead of substituting another
+route.
 
 ### Accepted dependency — DLV-134/DLV-145/DLV-146: live native experiences
 
@@ -150,14 +145,12 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-147 — DLV-149: trusted Launcher Experience selection
-   model and Settings management.** Add exact installed ID/version selection,
-   Use global appearance, one-action built-in recovery, last-good state, exact
-   metadata/unsigned disclosure, and selected-version removal denial in the
-   trusted PlatformSettings/Settings owners. This commit is held until its
-   private native consumption assignment is accepted. No public widget
-   protocol, remote gallery, update, signing, or production-native edit.
-2. **Ready after DLV-149 — DLV-151: Game Launcher action-sheet polish.** Use
+1. **Held — DLV-149: trusted Launcher Experience selection and Settings
+   management.** Commit `f282237` adds exact ID/version selection, global
+   appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
+   disclosure, and selected-version removal denial. It remains unintegrated
+   until DLV-150 privately consumes it. Do not redo or expose it alone.
+2. **Ready after DLV-153 — DLV-151: Game Launcher action-sheet polish.** Use
    the existing SDK `ActionSheet` and details/organization owners to make Y open
    one scoped, controller-complete action sheet with current Favorite, Hidden,
    variant, and source recovery actions. Do not duplicate the existing View
@@ -179,8 +172,8 @@ resolving a material conflict.
 **Baseline/dependencies:** accepted product baseline `4aa7284`. Reuse
 `LauncherExperienceProjection`, `LauncherExperiencePresentation`, the one
 shared compositor/window, and the deterministic seeded ordinary-host fixture.
-DLV-147 is managed GOG-provider work and is concurrent; do not touch provider,
-Settings, managed widget, SDK, protocol, or catalog code.
+DLV-153 is a managed GOG-provider correction and is concurrent; do not touch
+provider, Settings, managed widget, SDK, protocol, or catalog code.
 
 **Owner:** platform lane for connecting the already accepted launcher-scoped
 presentation/effect owner to the ordinary adopted Launcher Experience path;
@@ -247,9 +240,10 @@ missing private seam rather than adding parallel presentation authority.
 ## Serialized integration queue
 
 1. DLV-134/DLV-145/DLV-146 are accepted and integrated through `4aa7284`.
-2. DLV-147 and DLV-148 are independent and may integrate in either order after
-   review.
-3. Hold DLV-149 until DLV-150 consumes its selection/recovery state; integrate
+2. DLV-147 `2972500` is held for DLV-153; integrate that pair only if the
+   unsupported launch route is fully removed. DLV-148 remains independent.
+3. Hold DLV-149 `f282237` until DLV-150 consumes its selection/recovery state;
+   integrate
    the pair as one visible outcome.
 4. External metadata/artwork, Amazon adapters, trusted content operations,
    and pack gallery/update work remain later scoped milestones.

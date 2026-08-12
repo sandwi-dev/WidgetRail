@@ -342,9 +342,10 @@ eligibility; credential-free structural work continues independently.
 1. DLV-134/DLV-145/DLV-146 are accepted through `4aa7284`: all four built-in
    Launcher Experiences now have unconditional seeded ordinary-host adoption
    evidence plus a separate provider-fallback scenario.
-2. Run DLV-147's opt-in GOG installed-game source and DLV-148's production
-   Launcher Experience motion/effect-budget outcome concurrently. Both are
-   visible, credential-free work with exclusive managed/native ownership.
+2. Correct DLV-147 through DLV-153 before integration: keep opt-in bounded GOG
+   installed evidence, but remove the undocumented Galaxy `runGame` command
+   and all GOG launch authority. DLV-148 production Launcher Experience motion/
+   effect work remains independent and concurrent.
 3. Deliver local custom-pack selection as the serialized DLV-149/DLV-150 pair:
    trusted Settings selection/metadata/removal policy followed by private native
    adoption, last-good reload, and one-activation safe start. Do not expose a

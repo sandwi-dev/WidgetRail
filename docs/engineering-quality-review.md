@@ -126,6 +126,24 @@ accepted, but installed custom-pack selection/reload/recovery remains the
 serialized DLV-149/150 outcome. DLV-135 itself changes no overlay runtime
 behavior.
 
+### GOG installed source held for unsupported launch correction
+
+DLV-147 commit `2972500` has strong focused structure and evidence: disabled
+mode performs no source I/O; fixed registry/info reads are bounded; identities
+are opaque; same-title, malformed, duplicate, cancellation, stale, source-
+failure, and installed-worker cases are covered. Its provider, Settings, Games
+& Apps, and Game Launcher suites pass.
+
+It is not accepted. `WindowsGogLauncher` starts `GalaxyClient.exe` with
+`/command=runGame`, `/gameId`, and `/path`, but the official GOG material found
+during review documents client-owned file tasks and the optional DRM-free
+client model—not that external command line as a supported integration API.
+DLV-147 explicitly required a supported exact launch contract and required the
+agent to stop rather than infer one. DLV-153 therefore removes GOG launch
+authority and process invocation while retaining clearly labeled best-effort
+installed evidence. DLV-149 `f282237` is separately held for its planned private
+native consumer and is not reopened by this correction.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -181,7 +199,7 @@ its change is accepted.
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
 | Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 6168 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four live native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, author tooling, and deterministic ordinary-host adoption are accepted through `4aa7284`. | DLV-147 opt-in GOG installed truth, DLV-148 production motion/effect budgets, then serialized local-pack selection/safe-start recovery. |
+| Launcher platform | Data-only packs, four live native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, author tooling, and deterministic ordinary-host adoption are accepted through `4aa7284`. | DLV-153 removes DLV-147's unsupported GOG launch route; DLV-148 advances production motion/effect budgets; DLV-149/150 remain the serialized local-pack selection/safe-start outcome. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -210,8 +228,8 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-147's supported GOG registration/launch evidence and reject
-   heuristics, raw commands, credentials, and undocumented mutable databases.
+1. Review DLV-153 for complete removal of GOG process/launch authority while
+   retaining only honest bounded best-effort installed evidence.
 2. Review DLV-148 for one presentation owner, frame-atomic paint/focus/UIA,
    reduced-motion truth, and measured degradation before accepting animation.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
