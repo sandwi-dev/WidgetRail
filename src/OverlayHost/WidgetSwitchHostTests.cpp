@@ -57,6 +57,9 @@ constexpr std::array<Target, 4> kTargets{{
     {L"games-apps", L"Games & Apps", VK_RIGHT, 320},
 }};
 
+constexpr Target kGameLauncherTarget{
+    L"game-launcher", L"Game Launcher", VK_LEFT, 420};
+
 class TemporaryInstallation final {
 public:
     TemporaryInstallation(
@@ -101,7 +104,8 @@ public:
             ".audio-surface { background: #873449; }\n"
             ".network-surface { background: #225f83; }\n"
             ".spotify-surface { background: #176f3a; }\n"
-            ".games-surface { background: #8a5c18; }\n");
+            ".games-surface { background: #8a5c18; }\n"
+            ".launcher-surface { background: #54418a; }\n");
 
         const std::string worker = JsonEscape(fs::absolute(fixtureWorker).wstring());
         const auto widget = [&](const char* id, const char* packageId, const char* name,
@@ -130,7 +134,9 @@ public:
             widget("spotify", "org.gbar.tests.spotify", "Spotify",
                    "spotify.default", "music") + ",\n" +
             widget("games-apps", "org.gbar.tests.games", "Games & Apps",
-                   "games-apps.default", "play") +
+                   "games-apps.default", "play") + ",\n" +
+            widget("game-launcher", "org.gbar.tests.launcher", "Game Launcher",
+                   "game-launcher.default", "play") +
             "\n  ],\n  \"bundledWidgets\":[]\n}\n";
         WriteUtf8(root_ / L"widget-catalog.json", catalog);
     }
@@ -291,15 +297,23 @@ void RunRetentionScenario(const Arguments& arguments) {
                     const auto log = ReadUtf8(logPath);
                     const auto recordAt = log.find(needle, after);
                     if (recordAt == std::string::npos) return false;
-                    if (authority != "retained") return true;
                     const auto lineEnd = log.find('\n', recordAt);
-                    return log.substr(
+                    const auto record = log.substr(
                         recordAt,
                         lineEnd == std::string::npos
                             ? std::string::npos
-                            : lineEnd - recordAt).find("semantics=inert") != std::string::npos;
+                            : lineEnd - recordAt);
+                    if (authority != "retained") return true;
+                    return record.find("semantics=inert") != std::string::npos &&
+                        record.find("input-owner=tray") != std::string::npos &&
+                        record.find("selected=" + WideToUtf8(target.id)) !=
+                            std::string::npos &&
+                        record.find("visual-focus=none") != std::string::npos &&
+                        record.find("semantic-focus=tray:" + WideToUtf8(target.id)) !=
+                            std::string::npos;
                 }), "Production paint trace omitted " + std::string(authority) +
-                        " content for " + WideToUtf8(target.label));
+                        " content for " + WideToUtf8(target.label) + " after=" +
+                        ReadUtf8(logPath).substr(after));
     };
     const auto switchTo = [&](const Target& target, const Target& previous) {
         const auto before = ReadUtf8(logPath).size();
@@ -329,6 +343,21 @@ void RunRetentionScenario(const Arguments& arguments) {
         const auto admittedAt = log.find(admittedNeedle, before);
         Require(admittedAt != std::string::npos,
                 "Admitted paint trace disappeared before composition validation");
+        const auto admittedEnd = log.find('\n', admittedAt);
+        const auto admittedRecord = log.substr(
+            admittedAt,
+            admittedEnd == std::string::npos
+                ? std::string::npos
+                : admittedEnd - admittedAt);
+        Require(admittedRecord.find("input-owner=tray") != std::string::npos &&
+                    admittedRecord.find("selected=" + WideToUtf8(target.id)) !=
+                        std::string::npos &&
+                    admittedRecord.find("visual-focus=none") != std::string::npos &&
+                    admittedRecord.find(
+                        "semantic-focus=tray:" + WideToUtf8(target.id)) !=
+                        std::string::npos,
+                "Admitted destination did not preserve ordered tray focus authority for " +
+                    WideToUtf8(target.label));
         const auto transition = log.find(TransitionNeedle(target.id), before);
         Require(transition != std::string::npos,
                 "Transition diagnostics omitted the destination identity for " +
@@ -355,6 +384,11 @@ void RunRetentionScenario(const Arguments& arguments) {
     recordComposition(audioAdmittedAt, kTargets[0].label);
     SendKey(window, VK_DOWN);
     FenceWindow(window);
+    switchTo(kGameLauncherTarget, kTargets[0]);
+
+    const auto returnBefore = ReadUtf8(logPath).size();
+    SendKey(window, VK_RIGHT);
+    waitForPaint(returnBefore, kTargets[0], kTargets[0].id, "admitted");
     for (std::size_t index = 1; index < kTargets.size(); ++index)
         switchTo(kTargets[index], kTargets[index - 1]);
 
@@ -393,7 +427,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                 log.find("Overlay render target resized in place") == std::string::npos,
             "Production transition fell back to direct HWND presentation.");
-    Require(drawTimings.size() == kTargets.size() &&
+    Require(drawTimings.size() == kTargets.size() + 1 &&
                 commitTimings.size() == drawTimings.size() &&
                 geometryTimings.size() == drawTimings.size(),
             "Production timing distribution omitted a widget transition.");
