@@ -2941,6 +2941,18 @@ with C++ installed:
   passes Now Playing 23/23, Widget SDK 88/88, Windows Media 13/13 (including one
   sanitized live GSMTC probe), and the documentation contract across 59 files.
 
+- DLV-162 audits the current credential-free Now Playing recovery path against
+  the local `overlay.log` interval from 06:32:14.192 through 06:32:15.915. The
+  host retained the prior surface until current Now Playing snapshots 1 and 2
+  were admitted, with no Media Sessions failure diagnostic. The live GSMTC
+  probe observed one sanitized session. One provider edge was reproducible:
+  an identity-less Windows session threw while deriving its friendly label and
+  was omitted. The native adapter now assigns the fixed `Media app` fallback
+  without exposing identity or weakening opaque control authority. Focused
+  Release evidence passes Windows Media 14/14 and Now Playing 23/23; the single
+  installed AppContainer route also passes initial/empty snapshots, transient
+  failure and Retry, stale-completion rejection, reactivation, and teardown.
+
 - DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
   The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
   the existing Windows-10-compatible DirectComposition owner clears its

@@ -239,8 +239,9 @@ internal sealed class WindowsMediaNativeAdapter : IWindowsMediaNativeAdapter
     private static long ClampMilliseconds(TimeSpan value) =>
         (long)Math.Clamp(value.TotalMilliseconds, 0, TimeSpan.FromDays(7).TotalMilliseconds);
 
-    internal static string FriendlyAppName(string sourceAppUserModelId)
+    internal static string FriendlyAppName(string? sourceAppUserModelId)
     {
+        if (string.IsNullOrWhiteSpace(sourceAppUserModelId)) return "Media app";
         var candidate = sourceAppUserModelId;
         var bang = candidate.LastIndexOf('!');
         if (bang >= 0 && bang + 1 < candidate.Length) candidate = candidate[(bang + 1)..];

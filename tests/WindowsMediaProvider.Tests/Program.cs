@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("All five supported transport commands map exactly", CommandsMapExactly),
     ("Unsupported native controls fail with a typed error", UnsupportedControlFailsClosed),
     ("Provider payloads expose no AUMID or native identifier", PayloadIsSanitized),
+    ("Identity-less Windows sessions retain a safe app label", IdentityLessAppUsesFallback),
     ("App labels and metadata remove control characters and paths", SanitizerIsBounded),
     ("GSMTC artwork is normalized to a bounded inline PNG", ArtworkIsNormalized),
     ("Missing malformed and oversized GSMTC artwork is omitted", BadArtworkIsOmitted),
@@ -156,6 +157,13 @@ static Task SanitizerIsBounded()
     Assert.Equal("Safe title", WindowsMediaNativeAdapter.Sanitize(" Safe\r title ", "Fallback"));
     Assert.Equal(160, WindowsMediaNativeAdapter.Sanitize(new string('x', 200), "Fallback").Length);
     Assert.Equal("Fallback", WindowsMediaNativeAdapter.Sanitize("\r\n", "Fallback"));
+    return Task.CompletedTask;
+}
+
+static Task IdentityLessAppUsesFallback()
+{
+    Assert.Equal("Media app", WindowsMediaNativeAdapter.FriendlyAppName(null));
+    Assert.Equal("Media app", WindowsMediaNativeAdapter.FriendlyAppName(" \r\n "));
     return Task.CompletedTask;
 }
 
