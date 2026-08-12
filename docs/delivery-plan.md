@@ -147,8 +147,11 @@ filter/sort behavior requires a new product choice or unsupported provider API.
 
 ### DLV-125 — Restore the canonical verifier manifest and close DLV-123 evidence
 
-**State:** Assigned after committed DLV-126; the widgets lane took this item
-immediately without waiting for planner review, as required
+**State:** Accepted as `ccabb0e`, integrated through `418d11f`; the omitted
+scenario project now executes exactly once through the canonical manifest. The
+single required clean aggregate stopped later at an unrelated Gbar CLI dev-
+session timing failure, which is isolated to DLV-129 and must not block visible
+Game Launcher work.
 **Baseline/dependencies:** accepted DLV-123 `552d250`, integrated through
 `8c40a6d`; its focused Release evidence passes Catalog 35/35, diagnostics 17/17,
 Settings 57/57, Bridge 83/83, generic-worker conformance 6/6, and docs 59, but
@@ -181,13 +184,86 @@ aggregates.
 runner cannot invoke it without a material architecture/schema change, or the
 aggregate exposes an unrelated product failure requiring planner triage.
 
+### DLV-128 — Ship the first playable Game Launcher console hero rail
+
+**State:** Assigned after the clean widgets lane merges exact accepted main
+through `418d11f`
+**Baseline/dependencies:** accepted DLV-126 collection/action correction and the
+approved `docs/game-launcher-requirements.md` M1 console-home contract. Use only
+the existing installed-game query, opaque artwork handles, exact SavedId action
+routes, declarative SDK primitives, and native responsive renderer.
+**Owner:** widgets lane for Game Launcher presentation policy, a small explicit
+built-in experience selection owner if required, focused managed tests, and its
+direct public behavior documentation
+**Concurrency:** no native HWND/compositor/tray/placement changes, provider or
+store breadth, network metadata/artwork API, custom-pack schema/CLI, executable
+themes, package trust, reviewer documents, capture, credentials, or push.
+
+**User-visible outcome:** opening Game Launcher presents a deliberate console-
+home experience: the currently focused game has a strong hero/details region
+and the playable library remains a controller-first cover rail. Focus changes
+update the hero without changing launch identity, moving the host tray, or
+losing the current page/collection position.
+
+**Objective/scope:** implement one built-in `hero-rail` experience over the
+current installed-only catalog. Reuse the selected game's trusted artwork handle
+as a bounded hero when available and a professional semantic fallback otherwise;
+show title, exact source/availability truth, favorite/preferred/variant state,
+and the existing primary launch/details actions without inventing metadata.
+Keep search, source/filter/sort controls, pagination, details, View/X/Y/LB/RB,
+Back, error/loading/warm state, and exact collection continuation functional.
+The experience is built-in product presentation, not the future public launcher-
+pack format; do not prematurely freeze or expose that schema.
+
+**Acceptance:** empty, loading, retained-warm, error, single-game, 20-game,
+long-title, missing-art, hidden/filter, multi-page, launch-busy, and 150%-scale
+fixtures retain honest content and deterministic focus. Changing focused tiles
+updates only selected presentation state and never dispatches launch. A/Details
+and every contextual shortcut still target the exact focused SavedId once;
+page/filter/Back restores the nearest valid game and current hero. Snapshot node
+count, artwork requests, retained pages, and private state remain bounded.
+Game Launcher root/lifecycle owners do not absorb a new layout monolith: provide
+a before/after responsibility map and keep hero-rail composition in a focused
+presentation component/policy.
+
+**Verification:** Tier 1 Game Launcher Release tests for the named states,
+controller action identity, focus-to-hero projection, bounds/node count, and no
+network/raw-path authority. Tier 2 Widget SDK/protocol/native layout only if an
+existing generic primitive genuinely fails; stop before expanding that scope.
+No aggregate, capture, account, external API, or provider test.
+
+**Stop:** the requested hero requires a new trusted artwork kind, shared native
+layout primitive, public pack schema, provider metadata, raw path/URL, or a
+material choice about replacing the current controls rather than composing them.
+
 ### Widgets ready queue
 
-No later independent widgets item is pre-authorized after
-DLV-125. Game Launcher store breadth lacks a supported consumer API, Audio endpoint selection
-lacks a supported setter, YouTube is blocked at the trusted-media cost gate,
-and Spotify/YT Music account work needs authentication or live evidence. A
-DLV-126 review correction, if any, is queued next without interrupting new work.
+### DLV-129 — Make the Gbar dev cancellation fixture deterministic
+
+**State:** Ready after DLV-128; this internal evidence repair must not preempt
+the visible console-home milestone
+**Baseline/evidence:** the one clean exact-commit aggregate from `ccabb0e`, run
+`20260812T074036Z-37ce8dc0`, passed all prior managed steps including new
+WidgetScenario 9/9, then Gbar CLI passed 57/58. Only `Dev retains last good and
+cleans its process tree on cancellation` timed out waiting for `Ready:` after
+the preceding cold dev/process-tree tests. Do not rerun the aggregate.
+**Owner/scope:** widgets lane for the Gbar dev-session test seam and production
+dev-session lifecycle only if a focused reproduction proves a real product
+defect. Diagnose scheduler/build-state dependency using retained stdout/stderr
+and a filtered/direct fixture. Preserve the real 90-second product build bound,
+last-good retention, cancellation, Job Object tree cleanup, and no compiler-
+server leak. Remove wall-clock coupling or cross-test interference at its exact
+source; do not merely inflate timeouts.
+**Acceptance:** the named fixture passes repeatedly under a bounded focused
+command and proves Ready, retained-last-good, cancellation, temporary-catalog
+cleanup, and child-host exit. No unrelated Gbar tests, verifier schema changes,
+aggregate rerun, product feature work, or broad test migration.
+
+No later independent widgets item is pre-authorized after DLV-129. Audio
+endpoint selection lacks a supported setter, YouTube is blocked at the trusted-
+media cost gate, and Spotify/YT Music account work needs authentication or live
+evidence. New Game Launcher store/API breadth follows the approved requirements
+only through later bounded assignments.
 
 ## Platform lane
 
@@ -305,6 +381,7 @@ continue immediately in their respective lanes.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-125 | `ccabb0e` | `418d11f` | The existing MSTest.Sdk 4.3.2 WidgetScenario project now has one bounded manifest step and exact-once discovery enforcement; direct/manifest execution passes 9/9. The one clean aggregate stopped later at Gbar CLI 57/58, isolated as DLV-129 rather than rerun or allowed to block visible work. |
 | DLV-126 | `a45166c` | `2c58ba7` | Game Launcher derives warm anchors from the exact rendered non-hidden rows, publishes shortcuts/help only for actionable game tiles, and retains host-owned single-step collection continuation. Focused Release evidence is 60/60; exact main is rebuilt, packaged, and visibly running as PID 16824 for the user's top-control, shortcut, and paging verdict. |
 | DLV-123 | `552d250` | `8c40a6d` | Disabled Community widgets now expose an exact path-free nested uninstall confirmation in Settings; built-in/enabled/stale/resident identities fail closed, all package versions retire together, unrelated widgets and private data remain, and one catalog revision is published. Focused Release evidence is green; the inherited verifier-manifest omission is isolated to DLV-125. |
 | DLV-121 | `fb0ad51` | `a758508` | The Audio Mixer production fixture now traverses the real clipped/revealed controls instead of directly focusing an absent offscreen UIA node; live product behavior is unchanged and still awaits user verification. |
