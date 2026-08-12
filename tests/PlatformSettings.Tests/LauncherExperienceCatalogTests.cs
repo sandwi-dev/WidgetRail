@@ -230,6 +230,17 @@ internal static class LauncherExperienceCatalogTests
     private static void PackageAndCatalogBudgetsFailFast()
     {
         var validator = new LauncherExperienceValidator();
+        EntrySet("all-valid", index => $"asset-{index:D2}.png", maximumDiagnostics: 1);
+        EntrySet("all-forbidden", index => $"payload-{index:D2}.exe",
+            maximumDiagnostics: LauncherExperienceValidator.MaximumFiles + 1);
+        EntrySet("mixed", index => index % 2 == 0
+                ? $"asset-{index:D2}.png"
+                : $"payload-{index:D2}.zip",
+            maximumDiagnostics: LauncherExperienceValidator.MaximumFiles + 1);
+        EntrySet("repeated-invalid", index =>
+                new string('x', 110) + $"-{index:D2}.png",
+            maximumDiagnostics: LauncherExperienceValidator.MaximumFiles + 1);
+
         using (var temp = new TempDirectory())
         {
             var package = WritePackage(temp.Path, "dev.example.files", "1.0.0", BottomRecipe());
@@ -277,6 +288,24 @@ internal static class LauncherExperienceCatalogTests
             for (var index = 0; index <= LauncherExperienceCatalog.MaximumInstalledVersions; index++)
                 Directory.CreateDirectory(Path.Combine(id, $"1.0.{index}"));
             ThrowsCode(() => new LauncherExperienceCatalog(temp.Path).Discover(), "too_many_experiences");
+        }
+
+        void EntrySet(string name, Func<int, string> fileName, int maximumDiagnostics)
+        {
+            using var temp = new TempDirectory();
+            var package = Path.Combine(temp.Path, name);
+            Directory.CreateDirectory(package);
+            var unvisited = Path.Combine(package, "unvisited-tail");
+            Directory.CreateDirectory(unvisited);
+            File.WriteAllText(Path.Combine(unvisited, "must-not-be-diagnosed.exe"), "tail");
+            for (var index = 0; index <= LauncherExperienceValidator.MaximumFiles; index++)
+                File.WriteAllText(Path.Combine(package, fileName(index)), "entry");
+            var result = validator.ValidateDirectory(package);
+            HasPathCode(result.Diagnostics, "$", "too_many_files");
+            True(result.Diagnostics.Count <= maximumDiagnostics,
+                $"{name} accumulated {result.Diagnostics.Count} diagnostics past its bounded set.");
+            True(!result.Diagnostics.Any(item => item.Path.Contains("must-not-be-diagnosed", StringComparison.Ordinal)),
+                $"{name} continued into the tail tree after file 65.");
         }
     }
 

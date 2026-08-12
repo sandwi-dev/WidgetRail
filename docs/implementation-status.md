@@ -3251,6 +3251,15 @@ zero after verifying host-owned launch and Back actions on the same admitted
 surface geometry. No capture, pack catalog, Game Launcher domain, window,
 composition, or motion behavior changed.
 
+### Launcher Experience encountered-entry bound (DLV-141)
+
+Package traversal now increments the 64-file budget before reparse, path,
+extension, duplicate, role, or dictionary admission work. Encountering file 65
+stops the current enumerator and leaves queued directories untouched. The
+focused Release fixture passes 17/17 and covers all-valid, all-forbidden, mixed,
+and repeated-unsafe over-limit sets with a bounded diagnostic count and an
+unvisited invalid tail.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

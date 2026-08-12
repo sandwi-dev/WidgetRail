@@ -110,6 +110,7 @@ public sealed class LauncherExperienceValidator
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
         long total = 0;
         var directoryCount = 0;
+        var encounteredFileCount = 0;
         var directories = new Stack<string>();
         directories.Push(root);
         while (directories.Count != 0)
@@ -132,6 +133,9 @@ public sealed class LauncherExperienceValidator
             }
             foreach (var file in Directory.EnumerateFiles(directory))
             {
+                if (++encounteredFileCount > MaximumFiles)
+                    throw new LauncherExperiencePackageException(
+                        "too_many_files", $"Package may contain at most {MaximumFiles} files.");
                 var relative = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
                 if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
                     throw new LauncherExperiencePackageException(
@@ -151,9 +155,6 @@ public sealed class LauncherExperienceValidator
                     errors.Add(new(relative, "duplicate_path", "Package contains a duplicate path."));
                     continue;
                 }
-                if (files.Count > MaximumFiles)
-                    throw new LauncherExperiencePackageException(
-                        "too_many_files", $"Package may contain at most {MaximumFiles} files.");
                 var length = new FileInfo(file).Length;
                 if (length > MaximumAssetBytes)
                     throw new LauncherExperiencePackageException(
