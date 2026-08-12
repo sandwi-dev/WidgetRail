@@ -188,6 +188,8 @@ aggregate exposes an unrelated product failure requiring planner triage.
 
 **State:** Accepted as `344caa0`, integrated as `67c557d`; focused Game Launcher
 evidence passed 62/62 and documentation contracts covered 61 Markdown files.
+The complete accepted artifact graph through planner main `d8c803a` is visibly
+running as PID 32952 for the user's hero-rail verdict.
 **Baseline/dependencies:** accepted DLV-126 collection/action correction and the
 approved `docs/game-launcher-requirements.md` M1 console-home contract. Use only
 the existing installed-game query, opaque artwork handles, exact SavedId action
@@ -553,7 +555,8 @@ manufacture adjacent work.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
-| DLV-127 | `df07d7c` | `2ac0a5a` | Widget switches retain one work-area-fitted shared shell and tray while preferred width/height remain bounded inner-body hints. Eight real host transitions retain exact shell/tray/selection geometry with zero widget-shell motion commits and bounded draw/commit/geometry timings; exact main is visibly running as PID 18392 for the user's border/clipping/switching verdict. |
+| DLV-128/129 | `344caa0` and `7f7d9d5` | `67c557d` and `d792e30`; packaged through planner main `d8c803a` | Game Launcher now presents the bounded selected-game hero and horizontal cover rail while retaining exact SavedId actions and current installed-only authority. The dev cancellation fixture is deterministic without changing product behavior. One full Release package refresh passed and PID 32952 is visibly running; its startup/admission log contains no new worker or protocol failure. |
+| DLV-127 | `df07d7c` | `2ac0a5a` | Widget switches retain one work-area-fitted shared shell and tray while preferred width/height remain bounded inner-body hints. Eight real host transitions retain exact shell/tray/selection geometry with zero widget-shell motion commits and bounded draw/commit/geometry timings; the prior PID 18392 was gracefully replaced by current accepted PID 32952. |
 | DLV-125 | `ccabb0e` | `418d11f` | The existing MSTest.Sdk 4.3.2 WidgetScenario project now has one bounded manifest step and exact-once discovery enforcement; direct/manifest execution passes 9/9. The one clean aggregate stopped later at Gbar CLI 57/58, isolated as DLV-129 rather than rerun or allowed to block visible work. |
 | DLV-126 | `a45166c` | `2c58ba7` | Game Launcher derives warm anchors from the exact rendered non-hidden rows, publishes shortcuts/help only for actionable game tiles, and retains host-owned single-step collection continuation. Focused Release evidence is 60/60; exact main is rebuilt, packaged, and visibly running as PID 16824 for the user's top-control, shortcut, and paging verdict. |
 | DLV-123 | `552d250` | `8c40a6d` | Disabled Community widgets now expose an exact path-free nested uninstall confirmation in Settings; built-in/enabled/stale/resident identities fail closed, all package versions retire together, unrelated widgets and private data remain, and one catalog revision is published. Focused Release evidence is green; the inherited verifier-manifest omission is isolated to DLV-125. |
