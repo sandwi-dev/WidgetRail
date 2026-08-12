@@ -59,6 +59,13 @@ ID and invokes semantic A only when enabled. Hit testing is host-owned, clipped
 to the renderer's visible active input scope, and never forwards raw mouse data
 to widget code. Clicking the dimmed backdrop closes the overlay.
 
+UI Automation Invoke on an enabled tray item uses the same host-owned selection
+transition. A successful admission selects the stable widget exactly once and
+returns success even though the selected widget runtime changes during the call;
+a rejected admission remains a failure. Host-shell and tray providers retain
+their stable identities across that runtime change, while widget-authored
+providers remain bound to their exact runtime generation.
+
 ### Host-owned text entry
 
 A focused `TextEntry` opens one native modal owned by the overlay. Keyboard and

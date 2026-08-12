@@ -680,9 +680,11 @@ private:
 
     [[nodiscard]] const Node* ResolveNode(
         const std::shared_ptr<const PublishedTree>& published) const noexcept {
-        if (!identity_ || !published ||
-            published->tree.widgetId != identity_->widgetId ||
-            published->tree.runtimeGeneration != identity_->runtimeGeneration) return nullptr;
+        if (!identity_ || !published) return nullptr;
+        if (identity_->domain == ElementDomain::Widget &&
+            (published->tree.widgetId != identity_->widgetId ||
+             published->tree.runtimeGeneration != identity_->runtimeGeneration))
+            return nullptr;
         const auto found = std::find_if(
             published->tree.nodes.begin(), published->tree.nodes.end(),
             [&](const Node& node) {
@@ -693,8 +695,11 @@ private:
 
     [[nodiscard]] std::optional<std::size_t> ResolveIndex(
         const PublishedTree& published) const noexcept {
-        if (!identity_ || published.tree.widgetId != identity_->widgetId ||
-            published.tree.runtimeGeneration != identity_->runtimeGeneration) return std::nullopt;
+        if (!identity_) return std::nullopt;
+        if (identity_->domain == ElementDomain::Widget &&
+            (published.tree.widgetId != identity_->widgetId ||
+             published.tree.runtimeGeneration != identity_->runtimeGeneration))
+            return std::nullopt;
         const auto found = std::find_if(
             published.tree.nodes.begin(), published.tree.nodes.end(),
             [&](const Node& node) {
@@ -708,6 +713,11 @@ private:
 
     static ElementIdentity IdentityFor(
         const PublishedTree& published, const Node& node) {
+        if (node.domain != ElementDomain::Widget) {
+            return {
+                L"host", L"host", node.domain, node.id,
+            };
+        }
         return {
             published.tree.widgetId, published.tree.runtimeGeneration,
             node.domain, node.id,

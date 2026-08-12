@@ -20,7 +20,8 @@ param(
     [switch]$ColdDashboardTestsOnly,
     [switch]$LauncherExperienceTestsOnly,
     [switch]$LauncherExperienceHostTestsOnly,
-    [switch]$TextEntryHostTestsOnly
+    [switch]$TextEntryHostTestsOnly,
+    [switch]$TrayAccessibilityHostTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -323,6 +324,60 @@ function Invoke-AccessibilityTreeTests {
     & (Join-Path $outputDirectory 'AccessibilityTreeTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "AccessibilityTreeTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-TrayAccessibilityTests {
+    $providerArguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        "/Fo:$accessibilityProviderTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $providerArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProviderTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityProviderTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProviderTests failed with exit code $LASTEXITCODE."
+    }
+
+    $hostArguments = $common + @(
+        (Join-Path $projectDirectory 'HostAccessibilityTests.cpp'),
+        (Join-Path $projectDirectory 'HostAccessibility.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
+        "/Fo:$hostAccessibilityTestObjectDirectory\",
+        "/Fe:$outputDirectory\HostAccessibilityTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $hostArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "HostAccessibilityTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'HostAccessibilityTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "HostAccessibilityTests failed with exit code $LASTEXITCODE."
+    }
+
+    $stateArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayStateTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
+        "/Fo:$testObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayStateTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $stateArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayStateTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayStateTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayStateTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -846,7 +901,10 @@ function Invoke-LauncherExperienceTests {
 }
 
 function Invoke-LauncherExperienceHostTests {
-    param([switch]$TextEntryOnly)
+    param(
+        [switch]$TextEntryOnly,
+        [switch]$TrayInvokeOnly
+    )
     & dotnet publish (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
         --output $launcherExperienceBridgeFixtureOutput
@@ -876,6 +934,8 @@ function Invoke-LauncherExperienceHostTests {
     )
     if ($TextEntryOnly) {
         $testArguments += '--text-entry-only'
+    } elseif ($TrayInvokeOnly) {
+        $testArguments += '--tray-invoke-only'
     }
     & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') $testArguments
     if ($LASTEXITCODE -ne 0) {
@@ -1179,6 +1239,15 @@ if ($TextEntryHostTestsOnly) {
     Invoke-TextEntryModalTests
     Invoke-AccessibilityTreeTests
     Invoke-LauncherExperienceHostTests -TextEntryOnly
+    return
+}
+
+if ($TrayAccessibilityHostTestsOnly) {
+    if ($SkipTests -or $SkipPackaging) {
+        throw 'TrayAccessibilityHostTestsOnly requires tests and packaging.'
+    }
+    Invoke-TrayAccessibilityTests
+    Invoke-LauncherExperienceHostTests -TrayInvokeOnly
     return
 }
 

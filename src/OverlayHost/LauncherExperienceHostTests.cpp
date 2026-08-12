@@ -1120,12 +1120,61 @@ void RunTextEntryCancel(
                  "committed-query preservation, and exact focus restoration passed\n";
 }
 
+void RunTrayInvoke(
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge) {
+    RunningHost running(installationPath, fixtureBridge, "adoption\n");
+    ComPtr<IUIAutomation> automation;
+    Require(SUCCEEDED(CoCreateInstance(
+                CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
+        "Windows UI Automation client is unavailable for tray Invoke proof.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        return !ProjectionRecords(running.installation.LogPath()).empty();
+    }), "The installed Game Launcher did not reach its stable production projection.");
+
+    auto network = WaitForElement(
+        automation.Get(), running.window, L"tray:tray.network-controls");
+    RequireInsideWindow(network.Get(), running.window);
+    ComPtr<IUIAutomationInvokePattern> invoke;
+    Require(SUCCEEDED(network->GetCurrentPatternAs(
+                UIA_InvokePatternId,
+                IID_PPV_ARGS(invoke.ReleaseAndGetAddressOf()))) && invoke,
+        "Network Controls tray item omitted InvokePattern.");
+    const auto before = ReadUtf8(running.installation.LogPath());
+    Require(SUCCEEDED(invoke->Invoke()),
+        "Successful Network Controls tray selection returned a UIA Invoke error.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        auto root = RootForWindow(automation.Get(), running.window);
+        auto selected = FindByAutomationId(
+            automation.Get(), root.Get(), L"tray:tray.network-controls");
+        VARIANT value{};
+        const bool selectedNow = selected && SUCCEEDED(selected->GetCurrentPropertyValue(
+            UIA_SelectionItemIsSelectedPropertyId, &value)) &&
+            V_VT(&value) == VT_BOOL && V_BOOL(&value) == VARIANT_TRUE;
+        VariantClear(&value);
+        return selectedNow && CountOccurrences(
+            log.substr(before.size()),
+            "Widget presentation transition from=game-launcher") == 1 &&
+            log.find("to=network-controls", before.size()) != std::string::npos;
+    }), "Network Controls tray Invoke did not select and transition exactly once.");
+    running.Stop();
+    std::cout << "LauncherExperienceHostTests: tray UIA Invoke success and "
+                 "single-selection transition passed\n";
+}
+
 void Run(
     const fs::path& installationPath,
     const fs::path& fixtureBridge,
-    const bool textEntryOnly) {
+    const bool textEntryOnly,
+    const bool trayInvokeOnly) {
     if (textEntryOnly) {
         RunTextEntryCancel(installationPath, fixtureBridge);
+        return;
+    }
+    if (trayInvokeOnly) {
+        RunTrayInvoke(installationPath, fixtureBridge);
         return;
     }
     ComPtr<IUIAutomation> automation;
@@ -1145,11 +1194,14 @@ void Run(
 int wmain(const int argc, wchar_t** argv) {
     const bool textEntryOnly = argc == 6 &&
         std::wstring_view(argv[5]) == L"--text-entry-only";
-    if ((argc != 5 && !textEntryOnly) ||
+    const bool trayInvokeOnly = argc == 6 &&
+        std::wstring_view(argv[5]) == L"--tray-invoke-only";
+    if ((argc != 5 && !textEntryOnly && !trayInvokeOnly) ||
         std::wstring_view(argv[1]) != L"--installation" ||
         std::wstring_view(argv[3]) != L"--fixture-bridge") {
         std::cerr << "Usage: LauncherExperienceHostTests --installation <dir> "
-                     "--fixture-bridge <exe> [--text-entry-only]\n";
+                     "--fixture-bridge <exe> "
+                     "[--text-entry-only|--tray-invoke-only]\n";
         return 1;
     }
     const auto initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -1158,7 +1210,7 @@ int wmain(const int argc, wchar_t** argv) {
         return 1;
     }
     try {
-        Run(fs::path(argv[2]), fs::path(argv[4]), textEntryOnly);
+        Run(fs::path(argv[2]), fs::path(argv[4]), textEntryOnly, trayInvokeOnly);
         std::cout << "LauncherExperienceHostTests: production host passed\n";
         CoUninitialize();
         return 0;

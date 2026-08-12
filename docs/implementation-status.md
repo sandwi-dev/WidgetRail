@@ -4006,3 +4006,20 @@ cancels through Escape (the keyboard/controller-B modal path), observes exactly
 one cancel with `action-dispatched=false` and `committed-value=preserved`, sends
 no additional app-library query, and restores exact UIA focus to
 `widget:game-launcher.search`.
+
+### Tray UIA Invoke completion evidence (DLV-168)
+
+Host-shell and tray UI Automation providers now use host-owned identity instead
+of inheriting the currently selected widget runtime generation. Widget-authored
+providers remain generation-bound and therefore still fail closed when stale.
+An enabled tray Invoke can consequently complete after its one admitted widget
+selection changes the runtime tree, returning success instead of a secondary
+COM error; rejected admission remains truthful failure. Pointer and controller
+selection paths are unchanged.
+
+Focused Release evidence passes `AccessibilityProviderTests` (155 checks),
+`HostAccessibilityTests` (34 checks), `OverlayStateTests`, and the installed
+generic-worker `LauncherExperienceHostTests` tray route. That real HWND/UIA route
+invokes Network Controls from Game Launcher, observes selected UIA state and
+exactly one `game-launcher` to `network-controls` presentation transition, and
+receives successful Invoke completion.

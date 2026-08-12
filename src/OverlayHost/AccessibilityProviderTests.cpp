@@ -605,6 +605,14 @@ int main() {
           actions[0].hostTargetId == L"music",
           "tray Invoke retains the selected widget target");
 
+    auto replacementRuntimeTree = HostTree();
+    replacementRuntimeTree.widgetId = L"network-controls";
+    replacementRuntimeTree.runtimeGeneration = L"generation-network-controls";
+    replacementRuntimeTree.snapshotSequence = 30;
+    host.Publish(replacementRuntimeTree, {100, 200, 2, 800, 600});
+    Check(StringProperty(trayItem.Get(), UIA_NamePropertyId) == L"YT Music",
+          "host-owned tray provider identity survives the selected widget runtime change");
+
     host.Publish(OpenHostTree(), {100, 200, 2, 800, 600});
     BSTR openRootName{};
     Check(SUCCEEDED(clientRoot->get_CurrentName(&openRootName)) &&
