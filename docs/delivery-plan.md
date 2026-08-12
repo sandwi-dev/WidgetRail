@@ -196,7 +196,34 @@ protocol, per-widget special case, compositor redesign, or material UX choice.
 
 ### Platform ready queue
 
-**Queue note:** the next platform correction depends on the user's fresh verdict
+#### DLV-121 — Restore the Audio Mixer production focus target fixture
+
+**State:** Ready immediately after DLV-118
+**Baseline/dependencies:** accepted main `048e0a3` plus the completed DLV-118
+boundary; begin from the exact accepted-main Release failure
+`AudioMixerScrollHostTests failed: Requested production UIA focus target was
+absent.` Do not rerun the unchanged command merely to seek a pass.
+**Owner:** platform lane; production-host focus/UIA projection, scroll reveal,
+fixture admission, and directly affected focused tests/docs. If the missing node
+is authored by AudioMixerWidget rather than lost by the host, stop with the
+exact semantic snapshot evidence for widgets-lane reassignment.
+**Outcome/scope:** make the real accepted-main Master-to-session and session-to-
+Master traversal expose one current, reachable UIA focus target at the previously
+failing state. Trace the emitted snapshot, admitted input scope, rendered bounds,
+and projected UIA tree before changing the smallest owner. Preserve DLV-049's
+keyboard/controller behavior and DLV-106's tray focus ownership.
+**Acceptance/verification:** the focused production fixture fails before the
+change and passes after it; exact Up/Down reaches Master and the first/last
+session without cycling, hidden/clipped/stale nodes are excluded, and keyboard,
+controller, UIA, four-session, and variable-session states agree. Run this
+focused fixture once after the coherent correction, plus directly affected
+focus/scroll/accessibility suites. No aggregate, screenshot, or repeated
+unchanged rerun.
+**Stop:** evidence locates the defect in managed Audio Mixer authorship, requires
+a public protocol/layout redesign, or cannot reproduce from retained semantic/
+log state.
+
+**Queue note:** further platform correction depends on the user's fresh verdict
 for integrated DLV-115 (black border/transition), DLV-104 (Game Launcher
 clipping), and DLV-106 (Audio Mixer tray-Left focus). These are live-verification
 gates, not permission to repeat backend work. Do not manufacture filler.
