@@ -81,70 +81,56 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### DLV-113 — Add local widget installation to Settings
+### DLV-122 — Correct local-install documentation contradictions
 
-**State:** Assigned
-**Baseline:** accepted main `cff0d99`; first integrate that exact main at the
-clean DLV-117 boundary
-**Dependencies:** accepted DLV-112/116 private host-owned Settings import
-operation integrated through `d6f2780`
-**Owner:** widgets lane; Settings Installed Widgets presentation/state, focused
-managed tests, and directly affected Settings/package documentation
-**Concurrency:** managed Settings code only; no native picker/import/bridge,
-catalog installer, package policy, public community capability, renderer,
-compositor, or reviewer-document changes.
+**State:** Assigned as the bounded correction to completed DLV-113; DLV-119 is
+reviewed as structurally credible but remains unintegrated behind this prefix
+**Baseline:** accepted main `d3bc4a4` plus clean widgets commits DLV-113
+`0994809` and DLV-119 `670e01d`; preserve both and add one correction commit
+**Dependencies:** DLV-113's visible exact Settings action and DLV-112/116's
+host-owned picker/import operation
+**Owner:** widgets lane; directly affected public package/install documentation
+only
+**Concurrency:** documentation only; no production code, tests, native host,
+package policy, public authority, reviewer documents, or generated artifacts.
 
-**User-visible outcome:** Installed Widgets exposes one controller-accessible
-**Install local widget** action. A chosen `.gbarwidget` is installed disabled for
-review, while cancellation, busy, invalid, duplicate, stale, and failure results
-are understandable and never expose the selected path.
+**Review disposition:** DLV-113 production scope and focused evidence are
+credible: it adds only the exact reserved action/source/scope, preserves one
+controller Scroll and B path, becomes busy with Settings, and relies on the
+host for picker/install/path-free result authority. Its documentation is
+self-contradictory after the feature lands: `publishing-and-installation.md`
+still says there is no file-picker/graphical installer, and
+`widget-packaging.md` still lists the visible Settings action as deliberately
+deferred. DLV-119's bounded stage/code projection, last-good retention, Retry/
+activation recovery, and focused 23/23, 88/88, 13/13 evidence introduce no new
+lifecycle or provider owner.
 
-**Objective/in scope:** render the exact action/source/input-scope contract
-owned by DLV-116; project busy and bounded path-free host feedback; refresh the
-installed inventory after a successful disabled publication; restore exact
-focus after cancel/failure/success; keep B and existing version-management
-behavior deterministic.
+**Objective/in scope:** remove only obsolete statements that deny the visible
+local picker/action, preserve the exact distinction between the host-owned local
+file import and still-absent remote marketplace/updater/signing experiences,
+and validate every affected link/document contract.
 
-**Out of scope:** native changes, generic file or package authority, worker-
-visible paths, auto-enable/consent, remote acquisition, signing, updates,
-rollback redesign, theme import, or package-policy duplication.
+**Out of scope:** implementation or test changes, new install capabilities,
+remote graphical acquisition, signing, marketplace/update work, broad prose
+rewrite, or unrelated documentation cleanup.
 
-**Acceptance:** cancel is quiet; repeated activation cannot open a second
-picker; one valid package appears disabled for review; duplicate/invalid/stale/
-transport failures are actionable and path-free; forged or ordinary Settings
-actions remain ordinary worker input; B, exact focus return, built-in/current
-version protection, and compact/standard/150% reachability remain correct.
+**Acceptance:** no public page says the Settings local action or host file picker
+is future/missing; every page still says packages install disabled, paths never
+reach workers, ordinary widgets gain no picker/filesystem authority, and remote
+marketplace/updater/signing remain deferred. Documentation contract passes.
 
-**Verification:** Tier 1 Settings action/state/navigation/layout and docs;
-Tier 2 production-shaped exact action to host operation to disabled inventory
-refresh, including cancel/repeat/stale/failure/path-free outcomes. No aggregate
-or capture.
+**Verification:** Tier 1 documentation contract and targeted search for stale
+`forthcoming`, `not yet visible`, `no file-picker`, and deferred-visible-action
+claims. No build, product test, aggregate, or capture.
 
-**Stop:** any native change, worker path/filesystem authority, auto-enable,
-generic picker capability, package-policy redesign, or conflicting public API.
+**Stop:** correction requires changing product behavior, public authority, or
+package/install policy rather than correcting stale prose.
 
 ### Widgets ready queue
 
-#### DLV-119 — Diagnose and correct the Now Playing load recurrence
-
-**State:** Ready after DLV-113
-**Owner/dependencies:** widgets lane; Now Playing/Media Sessions managed widget,
-existing typed provider/resource seams, focused tests, and affected docs.
-**Outcome/scope:** begin from the user's accepted-Release **Media sessions could
-not be loaded** recurrence. Correlate the newest accepted host and worker/provider
-logs before choosing the smallest owning seam. Preserve last-good sessions and
-Retry; distinguish no sessions from provider/transport/lifecycle failure; reject
-stale completion and avoid a parallel retry/task owner.
-**Acceptance/verification:** activation and Retry recover from the reproduced
-stage without restarting the overlay; safe visible state identifies a typed
-stage/code; healthy last-good rows remain usable during transient failure; no
-provider body/path leaks; focused resource, retry, lifecycle, transport-failure,
-and empty-state suites pass. No aggregate or capture. Stop for native protocol,
-provider authority, credentials, or an unreproduced root-cause guess.
-
-**Queue note:** further widgets work waits on fresh live results for the newly
-packaged Game Launcher details/clipping and media-session surfaces. Do not
-manufacture internal filler merely to reach three Ready items.
+**Queue note:** after DLV-122, widgets work waits on fresh live results for the
+newly packaged Settings local install, Game Launcher details/clipping, and
+Now Playing stage/code recovery surfaces. Do not manufacture internal filler.
 
 ## Platform lane
 
