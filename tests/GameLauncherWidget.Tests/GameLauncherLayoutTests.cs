@@ -178,9 +178,12 @@ public sealed class GameLauncherLayoutTests
             "Reopening an unchanged presentation changed its semantic tree.");
         foreach (var profile in new[]
                  {
-                     (Name: "minimum-100", Width: 420, Height: 340, Scale: 1.0),
-                     (Name: "standard-125", Width: 640, Height: 480, Scale: 1.25),
-                     (Name: "wide-150", Width: 980, Height: 700, Scale: 1.5),
+                     (Name: "compact-100", Width: 520, Height: 420, Scale: 1.0),
+                     (Name: "compact-150", Width: 520, Height: 420, Scale: 1.5),
+                     (Name: "standard-100", Width: 960, Height: 600, Scale: 1.0),
+                     (Name: "standard-150", Width: 960, Height: 600, Scale: 1.5),
+                     (Name: "wide-100", Width: 1180, Height: 700, Scale: 1.0),
+                     (Name: "wide-150", Width: 1180, Height: 700, Scale: 1.5),
                  })
         {
             var compact = profile.Width < 960 || profile.Height < 540;
@@ -200,6 +203,15 @@ public sealed class GameLauncherLayoutTests
                     $"{profile.Name}: item {index} is not reachable in the collection viewport");
             Assert.IsFalse(string.IsNullOrWhiteSpace(scroll.CollectionAnchorKey),
                 $"{profile.Name}: collection viewport omitted its stable anchor");
+            var controllerHints = visible.Single(node =>
+                node.Id == "game-launcher.slot.controller-hints");
+            Assert.AreEqual(ViewNodeKind.Row, controllerHints.Kind,
+                $"{profile.Name}: wrapping controller hints are not row-owned");
+            Assert.IsNull(controllerHints.ScrollAxis,
+                $"{profile.Name}: controller hints unexpectedly own a scroll viewport");
+            Assert.IsTrue(controllerHints.StyleClasses.Contains(
+                "game-launcher-footer", StringComparer.Ordinal),
+                $"{profile.Name}: controller hints lost their responsive footer style");
         }
 
         var stylePath = Path.Combine(AppContext.BaseDirectory, "styles", "default.gbss");
@@ -234,6 +246,7 @@ public sealed class GameLauncherLayoutTests
             after: "cursor.after");
         string[]? baselineActions = null;
         string[]? baselineItems = null;
+        string[]? baselineHints = null;
 
         foreach (var experience in Enum.GetValues<GameLauncherExperience>())
         {
@@ -257,12 +270,25 @@ public sealed class GameLauncherLayoutTests
                 .Select(node => $"{node.Id}\0{node.ActionId}").Order().ToArray();
             var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
                 .Select(node => $"{node.Id}\0{node.CollectionItemKey}").Order().ToArray();
+            var hintRegion = nodes.Single(node =>
+                node.Id == "game-launcher.slot.controller-hints");
+            Assert.AreEqual(ViewNodeKind.Row, hintRegion.Kind,
+                $"{experience}: controller hints must be a non-scroll row for wrapping");
+            Assert.IsNull(hintRegion.ScrollAxis,
+                $"{experience}: controller hints unexpectedly own scrolling");
+            var hints = Nodes(hintRegion).Where(node =>
+                    node.Id.StartsWith("game-launcher.hint.", StringComparison.Ordinal))
+                .Select(node => $"{node.Id}\0{node.Text}\0{node.ActionId}")
+                .Order().ToArray();
             baselineActions ??= actions;
             baselineItems ??= collectionItems;
+            baselineHints ??= hints;
             CollectionAssert.AreEqual(baselineActions, actions,
                 $"{experience}: experience changed exact action authority");
             CollectionAssert.AreEqual(baselineItems, collectionItems,
                 $"{experience}: experience changed SavedId-derived collection identity");
+            CollectionAssert.AreEqual(baselineHints, hints,
+                $"{experience}: experience changed controller help identity");
             Assert.AreEqual(GameLauncherIdentity.FocusId("grid", items[0].Key),
                 snapshot.InitialFocusId);
             Assert.AreEqual(new string('L', 96),

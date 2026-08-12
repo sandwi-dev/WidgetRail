@@ -2953,6 +2953,17 @@ with C++ installed:
   installed AppContainer route also passes initial/empty snapshots, transient
   failure and Retry, stale-completion rejection, reactivation, and teardown.
 
+- DLV-164 corrects the Game Launcher Experience controller-hints slot at its
+  managed projection owner. The `.game-launcher-footer` wrapping style now
+  belongs to a non-scrolling row rather than a stack, so strict native style
+  validation no longer has to ignore `flex-wrap`. All four launcher experiences
+  retain identical hint, action, focus, and SavedId authority across compact,
+  standard, and wide projections at 100% and 150% text scale. Focused Release
+  evidence passes Game Launcher 77/77. The existing production-host preset and
+  fallback route passes, and a separate ordinary installed diagnostic run
+  admitted current Game Launcher sequence 2 with zero
+  `game-launcher.slot.controller-hints` `invalid_style` records.
+
 - DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
   The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
   the existing Windows-10-compatible DirectComposition owner clears its

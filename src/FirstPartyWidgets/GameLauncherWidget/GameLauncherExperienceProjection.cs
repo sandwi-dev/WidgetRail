@@ -42,7 +42,7 @@ internal static class GameLauncherExperienceProjection
         var operations = UI.Stack("game-launcher.content", operationChildren)
             .Classes("game-launcher-content", "game-launcher-main",
                 "game-launcher-slot", "game-launcher-slot--operation-status");
-        var hints = UI.Stack("game-launcher.slot.controller-hints",
+        var hints = UI.Row("game-launcher.slot.controller-hints",
                 existingHints ?? UI.Stack("game-launcher.hints.empty"))
             .Classes("game-launcher-footer", "game-launcher-slot",
                 "game-launcher-slot--controller-hints");
