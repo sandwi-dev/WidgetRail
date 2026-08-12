@@ -259,7 +259,7 @@ one class automatically.
 | Production owner | Current signal | Disposition |
 | --- | ---: | --- |
 | `OverlayApp` / `main.cpp` host application | `main.cpp` 6,436 physical lines; dominant logical owner remains several thousand lines | **Open, dependency-ordered.** DLV-143 must keep cold-start geometry in the existing placement/composition owners and provide a before/after responsibility map. Revisit another extraction only as a named visible/release prerequisite. |
-| `GameLauncherWidget` | 1,350-line accepted root; held branch remains application-sized after DLV-175's immutable collection owner and later focused policies | **Active conditional exception.** DLV-183 closes the process-local source-catalog gap through existing bounded private-state/CAS ownership without adding mutable root coordination. DLV-184/185 may not add layout or launch-persistence policy to the root beyond a thin lifecycle/state adapter. |
+| `GameLauncherWidget` | 1,350-line accepted root; held branch grows from roughly 1,894 to 1,936 lines in DLV-185 | **Correction ready DLV-190.** DLV-185's race behavior is correct, but admission generation, accepted-result persistence, CAS reconciliation, and Recent restoration must move behind one focused coordinator rather than regrowing the root. |
 | `GamesAppsWidget` | 1,376-line root | **Conditional exception.** Sole lifecycle/provider-effect/action/committed-state adapter over separate presentation, catalog, persistence, reconciliation, and app-library projection policies. Reopen for store/domain growth. |
 | `AudioMixerWidget` | 1,702-line root | **Conditional exception.** One state/action/effect/selection/status/invalidation transaction owner over separate provider session, command transition, and presenter. Reopen for another coordination domain. |
 | `SettingsWidget` | 1,503-line root | **Conditional exception.** One lifecycle/service-effect/committed-state adapter over separate section, permission, installed-package, and theme policies. Reopen for another service lifecycle or material unrelated growth. |
@@ -279,12 +279,12 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-181 distinct availability and DLV-183 restart-stable source collections are independently accepted but held. DLV-184 reduces compact height but wrongly removes Search. PID 39248 remains the last accepted eight-widget live artifact. | Active DLV-185 corrects stale Recent persistence; DLV-189 then restores one compact Search action. Native TextEntry evidence DLV-180 is active on the recovered platform lane; DLV-186/187 keep owned/offline Launcher behavior queued. |
-| Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. The isolated platform merge was user-authorized and cleanly aborted back to `c2a8172`. | Complete assigned DLV-180, then DLV-168 and DLV-160 in queue order. |
+| Visible UI and controller behavior | DLV-180 is integrated and live on PID 30500; DLV-181/183/189/186 are accepted held. DLV-187 offline exact-local-launch is active. | DLV-190 must correct DLV-185's root growth before the widget prefix integrates. Platform DLV-168 is active; DLV-188 retains the user's switch-border/flicker verdict. |
+| Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. DLV-180's native TextEntry path is integrated as `0c321a3`. | Complete active DLV-168, then DLV-160 and the live switch-continuity verdict DLV-188. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
-| Accessibility | Deterministic semantic and real-host UIA coverage is substantial. PID 26524 exposed a truthful-completion gap: tray Invoke selects successfully but returns a COM error. | DLV-168 after assigned DLV-180, then physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
+| Accessibility | Deterministic semantic and real-host UIA coverage is substantial. DLV-180 adds exact TextEntry UIA focus/Invoke. PID 26524 exposed a tray completion gap: selection succeeds but Invoke returns a COM error. | Active DLV-168, then physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
 | Performance | Bounded queues/caches/snapshots and event-driven helpers exist; transition logs expose some expensive first paints. | Named hidden/idle/interactive CPU/GPU/memory/latency baselines and regression budgets on accepted artifacts. |
 | Verification | Focused suites are credible and tiered; exact aggregate runs are intentionally rare. | One clean immutable-input Tier-3 result at the next named checkpoint, not per milestone. |
 | Authentication/hardware | Correctly isolated from unrelated work. | User-authorized accounts and physical audio/Bluetooth/controller/display/game evidence. |
@@ -309,11 +309,10 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active DLV-185, then DLV-189's compact Search correction. DLV-181/183
-   are accepted held; native DLV-180 must also pass before the contiguous widget
-   prefix can be reconsidered.
-2. Review assigned native DLV-180 from clean platform baseline `c2a8172`, then
-   DLV-168's tray UIA completion contract before DLV-160.
+1. Review active DLV-187, then DLV-190's extracted generation-safe launch/
+   persistence coordinator. DLV-181/183/189/186 are accepted held.
+2. Review active DLV-168's tray UIA completion contract before DLV-160; DLV-180
+   is accepted, integrated, focused-package verified, and live on PID 30500.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
 4. Keep PID 39248 visible for the user's dashboard, Spotify, Settings, and Game Launcher
