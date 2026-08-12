@@ -93,8 +93,9 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
 | GBA-073 | P1 | Closed | Protected Wi-Fi host transport / Native Wi-Fi rollback | Accepted DLV-093 `3ce8991`, integrated with DLV-087 through `63ca3a2`, replaces password-bearing JSON/string copies with a bounded mutable zeroed frame and requires an exact per-attempt profile ownership token before deletion. Mismatch, unavailable verification, and delete failure are explicit and preserve current Windows state. |
 | GBA-074 | P1 | Verifying on packaged main | Running-app observation / Widget SDK / Games & Apps / Game Launcher | DLV-095 corrected by accepted DLV-097 is integrated through `c6d76a3`; native inspection is bounded before eligibility and confirmed items are fully validated before either widget can mutate state. The fully packaged Release is visibly running for the user's live route check. |
-| GBA-075 | P0 | Assigned as DLV-100 | WidgetBridge computed styles / protocol-v15 `TextEntry` / Game Launcher / Network Controls | Current production Game Launcher snapshots fail before native rendering because the bridge style-role resolver omits the already-supported `TextEntry` node kind. Five identical failures are present in the current PID 35472 session and no other current-session error signature was found. |
-| GBA-076 | P1 | Ready as DLV-101 | Installed-widget runtime / manifest resources / worker Job policy / authoring contract | Prototype hard worker-memory and one-process ceilings contradict the approved full-application widget model. Private worker execution must not be arbitrarily product-capped; shared-host messages, presentation/native resources, capability traffic, and host admission remain bounded. |
+| GBA-075 | P0 | Verifying on packaged main | WidgetBridge computed styles / protocol-v15 `TextEntry` / Game Launcher / Network Controls | Accepted DLV-100 `760a9bb`, integrated through `54fbd12`, adds the missing canonical `textEntry` bridge role and exact installed routes. The fully packaged Release is running as PID 26556 for live Game Launcher confirmation. |
+| GBA-076 | P1 | Assigned as DLV-101 | Installed-widget runtime / manifest resources / worker Job policy / authoring contract | Prototype hard worker-memory and one-process ceilings contradict the approved full-application widget model. Private worker execution must not be arbitrarily product-capped; shared-host messages, presentation/native resources, capability traffic, and host admission remain bounded. |
+| GBA-077 | P1 | Ready as DLV-102 | Native trusted-artwork cache / declarative renderer / Game Launcher / Games & Apps | The packaged PID 26556 session reports the same 15 unavailable Game Launcher artwork handles three times in five seconds (45 `image_failed` lines), while failed artwork lacks a stable shared tile fallback. DLV-102 follows DLV-025. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2399,12 +2400,14 @@ kind and throws while constructing computed styles, so a valid snapshot never
 reaches the native host. Existing component tests cover each side of the seam
 but omit the production bridge style path.
 
-**Ownership and acceptance:** DLV-100 owns one canonical distinct GBSS role,
-default/themed resolution, production-shaped Game Launcher and protected
-Network Controls fixtures, and the smallest installed generic-worker proof.
-Game Launcher must open and Search must reach the unchanged host-owned modal;
-unknown future kinds must still fail closed. No widget-local fallback or public
-protocol/native modal redesign is permitted.
+**Resolution evidence:** Accepted DLV-100 `760a9bb`, integrated through
+`54fbd12`, adds one canonical `textEntry` role, default/themed resolution,
+production-shaped Game Launcher and protected Network Controls fixtures, and
+the smallest installed generic-worker proof. Unknown future kinds still fail
+closed; no widget-local fallback, protocol change, or native-modal redesign was
+added. Focused evidence passes Bridge 77/77, Game Launcher 45/45, Network
+Controls 24/24, the exact installed route, and 55 documentation files. The
+fully repackaged Release is running as PID 26556; live confirmation remains.
 
 ## GBA-076 — Prototype worker quotas block full-application widgets
 
@@ -2430,6 +2433,28 @@ proves an owned child process cannot escape and is reclaimed, and preserves
 fail-closed oversized-message/snapshot behavior without harming a neighboring
 widget. It must also name the scalable widget-private data path rather than
 misrepresent the bounded host `PrivateState` document as application storage.
+
+## GBA-077 — Unavailable trusted artwork has no stable fallback and floods logs
+
+**Evidence:** The fully packaged accepted DLV-100 Release launched as PID 26556.
+Between 17:23:26.682 and 17:23:31.476, its current session logged 45 Game
+Launcher `image_failed` results over 15 unique stable artwork node IDs. Each
+reported `Trusted artwork is unavailable`; the same set was emitted three
+times as the surface repainted. No `TextEntry` failure recurred. The current
+trusted-artwork node chooses a handle instead of the tile glyph, while the
+renderer reports terminal failure during every paint.
+
+**Ownership:** DLV-102 starts after active DLV-025 and owns the shared native
+trusted-artwork cache/result state, fallback presentation, and transition-based
+diagnostic. It must not reintroduce eager provider I/O, change Steam discovery,
+add widget-specific IDs/layout, or weaken bounded/stale-safe resource handling.
+
+**Acceptance:** An unavailable handle displays the existing shared semantic
+glyph with unchanged tile layout, focus, action, and UIA. A terminal failure is
+logged once per widget/handle/revision state transition, not per paint or
+snapshot refresh. Pending, late success, new revision recovery, stale result,
+eviction, and neighboring available artwork remain correct and bounded in
+production-shaped Game Launcher and Games & Apps fixtures.
 
 ## Closed issues
 

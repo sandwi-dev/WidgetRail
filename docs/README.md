@@ -5,6 +5,26 @@ widget platform. This documentation describes the repository as it exists
 today. Pages marked **planned** describe direction, not commands or security
 guarantees that are available now.
 
+## Directory organization
+
+The documentation tree distinguishes current guidance from historical planning
+evidence:
+
+- The root contains stable public entry points and the small active control
+  plane. These paths are intentionally stable because tooling, agent goals, and
+  external author instructions link to them.
+- [`history/`](history/README.md) contains immutable timestamped snapshots
+  removed from active planning/review documents. Historical files are not
+  implementation authority and are opened only for a named prior decision.
+- New nested areas must be coherent and link-aware. Public architecture,
+  authoring, reference, operations, and research pages will move only in
+  complete validated groups rather than through piecemeal path churn.
+
+The active [delivery plan](delivery-plan.md) is intentionally compact. Its
+timestamped predecessors live under
+[`history/delivery-plan/`](history/delivery-plan/), so routine planner and
+implementation turns do not spend context on completed hourly work.
+
 ## Start here
 
 - [Widget authoring guide and API map](widget-authoring-guide.md) — complete
