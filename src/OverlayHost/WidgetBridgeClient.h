@@ -154,6 +154,36 @@ struct WidgetArtworkResult final {
     std::wstring pngBase64;
 };
 
+struct LocalWidgetPackageInstallOrigin final {
+    std::wstring widgetId;
+    std::wstring packageId;
+    std::wstring publisherId;
+    std::wstring instanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+};
+
+enum class LocalWidgetPackageInstallStatus { InstalledDisabled, Cancelled, Failed };
+
+struct LocalWidgetPackageInstallResult final {
+    std::wstring operationId;
+    LocalWidgetPackageInstallStatus status{LocalWidgetPackageInstallStatus::Failed};
+    std::wstring widgetId;
+    std::wstring version;
+    std::wstring safeMessage;
+};
+
+class LocalWidgetPackageInstallResultQueue final {
+public:
+    static constexpr std::size_t MaximumPending = 8;
+    [[nodiscard]] bool Push(LocalWidgetPackageInstallResult result);
+    [[nodiscard]] std::vector<LocalWidgetPackageInstallResult> Take() noexcept;
+    void Reset() noexcept;
+
+private:
+    std::vector<LocalWidgetPackageInstallResult> queued_;
+};
+
 class WidgetArtworkResultQueue final {
 public:
     static constexpr std::size_t MaximumResults = 32;
@@ -385,6 +415,12 @@ public:
         std::wstring_view runtimeGeneration,
         std::wstring_view sourceElementId,
         std::span<const wchar_t> secret);
+    [[nodiscard]] std::optional<bool> BeginLocalWidgetPackageInstall(
+        std::wstring_view packagePath,
+        const LocalWidgetPackageInstallOrigin& origin,
+        std::wstring_view operationId);
+    [[nodiscard]] std::optional<bool> CancelLocalWidgetPackageInstall(
+        std::wstring_view operationId);
     [[nodiscard]] std::wstring lastError() const;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
@@ -392,6 +428,8 @@ public:
     [[nodiscard]] std::vector<WidgetActionFailure> TakeActionFailures() noexcept;
     [[nodiscard]] std::vector<WidgetHostEffect> TakeHostEffects() noexcept;
     [[nodiscard]] std::vector<WidgetArtworkResult> TakeArtworkResults() noexcept;
+    [[nodiscard]] std::vector<LocalWidgetPackageInstallResult>
+        TakeLocalWidgetPackageInstallResults() noexcept;
 
 private:
     [[nodiscard]] bool Launch(
@@ -413,6 +451,7 @@ private:
     WidgetActionFailureQueue actionFailures_;
     WidgetHostEffectQueue hostEffects_;
     WidgetArtworkResultQueue artworkResults_;
+    LocalWidgetPackageInstallResultQueue localPackageInstallResults_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
     mutable std::recursive_mutex requestMutex_;
@@ -438,6 +477,10 @@ namespace gba::testing {
     std::string_view eventUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetArtworkResult> ParseWidgetArtworkResultEvent(
+    std::string_view eventUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<LocalWidgetPackageInstallResult>
+ParseLocalWidgetPackageInstallResultEvent(
     std::string_view eventUtf8,
     std::wstring& error);
 }

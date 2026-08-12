@@ -61,6 +61,26 @@ public sealed class WidgetCatalog
             cancellationToken);
     }
 
+    internal async Task<InstalledWidgetVersion> InstallAsync(
+        Stream packageStream,
+        Func<WidgetPackageInspection, CancellationToken, Task> trustedPrePublish,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(packageStream);
+        ArgumentNullException.ThrowIfNull(trustedPrePublish);
+        await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        TryCleanupRetiredTrees();
+        return await CreateInstaller().InstallAsync(
+            packageStream,
+            async (inspection, token) =>
+            {
+                await PreparePackageInstallUnderLockAsync(inspection, token)
+                    .ConfigureAwait(false);
+                await trustedPrePublish(inspection, token).ConfigureAwait(false);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<WidgetCatalogSnapshot> DiscoverAsync(CancellationToken cancellationToken = default)
     {
         var versions = DiscoverInstalledVersions(cancellationToken);

@@ -708,6 +708,49 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(0, fixture.Registry.ResidencyBudget.ApplicationWorkers);
     }
 
+    internal static async Task LocalPackageImportOriginIsExact()
+    {
+        var settings = Widget("settings", worker: 'a', catalog: 'a') with
+        {
+            PackageId = "org.gbar.firstparty.settings",
+            PublisherId = "org.gbar.firstparty",
+            InstanceId = "settings.default",
+            RequiresAppContainer = false,
+            DeclaredCapabilities = [],
+        };
+        await using var fixture = new RegistryFixture(Catalog(settings));
+        await fixture.SetLifecycleAsync(settings.Id, WidgetLifecycleState.Interactive);
+        var descriptor = settings.PublicDescriptor();
+        var exact = new BridgeLocalWidgetPackageOrigin(
+            settings.Id,
+            settings.PackageId,
+            settings.PublisherId,
+            descriptor.InstanceId,
+            descriptor.RuntimeGeneration,
+            descriptor.PresentationGeneration);
+        using (fixture.Registry.AdmitLocalWidgetPackageImport(exact)) { }
+
+        await fixture.SetLifecycleAsync(settings.Id, WidgetLifecycleState.Visible);
+        _ = await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
+        {
+            using var refused = fixture.Registry.AdmitLocalWidgetPackageImport(exact);
+        }));
+
+        await fixture.SetLifecycleAsync(settings.Id, WidgetLifecycleState.Interactive);
+        foreach (var forged in new[]
+        {
+            exact with { PackageId = "dev.example.settings" },
+            exact with { RuntimeGeneration = new string('f', 64) },
+            exact with { PresentationGeneration = new string('e', 64) },
+        })
+        {
+            _ = await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
+            {
+                using var refused = fixture.Registry.AdmitLocalWidgetPackageImport(forged);
+            }));
+        }
+    }
+
     private static BridgeCatalog Catalog(params ConfiguredWidget[] widgets) => new(widgets);
 
     private static ConfiguredWidget Widget(

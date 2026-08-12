@@ -429,6 +429,34 @@ int main() {
     assert(artwork->artworkHandle ==
            L"library.art.0123456789abcdef0123456789abcdef");
     assert(artwork->pngBase64 == L"AAAA");
+
+    error.clear();
+    const auto localPackage =
+        gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        "type":"local-widget-package-install-completed","requestId":0,
+        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"installed-disabled","widgetId":"fixture","version":"1.2.3","message":"Local widget package installed disabled. Review it before enabling."}
+    })json", error);
+    assert(localPackage && error.empty());
+    assert(localPackage->status == gba::LocalWidgetPackageInstallStatus::InstalledDisabled);
+    assert(localPackage->widgetId == L"fixture" && localPackage->version == L"1.2.3");
+    assert(localPackage->safeMessage.find(L"\\") == std::wstring::npos);
+
+    error.clear();
+    const auto cancelledPackage =
+        gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        "type":"local-widget-package-install-completed","requestId":0,
+        "payload":{"operationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","status":"cancelled","widgetId":"","version":"","message":"Local widget package install was cancelled."}
+    })json", error);
+    assert(cancelledPackage && error.empty());
+    assert(cancelledPackage->status == gba::LocalWidgetPackageInstallStatus::Cancelled);
+    assert(cancelledPackage->widgetId.empty() && cancelledPackage->version.empty());
+
+    error.clear();
+    assert(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        "type":"local-widget-package-install-completed","requestId":0,
+        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.gbarwidget","path":"C:\\\\private\\\\package.gbarwidget"}
+    })json", error));
+    assert(!error.empty());
     gba::WidgetArtworkResultQueue artworkResults;
     for (std::size_t index = 0;
          index < gba::WidgetArtworkResultQueue::MaximumResults; ++index) {

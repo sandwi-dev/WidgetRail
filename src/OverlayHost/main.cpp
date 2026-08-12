@@ -19,6 +19,7 @@
 #include "PressedInteraction.h"
 #include "RemoteImageCache.h"
 #include "ScrollEvidenceProbe.h"
+#include "LocalWidgetPackageImport.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
@@ -375,6 +376,23 @@ public:
               [this] {
                   if (window_)
                       PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
+              }),
+          localWidgetPackageImport_(
+              localWidgetPackagePicker_,
+              [this] { return CurrentLocalWidgetPackageImportOrigin(); },
+              [this](const std::wstring_view path,
+                     const gba::packages::LocalWidgetPackageOrigin& origin,
+                     const std::wstring_view operationId) {
+                  gba::LocalWidgetPackageInstallOrigin requestOrigin{
+                      origin.widgetId,
+                      origin.packageId,
+                      origin.publisherId,
+                      origin.instanceId,
+                      origin.runtimeGeneration,
+                      origin.presentationGeneration};
+                  const auto submitted = bridge_.BeginLocalWidgetPackageInstall(
+                      path, requestOrigin, operationId);
+                  return submitted.value_or(false);
               }) {}
     ~OverlayApp() { Shutdown(); }
 
@@ -1384,6 +1402,14 @@ private:
                             artwork.widgetId, artwork.artworkHandle,
                             std::move(artwork.pngBase64));
                 }
+                for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
+                    if (result.operationId == activeLocalWidgetPackageOperation_)
+                        activeLocalWidgetPackageOperation_.clear();
+                    lastLocalWidgetPackageInstallResult_ = result;
+                    if (result.status != gba::LocalWidgetPackageInstallStatus::Cancelled)
+                        AppendDiagnostic(L"Local widget package import: " +
+                                         result.safeMessage);
+                }
                 if (const auto revision = bridge_.TakePlatformAppearanceChangedRevision()) {
                     const auto& current = appearanceState_.current();
                     if (!current || *revision > current->revision) {
@@ -1650,6 +1676,12 @@ private:
     }
 
     void Shutdown() {
+        localWidgetPackageImport_.CancelPicker();
+        if (!activeLocalWidgetPackageOperation_.empty()) {
+            (void)bridge_.CancelLocalWidgetPackageInstall(
+                activeLocalWidgetPackageOperation_);
+            activeLocalWidgetPackageOperation_.clear();
+        }
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
         compositionSurface_.Reset();
@@ -2308,6 +2340,34 @@ private:
         return descriptor ? descriptor->name : WidgetName(id);
     }
 
+    [[nodiscard]] std::optional<gba::packages::LocalWidgetPackageOrigin>
+    CurrentLocalWidgetPackageImportOrigin() const {
+        if (state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget ||
+            state_.activeWidget() != L"settings") return std::nullopt;
+        const auto* descriptor = sessions_.FindDescriptor(L"settings");
+        const auto lifecycle = sessions_.Lifecycle(L"settings");
+        if (!descriptor || !lifecycle ||
+            *lifecycle != gba::WidgetLifecycleState::Interactive)
+            return std::nullopt;
+        return gba::packages::LocalWidgetPackageOrigin{
+            descriptor->id,
+            L"org.gbar.firstparty.settings",
+            L"org.gbar.firstparty",
+            descriptor->instanceId,
+            descriptor->runtimeGeneration,
+            descriptor->presentationGeneration,
+            *lifecycle};
+    }
+
+    [[nodiscard]] gba::packages::LocalWidgetPackageImportResult
+    BeginLocalWidgetPackageImport() {
+        auto result = localWidgetPackageImport_.Begin(window_);
+        if (result.status == gba::packages::LocalWidgetPackageImportStatus::Submitted)
+            activeLocalWidgetPackageOperation_ = result.operationId;
+        return result;
+    }
+
     gba::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
         const auto* descriptor = sessions_.FindDescriptor(id);
         if (descriptor) {
@@ -2747,6 +2807,12 @@ private:
     }
 
     void HideOverlay() {
+        localWidgetPackageImport_.CancelPicker();
+        if (!activeLocalWidgetPackageOperation_.empty()) {
+            (void)bridge_.CancelLocalWidgetPackageInstall(
+                activeLocalWidgetPackageOperation_);
+            activeLocalWidgetPackageOperation_.clear();
+        }
         (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
@@ -6027,6 +6093,11 @@ private:
     gba::input::TextEntryModal textEntryModal_;
     gba::WidgetBridgeClient bridge_;
     gba::WidgetSessionCoordinator sessions_;
+    gba::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;
+    gba::packages::LocalWidgetPackageImport localWidgetPackageImport_;
+    std::wstring activeLocalWidgetPackageOperation_;
+    std::optional<gba::LocalWidgetPackageInstallResult>
+        lastLocalWidgetPackageInstallResult_;
     gba::PlatformAppearanceState appearanceState_;
     gba::NativeRenderStyle canvasStyle_;
     gba::NativeRenderStyle backdropStyle_;

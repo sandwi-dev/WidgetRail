@@ -738,7 +738,8 @@ bool HandleAsyncEvent(
     PlatformAppearanceRevisionTracker& appearanceChanges,
     WidgetCatalogRevisionTracker& catalogChanges,
     std::wstring& status,
-    WidgetArtworkResultQueue* artworkResults = nullptr) {
+    WidgetArtworkResultQueue* artworkResults = nullptr,
+    LocalWidgetPackageInstallResultQueue* localPackageInstallResults = nullptr) {
     if (!event.HasKey(L"type") ||
         event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
         !event.HasKey(L"payload") ||
@@ -775,6 +776,42 @@ bool HandleAsyncEvent(
             revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
             !catalogChanges.Notify(static_cast<long long>(revision))) {
             status = L"WidgetBridge catalog event has an invalid revision.";
+            return false;
+        }
+        status.clear();
+        return true;
+    }
+    if (type == L"local-widget-package-install-completed") {
+        if (!localPackageInstallResults || !HasOnlyProperties(
+                payload, {L"operationId", L"status", L"widgetId", L"version", L"message"})) {
+            status = L"WidgetBridge local package result has an invalid payload.";
+            return false;
+        }
+        const auto operationId = OptionalString(payload, L"operationId");
+        const auto resultStatus = OptionalString(payload, L"status");
+        const auto resultWidgetId = OptionalString(payload, L"widgetId");
+        const auto version = OptionalString(payload, L"version");
+        const auto message = OptionalString(payload, L"message");
+        const auto mapped = resultStatus == L"installed-disabled"
+            ? LocalWidgetPackageInstallStatus::InstalledDisabled
+            : resultStatus == L"cancelled"
+            ? LocalWidgetPackageInstallStatus::Cancelled
+            : LocalWidgetPackageInstallStatus::Failed;
+        const bool optionalIdentityValid =
+            mapped == LocalWidgetPackageInstallStatus::InstalledDisabled
+                ? IsIdentifier(resultWidgetId) && !version.empty() && version.size() <= 64
+                : resultWidgetId.empty() && version.empty();
+        const bool messageValid = !message.empty() && message.size() <= 512 &&
+            message.find_first_of(L"\\/:") == std::wstring::npos &&
+            std::none_of(message.begin(), message.end(), [](const wchar_t character) {
+                return std::iswcntrl(character) != 0;
+            });
+        if (!IsIdentifier(operationId) ||
+            (resultStatus != L"installed-disabled" && resultStatus != L"cancelled" &&
+             resultStatus != L"failed") || !optionalIdentityValid || !messageValid ||
+            !localPackageInstallResults->Push({
+                operationId, mapped, resultWidgetId, version, message})) {
+            status = L"WidgetBridge local package result could not be queued.";
             return false;
         }
         status.clear();
@@ -980,6 +1017,30 @@ std::vector<WidgetArtworkResult> WidgetArtworkResultQueue::Take() noexcept {
     return result;
 }
 
+bool LocalWidgetPackageInstallResultQueue::Push(LocalWidgetPackageInstallResult result) {
+    if (!IsIdentifier(result.operationId) || result.safeMessage.empty() ||
+        result.safeMessage.size() > 512) return false;
+    const auto existing = std::find_if(
+        queued_.begin(), queued_.end(), [&](const LocalWidgetPackageInstallResult& item) {
+            return item.operationId == result.operationId;
+        });
+    if (existing != queued_.end()) *existing = std::move(result);
+    else {
+        if (queued_.size() >= MaximumPending) return false;
+        queued_.push_back(std::move(result));
+    }
+    return true;
+}
+
+std::vector<LocalWidgetPackageInstallResult>
+LocalWidgetPackageInstallResultQueue::Take() noexcept {
+    return std::exchange(queued_, {});
+}
+
+void LocalWidgetPackageInstallResultQueue::Reset() noexcept {
+    queued_.clear();
+}
+
 std::vector<std::wstring> ChangedWidgetRuntimeIds(
     const std::vector<WidgetDescriptor>& before,
     const std::vector<WidgetDescriptor>& after) {
@@ -1175,6 +1236,7 @@ void WidgetBridgeClient::Stop() noexcept {
     (void)actionFailures_.Take();
     hostEffects_.Reset();
     artworkResults_.Reset();
+    localPackageInstallResults_.Reset();
     (void)appearanceChanges_.Take();
     catalogChanges_.Reset();
 }
@@ -1216,7 +1278,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1305,7 +1367,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1376,7 +1438,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1440,7 +1502,8 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                 std::wstring status;
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
-                        appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1512,7 +1575,8 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                                      &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1570,7 +1634,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1632,7 +1696,8 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status, &artworkResults_))
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                                      &localPackageInstallResults_))
                     return std::nullopt;
                 continue;
             }
@@ -1705,7 +1770,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1784,7 +1849,8 @@ std::optional<bool> WidgetBridgeClient::SendAction(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                                      appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                                      appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                                      &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1857,7 +1923,8 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
-                        appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -1880,6 +1947,122 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge protected Wi-Fi JSON: " +
             std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> WidgetBridgeClient::BeginLocalWidgetPackageInstall(
+    const std::wstring_view packagePath,
+    const LocalWidgetPackageInstallOrigin& origin,
+    const std::wstring_view operationId) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || packagePath.empty() ||
+        packagePath.size() > 32'767 || !IsIdentifier(operationId) ||
+        !IsIdentifier(origin.widgetId) || !IsIdentifier(origin.packageId) ||
+        !IsIdentifier(origin.publisherId) || !IsIdentifier(origin.instanceId) ||
+        !IsIdentifier(origin.runtimeGeneration) ||
+        !IsIdentifier(origin.presentationGeneration)) {
+        if (pipe_ != INVALID_HANDLE_VALUE)
+            Fail(L"Local widget package install request is invalid.");
+        return std::nullopt;
+    }
+    try {
+        JsonObject originPayload;
+        originPayload.Insert(L"widgetId", JsonValue::CreateStringValue(origin.widgetId));
+        originPayload.Insert(L"packageId", JsonValue::CreateStringValue(origin.packageId));
+        originPayload.Insert(L"publisherId", JsonValue::CreateStringValue(origin.publisherId));
+        originPayload.Insert(L"instanceId", JsonValue::CreateStringValue(origin.instanceId));
+        originPayload.Insert(L"runtimeGeneration",
+            JsonValue::CreateStringValue(origin.runtimeGeneration));
+        originPayload.Insert(L"presentationGeneration",
+            JsonValue::CreateStringValue(origin.presentationGeneration));
+        JsonObject payload;
+        payload.Insert(L"operationId", JsonValue::CreateStringValue(operationId));
+        payload.Insert(L"packagePath", JsonValue::CreateStringValue(packagePath));
+        payload.Insert(L"origin", originPayload);
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(
+            L"install-local-widget-package"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId)) return std::nullopt;
+            const auto type = response.GetNamedString(L"type");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(
+                        response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                continue;
+            }
+            if (responseId != requestId || type != L"acknowledged") {
+                Fail(type == L"error" ? SafeBridgeError(response)
+                                      : L"WidgetBridge returned an unexpected local package response.");
+                return std::nullopt;
+            }
+            const auto acknowledgement = response.GetNamedObject(L"payload");
+            if (OptionalString(acknowledgement, L"operationId") != operationId) {
+                Fail(L"WidgetBridge acknowledged a different local package operation.");
+                return std::nullopt;
+            }
+            lastError_.clear();
+            return true;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge local package response: " +
+             std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> WidgetBridgeClient::CancelLocalWidgetPackageInstall(
+    const std::wstring_view operationId) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || !IsIdentifier(operationId)) return std::nullopt;
+    try {
+        JsonObject payload;
+        payload.Insert(L"operationId", JsonValue::CreateStringValue(operationId));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(
+            L"cancel-local-widget-package-install"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId)) return std::nullopt;
+            const auto type = response.GetNamedString(L"type");
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(
+                        response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) return std::nullopt;
+                continue;
+            }
+            if (responseId != requestId || type != L"acknowledged") {
+                if (type == L"error") Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            return response.GetNamedObject(L"payload").GetNamedBoolean(L"cancelled", false);
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge local package cancellation response: " +
+             std::wstring(error.message()));
     }
     return std::nullopt;
 }
@@ -1971,7 +2154,7 @@ bool WidgetBridgeClient::PumpEvents() {
                 return consumed;
             }
             std::wstring status;
-            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_)) {
+            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                 Fail(std::move(status));
                 return consumed;
             }
@@ -2006,6 +2189,13 @@ std::vector<WidgetArtworkResult> WidgetBridgeClient::TakeArtworkResults() noexce
     std::unique_lock lock(requestMutex_, std::try_to_lock);
     if (!lock.owns_lock()) return {};
     return artworkResults_.Take();
+}
+
+std::vector<LocalWidgetPackageInstallResult>
+WidgetBridgeClient::TakeLocalWidgetPackageInstallResults() noexcept {
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return {};
+    return localPackageInstallResults_.Take();
 }
 
 std::optional<long long>
@@ -2171,6 +2361,40 @@ std::optional<WidgetArtworkResult> ParseWidgetArtworkResultEvent(
         return std::move(queued.front());
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid trusted artwork event JSON: " +
+                std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<LocalWidgetPackageInstallResult>
+ParseLocalWidgetPackageInstallResultEvent(
+    const std::string_view eventUtf8,
+    std::wstring& error) {
+    try {
+        const auto event = JsonObject::Parse(winrt::to_hstring(eventUtf8));
+        WidgetInvalidationQueue invalidations;
+        WidgetActionFailureQueue failures;
+        WidgetHostEffectQueue effects;
+        WidgetArtworkResultQueue artwork;
+        LocalWidgetPackageInstallResultQueue packages;
+        PlatformAppearanceRevisionTracker appearance;
+        WidgetCatalogRevisionTracker catalog;
+        std::wstring status;
+        if (!HandleAsyncEvent(
+                event, invalidations, failures, effects, appearance, catalog,
+                status, &artwork, &packages)) {
+            error = std::move(status);
+            return std::nullopt;
+        }
+        auto queued = packages.Take();
+        if (queued.size() != 1) {
+            error = L"JSON is not a local widget package completion event.";
+            return std::nullopt;
+        }
+        error.clear();
+        return std::move(queued.front());
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid local widget package event JSON: " +
                 std::wstring(exception.message());
         return std::nullopt;
     }
