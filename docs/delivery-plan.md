@@ -312,6 +312,74 @@ depends on an unselected external provider or destructive-operation UX.
 
 ### Widgets planned queue
 
+### DLV-138 — Import supported Windows and Xbox installed games
+
+**State:** Ready immediately after the widgets lane commits DLV-130; execute on
+that clean same-lane boundary without waiting for platform integration
+**Baseline/dependencies:** committed DLV-130 normalized launcher presentation
+contract and the existing trusted Windows app-library provider/opaque launch
+authority
+**Owner/outcome:** widgets lane for one supported Windows package-registration
+source adapter and its Game Launcher/Games & Apps projections. Safely installed
+Xbox/Microsoft Store games appear automatically with exact source health,
+truthful availability, stable opaque identity, semantic artwork fallbacks, and
+the existing revalidated launch route.
+**Acceptance:** enumerate through documented supported Windows registration
+APIs with bounded cancellation/time/count behavior; admit a package as a game
+only from reproducible game-specific evidence, not title/icon heuristics;
+deduplicate exact packages already surfaced by AppsFolder/Start Menu while
+preserving distinct launch variants; publish source revision/health and retain
+last-good display during a transient read failure without retaining launch
+authority. Add/remove/update events reconcile deterministically, warm state is
+visible before background refresh, and launch still resolves one current
+provider-private record behind an opaque SavedId. Widget state, snapshots, logs,
+and docs expose no package path, AUMID, install command, account, or registry
+record.
+**Verification:** Tier 1 broker/provider/Game Launcher/Games & Apps Release
+fixtures for installed, non-game, duplicate, removed, stale, failed, long-name,
+missing-art, and exact launch revalidation; Tier 2 only the existing installed-
+worker boundary if the normalized projection changes. One bounded read-only
+live enumeration may report evidence but is not required to find an installed
+Xbox game. No aggregate, capture, credentials, network, install/update, or
+external helper.
+**Stop:** supported Windows APIs cannot distinguish the installed game safely,
+or launch requires a new credential, undocumented setter/database, raw public
+identifier, or product choice about license/account ownership.
+
+### DLV-139 — Add opt-in Epic installed-game discovery
+
+**State:** Ready after DLV-138
+**Baseline/dependencies:** accepted-shape DLV-130 source model and the source-
+adapter/provider ownership proven by DLV-138
+**Owner/outcome:** widgets lane for one explicitly enabled trusted Epic
+installed-only adapter, provider configuration/reconciliation, and the existing
+Game Launcher/Games & Apps projections. Locally installed Epic games become a
+truthful separately attributed source without Epic login or network access.
+**Acceptance:** parse only the bounded local installed-manifest format from its
+fixed reviewed provider-owned location; reject unknown schema, unsafe paths,
+duplicates, partial writes, stale generations, and unsupported launch records
+without exposing raw manifest fields. Exact source-private identity maps to a
+stable host-owned SavedId; current install/launch evidence is revalidated at
+activation; additions/removals/updates reconcile without deleting user
+organization intent or unrelated sources. Disabled/unavailable/corrupt source
+states are explicit and last-good display never authorizes launch. Opt-in and
+source status are controller/keyboard reachable through the existing trusted
+Settings/provider configuration route.
+**Verification:** Tier 1 deterministic adapter/provider/widget Release
+fixtures using authored local manifests, including partial/corrupt/change-
+during-read and exact launch-denial cases; Tier 2 installed-worker boundary
+only if required. No aggregate, capture, Epic credentials/client automation,
+network library, install/update/uninstall, protocol URL exposed to widgets, or
+helper binary.
+**Stop:** the available local format or launch route cannot be bounded and
+revalidated without relying on account secrets, arbitrary executable/protocol
+input, or an undocumented mutable Epic database.
+
+**Queue depth note:** DLV-138 and DLV-139 are the current safe independent
+visible successors to DLV-130. GOG/Amazon adapters are not Ready until a stable
+bounded local installed-record and launch-revalidation contract is evidenced;
+DLV-135/134 remain dependency-ordered behind the platform experience work.
+
 ### DLV-135 — Add the deterministic Launcher Experience authoring toolchain
 
 **State:** Planned; becomes same-lane Ready after accepted DLV-130 and accepted
@@ -471,8 +539,11 @@ network, or implementation of CLI commands owned by DLV-135.
 
 ### DLV-132 — Render host-owned launcher slots with validated responsive layout
 
-**State:** Assigned from clean `100c646` before the DLV-131 review completed;
-finish and commit this coherent in-progress milestone, then take DLV-137
+**State:** Implemented as `874f778` but not accepted or integrated. Review found
+that the standalone WIC fixture renders only one 1280x720 left-rail profile,
+while the required compact/standard/wide, taskbar-reserved, 150%-scale, all-four-
+preset geometry agreement and production-host semantic fixture are absent.
+DLV-140 is the queued correction after already-active DLV-137.
 **Owner/outcome:** platform lane for the native recipe adapter and declarative
 layout/paint/focus/pointer/UIA support needed by validated launcher slots. A
 fixed semantic fixture must render the bottom hero rail and the left vertical
@@ -540,9 +611,40 @@ work, capture, network, new media dependency, or unrelated hardening.
 the correction needs a public schema/budget change rather than validation of
 the already documented format.
 
+### DLV-140 — Prove Launcher Experience geometry through the production host
+
+**State:** Ready immediately after the already-active DLV-137; this is the
+DLV-132 review correction and precedes DLV-136 and DLV-133
+**Baseline/dependencies:** committed DLV-132 `874f778` plus accepted DLV-137;
+do not broaden the recipe schema/catalog or Game Launcher domain contract
+**Owner/outcome:** platform lane for the smallest adapter/fixture correction
+needed to make the documented native Launcher Experience support truthful
+across every required responsive profile and through the real OverlayHost
+semantic rendering path.
+**Acceptance:** fixed host-owned slot content renders bottom `hero-rail`, left
+vertical rail with independent glass details panel, `cover-wall`, `carousel`,
+and `compact-grid` through compact/standard/wide profiles, 720p, 1080p,
+taskbar-reserved work areas, 150% text scale, long titles, and missing artwork.
+For every profile, painted focus, pointer hit target, controller/keyboard focus,
+semantic focus, UIA bounds/order, exact host action routes, and Back agree and
+remain inside the live work area. Changing paint z-order does not alter semantic
+geometry/order. Invalid or incompatible recipes atomically render the matching
+built-in fallback. Add one bounded production-host semantic fixture that
+actually invokes the adapter from the host path; merely compiling otherwise
+unreferenced adapter objects into `OverlayHost.exe` or using only an offscreen
+WIC unit executable is insufficient. Existing widget flex/grid/scroll behavior
+must remain unchanged.
+**Verification:** Tier 1 Launcher Experience layout/renderer/focus/pointer/UIA
+Release group plus the named Tier 2 production-host semantic fixture. No
+aggregate, capture, pack CLI/catalog change, launcher domain work, motion, or
+unrelated renderer refactor.
+**Stop:** satisfying the production fixture requires projecting live Game
+Launcher domain state before DLV-134, changing the window/compositor ownership
+model, or weakening the existing semantic/action authority boundary.
+
 ### DLV-136 — Make the production overlay reachable by the planner UI smoke
 
-**State:** Ready immediately after DLV-137; take this before DLV-133
+**State:** Ready immediately after DLV-140; take this before DLV-133
 **Owner/outcome:** platform lane for the smallest production-host change that
 lets the supported Windows computer-control surface discover, activate, and
 capture the exact visible `Game Bar Alternative` main window after `--show`.
@@ -584,9 +686,10 @@ manufacture adjacent work.
 1. DLV-130 owns the normalized public launcher data contract; no other lane
    edits that broker/bridge/SDK boundary until it is accepted.
 2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
-   catalog. Already-active DLV-132 finishes first; DLV-137 closes the bounded
-   package-validation review gaps, then DLV-136 restores required planner
-   UI-smoke reachability before DLV-133 continues platform presentation work.
+   catalog. DLV-137 closes its bounded package-validation review gaps, DLV-140
+   closes the committed DLV-132 responsive/production-host evidence gaps, then
+   DLV-136 restores required planner UI-smoke reachability before DLV-133
+   continues platform presentation work.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.
