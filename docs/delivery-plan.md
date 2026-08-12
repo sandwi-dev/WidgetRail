@@ -143,7 +143,7 @@ aggregate or capture.
 navigation behavior needs a native focus-engine contract change, or the Add/
 filter/sort behavior requires a new product choice or unsupported provider API.
 
-### Widgets current assignment
+### Widgets completed milestones
 
 ### DLV-125 — Restore the canonical verifier manifest and close DLV-123 evidence
 
@@ -186,8 +186,8 @@ aggregate exposes an unrelated product failure requiring planner triage.
 
 ### DLV-128 — Ship the first playable Game Launcher console hero rail
 
-**State:** Assigned after the clean widgets lane merges exact accepted main
-through `418d11f`
+**State:** Accepted as `344caa0`, integrated as `67c557d`; focused Game Launcher
+evidence passed 62/62 and documentation contracts covered 61 Markdown files.
 **Baseline/dependencies:** accepted DLV-126 collection/action correction and the
 approved `docs/game-launcher-requirements.md` M1 console-home contract. Use only
 the existing installed-game query, opaque artwork handles, exact SavedId action
@@ -236,12 +236,12 @@ No aggregate, capture, account, external API, or provider test.
 layout primitive, public pack schema, provider metadata, raw path/URL, or a
 material choice about replacing the current controls rather than composing them.
 
-### Widgets ready queue
+### Widgets completed follow-up
 
 ### DLV-129 — Make the Gbar dev cancellation fixture deterministic
 
-**State:** Ready after DLV-128; this internal evidence repair must not preempt
-the visible console-home milestone
+**State:** Accepted as `7f7d9d5`, integrated as `d792e30`; the named fixture
+passed three consecutive focused 1/1 runs without another aggregate
 **Baseline/evidence:** the one clean exact-commit aggregate from `ccabb0e`, run
 `20260812T074036Z-37ce8dc0`, passed all prior managed steps including new
 WidgetScenario 9/9, then Gbar CLI passed 57/58. Only `Dev retains last good and
@@ -259,11 +259,15 @@ command and proves Ready, retained-last-good, cancellation, temporary-catalog
 cleanup, and child-host exit. No unrelated Gbar tests, verifier schema changes,
 aggregate rerun, product feature work, or broad test migration.
 
+### Widgets current assignment
+
 ### DLV-130 — Publish the normalized launcher presentation contract
 
-**State:** Ready after DLV-129; shared managed contract work is serialized to
-the widgets lane and must merge before DLV-134 consumes it
-**Baseline/dependencies:** accepted DLV-128 plus
+**State:** Assigned after the widgets lane merges exact accepted main `d792e30`;
+shared managed contract work is serialized to this lane and must merge before
+DLV-134 consumes it
+**Baseline/dependencies:** exact accepted main `d792e30`, including DLV-128 and
+DLV-129, plus
 `docs/game-launcher-requirements.md` delivery step 1. This is the smallest
 public SDK/broker prerequisite for the named console-home and safe-experience
 outcomes, not store-adapter or content-operation breadth.
@@ -303,6 +307,8 @@ network, external fixtures, or speculative provider implementation.
 **Stop:** a field cannot be represented without exposing provider authority,
 the contract would grant content-management capability, or its final shape
 depends on an unselected external provider or destructive-operation UX.
+
+### Widgets planned queue
 
 ### DLV-135 — Add the deterministic Launcher Experience authoring toolchain
 
@@ -400,8 +406,10 @@ fixed above.
 
 ### DLV-124 — Reconcile native session, tray, and UIA state after uninstall
 
-**State:** Assigned after committed DLV-127; the platform lane took this
-evidence-first item immediately without waiting for planner review, as required
+**State:** Stopped at the managed-catalog boundary. The native trace found a
+credible retained-presentation cache gap, but the synthetic uninstall mutation
+never produced a managed catalog revision/native event, so the three-file
+experiment is unaccepted and will be preserved off-lane rather than merged.
 **Baseline/dependencies:** accepted DLV-123 `552d250`, integrated through
 `8c40a6d`, plus accepted DLV-118 catalog reconciliation/generation teardown
 **Owner:** platform lane; native catalog-removal reconciliation and focused host
@@ -419,8 +427,11 @@ selection requires a material UX choice.
 
 ### DLV-131 — Freeze the data-only Launcher Experience Pack schema
 
-**State:** Ready after DLV-124; platform lane leads this shared schema/catalog
-foundation and then continues directly to DLV-132
+**State:** Assigned after the platform lane preserves the stopped DLV-124
+experiment on a separate `codex/` investigation branch, restores its clean
+`codex/impl-platform-switch` boundary, and merges exact accepted main `d792e30`;
+platform leads this shared schema/catalog foundation and then continues directly
+to DLV-132
 **Baseline/dependencies:** `docs/game-launcher-requirements.md` experience
 architecture, GL-THEME-001 through GL-THEME-012, GL-SEC-004, and delivery step
 1. It does not depend on DLV-130 because packs bind semantic slot names, never
@@ -518,6 +529,7 @@ manufacture adjacent work.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
+| DLV-124 native uninstall reconciliation | The production-host synthetic catalog removal never emitted a managed revision or native event, so native retirement could not be accepted and its experiment remains off the implementation lane. | A bounded managed catalog-monitor assignment that reproduces exact disabled/nonresident removal and supplies a deterministic event to the native fixture; then re-review the retained native cache correction. |
 | DLV-062 trusted fixed-video surface | One visible paused WebView2 surface measured about 348.7 MiB private memory and 4% CPU against the current 128-MiB gate; supported suspension controls require invisibility and do not solve visible cost. | User changes the budget or authorizes a content/process-specific bounded experiment with a hard stop and no account work. |
 | Audio Mixer default input/output selection | No documented supported Windows setter is established; roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence plus a reversible provider/hardware plan. |
 | Live Spotify Web Playback | Account, Premium eligibility, allowlist, OAuth, and EME. | User-authorized account and retained manual evidence. |
