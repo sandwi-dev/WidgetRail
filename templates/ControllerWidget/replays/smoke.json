@@ -1,21 +1,9 @@
 {
   "version": 1,
-  "initialFocusId": "apply",
+  "initialFocusId": "primary",
   "events": [
     {
-      "button": "dPadLeft",
-      "phase": "pressed"
-    },
-    {
       "button": "a",
-      "phase": "pressed"
-    },
-    {
-      "button": "rightBumper",
-      "phase": "pressed"
-    },
-    {
-      "button": "x",
       "phase": "pressed"
     }
   ]

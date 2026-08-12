@@ -54,21 +54,27 @@ external-directory AppContainer proof.
 & $gbar new widget VolumeControl `
   --output .\scratch\VolumeControl `
   --id dev.example.volume-control `
-  --publisher dev.example
+  --publisher dev.example `
+  --template basic
 
 dotnet build .\scratch\VolumeControl\VolumeControl.csproj -c Release
 dotnet run --project .\scratch\VolumeControl\tests\VolumeControl.Tests.csproj `
-  -c Release -- `
-  .\scratch\VolumeControl\fixtures\ready.snapshot.json
+  -c Release
+& $gbar preview .\scratch\VolumeControl --scenario ready `
+  --output .\scratch\VolumeControl\fixtures\ready.scenario.json
+(Get-Content .\scratch\VolumeControl\fixtures\ready.scenario.json | ConvertFrom-Json).snapshot |
+  ConvertTo-Json -Depth 100 |
+  Set-Content .\scratch\VolumeControl\fixtures\ready.snapshot.json
 ```
 
 `gbar new` writes `GameBarAlternative.WidgetSdk` to the relative
 `.gbar\packages` feed and never writes an absolute checkout path. The generated
-test proves Created/Interactive/Background lifecycle transitions, a
-state-changing action, retained state, and the snapshot used below. This local
+MSTest scenario proves activation, a state-changing action, stable focus, and
+the same semantic scenario exported for the snapshot used below. This local
 dependency bundle is an offline scaffold contract, not a public NuGet release
-or a publisher-trust claim. The bundled version-1 template manifest explicitly
-declares every bounded text or binary input. `gbar new` builds and validates the
+or a publisher-trust claim. The bundled version-2 inventory declares the closed
+`basic`, `data`, `media`, and `multipage` profiles plus every bounded text or
+binary input. `gbar new` builds and validates the
 complete result in a private sibling staging directory, then publishes it with
 one rename. The requested output path must not already exist; malformed or
 unreadable template input, validation failure, cancellation, and destination
@@ -187,46 +193,20 @@ public sealed class VolumeControl : Widget
 
     public override WidgetView Render() => new(
         UI.Stack("root",
-            UI.Text("VolumeControl", "title", "VolumeControl heading")
-                .Classes("title"),
-            UI.Text($"{(_active ? "Active" : "Paused")} · Level {_level}",
-                    "status", "Current lifecycle and level")
-                .Classes("status"),
-            UI.Row("actions",
-                UI.Button("Lower", "lower", "lower")
-                    .Disabled(_level == 0)
-                    .FocusRight("apply")
-                    .Shortcut(ControllerButton.LeftBumper),
-                UI.Button("Apply", "apply", "apply")
-                    .FocusLeft("lower")
-                    .FocusRight("raise")
-                    .Shortcut(ControllerButton.X),
-                UI.Button("Raise", "raise", "raise")
-                    .Disabled(_level == 4)
-                    .FocusLeft("apply")
-                    .Shortcut(ControllerButton.RightBumper)),
-            UI.Text("LB/RB adjust • X applies • Home returns to the game", "controller-help")
-                .Classes("controller-help")),
-        InitialFocusId: "apply");
+            UI.Text("VolumeControl", "title"),
+            UI.Text($"{(_active ? "Active" : "Paused")} · Level {_level}", "status"),
+            UI.Button("Raise", "primary", "primary")
+                .Shortcut(ControllerButton.RightBumper)),
+        InitialFocusId: "primary");
 
-    public override ValueTask OnActionAsync(
-        WidgetActionEvent action,
+    public override ValueTask OnActionAsync(WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        switch (action.ActionId)
+        if (action.ActionId == "primary")
         {
-            case "lower":
-                _level = Math.Max(0, _level - 1);
-                Invalidate();
-                break;
-            case "raise":
-                _level = Math.Min(4, _level + 1);
-                Invalidate();
-                break;
-            case "apply":
-                // Call a brokered capability here, then invalidate if visible state changes.
-                break;
+            _level = Math.Min(4, _level + 1);
+            Invalidate();
         }
         return ValueTask.CompletedTask;
     }
@@ -237,13 +217,13 @@ public sealed class VolumeControl : Widget
         Invalidate();
         return ValueTask.CompletedTask;
     }
+}
 
-    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
-    {
-        _active = false;
-        Invalidate();
-        return ValueTask.CompletedTask;
-    }
+public static class Scenarios
+{
+    public const string ExpectedText = "Active · Level 3";
+    public static WidgetScenarioDefinition Ready() => new(
+        new VolumeControl(), new WidgetTestHostServicesBuilder().Build());
 }
 ```
 

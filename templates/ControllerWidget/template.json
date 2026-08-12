@@ -1,52 +1,73 @@
 {
-  "templateVersion": 1,
-  "name": "Controller Widget",
-  "description": "A controller-first C# widget with focus, shortcuts, state, GBSS, and input replay.",
-  "files": [
+  "templateVersion": 2,
+  "profiles": [
     {
-      "source": "WidgetName.csproj.template",
-      "destination": "{{WidgetName}}.csproj",
-      "kind": "text"
+      "id": "basic",
+      "name": "Basic controller widget",
+      "description": "Lifecycle, stable focus, shortcuts, and local state.",
+      "files": [
+        { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
+        { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
+        { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
+        { "source": "README.md.template", "destination": "README.md", "kind": "text" },
+        { "source": "profiles/basic.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
+        { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
+        { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
+        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
+        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
+      ]
     },
     {
-      "source": "manifest.json.template",
-      "destination": "manifest.json",
-      "kind": "text"
+      "id": "data",
+      "name": "Data resource widget",
+      "description": "One lifecycle-owned resource with loading, retry, last-good, and safe errors.",
+      "files": [
+        { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
+        { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
+        { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
+        { "source": "README.md.template", "destination": "README.md", "kind": "text" },
+        { "source": "profiles/data.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
+        { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
+        { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
+        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
+        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
+      ]
     },
     {
-      "source": "NuGet.Config.template",
-      "destination": "NuGet.Config",
-      "kind": "text"
+      "id": "media",
+      "name": "Optimistic media widget",
+      "description": "Optimistic progress commands with lifecycle cancellation and rollback.",
+      "files": [
+        { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
+        { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
+        { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
+        { "source": "README.md.template", "destination": "README.md", "kind": "text" },
+        { "source": "profiles/media.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
+        { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
+        { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
+        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
+        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
+      ]
     },
     {
-      "source": "README.md.template",
-      "destination": "README.md",
-      "kind": "text"
-    },
-    {
-      "source": "src/WidgetName.cs.template",
-      "destination": "src/{{WidgetName}}.cs",
-      "kind": "text"
-    },
-    {
-      "source": "tests/WidgetName.Tests.csproj.template",
-      "destination": "tests/{{WidgetName}}.Tests.csproj",
-      "kind": "text"
-    },
-    {
-      "source": "tests/Program.cs.template",
-      "destination": "tests/Program.cs",
-      "kind": "text"
-    },
-    {
-      "source": "styles/default.gbss",
-      "destination": "styles/default.gbss",
-      "kind": "binary"
-    },
-    {
-      "source": "replays/smoke.json",
-      "destination": "replays/smoke.json",
-      "kind": "binary"
+      "id": "multipage",
+      "name": "Responsive multipage widget",
+      "description": "Bounded route navigation composed through one responsive navigation shell.",
+      "files": [
+        { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
+        { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
+        { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
+        { "source": "README.md.template", "destination": "README.md", "kind": "text" },
+        { "source": "profiles/multipage.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
+        { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
+        { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
+        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
+        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
+      ]
     }
   ]
 }

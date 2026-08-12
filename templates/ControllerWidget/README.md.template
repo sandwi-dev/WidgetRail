@@ -1,9 +1,8 @@
 # {{WidgetName}}
 
 `{{WidgetId}}` is a controller-first Game Bar Alternative widget generated from
-the standard starter. It demonstrates lifecycle-aware presentation, retained
-state, stable semantic IDs, an explicit focus graph, controller shortcuts,
-invalidation, GBSS styling, and deterministic snapshot replay.
+the `{{TemplateProfile}}` starter. Its source stays deliberately small and uses
+public SDK helpers for the profile's state, lifecycle, and controller policy.
 
 The scaffold carries its matching `GameBarAlternative.WidgetSdk` dependency in
 the project-local `.gbar/packages` feed. Restore is offline, requires no source
@@ -13,17 +12,17 @@ checkout or absolute machine path, and `NuGet.Config` clears external feeds.
 
 ```powershell
 dotnet build .\{{WidgetName}}.csproj --configuration Release
-dotnet run --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release -- .\fixtures\ready.snapshot.json
+dotnet run --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release
+gbar preview . --scenario ready --output .\fixtures\ready.snapshot.json
 gbar validate .
 gbar render .\fixtures\ready.snapshot.json --output .\fixtures\ready.canonical.json
 gbar replay .\fixtures\ready.snapshot.json .\replays\smoke.json
 ```
 
-The generated test drives initialization, Interactive and Background lifecycle
-transitions, a state-changing action, retained state, and snapshot export. The
-replay begins on `apply`, moves left, activates `lower`, then exercises the `RB`
-and `X` shortcuts. `Home/Guide` is reserved by the shell; all other controller
-inputs remain available to the active widget.
+The sibling `MSTest.Sdk` 4.3.2 project drives the same semantic scenario used by
+the isolated preview worker. It activates the widget, dispatches one primary
+action, and checks stable text and focus without sleeps. `Home/Guide` remains
+reserved by the shell.
 
 Run the compiled widget through the production AppContainer worker boundary:
 

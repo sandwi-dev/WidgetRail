@@ -95,7 +95,7 @@ public static class CliApplication
         gbar - controller widget development tools
 
         Usage:
-          gbar new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>]
+          gbar new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--template <basic|data|media|multipage>]
           gbar validate <widget-directory|manifest.json|style.gbss>
           gbar dev <widget-directory|widget.csproj|file.gbarwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]
           gbar preview <widget-directory|gbar.scenarios.json> [--scenario <name>] [--output <snapshot.json>] [--instance <id>]

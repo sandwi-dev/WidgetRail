@@ -7,6 +7,6 @@
   <PropertyGroup>
     <WidgetSdkReleaseVersion>0.1.0-dev</WidgetSdkReleaseVersion>
     <WidgetSdkPackageId>GameBarAlternative.WidgetSdk</WidgetSdkPackageId>
-    <ControllerWidgetTemplateVersion>1</ControllerWidgetTemplateVersion>
+    <ControllerWidgetTemplateVersion>2</ControllerWidgetTemplateVersion>
   </PropertyGroup>
 </Project>

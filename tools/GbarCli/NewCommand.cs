@@ -9,11 +9,12 @@ internal static partial class NewCommand
         TextWriter output,
         CancellationToken cancellationToken = default)
     {
-        var parsed = new CommandArguments(args, "--output", "--id", "--publisher");
+        var parsed = new CommandArguments(
+            args, "--output", "--id", "--publisher", "--template");
         if (parsed.Positionals.Count != 2 || parsed.Positionals[0] != "widget")
             throw new CliUsageException(
                 "Usage: gbar new widget <Name> [--output <directory>] [--id <id>] " +
-                "[--publisher <id>]");
+                "[--publisher <id>] [--template <basic|data|media|multipage>]");
 
         var name = parsed.Positionals[1];
         if (!TypeNameRegex().IsMatch(name))
@@ -25,6 +26,10 @@ internal static partial class NewCommand
             throw new CliUsageException("Publisher must be a lowercase reverse-DNS identifier that is also a valid C# namespace.");
         if (!WidgetIdRegex().IsMatch(id))
             throw new CliUsageException("Widget ID must be a lowercase reverse-DNS identifier.");
+        var profile = parsed.Option("--template") ?? "basic";
+        if (!WidgetTemplateProfiles.All.Contains(profile, StringComparer.Ordinal))
+            throw new CliUsageException(
+                $"Unknown widget template '{profile}'. Choose basic, data, media, or multipage.");
         var target = Path.GetFullPath(parsed.Option("--output") ?? Path.Combine(Environment.CurrentDirectory, name));
         if (File.Exists(target) || Directory.Exists(target))
             throw new CliUsageException(
@@ -39,10 +44,12 @@ internal static partial class NewCommand
             ["{{Publisher}}"] = publisher,
             ["{{SdkPackageId}}"] = sdkPackage.PackageId,
             ["{{SdkVersion}}"] = sdkPackage.Version,
+            ["{{TemplateProfile}}"] = profile,
         };
 
         var created = await ControllerWidgetScaffolder.GenerateAsync(
             templateRoot,
+            profile,
             target,
             replacements,
             sdkPackage,
@@ -50,6 +57,7 @@ internal static partial class NewCommand
 
         await output.WriteLineAsync($"Created {name} in {target}");
         await output.WriteLineAsync($"  ID: {id}");
+        await output.WriteLineAsync($"  Template: {profile}");
         await output.WriteLineAsync(
             $"  SDK: GameBarAlternative.WidgetSdk {sdkPackage.Version} (local offline feed)");
         await output.WriteLineAsync($"  Files: {created}");
@@ -68,6 +76,11 @@ internal static partial class NewCommand
 
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)+$", RegexOptions.CultureInvariant)]
     private static partial Regex WidgetIdRegex();
+}
+
+internal static class WidgetTemplateProfiles
+{
+    internal static readonly string[] All = ["basic", "data", "media", "multipage"];
 }
 
 internal static class TemplateLocator

@@ -16,12 +16,14 @@ internal static class ControllerWidgetScaffolder
 
     internal static async Task<int> GenerateAsync(
         string templateRoot,
+        string profile,
         string target,
         IReadOnlyDictionary<string, string> replacements,
         LocalWidgetSdkBundle sdkPackage,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(templateRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(profile);
         ArgumentException.ThrowIfNullOrWhiteSpace(target);
         ArgumentNullException.ThrowIfNull(replacements);
         ArgumentNullException.ThrowIfNull(sdkPackage);
@@ -30,7 +32,7 @@ internal static class ControllerWidgetScaffolder
         if (File.Exists(fullTarget) || Directory.Exists(fullTarget))
             throw ExistingDestination(fullTarget);
 
-        var template = await LoadAsync(templateRoot, replacements, cancellationToken)
+        var template = await LoadAsync(templateRoot, profile, replacements, cancellationToken)
             .ConfigureAwait(false);
         var parent = Path.GetDirectoryName(fullTarget)
             ?? throw new CliUsageException(
@@ -140,6 +142,7 @@ internal static class ControllerWidgetScaffolder
 
     private static async Task<LoadedTemplate> LoadAsync(
         string templateRoot,
+        string profile,
         IReadOnlyDictionary<string, string> replacements,
         CancellationToken cancellationToken)
     {
@@ -173,7 +176,7 @@ internal static class ControllerWidgetScaffolder
         TemplateManifest manifest;
         try
         {
-            manifest = ParseManifest(manifestBytes);
+            manifest = ParseManifest(manifestBytes, profile);
         }
         catch (JsonException exception)
         {
@@ -183,19 +186,32 @@ internal static class ControllerWidgetScaffolder
 
         var tree = CaptureTree(root);
         var declaredSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var declaredDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        long inventoryBytes = 0;
+        foreach (var declaration in manifest.AllFiles)
+        {
+            var source = ValidateRelativePath(
+                declaration.Source, "source", allowWidgetNameToken: false);
+            if (!declaredSources.Add(source)) continue;
+            if (!tree.Files.Contains(source))
+                throw new CliUsageException(
+                    $"Template inventory declares missing file '{source}'. Restore the file or remove its declaration.");
+            var info = new FileInfo(Path.Combine(
+                root, source.Replace('/', Path.DirectorySeparatorChar)));
+            if (info.Length < 0 || info.Length > MaximumFileBytes)
+                throw new CliUsageException(
+                    $"Template file '{source}' exceeds the {MaximumFileBytes}-byte per-file bound. Reduce the file and retry.");
+            inventoryBytes += info.Length;
+            if (inventoryBytes > MaximumAggregateBytes)
+                throw new CliUsageException(
+                    $"Declared template files exceed the {MaximumAggregateBytes}-byte aggregate bound. Remove or reduce declared files.");
+        }
         var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var loaded = new List<LoadedTemplateFile>(manifest.Files.Count);
-        long aggregateBytes = 0;
 
         foreach (var declaration in manifest.Files)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var source = ValidateRelativePath(declaration.Source, "source", allowWidgetNameToken: false);
-            if (!declaredSources.Add(source))
-                throw new CliUsageException(
-                    $"Template manifest declares source '{source}' more than once. Keep one declaration per file.");
-            AddParentDirectories(source, declaredDirectories);
             if (!tree.Files.Contains(source))
                 throw new CliUsageException(
                     $"Template manifest declares missing file '{source}'. Restore the file or remove its declaration.");
@@ -217,11 +233,6 @@ internal static class ControllerWidgetScaffolder
             if (info.Length < 0 || info.Length > MaximumFileBytes)
                 throw new CliUsageException(
                     $"Template file '{source}' exceeds the {MaximumFileBytes}-byte per-file bound. Reduce the file and retry.");
-            aggregateBytes += info.Length;
-            if (aggregateBytes > MaximumAggregateBytes)
-                throw new CliUsageException(
-                    $"Declared template files exceed the {MaximumAggregateBytes}-byte aggregate bound. Remove or reduce declared files.");
-
             byte[] content;
             try
             {
@@ -270,18 +281,10 @@ internal static class ControllerWidgetScaffolder
         if (undeclared is not null)
             throw new CliUsageException(
                 $"Template file '{undeclared}' is not declared in template.json. Declare it as text or binary, or remove it.");
-        var unexpectedDirectory = tree.Directories
-            .Where(path => !declaredDirectories.Contains(path))
-            .Order(StringComparer.Ordinal)
-            .FirstOrDefault();
-        if (unexpectedDirectory is not null)
-            throw new CliUsageException(
-                $"Template directory '{unexpectedDirectory}' contains no declared file. Remove it or declare its contents in template.json.");
-
         return new(manifest.TemplateVersion, loaded);
     }
 
-    private static TemplateManifest ParseManifest(byte[] bytes)
+    private static TemplateManifest ParseManifest(byte[] bytes, string selectedProfile)
     {
         using var document = JsonDocument.Parse(bytes, new JsonDocumentOptions
         {
@@ -291,44 +294,65 @@ internal static class ControllerWidgetScaffolder
         });
         var root = document.RootElement;
         RequireObject(root, "template manifest");
-        RequireProperties(root, "template manifest", "templateVersion", "name", "description", "files");
+        RequireProperties(root, "template inventory", "templateVersion", "profiles");
         var version = RequireInt(root, "templateVersion");
         if (version != SupportedTemplateVersion)
             throw new CliUsageException(
                 $"Template version {version} is unsupported; this gbar supports version {SupportedTemplateVersion}. Update gbar or the template as one release unit.");
-        _ = RequireBoundedString(root, "name", 1, 80);
-        _ = RequireBoundedString(root, "description", 1, 512);
-        var filesElement = root.GetProperty("files");
-        if (filesElement.ValueKind != JsonValueKind.Array)
-            throw new CliUsageException("Template manifest property 'files' must be an array. Declare every template input explicitly.");
-        var count = filesElement.GetArrayLength();
-        if (count is <= 0 or > MaximumFiles)
-            throw new CliUsageException(
-                $"Template manifest must declare between 1 and {MaximumFiles} files. Reduce or complete the inventory.");
-        var files = new List<TemplateFileDeclaration>(count);
-        foreach (var item in filesElement.EnumerateArray())
+        var profilesElement = root.GetProperty("profiles");
+        if (profilesElement.ValueKind != JsonValueKind.Array ||
+            profilesElement.GetArrayLength() is <= 0 or > 8)
+            throw new CliUsageException("Template inventory must declare between 1 and 8 profiles.");
+        var profiles = new Dictionary<string, IReadOnlyList<TemplateFileDeclaration>>(StringComparer.Ordinal);
+        var allFiles = new List<TemplateFileDeclaration>();
+        foreach (var profile in profilesElement.EnumerateArray())
         {
-            RequireObject(item, "template file declaration");
-            RequireProperties(item, "template file declaration", "source", "destination", "kind");
-            var source = RequireBoundedString(item, "source", 1, MaximumRelativePathLength);
-            var destination = RequireBoundedString(item, "destination", 1, MaximumRelativePathLength);
-            var kindText = RequireBoundedString(item, "kind", 1, 16);
-            var kind = kindText switch
+            RequireObject(profile, "template profile");
+            RequireProperties(profile, "template profile", "id", "name", "description", "files");
+            var id = RequireBoundedString(profile, "id", 1, 32);
+            _ = RequireBoundedString(profile, "name", 1, 80);
+            _ = RequireBoundedString(profile, "description", 1, 512);
+            if (!WidgetTemplateProfiles.All.Contains(id, StringComparer.Ordinal))
+                throw new CliUsageException($"Template profile '{id}' is unsupported.");
+            var filesElement = profile.GetProperty("files");
+            if (filesElement.ValueKind != JsonValueKind.Array ||
+                filesElement.GetArrayLength() is <= 0 or > MaximumFiles)
+                throw new CliUsageException(
+                    $"Template profile '{id}' must declare between 1 and {MaximumFiles} files.");
+            var files = new List<TemplateFileDeclaration>(filesElement.GetArrayLength());
+            foreach (var item in filesElement.EnumerateArray())
             {
-                "text" => TemplateFileKind.Text,
-                "binary" => TemplateFileKind.Binary,
-                _ => throw new CliUsageException(
-                    $"Template file '{source}' has unsupported kind '{kindText}'. Use 'text' or 'binary'."),
-            };
-            files.Add(new(source, destination, kind));
+                RequireObject(item, "template file declaration");
+                RequireProperties(item, "template file declaration", "source", "destination", "kind");
+                var source = RequireBoundedString(item, "source", 1, MaximumRelativePathLength);
+                var destination = RequireBoundedString(item, "destination", 1, MaximumRelativePathLength);
+                var kindText = RequireBoundedString(item, "kind", 1, 16);
+                var kind = kindText switch
+                {
+                    "text" => TemplateFileKind.Text,
+                    "binary" => TemplateFileKind.Binary,
+                    _ => throw new CliUsageException(
+                        $"Template file '{source}' has unsupported kind '{kindText}'. Use 'text' or 'binary'."),
+                };
+                files.Add(new(source, destination, kind));
+                allFiles.Add(new(source, destination, kind));
+            }
+            if (!profiles.TryAdd(id, files))
+                throw new CliUsageException($"Template profile '{id}' is duplicated.");
         }
-        return new(version, files);
+        if (profiles.Count != WidgetTemplateProfiles.All.Length ||
+            WidgetTemplateProfiles.All.Any(id => !profiles.ContainsKey(id)))
+            throw new CliUsageException(
+                "Template inventory must declare basic, data, media, and multipage exactly once.");
+        if (!profiles.TryGetValue(selectedProfile, out var selected))
+            throw new CliUsageException(
+                $"Template profile '{selectedProfile}' is unavailable. Rebuild or reinstall gbar.");
+        return new(version, selected, allFiles);
     }
 
     private static TemplateTree CaptureTree(string root)
     {
         var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Stack<string>();
         pending.Push(root);
         while (pending.Count != 0)
@@ -342,7 +366,6 @@ internal static class ControllerWidgetScaffolder
                 var attributes = File.GetAttributes(entry);
                 if ((attributes & FileAttributes.Directory) != 0)
                 {
-                    directories.Add(relative);
                     pending.Push(entry);
                 }
                 else
@@ -351,7 +374,7 @@ internal static class ControllerWidgetScaffolder
                 }
             }
         }
-        return new(files, directories);
+        return new(files);
     }
 
     private static string ApplyDestinationReplacement(
@@ -393,17 +416,6 @@ internal static class ControllerWidgetScaffolder
 
     private static CliUsageException InvalidPath(string field, string value) =>
         new($"Template {field} '{value}' is not a canonical relative path. Remove traversal, rooted paths, backslashes, invalid segments, or unsupported tokens.");
-
-    private static void AddParentDirectories(string path, HashSet<string> directories)
-    {
-        var slash = path.LastIndexOf('/');
-        while (slash > 0)
-        {
-            path = path[..slash];
-            directories.Add(path);
-            slash = path.LastIndexOf('/');
-        }
-    }
 
     private static void RejectReparse(string path, string label)
     {
@@ -482,7 +494,8 @@ internal static class ControllerWidgetScaffolder
 
     private sealed record TemplateManifest(
         int TemplateVersion,
-        IReadOnlyList<TemplateFileDeclaration> Files);
+        IReadOnlyList<TemplateFileDeclaration> Files,
+        IReadOnlyList<TemplateFileDeclaration> AllFiles);
 
     private sealed record LoadedTemplateFile(
         string Source,
@@ -494,7 +507,5 @@ internal static class ControllerWidgetScaffolder
         int Version,
         IReadOnlyList<LoadedTemplateFile> Files);
 
-    private sealed record TemplateTree(
-        HashSet<string> Files,
-        HashSet<string> Directories);
+    private sealed record TemplateTree(HashSet<string> Files);
 }

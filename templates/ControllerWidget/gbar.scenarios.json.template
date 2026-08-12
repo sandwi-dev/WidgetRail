@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "assembly": "bin/Release/net8.0/{{WidgetName}}.dll",
+  "providerType": "{{Publisher}}.{{WidgetName}}.Scenarios",
+  "scenarios": [
+    { "name": "ready", "factory": "Ready" }
+  ]
+}

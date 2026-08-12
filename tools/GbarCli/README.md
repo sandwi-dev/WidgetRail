@@ -10,9 +10,9 @@ The prototype CLI makes the controller-widget development loop usable before
 the graphical simulator exists. It has no third-party runtime dependencies.
 
 ```text
-gbar new widget VolumeControl --id dev.example.volume-control
+gbar new widget VolumeControl --id dev.example.volume-control --template basic
 dotnet build .\\VolumeControl\\VolumeControl.csproj -c Release
-dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Release -- .\\VolumeControl\\fixtures\\ready.snapshot.json
+dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Release
 gbar validate .\\VolumeControl
 gbar dev .\\VolumeControl
 gbar preview .\\VolumeControl
@@ -45,9 +45,10 @@ gbar theme list
 
 ## Commands
 
-- `new widget` instantiates the bundled controller-first C# template and a
+- `new widget` selects the closed version-2 `basic`, `data`, `media`, or
+  `multipage` controller-first C# template inventory and a
   matching `GameBarAlternative.WidgetSdk` package in `.gbar/packages`. Its
-  version-1 `template.json` is a closed inventory of bounded text templates and
+  `template.json` is a closed inventory of bounded text templates and
   byte-preserved binary assets; undeclared, missing, duplicate, traversing,
   reparse, oversized, or unsupported inputs are rejected with the affected
   file or manifest rule. Generation occurs in a private sibling staging
@@ -58,8 +59,9 @@ gbar theme list
   generated `NuGet.Config` clears external feeds and resolves that dependency
   only from the relative project-local feed, so the scaffold builds offline in
   a clean directory without a platform checkout or machine-specific project
-  reference. The generated executable test drives lifecycle, state, and
-  actions and exports the snapshot consumed by the replay example.
+  reference. Each sibling `MSTest.Sdk` 4.3.2 project executes the same semantic
+  scenario declared for isolated `gbar preview`; no repository project
+  reference or credential is generated.
   `eng/WidgetSdkRelease.props` supplies the shared pre-release version and
   supported template version stamped into the CLI and SDK. The generated
   package adds a deterministic content suffix and the project references that

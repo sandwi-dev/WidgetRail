@@ -1,0 +1,44 @@
+using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}};
+
+public sealed class {{WidgetName}} : Widget
+{
+    private int _level = 2;
+    private bool _active;
+
+    public override WidgetView Render() => new(
+        UI.Stack("root",
+            UI.Text("{{WidgetName}}", "title"),
+            UI.Text($"{(_active ? "Active" : "Paused")} · Level {_level}", "status"),
+            UI.Button("Raise", "primary", "primary")
+                .Shortcut(ControllerButton.RightBumper)),
+        InitialFocusId: "primary");
+
+    public override ValueTask OnActionAsync(WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (action.ActionId == "primary")
+        {
+            _level = Math.Min(4, _level + 1);
+            Invalidate();
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    {
+        _active = true;
+        Invalidate();
+        return ValueTask.CompletedTask;
+    }
+}
+
+public static class Scenarios
+{
+    public const string ExpectedText = "Active · Level 3";
+    public static WidgetScenarioDefinition Ready() => new(
+        new {{WidgetName}}(), new WidgetTestHostServicesBuilder().Build());
+}

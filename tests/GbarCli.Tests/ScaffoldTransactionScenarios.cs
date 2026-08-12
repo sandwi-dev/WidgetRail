@@ -35,8 +35,8 @@ internal static class ScaffoldTransactionScenarios
     {
         await AssertRejectedAsync(
             "unsupported-version",
-            fixture => fixture.Manifest["templateVersion"] = 2,
-            "version 2 is unsupported");
+            fixture => fixture.Manifest["templateVersion"] = 3,
+            "version 3 is unsupported");
         await AssertRejectedAsync(
             "unknown-property",
             fixture => fixture.Manifest["hook"] = "run-me",
@@ -64,11 +64,6 @@ internal static class ScaffoldTransactionScenarios
             "unknown-kind",
             fixture => fixture.FirstFile["kind"] = "script",
             "unsupported kind 'script'");
-        await AssertRejectedAsync(
-            "unexpected-directory",
-            fixture => Directory.CreateDirectory(
-                Path.Combine(fixture.TemplateRoot, "empty")),
-            "contains no declared file");
     }
 
     private static async Task ContentBoundsFailBeforePublicationAsync()
@@ -251,7 +246,7 @@ internal static class ScaffoldTransactionScenarios
         public string TemplateRoot { get; }
         public string Target { get; }
         public JsonObject Manifest { get; }
-        public JsonArray Files => Manifest["files"]!.AsArray();
+        public JsonArray Files => Manifest["profiles"]!.AsArray()[0]!["files"]!.AsArray();
         public JsonObject FirstFile => Files[0]!.AsObject();
 
         public void AddFile(

@@ -190,6 +190,7 @@ public sealed class WidgetScenario
         CancellationToken cancellationToken = default)
     {
         var results = new List<WidgetScenarioStepResult>(_steps.Count + 1);
+        ViewSnapshot? finalSnapshot = null;
         WidgetTestHost.Attach(_definition.Widget, _definition.HostServices);
         try
         {
@@ -215,6 +216,8 @@ public sealed class WidgetScenario
                     break;
                 }
             }
+            if (results.Count == _steps.Count && results.All(result => result.Passed))
+                finalSnapshot = Snapshot();
         }
         finally
         {
@@ -225,7 +228,7 @@ public sealed class WidgetScenario
             }
         }
         var passed = results.Count == _steps.Count && results.All(result => result.Passed);
-        return new(CaseId, passed, results.ToArray(), passed ? Snapshot() : null);
+        return new(CaseId, passed, results.ToArray(), passed ? finalSnapshot : null);
     }
 
     private WidgetScenario ExpectNode(

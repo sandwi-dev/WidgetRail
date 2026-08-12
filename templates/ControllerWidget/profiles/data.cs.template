@@ -1,0 +1,50 @@
+using GameBarAlternative.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}};
+
+public sealed class {{WidgetName}} : Widget
+{
+    private readonly WidgetResource<IReadOnlyList<string>> _feed;
+
+    public {{WidgetName}}() => _feed = CreateResource("data.feed",
+        new WidgetResourceOptions<IReadOnlyList<string>>
+        {
+            Load = _ => ValueTask.FromResult<IReadOnlyList<string>>(
+                ["First", "Second", "Third"]),
+            MapError = _ => new("data_unavailable", "Data is unavailable. Try again."),
+        });
+
+    public override WidgetView Render()
+    {
+        var snapshot = _feed.Snapshot;
+        var status = snapshot.Status switch
+        {
+            WidgetResourceStatus.NotLoaded => "Not loaded",
+            WidgetResourceStatus.Loading => "Loading data",
+            WidgetResourceStatus.Error => snapshot.Error!.Message,
+            _ => $"{snapshot.Value!.Count} items ready",
+        };
+        return new(UI.Stack("root",
+            UI.Text(status, "status"),
+            UI.Button(snapshot.Status == WidgetResourceStatus.Error ? "Retry" : "Refresh",
+                "primary", "primary").Busy(_feed.IsBusy)),
+            InitialFocusId: "primary");
+    }
+
+    public override async ValueTask OnActionAsync(WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        if (action.ActionId == "primary")
+            await _feed.Refresh().Completion.WaitAsync(cancellationToken);
+    }
+
+    protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime) =>
+        await _feed.EnsureLoaded().Completion.WaitAsync(activeLifetime);
+}
+
+public static class Scenarios
+{
+    public const string ExpectedText = "3 items ready";
+    public static WidgetScenarioDefinition Ready() => new(
+        new {{WidgetName}}(), new WidgetTestHostServicesBuilder().Build());
+}
