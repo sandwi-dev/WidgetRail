@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 08:20 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 09:04 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,23 +13,23 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `b92e0ff`; worktree clean when this plan was
+- Local product baseline: `d78fc98`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-147/DLV-153/DLV-151 through
-  `b92e0ff`.
-- Visible accepted Release: PID 41444, launched at 08:16:24 after the accepted
-  GOG installed-evidence correction and Game Launcher action sheet. Its first
+- Latest implementation integration: DLV-148 and DLV-154 through `d78fc98`.
+- Visible accepted Release: PID 31668, launched at 09:00:03 after the accepted
+  Launcher Experience production presentation and Game Launcher categories. Its first
   dashboard frame is
   bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
-- PID 41444's launch interval contains no worker, protocol, provider, or
-  presentation error. The required computer-control pass could not target the
+- DLV-148 passes 1,685 focused native checks on integrated main; DLV-154 passes
+  73/73 focused managed checks, and each lane retained its required ordinary-
+  host/worker boundary evidence. The required computer-control pass cannot target the
   production no-redirection tool window: the control API omitted it while
   exposing a platform test fixture with the same title. Do not substitute that
   fixture or infer product defects from capture; user visual testing remains
   the first-page gate.
-- DLV-147 `2972500`, DLV-153 `00bd5ca`, and DLV-151 `febbb41` were reviewed and
-  cherry-picked as `10b201c`, `e5f9ece`, and `b92e0ff`. DLV-149 remains held.
+- DLV-148 `34e3746` and DLV-154 `a78693c` were reviewed and cherry-picked as
+  `838af96` and `d78fc98`. DLV-149 remains held only until DLV-150 consumes it.
 
 ## Execution protocol
 
@@ -68,9 +68,60 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-154: Game Launcher categories and exact membership
+### Current assignment — DLV-156: scalable categories and direct collection switching
 
-**State:** Assigned after accepted DLV-151 `febbb41`. Continue from the clean
+**State:** Assigned correction immediately after accepted DLV-154 `a78693c`.
+
+**Baseline/dependencies:** widgets branch `a78693c`; accepted product
+`d78fc98`. Preserve DLV-154's exact identity, atomic category-only recovery,
+CAS, stale display, and launch revalidation. DLV-150 is concurrent and native/
+Settings-owned; do not consume it or edit held DLV-149.
+
+**Owner:** widgets lane for Game Launcher category policy/state/projection,
+controller shortcuts and hints, focused tests, and directly affected docs only.
+
+**User-visible outcome:** categories are useful for a real library rather than
+a four-item demo. LT/RT cycle directly through All Games and every user category
+without opening management, preserving a valid focused exact game when possible.
+
+**Objective/scope:** remove the prototype four-category/four-member/eight-total
+product caps. The existing 64-KiB serialized-state admission boundary remains
+authoritative because it crosses shared host storage; use generous safety
+ceilings only to bound validation work, not to make ordinary organization fail
+first. Support at least 32 categories and at least 256 compact SavedId
+memberships in one retained focused fixture when the encoded state remains
+under the byte boundary. Add LT/RT category cycling to the existing Library and
+Category scopes with truthful contextual hints. Empty categories remain
+browsable and manageable.
+
+**Acceptance:** no ordinary category fails at four members or aggregate eight.
+Exact-ID create/rename/delete/assign/remove, duplicate-name rejection, category-
+only malformed/oversize reset, CAS replay, missing-display retention, restart,
+and current launch revalidation remain green at the larger matrix. LT/RT wrap
+once across All Games plus category order, never dispatch while a modal/
+ActionSheet/TextEntry owns input, and retain nearest current exact focus or one
+truthful empty-state action. Byte-budget rejection is explicit and preserves
+the last committed organization state.
+
+**Architecture/verification:** keep category validation/mutation/projection in
+the focused category owner and keep `GameLauncherWidget` as lifecycle/effect/
+committed-state adapter. Do not add unbounded materialization or duplicate
+navigation/state owners. Tier 1 Game Launcher Release suite; Tier 2 extend the
+installed generic-worker category route through LT/RT and restart. No native,
+provider, public SDK/protocol, aggregate, capture, account, metadata, held-
+DLV-149, or reviewer-document edit.
+
+**Stop:** practical capacity requires exceeding the shared 64-KiB submission,
+new public persistent-storage API, provider query/schema change, or native host
+work. Report that architecture requirement for a separate serialized milestone
+rather than smuggling it into this correction.
+
+### Accepted milestone — DLV-154: Game Launcher categories and exact membership
+
+**State:** Done and accepted through main `d78fc98`; DLV-156 immediately corrects
+the overly small prototype capacity without reopening its exact identity model.
+
+Continue from the clean
 widgets-lane boundary. The held DLV-149 commit may remain in branch ancestry but
 must not be extended or documented as live; this assignment is Game Launcher
 managed code and focused tests only.
@@ -204,13 +255,13 @@ for adoption.
    appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
    disclosure, and selected-version removal denial. It remains unintegrated
    until DLV-150 privately consumes it. Do not redo or expose it alone.
-2. **Ready after DLV-154 — DLV-155: Games & Apps visible library audit and
-   polish.** Inspect the accepted packaged behavior and current focused tests
-   for cold persisted-first display, background reconciliation, Add applications
-   stability, icon/fallback truth, remove-one preservation, preferred height,
-   and controller help. Implement only a reproducible managed-widget gap; if
-   the named invariants already hold, produce a concise evidence report and
-   stop without speculative refactoring.
+2. **Ready after DLV-156 — DLV-157: exact per-game title override.** Add a
+   controller-reachable TextEntry action from the existing game action sheet
+   that stores or clears one bounded user title override by exact SavedId. The
+   override affects presentation/search only, never provider identity, source,
+   launch authority, or another variant. Preserve provider title for recovery
+   and expose Reset title. Use the category/CAS state owners and focused worker
+   evidence; no artwork/file picker, provider, public protocol, or native work.
 
 ## Platform lane
 
@@ -218,9 +269,42 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-148: production Launcher Experience motion and effect budget
+### Current assignment — DLV-150: installed Launcher Experience selection, last-good reload, and safe start
 
-**State:** Assigned. Consume current planner main at a clean committed boundary
+**State:** Assigned after accepted DLV-148 `34e3746`. At the clean platform
+boundary, cherry-pick held widgets DLV-149 `f282237` as the exact managed
+dependency; do not merge the widgets branch or consume DLV-154/156. Stop on a
+material conflict.
+
+**Baseline/dependencies:** platform branch `34e3746`; accepted product
+`d78fc98`; held dependency `f282237`. Consume exact trusted PlatformSettings
+selection through one private host boundary, load only the accepted immutable
+catalog version, apply recipe/GBSS/sealed assets through existing owners, retain
+last-good on invalid reload, and provide one documented controller safe-start
+gesture that bypasses the selected pack for one Game Launcher activation.
+
+**Owner/concurrency:** platform lane owns the private Settings/catalog consumer,
+reload/recovery/safe-start state, native fixtures and directly affected status/
+feature docs. Widgets DLV-156 owns managed Game Launcher categories. Do not edit
+category/widget/provider/public SDK/protocol/shared-host bounds or reviewer docs.
+
+**Acceptance/verification:** selection and global-appearance modes activate the
+exact installed immutable version; valid replacement is atomic; missing,
+invalid, removed, tampered, or incompatible reload retains last-good and one
+bounded diagnostic. Safe start bypasses the custom pack exactly once without
+mutating selection. Built-in recovery remains controller complete. Preserve one
+window/compositor/renderer, current focus/action/UIA identity, accessibility
+finality, and DLV-148 presentation budgets. Tier 1 focused Settings/catalog/
+Launcher Experience native suites; Tier 2 ordinary installed selection,
+reload/failure/recovery/safe-start host fixture. No aggregate or capture gate.
+
+**Stop:** a public protocol, arbitrary code/script, remote asset, second
+renderer/window, unsigned executable content, substantial merge conflict, or
+change to managed selection semantics is required.
+
+### Accepted milestone — DLV-148: production Launcher Experience motion and effect budget
+
+**State:** Done and accepted through main `838af96`. Consume current planner main at a clean committed boundary
 before task-specific edits. If the equivalent cherry-picked DLV-134/145/146
 chain conflicts with the platform ancestry, stop and report rather than
 resolving a material conflict.
@@ -281,14 +365,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after held widgets DLV-149 — DLV-150: installed Launcher Experience
-   selection, last-good reload, and safe start.** Consume the exact trusted
-   PlatformSettings selection through one private host boundary, load only the
-   accepted immutable catalog version, apply recipe/GBSS/sealed assets through
-   existing owners, retain last-good on invalid reload, and document a
-   controller safe-start gesture that bypasses the selected pack for one Game
-   Launcher activation. Integrate DLV-149/150 only as one visible outcome.
-2. **Ready after DLV-150 — DLV-152: custom-pack production matrix.** Prove the
+1. **Ready after DLV-150 — DLV-152: custom-pack production matrix.** Prove the
    bottom-rail and left-rail/glass reference recipes plus compact/standard/wide,
    150% text, reduced motion/transparency, high contrast, long title, missing
    art, invalid pack, removal denial, and exact recovery in the ordinary host.
@@ -296,8 +373,8 @@ missing private seam rather than adding parallel presentation authority.
 ## Serialized integration queue
 
 1. DLV-134/DLV-145/DLV-146 are accepted and integrated through `4aa7284`.
-2. DLV-147/DLV-153 are accepted through `e5f9ece`; DLV-151 is accepted through
-   `b92e0ff`. DLV-148 remains independent.
+2. DLV-147/DLV-153/DLV-151 are accepted through `b92e0ff`; DLV-148 and DLV-154
+   are accepted through `d78fc98`.
 3. Hold DLV-149 `f282237` until DLV-150 consumes its selection/recovery state;
    integrate
    the pair as one visible outcome.
@@ -318,7 +395,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 41444 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 31668 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.

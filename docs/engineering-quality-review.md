@@ -151,6 +151,23 @@ View remains the sole details route and no launch or content operation was
 added. The integrated focused Release suite passes 70/70. PID 41444 is the
 fresh packaged Release for the user's controller and visual verdict.
 
+### Launcher presentation and exact categories accepted
+
+DLV-148 `34e3746`, integrated as `838af96`, connects the existing native
+presentation owner to the ordinary adopted Launcher Experience path. Integrated
+main passes 1,685 focused native checks; retained ordinary-host evidence covers
+all four presets, exact two-game focus identity, decoded/fallback artwork,
+16-ms input-to-focus p95 over 60 seconds, deterministic degradation, and a
+separate effect-free provider fallback.
+
+DLV-154 `a78693c`, integrated as `d78fc98`, adds exact-SavedId category identity,
+category-only malformed-state recovery, CAS persistence, missing-display
+retention, and fresh launch revalidation. Integrated managed evidence passes
+73/73 plus the ordinary installed-worker route. Its fixed four-category/four-
+member prototype capacity is not senior-product quality for the stated full-app
+direction, so DLV-156 immediately replaces those product caps with byte-budget-
+driven practical capacity and direct LT/RT collection switching.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -206,7 +223,7 @@ its change is accepted.
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
 | Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. Game Launcher now has one scoped controller action sheet. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, hardware, and recovery issues remain Verifying. | User verdict on PID 41444 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four live native responsive presets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, launcher-scoped recovery, author tooling, and deterministic ordinary-host adoption are accepted through `b92e0ff`. | DLV-148 advances production motion/effect budgets; DLV-149/150 remain the serialized local-pack selection/safe-start outcome; DLV-154 adds the missing M1 category slice. |
+| Launcher platform | Data-only packs, four live native responsive presets with production presentation budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, exact categories, launcher-scoped recovery, author tooling, and deterministic ordinary-host adoption are accepted through `d78fc98`. | DLV-156 corrects category capacity/switching; DLV-149/150 remain the serialized local-pack selection/safe-start outcome. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -235,13 +252,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-148 for one presentation owner, frame-atomic paint/focus/UIA,
-   reduced-motion truth, and measured degradation before accepting animation.
-2. Review DLV-154 category identity, persistence, navigation, and exact launch
-   revalidation without expanding provider or public protocol authority.
+1. Review DLV-156 for practical byte-budget-driven category capacity, exact
+   identity, LT/RT switching, and no new coordination owner.
+2. Review the serialized DLV-149/150 selection/reload/safe-start outcome without
+   exposing executable pack content or a second renderer.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 41444 visible for the user's dashboard, Spotify, and Game Launcher
+4. Keep PID 31668 visible for the user's dashboard, Spotify, and Game Launcher
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.
