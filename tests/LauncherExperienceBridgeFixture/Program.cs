@@ -39,7 +39,7 @@ internal static class Program
                 BridgeProtocol.DefaultMaximumMessageBytes,
                 256,
                 BridgeProtocol.AbsoluteMaximumMessageBytes);
-            if (scenario is not ("adoption" or "fallback" or "selection"))
+            if (scenario is not ("adoption" or "fallback" or "selection" or "matrix"))
                 throw new InvalidOperationException("Unknown Launcher Experience fixture scenario.");
 
             using var shutdown = new CancellationTokenSource();
@@ -61,11 +61,34 @@ internal static class Program
                 Console.Error.WriteLine($"Widget catalog warning: {warning}");
 
             var consent = new ConsentStore(Path.Combine(settingsRoot, "consent"));
-            var settingsStore = new PlatformSettingsStore(
-                new PlatformSettingsPaths(settingsRoot));
+            var settingsPaths = new PlatformSettingsPaths(settingsRoot);
+            var settingsStore = new PlatformSettingsStore(settingsPaths);
+            await using var appearance = new PlatformAppearanceService(
+                settingsPaths,
+                new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
+            await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
             await using var launcherExperience = new LauncherExperienceSelectionService(
                 settingsStore);
             await launcherExperience.StartAsync(shutdown.Token).ConfigureAwait(false);
+            if (scenario == "matrix")
+            {
+                try
+                {
+                    await new LauncherExperienceSelectionPolicy(settingsStore).RetireAsync(
+                        "dev.example.production", "10.0.0", shutdown.Token)
+                        .ConfigureAwait(false);
+                    throw new InvalidOperationException(
+                        "Selected Launcher Experience removal unexpectedly succeeded.");
+                }
+                catch (PlatformSettingsException exception) when (
+                    exception.Code == "selected_launcher_experience_protected")
+                {
+                    await File.WriteAllTextAsync(
+                        Path.Combine(settingsRoot, "launcher-experience-removal-denial.txt"),
+                        exception.Code,
+                        shutdown.Token).ConfigureAwait(false);
+                }
+            }
             await consent.SetDecisionAsync(
                 GameLauncherIdentity,
                 PlatformCapabilities.AppLibraryReadV1,
@@ -81,9 +104,10 @@ internal static class Program
             await using var backend = new CompositePlatformBrokerBackend(
                 simulator,
                 simulator,
-                appLibrary: scenario is "adoption" or "selection"
+                appLibrary: scenario is "adoption" or "selection" or "matrix"
                     ? new SeededAppLibrary(Path.Combine(
-                        settingsRoot, "launcher-experience-backend.txt"))
+                        settingsRoot, "launcher-experience-backend.txt"),
+                        matrix: scenario == "matrix")
                     : UnavailableAppLibrary.Instance,
                 privateState: simulator);
 
@@ -91,6 +115,7 @@ internal static class Program
                 pipeName,
                 catalogLoad.Catalog,
                 maximumBytes,
+                appearance: appearance,
                 consentStore: consent,
                 platformBackend: backend,
                 launcherExperience: launcherExperience);
@@ -152,7 +177,9 @@ internal static class Program
         internal static UnavailableAppLibrary Instance { get; } = new();
     }
 
-    private sealed class SeededAppLibrary(string diagnosticPath) : IAppLibraryPlatformBrokerBackend
+    private sealed class SeededAppLibrary(
+        string diagnosticPath,
+        bool matrix = false) : IAppLibraryPlatformBrokerBackend
     {
         private const string ArtworkPngBase64 =
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
@@ -180,6 +207,23 @@ internal static class Program
                 SourceIdentity = "dlv146-fixture",
             },
         ];
+        private static readonly AppLibraryBackendItemSummary[] MatrixGames =
+        [
+            new(
+                "dlv152-missing-art",
+                "dlv152-missing-art-stable",
+                "A deliberately long installed game title that remains fully targetable when artwork is unavailable",
+                AppLibraryKind.Game,
+                ArtworkRevision: "dlv152-missing-art-revision",
+                SourceAttribution: "DLV-152 Fixture")
+            {
+                SourceIdentity = "dlv152-fixture",
+            },
+            Games[0],
+        ];
+
+        private IReadOnlyList<AppLibraryBackendItemSummary> CurrentGames =>
+            matrix ? MatrixGames : Games;
 
         public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
             AppLibraryBackendCursorRequest request,
@@ -190,7 +234,7 @@ internal static class Program
             var admitted = request.Cursor is null &&
                 request.Query.Kind is null or AppLibraryKind.Game;
             IReadOnlyList<AppLibraryBackendItemSummary> items = admitted
-                ? Games.Where(game =>
+                ? CurrentGames.Where(game =>
                     (request.Query.SourceAttribution is null ||
                         request.Query.SourceAttribution == game.SourceAttribution) &&
                     (request.Query.SearchText is null || game.DisplayName.Contains(
@@ -212,9 +256,8 @@ internal static class Program
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(new AppLibraryIconSummary(
-                Games.Any(game => game.ProviderAppId == appId)
-                    ? ArtworkPngBase64
-                    : null));
+                CurrentGames.Any(game => game.ProviderAppId == appId) &&
+                    appId != "dlv152-missing-art" ? ArtworkPngBase64 : null));
         }
 
         public Task LaunchAppLibraryItemAsync(
@@ -222,7 +265,7 @@ internal static class Program
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!Games.Any(game => game.ProviderAppId == appId))
+            if (!CurrentGames.Any(game => game.ProviderAppId == appId))
                 throw new BrokerException("app_not_found", "Seeded game was not found.");
             return Task.CompletedTask;
         }

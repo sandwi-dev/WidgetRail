@@ -33,6 +33,13 @@ struct ProductionProjectionResult final {
     std::wstring selectionIdentity;
     bool selectionUsesGlobalAppearance{};
     bool safeStart{};
+    std::wstring layoutBranch;
+    std::wstring railOrientation;
+    std::wstring detailsSurface;
+    float textScale{1.0F};
+    bool reducedMotion{};
+    bool reducedTransparency{};
+    bool highContrast{};
     LauncherPresentationMetrics presentationMetrics;
 };
 

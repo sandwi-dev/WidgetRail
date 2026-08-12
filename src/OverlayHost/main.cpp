@@ -2179,6 +2179,7 @@ private:
         }
         AppendDiagnostic(
             L"Applied Launcher Experience revision " + std::to_wstring(revision) +
+            L" validated=compact@100%,compact@150%,standard@100%,standard@150%,wide@100%,wide@150%" +
             (diagnostic.empty() ? L"" : L" retained-diagnostic=" + diagnostic));
         if (state_.surface() != gba::Surface::Hidden)
             InvalidateRect(window_, nullptr, FALSE);
@@ -6255,7 +6256,16 @@ private:
                                 launcherProjection.selectionIdentity + L"\n" +
                                 (launcherProjection.selectionUsesGlobalAppearance
                                     ? L"global" : L"launcher") + L"\n" +
-                                (launcherProjection.safeStart ? L"safe" : L"selected")
+                                (launcherProjection.safeStart ? L"safe" : L"selected") + L"\n" +
+                                launcherProjection.layoutBranch + L"\n" +
+                                launcherProjection.railOrientation + L"\n" +
+                                launcherProjection.detailsSurface + L"\n" +
+                                std::to_wstring(launcherProjection.textScale) + L"\n" +
+                                (launcherProjection.reducedMotion ? L"motion-reduced" : L"motion-full") + L"\n" +
+                                (launcherProjection.reducedTransparency
+                                    ? L"transparency-reduced" : L"transparency-full") + L"\n" +
+                                (launcherProjection.highContrast
+                                    ? L"contrast-high" : L"contrast-standard")
                             : L"\nlauncher-presentation\ninactive";
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
@@ -6296,6 +6306,17 @@ private:
                                     ? L"global" : L"launcher") +
                                 L" safe-start=" +
                                 (launcherProjection.safeStart ? L"true" : L"false") +
+                                L" branch=" + launcherProjection.layoutBranch +
+                                L" rail=" + launcherProjection.railOrientation +
+                                L" details-surface=" + launcherProjection.detailsSurface +
+                                L" text-scale=" +
+                                std::to_wstring(launcherProjection.textScale) +
+                                L" reduced-motion=" +
+                                (launcherProjection.reducedMotion ? L"true" : L"false") +
+                                L" reduced-transparency=" +
+                                (launcherProjection.reducedTransparency ? L"true" : L"false") +
+                                L" high-contrast=" +
+                                (launcherProjection.highContrast ? L"true" : L"false") +
                                 L" effect=" + std::wstring(
                                     gba::launcher::EffectQualityName(
                                         launcherProjection.effectQuality)) +

@@ -113,6 +113,26 @@ const WidgetNode* ArtworkNode(const WidgetNode* root) noexcept {
     return nullptr;
 }
 
+std::wstring_view BranchName(const Branch branch) noexcept {
+    switch (branch) {
+    case Branch::Compact: return L"compact";
+    case Branch::Standard: return L"standard";
+    case Branch::Wide: return L"wide";
+    }
+    return L"unknown";
+}
+
+std::wstring_view OrientationName(
+    const std::optional<Orientation> orientation) noexcept {
+    if (!orientation) return L"unspecified";
+    return *orientation == Orientation::Vertical ? L"vertical" : L"horizontal";
+}
+
+std::wstring_view SurfaceName(const std::optional<Surface> surface) noexcept {
+    if (!surface) return L"default";
+    return *surface == Surface::Glass ? L"glass" : L"solid";
+}
+
 } // namespace
 
 std::wstring_view PresetName(const Preset preset) noexcept {
@@ -146,14 +166,14 @@ bool LauncherExperienceProjection::PublishSelection(
         diagnostic = L"Launcher Experience selection revision is stale.";
         return false;
     }
-    constexpr std::array<declarative::Rect, 4> profiles{{
-        {0, 0, 800, 450}, {0, 0, 1100, 650},
-        {0, 0, 1400, 900}, {0, 0, 1280, 720},
+    constexpr std::array<std::pair<declarative::Rect, float>, 6> profiles{{
+        {{0, 0, 800, 450}, 1.0F}, {{0, 0, 800, 450}, 1.5F},
+        {{0, 0, 1100, 650}, 1.0F}, {{0, 0, 1100, 650}, 1.5F},
+        {{0, 0, 1400, 900}, 1.0F}, {{0, 0, 1400, 900}, 1.5F},
     }};
-    for (std::size_t index = 0; index < profiles.size(); ++index) {
+    for (const auto& [viewport, textScale] : profiles) {
         const auto layout = ResolveLayout(
-            &selection.recipe, selection.preset, profiles[index],
-            index == profiles.size() - 1 ? 1.5F : 1.0F);
+            &selection.recipe, selection.preset, viewport, textScale);
         if (!layout.valid() || layout.usedFallback) {
             diagnostic = L"Launcher Experience recipe failed native compatibility validation.";
             return false;
@@ -497,6 +517,17 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
         result.selectionIdentity = L"widget-preset";
     }
     result.safeStart = safeStartActivation_;
+    result.layoutBranch = BranchName(staged.layout.branch);
+    const auto* rail = staged.layout.Find(Slot::GameRail);
+    const auto* details = staged.layout.Find(Slot::DetailsPanel);
+    result.railOrientation = OrientationName(
+        rail ? rail->orientation : std::optional<Orientation>{});
+    result.detailsSurface = SurfaceName(
+        details ? details->surface : std::optional<Surface>{});
+    result.textScale = options.accessibility.textScale;
+    result.reducedMotion = options.accessibility.reducedMotion;
+    result.reducedTransparency = options.accessibility.reducedTransparency;
+    result.highContrast = static_cast<bool>(options.accessibility.contrastHook);
     result.presentationMetrics = presentationOwner_.metrics();
     return result;
 }

@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cwctype>
 #include <exception>
 #include <filesystem>
@@ -41,6 +42,14 @@ struct ProjectionRecord final {
     std::string backgroundFocus;
     std::string railPrevious;
     std::string railNext;
+    std::string selection;
+    std::string branch;
+    std::string rail;
+    std::string detailsSurface;
+    double textScale{1.0};
+    bool reducedMotion{};
+    bool reducedTransparency{};
+    bool highContrast{};
     double inputP95Milliseconds{};
     std::size_t inputSamples{};
     std::size_t degraded{};
@@ -231,9 +240,14 @@ public:
         const auto settings = localAppData_ / L"GameBarAlternative";
         fs::create_directories(settings);
         if (scenario.starts_with("selection")) {
-            WriteExperiencePackage(settings, "1.0.0", "cover-wall");
-            WriteExperiencePackage(settings, "2.0.0", "carousel");
+            WriteExperiencePackage(settings, "1.0.0", "cover-wall", false, true);
+            WriteExperiencePackage(settings, "2.0.0", "carousel", false, true);
             WriteSelection("1.0.0", false);
+        } else if (scenario.starts_with("matrix")) {
+            WriteExperiencePackage(settings, "10.0.0", "hero-rail", false, false);
+            WriteExperiencePackage(settings, "11.0.0", "hero-rail", true, true);
+            WriteExperiencePackage(settings, "12.0.0", "hero-rail", false, true);
+            WriteSelection("10.0.0", false);
         }
         WriteUtf8(
             bridgeRoot / L"launcher-experience-provider-fixture.txt",
@@ -276,6 +290,9 @@ public:
         return localAppData_ / L"GameBarAlternative" /
             L"launcher-experience-backend.txt";
     }
+    [[nodiscard]] fs::path RemovalDenialPath() const {
+        return SettingsRoot() / L"launcher-experience-removal-denial.txt";
+    }
     [[nodiscard]] fs::path SettingsRoot() const {
         return localAppData_ / L"GameBarAlternative";
     }
@@ -283,13 +300,23 @@ public:
         return SettingsRoot() / L"launcher-experiences" /
             L"dev.example.production" / std::wstring(version);
     }
-    void WriteSelection(const std::string_view version, const bool global) const {
+    void WriteSelection(
+        const std::string_view version,
+        const bool global,
+        const double textScale = 1.0,
+        const bool reducedAccessibility = false) const {
         WriteUtf8(
             SettingsRoot() / L"platform-settings.json",
             "{\"schemaVersion\":1,\"appearance\":{"
             "\"themeId\":\"builtin.default\",\"themeVersion\":\"1.0.0\","
-            "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
-            "\"motion\":\"system\"},\"launcherExperience\":{"
+            "\"interfaceScale\":1,\"textScale\":" + std::to_string(textScale) +
+            ",\"backdropOpacity\":0.64,\"motion\":\"" +
+            std::string(reducedAccessibility ? "reduced" : "system") +
+            "\",\"contrast\":\"" +
+            std::string(reducedAccessibility ? "high" : "system") +
+            "\",\"transparency\":\"" +
+            std::string(reducedAccessibility ? "reduced" : "full") +
+            "\"},\"launcherExperience\":{"
             "\"useGlobalAppearance\":" + std::string(global ? "true" : "false") +
             ",\"selectedId\":\"dev.example.production\",\"selectedVersion\":\"" +
             std::string(version) +
@@ -315,12 +342,20 @@ public:
             "launcher-game-rail { color: #80ff80; } "
             "launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
     }
+    void CorruptExperienceRecipe(const std::wstring_view version) const {
+        WriteUtf8(
+            ExperienceVersion(version) / L"layouts" / L"layout.json",
+            "{\"schemaVersion\":1,\"branches\":{\"wide\":{\"root\":{"
+            "\"type\":\"overlay\",\"children\":[]}}}}");
+    }
 
 private:
     void WriteExperiencePackage(
         const fs::path& settings,
         const std::string_view version,
-        const std::string_view preset) const {
+        const std::string_view preset,
+        const bool leftRail,
+        const bool packAsset) const {
         const auto directory = settings / L"launcher-experiences" /
             L"dev.example.production" /
             std::wstring(version.begin(), version.end());
@@ -335,9 +370,11 @@ private:
             "\",\"compositionFile\":\"layouts/layout.json\","
             "\"styleFile\":\"styles/launcher.gbss\","
             "\"previewFile\":\"assets/background.png\",\"parameters\":{"
-            "\"backgroundMode\":\"pack-asset\",\"focusEffect\":\"lift\","
+            "\"backgroundMode\":\"" +
+            std::string(packAsset ? "pack-asset" : "selected-game-artwork") +
+            "\",\"focusEffect\":\"lift\","
             "\"motionIntensity\":\"reduced\"}}");
-        const std::string root =
+        const std::string bottomRoot =
             "{\"type\":\"overlay\",\"children\":["
             "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{"
             "\"x\":0,\"y\":0,\"width\":1,\"height\":1}},"
@@ -350,11 +387,49 @@ private:
             "\"x\":0.08,\"y\":0.55,\"width\":0.84,\"height\":0.27}},"
             "{\"type\":\"region\",\"slot\":\"controller-hints\",\"region\":{"
             "\"x\":0.52,\"y\":0.88,\"width\":0.4,\"height\":0.08}}]}";
+        const std::string compactBottomRoot =
+            "{\"type\":\"overlay\",\"children\":["
+            "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{"
+            "\"x\":0,\"y\":0,\"width\":1,\"height\":1}},"
+            "{\"type\":\"region\",\"slot\":\"source-status\",\"region\":{"
+            "\"x\":0.05,\"y\":0.03,\"width\":0.35,\"height\":0.14}},"
+            "{\"type\":\"region\",\"slot\":\"details-panel\",\"region\":{"
+            "\"x\":0.05,\"y\":0.19,\"width\":0.9,\"height\":0.32}},"
+            "{\"type\":\"region\",\"slot\":\"game-rail\",\"orientation\":\"horizontal\",\"region\":{"
+            "\"x\":0.05,\"y\":0.54,\"width\":0.9,\"height\":0.27}},"
+            "{\"type\":\"region\",\"slot\":\"controller-hints\",\"region\":{"
+            "\"x\":0.5,\"y\":0.83,\"width\":0.45,\"height\":0.15}}]}";
+        const std::string compactLeftRoot =
+            "{\"type\":\"overlay\",\"children\":["
+            "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{"
+            "\"x\":0,\"y\":0,\"width\":1,\"height\":1}},"
+            "{\"type\":\"region\",\"slot\":\"source-status\",\"region\":{"
+            "\"x\":0.05,\"y\":0.04,\"width\":0.42,\"height\":0.11}},"
+            "{\"type\":\"region\",\"slot\":\"details-panel\",\"surface\":\"glass\",\"region\":{"
+            "\"x\":0.05,\"y\":0.17,\"width\":0.9,\"height\":0.25}},"
+            "{\"type\":\"region\",\"slot\":\"game-rail\",\"orientation\":\"vertical\",\"region\":{"
+            "\"x\":0.05,\"y\":0.44,\"width\":0.9,\"height\":0.34}},"
+            "{\"type\":\"region\",\"slot\":\"controller-hints\",\"region\":{"
+            "\"x\":0.5,\"y\":0.82,\"width\":0.45,\"height\":0.15}}]}";
+        const std::string leftRoot =
+            "{\"type\":\"overlay\",\"children\":["
+            "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{"
+            "\"x\":0,\"y\":0,\"width\":1,\"height\":1}},"
+            "{\"type\":\"region\",\"slot\":\"game-rail\",\"orientation\":\"vertical\",\"region\":{"
+            "\"x\":0.04,\"y\":0.08,\"width\":0.22,\"height\":0.78}},"
+            "{\"type\":\"region\",\"slot\":\"details-panel\",\"surface\":\"glass\",\"region\":{"
+            "\"x\":0.32,\"y\":0.18,\"width\":0.47,\"height\":0.5}},"
+            "{\"type\":\"region\",\"slot\":\"source-status\",\"region\":{"
+            "\"x\":0.81,\"y\":0.08,\"width\":0.15,\"height\":0.12}},"
+            "{\"type\":\"region\",\"slot\":\"controller-hints\",\"region\":{"
+            "\"x\":0.58,\"y\":0.89,\"width\":0.38,\"height\":0.08}}]}";
+        const auto& compact = leftRail ? compactLeftRoot : compactBottomRoot;
+        const auto& regular = leftRail ? leftRoot : bottomRoot;
         WriteUtf8(directory / L"layouts" / L"layout.json",
             "{\"schemaVersion\":1,\"branches\":{"
-            "\"compact\":{\"root\":" + root + "},"
-            "\"standard\":{\"root\":" + root + "},"
-            "\"wide\":{\"root\":" + root + "}}}");
+            "\"compact\":{\"root\":" + compact + "},"
+            "\"standard\":{\"root\":" + regular + "},"
+            "\"wide\":{\"root\":" + regular + "}}}");
         WriteUtf8(directory / L"styles" / L"launcher.gbss",
             "launcher-game-rail { color: #ffffff; } "
             "launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
@@ -410,6 +485,14 @@ std::vector<ProjectionRecord> ProjectionRecords(const fs::path& log) {
         const auto backgroundFocus = Field(line, "background-focus=");
         const auto railPrevious = Field(line, "rail-previous=");
         const auto railNext = Field(line, "rail-next=");
+        const auto selection = Field(line, "selection=");
+        const auto branch = Field(line, "branch=");
+        const auto rail = Field(line, "rail=");
+        const auto detailsSurface = Field(line, "details-surface=");
+        const auto textScale = Field(line, "text-scale=");
+        const auto reducedMotion = Field(line, "reduced-motion=");
+        const auto reducedTransparency = Field(line, "reduced-transparency=");
+        const auto highContrast = Field(line, "high-contrast=");
         const auto inputP95 = Field(line, "input-to-focus-p95-ms=");
         const auto inputSamples = Field(line, "input-samples=");
         const auto degraded = Field(line, "degraded=");
@@ -421,6 +504,14 @@ std::vector<ProjectionRecord> ProjectionRecords(const fs::path& log) {
             record.backgroundFocus = backgroundFocus.value_or("");
             record.railPrevious = railPrevious.value_or("");
             record.railNext = railNext.value_or("");
+            record.selection = selection.value_or("");
+            record.branch = branch.value_or("");
+            record.rail = rail.value_or("");
+            record.detailsSurface = detailsSurface.value_or("");
+            record.textScale = textScale ? std::stod(*textScale) : 1.0;
+            record.reducedMotion = reducedMotion == "true";
+            record.reducedTransparency = reducedTransparency == "true";
+            record.highContrast = highContrast == "true";
             record.inputP95Milliseconds = inputP95 ? std::stod(*inputP95) : 0;
             record.inputSamples = inputSamples
                 ? static_cast<std::size_t>(std::stoull(*inputSamples)) : 0;
@@ -839,6 +930,95 @@ void RunSafeStart(
                  "unchanged exact selection passed\n";
 }
 
+void RunCustomPackMatrix(
+    IUIAutomation* automation,
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge) {
+    RunningHost running(installationPath, fixtureBridge, "matrix\n");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() &&
+            records.back().selection == "dev.example.production@10.0.0" &&
+            records.back().branch == "compact" &&
+            records.back().rail == "horizontal" &&
+            records.back().detailsSurface == "default" &&
+            records.back().background == "fallback";
+    }), "Bottom-rail custom pack did not render its compact production branch with missing-art fallback.");
+    const auto initialLog = ReadUtf8(running.installation.LogPath());
+    Require(initialLog.find(
+                "validated=compact@100%,compact@150%,standard@100%,standard@150%,wide@100%,wide@150%") !=
+            std::string::npos,
+        "Production selection admission omitted the responsive and 150%-text matrix.");
+    auto root = RootForWindow(automation, running.window);
+    auto longTitle = FindByAutomationIdPrefix(
+        automation, root.Get(), L"widget:game-launcher.item.grid.game.");
+    Require(longTitle && StringProperty(longTitle.Get(), UIA_NamePropertyId).find(
+                L"A deliberately long installed game title") != std::wstring::npos,
+        "Long-title custom-pack content was not retained in ordinary host semantics.");
+    RequireInsideWindow(longTitle.Get(), running.window);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        return ReadUtf8(running.installation.RemovalDenialPath()) ==
+            "selected_launcher_experience_protected";
+    }), "The ordinary bridge did not deny selected exact-version removal.");
+
+    running.installation.WriteSelection("10.0.0", false, 1.5, true);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() && records.back().selection ==
+                "dev.example.production@10.0.0" &&
+            std::abs(records.back().textScale - 1.5) <= 0.001 &&
+            records.back().reducedMotion && records.back().reducedTransparency &&
+            records.back().highContrast;
+    }), "Accessibility finality did not survive the custom bottom-rail presentation.");
+
+    running.installation.WriteSelection("11.0.0", false);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() &&
+            records.back().selection == "dev.example.production@11.0.0" &&
+            records.back().branch == "compact" &&
+            records.back().rail == "vertical" &&
+            records.back().detailsSurface == "glass" &&
+            records.back().background == "ready";
+    }), "Left-rail/glass custom pack did not adopt atomically with its pack artwork.");
+
+    running.installation.WriteSelection("11.0.0", false, 1.5, true);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() &&
+            records.back().selection == "dev.example.production@11.0.0" &&
+            records.back().branch == "compact" &&
+            records.back().rail == "vertical" &&
+            records.back().detailsSurface == "glass" &&
+            records.back().background == "fallback" &&
+            records.back().reducedMotion && records.back().reducedTransparency &&
+            records.back().highContrast;
+    }), "Left-rail/glass custom pack did not preserve accessibility finality and high-contrast fallback.");
+
+    running.installation.CorruptExperienceRecipe(L"12.0.0");
+    running.installation.WriteSelection("12.0.0", false, 1.5, true);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return log.find("retained-diagnostic=") != std::string::npos &&
+            !records.empty() &&
+            records.back().selection == "dev.example.production@11.0.0" &&
+            records.back().rail == "vertical";
+    }), "Invalid custom pack replaced the exact last-good production presentation.");
+
+    running.installation.WriteBuiltInRecovery();
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() &&
+            records.back().selection == "org.gbar.builtin.hero-rail@1.0.0" &&
+            records.back().rail == "horizontal";
+    }), "Exact built-in recovery did not replace the rejected custom pack.");
+    running.Stop();
+    std::cout << "LauncherExperienceHostTests: custom bottom/left-rail matrix, "
+                 "responsive admission, accessibility, long title, missing art, "
+                 "removal denial, invalid retention, and exact recovery passed\n";
+}
+
 void Run(const fs::path& installationPath, const fs::path& fixtureBridge) {
     ComPtr<IUIAutomation> automation;
     Require(SUCCEEDED(CoCreateInstance(
@@ -847,6 +1027,7 @@ void Run(const fs::path& installationPath, const fs::path& fixtureBridge) {
         "Windows UI Automation client is unavailable.");
     RunInstalledSelection(automation.Get(), installationPath, fixtureBridge);
     RunSafeStart(automation.Get(), installationPath, fixtureBridge);
+    RunCustomPackMatrix(automation.Get(), installationPath, fixtureBridge);
     RunAdoption(automation.Get(), installationPath, fixtureBridge);
     RunFallback(automation.Get(), installationPath, fixtureBridge);
 }

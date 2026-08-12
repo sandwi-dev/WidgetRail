@@ -191,8 +191,12 @@ game identities and action routes remain host-owned.
 
 The four built-in recovery presets and the reference left-rail/glass recipe are
 covered across compact, 720p, 1080p, taskbar-reserved, and 150%-scale profiles.
-An incompatible recipe is replaced atomically by the matching built-in preset;
-rejected content never supplies fallback actions or semantics.
+Before admission, an installed candidate must resolve its compact, standard,
+and wide branches at both 100% and 150% text scale. The ordinary production host
+also exercises bottom-rail and left-rail/glass packages with live compact
+geometry, stable semantic identities, long titles, missing selected-game art,
+decoded package art, and accessibility finality. An incompatible recipe is
+rejected atomically; its content never supplies fallback actions or semantics.
 
 The private selection boundary publishes one complete immutable revision: exact
 package ID/version/content digest, validated recipe, resolved launcher-only

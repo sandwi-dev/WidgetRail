@@ -3850,3 +3850,26 @@ under the same `GameLauncherTitlePolicy` and widget effect owners.
 Focused Release evidence passes Game Launcher 77/77 and documentation 66 files.
 The ordinary generic AppContainer route also passes after retaining 257 exact
 title overrides through a fresh worker session under the 64-KiB boundary.
+
+### Custom Launcher Experience production matrix (DLV-152)
+
+Selection admission now resolves every candidate at compact, standard, and wide
+logical extents with both 100% and 150% text scale before one immutable revision
+can replace the last good presentation. The code-owned recovery recipes carry
+complete responsive branches under the same matrix. Production projection logs
+the selected branch, rail orientation, details surface, text scale, reduced
+motion/transparency, and high-contrast finality without adding another renderer,
+semantic owner, or public protocol field.
+
+The ordinary production-host fixture installs a bottom-rail package and a
+left-rail/glass package through the normal catalog, settings, bridge, and trusted
+app-library capability path. It proves exact version adoption, long-title UIA
+containment, missing selected-game artwork fallback, decoded package artwork,
+selected-version removal denial, 150% and accessibility finality, invalid-pack
+last-good retention, and exact built-in recovery. High contrast deliberately
+removes package art after normal-mode readiness is established.
+
+Focused Release evidence passes PlatformSettings/catalog 18/18, native Launcher
+Experience 1,691 checks, and the production-host selection, safe-start, custom
+matrix, provider-fallback, and 60-second motion scenarios. The temporal window
+records p95 input-to-focus latency of 16 ms with 2 degraded frames.
