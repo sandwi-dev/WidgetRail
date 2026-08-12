@@ -6,17 +6,23 @@ resolved through the app-library capability; saved display rows never grant laun
 authority.
 
 The surface requests 980 by 700 DIPs and supports a 420 by 340 DIP minimum. The
-header, library-source status, search entry, and filter strip are fixed chrome. One
-stable vertical viewport (`game-launcher.library.scroll`) owns collection scrolling
-for Library, Add games, Add running app, Hidden, and warm-state rows. Page actions
-and query filters use bounded horizontal strips, while the collection keeps the
-only vertical offset and stable item anchor.
+Library route opens as the built-in `hero-rail` experience: a bounded selected-game
+hero above one horizontal cover rail. Left/Right focus movement changes only the
+hero selection; it does not launch or mutate organization. The header,
+library-source status, search entry, and filter strip remain fixed chrome, and the
+rail retains the existing stable collection anchor and cursor paging. Add games,
+Add running app, and Hidden keep their single bounded vertical viewport.
 
 Below 960 DIPs wide or 540 DIPs high, the same semantic tree uses a compact title
 and bounded source-health summary. Larger surfaces show the expanded heading and
 per-source detail. Both branches retain the same route, collection, action, and
 focus identities; reopening or resizing does not create a second responsive page
 tree or reset the collection offset.
+
+The hero reuses only the selected row's opaque trusted artwork handle and otherwise
+shows a semantic fallback. It names the exact source, availability, favorite,
+preferred-variant, grouping, and launch state. A, View, X, Y, LB, and RB continue
+to route from the focused tile's exact SavedId; the hero is presentation only.
 
 On a current Library tile, View opens a bounded details route projected by
 `GameLauncherDetailsPresentation`. It displays the full normalized title and
