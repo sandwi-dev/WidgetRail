@@ -147,7 +147,7 @@ repackaged after integration and the accepted Release is visibly running as PID
 
 ### DLV-101 — Remove arbitrary private-worker size ceilings
 
-**State:** Assigned; implementation started after committed DLV-100
+**State:** Done; accepted as `f27f4d7`, integrated through `9c5de8e`
 **Baseline:** accepted DLV-100 widgets commit `760a9bb`
 **Dependencies:** DLV-100 and current AppContainer/Job/runtime/manifest/private-
 state contracts
@@ -203,11 +203,21 @@ authority, removing a quota permits Job escape or host allocation growth, or
 the change requires native compositor work. Report the exact prerequisite
 instead of restoring the prototype quota.
 
+**Reviewer disposition:** Accepted. The private worker Job remains assigned
+before resume, non-breakaway, accounted as a complete process tree, and
+kill-on-close, while the prototype memory and active-process ceilings are gone.
+The manifest memory value is optional advisory metadata and host admission
+still bounds concurrent application sessions. Focused Release evidence passes
+Runtime 74/74, Bridge 78/78, Widget SDK 87/87, generic worker host 10/10, and
+Widget Catalog 35/35. The installed AppContainer fixture proves a helper child,
+private data, Job accounting, and complete teardown; a separate bridge fixture
+proves oversized presentation rejection does not harm an admitted neighbor.
+
 ### DLV-103 — Restore dependable Media Sessions loading and retry
 
-**State:** Ready after DLV-101 and the planner control-plane merge
+**State:** Done; accepted as `f87631c`, integrated through `9c5de8e`
 **Baseline:** accepted DLV-101 widgets boundary plus the planner commit that
-introduces this assignment
+introduced this assignment
 **Dependencies:** current `MediaSessionsWidget`, `WidgetMediaService`, managed
 PlatformBroker, and WindowsMediaProvider contracts
 **Owner:** widgets lane; managed Media Sessions lifecycle/retry policy, typed
@@ -265,10 +275,20 @@ player/process enumeration, or needs a public capability/protocol change. Report
 the exact failing stage and preserve the safe error state for a serialized
 planner assignment.
 
+**Reviewer disposition:** Accepted. Now Playing uses one SDK-owned Active
+SingleFlight generation for activation and Retry, opens its subscription before
+the snapshot read, rejects stale completions, treats zero sessions as success,
+and retains last-good sessions through refresh/channel failure. Diagnostics are
+transition-deduplicated safe stage/code records with identity and media details
+excluded. Retained focused Release evidence passes Widget SDK 87/87,
+PlatformBroker 55/55, Windows Media 13/13, Now Playing 20/20, WidgetBridge
+79/79, documentation 57/57, and the installed AppContainer lifecycle/retry
+route.
+
 ### DLV-104 — Make Game Launcher content fit and scroll without clipping
 
-**State:** Ready after DLV-103
-**Baseline:** accepted DLV-103 widgets boundary
+**State:** Assigned; implementation active after committed DLV-103
+**Baseline:** accepted DLV-103 widgets commit `f87631c`
 **Dependencies:** current Game Launcher wide surface, responsive grid,
 `game-launcher.library.scroll`, shared SDK layout components, and accepted
 DLV-100 TextEntry route
@@ -747,6 +767,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-101/103 | `f27f4d7` and `f87631c` | `9c5de8e` | Full-application widget workers can own contained helper process trees without prototype memory/process ceilings, and Now Playing has current-generation retry, last-good retention, and safe typed diagnostics. The fully packaged Release is visibly running as PID 32140. |
 | DLV-105 | `42bcf9c` | `d23db8b` | Compact trays keep the selected widget visible and expose explicit previous/next controls; controller order, pointer hit testing, and full-set UIA semantics share one layout. |
 | DLV-025 / correction DLV-107 | `16f9f47` rejected by live verification | `5b8556a` retained as correction baseline | PID 25164 proved complete-surface ordering alone is insufficient: the composed client has an opaque black perimeter and transition cadence is visibly poor. DLV-107 follows already-active DLV-106. |
 | DLV-100 | `760a9bb` | `54fbd12` | Game Launcher and protected Network Controls TextEntry snapshots pass the canonical bridge style route; the packaged Release is running for live confirmation. |

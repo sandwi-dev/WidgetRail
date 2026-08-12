@@ -80,10 +80,9 @@ Release was fully repackaged and launched as PID 26556 for live confirmation.
 The user has explicitly rejected a product model in which installed widgets are
 required to remain small. A widget may be a full application with application-
 scale private state, databases, indexes, caches, computation, navigation, and
-an owned helper process tree. The prototype's 16-256 MiB worker memory range and
-one-process Job ceiling are therefore unreasonable product constraints and are
-assigned for removal in DLV-101. Pre-release compatibility is not a reason to
-retain them.
+an owned helper process tree. Accepted DLV-101 `f27f4d7`, integrated through
+`9c5de8e`, removes the prototype's 16-256 MiB worker memory range and one-process
+Job ceiling. Pre-release compatibility was not used to retain them.
 
 This does not make the shared native host unbounded. IPC frames, validated
 current render trees, recursion and strings, pending actions, publication
@@ -95,6 +94,31 @@ allocation, retains the last valid view when possible, and returns a precise
 diagnostic rather than truncating content. Job accounting, non-breakaway
 process-tree ownership, kill-on-close, integrity, UI restrictions, and bounded
 teardown also remain containment requirements, not product-size quotas.
+
+The accepted implementation preserves pre-resume Job assignment and complete
+process-tree accounting while making manifest memory guidance optional advisory
+metadata. Its installed AppContainer fixture proves private data, an owned
+helper, and kill-on-close; a separate oversized-presentation fixture proves the
+shared host still fails closed without harming a neighboring widget. Focused
+Release evidence passes Runtime 74/74, Bridge 78/78, SDK 87/87, worker host
+10/10, and Catalog 35/35.
+
+### Current review delta — dependable Media Sessions recovery
+
+Accepted DLV-103 `f87631c`, integrated through `9c5de8e`, replaces the Now
+Playing widget's detached reload ownership with one SDK-owned Active
+SingleFlight generation. Subscription admission precedes the current snapshot,
+zero sessions is a successful empty state, Retry performs one real current-
+generation attempt, last-good sessions survive transient refresh/channel
+failure, and cancellation-ignoring stale completions cannot publish.
+
+The broker records only bounded transition-deduplicated Media Sessions stage and
+safe error code; player/session identity, metadata, provider bodies, process
+details, and credentials remain excluded. Retained focused Release evidence
+passes SDK 87/87, PlatformBroker 55/55, Windows Media 13/13, Now Playing 20/20,
+WidgetBridge 79/79, documentation 57/57, and the installed AppContainer
+lifecycle/retry route. The fully packaged Release is visibly running as PID
+32140 for live recurrence testing.
 
 ### Current review delta — trusted artwork failure presentation
 
