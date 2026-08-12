@@ -4577,6 +4577,40 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 | Independent review ownership | Documentation commit `689a933` stages both review ledgers from the implementation stream and self-closes EQ-021 without retained evidence, mixing implementation, reviewer authorship, and disposition | Reserve both review files to the reviewer; require path-specific implementation staging and evidence proposals through implementation status rather than self-edited closure |
 | Documentation | Extensive, and current accessibility pages now consistently distinguish implemented preview from the ship gate; green contract checks still link-check rather than compile roughly 70 C# fences, and `plugin-platform.md` overstates generated test/replay support | Compile-test canonical snippets, derive overview claims from generated-template end-to-end tests, add semantic cross-document assertions for product-status claims, bind status claims to exact result manifests, and reduce ledger/status duplication |
 
+## 2026-08-11 accepted integration delta
+
+- **DLV-107 (`b662e9a`, integrated through `0e0bf77`)** replaces the rejected
+  mixed color-key/composition-alpha path with one fixed transparent HWND
+  container, alpha-zero premultiplied clear, one composition effect opacity
+  owner, and transform-only extent motion. `OverlayCompositionSurface` owns the
+  DComp device/surface/effect primitive and `PlanCompositionMotion` owns pure
+  geometry; `OverlayApp` still coordinates admission, Win32 placement, input,
+  focus, UIA, and fallback. The change is accepted for live verification, but
+  its roughly 470-line `OverlayApp` growth exhausts the existing hotspot's
+  cohesive exception rather than closing it.
+- **DLV-033 is now Assigned to the platform lane** while widgets delivers the
+  visible DLV-110 authoring outcome. It must extract descriptor/snapshot,
+  generation, retry, lifecycle-target, and bounded request-completion ownership
+  into one native `WidgetSessionCoordinator`, materially shrink `OverlayApp`,
+  and prove a before/after responsibility map. No second renderer, focus, input,
+  HWND, presentation, or generic event authority is acceptable. Another
+  internal-only platform milestone may not follow it.
+- **DLV-102 (`e4f9880`, integrated through `0e0bf77`)** keeps terminal trusted
+  artwork in the bounded cache, uses the existing actionable shared tile
+  fallback, and deduplicates diagnostics at state transition rather than paint.
+  It adds no provider, protocol, or widget-specific artwork authority.
+- **DLV-108/109 (`f51a983`, `5db3426`, integrated through `bc484f0`)** establish
+  isolated named semantic execution plus an optional renderer-neutral scenario
+  test API. Author code never executes in the CLI, MSTest.Sdk 4.3.2 adoption
+  remains limited to the new project, and existing executable suites are not
+  migrated.
+- The coherent main Release refresh passed the complete native host build and
+  full managed/runtime packaging. The first full combined invocation recorded
+  one timing-sensitive `WidgetActionFailureHostTests` dashboard-republish
+  failure; the exact focused command then passed once. That rerun is
+  classification evidence, not a fix or a clean Tier-3 claim. PID 32508 is the
+  visibly running accepted package for user verification.
+
 ## Security stabilization exit rule
 
 Security work must now converge on a bounded release gate rather than expand

@@ -1840,19 +1840,27 @@ and the SDK Gallery production-style migration.
 ### Phase 3: improve feedback and onboarding
 
 Completed foundation: strict bounded scenario manifests, assembly-free listing,
-and fail-closed scenario selection with contract and safety tests.
+and fail-closed scenario selection with contract and safety tests. Accepted
+DLV-108 `f51a983` now executes one named factory only in the production-equivalent
+AppContainer/Job worker over an exact pinned content lease and returns a bounded
+deterministic semantic result. Accepted DLV-109 `5db3426` adds an optional
+high-level lifecycle/action/fake-operation/semantic runner proved by basic and
+media/data consumers.
 
 1. Publish a matching versioned SDK/template set with an intentional checked-in
    public-API/package-validation baseline, and prove `gbar new` through
    build, supported preview, replay, validation, and packaging from a clean
    directory outside this repository.
-2. Move scenario assembly execution into a dedicated production-equivalent
-   AppContainer/Job/IPC process boundary.
-3. Real-widget scenarios with typed fake services, lifecycle, and actions.
+2. **Completed by accepted DLV-108:** move scenario assembly execution into a
+   dedicated production-equivalent AppContainer/Job/IPC process boundary.
+3. **Completed by accepted DLV-108/109:** real-widget scenarios with typed fake
+   services, lifecycle, actions, exact step failures, and no-work assertions.
 4. Viewport-aware native preview, capture, and controller replay, with
    deterministic bounds/focus/scroll assertions and reviewed tolerant images
    from clean current packages.
-5. Fluent deterministic test harness.
+5. **Completed by accepted DLV-109:** optional fluent deterministic semantic
+   test harness; keep it renderer-neutral and do not migrate existing suites
+   merely for consistency.
 6. **Completed locally by accepted DLV-048 `829e9fd`:** compile-test the
    canonical quickstart source and execute its marked external author journey.
    Future recommended canonical paths must use the same derived/compiled model;
@@ -2011,8 +2019,9 @@ and bounded scenario-manifest listing are also implemented. Accepted DLV-051
 confirms an advanced widget can author a stable responsive edge directly and
 prove it with one-step controller replay, but it also reinforces that replacement-
 page transport is not a continuous collection abstraction. Isolated semantic
-scenario execution, cursor/append resources, additional page recipes,
-an ID/action analyzer, interactive/native preview and capture, publication, and
+scenario execution and its optional deterministic helper are now accepted
+through DLV-108/109. Cursor/append resources, additional page recipes, an
+ID/action analyzer, interactive/native preview and capture, publication, and
 broader migrations remain.
 
 The immediate need is broader composition proof, not another broad abstraction.
