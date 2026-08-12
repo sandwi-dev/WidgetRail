@@ -151,13 +151,17 @@ stable compact startup surface.
 
 After snapshot admission, full motion eases the host-owned logical extent from
 the currently presented size to the destination size over 140 ms on the
-existing controller cadence. Interrupted switches retarget from that presented
-size rather than restarting from stale geometry. Reduced motion snaps to the
-destination immediately. Each integer extent is applied by resizing the current
-HWND render target in place and synchronously committing a complete frame; no
-ambient or additional idle frame source is introduced. Unknown, partial,
-non-finite, and out-of-range native hint data cannot escape the sizing policy
-and falls back to bounded mode defaults.
+existing controller cadence. Interrupted visible switches retarget from that
+presented size rather than restarting from stale geometry. Reduced motion snaps
+to the destination immediately. DirectComposition renders one complete
+destination surface and transforms it inside the fixed transparent host
+container; animation ticks neither redraw content nor resize the HWND. Hiding
+retires an interrupted extent and its presented geometry, so reopen starts from
+the current authoritative widget extent and schedules no hidden frame work.
+The composition HWND has no class background brush; the separate backdrop is
+the only opaque full-monitor owner. Unknown, partial, non-finite, and
+out-of-range native hint data cannot escape the sizing policy and falls back to
+bounded mode defaults.
 
 ## Deterministic evidence
 

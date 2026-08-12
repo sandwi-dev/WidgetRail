@@ -438,7 +438,11 @@ public:
         windowClass.lpfnWndProc = WindowProc;
         windowClass.hInstance = instance_;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+        // This HWND is a premultiplied DirectComposition target. A class brush
+        // is an independent opaque presentation owner and can become visible
+        // in uncovered client pixels while a hidden host is reopened. The
+        // separate backdrop window remains the only full-monitor black owner.
+        windowClass.hbrBackground = nullptr;
         windowClass.lpszClassName = kWindowClass;
         if (!RegisterClassExW(&windowClass)) {
             return FailWin32(L"RegisterClassExW", GetLastError());
@@ -531,7 +535,7 @@ public:
             AppendDiagnostic(
                 L"DirectComposition complete-content presentation owner active "
                 L"alpha=premultiplied-clear hwnd=no-redirection "
-                L"opacity=composition-effect");
+                L"opacity=composition-effect hwnd-background=none");
         } else {
             EnableLegacyLayeredFallback();
             AppendDiagnostic(
@@ -2847,6 +2851,26 @@ private:
         }
     }
 
+    void RetireCompositionMotionForHiddenState() {
+        const bool retiredInFlightCompositionMotion =
+            extentTransition_.active() || compositionMotionFinalPlacement_.has_value() ||
+            compositionMotionPresentedExtentDip_.has_value();
+        extentTransition_.Cancel();
+        animatedExtentDip_.reset();
+        compositionMotionFinalPlacement_.reset();
+        compositionMotionPresentedExtentDip_.reset();
+        compositionContentPlacement_.reset();
+        compositionMotionSourceWidth_ = 0;
+        compositionMotionSourceHeight_ = 0;
+        compositionMotionPixelsPerDipX_ = 1.0F;
+        compositionMotionPixelsPerDipY_ = 1.0F;
+        compositionMotionCommitCount_ = 0;
+        AppendDiagnostic(
+            L"Composition motion retired state=hidden in-flight=" +
+            std::wstring(retiredInFlightCompositionMotion ? L"true" : L"false") +
+            L" future-work=false geometry=discarded");
+    }
+
     void ScheduleActionFeedbackExpiry(
         const std::optional<std::uint64_t> next) {
         KillTimer(window_, kActionFeedbackTimer);
@@ -2995,6 +3019,7 @@ private:
             lastControllerReadPath_ = gba::input::ControllerReadPath::None;
             lastControllerForegroundExclusive_.reset();
             lastForegroundOwnership_.reset();
+            RetireCompositionMotionForHiddenState();
             overlayTransition_.BeginClose(
                 GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
             SetTimer(window_, kControllerTimer, 16, nullptr);

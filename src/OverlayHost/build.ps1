@@ -473,9 +473,16 @@ function Invoke-WidgetSwitchHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests build failed with exit code $LASTEXITCODE."
     }
+    & dotnet publish `
+        (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $widgetSwitchFixtureOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Widget switch fixture publish failed with exit code $LASTEXITCODE."
+    }
     $fixture = Join-Path $widgetSwitchFixtureOutput 'WidgetSwitchFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
-        throw 'WidgetSwitchFixture.exe is unavailable; run one packaged focused build first.'
+        throw 'Widget switch fixture publish omitted WidgetSwitchFixture.exe.'
     }
     & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
         --installation $outputDirectory `

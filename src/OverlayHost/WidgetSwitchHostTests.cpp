@@ -5,6 +5,7 @@
 
 #include <array>
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cwctype>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -489,6 +491,60 @@ void RunRetentionScenario(const Arguments& arguments) {
             (hostBounds.top + hostBounds.bottom) / 2));
     Require(unusedHit == HTTRANSPARENT && authoredHit == HTCLIENT,
             "Fixed composition container did not exclude transparent client pixels from hit testing");
+    Require(GetClassLongPtrW(window, GCLP_HBRBACKGROUND) == 0,
+            "Composition HWND retained an opaque class background owner");
+
+    const auto reopenBefore = ReadUtf8(logPath).size();
+    // Queue the switch and close in order on the host thread. Waiting for a
+    // flushed diagnostic here can consume the complete 140 ms transition and
+    // would no longer exercise the interrupted close/reopen contract.
+    PostKey(window, VK_RIGHT);
+    Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
+            Win32Error("PostMessageW(close hotkey)"));
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return IsWindowVisible(window) == FALSE;
+            }), "Composition host did not complete the bounded close");
+    const auto hiddenLog = ReadUtf8(logPath);
+    Require(hiddenLog.find("Composition motion start", reopenBefore) !=
+                std::string::npos,
+            "Reopen scenario did not begin an interruptible composition motion");
+    const auto retiredAt = hiddenLog.find(
+        "Composition motion retired state=hidden", reopenBefore);
+    Require(retiredAt != std::string::npos,
+            "Hidden host did not retire its interrupted composition motion");
+    const auto retiredEnd = hiddenLog.find('\n', retiredAt);
+    const auto retiredRecord = hiddenLog.substr(
+        retiredAt, retiredEnd == std::string::npos
+            ? std::string::npos : retiredEnd - retiredAt);
+    Require(retiredRecord.find("in-flight=true") != std::string::npos &&
+                retiredRecord.find(
+                    "future-work=false geometry=discarded") != std::string::npos,
+            "Hidden host retained stale composition geometry or frame work; record=" +
+                retiredRecord);
+    const auto hiddenBoundary = retiredEnd == std::string::npos
+        ? hiddenLog.size() : retiredEnd;
+    std::this_thread::sleep_for(std::chrono::milliseconds(220));
+    const auto afterHidden = ReadUtf8(logPath);
+    Require(afterHidden.find("Composition motion step", hiddenBoundary) ==
+                std::string::npos &&
+                afterHidden.find("Composition frame committed", hiddenBoundary) ==
+                    std::string::npos,
+            "Hidden host continued composition frame work after retirement");
+
+    Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
+            Win32Error("PostMessageW(reopen hotkey)"));
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return IsWindowVisible(window) != FALSE;
+            }), "Composition host did not reopen after interrupted motion");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current = ReadUtf8(logPath);
+                const auto placement = current.find(
+                    "Composition placement committed content=complete", hiddenBoundary);
+                return placement != std::string::npos &&
+                    current.find("order=commit-place", placement) != std::string::npos &&
+                    current.find("alpha=premultiplied-clear", placement) !=
+                        std::string::npos;
+            }), "Reopened host did not atomically place a transparent complete surface");
 
     const auto log = ReadUtf8(logPath);
     Require(log.find("Render-target resize failed") == std::string::npos,
@@ -498,7 +554,7 @@ void RunRetentionScenario(const Arguments& arguments) {
             "Production host did not activate its DirectComposition owner.");
     Require(log.find(
                 "alpha=premultiplied-clear hwnd=no-redirection "
-                "opacity=composition-effect") !=
+                "opacity=composition-effect hwnd-background=none") !=
                 std::string::npos &&
                 log.find("target=composition-motion") != std::string::npos,
             "Production extent diagnostics omitted the alpha or motion decision.");
