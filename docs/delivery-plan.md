@@ -334,7 +334,8 @@ Branch: `codex/impl-platform-switch`
 
 ### DLV-025 — Eliminate transition tearing and UI-thread stutter
 
-**State:** Done; accepted as `16f9f47`, integrated through `5b8556a`
+**State:** Rejected after live packaged verification; `16f9f47` remains
+integrated through `5b8556a` and is superseded by correction DLV-107
 **Baseline:** planner control-plane commit `66a3f57`
 **Dependencies:** accepted DLV-020 and DLV-078 presentation ordering
 **Owner:** OverlayHost transition scheduling, Win32/DWM composition, Direct2D
@@ -395,25 +396,22 @@ presentation owner, public protocol/threat-model change, or user-only physical
 evidence. A surface that cannot coordinate committed content with HWND geometry
 is non-integrable evidence.
 
-**Reviewer disposition:** Accepted with live visual confirmation still pending.
-One 213-line `OverlayCompositionSurface` owner renders a complete detached
-destination, ends the full update, commits and waits before changed HWND
-geometry is exposed, then uses the same surface for ordinary repaints. The
-legacy HWND target remains a failure-only fallback; extent interpolation is
-disabled on the composed path, reduced motion is therefore immediate, and no
-public protocol or second permanent renderer was added. Retained focused
-evidence covers Audio Mixer, Network Controls, Spotify, Games & Apps, delayed
-startup, reversal, reload, targeting, transition policy, and the Release host.
-Independent diff review found cohesive surface ownership, bounded fallback and
-no whitespace/generated/reviewer-document contamination. Fresh accepted-main
-Release build succeeded; PID 25164 activated DirectComposition with no fallback
-or immediate error. Its first live geometry handoffs logged complete-content
-draw <= 5.921 ms, commit <= 16.017 ms, and coordinated geometry <= 18.437 ms.
-The user must still confirm the former black-band/flicker reproduction visually.
+**Reviewer disposition:** Rejected by the user's live recording from the exact
+accepted-main PID 25164 session. The DirectComposition path makes the unused
+client area an opaque near-black rectangle around the overlay, and widget-size
+changes again look abrupt and visibly malformed. The implementation combines a
+premultiplied-alpha composition surface with the HWND's legacy color-key model,
+then clears the complete composition surface to opaque RGB(1,2,3). The session
+log also shows one widget change issuing several waited composition/geometry
+commits over roughly 100-150 ms, with populated Game Launcher frames taking
+about 49-63 ms to draw. Automated ordering and endpoint fixtures did not prove
+the alpha result or motion cadence. DLV-107 owns the bounded correction; do not
+revert, reset, or layer per-widget masking over this integrated evidence.
 
 ### DLV-105 — Keep every widget reachable in a narrow icon tray
 
-**State:** Assigned; implementation started after clean merge `28fb330`
+**State:** Assigned; implementation committed as `42bcf9c` and pending review
+after the clean planner-baseline merge
 **Baseline:** accepted DLV-025 `16f9f47` plus planner commit `de95720`
 **Dependencies:** host-owned tray catalog/order/selection, `TrayLayout`, host
 accessibility tree, focus/navigation, placement bands, and runtime extent
@@ -469,13 +467,98 @@ catalog/order semantics, the product must choose between materially different
 wrap/page interaction models not resolved by existing controller principles,
 or DLV-025 leaves tray geometry without one stable committed width.
 
+### DLV-107 — Restore transparent composition and professional widget motion
+
+**State:** Ready immediately after accepted DLV-105
+**Baseline:** accepted DLV-105 platform boundary plus the planner commit that
+records DLV-025's live rejection
+**Dependencies:** integrated DLV-025 surface owner, HWND/backdrop transparency,
+extent-transition scheduler, renderer clear semantics, placement diagnostics,
+retained-content ordering, and reduced-motion policy
+**Owner:** platform lane; native DirectComposition alpha/transparency contract,
+widget-extent motion/commit cadence, HWND geometry coordination, transition
+diagnostics, and directly affected native documentation
+**Concurrency:** Begins after DLV-105 reaches a clean accepted boundary. Do not
+change managed widget trees, preferred extents, tray overflow semantics, public
+widget APIs, worker lifecycle, or capture tooling.
+
+**Visible outcome:** The overlay has no opaque black perimeter or unused-client
+rectangle, and cycling between different-size widgets is smooth and deliberate
+without snapping, flicker, stale content, or repeated jarring resize steps.
+
+**Reproduction evidence:** The user's 2026-08-11 17:48 local recording of the
+fresh accepted-main PID 25164 Release shows an opaque near-black rectangle
+around the entire authored overlay and visibly ugly widget motion. The host
+creates a premultiplied-alpha `IDCompositionSurface` but clears every complete
+surface to opaque RGB(1,2,3), while the HWND still declares that RGB value as a
+legacy color key. The same session logs widget-size changes as multiple waited
+composition placements over about 100-150 ms; representative populated Games
+frames draw in 49-63 ms. No transition diagnostic was emitted at the recording
+timestamp itself, so the video is the visual evidence and the session's
+equivalent logged transitions are timing evidence, not an invented exact-frame
+correlation.
+
+**Objective:** Establish one intentional transparency model for the composed
+overlay and one nonblocking composition-owned motion policy. Preserve the last
+complete committed content until a complete destination exists, but never
+present opaque pixels outside authored widget/tray/backdrop geometry and never
+drive a visual curve through repeated blocking surface recreation plus HWND
+resize waits on the UI thread.
+
+**In scope:** premultiplied alpha and clear semantics; relationship between
+`WS_EX_LAYERED`, color-key/global alpha, DirectComposition content, and the
+separate backdrop; transparent unused client pixels; rounded outer bounds;
+grow/shrink/same-size transitions; composition visual transform, clip, opacity,
+or another single-owner Windows-10-compatible motion primitive; destination
+surface readiness; retained source content; one final HWND geometry handoff;
+rapid reversal; cold/failed destination; reduced motion; compact/standard/wide,
+100/125/150% scale; bounded logs for transition start, presented steps, final
+commit, alpha mode, and fallback.
+
+**Out of scope:** per-widget black masks or offsets, increasing the backdrop to
+hide the defect, transparent screenshot heuristics, capture-harness work,
+sleep/delay-based concealment, reintroducing per-frame synchronous HWND target
+resize, Windows-11-only composition swapchains, a second permanent renderer,
+external animation libraries, decorative redesign, managed layout changes, or
+public protocol changes.
+
+**Acceptance:** unused client pixels are genuinely transparent on the composed
+path and the backdrop remains the only intended dimming owner; no black/gray/
+opaque perimeter appears around Settings, Now Playing, Games & Apps, Game
+Launcher, Audio Mixer, Network Controls, YT Music, or Spotify; grow and shrink
+use a bounded professional curve with no visible snap, stale authority, clipped
+intermediate content, tray loss, or whole-shell flicker; the destination is
+fully rendered before it becomes authoritative; normal motion performs no
+blocking commit wait or full expensive redraw on every animation tick; reversal
+is continuous; reduced motion performs one immediate complete present; focus,
+hit testing, UIA bounds, and input authority match the committed visible state;
+settled/hidden cost does not increase; failure enters one explicit bounded
+fallback without oscillation.
+
+**Verification:** Tier 1 composition-surface, transition policy, placement,
+renderer, transparency, targeting, focus/UIA, and Release host suites. Tier 2
+uses production-shaped transitions for Now Playing <-> Games & Apps, Game
+Launcher <-> Audio Mixer, Network Controls <-> YT Music, and Spotify <->
+Settings at supported scales, asserting alpha outside authored geometry,
+complete destination ordering, bounded commit count, no per-tick blocking wait,
+reversal, reduced motion, and fallback. Build OverlayHost Release. After
+planner review and integration, the freshly launched packaged Release requires
+the user's live confirmation; synthetic capture cannot close this regression.
+
+**Stop:** Windows 10 DirectComposition cannot provide correct transparent
+content and bounded motion without choosing a materially different window/
+compositor architecture, the correction requires a second permanent renderer
+or Windows 11 floor, or DLV-105 leaves incompatible tray geometry ownership.
+Preserve exact evidence and ask the user rather than hiding the border or
+shipping abrupt motion.
+
 ### DLV-106 — Keep tray cycling out of outgoing widget focus
 
-**State:** Conditional Ready after DLV-105; execute only if the accepted
-DLV-025 packaged path still reproduces, otherwise report passing evidence and
-continue directly to DLV-102 without task-specific edits
-**Baseline:** accepted DLV-105 platform boundary
-**Dependencies:** accepted DLV-025 presentation semantics, OverlayState tray
+**State:** Conditional Ready after DLV-107; execute only if the corrected
+packaged path still reproduces, otherwise report passing evidence and continue
+directly to DLV-102 without task-specific edits
+**Baseline:** accepted DLV-107 platform boundary
+**Dependencies:** corrected composition/transition semantics, OverlayState tray
 focus region, controller/keyboard routing, retained-content transition path,
 declarative focus state, and accessibility publication
 **Owner:** platform lane; native input authority and focus-state commit ordering
@@ -530,8 +613,8 @@ cannot be made atomic within the accepted single-owner compositor design.
 
 ### DLV-102 — Fall back cleanly when trusted app artwork is unavailable
 
-**State:** Ready after DLV-105 and the conditional DLV-106 gate
-**Baseline:** accepted DLV-105 platform boundary plus integrated DLV-100 main
+**State:** Ready after DLV-107 and the conditional DLV-106 gate
+**Baseline:** accepted DLV-107 platform boundary plus integrated DLV-100 main
 **Dependencies:** accepted DLV-094/096/098/099 lazy-artwork ownership and the
 existing trusted-artwork cache/renderer contract
 **Owner:** native trusted-artwork result/cache state, shared Image/AppTile
@@ -594,11 +677,12 @@ contract change, failure identity is not available without crossing provider
 authority, or the change would add unbounded host state. Preserve evidence for
 a serialized contract assignment rather than adding widget-specific behavior.
 
-**Queue note:** DLV-105 is first after DLV-025 because silent tray omission can
-make widgets unreachable. DLV-106 then closes or disproves the exact tray-focus
-regression on the accepted compositor path. DLV-102 remains the next visible
-platform correction. DLV-033 is dependency-blocked and internal; DLV-062
-remains blocked by its material resource gate.
+**Queue note:** Finish and review DLV-105 first because its coherent tray work
+is already committed. DLV-107 is then mandatory because live packaged evidence
+rejects DLV-025's transparency and motion result. DLV-106 closes or disproves
+the exact tray-focus regression on that corrected path, followed by DLV-102.
+DLV-033 is dependency-blocked and internal; DLV-062 remains blocked by its
+material resource gate.
 
 ## Integration queue
 
@@ -640,7 +724,7 @@ These items are evidence work, not implementation authority:
 4. Physical Y-hold exactly-once refresh.
 5. Physical Narrator/MSAA traversal.
 6. Packaged Spotify seek/list traversal and transient-failure recovery.
-7. Packaged widget-switch temporal continuity after DLV-025.
+7. Packaged widget-switch transparency and temporal continuity after DLV-107.
 8. Games & Apps cold-restart, trusted artwork, and running-app live checks.
 9. Audio Mixer LB/RB/X physical dashboard controls.
 
@@ -651,7 +735,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
-| DLV-025 | `16f9f47` | `5b8556a` | Complete DirectComposition destination surfaces are committed before HWND geometry; accepted Release PID 25164 is running for the user's black-band/flicker check. |
+| DLV-025 / correction DLV-107 | `16f9f47` rejected by live verification | `5b8556a` retained as correction baseline | PID 25164 proved complete-surface ordering alone is insufficient: the composed client has an opaque black perimeter and transition cadence is visibly poor. DLV-107 is next after DLV-105. |
 | DLV-100 | `760a9bb` | `54fbd12` | Game Launcher and protected Network Controls TextEntry snapshots pass the canonical bridge style route; the packaged Release is running for live confirmation. |
 | DLV-094/096/098/099 | `fb7fa34` contiguous widgets prefix | `c6d76a3` | Steam artwork is demand-only, stale-safe, generation-coupled, and fully drained before provider disposal. |
 | DLV-095/097 | corrected running-app prefix through `46d1938` | `c6d76a3` | Games & Apps and Game Launcher add a validated current running app through opaque trusted authority. |

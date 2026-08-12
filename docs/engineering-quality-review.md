@@ -12,29 +12,28 @@ verification credibility, UI/UX foundations, and product readiness
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
 
-### Current review delta — accepted complete-surface compositor
+### Current review delta — complete-surface compositor rejected live
 
-DLV-025 `16f9f47`, integrated through `5b8556a`, replaces visible HWND-target
-extent interpolation with one cohesive 213-line DirectComposition surface
-owner. A complete detached destination update is ended and committed before
-changed HWND geometry is exposed; same-size repaints reuse the surface and the
-legacy HWND render target is retained only as an initialization/device/failure
-fallback. The design stays on the Windows-10-compatible surface API, adds no
-public protocol, widget special case, timer, or second permanent renderer, and
-makes reduced-motion behavior immediate rather than maintaining a separate
-animation branch.
+DLV-025 `16f9f47`, integrated through `5b8556a`, proved that one cohesive
+Windows-10-compatible DirectComposition owner can render and commit a complete
+destination before final HWND geometry. It did not prove a correct packaged
+transparency or motion result. The user's recording from exact accepted-main
+PID 25164 shows the unused client area as an opaque near-black rectangle around
+the overlay and shows visibly poor different-size widget transitions.
 
-Independent review covered all nine changed files and found one explicit
-surface lifecycle, bounded resource/failure handling, and no whitespace,
-generated, reviewer-document, or cross-lane contamination. Retained focused
-evidence covers targeting, transition policy, delayed startup, rapid reversal,
-reload, and production-shaped Audio Mixer, Network Controls, Spotify, and Games
-& Apps handoffs. The fresh accepted-main Release build succeeded and PID 25164
-activated DirectComposition without fallback or immediate error. Its first live
-complete-content handoffs measured draw <= 5.921 ms, commit <= 16.017 ms, and
-coordinated geometry <= 18.437 ms. This closes the implementation decision but
-not the user's visual acceptance: GBA-004 remains Verifying until live cycling
-shows that the former black/gray bands, flicker, and stutter are gone.
+The implementation clears the premultiplied-alpha composition surface to
+opaque RGB(1,2,3) while retaining `WS_EX_LAYERED` color-key/global-alpha state
+on the HWND. Automated fixtures established update ordering but never
+established that color-key transparency applies to composed visual content.
+Session diagnostics also expose a cadence problem: equivalent size changes run
+several waited composition/geometry commits over about 100-150 ms, and populated
+Game Launcher frames take roughly 49-63 ms to draw. The recording timestamp has
+no typed transition event, so exact frame correlation remains an observability
+gap rather than an inferred error code. Provisional acceptance is revoked;
+GBA-004 is Open and DLV-107 follows committed DLV-105. The correction must own
+one alpha model and one nonblocking composition motion policy, retaining the
+good complete-destination ordering without per-widget masks, delayed concealment,
+per-tick blocking HWND resize, or a second permanent renderer.
 
 ### Current review delta — Game Launcher `TextEntry` regression
 

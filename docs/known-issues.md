@@ -289,19 +289,22 @@ plus 54 targeting and 56 transition checks. Keep this sub-fix Verifying until
 the freshly relaunched packaged overlay passes live widget cycling. DLV-025's
 separate HWND resize/compositor tearing remains blocked and is not claimed fixed.
 
-DLV-025 `16f9f47`, integrated through `5b8556a`, now implements the authorized
-Windows-10-compatible compositor decision. One native surface owner renders the
-entire detached destination, ends the update, commits and waits, then exposes
-the final HWND geometry; ordinary same-size repaints reuse that owner and the
-old HWND render target remains failure fallback only. The production-shaped
-switch fixture covers Audio Mixer, Network Controls, Spotify, Games & Apps,
-delayed startup, reversal, and reload without entering fallback. The freshly
-built main Release is running as PID 25164; its initial live handoffs reported
-complete-content draw no higher than 5.921 ms, commit no higher than 16.017 ms,
-and coordinated geometry no higher than 18.437 ms, with no immediate compositor
-error. Automated evidence establishes ordering and timing, not the user's
-visual result, so GBA-004 remains Verifying until live cycling confirms the
-former black/gray bands and flicker are gone.
+DLV-025 `16f9f47`, integrated through `5b8556a`, implemented the authorized
+Windows-10-compatible complete-surface prototype, but the user's recording from
+the freshly built PID 25164 session rejects its packaged result. The complete
+client area now appears as an opaque near-black rectangle around the authored
+widget and tray, and different-size widget transitions again look visibly ugly.
+The composed surface uses premultiplied alpha but every full update is cleared
+to opaque RGB(1,2,3), while the HWND still relies on that RGB value as a legacy
+color key. Those are not one demonstrated transparency contract. The same
+session also records equivalent size changes as several waited composition/
+geometry commits over roughly 100-150 ms, with populated Game Launcher draws
+around 49-63 ms. The recording timestamp itself has no typed transition line,
+which remains an observability gap; the video proves the visual defect and the
+nearby same-session transitions prove the cadence pattern. GBA-004 is Open and
+DLV-107 owns one bounded alpha-and-motion correction after committed DLV-105.
+The integrated prototype remains evidence and must not be hidden with per-
+widget masks, opaque backdrop growth, delays, or a second permanent renderer.
 
 **Acceptance:**
 
