@@ -10,6 +10,12 @@ Build and run tests from PowerShell:
 .\build.ps1 -Configuration Debug
 ```
 
+Production-HWND fixtures launch with an isolated `--process-profile` and drive
+the same keyboard/controller focus path as the product. In particular, the
+Audio Mixer scroll fixture reveals clipped session targets by navigation before
+querying UI Automation; changing the raw HWND size does not change the committed
+DirectComposition content or semantic extent.
+
 Run `out\Debug\OverlayHost.exe --show` to display it immediately. Without
 `--show`, press Guide on a supported controller or F1 (developer fallback).
 

@@ -45,21 +45,23 @@ to the corrected shared-geometry baseline from DLV-021. The emitted production
 snapshot retains the exact `audio.input.volume.slider` Up edge to
 `audio.master.volume.slider`; no host fallback, managed Audio Mixer change, or
 public protocol change was needed. A test-only provider state now stages four
-real Audio Mixer sessions, and the focused production-HWND/UIA fixture begins
-at Microphone with Master already above the viewport after retained offset,
-content-extent, and host-extent reconciliation. Authenticated host evidence
-records the authored Up target before input, its offscreen logical bounds and
-native revealability, the finite `296.6 / 298.2` root offset/maximum, and the
-single Up result at Master and offset zero. Full-motion settling and reopen keep
-that state canonical, and `overlay.log` contains no `value_clamped [audio.root]`
-normalization. The same native focus-move authority serves keyboard and
-controller commands; the production fixture drives its deterministic HWND key
-mapping rather than claiming physical-controller hardware evidence. A focused
-renderer case independently replaces a larger retained session surface with
-four sessions while focused at Microphone. Release verification passes
-DeclarativeRenderer 4,774 checks, ScrollEvidenceProbe 35 checks, the single
-AudioMixerScrollHost production fixture, and a fresh OverlayHost build. The
-fixture retains no screenshots; visual validation remains user-owned.
+real Audio Mixer sessions. DLV-121 corrects that production-HWND/UIA fixture for
+the accepted DirectComposition owner: raw HWND enlargement cannot make clipped
+content or UIA descendants visible because committed content geometry remains
+authoritative. The fixture now proves the authored `audio-mixer` scope and
+Master/first/fourth-session endpoints, then uses exact Down navigation to reveal
+all four sessions, reverses through the exact first session and Microphone, and
+uses one Up to restore Master and offset zero. It also retains 4-to-12-to-4
+session churn, full-motion settling, and reopen evidence with no
+`value_clamped [audio.root]` normalization. Each current target has on-screen
+UIA bounds; clipped, stale, and wrong-scope nodes remain excluded. The fixture
+uses an isolated process profile and never contends with the accepted production
+owner. Release verification passes FocusNavigation 49, DeclarativeRenderer
+4,839, ScrollEvidenceProbe 35, AccessibilityTree 16, and HostAccessibility 34
+checks, the single corrected AudioMixerScrollHost production fixture, and a
+fresh OverlayHost build. No managed widget, renderer, compositor, protocol,
+aggregate, or capture work was needed; physical controller evidence remains
+user-owned.
 
 DLV-026 restores complete bidirectional Audio Mixer controller traversal in the
 native host. The production focus graph was valid; scaled native layout placed

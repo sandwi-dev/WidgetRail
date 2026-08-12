@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -28,6 +29,8 @@ constexpr DWORD kStepTimeoutMilliseconds = 5'000;
 constexpr wchar_t kTrayAutomationId[] = L"tray:tray.audio-mixer";
 constexpr wchar_t kMasterAutomationId[] = L"widget:audio.master.volume.slider";
 constexpr wchar_t kMicrophoneAutomationId[] = L"widget:audio.input.volume.slider";
+constexpr wchar_t kFirstSessionName[] =
+    L"Application 00 volume, audible. Press A to mute";
 constexpr wchar_t kLastSessionName[] =
     L"Application 03 volume, audible. Press A to mute";
 constexpr wchar_t kOpenCloseAutomationId[] = L"host:host.open.close";
@@ -87,6 +90,12 @@ public:
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
             (L"gba-audio-scroll-host-" + std::wstring(guidText));
+        processProfile_ = L"audio-scroll-";
+        for (const wchar_t character : std::wstring_view(guidText)) {
+            if (std::iswalnum(character))
+                processProfile_.push_back(
+                    static_cast<wchar_t>(std::towlower(character)));
+        }
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
         fs::copy(source / L"runtime", root_ / L"runtime",
@@ -155,6 +164,9 @@ public:
     [[nodiscard]] const fs::path& ControlPath() const noexcept { return controlPath_; }
     [[nodiscard]] const fs::path& SnapshotPath() const noexcept { return snapshotPath_; }
     [[nodiscard]] const fs::path& ReadyPath() const noexcept { return readyPath_; }
+    [[nodiscard]] const std::wstring& ProcessProfile() const noexcept {
+        return processProfile_;
+    }
     [[nodiscard]] const fs::path& ScrollEvidencePath() const noexcept {
         return scrollEvidencePath_;
     }
@@ -166,6 +178,7 @@ private:
     fs::path snapshotPath_;
     fs::path readyPath_;
     fs::path scrollEvidencePath_;
+    std::wstring processProfile_;
 };
 
 std::optional<std::wstring> StringProperty(
@@ -499,11 +512,29 @@ std::wstring WaitForFocus(
     const std::optional<std::wstring_view> expected,
     RECT& bounds) {
     std::optional<std::wstring> focused;
-    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+    const bool reached = WaitUntil(kStepTimeoutMilliseconds, [&] {
                 focused = FocusedWidgetAutomationId(automation, window, &bounds);
                 return focused && (!expected || *focused == *expected);
-            }), expected ? "Production focus did not reach the explicit target."
-                         : "Production host did not publish focused widget UIA geometry.");
+            });
+    Require(reached,
+            expected
+                ? "Production focus did not reach explicit target " +
+                    WideToUtf8(*expected) + "; observed=" +
+                    (focused ? WideToUtf8(*focused) : std::string("none"))
+                : "Production host did not publish focused widget UIA geometry.");
+    return *focused;
+}
+
+std::wstring WaitForFocusChange(
+    IUIAutomation* automation,
+    HWND window,
+    const std::wstring_view previous,
+    RECT& bounds) {
+    std::optional<std::wstring> focused;
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+                focused = FocusedWidgetAutomationId(automation, window, &bounds);
+                return focused && *focused != previous;
+            }), "Production focus did not advance to the next authored target.");
     return *focused;
 }
 
@@ -519,6 +550,16 @@ void WaitForSemantic(
 }
 
 void RequireMicrophoneUpEdge(const std::string_view json) {
+    Require(json.find("\"ActiveInputScopeId\": \"audio-mixer\"") !=
+                std::string_view::npos,
+            "Four-session snapshot omitted the admitted Audio Mixer input scope.");
+    Require(json.find("\"Id\": \"audio.master.volume.slider\"") !=
+                std::string_view::npos &&
+                json.find("Application 00 volume, audible. Press A to mute") !=
+                    std::string_view::npos &&
+                json.find("Application 03 volume, audible. Press A to mute") !=
+                    std::string_view::npos,
+            "Four-session snapshot omitted an authored traversal endpoint.");
     constexpr std::string_view microphone =
         "\"Id\": \"audio.input.volume.slider\"";
     constexpr std::string_view masterEdge =
@@ -533,26 +574,19 @@ void RequireMicrophoneUpEdge(const std::string_view json) {
             "Emitted Microphone.Up edge did not target Master.");
 }
 
-std::wstring FocusElementDirectly(
+void RequireElementName(
     IUIAutomation* automation,
     HWND window,
-    const PROPERTYID property,
-    const std::wstring_view value,
-    RECT& bounds) {
+    const std::wstring_view automationId,
+    const std::wstring_view expectedName) {
     auto root = RootForWindow(automation, window);
     Require(static_cast<bool>(root), "Production UIA root disappeared.");
-    auto element = FindByProperty(automation, root.Get(), property, value);
-    Require(static_cast<bool>(element), "Requested production UIA focus target was absent.");
-    Require(SUCCEEDED(element->SetFocus()),
-            "Production UIA provider rejected direct focus setup.");
-    std::wstring expected;
-    if (property == UIA_AutomationIdPropertyId) expected = value;
-    else {
-        const auto id = StringProperty(element.Get(), UIA_AutomationIdPropertyId);
-        Require(id.has_value(), "Direct focus target omitted its AutomationId.");
-        expected = *id;
-    }
-    return WaitForFocus(automation, window, expected, bounds);
+    auto element = FindByAutomationId(automation, root.Get(), automationId);
+    Require(static_cast<bool>(element),
+            "Current production UIA focus target was absent after host reveal.");
+    const auto name = StringProperty(element.Get(), UIA_NamePropertyId);
+    Require(name && *name == expectedName,
+            "Current production UIA focus target did not match the authored session.");
 }
 
 ScrollEvidence WaitForScrollEvidence(
@@ -586,42 +620,44 @@ void ExerciseLiveFourReverseEdge(
     const auto semantic = ReadUtf8(semanticPath);
     RequireMicrophoneUpEdge(semantic);
 
-    RECT originalWindow{};
-    Require(GetWindowRect(window, &originalWindow),
-            Win32Error("GetWindowRect(live-four setup)"));
-    const int originalWidth = originalWindow.right - originalWindow.left;
-    const int originalHeight = originalWindow.bottom - originalWindow.top;
-    Require(SetWindowPos(
-                window, nullptr, 0, 0, originalWidth, originalHeight + 600,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) && UpdateWindow(window),
-            Win32Error("SetWindowPos(expanded live-four setup)"));
-    const auto lastSession = FocusElementDirectly(
-        automation, window, UIA_NamePropertyId, kLastSessionName, bounds);
+    SendKey(window, VK_DOWN);
+    (void)WaitForFocus(automation, window, kMicrophoneAutomationId, bounds);
+    std::wstring firstSession;
+    std::wstring lastSession;
+    std::wstring previous = kMicrophoneAutomationId;
+    for (std::size_t index = 0; index < 4; ++index) {
+        SendKey(window, VK_DOWN);
+        const auto focused = WaitForFocusChange(
+            automation, window, previous, bounds);
+        if (index == 0) {
+            firstSession = focused;
+            RequireElementName(automation, window, firstSession, kFirstSessionName);
+        }
+        if (index == 3) lastSession = focused;
+        previous = focused;
+    }
+    RequireElementName(automation, window, lastSession, kLastSessionName);
     auto scroll = WaitForScrollEvidence(
         scrollEvidencePath, std::wstring_view(lastSession).substr(7), 0, false);
-    Require(SetWindowPos(
-                window, nullptr, 0, 0, originalWidth, originalHeight,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) && UpdateWindow(window),
-            Win32Error("SetWindowPos(restored live-four setup)"));
-    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
-                const auto current = ParseScrollEvidence(ReadUtf8(scrollEvidencePath));
-                if (!current || current->focus != std::wstring_view(lastSession).substr(7) ||
-                    current->rootOffset <= 0.01F) return false;
-                scroll = *current;
-                return true;
-            }), "Restored four-session extent did not retain the trailing root offset.");
-    (void)WaitForFocus(automation, window, lastSession, bounds);
     Require(scroll.rootOffset > 0.01F,
-            "Fourth session did not establish a retained nonzero root offset.");
+            "Down traversal to the fourth session did not establish a nonzero root offset.");
     const float trailingOffset = scroll.rootOffset;
     Require(std::isfinite(trailingOffset),
             "Four-session trailing root maximum was not finite.");
     evidence.Record(L"live-four", L"seed-last-session", 0,
                     lastSession, scroll, trailingOffset, bounds, window);
 
-    const auto microphone = FocusElementDirectly(
-        automation, window, UIA_AutomationIdPropertyId,
-        kMicrophoneAutomationId, bounds);
+    previous = lastSession;
+    for (std::size_t index = 0; index < 3; ++index) {
+        SendKey(window, VK_UP);
+        previous = WaitForFocusChange(automation, window, previous, bounds);
+    }
+    Require(previous == firstSession,
+            "Reverse traversal did not return to the exact first session.");
+    RequireElementName(automation, window, firstSession, kFirstSessionName);
+    SendKey(window, VK_UP);
+    const auto microphone = WaitForFocus(
+        automation, window, kMicrophoneAutomationId, bounds);
     scroll = WaitForScrollEvidence(
         scrollEvidencePath, std::wstring_view(microphone).substr(7), 0, false);
 
@@ -704,7 +740,8 @@ void RunScenario(
         return L"\"" + path.wstring() + L"\"";
     };
     const std::wstring hostArguments =
-        L"--show --development-catalog-root " + quoted(installation.Root()) +
+        L"--show --process-profile " + installation.ProcessProfile() +
+        L" --development-catalog-root " + quoted(installation.Root()) +
         L" --development-ready-path " + quoted(installation.ReadyPath()) +
         L" --development-ready-nonce " + kDevelopmentNonce +
         L" --development-widget-id audio-mixer"
