@@ -57,6 +57,29 @@ internal sealed record AppsFolderRegistration(
         IdentityKey, DisplayName, RevalidationKey);
 
 /// <summary>
+/// Trusted installed Microsoft/Xbox game registration. Package and AUMID
+/// evidence never leaves this provider assembly; widgets receive only the
+/// provider and authority-scoped opaque identities derived from it.
+/// </summary>
+internal sealed record WindowsPackageGameRegistration(
+    string IdentityKey,
+    string DisplayName,
+    string PackageFamilyName,
+    string PackageFullName,
+    string Aumid,
+    string RevalidationKey);
+
+internal sealed record WindowsPackageApplicationRegistration(
+    string Aumid,
+    string DisplayName);
+
+internal sealed record WindowsPackageRegistrationCandidate(
+    string PackageFamilyName,
+    string PackageFullName,
+    string InstalledLocation,
+    IReadOnlyList<WindowsPackageApplicationRegistration> Applications);
+
+/// <summary>
 /// Trusted Steam library registration. The numeric AppId and manifest path stay
 /// inside this assembly; widgets receive only provider and authority-scoped
 /// opaque identifiers.
@@ -109,6 +132,27 @@ internal interface IAppsFolderApplicationSource
         CancellationToken cancellationToken);
 }
 
+internal interface IWindowsPackageGameApplicationSource
+{
+    IReadOnlyList<WindowsPackageGameRegistration> Enumerate(
+        CancellationToken cancellationToken);
+
+    WindowsPackageGameRegistration? ReadExact(
+        string packageFullName,
+        string aumid,
+        CancellationToken cancellationToken);
+}
+
+internal interface IWindowsPackageRegistrationCatalog
+{
+    IReadOnlyList<WindowsPackageRegistrationCandidate> Enumerate(
+        CancellationToken cancellationToken);
+
+    WindowsPackageRegistrationCandidate? ReadExact(
+        string packageFullName,
+        CancellationToken cancellationToken);
+}
+
 internal interface ISteamApplicationSource
 {
     IReadOnlyList<SteamRegistration> Enumerate(CancellationToken cancellationToken);
@@ -135,6 +179,15 @@ internal sealed class AppsFolderEnumerationException : InvalidOperationException
 {
     internal AppsFolderEnumerationException(string message, Exception? innerException = null)
         : base(message, innerException)
+    {
+    }
+}
+
+internal sealed class WindowsPackageEnumerationException : InvalidOperationException
+{
+    internal WindowsPackageEnumerationException(
+        string message,
+        Exception? innerException = null) : base(message, innerException)
     {
     }
 }

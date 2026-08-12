@@ -3221,6 +3221,35 @@ passes the installed generic-worker/AppContainer Games & Apps route. No canonica
 aggregate, native layout, external provider, credential, content-operation, or
 package-schema work was run or changed.
 
+### Supported Windows and Xbox installed-game source (DLV-138)
+
+The trusted Windows app-library provider now includes a separate installed
+Microsoft/Xbox package-game source beside conservative Start Menu/AppsFolder
+applications and Steam. It enumerates current-user packages through the
+supported Windows `PackageManager` API and classifies an exact registered
+application as a Game only when a bounded, non-reparse `MicrosoftGame.config`
+names that application ID. Microsoft documents that configuration as the
+game-specific packaging manifest and its `Executable Id` as the application ID;
+titles, icons, package names, and locations are never classification evidence.
+
+The source keeps package family/full name, install location, AUMID, and
+configuration bytes provider-private. It normalizes the exact AUMID to the same
+stable identity as AppsFolder, so duplicate launch registrations collapse while
+distinct application variants remain separate. Refresh commits add/remove/
+update generations atomically. A failed package read retains bounded last-good
+display with explicit unavailable source health but clears exact source
+authority, and launch must reread the same package generation, application ID,
+and game evidence before constrained packaged activation.
+
+Focused Release verification covers installed/non-game/mismatched evidence,
+AppsFolder deduplication, multiple variants, add/remove/update, failure-retained
+display without authority, exact launch revalidation, cancellation, and catalog
+bounds in the Windows provider suite. Games & Apps and Game Launcher fixtures
+cover automatic Game projection, exact source attribution, semantic artwork
+fallback, and opaque launch routing. No network, credential, account-owned game,
+install/update operation, external helper, native, capture, or aggregate work is
+included.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

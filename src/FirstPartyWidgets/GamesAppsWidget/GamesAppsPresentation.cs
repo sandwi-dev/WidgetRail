@@ -138,12 +138,12 @@ internal static class GamesAppsPresentation
                     tileState,
                     "games.launch",
                     id,
-                    subtitle: AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item)),
+                    subtitle: SourceLabel(item),
                     artwork: AppArtwork(item,
                         $"{GamesAppsAppLibraryPresentation.DisplayName(item)} icon"),
                     accessibilityLabel:
                         $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, " +
-                        $"{AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item))}, {tileState}")
+                        $"{SourceLabel(item)}, {tileState}")
                 .Shortcut(ControllerButton.X, actionId: "games.remove")
                 .Busy(isOpening)
                 .Disabled(!isResolved || !GamesAppsAppLibraryPresentation.CanLaunch(item) ||
@@ -257,12 +257,12 @@ internal static class GamesAppsPresentation
                     saved ? "Already included" : running ? "Running" : "Available",
                     "games.toggle-curation",
                     id,
-                    subtitle: AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item)),
+                    subtitle: SourceLabel(item),
                     artwork: AppArtwork(item,
                         $"{GamesAppsAppLibraryPresentation.DisplayName(item)} icon"),
                     accessibilityLabel: saved
-                        ? $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, already included"
-                        : $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, available, A adds to library")
+                        ? $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, {SourceLabel(item)}, already included"
+                        : $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, {SourceLabel(item)}, available, A adds to library")
                 .Selected(saved)
                 .Disabled(saved && running || state.LaunchingAppId is not null || state.LoadingMore ||
                     state.LifecycleState != WidgetLifecycleState.Interactive)
@@ -420,6 +420,10 @@ internal static class GamesAppsPresentation
 
     private static string AppKindLabel(WidgetAppLibraryKind kind) =>
         kind == WidgetAppLibraryKind.Game ? "Game" : "Application";
+
+    private static string SourceLabel(WidgetAppLibraryItem item) =>
+        $"{AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item))} · " +
+        GamesAppsAppLibraryPresentation.Source(item);
 
     private static TileArtwork AppArtwork(
         WidgetAppLibraryItem item,

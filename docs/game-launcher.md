@@ -109,6 +109,15 @@ before it disposes any source or clears committed catalog state.
 Candidate locator sets remain staged until the matching Steam source generation
 commits, so cancellation or a newer refresh cannot retire current row artwork.
 
+Installed Microsoft/Xbox package games enter the same normalized library only
+when supported Windows package registration plus bounded
+`MicrosoftGame.config` evidence identifies the exact registered application as
+a game. Package names, locations, AUMIDs, configuration bytes, and account data
+remain provider-private. Exact AppsFolder duplicates collapse by the same stable
+launch identity, while distinct registered variants remain separate rows. A
+failed package refresh may retain a disabled last-good display row, but launch
+requires a fresh matching package generation and AUMID.
+
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains
 below 64 KiB. At most 32 distinct SavedIds may participate in favorites or explicit

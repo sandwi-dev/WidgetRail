@@ -43,15 +43,30 @@ public sealed class WindowsAppLibraryProvider :
     private long _catalogRevision;
 
     public WindowsAppLibraryProvider() : this(
-        new WindowsStartMenuApplicationSource(),
-        new WindowsAppsFolderApplicationSource(),
-        new WindowsSteamApplicationSource(),
-        new WindowsShellLauncher(),
-        new WindowsPackagedAppLauncher(),
-        new WindowsSteamLauncher(),
-        new WindowsAppIconSource(),
-        ShellStaExecutor.Shared)
+        CreateDefaultSources(), ShellStaExecutor.Shared)
     {
+    }
+
+    private static IReadOnlyList<IGameLibrarySource> CreateDefaultSources()
+    {
+        var packagedLauncher = new WindowsPackagedAppLauncher();
+        var iconSource = new WindowsAppIconSource();
+        return
+        [
+            new WindowsInstalledGameLibrarySource(
+                new WindowsStartMenuApplicationSource(),
+                new WindowsAppsFolderApplicationSource(),
+                new WindowsShellLauncher(),
+                packagedLauncher,
+                iconSource),
+            new WindowsPackageGameLibrarySource(
+                new WindowsPackageGameApplicationSource(),
+                packagedLauncher,
+                iconSource),
+            new SteamGameLibrarySource(
+                new WindowsSteamApplicationSource(),
+                new WindowsSteamLauncher()),
+        ];
     }
 
     internal WindowsAppLibraryProvider(IStartMenuApplicationSource source) :

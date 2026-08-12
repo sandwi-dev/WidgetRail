@@ -230,9 +230,12 @@ declaration, consent, lifecycle, payload, and provider rules still apply.
 The app-library read and launch capabilities are deliberately separate. A
 launcher can make `system.apps.library.read.v1` required while declaring
 `system.apps.library.launch.v1` optional, as the bundled Games & Apps reference
-does. Read pages contain `WidgetAppLibraryItem.AppId`, `SavedId`, `DisplayName`,
-`Kind`, `SourceAttribution`, and an optional lazy `ArtworkHandle`. `AppId` is an
-opaque current-provider launch token and must never be
+does. Each read-page row contains opaque `AppId`/`SavedId` identity plus one
+versioned normalized presentation: display name, closed kind, source reference,
+explicit availability, role-keyed opaque artwork handles, optional attributed
+metadata, closed supported actions, and optional active-operation summary.
+Absent provider facts remain absent. `AppId` is an opaque current-provider
+launch token and must never be
 persisted. `SavedId` is a non-reversible durable token scoped to the
 authenticated publisher/package authority; retain it in private state, then
 use `ResolveSavedAsync` to obtain current launch tokens after restart. The
@@ -246,9 +249,9 @@ provider owns the normalized catalog, so neither widget IPC nor the capability
 domain materializes the complete library.
 
 Launch requires Interactive even if the widget has already listed the item.
-The broker validates the opaque ID and the trusted Start Menu provider
-re-enumerates immediately before launch, requiring one exact unchanged
-shortcut registration. The worker never receives the shortcut path, target,
+The broker validates the opaque ID and the trusted owning source revalidates its
+exact current shortcut, package/AUMID/game evidence, or launcher registration
+immediately before launch. The worker never receives the shortcut path, target,
 arguments, AUMID, package identity, PID, or HWND, and app launch is not eligible
 for Visible dashboard-gesture authority. See the [Games & Apps
 reference](games-and-apps.md) for provider limits and authoring behavior.

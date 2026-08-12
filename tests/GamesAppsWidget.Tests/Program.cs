@@ -7,6 +7,8 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Visible lifecycle discovers trusted games before catalog browsing", LoadsFirstPage),
     ("Trusted games auto-curate idempotently with bounded feedback", AutoCuratesTrustedGames),
+    ("Windows package games auto-curate with exact source truth",
+        WindowsPackageGameProjectsTruthfully),
     ("Broker-shaped opaque IDs survive reconciliation and persistence", BrokerOpaqueIdsPersist),
     ("Automatic discovery walks bounded pages for trusted games", AutoCuratesGamesBeyondFirstPage),
     ("Refresh preserves order and focus while appending newly trusted games", RefreshAppendsGames),
@@ -236,6 +238,30 @@ static async Task AutoCuratesTrustedGames()
     Assert.SequenceEqual(["game-a", "game-b"],
         widget.CuratedItems.Select(item => item.AppId));
     Assert.False(Nodes(Snapshot(widget, 201).Root).Any(node => node.Id == "games.toast"));
+    await Background(widget);
+}
+
+static async Task WindowsPackageGameProjectsTruthfully()
+{
+    var game = InstalledItem(
+        "app-xbox", "saved-xbox", "Package Game", WidgetAppLibraryKind.Game,
+        "source-microsoft-games-installed", "Xbox / Microsoft Store");
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([game], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+        widget.CuratedItems.Any(item => item.SavedId == game.SavedId));
+
+    var current = widget.CuratedItems.Single(item => item.SavedId == game.SavedId);
+    Assert.Equal(WidgetAppLibraryKind.Game, current.Presentation.Kind);
+    Assert.Equal("Xbox / Microsoft Store",
+        current.Presentation.Source.DisplayName);
+    Assert.True(ActionSurfaces(Snapshot(widget, 910).Root).Any(node =>
+        node.AccessibilityLabel?.Contains(
+            "Xbox / Microsoft Store", StringComparison.Ordinal) == true));
     await Background(widget);
 }
 

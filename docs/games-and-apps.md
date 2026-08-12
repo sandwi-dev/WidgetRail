@@ -282,9 +282,10 @@ lifecycle, payload validation, and provider validation are independent gates.
 
 ## Trusted Windows provider boundary
 
-The current provider merges three bounded trusted Windows sources: current-user/
+The current provider merges four bounded trusted Windows sources: current-user/
 all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
-namespace, and registered Steam libraries. It:
+namespace, installed Microsoft/Xbox package registrations, and registered Steam
+libraries. It:
 
 - treats Windows-installed and Steam libraries as ordinary implementations of
   one private source contract, with source-owned discovery, exact resolution,
@@ -296,6 +297,13 @@ namespace, and registered Steam libraries. It:
 - enumerates at most 2,048 AppsFolder items on one bounded process-wide Shell
   STA lane, retains only a canonical AppUserModelID (AUMID) plus sanitized
   display text, and treats a malformed/disappearing item as an isolated skip;
+- enumerates at most 4,096 current-user packages through the supported Windows
+  [`PackageManager.FindPackagesForUser`](https://learn.microsoft.com/windows/uwp/api/windows.management.deployment.packagemanager.findpackagesforuser)
+  API and classifies at most 1,024 applications as games only when the package's
+  bounded [`MicrosoftGame.config`](https://learn.microsoft.com/gaming/gdk/docs/features/common/game-config/microsoftgameconfig-overview)
+  names that exact registered application ID through its documented
+  [`Executable Id`](https://learn.microsoft.com/gaming/gdk/docs/reference/system/microsoftgameconfig/elements/microsoftgameconfig-element-executable);
+  an icon, title, package name, or install path is never treated as game evidence;
 - discovers at most 32 Steam library roots and 4,096 bounded
   `appmanifest_<id>.acf` files, accepts only a matching positive numeric AppId
   plus sanitized name, classifies those registrations as games, and prefers an
@@ -320,7 +328,9 @@ Launch does not trust a stale opaque-ID lookup by itself. Immediately before
 launch, the provider re-enumerates the exact source on the Shell STA lane.
 A shortcut must still have one matching scope, target identity, full path, and
 content fingerprint; AppsFolder must still expose exactly one matching
-canonical AUMID and revalidation key. Shortcuts use only Shell `open` on the
+canonical AUMID and revalidation key. A Microsoft/Xbox game must still expose
+the same package generation, exact AUMID, and matching game-configuration
+evidence. Shortcuts use only Shell `open` on the
 exact fully qualified `.lnk`, without supplied arguments, working directory,
 elevation verb, or owner window. AppsFolder activation uses
 `IApplicationActivationManager.ActivateApplication` with the exact revalidated
@@ -334,9 +344,10 @@ location, and content hash, then opens only
 ## Honest limitations
 
 - Discovery covers bounded Start Menu `.lnk`, current-user AppsFolder/AUMID,
-  and registered Steam manifests. Xbox, Epic, GOG, and other launcher catalogs
-  are not integrated; AppsFolder coverage is not a promise that every package,
-  alias, launcher-owned game, or machine policy will be visible.
+  installed Microsoft/Xbox package registrations with explicit game evidence,
+  and registered Steam manifests. Epic, GOG, and other launcher catalogs are
+  not integrated; package registration is not a promise that every alias,
+  launcher-owned game, account-owned title, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
   source-aware grouping, additional evidence-backed game sources, and broader
   source reconciliation remain tracked as [GBA-033](known-issues.md).
@@ -346,8 +357,9 @@ location, and content hash, then opens only
   over-budget artwork uses the host semantic Play glyph; broad Catalog
   discovery intentionally does not rasterize hundreds of icons.
 - The public kind enum supports Unknown, Application, and Game. Start Menu and
-  AppsFolder entries remain conservative Applications; only reviewed Steam
-  manifests are classified as Games. Filename/path guessing is not used.
+  AppsFolder entries remain conservative Applications; reviewed Steam manifests
+  and exact Microsoft game-configuration evidence are classified as Games.
+  Filename/path/title/icon guessing is not used.
 - There is no search, grouping, install/uninstall,
   game history, foreground switching, running-program capture, file picker, or
   arbitrary executable/path launch.
@@ -377,7 +389,8 @@ constrained Shell/packaged/Steam activation, STA queue cancellation,
 direct normalized adapter contracts, duplicate-name separation, independently
 retained last-good source state, stale-generation rejection, terminal drain,
 source-failure isolation, sanitized errors, and non-mutating real Start Menu,
-AppsFolder, and Steam scans. Broker, SDK, bridge, Settings, and first-party conformance suites
+AppsFolder, package-registration, and Steam scans. Broker, SDK, bridge, Settings,
+and first-party conformance suites
 cover separate read/launch consent, lifecycle denial, invalid payload/backend
 data, transport mapping, permission copy, packaged AppContainer startup, render,
 and a simulated launch.
