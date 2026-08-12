@@ -125,11 +125,15 @@ const WidgetNode* FindNode(
 }
 
 UiaRect ScreenBounds(const Node& node, const ScreenTransform& transform) noexcept {
+    const double scaleX = transform.scaleX > 0.0
+        ? transform.scaleX : transform.pixelsPerDip;
+    const double scaleY = transform.scaleY > 0.0
+        ? transform.scaleY : transform.pixelsPerDip;
     return {
-        transform.originX + node.bounds.x * transform.pixelsPerDip,
-        transform.originY + node.bounds.y * transform.pixelsPerDip,
-        node.bounds.width * transform.pixelsPerDip,
-        node.bounds.height * transform.pixelsPerDip,
+        transform.originX + transform.visualOffsetX + node.bounds.x * scaleX,
+        transform.originY + transform.visualOffsetY + node.bounds.y * scaleY,
+        node.bounds.width * scaleX,
+        node.bounds.height * scaleY,
     };
 }
 
@@ -436,7 +440,11 @@ public:
         if (identity_ && !node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node) *result = ScreenBounds(*node, published->transform);
         else if (published) {
-            *result = {published->transform.originX, published->transform.originY,
+            *result = {
+                       published->transform.originX +
+                           published->transform.visualOffsetX,
+                       published->transform.originY +
+                           published->transform.visualOffsetY,
                        published->transform.width, published->transform.height};
         }
         return S_OK;
@@ -490,8 +498,8 @@ public:
         }
         if (best) return CreateFragment(IdentityFor(*published, *best), result);
         const UiaRect rootBounds{
-            published->transform.originX,
-            published->transform.originY,
+            published->transform.originX + published->transform.visualOffsetX,
+            published->transform.originY + published->transform.visualOffsetY,
             published->transform.width,
             published->transform.height,
         };
@@ -878,6 +886,10 @@ void ProviderHost::RaisePendingEvents() noexcept {
         (previous->transform.originX != current->transform.originX ||
          previous->transform.originY != current->transform.originY ||
          previous->transform.pixelsPerDip != current->transform.pixelsPerDip ||
+         previous->transform.scaleX != current->transform.scaleX ||
+         previous->transform.scaleY != current->transform.scaleY ||
+         previous->transform.visualOffsetX != current->transform.visualOffsetX ||
+         previous->transform.visualOffsetY != current->transform.visualOffsetY ||
          previous->transform.width != current->transform.width ||
          previous->transform.height != current->transform.height);
     const bool sameRuntime = previous && current &&
@@ -889,16 +901,24 @@ void ProviderHost::RaisePendingEvents() noexcept {
             PropertyValue{declarative::Rect{
                 0, 0,
                 static_cast<float>(previous->transform.width /
-                                   previous->transform.pixelsPerDip),
+                    (previous->transform.scaleX > 0.0
+                        ? previous->transform.scaleX
+                        : previous->transform.pixelsPerDip)),
                 static_cast<float>(previous->transform.height /
-                                   previous->transform.pixelsPerDip),
+                    (previous->transform.scaleY > 0.0
+                        ? previous->transform.scaleY
+                        : previous->transform.pixelsPerDip)),
             }},
             PropertyValue{declarative::Rect{
                 0, 0,
                 static_cast<float>(current->transform.width /
-                                   current->transform.pixelsPerDip),
+                    (current->transform.scaleX > 0.0
+                        ? current->transform.scaleX
+                        : current->transform.pixelsPerDip)),
                 static_cast<float>(current->transform.height /
-                                   current->transform.pixelsPerDip),
+                    (current->transform.scaleY > 0.0
+                        ? current->transform.scaleY
+                        : current->transform.pixelsPerDip)),
             }},
         });
         if (sameRuntime) {
@@ -992,12 +1012,23 @@ void ProviderHost::RaisePendingEvents() noexcept {
             } else {
                 SAFEARRAY* array = SafeArrayCreateVector(VT_R8, 0, 4);
                 if (!array) return;
-                const double scale = transform ? transform->pixelsPerDip : 1.0;
+                const double scaleX = transform
+                    ? (transform->scaleX > 0.0
+                        ? transform->scaleX : transform->pixelsPerDip)
+                    : 1.0;
+                const double scaleY = transform
+                    ? (transform->scaleY > 0.0
+                        ? transform->scaleY : transform->pixelsPerDip)
+                    : 1.0;
                 const double parts[]{
-                    (transform ? transform->originX : 0.0) + item.x * scale,
-                    (transform ? transform->originY : 0.0) + item.y * scale,
-                    item.width * scale,
-                    item.height * scale,
+                    (transform
+                        ? transform->originX + transform->visualOffsetX : 0.0) +
+                        item.x * scaleX,
+                    (transform
+                        ? transform->originY + transform->visualOffsetY : 0.0) +
+                        item.y * scaleY,
+                    item.width * scaleX,
+                    item.height * scaleY,
                 };
                 for (LONG index = 0; index < 4; ++index) {
                     double part = parts[index];

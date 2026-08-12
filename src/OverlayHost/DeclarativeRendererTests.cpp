@@ -5,11 +5,14 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <mutex>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -2646,6 +2649,292 @@ void OffscreenScrollArtworkDoesNotEnterRemoteCache() {
     cache.Shutdown();
 }
 
+void TrustedArtworkTerminalFallbackIsStable() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for trusted artwork fallback");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create DirectWrite factory for trusted artwork fallback");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for trusted artwork fallback");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        420, 360, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create WIC canvas for trusted artwork fallback");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "create WIC render target for trusted artwork fallback");
+
+    struct Transition final {
+        std::wstring key;
+        gba::RemoteImageState state{};
+    };
+    std::mutex transitionMutex;
+    std::condition_variable transitionCompleted;
+    std::vector<Transition> transitions;
+    std::vector<std::wstring> requested;
+    gba::RemoteImageLimits limits;
+    limits.maximumEntries = 16;
+    limits.maximumDecodedBytes = 16U * 64U * 4U;
+    gba::RemoteImageCache cache(
+        limits,
+        [&](const std::wstring_view key, const gba::RemoteImageState state) {
+            {
+                std::scoped_lock lock(transitionMutex);
+                transitions.push_back({std::wstring(key), state});
+            }
+            transitionCompleted.notify_all();
+        },
+        [](std::wstring_view source, std::stop_token, const gba::RemoteImageLimits&) {
+            if (!source.starts_with(L"data:image/png;base64,")) {
+                return gba::RemoteImageFetchResult{
+                    E_INVALIDARG, {}, L"Trusted artwork source lost bounded decode routing."};
+            }
+            gba::RemoteDecodedImage image;
+            image.width = 8;
+            image.height = 8;
+            image.stride = 32;
+            image.premultipliedBgra.resize(8U * 8U * 4U);
+            for (std::size_t offset = 0; offset < image.premultipliedBgra.size(); offset += 4) {
+                image.premultipliedBgra[offset] = 0xE0;
+                image.premultipliedBgra[offset + 1] = 0x20;
+                image.premultipliedBgra[offset + 2] = 0x10;
+                image.premultipliedBgra[offset + 3] = 0xFF;
+            }
+            image.mimeType = L"image/png";
+            return gba::RemoteImageFetchResult{S_OK, std::move(image), {}};
+        },
+        [&](const std::wstring_view key) {
+            requested.emplace_back(key);
+            return true;
+        });
+
+    constexpr std::wstring_view availableHandle =
+        L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    constexpr std::wstring_view pendingHandle =
+        L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    constexpr std::wstring_view unavailableHandle =
+        L"library.art.cccccccccccccccccccccccccccccccc";
+    constexpr std::wstring_view recoveredHandle =
+        L"library.art.dddddddddddddddddddddddddddddddd";
+    const auto makeSnapshot = [&](const std::wstring_view widgetId) {
+        WidgetSnapshot snapshot;
+        snapshot.sequence = 41;
+        snapshot.instanceId = std::wstring(widgetId) + L".runtime";
+        snapshot.activeInputScopeId = L"library";
+        snapshot.root = Node(L"library.root", L"stack");
+        snapshot.root.inputScopeId = L"library";
+        snapshot.root.baseStyle = {
+            {L"gap", LengthList(L"8px")},
+            {L"background", Color(L"#000000")},
+        };
+        const auto addTile = [&](const wchar_t* state, const std::wstring_view handle) {
+            const auto prefix = std::wstring(widgetId) + L"." + state;
+            auto tile = Node((prefix + L".tile").c_str(), L"actionSurface");
+            tile.actionId = L"launch";
+            tile.accessibilityLabel = std::wstring(state) + L" application, Ready";
+            tile.actionSurfaceOrientation = L"horizontal";
+            tile.baseStyle = {
+                {L"height", Length(104)},
+                {L"padding", LengthList(L"12px")},
+                {L"gap", LengthList(L"12px")},
+                {L"background", Color(L"#101010")},
+                {L"color", Color(L"#ffffff")},
+            };
+            auto artwork = Node((prefix + L".artwork").c_str(), L"image");
+            artwork.artworkHandle = handle;
+            artwork.accessibilityLabel = std::wstring(state) + L" application icon";
+            artwork.imageFit = L"cover";
+            artwork.baseStyle = {
+                {L"width", Length(72)},
+                {L"height", Length(72)},
+                {L"flex-shrink", Number(0)},
+                {L"background", Color(L"#000000")},
+                {L"color", Color(L"#ffffff")},
+            };
+            auto label = Node((prefix + L".title").c_str(), L"text");
+            label.text = std::wstring(state) + L" application";
+            tile.children = {std::move(artwork), std::move(label)};
+            snapshot.root.children.push_back(std::move(tile));
+        };
+        addTile(L"available", availableHandle);
+        addTile(L"pending", pendingHandle);
+        addTile(L"unavailable", unavailableHandle);
+        snapshot.initialFocusId = snapshot.root.children.front().id;
+        return snapshot;
+    };
+    auto gameLauncher = makeSnapshot(L"game-launcher");
+    auto gamesApps = makeSnapshot(L"games-apps");
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+    const Rect viewport{0.0F, 0.0F, 420.0F, 360.0F};
+    const auto render = [&](WidgetSnapshot& snapshot, const std::wstring_view widgetId) {
+        gba::DeclarativeRenderOptions options;
+        options.collectAccessibility = true;
+        options.artworkWidgetId = widgetId;
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        auto result = renderer.Render(
+            target.Get(), snapshot, snapshot.initialFocusId, viewport, options);
+        Check(SUCCEEDED(target->EndDraw()),
+            "production-shaped trusted artwork frame draws");
+        Check(result.succeeded, "production-shaped trusted artwork frame succeeds");
+        return result;
+    };
+    const auto launcherPending = render(gameLauncher, L"game-launcher");
+    const auto gamesPending = render(gamesApps, L"games-apps");
+    Check(requested.size() == 6,
+        "Game Launcher and Games & Apps request available pending and unavailable handles lazily");
+
+    const auto resolve = [&](const std::wstring_view widgetId) {
+        Check(cache.SupplyTrustedArtwork(widgetId, availableHandle, L"AAAA"),
+            "available trusted artwork enters bounded decode");
+        Check(cache.FailTrustedArtwork(widgetId, unavailableHandle),
+            "unavailable trusted artwork enters one terminal state");
+    };
+    resolve(L"game-launcher");
+    resolve(L"games-apps");
+    {
+        std::unique_lock lock(transitionMutex);
+        Check(transitionCompleted.wait_for(lock, std::chrono::seconds(2), [&] {
+            return transitions.size() == 4;
+        }), "available and unavailable trusted artwork transitions complete");
+    }
+    Check(cache.GetStats().queuedOrLoading == 2,
+        "pending trusted artwork remains pending without a failure transition");
+    const auto terminalTransitions = [&] {
+        std::scoped_lock lock(transitionMutex);
+        return std::count_if(transitions.begin(), transitions.end(), [](const Transition& item) {
+            return item.state == gba::RemoteImageState::Failed;
+        });
+    };
+    Check(terminalTransitions() == 2,
+        "each widget reports exactly one terminal artwork transition");
+    const auto sameRects = [](const auto& left, const auto& right) {
+        if (left.size() != right.size()) return false;
+        for (const auto& [id, leftRect] : left) {
+            const auto found = right.find(id);
+            if (found == right.end()) return false;
+            const auto& rightRect = found->second;
+            if (std::abs(leftRect.x - rightRect.x) > 0.01F ||
+                std::abs(leftRect.y - rightRect.y) > 0.01F ||
+                std::abs(leftRect.width - rightRect.width) > 0.01F ||
+                std::abs(leftRect.height - rightRect.height) > 0.01F) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    struct RasterEvidence final {
+        std::size_t availableBlue{};
+        std::size_t pendingBright{};
+        std::size_t unavailableBright{};
+    };
+    const auto rasterEvidence = [&](const gba::RenderResult& result, const std::wstring_view widgetId) {
+        ComPtr<IWICBitmapLock> lock;
+        const WICRect lockArea{0, 0, 420, 360};
+        Check(SUCCEEDED(canvas->Lock(
+            &lockArea, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())),
+            "trusted artwork raster locks");
+        UINT stride = 0;
+        UINT byteCount = 0;
+        BYTE* pixels = nullptr;
+        Check(SUCCEEDED(lock->GetStride(&stride)), "trusted artwork raster stride is available");
+        Check(SUCCEEDED(lock->GetDataPointer(&byteCount, &pixels)),
+            "trusted artwork raster pixels are available");
+        const auto count = [&](const std::wstring& suffix, const auto& predicate) {
+            const auto& rect = result.elementRects.at(std::wstring(widgetId) + suffix);
+            std::size_t matches = 0;
+            const auto left = static_cast<UINT>(std::max(0.0F, std::floor(rect.x)));
+            const auto top = static_cast<UINT>(std::max(0.0F, std::floor(rect.y)));
+            const auto right = static_cast<UINT>(std::min(420.0F, std::ceil(rect.x + rect.width)));
+            const auto bottom = static_cast<UINT>(std::min(360.0F, std::ceil(rect.y + rect.height)));
+            for (auto y = top; y < bottom; ++y) {
+                for (auto x = left; x < right; ++x) {
+                    const auto* pixel = pixels + y * stride + x * 4U;
+                    if (predicate(pixel)) ++matches;
+                }
+            }
+            return matches;
+        };
+        return RasterEvidence{
+            count(L".available.artwork", [](const BYTE* pixel) {
+                return pixel[0] > 160U && pixel[1] < 80U && pixel[2] < 80U;
+            }),
+            count(L".pending.artwork", [](const BYTE* pixel) {
+                return std::max({pixel[0], pixel[1], pixel[2]}) > 160U;
+            }),
+            count(L".unavailable.artwork", [](const BYTE* pixel) {
+                return std::max({pixel[0], pixel[1], pixel[2]}) > 160U;
+            }),
+        };
+    };
+    const auto verifyFixture = [&](WidgetSnapshot& snapshot,
+                                   const std::wstring_view widgetId,
+                                   const gba::RenderResult& pendingResult) {
+        auto result = render(snapshot, widgetId);
+        const auto pixels = rasterEvidence(result, widgetId);
+        Check(pixels.availableBlue > 1'000,
+            "available trusted artwork paints supplied pixels");
+        Check(pixels.pendingBright == 0,
+            "pending trusted artwork does not prematurely paint a failure glyph");
+        Check(pixels.unavailableBright > 8,
+            "terminal trusted artwork paints the shared semantic fallback glyph");
+        Check(sameRects(result.focusRects, pendingResult.focusRects) &&
+              sameRects(result.navigationRects, pendingResult.navigationRects) &&
+              result.hitRegions.size() == pendingResult.hitRegions.size() &&
+              result.accessibilityRegions.size() == pendingResult.accessibilityRegions.size(),
+            "artwork transitions preserve focus hit testing layout and accessibility semantics");
+        Check(std::none_of(result.diagnostics.begin(), result.diagnostics.end(),
+            [](const gba::RenderDiagnostic& diagnostic) {
+                return diagnostic.code == L"image_failed";
+            }), "terminal trusted artwork does not emit a repaint diagnostic");
+        const auto repaint = render(snapshot, widgetId);
+        snapshot.sequence++;
+        const auto republished = render(snapshot, widgetId);
+        Check(sameRects(repaint.focusRects, republished.focusRects),
+            "repaint and same-snapshot republish preserve exact tile geometry");
+        Check(terminalTransitions() == 2,
+            "repaint and snapshot refresh do not duplicate terminal diagnostics");
+    };
+    verifyFixture(gameLauncher, L"game-launcher", launcherPending);
+    verifyFixture(gamesApps, L"games-apps", gamesPending);
+
+    auto& recoveredArtwork = gameLauncher.root.children[2].children[0];
+    recoveredArtwork.artworkHandle = recoveredHandle;
+    (void)render(gameLauncher, L"game-launcher");
+    Check(!cache.SupplyTrustedArtwork(L"game-launcher", unavailableHandle, L"AAAA"),
+        "late prior revision cannot replace current artwork");
+    Check(cache.SupplyTrustedArtwork(L"game-launcher", recoveredHandle, L"AAAA"),
+        "new trusted artwork revision can recover from terminal fallback");
+    {
+        std::unique_lock lock(transitionMutex);
+        Check(transitionCompleted.wait_for(lock, std::chrono::seconds(2), [&] {
+            return transitions.size() == 5;
+        }), "new trusted artwork revision completes");
+    }
+    const auto recovered = render(gameLauncher, L"game-launcher");
+    const auto recoveredPixels = rasterEvidence(recovered, L"game-launcher");
+    Check(recoveredPixels.unavailableBright > 1'000,
+        "new revision replaces the terminal fallback with supplied pixels");
+    Check(terminalTransitions() == 2,
+        "successful revision recovery does not add a failure diagnostic");
+    Check(cache.GetStats().entries <= limits.maximumEntries,
+        "trusted artwork failure and recovery bookkeeping stays cache bounded");
+    cache.Shutdown();
+}
+
 } // namespace
 
 int main() {
@@ -2681,6 +2970,7 @@ int main() {
     DeferredFocusOutlineUsesEffectiveVisibilityClip();
     RealDirect2DSmoke();
     OffscreenScrollArtworkDoesNotEnterRemoteCache();
+    TrustedArtworkTerminalFallbackIsStable();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();
     return EXIT_SUCCESS;

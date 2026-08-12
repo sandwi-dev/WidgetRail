@@ -100,6 +100,75 @@ void CheckFrame(
           "color-key boundary contains no opaque antialias fringe pixels");
 }
 
+void CheckPremultipliedFrame(
+    ID2D1Factory* d2d,
+    IWICImagingFactory* wic,
+    const float scale) {
+    constexpr UINT width = 144;
+    constexpr UINT height = 96;
+    ComPtr<IWICBitmap> bitmap;
+    Check(SUCCEEDED(wic->CreateBitmap(
+              width, height, GUID_WICPixelFormat32bppPBGRA,
+              WICBitmapCacheOnLoad, bitmap.ReleaseAndGetAddressOf())),
+          "WIC premultiplied-alpha frame is created");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+              bitmap.Get(), D2D1::RenderTargetProperties(),
+              target.ReleaseAndGetAddressOf())),
+          "Direct2D premultiplied-alpha target is created");
+    ComPtr<ID2D1SolidColorBrush> surface;
+    Check(SUCCEEDED(target->CreateSolidColorBrush(
+              D2D1::ColorF(0x2D / 255.0F, 0x35 / 255.0F, 0x48 / 255.0F, 1.0F),
+              surface.ReleaseAndGetAddressOf())),
+          "premultiplied shell surface brush is created");
+
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
+    target->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale));
+    target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    gba::shell::FillColorKeyRoundedRectangle(
+        target.Get(),
+        D2D1::RoundedRect(D2D1::RectF(8.0F, 8.0F, 88.0F, 56.0F), 12.0F, 12.0F),
+        surface.Get(), gba::shell::OuterChromeBoundary::PremultipliedAlpha);
+    Check(target->GetAntialiasMode() == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+          "premultiplied chrome retains antialiasing");
+    target->SetTransform(D2D1::Matrix3x2F::Identity());
+    Check(SUCCEEDED(target->EndDraw()), "premultiplied frame draw completes");
+
+    WICRect area{0, 0, static_cast<INT>(width), static_cast<INT>(height)};
+    ComPtr<IWICBitmapLock> lock;
+    Check(SUCCEEDED(bitmap->Lock(
+              &area, WICBitmapLockRead, lock.ReleaseAndGetAddressOf())),
+          "premultiplied pixel buffer is readable");
+    UINT stride{};
+    UINT byteCount{};
+    BYTE* bytes{};
+    Check(SUCCEEDED(lock->GetStride(&stride)) &&
+              SUCCEEDED(lock->GetDataPointer(&byteCount, &bytes)) && bytes,
+          "premultiplied pixel bytes are available");
+    const auto alphaAt = [&](const UINT x, const UINT y) {
+        return bytes[y * stride + x * 4U + 3U];
+    };
+    Check(alphaAt(0, 0) == 0,
+          "unused composition client remains genuinely transparent");
+    Check(alphaAt(static_cast<UINT>(48.0F * scale),
+                  static_cast<UINT>(32.0F * scale)) == 255,
+          "authored chrome remains fully opaque");
+    std::size_t transparent{};
+    std::size_t opaque{};
+    std::size_t antialiased{};
+    for (UINT y = 0; y < height; ++y) {
+        for (UINT x = 0; x < width; ++x) {
+            const BYTE alpha = alphaAt(x, y);
+            if (alpha == 0) ++transparent;
+            else if (alpha == 255) ++opaque;
+            else ++antialiased;
+        }
+    }
+    Check(transparent != 0 && opaque != 0 && antialiased != 0,
+          "premultiplied frame retains transparent, authored, and rounded edge pixels");
+}
+
 } // namespace
 
 int main() {
@@ -118,6 +187,8 @@ int main() {
 
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);
+    CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
+    CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);
     gba::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
 
     wic.Reset();

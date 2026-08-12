@@ -10,6 +10,9 @@ param(
     [switch]$PinnedSurfaceTestsOnly,
     [switch]$PinnedPlacementTestsOnly,
     [switch]$ProcessOwnerTestsOnly,
+    [switch]$CompositionTestsOnly,
+    [switch]$WidgetSwitchTestsOnly,
+    [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$WidgetSurfaceTestsOnly
 )
@@ -291,6 +294,175 @@ function Invoke-TextEntryModalTests {
     }
 }
 
+function Invoke-CompositionTests {
+    $placementArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        "/Fo:$placementTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayPlacementTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $placementArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlacementTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayPlacementTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlacementTests failed with exit code $LASTEXITCODE."
+    }
+
+    $targetingArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+        "/Fo:$targetingTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayTargetingTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $targetingArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTargetingTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayTargetingTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTargetingTests failed with exit code $LASTEXITCODE."
+    }
+
+    $transitionArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayTransitionTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayTransition.cpp'),
+        "/Fo:$transitionTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayTransitionTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $transitionArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTransitionTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayTransitionTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTransitionTests failed with exit code $LASTEXITCODE."
+    }
+
+    $chromeArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayChromeTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayChrome.cpp'),
+        "/Fo:$chromeTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayChromeTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    & $cl $chromeArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayChromeTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayChromeTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayChromeTests failed with exit code $LASTEXITCODE."
+    }
+
+    $providerArguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        "/Fo:$accessibilityProviderTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $providerArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProviderTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityProviderTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityProviderTests failed with exit code $LASTEXITCODE."
+    }
+
+    $focusArguments = $common + @(
+        (Join-Path $projectDirectory 'FocusNavigationTests.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
+        "/Fo:$focusTestObjectDirectory\",
+        "/Fe:$outputDirectory\FocusNavigationTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $focusArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "FocusNavigationTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'FocusNavigationTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "FocusNavigationTests failed with exit code $LASTEXITCODE."
+    }
+
+    $hostAccessibilityArguments = $common + @(
+        (Join-Path $projectDirectory 'HostAccessibilityTests.cpp'),
+        (Join-Path $projectDirectory 'HostAccessibility.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
+        "/Fo:$hostAccessibilityTestObjectDirectory\",
+        "/Fe:$outputDirectory\HostAccessibilityTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $hostAccessibilityArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "HostAccessibilityTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'HostAccessibilityTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "HostAccessibilityTests failed with exit code $LASTEXITCODE."
+    }
+
+    $rendererArguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$rendererTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $rendererArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-WidgetSwitchHostTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetSwitchHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$widgetSwitchHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetSwitchHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'gdi32.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSwitchHostTests build failed with exit code $LASTEXITCODE."
+    }
+    $fixture = Join-Path $widgetSwitchFixtureOutput 'WidgetSwitchFixture.exe'
+    if (-not (Test-Path -LiteralPath $fixture)) {
+        throw 'WidgetSwitchFixture.exe is unavailable; run one packaged focused build first.'
+    }
+    & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
+        --installation $outputDirectory `
+        --fixture-worker $fixture
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
+    }
+}
+
 function Invoke-OverlayProcessOwnerTests {
     $arguments = $common + @(
         '/DGBA_OVERLAY_PROCESS_OWNER_TESTING',
@@ -374,6 +546,67 @@ if ($ProcessOwnerTestsOnly) {
         throw 'ProcessOwnerTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-OverlayProcessOwnerTests
+    return
+}
+
+function Invoke-TrustedArtworkTests {
+    $imageArguments = $common + @(
+        (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$imageTestObjectDirectory\",
+        "/Fe:$outputDirectory\RemoteImageCacheTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'd2d1.lib'
+    )
+    & $cl $imageArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "RemoteImageCacheTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'RemoteImageCacheTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "RemoteImageCacheTests failed with exit code $LASTEXITCODE."
+    }
+
+    $rendererArguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$rendererTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $rendererArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+if ($CompositionTestsOnly) {
+    if ($SkipTests) {
+        throw 'CompositionTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-CompositionTests
+    return
+}
+
+if ($TrustedArtworkTestsOnly) {
+    if ($SkipTests) {
+        throw 'TrustedArtworkTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-TrustedArtworkTests
     return
 }
 
@@ -601,6 +834,14 @@ if (-not $SkipPackaging) {
         $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
     Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
         -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
+}
+
+if ($WidgetSwitchTestsOnly) {
+    if ($SkipTests) {
+        throw 'WidgetSwitchTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-WidgetSwitchHostTests
+    return
 }
 
 if (-not $SkipTests) {

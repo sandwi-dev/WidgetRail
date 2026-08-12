@@ -1362,11 +1362,24 @@ struct DeclarativeRenderer::RenderPass final {
         const float opacity,
         const bool focused) {
         if (!target) return;
+        auto presentationState = ImagePresentationState::Pending;
         auto bitmap = owner->GetImageBitmap(
-            target, node, *this, options.artworkWidgetId);
+            target, node, *this, options.artworkWidgetId, presentationState);
         if (!bitmap) {
-            DrawSemanticIcon(node, style, Inset(rect, std::min(rect.width, rect.height) * 0.32F),
-                opacity * 0.65F, L"warning");
+            if (presentationState == ImagePresentationState::TrustedArtworkUnavailable) {
+                // AppTile's no-artwork presentation uses this same closed
+                // semantic glyph. A terminal host resolution failure must not
+                // leave the authored image box blank or change tile geometry.
+                DrawSemanticIcon(
+                    node, style,
+                    Inset(rect, std::min(rect.width, rect.height) * 0.32F),
+                    opacity * 0.75F, L"play");
+            } else if (presentationState == ImagePresentationState::Failed) {
+                DrawSemanticIcon(
+                    node, style,
+                    Inset(rect, std::min(rect.width, rect.height) * 0.32F),
+                    opacity * 0.65F, L"warning");
+            }
             return;
         }
         auto fit = style.imageFit();
@@ -1966,7 +1979,9 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ID2D1RenderTarget* renderTarget,
     const WidgetNode& node,
     RenderPass& pass,
-    const std::wstring_view artworkWidgetId) {
+    const std::wstring_view artworkWidgetId,
+    ImagePresentationState& presentationState) {
+    presentationState = ImagePresentationState::Failed;
     const bool trustedArtwork = !node.artworkHandle.empty() && node.imageSource.empty();
     std::wstring source;
     if (trustedArtwork && !artworkWidgetId.empty()) {
@@ -1998,22 +2013,39 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         }
     }
     if (const auto existing = bitmaps_.find(source); existing != bitmaps_.end())
+    {
+        presentationState = ImagePresentationState::Ready;
         return existing->second;
+    }
     const auto state = imageCache_->GetState(source);
     if (state == RemoteImageState::Missing) {
         const auto request = trustedArtwork
             ? imageCache_->RequestTrustedArtwork(source)
             : imageCache_->Request(source);
-        if (request == RemoteImageRequestResult::InvalidUrl ||
+        if (trustedArtwork &&
+            imageCache_->GetState(source) == RemoteImageState::Failed) {
+            // A synchronous transport refusal or another node already known
+            // to share this terminal handle uses the cache-owned fallback.
+            presentationState = ImagePresentationState::TrustedArtworkUnavailable;
+        } else if (request == RemoteImageRequestResult::InvalidUrl ||
             request == RemoteImageRequestResult::CapacityExceeded ||
             request == RemoteImageRequestResult::ShuttingDown) {
             pass.Add(node.id, L"image_request", L"Remote image request was rejected by cache policy.");
+        } else {
+            presentationState = ImagePresentationState::Pending;
         }
         return {};
     }
-    if (state == RemoteImageState::Queued || state == RemoteImageState::Loading) return {};
+    if (state == RemoteImageState::Queued || state == RemoteImageState::Loading) {
+        presentationState = ImagePresentationState::Pending;
+        return {};
+    }
     if (state == RemoteImageState::Failed) {
-        pass.Add(node.id, L"image_failed", imageCache_->GetError(source));
+        if (trustedArtwork) {
+            presentationState = ImagePresentationState::TrustedArtworkUnavailable;
+        } else {
+            pass.Add(node.id, L"image_failed", imageCache_->GetError(source));
+        }
         return {};
     }
     ComPtr<ID2D1Bitmap> bitmap;
@@ -2023,6 +2055,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         pass.Add(node.id, L"image_bitmap", L"Ready image could not create a render-target bitmap.");
         return {};
     }
+    presentationState = ImagePresentationState::Ready;
     if (bitmaps_.size() >= kMaximumBitmapEntries) bitmaps_.clear();
     bitmaps_.emplace(source, bitmap);
     return bitmap;

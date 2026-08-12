@@ -94,6 +94,37 @@ int main() {
               gba::CompositionGeometryPlan{540, 620, false, false},
           "same-size repaint does not schedule HWND geometry work");
 
+    constexpr auto growStart = gba::PlanCompositionMotion(
+        540, 620, 980, 700, 540.0F, 620.0F);
+    Check(growStart.containerWidth == 980 && growStart.containerHeight == 700 &&
+              growStart.scaleX > 0.55F && growStart.scaleX < 0.56F &&
+              growStart.offsetX == 220.0F && growStart.offsetY == 40.0F &&
+              !growStart.retainsTransparentContainer,
+          "growth starts centered in the final transparent client without a later resize");
+    constexpr auto shrinkStart = gba::PlanCompositionMotion(
+        980, 700, 540, 620, 980.0F, 700.0F);
+    Check(shrinkStart.containerWidth == 980 && shrinkStart.containerHeight == 700 &&
+              shrinkStart.scaleX > 1.81F && shrinkStart.scaleX < 1.82F &&
+              shrinkStart.offsetX == 0.0F && shrinkStart.offsetY == 0.0F &&
+              shrinkStart.retainsTransparentContainer,
+          "shrink retains source-sized transparent container without per-tick HWND work");
+    constexpr auto shrinkEnd = gba::PlanCompositionMotion(
+        980, 700, 540, 620, 540.0F, 620.0F);
+    Check(shrinkEnd.scaleX == 1.0F && shrinkEnd.scaleY == 1.0F &&
+              shrinkEnd.offsetX == 220.0F && shrinkEnd.offsetY == 40.0F,
+          "destination reaches identity scale while remaining centered in the union client");
+    constexpr auto fixedContainer = gba::PlanCompositionMotion(
+        1180, 700, 540, 620, 540.0F, 620.0F);
+    Check(fixedContainer.containerWidth == 1180 &&
+              fixedContainer.containerHeight == 700 &&
+              fixedContainer.offsetX == 320.0F &&
+              fixedContainer.offsetY == 40.0F &&
+              fixedContainer.retainsTransparentContainer,
+          "fixed shell container centers settled content and retains transparent unused client");
+    Check(gba::PlanCompositionMotion(0, 700, 540, 620, 540.0F, 620.0F) ==
+              gba::CompositionMotionPlan{},
+          "invalid source geometry cannot start compositor motion");
+
     Check(gba::ResolveWidgetExtentAuthority(true, true) ==
               gba::WidgetExtentAuthority::AdmittedSnapshot,
           "admitted snapshot owns extent even when a prior surface exists");

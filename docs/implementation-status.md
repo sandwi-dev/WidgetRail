@@ -2848,6 +2848,28 @@ with C++ installed:
   implementation. This is scoped dirty-worktree evidence, not a canonical
   aggregate or a substitute for the user's next packaged visual check.
 
+- DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
+  The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
+  the existing Windows-10-compatible DirectComposition owner clears its
+  premultiplied surface to alpha zero, paints only authored panel/tray pixels,
+  and uses one effect-group opacity owner while the separate backdrop remains
+  the sole dimming layer. A complete detached destination surface is committed
+  before a bounded 140 ms visual transform; motion ticks commit only transform
+  state with no `WaitForCommitCompletion`, surface redraw, sleep, or HWND
+  resize. Pointer hit testing and UI Automation bounds share that presented
+  transform, and unused client pixels return `HTTRANSPARENT`. The existing
+  color-key HWND renderer remains the one explicit fallback and is enabled only
+  after the composition owner is reset. Focused Release evidence passes the
+  native host build, Placement 108547, Targeting 64, Transition 56, Chrome 45,
+  Accessibility Provider 152, Focus Navigation 49, Host Accessibility 34, and
+  Declarative Renderer 4777 checks. The production-host temporal matrix passed
+  Audio Mixer, Game Launcher, Now Playing, Games & Apps, Network Controls,
+  YT Music, Spotify, and Settings with eight complete destination samples:
+  draw max 2681 us, surface commit max 1491 us, fixed-container placement max
+  1641 us, and nonblocking visual commit max 68 us. No aggregate, capture,
+  screenshot, delay, public protocol change, or second renderer was used;
+  packaged visual confirmation remains the planner/user gate.
+
 - DLV-104 gives Game Launcher one explicit vertical-layout contract without
   increasing its preferred surface. Header, source status, query controls, and
   footer actions are fixed chrome; `game-launcher.library.scroll` alone owns
@@ -2863,6 +2885,23 @@ with C++ installed:
   `gbar pack` path also produced the unchanged Game Launcher 0.6.0 package (10
   files, 803,117 bytes). No native layout semantics, preferred-height increase,
   provider behavior, or screenshot acceptance was introduced.
+
+- DLV-102 gives trusted app artwork an explicit bounded terminal-unavailable
+  state in the existing native image cache. One bridge result moves every
+  matching widget/handle entry once, posts one invalidation, and emits one
+  sanitized `widget`/opaque-`handle` transition diagnostic; later paints,
+  focus changes, and same-snapshot republishes do not report `image_failed`.
+  Shared Image/AppTile rendering keeps pending artwork neutral, uses the same
+  closed Play glyph as the authored no-artwork tile when resolution is
+  terminal, and preserves the tile's layout, focus, hit-test, action, and UIA
+  geometry. A new opaque revision evicts the prior node revision and supplied
+  pixels replace the fallback; stale results cannot do so. Focused Release
+  evidence passes RemoteImageCache and DeclarativeRenderer (4,839 checks),
+  including production-shaped Game Launcher and Games & Apps available,
+  pending, unavailable, repaint, republish, stale-result, recovery, raster,
+  semantics, and cache-bound cases, plus the OverlayHost Release build. No
+  provider discovery, public protocol, compositor, screenshot, live Steam, or
+  aggregate verification was used.
 
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`

@@ -165,5 +165,91 @@ int main() {
     }
     assert(artworkCache.GetState(newRevision) == RemoteImageState::Ready);
     artworkCache.Shutdown();
+
+    std::vector<std::pair<std::wstring, RemoteImageState>> artworkTransitions;
+    RemoteImageLimits failureLimits;
+    failureLimits.maximumEntries = 2;
+    failureLimits.maximumDecodedBytes = 8;
+    std::mutex failureMutex;
+    std::condition_variable failureCompleted;
+    RemoteImageCache failureCache(
+        failureLimits,
+        [&](const std::wstring_view key, const RemoteImageState state) {
+            {
+                std::scoped_lock lock(failureMutex);
+                artworkTransitions.emplace_back(key, state);
+            }
+            failureCompleted.notify_all();
+        },
+        [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+            RemoteDecodedImage image;
+            image.width = 1;
+            image.height = 1;
+            image.stride = 4;
+            image.premultipliedBgra = {0xA0, 0x20, 0x10, 0xFF};
+            image.mimeType = L"image/png";
+            return RemoteImageFetchResult{S_OK, std::move(image), {}};
+        },
+        [](std::wstring_view) { return true; });
+    const auto failedRevision =
+        L"gbar-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
+        L"library.art.11111111111111111111111111111111";
+    const auto recoveredRevision =
+        L"gbar-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
+        L"library.art.22222222222222222222222222222222";
+    assert(failureCache.RequestTrustedArtwork(failedRevision) ==
+           RemoteImageRequestResult::Queued);
+    assert(failureCache.GetState(failedRevision) == RemoteImageState::Loading);
+    assert(failureCache.FailTrustedArtwork(
+        L"game-launcher", L"library.art.11111111111111111111111111111111"));
+    assert(failureCache.GetState(failedRevision) == RemoteImageState::Failed);
+    assert(!failureCache.FailTrustedArtwork(
+        L"game-launcher", L"library.art.11111111111111111111111111111111"));
+    assert(!failureCache.SupplyTrustedArtwork(
+        L"game-launcher", L"library.art.11111111111111111111111111111111", L"AAAA"));
+    const auto sharedFailedRevision =
+        L"gbar-artwork\x1fgame-launcher\x1fsecond-tile.artwork\x1f"
+        L"library.art.11111111111111111111111111111111";
+    assert(failureCache.RequestTrustedArtwork(sharedFailedRevision) ==
+           RemoteImageRequestResult::AlreadyTracked);
+    assert(failureCache.GetState(sharedFailedRevision) == RemoteImageState::Failed);
+    {
+        std::scoped_lock lock(failureMutex);
+        assert(artworkTransitions.size() == 1);
+        assert(artworkTransitions.front().first == failedRevision);
+        assert(artworkTransitions.front().second == RemoteImageState::Failed);
+    }
+
+    assert(failureCache.RequestTrustedArtwork(recoveredRevision) ==
+           RemoteImageRequestResult::Queued);
+    assert(failureCache.GetState(failedRevision) == RemoteImageState::Missing);
+    assert(!failureCache.SupplyTrustedArtwork(
+        L"game-launcher", L"library.art.11111111111111111111111111111111", L"AAAA"));
+    assert(failureCache.SupplyTrustedArtwork(
+        L"game-launcher", L"library.art.22222222222222222222222222222222", L"AAAA"));
+    {
+        std::unique_lock lock(failureMutex);
+        assert(failureCompleted.wait_for(lock, std::chrono::seconds(2), [&] {
+            return artworkTransitions.size() == 2;
+        }));
+        assert(artworkTransitions.back().first == recoveredRevision);
+        assert(artworkTransitions.back().second == RemoteImageState::Ready);
+    }
+    assert(failureCache.GetState(recoveredRevision) == RemoteImageState::Ready);
+
+    failureCache.Clear();
+    assert(failureCache.GetState(recoveredRevision) == RemoteImageState::Missing);
+    assert(failureCache.RequestTrustedArtwork(failedRevision) ==
+           RemoteImageRequestResult::Queued);
+    assert(failureCache.FailTrustedArtwork(
+        L"game-launcher", L"library.art.11111111111111111111111111111111"));
+    {
+        std::scoped_lock lock(failureMutex);
+        assert(artworkTransitions.size() == 3);
+        assert(artworkTransitions.back().first == failedRevision);
+        assert(artworkTransitions.back().second == RemoteImageState::Failed);
+    }
+    assert(failureCache.GetStats().entries <= failureLimits.maximumEntries);
+    failureCache.Shutdown();
     std::cout << "RemoteImageCacheTests passed\n";
 }

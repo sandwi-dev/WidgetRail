@@ -284,8 +284,23 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
                 iterator = entries_.erase(iterator);
             } else ++iterator;
         }
+        const auto widgetEnd = key.find(L'\x1f', prefix.size());
+        const auto handleSuffix = key.substr(handleSeparator);
+        const bool handleIsTerminal = std::any_of(
+            entries_.begin(), entries_.end(), [&](const auto& item) {
+                return widgetEnd != std::wstring::npos &&
+                    item.first.starts_with(key.substr(0, widgetEnd + 1)) &&
+                    item.first.ends_with(handleSuffix) &&
+                    item.second.state == RemoteImageState::Failed;
+            });
         while (entries_.size() >= limits_.maximumEntries) {
             if (!EvictOneLocked(key)) return RemoteImageRequestResult::CapacityExceeded;
+        }
+        if (handleIsTerminal) {
+            entries_.emplace(key, Entry{
+                RemoteImageState::Failed, {}, L"Trusted artwork is unavailable.", {},
+                ++useCounter_});
+            return RemoteImageRequestResult::AlreadyTracked;
         }
         entries_.emplace(key, Entry{
             RemoteImageState::Loading, {}, {}, {}, ++useCounter_});
@@ -328,6 +343,7 @@ bool RemoteImageCache::FailTrustedArtwork(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle) {
     CompletionCallback completion;
+    std::wstring transitionKey;
     {
         std::scoped_lock lock(mutex_);
         if (shuttingDown_) return false;
@@ -339,13 +355,17 @@ bool RemoteImageCache::FailTrustedArtwork(
                 entry.state != RemoteImageState::Loading) continue;
             entry.state = RemoteImageState::Failed;
             entry.error = L"Trusted artwork is unavailable.";
+            if (transitionKey.empty()) transitionKey = key;
             failed = true;
         }
         if (!failed) return false;
         completion = completion_;
     }
     if (completion) {
-        try { completion(artworkHandle, RemoteImageState::Failed); }
+        // One result event may cover repeated nodes that share the same opaque
+        // handle. Publish one state transition, not one callback per cache key;
+        // repeated failures are already rejected by the Loading-state guard.
+        try { completion(transitionKey, RemoteImageState::Failed); }
         catch (...) { }
     }
     return true;

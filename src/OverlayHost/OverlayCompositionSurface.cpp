@@ -4,6 +4,7 @@
 #include <dxgi1_2.h>
 
 #include <chrono>
+#include <cmath>
 
 using Microsoft::WRL::ComPtr;
 
@@ -55,6 +56,10 @@ bool OverlayCompositionSurface::Initialize(
     if (SUCCEEDED(result)) {
         result = device_->CreateVisual(visual_.ReleaseAndGetAddressOf());
     }
+    if (SUCCEEDED(result)) {
+        result = device_->CreateEffectGroup(effect_.ReleaseAndGetAddressOf());
+    }
+    if (SUCCEEDED(result)) result = visual_->SetEffect(effect_.Get());
     if (SUCCEEDED(result)) result = target_->SetRoot(visual_.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) result = device_->WaitForCommitCompletion();
@@ -73,6 +78,7 @@ void OverlayCompositionSurface::Reset() noexcept {
         (void)device_->Commit();
     }
     surface_.Reset();
+    effect_.Reset();
     visual_.Reset();
     target_.Reset();
     device_.Reset();
@@ -118,13 +124,15 @@ HRESULT OverlayCompositionSurface::EndFrame(Frame& frame) noexcept {
 }
 
 HRESULT OverlayCompositionSurface::CommitFrame(
-    Frame& frame, const bool waitForCompletion, CommitTiming& timing) noexcept {
+    Frame& frame, const bool waitForCompletion, CommitTiming& timing,
+    const VisualPresentation* presentation) noexcept {
     timing = {};
     if (!device_ || frame.drawing || !frame.surface) return E_UNEXPECTED;
 
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = S_OK;
     if (frame.replacement) result = visual_->SetContent(frame.surface.Get());
+    if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result) && waitForCompletion) {
         result = device_->WaitForCommitCompletion();
@@ -139,6 +147,58 @@ HRESULT OverlayCompositionSurface::CommitFrame(
         height_ = frame.height;
     }
     frame = {};
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::ApplyPresentation(
+    const VisualPresentation& presentation) noexcept {
+    if (!visual_ || !std::isfinite(presentation.scaleX) ||
+        !std::isfinite(presentation.scaleY) ||
+        !std::isfinite(presentation.offsetX) ||
+        !std::isfinite(presentation.offsetY) ||
+        !std::isfinite(presentation.clipWidth) ||
+        !std::isfinite(presentation.clipHeight) ||
+        presentation.scaleX <= 0.0F || presentation.scaleY <= 0.0F ||
+        presentation.clipWidth <= 0.0F || presentation.clipHeight <= 0.0F) {
+        return E_INVALIDARG;
+    }
+    const D2D_MATRIX_3X2_F transform{
+        presentation.scaleX, 0.0F,
+        0.0F, presentation.scaleY,
+        presentation.offsetX, presentation.offsetY,
+    };
+    const D2D_RECT_F clip{
+        0.0F, 0.0F, presentation.clipWidth, presentation.clipHeight,
+    };
+    HRESULT result = visual_->SetTransform(transform);
+    if (SUCCEEDED(result)) result = visual_->SetClip(clip);
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitPresentation(
+    const VisualPresentation& presentation, CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !surface_) return E_UNEXPECTED;
+    const auto started = std::chrono::steady_clock::now();
+    HRESULT result = ApplyPresentation(presentation);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitOpacity(
+    const float opacity, CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !effect_ || !std::isfinite(opacity) ||
+        opacity < 0.0F || opacity > 1.0F) return E_INVALIDARG;
+    const auto started = std::chrono::steady_clock::now();
+    HRESULT result = effect_->SetOpacity(opacity);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
     return result;
 }
 
