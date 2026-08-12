@@ -2881,6 +2881,19 @@ with C++ installed:
   implementation. This is scoped dirty-worktree evidence, not a canonical
   aggregate or a substitute for the user's next packaged visual check.
 
+- DLV-119 traces the accepted-Release **Media sessions could not be loaded**
+  recurrence to the widget's untyped exception fallback: the host recorded
+  current Now Playing snapshots but no transition-only broker/provider
+  diagnostic, so provider authority and transport protocol remain unchanged.
+  Now Playing projects a bounded `snapshot-read`, `subscription-open`, or
+  `subscription-read` stage plus a sanitized typed code, including safe
+  `request_timeout`, `request_canceled`, and `unexpected_failure` fallbacks.
+  Retry still owns one fresh Active generation; transient failure preserves
+  last-good rows and controls, and exception messages, paths, response bodies,
+  player identity, and process details remain excluded. Focused Release evidence
+  passes Now Playing 23/23, Widget SDK 88/88, Windows Media 13/13 (including one
+  sanitized live GSMTC probe), and the documentation contract across 59 files.
+
 - DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
   The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
   the existing Windows-10-compatible DirectComposition owner clears its
