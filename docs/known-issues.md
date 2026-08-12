@@ -302,8 +302,9 @@ geometry commits over roughly 100-150 ms, with populated Game Launcher draws
 around 49-63 ms. The recording timestamp itself has no typed transition line,
 which remains an observability gap; the video proves the visual defect and the
 nearby same-session transitions prove the cadence pattern. GBA-004 is Open and
-DLV-107 owns one bounded alpha-and-motion correction after committed DLV-105.
-The integrated prototype remains evidence and must not be hidden with per-
+DLV-107 owns one bounded alpha-and-motion correction after already-active
+DLV-106 reaches a clean boundary. The integrated prototype remains evidence
+and must not be hidden with per-
 widget masks, opaque backdrop growth, delays, or a second permanent renderer.
 
 **Acceptance:**

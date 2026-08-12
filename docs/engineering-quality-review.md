@@ -30,10 +30,11 @@ several waited composition/geometry commits over about 100-150 ms, and populated
 Game Launcher frames take roughly 49-63 ms to draw. The recording timestamp has
 no typed transition event, so exact frame correlation remains an observability
 gap rather than an inferred error code. Provisional acceptance is revoked;
-GBA-004 is Open and DLV-107 follows committed DLV-105. The correction must own
-one alpha model and one nonblocking composition motion policy, retaining the
-good complete-destination ordering without per-widget masks, delayed concealment,
-per-tick blocking HWND resize, or a second permanent renderer.
+GBA-004 is Open and DLV-107 follows already-active DLV-106 at its next clean
+boundary. The correction must own one alpha model and one nonblocking
+composition motion policy, retaining the good complete-destination ordering
+without per-widget masks, delayed concealment, per-tick blocking HWND resize,
+or a second permanent renderer.
 
 ### Current review delta — Game Launcher `TextEntry` regression
 

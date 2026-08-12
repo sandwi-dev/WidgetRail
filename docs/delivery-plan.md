@@ -469,18 +469,18 @@ or DLV-025 leaves tray geometry without one stable committed width.
 
 ### DLV-107 — Restore transparent composition and professional widget motion
 
-**State:** Ready immediately after accepted DLV-105
-**Baseline:** accepted DLV-105 platform boundary plus the planner commit that
-records DLV-025's live rejection
+**State:** Ready immediately after already-active DLV-106
+**Baseline:** accepted DLV-105 and DLV-106 platform boundary plus the planner
+commit that records DLV-025's live rejection
 **Dependencies:** integrated DLV-025 surface owner, HWND/backdrop transparency,
 extent-transition scheduler, renderer clear semantics, placement diagnostics,
 retained-content ordering, and reduced-motion policy
 **Owner:** platform lane; native DirectComposition alpha/transparency contract,
 widget-extent motion/commit cadence, HWND geometry coordination, transition
 diagnostics, and directly affected native documentation
-**Concurrency:** Begins after DLV-105 reaches a clean accepted boundary. Do not
-change managed widget trees, preferred extents, tray overflow semantics, public
-widget APIs, worker lifecycle, or capture tooling.
+**Concurrency:** Begins after already-active DLV-106 reaches a clean committed
+boundary. Do not change managed widget trees, preferred extents, tray overflow
+semantics, public widget APIs, worker lifecycle, or capture tooling.
 
 **Visible outcome:** The overlay has no opaque black perimeter or unused-client
 rectangle, and cycling between different-size widgets is smooth and deliberate
@@ -554,11 +554,10 @@ shipping abrupt motion.
 
 ### DLV-106 — Keep tray cycling out of outgoing widget focus
 
-**State:** Conditional Ready after DLV-107; execute only if the corrected
-packaged path still reproduces, otherwise report passing evidence and continue
-directly to DLV-102 without task-specific edits
-**Baseline:** accepted DLV-107 platform boundary
-**Dependencies:** corrected composition/transition semantics, OverlayState tray
+**State:** Assigned; conditional gate reproduced and implementation started
+after DLV-105 commit `42bcf9c` before the DLV-107 planner correction arrived
+**Baseline:** DLV-105 platform boundary pending independent review
+**Dependencies:** integrated DLV-025 presentation semantics, OverlayState tray
 focus region, controller/keyboard routing, retained-content transition path,
 declarative focus state, and accessibility publication
 **Owner:** platform lane; native input authority and focus-state commit ordering
@@ -613,7 +612,7 @@ cannot be made atomic within the accepted single-owner compositor design.
 
 ### DLV-102 — Fall back cleanly when trusted app artwork is unavailable
 
-**State:** Ready after DLV-107 and the conditional DLV-106 gate
+**State:** Ready after DLV-107
 **Baseline:** accepted DLV-107 platform boundary plus integrated DLV-100 main
 **Dependencies:** accepted DLV-094/096/098/099 lazy-artwork ownership and the
 existing trusted-artwork cache/renderer contract
@@ -677,12 +676,12 @@ contract change, failure identity is not available without crossing provider
 authority, or the change would add unbounded host state. Preserve evidence for
 a serialized contract assignment rather than adding widget-specific behavior.
 
-**Queue note:** Finish and review DLV-105 first because its coherent tray work
-is already committed. DLV-107 is then mandatory because live packaged evidence
-rejects DLV-025's transparency and motion result. DLV-106 closes or disproves
-the exact tray-focus regression on that corrected path, followed by DLV-102.
-DLV-033 is dependency-blocked and internal; DLV-062 remains blocked by its
-material resource gate.
+**Queue note:** DLV-106 crossed its clean boundary and became active before the
+DLV-107 planner correction arrived, so finish it without interruption while the
+planner reviews committed DLV-105. DLV-107 is mandatory next because live
+packaged evidence rejects DLV-025's transparency and motion result. DLV-102
+follows DLV-107. DLV-033 is dependency-blocked and internal; DLV-062 remains
+blocked by its material resource gate.
 
 ## Integration queue
 
@@ -735,7 +734,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
-| DLV-025 / correction DLV-107 | `16f9f47` rejected by live verification | `5b8556a` retained as correction baseline | PID 25164 proved complete-surface ordering alone is insufficient: the composed client has an opaque black perimeter and transition cadence is visibly poor. DLV-107 is next after DLV-105. |
+| DLV-025 / correction DLV-107 | `16f9f47` rejected by live verification | `5b8556a` retained as correction baseline | PID 25164 proved complete-surface ordering alone is insufficient: the composed client has an opaque black perimeter and transition cadence is visibly poor. DLV-107 follows already-active DLV-106. |
 | DLV-100 | `760a9bb` | `54fbd12` | Game Launcher and protected Network Controls TextEntry snapshots pass the canonical bridge style route; the packaged Release is running for live confirmation. |
 | DLV-094/096/098/099 | `fb7fa34` contiguous widgets prefix | `c6d76a3` | Steam artwork is demand-only, stale-safe, generation-coupled, and fully drained before provider disposal. |
 | DLV-095/097 | corrected running-app prefix through `46d1938` | `c6d76a3` | Games & Apps and Game Launcher add a validated current running app through opaque trusted authority. |
