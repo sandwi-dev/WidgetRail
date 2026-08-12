@@ -84,6 +84,31 @@ public sealed record PlatformWidgetLocalDataClearResult(
     PlatformWidgetLocalDataClearStatus Status,
     string Code);
 
+public sealed record PlatformWidgetPackageUninstallInspection(
+    string WidgetId,
+    string DisplayName,
+    string PublisherId,
+    string ActiveVersion,
+    int VersionCount,
+    bool CanUninstall,
+    string StatusCode,
+    string? ConfirmationToken);
+
+public enum PlatformWidgetPackageUninstallStatus
+{
+    Uninstalled,
+    CleanupPending,
+    Stale,
+    Resident,
+    RecoveryPending,
+    Unavailable,
+    Refused,
+}
+
+public sealed record PlatformWidgetPackageUninstallResult(
+    PlatformWidgetPackageUninstallStatus Status,
+    string Code);
+
 public sealed record PlatformDiagnosticsSnapshot(
     int SchemaVersion,
     long Revision,
@@ -167,6 +192,22 @@ public interface IPlatformDiagnosticsService
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
             PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported"));
+
+    ValueTask<PlatformWidgetPackageUninstallInspection> InspectWidgetPackageUninstallAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new PlatformWidgetPackageUninstallInspection(
+            widgetId, widgetId, string.Empty, string.Empty, 0, false,
+            "inspection_unsupported", null));
+
+    ValueTask<PlatformWidgetPackageUninstallResult> UninstallWidgetPackageAsync(
+        string widgetId,
+        string publisherId,
+        string activeVersion,
+        string confirmationToken,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new PlatformWidgetPackageUninstallResult(
+            PlatformWidgetPackageUninstallStatus.Refused, "uninstall_unsupported"));
 }
 
 public sealed class UnavailablePlatformDiagnosticsService : IPlatformDiagnosticsService

@@ -40,6 +40,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
     ("Local widget installation is an exact host-owned disabled-review action", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
+    ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
     ("Built-in widgets remain visible and read-only without community packages", BuiltInWidgetInventory),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
@@ -919,6 +920,96 @@ static async Task InstalledWidgetLocalDataClear()
     Assert.True(service.NeighborExists, "Clearing the selected widget changed its neighbor.");
 }
 
+static async Task InstalledWidgetPackageUninstall()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    const string selectedId = "dev.test.uninstall";
+    WriteInstalledWidget(catalogRoot, selectedId, "dev.publisher.uninstall",
+        "Remove me", [], [], version: "1.0.0");
+    WriteInstalledWidget(catalogRoot, selectedId, "dev.publisher.uninstall",
+        "Remove me", [], [], version: "2.0.0");
+    WriteInstalledWidget(catalogRoot, "dev.test.neighbor", "dev.publisher.neighbor",
+        "Neighbor", [], []);
+    var privateState = Path.Combine(temp.Path, "private-state.json");
+    await File.WriteAllTextAsync(privateState, "retained");
+    var catalog = new WidgetCatalog(catalogRoot);
+    var service = new PackageUninstallDiagnosticsService(catalog, privateState);
+    var widget = CreateWithPermissions(
+        temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")),
+        diagnostics: service);
+
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    var selectedIndex = (await catalog.DiscoverAsync()).Widgets
+        .Select((item, index) => (item, index))
+        .Single(item => item.item.Id == selectedId).index;
+    await Action(widget, $"installed.select.{selectedIndex}");
+    var details = Snapshot(widget);
+    Assert.Equal("Uninstall widget",
+        Button(details.Root, SettingsInstalledWidgetUninstallPolicy.FocusId).Text);
+    Assert.True(!JsonSerializer.Serialize(details).Contains(service.LastToken!,
+        StringComparison.Ordinal), "Opaque uninstall token escaped through the snapshot.");
+
+    await Action(widget, "installed.uninstall.open");
+    var confirmation = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetUninstall, widget.CurrentPage);
+    Assert.Equal("installed.uninstall.cancel", confirmation.InitialFocusId);
+    Assert.Contains(selectedId, Text(confirmation.Root, "installed.uninstall.id").Text!);
+    Assert.Contains("installed versions: 2",
+        Text(confirmation.Root, "installed.uninstall.version").Text!);
+    Assert.Contains("preserves widget-private local data",
+        Text(confirmation.Root, "installed.uninstall.help").Text!);
+    Assert.True(!JsonSerializer.Serialize(confirmation).Contains(service.LastToken!,
+        StringComparison.Ordinal), "Confirmation rendered the uninstall token.");
+
+    await Action(widget, "back");
+    var cancelled = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    Assert.Equal(SettingsInstalledWidgetUninstallPolicy.FocusId, cancelled.InitialFocusId);
+    Assert.Equal(0, service.UninstallCount);
+
+    await Action(widget, "installed.uninstall.open");
+    WriteInstalledWidget(catalogRoot, selectedId, "dev.publisher.uninstall",
+        "Remove me", [], [], version: "3.0.0");
+    await Action(widget, "installed.uninstall.confirm");
+    var stale = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    Assert.Contains("changed; review and confirm again",
+        Text(stale.Root, "settings.status").Text!);
+    Assert.Equal(0, service.UninstallCount);
+    Assert.Equal(3, (await catalog.DiscoverAsync()).Widgets
+        .Single(item => item.Id == selectedId).Versions.Count);
+
+    await Action(widget, "refresh");
+    await Action(widget, "installed.uninstall.open");
+    await Action(widget, "installed.uninstall.confirm");
+    var list = Snapshot(widget);
+    Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
+    Assert.Equal(1, service.UninstallCount);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.All(item => item.Id != selectedId),
+        "Confirmed uninstall retained the selected package.");
+    Assert.True((await catalog.DiscoverAsync()).Widgets.Any(item => item.Id == "dev.test.neighbor"),
+        "Confirmed uninstall changed the neighbor package.");
+    Assert.Equal("retained", await File.ReadAllTextAsync(privateState));
+    Assert.Equal(1, Buttons(list.Root).Count(item =>
+        item.ActionId == "host.install-local-widget"));
+    Assert.Contains("package cleanup is pending", Text(list.Root, "settings.status").Text!);
+
+    await Action(widget, "installed.select.0");
+    await Action(widget, "installed.toggle");
+    var enabled = Snapshot(widget);
+    Assert.True(!Buttons(enabled.Root).Any(item =>
+        item.ActionId == "installed.uninstall.open"),
+        "Enabled Community package exposed uninstall.");
+    Assert.Valid(details);
+    Assert.Valid(confirmation);
+    Assert.Valid(cancelled);
+    Assert.Valid(stale);
+    Assert.Valid(list);
+    Assert.Valid(enabled);
+}
+
 static async Task BuiltInWidgetInventory()
 {
     using var temp = new TemporaryDirectory();
@@ -972,7 +1063,8 @@ static async Task BuiltInWidgetInventory()
     Assert.Contains("cannot be disabled or version-managed",
         Text(details.Root, "installed.details.status").Text!);
     Assert.True(!Buttons(details.Root).Any(button =>
-        button.ActionId is "installed.toggle" or "installed.versions.open"),
+        button.ActionId is "installed.toggle" or "installed.versions.open" or
+            "installed.uninstall.open"),
         "Built-in details exposed a package-management action.");
 
     await Action(widget, "installed.toggle");
@@ -2195,6 +2287,46 @@ file sealed class LocalDataDiagnosticsService(string selectedId) : IPlatformDiag
         _selectedExists = false;
         return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
             PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
+    }
+}
+
+file sealed class PackageUninstallDiagnosticsService(
+    WidgetCatalog catalog,
+    string privateStatePath) : IPlatformDiagnosticsService
+{
+    public int UninstallCount { get; private set; }
+    public string? LastToken { get; private set; }
+
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
+
+    public async ValueTask<PlatformWidgetPackageUninstallInspection>
+        InspectWidgetPackageUninstallAsync(
+            string widgetId,
+            CancellationToken cancellationToken = default)
+    {
+        var item = await catalog.InspectUninstallAsync(widgetId, cancellationToken);
+        LastToken = item.ConfirmationToken;
+        return new(item.Id, item.Name, item.PublisherId, item.ActiveVersion.ToString(),
+            item.VersionCount, !item.Enabled, item.Enabled ? "widget_enabled" : "ready",
+            item.Enabled ? null : item.ConfirmationToken);
+    }
+
+    public async ValueTask<PlatformWidgetPackageUninstallResult> UninstallWidgetPackageAsync(
+        string widgetId,
+        string publisherId,
+        string activeVersion,
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        UninstallCount++;
+        var result = await catalog.UninstallConfirmedAsync(
+            widgetId, publisherId, Version.Parse(activeVersion), confirmationToken,
+            cancellationToken);
+        Assert.True(File.Exists(privateStatePath), "Package uninstall removed private state.");
+        return new(PlatformWidgetPackageUninstallStatus.CleanupPending,
+            "cleanup_pending");
     }
 }
 

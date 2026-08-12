@@ -3062,6 +3062,32 @@ partial target. Focused Release evidence exercises all four external-directory
 journeys through build, one discoverable test, isolated preview, validation,
 and repeated byte-identical package creation.
 
+### Disabled Community package uninstall (DLV-123)
+
+Settings Installed widgets now exposes **Uninstall widget** only for a current
+disabled Community identity. The nested confirmation starts on Cancel, returns
+focus to the uninstall row, displays the bounded package identity without its
+opaque token, and explains that package versions are removed while local data,
+credentials, provider data, themes, settings, and user files are retained.
+Built-in and enabled packages expose no uninstall action; **Clear local data**
+remains a separate confirmation. Success refreshes the installed list and keeps
+exactly one **Install local widget** action available. Stale, resident, pending-
+cleanup, recovery-pending, unavailable, and refused outcomes remain bounded and
+retryable without exposing paths.
+
+Responsibility remains singular across the changed boundary:
+
+| Concern | Before | After |
+| --- | --- | --- |
+| Installed-widget selection and presentation | `SettingsInstalledWidgetPolicy` owned value-only selection/paging; `SettingsInstalledWidgetPresentation` owned details and local-data confirmation. | `SettingsInstalledWidgetUninstallPolicy` owns exact disabled-only admission/cancel/focus policy, and `SettingsInstalledWidgetUninstallOperation` owns the inspect/revalidate/mutate request sequence plus closed result interpretation. The existing presenter owns uninstall details and retention copy; `SettingsWidget` still solely commits page/status state and serializes actions. |
+| Package identity and mutation | `WidgetCatalog.UninstallAsync` owned disabled-only atomic package retirement for CLI callers. | `WidgetCatalog` also issues and revalidates a SHA-256 token over publisher authority, active version, enabled state, and every installed version digest under the same operation lock. No path enters the managed capability. |
+| Worker/channel/catalog lifecycle | The authenticated Settings companion exposed diagnostics, authority recovery, and local-data management; `BridgeCatalogMonitor` published semantic reloads. | `BridgeWidgetPackageUninstallService` is the sole path-free uninstall adapter. It invokes catalog retirement, maps closed outcomes, and forces one catalog revision even when removal concerned an already-disabled package absent from the runtime catalog. Registry and native lifecycle ownership are unchanged. |
+
+Focused Release evidence passes WidgetCatalog 35/35, PlatformDiagnostics 17/17,
+Settings 57/57, and WidgetBridge 83/83. The generic-worker and documentation
+groups plus the required single exact-commit canonical checkpoint are recorded
+with the closing commit evidence.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

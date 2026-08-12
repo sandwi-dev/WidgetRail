@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using GameBarAlternative.WidgetProtocol;
 
@@ -325,6 +327,50 @@ public sealed class WidgetCatalog
         var snapshot = await DiscoverAsync(cancellationToken);
         var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
             ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
+        return await UninstallUnderLockAsync(widget, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<WidgetUninstallInspection> InspectUninstallAsync(
+        string widgetId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        var snapshot = await DiscoverAsync(cancellationToken);
+        var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
+            ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
+        return CreateUninstallInspection(widget);
+    }
+
+    internal async Task<WidgetUninstallResult> UninstallConfirmedAsync(
+        string widgetId,
+        string publisherId,
+        Version activeVersion,
+        string confirmationToken,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(publisherId);
+        ArgumentNullException.ThrowIfNull(activeVersion);
+        ArgumentException.ThrowIfNullOrWhiteSpace(confirmationToken);
+        await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        var snapshot = await DiscoverAsync(cancellationToken);
+        var widget = snapshot.Widgets.SingleOrDefault(candidate => candidate.Id == widgetId)
+            ?? throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
+        var current = CreateUninstallInspection(widget);
+        if (!string.Equals(current.PublisherId, publisherId, StringComparison.Ordinal) ||
+            current.ActiveVersion != activeVersion ||
+            !TryEqualsConfirmationToken(current.ConfirmationToken, confirmationToken))
+            throw new WidgetPackageException(
+                "confirmation_stale", "The installed widget identity changed before uninstall.");
+        return await UninstallUnderLockAsync(widget, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WidgetUninstallResult> UninstallUnderLockAsync(
+        CatalogWidget widget,
+        CancellationToken cancellationToken)
+    {
+        var widgetId = widget.Id;
         if (widget.Enabled)
             throw new WidgetPackageException(
                 "widget_enabled", $"Widget '{widgetId}' is enabled. Disable it before uninstalling it.");
@@ -385,6 +431,41 @@ public sealed class WidgetCatalog
             widgetId,
             widget.Versions.Select(version => version.Version).OrderDescending().ToArray(),
             cleanupPending);
+    }
+
+    private static WidgetUninstallInspection CreateUninstallInspection(CatalogWidget widget)
+    {
+        var publisherId = InstalledWidgetAuthority.PublisherId(widget.ActiveVersion);
+        var material = new StringBuilder()
+            .Append(widget.Id).Append('\n')
+            .Append(publisherId).Append('\n')
+            .Append(widget.ActiveVersion.Version).Append('\n')
+            .Append(widget.Enabled ? '1' : '0');
+        foreach (var version in widget.Versions.OrderBy(item => item.Version))
+            material.Append('\n').Append(version.Version).Append('\n').Append(version.ContentDigest);
+        var token = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material.ToString())));
+        return new WidgetUninstallInspection(
+            widget.Id,
+            widget.Name,
+            publisherId,
+            widget.ActiveVersion.Version,
+            widget.Versions.Count,
+            widget.Enabled,
+            token);
+    }
+
+    private static bool TryEqualsConfirmationToken(string expected, string actual)
+    {
+        if (expected.Length != actual.Length) return false;
+        try
+        {
+            return CryptographicOperations.FixedTimeEquals(
+                Convert.FromHexString(expected), Convert.FromHexString(actual));
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     private static CatalogState RemoveStateEntry(CatalogState state, string widgetId)

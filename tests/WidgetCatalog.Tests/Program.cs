@@ -257,10 +257,32 @@ static async Task UninstallRemovesAllVersions()
         "Rejected uninstall mutated the package tree.");
 
     await catalog.SetEnabledAsync("dev.test.remove", false);
-    var removed = await catalog.UninstallAsync("dev.test.remove");
+    var inspected = await catalog.InspectUninstallAsync("dev.test.remove");
+    Assert.Equal("dev.test.remove", inspected.Id);
+    Assert.Equal(2, inspected.VersionCount);
+    Assert.True(!inspected.Enabled, "Disabled uninstall inspection was enabled.");
+    Assert.Equal(64, inspected.ConfirmationToken.Length);
+    var forgedPublisher = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        catalog.UninstallConfirmedAsync(
+            inspected.Id, "dev.publisher.forged", inspected.ActiveVersion,
+            inspected.ConfirmationToken));
+    Assert.Equal("confirmation_stale", forgedPublisher.Code);
+    Assert.True(Directory.Exists(Path.Combine(root, "packages", "dev.test.remove")),
+        "Forged publisher uninstall mutated the package tree.");
+    await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.remove", "dev.test", "3.0.0"));
+    var stale = await Assert.ThrowsAsync<WidgetPackageException>(() =>
+        catalog.UninstallConfirmedAsync(
+            inspected.Id, inspected.PublisherId, inspected.ActiveVersion,
+            inspected.ConfirmationToken));
+    Assert.Equal("confirmation_stale", stale.Code);
+    Assert.Equal(3, (await catalog.DiscoverAsync()).Widgets
+        .Single(widget => widget.Id == "dev.test.remove").Versions.Count);
+    var current = await catalog.InspectUninstallAsync("dev.test.remove");
+    var removed = await catalog.UninstallConfirmedAsync(
+        current.Id, current.PublisherId, current.ActiveVersion, current.ConfirmationToken);
     Assert.Equal("dev.test.remove", removed.Id);
     Assert.True(!removed.CleanupPending, "Unlocked package cleanup unexpectedly remained pending.");
-    Assert.SequenceEqual(["2.0.0", "1.0.0"],
+    Assert.SequenceEqual(["3.0.0", "2.0.0", "1.0.0"],
         removed.RemovedVersions.Select(version => version.ToString()));
     Assert.True(!Directory.Exists(Path.Combine(root, "packages", "dev.test.remove")),
         "Uninstall retained immutable package versions.");

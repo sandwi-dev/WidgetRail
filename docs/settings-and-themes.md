@@ -308,6 +308,15 @@ workers. Consent decisions are separate and take effect without a catalog or
 worker restart. See [widget
 capabilities](capabilities.md) for author behavior and the security boundary.
 
+Disabled Community package details also expose **Uninstall widget**. This is a
+separate nested destructive confirmation bound to the exact current publisher
+authority, active version, complete installed-version inventory, and an opaque
+catalog token. Success removes package versions only and returns to the
+installed list with stable access to **Install local widget**. Built-in and
+enabled packages remain protected. Widget-private local data, credentials,
+provider data, themes, settings, and user files are retained; **Clear local
+data** remains a separate explicit choice.
+
 The manifest requests no permissions, budgets 32 MB and 1 Hz, and declares
 `suspend` background policy metadata. Lifecycle-policy enforcement remains a
 separate platform limitation; the widget itself performs no background loop.

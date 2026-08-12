@@ -83,6 +83,15 @@ public sealed record WidgetUninstallResult(
     IReadOnlyList<Version> RemovedVersions,
     bool CleanupPending = false);
 
+internal sealed record WidgetUninstallInspection(
+    string Id,
+    string Name,
+    string PublisherId,
+    Version ActiveVersion,
+    int VersionCount,
+    bool Enabled,
+    string ConfirmationToken);
+
 /// <summary>
 /// A directory-name-only recovery candidate. No manifest or package content
 /// from this version was trusted to create this record.

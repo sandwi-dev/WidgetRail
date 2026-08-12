@@ -182,6 +182,17 @@ revalidates its current catalog identity and private-state revision, clears only
 projects the document to Settings, accepts a path, or affects a neighboring
 package identity.
 
+For a disabled Community package, the same details page exposes **Uninstall
+widget** as a separate nested confirmation. Settings receives only a safe label,
+package ID, publisher authority, active version, version count, and an opaque
+catalog-identity token; it never receives a package path or deletion target.
+The catalog revalidates that exact disabled identity under its operation lock,
+atomically retires every immutable installed version, and publishes one bridge
+catalog revision. Uninstall preserves widget-private local data, credentials,
+provider data, themes, settings, and user files. Use **Clear local data**
+separately when that is also intended. Built-in and enabled packages do not
+expose the uninstall action.
+
 A pin is authoritative. If its exact immutable version directory is absent,
 discovery reports `active_version_missing`; malformed installed content fails
 with its structural catalog diagnostic. Neither case falls forward or backward

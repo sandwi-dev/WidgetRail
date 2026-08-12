@@ -52,6 +52,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Known installed capabilities load lazily and unknown capabilities fail closed", InstalledCapabilityDeclarationsAreClosed),
     ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
     ("Installed worker local data clears after exact retirement and preserves its neighbor", InstalledWorkerLocalDataClearIsExact),
+    ("Disabled package uninstall is exact revisioned and preserves private data", InstalledPackageUninstallIsExact),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
@@ -1660,6 +1661,77 @@ static async Task InstalledWorkerLocalDataClearIsExact()
                                                OperationCanceledException or
                                                ObjectDisposedException) { }
     }
+}
+
+static async Task InstalledPackageUninstallIsExact()
+{
+    using var trusted = TemporaryCatalog.Create();
+    using var temporary = new TemporaryDirectory("gba-bridge-uninstall");
+    var catalogRoot = Path.Combine(temporary.Path, "catalog");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+    var selected = await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.uninstall", enabled: false);
+    await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.uninstall", enabled: false,
+        version: "2.0.0");
+    var neighbor = await InstallWidgetAsync(
+        catalog, temporary.Path, "dev.example.uninstall-neighbor", enabled: false);
+    var privateState = Path.Combine(temporary.Path, "private-state", "selected.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(privateState)!);
+    await File.WriteAllTextAsync(privateState, "retained");
+
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, catalogRoot, Environment.ProcessPath!);
+    await using var monitor = new BridgeCatalogMonitor(
+        trusted.Path, catalogRoot, Environment.ProcessPath!, load.Catalog);
+    await using var server = new WidgetBridgeServer(
+        $"gba-bridge-uninstall-{Guid.NewGuid():N}", load.Catalog, 64 * 1024,
+        catalogMonitor: monitor);
+
+    var inspection = await server.InspectWidgetPackageUninstallAsync(selected.Manifest.Id);
+    Assert.True(inspection.CanUninstall && inspection.ConfirmationToken is not null,
+        "Disabled package did not receive exact uninstall admission.");
+    Assert.Equal(2, inspection.VersionCount);
+    Assert.True(!inspection.ConfirmationToken!.Contains(catalogRoot,
+        StringComparison.OrdinalIgnoreCase), "Confirmation token exposed a path.");
+
+    var forged = await server.UninstallWidgetPackageAsync(
+        inspection.WidgetId, "forged.publisher", inspection.ActiveVersion,
+        inspection.ConfirmationToken);
+    Assert.Equal(PlatformWidgetPackageUninstallStatus.Stale, forged.Status);
+    Assert.True(Directory.Exists(Path.Combine(catalogRoot, "packages", selected.Manifest.Id)),
+        "Forged uninstall mutated package bytes.");
+
+    var revisionBefore = monitor.Revision;
+    var installed = (await catalog.DiscoverAsync()).Widgets
+        .Single(item => item.Id == selected.Manifest.Id).ActiveVersion;
+    using (InstalledPackageLaunchLease.Acquire(catalogRoot, installed))
+    {
+        var resident = await server.UninstallWidgetPackageAsync(
+            inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion,
+            inspection.ConfirmationToken);
+        Assert.Equal(PlatformWidgetPackageUninstallStatus.Resident, resident.Status);
+        Assert.Equal(revisionBefore, monitor.Revision);
+        Assert.True((await catalog.DiscoverAsync()).Widgets.Any(item =>
+            item.Id == selected.Manifest.Id),
+            "Resident refusal removed the selected package.");
+    }
+    var result = await server.UninstallWidgetPackageAsync(
+        inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion,
+        inspection.ConfirmationToken);
+    Assert.Equal(PlatformWidgetPackageUninstallStatus.Uninstalled, result.Status);
+    Assert.Equal(revisionBefore + 1, monitor.Revision);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.All(item => item.Id != selected.Manifest.Id),
+        "Exact uninstall retained the selected package.");
+    Assert.True((await catalog.DiscoverAsync()).Widgets.Any(item => item.Id == neighbor.Manifest.Id),
+        "Exact uninstall changed the neighbor.");
+    Assert.Equal("retained", await File.ReadAllTextAsync(privateState));
+
+    var stale = await server.UninstallWidgetPackageAsync(
+        inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion,
+        inspection.ConfirmationToken);
+    Assert.Equal(PlatformWidgetPackageUninstallStatus.Stale, stale.Status);
+    Assert.Equal(revisionBefore + 1, monitor.Revision);
 }
 
 static async Task TamperedInstalledCatalogFailsSoft()

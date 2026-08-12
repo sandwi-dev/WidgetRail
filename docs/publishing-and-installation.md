@@ -209,15 +209,25 @@ The packaged bridge and Settings widget read the default current-user catalog;
 an override is an alternate test/script catalog and is managed with matching
 CLI commands rather than appearing in the packaged overlay.
 
-`gbar uninstall <widget-id>` removes every installed immutable version and the
-ID's catalog-state entry only after the widget is disabled. Package discovery
+Settings → Installed widgets exposes the same package-only operation as
+**Uninstall widget** after the Community widget is disabled. It confirms the
+safe package identity—not a path—and revalidates the current publisher
+authority, active version, complete version inventory, disabled state, and
+opaque catalog token before mutation. Built-in and enabled packages remain
+protected. On success Settings returns to the installed list, where **Install
+local widget** remains available.
+
+`gbar uninstall <widget-id>` is the scripted equivalent. Both paths remove
+every installed immutable version and the ID's catalog-state entry only after
+the widget is disabled. Package discovery
 is retired with an atomic directory move before bounded deletion, so no
 partially deleted version becomes executable. A file lock after that commit
 point is reported as pending cleanup; the next install or uninstall retries a
 bounded staging sweep. Provider-owned private secrets
-are a separate authority and are not enumerable by the catalog; widgets that
-offer private-data removal must clear their known slots through the declared
-host service before uninstall.
+and overlay-owned private state are separate authorities and are not removed by
+package uninstall. Settings keeps **Clear local data** as a separate explicit
+confirmation; uninstall never removes credentials, provider data, themes,
+settings, or user files.
 
 ## Install from a local package
 

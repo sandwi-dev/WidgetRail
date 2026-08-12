@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
     ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
     ("Trusted worker inspects and clears only exact widget local data", WidgetLocalDataRoundTrip),
+    ("Trusted worker uninstalls only an exact path-free package identity", WidgetPackageUninstallRoundTrip),
     ("Recovery retry reports stale and refused outcomes without mutation ambiguity", RecoveryRetryStaleAndRefused),
     ("Recovery retry timeout and caller cancellation fail closed", RecoveryRetryCancellationIsBounded),
     ("Recovery retry results enforce closed bounded diagnostics", RecoveryRetryResultIsBounded),
@@ -128,6 +129,55 @@ static async Task WidgetLocalDataRoundTrip()
         harness.Client.ClearWidgetLocalDataAsync("game-launcher", "bad").AsTask());
     Assert.Equal(1, inspected);
     Assert.Equal(1, cleared);
+}
+
+static async Task WidgetPackageUninstallRoundTrip()
+{
+    var token = ConfirmationToken('6', legacy: true);
+    var inspected = 0;
+    var uninstalled = 0;
+    await using var harness = new DiagnosticsHarness(
+        _ => ValueTask.FromResult(HealthySnapshot(52)),
+        uninstallInspect: (widgetId, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("community.widget", widgetId);
+            Interlocked.Increment(ref inspected);
+            return ValueTask.FromResult(new PlatformWidgetPackageUninstallInspection(
+                widgetId, "Community Widget", "installed.ABCD", "2.0.0", 2,
+                true, "ready", token));
+        },
+        uninstall: (widgetId, publisherId, version, observed, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.Equal("community.widget", widgetId);
+            Assert.Equal("installed.ABCD", publisherId);
+            Assert.Equal("2.0.0", version);
+            Assert.Equal(token, observed);
+            Interlocked.Increment(ref uninstalled);
+            return ValueTask.FromResult(new PlatformWidgetPackageUninstallResult(
+                PlatformWidgetPackageUninstallStatus.Uninstalled, "uninstalled"));
+        });
+
+    var inspection = await harness.Client
+        .InspectWidgetPackageUninstallAsync("community.widget");
+    Assert.Equal(token, inspection.ConfirmationToken);
+    var result = await harness.Client.UninstallWidgetPackageAsync(
+        inspection.WidgetId, inspection.PublisherId, inspection.ActiveVersion, token);
+    Assert.Equal(PlatformWidgetPackageUninstallStatus.Uninstalled, result.Status);
+    Assert.Equal(1, inspected);
+    Assert.Equal(1, uninstalled);
+
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() =>
+        harness.Client.InspectWidgetPackageUninstallAsync("bad/path").AsTask());
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(() =>
+        harness.Client.UninstallWidgetPackageAsync(
+            "community.widget", "bad/publisher", "2.0.0", token).AsTask());
+    await Assert.ThrowsAsync<ArgumentException>(() =>
+        harness.Client.UninstallWidgetPackageAsync(
+            "community.widget", "installed.ABCD", "2.0.0", "bad").AsTask());
+    Assert.Equal(1, inspected);
+    Assert.Equal(1, uninstalled);
 }
 
 static async Task RecoveryRetryStaleAndRefused()
@@ -633,11 +683,16 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<string, CancellationToken,
             ValueTask<PlatformWidgetLocalDataInspection>>? inspect = null,
         Func<string, string, CancellationToken,
-            ValueTask<PlatformWidgetLocalDataClearResult>>? clear = null)
+            ValueTask<PlatformWidgetLocalDataClearResult>>? clear = null,
+        Func<string, CancellationToken,
+            ValueTask<PlatformWidgetPackageUninstallInspection>>? uninstallInspect = null,
+        Func<string, string, string, string, CancellationToken,
+            ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null)
     {
         PipeName = $"gba-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
-            PipeName, provider, serverTimeout, retry, inspect, clear);
+            PipeName, provider, serverTimeout, retry, inspect, clear,
+            uninstallInspect, uninstall);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,
