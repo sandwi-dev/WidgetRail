@@ -38,6 +38,9 @@ add_executable(OverlayHost WIN32
     OverlayTargeting.cpp
     OverlayTransition.cpp
     DeclarativeRenderer.cpp
+    LauncherExperienceLayout.cpp
+    LauncherExperienceAdapter.cpp
+    LauncherExperienceHostProof.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
     SliderInteraction.cpp
@@ -394,6 +397,19 @@ if(GBA_BUILD_TESTS)
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
+
+    add_executable(LauncherExperienceTests
+        LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
+        AccessibilityTree.cpp FocusNavigation.cpp ControllerNavigation.cpp
+        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp
+        DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(LauncherExperienceTests PRIVATE cxx_std_20)
+    target_compile_options(LauncherExperienceTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(LauncherExperienceTests PRIVATE
+        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(LauncherExperienceTests PRIVATE
+        d2d1 dwrite winhttp windowscodecs ole32)
+    add_test(NAME LauncherExperienceTests COMMAND LauncherExperienceTests)
 
     add_executable(SemanticChurnPerformanceTests
         SemanticChurnPerformanceTests.cpp AccessibilityTree.cpp DeclarativeRenderer.cpp

@@ -106,6 +106,9 @@ implementation turns do not spend context on completed hourly work.
   — proposed console-home expansion informed by Heroic and One Game Launcher,
   including trusted multi-source adapters, optional content operations, and
   data-only per-launcher experience packs with safe custom layouts and media.
+- [Launcher Experience Pack format](launcher-experience-packs.md) — implemented
+  launcher-only manifest, responsive recipe, parameter, package-boundary,
+  digest/catalog, and built-in recovery contracts for static data-only packs.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.

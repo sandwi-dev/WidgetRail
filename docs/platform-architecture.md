@@ -462,6 +462,23 @@ uses a two-dimensional stick state machine with separate engage/release
 thresholds and repeat timing. Focus follows a usable explicit neighbor first,
 then deterministic geometry from the last render.
 
+## Launcher experience layout
+
+Validated Launcher Experience recipes enter a separate native adapter; they do
+not become widget snapshots and cannot create content or actions. A pure layout
+owner selects compact, standard, or wide against the current logical work area,
+projects normalized region/grid/stack/overlay/inset geometry, and atomically
+uses the matching built-in recipe when the selected revision is missing or
+incompatible. Critical slot extents are rechecked after live work-area and text-
+scale resolution.
+
+The adapter places host-created semantic slot snapshots into those rectangles
+and delegates every slot to the existing `DeclarativeRenderer`. The renderer's
+result remains the single source for painted focus, pointer hit regions,
+controller navigation, and UI Automation bounds. Recipe paint order is kept
+separate from a fixed semantic slot order, so z-order cannot reorder or move
+accessible focus. Existing widget flex/grid/scroll behavior is unchanged.
+
 ## Current limits
 
 - The native renderer is still a reference/prototype implementation. The YT

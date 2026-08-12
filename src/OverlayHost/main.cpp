@@ -20,6 +20,7 @@
 #include "RemoteImageCache.h"
 #include "ScrollEvidenceProbe.h"
 #include "LocalWidgetPackageImport.h"
+#include "LauncherExperienceHostProof.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
@@ -6380,13 +6381,22 @@ private:
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     std::wstring processProfile = L"production";
     bool processOwnerProbe = false;
+    bool launcherExperienceSemanticProof = false;
     for (int index = 1; index < __argc; ++index) {
         if (_wcsicmp(__wargv[index], L"--process-profile") == 0 &&
             index + 1 < __argc) {
             processProfile = __wargv[++index];
         } else if (_wcsicmp(__wargv[index], L"--process-owner-probe") == 0) {
             processOwnerProbe = true;
+        } else if (_wcsicmp(__wargv[index], L"--launcher-experience-semantic-proof") == 0) {
+            launcherExperienceSemanticProof = true;
         }
+    }
+    if (launcherExperienceSemanticProof) {
+        std::wstring diagnostic;
+        const bool passed = gba::launcher::RunProductionHostSemanticProof(diagnostic);
+        AppendDiagnostic(L"Launcher Experience production-host semantic proof " + diagnostic);
+        return passed ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     gba::process::OverlayProcessOwner processOwner;
     std::wstring ownershipError;
