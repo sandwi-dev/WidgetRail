@@ -3451,6 +3451,33 @@ No production source or alternate automation surface is retained. A product UX
 decision is required to permit taskbar/Alt-Tab presence or a supported control-
 tool change is required to admit the existing tool/owned overlay identity.
 
+### Cold dashboard first-commit anchor (DLV-143)
+
+The existing DirectComposition placement owner now bottom-aligns every
+presented extent inside the retained shared host. A cold compact dashboard is
+therefore committed at its final work-area edge before the HWND becomes
+visible; widget admission, hide, and resident re-show keep the same coordinate
+contract without another HWND, renderer, or widget-specific policy.
+
+| Responsibility | Before | After |
+| --- | --- | --- |
+| Work-area and host placement | `ShowOverlay` alone selected the live monitor, `rcWork`, DPI/interface scale, compact content placement, and fixed shared-host placement. | That ownership is unchanged; the shared host remains fitted and bottom-centered inside live `rcWork`. |
+| Composition mapping | `PlanCompositionMotion` centered both axes, so the 236-pixel cold dashboard occupied the middle of a 919-pixel host even though both placements independently had the correct bottom margin. | The same motion owner accepts an explicit vertical anchor. Production settled and transitional presentations use `Bottom`; X remains centered and full-height widgets naturally retain zero Y offset. |
+| Paint, pointer, and UIA | Paint used the visual presentation while pointer inversion and UIA projection consumed the current composition plan, inheriting its centered Y offset. | All three consume the same bottom-anchored scale/offset. No secondary geometry policy was added to `OverlayApp`. |
+| Temporal evidence | The first commit log omitted absolute visible-content geometry, so a correct host rectangle could conceal a misplaced compact frame. | Each composition placement records absolute host and visible-content bounds, `anchor=bottom`, and first-visible state. A fresh PMv2 production-host fixture observes that record before exercising dashboard UIA/pointer, widget admission, hide, and resident re-show. |
+
+Focused Release evidence passes 111,381 placement checks across compact, 720p,
+1080p, 1440p, 125% DPI, 150% interface scale, taskbar-reserved, and non-primary
+profiles; 66 composition-targeting checks; 283 tray-layout checks; and 34 host-
+accessibility checks. The fresh production fixture passes on the 120-DPI host:
+the first record reports `host-bounds=1785,481,1549,919` and
+`visible-content-bounds=1785,1164,1549,236`, with matching physical HWND,
+work-area, title, selected tray UIA, and pointer bounds. It then admits the
+focused widget, hides it through the production host toggle, and re-shows the
+resident owner with focused UIA contained by the committed surface. No
+aggregate, capture, managed widget, window-identity, or compositor-owner change
+was made.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

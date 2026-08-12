@@ -121,6 +121,22 @@ int main() {
               fixedContainer.offsetY == 40.0F &&
               fixedContainer.retainsTransparentContainer,
           "fixed shell container centers settled content and retains transparent unused client");
+    constexpr auto bottomAnchoredDashboard = gba::PlanCompositionMotion(
+        1549, 919, 1549, 236, 1549.0F, 236.0F,
+        gba::CompositionVerticalAnchor::Bottom);
+    Check(bottomAnchoredDashboard.scaleX == 1.0F &&
+              bottomAnchoredDashboard.scaleY == 1.0F &&
+              bottomAnchoredDashboard.offsetX == 0.0F &&
+              bottomAnchoredDashboard.offsetY == 683.0F &&
+              bottomAnchoredDashboard.retainsTransparentContainer,
+          "cold dashboard is bottom anchored inside the retained shared host");
+    constexpr auto bottomAnchoredTransition = gba::PlanCompositionMotion(
+        1549, 919, 1549, 919, 1549.0F, 236.0F,
+        gba::CompositionVerticalAnchor::Bottom);
+    Check(bottomAnchoredTransition.offsetY == 683.0F &&
+              bottomAnchoredTransition.scaleY > 0.25F &&
+              bottomAnchoredTransition.scaleY < 0.26F,
+          "dashboard-to-widget motion starts from the same bottom anchor");
     Check(gba::PlanCompositionMotion(0, 700, 540, 620, 540.0F, 620.0F) ==
               gba::CompositionMotionPlan{},
           "invalid source geometry cannot start compositor motion");

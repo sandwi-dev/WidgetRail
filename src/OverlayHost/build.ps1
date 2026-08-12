@@ -17,6 +17,7 @@ param(
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$LocalPackageImportTestsOnly,
     [switch]$WidgetSurfaceTestsOnly,
+    [switch]$ColdDashboardTestsOnly,
     [switch]$LauncherExperienceTestsOnly
 )
 
@@ -111,6 +112,7 @@ $realHostAccessibilityTestObjectDirectory = Join-Path $outputDirectory 'obj\real
 $actionFailureHostTestObjectDirectory = Join-Path $outputDirectory 'obj\action-failure-host-tests'
 $actionFailureFixtureOutput = Join-Path $outputDirectory 'obj\action-failure-fixture'
 $widgetSwitchHostTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-switch-host-tests'
+$coldDashboardHostTestObjectDirectory = Join-Path $outputDirectory 'obj\cold-dashboard-host-tests'
 $widgetSwitchFixtureOutput = Join-Path $outputDirectory 'obj\widget-switch-fixture'
 $audioMixerScrollHostTestObjectDirectory = Join-Path $outputDirectory 'obj\audio-mixer-scroll-host-tests'
 $audioMixerScrollFixtureOutput = Join-Path $outputDirectory 'obj\audio-mixer-scroll-fixture'
@@ -130,7 +132,7 @@ $widgetSessionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-sessi
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
 $launcherExperienceTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -491,6 +493,92 @@ function Invoke-WidgetSwitchHostTests {
         --fixture-worker $fixture
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-ColdDashboardTests {
+    $placementArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        "/Fo:$placementTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayPlacementTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $placementArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlacementTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayPlacementTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlacementTests failed with exit code $LASTEXITCODE."
+    }
+
+    $targetingArguments = $common + @(
+        (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+        "/Fo:$targetingTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayTargetingTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $targetingArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTargetingTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayTargetingTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayTargetingTests failed with exit code $LASTEXITCODE."
+    }
+
+    $trayLayoutArguments = $common + @(
+        (Join-Path $projectDirectory 'TrayLayoutTests.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
+        "/Fo:$trayLayoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\TrayLayoutTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $trayLayoutArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "TrayLayoutTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'TrayLayoutTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "TrayLayoutTests failed with exit code $LASTEXITCODE."
+    }
+
+    $hostAccessibilityArguments = $common + @(
+        (Join-Path $projectDirectory 'HostAccessibilityTests.cpp'),
+        (Join-Path $projectDirectory 'HostAccessibility.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
+        "/Fo:$hostAccessibilityTestObjectDirectory\",
+        "/Fe:$outputDirectory\HostAccessibilityTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $hostAccessibilityArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "HostAccessibilityTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'HostAccessibilityTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "HostAccessibilityTests failed with exit code $LASTEXITCODE."
+    }
+
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'ColdDashboardHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$coldDashboardHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\ColdDashboardHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ColdDashboardHostTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'ColdDashboardHostTests.exe') `
+        --installation $outputDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "ColdDashboardHostTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -1004,6 +1092,14 @@ if ($WidgetSwitchTestsOnly) {
     return
 }
 
+if ($ColdDashboardTestsOnly) {
+    if ($SkipTests) {
+        throw 'ColdDashboardTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-ColdDashboardTests
+    return
+}
+
 if (-not $SkipTests) {
     $scrollEvidenceProbeTestArguments = $common + @(
         (Join-Path $projectDirectory 'ScrollEvidenceProbeTests.cpp'),
@@ -1465,6 +1561,27 @@ if (-not $SkipTests) {
             --fixture-worker $actionFailureFixture
         if ($LASTEXITCODE -ne 0) {
             throw "WidgetActionFailureHostTests failed with exit code $LASTEXITCODE."
+        }
+    }
+
+    $coldDashboardHostTestArguments = $common + @(
+        (Join-Path $projectDirectory 'ColdDashboardHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$coldDashboardHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\ColdDashboardHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $coldDashboardHostTestArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "ColdDashboardHostTests build failed with exit code $LASTEXITCODE."
+    }
+    if (-not $SkipPackaging) {
+        & (Join-Path $outputDirectory 'ColdDashboardHostTests.exe') `
+            --installation $outputDirectory
+        if ($LASTEXITCODE -ne 0) {
+            throw "ColdDashboardHostTests failed with exit code $LASTEXITCODE."
         }
     }
 

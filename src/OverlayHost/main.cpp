@@ -2505,7 +2505,8 @@ private:
                     static_cast<unsigned int>(target.width),
                     static_cast<unsigned int>(target.height),
                     extent.widthDip * compositionMotionPixelsPerDipX_,
-                    extent.heightDip * compositionMotionPixelsPerDipY_);
+                    extent.heightDip * compositionMotionPixelsPerDipY_,
+                    gba::CompositionVerticalAnchor::Bottom);
                 compositionMotionPresentedExtentDip_ =
                     gba::OverlayPresentationExtent{
                         static_cast<int>(std::lround(extent.widthDip)),
@@ -2636,15 +2637,19 @@ private:
         const auto geometryStarted = std::chrono::steady_clock::now();
         const bool animateMotion = wasVisible && priorWidth != 0 && priorHeight != 0 &&
             extentTransition_.active();
+        const auto settled = gba::PlanCompositionMotion(
+            static_cast<unsigned int>(containerPlacement.width),
+            static_cast<unsigned int>(containerPlacement.height),
+            static_cast<unsigned int>(placement.width),
+            static_cast<unsigned int>(placement.height),
+            static_cast<float>(placement.width),
+            static_cast<float>(placement.height),
+            gba::CompositionVerticalAnchor::Bottom);
         gba::OverlayCompositionSurface::VisualPresentation presentation{
-            1.0F, 1.0F, 0.0F, 0.0F,
+            settled.scaleX, settled.scaleY, settled.offsetX, settled.offsetY,
             static_cast<float>(placement.width),
             static_cast<float>(placement.height),
         };
-        presentation.offsetX = static_cast<float>(
-            containerPlacement.width - placement.width) * 0.5F;
-        presentation.offsetY = static_cast<float>(
-            containerPlacement.height - placement.height) * 0.5F;
         gba::CompositionMotionPlan initialMotion{};
         if (animateMotion) {
             const auto initial = extentTransition_.Sample(
@@ -2660,7 +2665,8 @@ private:
                 static_cast<unsigned int>(placement.width),
                 static_cast<unsigned int>(placement.height),
                 initial.widthDip * pixelsPerDipX,
-                initial.heightDip * pixelsPerDipY);
+                initial.heightDip * pixelsPerDipY,
+                gba::CompositionVerticalAnchor::Bottom);
             presentation = {
                 initialMotion.scaleX, initialMotion.scaleY,
                 initialMotion.offsetX, initialMotion.offsetY,
@@ -2713,6 +2719,15 @@ private:
             return false;
         }
 
+        const int visibleContentX = containerX + static_cast<int>(
+            std::lround(presentation.offsetX));
+        const int visibleContentY = containerY + static_cast<int>(
+            std::lround(presentation.offsetY));
+        const int visibleContentWidth = static_cast<int>(std::lround(
+            static_cast<float>(placement.width) * presentation.scaleX));
+        const int visibleContentHeight = static_cast<int>(std::lround(
+            static_cast<float>(placement.height) * presentation.scaleY));
+
         AppendDiagnostic(
             L"Composition placement committed content=complete from=" +
             std::to_wstring(priorWidth) + L"x" + std::to_wstring(priorHeight) +
@@ -2723,7 +2738,17 @@ private:
             L" commit-us=" + std::to_wstring(commitTiming.commitMicroseconds) +
             L" geometry-us=" + std::to_wstring(geometryMicroseconds) +
             L" waited=" + (commitTiming.waitedForCompletion ? L"true" : L"false") +
-            L" alpha=premultiplied-clear");
+            L" alpha=premultiplied-clear" +
+            L" host-bounds=" + std::to_wstring(containerX) + L"," +
+            std::to_wstring(containerY) + L"," +
+            std::to_wstring(containerWidth) + L"," +
+            std::to_wstring(containerHeight) +
+            L" visible-content-bounds=" + std::to_wstring(visibleContentX) + L"," +
+            std::to_wstring(visibleContentY) + L"," +
+            std::to_wstring(visibleContentWidth) + L"," +
+            std::to_wstring(visibleContentHeight) +
+            L" anchor=bottom first-visible=" +
+            std::wstring(wasVisible ? L"false" : L"true"));
         if (animateMotion) {
             AppendDiagnostic(
                 L"Composition motion start from=" +
@@ -3200,7 +3225,8 @@ private:
             static_cast<unsigned int>(target.width),
             static_cast<unsigned int>(target.height),
             static_cast<float>(presented.widthDip) * pixelsPerDipX,
-            static_cast<float>(presented.heightDip) * pixelsPerDipY);
+            static_cast<float>(presented.heightDip) * pixelsPerDipY,
+            gba::CompositionVerticalAnchor::Bottom);
     }
 
     [[nodiscard]] std::optional<TrayPointerTarget> HitTrayTarget(
