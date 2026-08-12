@@ -342,16 +342,18 @@ eligibility; credential-free structural work continues independently.
 1. DLV-134/DLV-145/DLV-146 are accepted through `4aa7284`: all four built-in
    Launcher Experiences now have unconditional seeded ordinary-host adoption
    evidence plus a separate provider-fallback scenario.
-2. Correct DLV-147 through DLV-153 before integration: keep opt-in bounded GOG
-   installed evidence, but remove the undocumented Galaxy `runGame` command
-   and all GOG launch authority. DLV-148 production Launcher Experience motion/
-   effect work remains independent and concurrent.
+2. DLV-147/DLV-153 are accepted through `e5f9ece`: opt-in bounded GOG installed
+   evidence remains, while the undocumented Galaxy command and all GOG launch
+   authority are removed. DLV-151 scoped Game Launcher actions are accepted
+   through `b92e0ff`. DLV-154 now delivers the missing M1 category slice while
+   DLV-148 production Launcher Experience motion/effect work remains concurrent.
 3. Deliver local custom-pack selection as the serialized DLV-149/DLV-150 pair:
    trusted Settings selection/metadata/removal policy followed by private native
    adoption, last-good reload, and one-activation safe start. Do not expose a
    visible no-op selector on main.
-4. Keep accepted dashboard DLV-143 and Spotify DLV-144 live-verifying on PID
-   6168 and queue any user-observed correction ahead of later feature work.
+4. Keep accepted dashboard DLV-143, Spotify DLV-144, and Game Launcher DLV-151
+   live-verifying on PID 41444 and queue any user-observed correction ahead of
+   later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
 6. Continue other credential-free roadmap features while account, hardware,
    or supported-API work is blocked.

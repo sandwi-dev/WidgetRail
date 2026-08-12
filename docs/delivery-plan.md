@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 07:36 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 08:20 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,22 +13,23 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `4aa7284`; worktree clean when this plan was
+- Local product baseline: `b92e0ff`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-134/DLV-145/DLV-146 through
-  `4aa7284`.
-- Visible accepted Release: PID 6168, launched at 06:31:35 after the accepted
-  managed/native Launcher Experience integration. The first dashboard frame is
+- Latest implementation integration: DLV-147/DLV-153/DLV-151 through
+  `b92e0ff`.
+- Visible accepted Release: PID 41444, launched at 08:16:24 after the accepted
+  GOG installed-evidence correction and Game Launcher action sheet. Its first
+  dashboard frame is
   bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
-- Required live smoke passed all eight first pages with zero named UIA bounds
-  outside the host and no worker/protocol/provider/presentation error in the
-  exact PID 6168 interval. Game Launcher exposed its controller-reachable
-  `Experience: Hero Rail` control; this machine's live provider remained
-  pending during the first-page pass, so the deterministic seeded production
-  fixture remains the exact native-adoption evidence.
-- DLV-134 `e847502`, DLV-145 `7a566be`, and DLV-146 `8c6adb4` were reviewed as
-  one product chain and cherry-picked as `f88aa58`, `3a22bf9`, and `4aa7284`.
+- PID 41444's launch interval contains no worker, protocol, provider, or
+  presentation error. The required computer-control pass could not target the
+  production no-redirection tool window: the control API omitted it while
+  exposing a platform test fixture with the same title. Do not substitute that
+  fixture or infer product defects from capture; user visual testing remains
+  the first-page gate.
+- DLV-147 `2972500`, DLV-153 `00bd5ca`, and DLV-151 `febbb41` were reviewed and
+  cherry-picked as `10b201c`, `e5f9ece`, and `b92e0ff`. DLV-149 remains held.
 
 ## Execution protocol
 
@@ -67,12 +68,65 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-153: correct unsupported GOG launch authority
+### Current assignment — DLV-154: Game Launcher categories and exact membership
 
-**State:** Assigned correction after DLV-147 commit `2972500` and held DLV-149
-commit `f282237`. DLV-147's focused tests are green, but the implementation did
-not satisfy its explicit supported-contract stop condition and is not accepted.
-DLV-149 is independently coherent at first review and remains held for DLV-150.
+**State:** Assigned after accepted DLV-151 `febbb41`. Continue from the clean
+widgets-lane boundary. The held DLV-149 commit may remain in branch ancestry but
+must not be extended or documented as live; this assignment is Game Launcher
+managed code and focused tests only.
+
+**Baseline/dependencies:** accepted product `b92e0ff`; widgets branch
+`febbb41`. DLV-148 is concurrent and native-only. Do not consume, edit, or
+depend on platform motion, Launcher Experience selection, GOG launch, public
+protocol, SDK, provider, Settings, or native-host code.
+
+**Owner:** widgets lane for Game Launcher private organization state,
+presentation/navigation routes, directly affected focused tests, and feature/
+implementation documentation only.
+
+**User-visible outcome:** the user can create a small named category, assign or
+remove the exact focused game from Y's game-action flow, and browse that category
+as a controller-reachable collection. Membership and category names survive an
+overlay restart. Deleting a category removes only that category's membership;
+it never removes, hides, launches, or merges a game.
+
+**Objective/scope:** implement the missing M1 category slice from
+GL-CAT-003/004/005 using bounded Game Launcher private state. Category identity
+is a generated opaque local ID; membership is exact SavedId only. Provide All
+Games plus user categories through the existing collection/navigation owners,
+and a focused create/rename/delete/assign/remove route using current SDK
+components. Preserve the existing Y action sheet as the entry point and View as
+the sole full-details route. Retain current search/source/install/favorite/
+hidden/recent/manual/variant semantics and provider pagination authority.
+
+**Acceptance:** category count, name length, membership count, and serialized
+state size are explicitly bounded and malformed/oversize pre-release state
+resets only the affected category fields atomically. Duplicate normalized names
+are rejected visibly. Create, rename, delete, assign, remove, Back, restart,
+stale-provider, missing-item, and compare-and-swap replay cases preserve exact
+identity and unrelated organization state. A category view contains only its
+current exact members, retains sanitized last-good display when a member is
+temporarily missing, and cannot authorize launch without current provider
+revalidation. Controller hints and disabled/busy states match admitted actions.
+
+**Architecture/verification:** keep immutable category policy/projection outside
+`GameLauncherWidget`; the root remains the lifecycle/effect/committed-state
+adapter. Reuse existing navigation, text-entry/action-sheet, private-state CAS,
+and display projection owners. Add a before/after responsibility map. Tier 1
+Game Launcher focused Release suite; Tier 2 one ordinary generic-worker route
+covering create, assign, restart, category browse, and exact launch
+revalidation. No aggregate, native fixture, screenshot/capture gate, account,
+network, metadata provider, content operation, or reviewer-document edit.
+
+**Stop:** satisfying category filtering requires title-derived identity,
+unbounded full-library materialization, provider query/schema changes, a public
+SDK/protocol change, native presentation changes, or edits to held DLV-149.
+Report the missing seam rather than broadening the assignment.
+
+### Accepted milestone — DLV-153: correct unsupported GOG launch authority
+
+**State:** Done and accepted through main `e5f9ece`. DLV-149 remains held for
+DLV-150.
 
 **Baseline/dependencies:** continue from clean widgets `f282237`; do not rewrite
 DLV-147 or DLV-149. Official GOG documentation describes client-owned file
@@ -150,11 +204,13 @@ for adoption.
    appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
    disclosure, and selected-version removal denial. It remains unintegrated
    until DLV-150 privately consumes it. Do not redo or expose it alone.
-2. **Ready after DLV-153 — DLV-151: Game Launcher action-sheet polish.** Use
-   the existing SDK `ActionSheet` and details/organization owners to make Y open
-   one scoped, controller-complete action sheet with current Favorite, Hidden,
-   variant, and source recovery actions. Do not duplicate the existing View
-   details route or add content operations.
+2. **Ready after DLV-154 — DLV-155: Games & Apps visible library audit and
+   polish.** Inspect the accepted packaged behavior and current focused tests
+   for cold persisted-first display, background reconciliation, Add applications
+   stability, icon/fallback truth, remove-one preservation, preferred height,
+   and controller help. Implement only a reproducible managed-widget gap; if
+   the named invariants already hold, produce a concise evidence report and
+   stop without speculative refactoring.
 
 ## Platform lane
 
@@ -240,8 +296,8 @@ missing private seam rather than adding parallel presentation authority.
 ## Serialized integration queue
 
 1. DLV-134/DLV-145/DLV-146 are accepted and integrated through `4aa7284`.
-2. DLV-147 `2972500` is held for DLV-153; integrate that pair only if the
-   unsupported launch route is fully removed. DLV-148 remains independent.
+2. DLV-147/DLV-153 are accepted through `e5f9ece`; DLV-151 is accepted through
+   `b92e0ff`. DLV-148 remains independent.
 3. Hold DLV-149 `f282237` until DLV-150 consumes its selection/recovery state;
    integrate
    the pair as one visible outcome.
@@ -262,7 +318,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 6168 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 41444 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
