@@ -1,7 +1,7 @@
 # Widget Authoring Experience Review
 
 Status: active independent assessment<br>
-Last reassessed: 2026-08-12 against integrated `main` `abb1e8d`<br>
+Last reassessed: 2026-08-12 against integrated `main` `e6dc10e`<br>
 Scope: public Widget SDK APIs, tooling, examples, packages, diagnostics, and the
 experience of building basic through full application-scale widgets
 
@@ -95,10 +95,12 @@ the scalable path.
   exist; physical controller and assistive-technology proof remain.
 - Accessibility: deterministic semantics and real HWND/UIA fixtures are broad;
   Narrator/MSAA and packaged traversal remain manual.
-- Preview: semantic/offscreen scenarios exist; a safe isolated interactive
+- Preview: DLV-135 adds deterministic Launcher Experience semantic/offscreen
+  scenarios; a safe isolated interactive
   author loop and reliable production-window targeting remain unfinished.
-- Layout recipes: reusable primitives and Launcher Experience native presets
-  exist; public authoring tooling and production state projection are later.
+- Layout recipes: reusable primitives, Launcher Experience native presets, and
+  DLV-135 scaffold/validate/preview/pack/inspect/install/list/remove tooling
+  exist; ordinary-host production state projection remains DLV-145.
 - Documentation examples: canonical starters compile, but many prose snippets
   are still not extracted into API-checked projects.
 
@@ -221,9 +223,11 @@ The authoring platform is ready for external preview when a new developer can:
 
 ## Prioritized review queue
 
-1. Review active DLV-134 as the first production projection of normalized Game
-   Launcher state into every accepted native experience.
-2. Keep DLV-135 author tooling Ready immediately after that projection.
+1. Review active DLV-145 with held DLV-134 as the first production projection
+   of normalized Game Launcher state into every accepted native experience.
+2. Keep accepted DLV-135's semantic/offscreen preview claim distinct from live
+   ordinary-overlay adoption and use DLV-145 evidence to scope its next visual
+   author-loop improvement.
 3. Keep the UIA-guided first-page smoke after each accepted
    Release; do not require a taskbar-visible production window merely for tool
    discovery. Use exact logs for real author diagnostics.

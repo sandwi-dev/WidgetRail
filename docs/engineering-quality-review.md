@@ -1,7 +1,7 @@
 # Engineering Quality Review
 
 Status: active independent quality audit<br>
-Last reassessed: 2026-08-12 against integrated `main` `cc0018a`<br>
+Last reassessed: 2026-08-12 against integrated `main` `e6dc10e`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, accessibility, and product readiness
 
@@ -102,6 +102,20 @@ authority. The ordinary host still bypasses `LauncherExperienceAdapter`, so
 integrating the picker alone would ship a visible no-op. DLV-145 now owns the
 private native adoption hook; the pair is reviewed and integrated together.
 
+### Launcher Experience authoring toolchain accepted
+
+DLV-135 widgets commit `3c93abb` is independently integrated as `e6dc10e`.
+`gbar launcher-theme` now provides atomic scaffold, production-validator reuse,
+deterministic semantic preview, reproducible archive packing, non-executing
+inspection, and immutable install/list/remove. The root CLI retains only
+dispatch/error mapping; archive/catalog authority remains in the focused
+Launcher Experience catalog assembly. Independent evidence passes 61/61 CLI,
+17/17 catalog, 1,361 native offscreen checks, and 66 documentation contracts.
+The tool and docs explicitly do not claim ordinary-overlay preview before
+DLV-145. PID 9192 smoke admitted every first page inside the host with no exact-
+interval product failure; this milestone itself changes no overlay runtime
+behavior.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -157,7 +171,7 @@ its change is accepted.
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
 | Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 25004 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, and launcher-scoped presentation recovery are accepted. DLV-134's managed six-slot boundary is held. | Active native production adoption DLV-145 plus concurrent author tooling DLV-135, then paired projection acceptance. |
+| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, and the DLV-135 local authoring workflow are accepted. DLV-134's managed six-slot boundary is held. | Active native production adoption DLV-145, then paired projection acceptance and a production-evidence-based visible successor. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -188,10 +202,10 @@ its change is accepted.
 
 1. Review active DLV-145 against held `e847502`, including exact SavedId/action/
    focus/scroll agreement across all four ordinary-host native experiences.
-2. Review concurrent DLV-135 without accepting any ordinary-overlay preview
-   claim before DLV-145.
-3. Integrate DLV-134 and DLV-145 as one visible product outcome.
-4. Keep PID 25004 visible for the user's dashboard, Spotify, and installed-
+2. Integrate DLV-134 and DLV-145 as one visible product outcome.
+3. Keep DLV-135's semantic preview claim separate from ordinary-overlay
+   production adoption.
+4. Keep PID 9192 visible for the user's dashboard, Spotify, and installed-
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.

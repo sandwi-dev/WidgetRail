@@ -342,12 +342,13 @@ eligibility; credential-free structural work continues independently.
 1. Complete active platform DLV-145 against held managed DLV-134 `e847502` so
    real Game Launcher state drives all four accepted native experiences with
    unchanged action, focus, cursor, and provider authority.
-2. Continue concurrent DLV-135 author tooling without claiming ordinary-overlay
-   preview until DLV-145 is accepted.
-3. Integrate the DLV-134/DLV-145 pair as one visible product outcome, then
-   reconcile DLV-135 in dependency order.
+2. DLV-135 author tooling is accepted through `e6dc10e`; retain its explicit
+   semantic/offscreen preview boundary until DLV-145 is accepted.
+3. Integrate the DLV-134/DLV-145 pair as one visible product outcome, then use
+   production evidence to select the next visible launcher recovery or
+   experience-management milestone.
 4. Keep accepted dashboard DLV-143 and Spotify DLV-144 live-verifying on PID
-   25004 and queue any user-
+   9192 and queue any user-
    observed correction ahead of later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
 6. Continue other credential-free roadmap features while account, hardware,

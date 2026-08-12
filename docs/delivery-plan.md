@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 04:18 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 05:08 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,13 +13,16 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local main: `73e1e17`; worktree clean when this plan was published.
-- Latest implementation integration: DLV-143 through `cc0018a`.
-- Visible accepted Release: PID 25004 from exact accepted main, launched at
-  03:59:28. The first dashboard frame is bottom-anchored at absolute
+- Local main: `e6dc10e`; worktree clean when this plan was published.
+- Latest implementation integration: DLV-135 through `e6dc10e`.
+- Visible accepted Release: PID 9192, launched at 05:03:26 after the accepted
+  DLV-135 toolchain integration. DLV-135 changes only Gbar/catalog artifacts;
+  the overlay runtime graph remains the accepted DLV-143/DLV-144 graph. The
+  first dashboard frame is bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
 - Required live smoke passed all eight first pages with zero named UIA bounds
-  outside the host and no worker/protocol/provider/presentation error.
+  outside the host and no worker/protocol/provider/presentation error in the
+  exact PID 9192 interval.
 - DLV-134 managed commit `e847502` is held on the widgets branch. It is not in
   main and must not be integrated without platform DLV-145.
 
@@ -60,11 +63,11 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-135: deterministic Launcher Experience authoring toolchain
+### Accepted assignment — DLV-135: deterministic Launcher Experience authoring toolchain
 
-**State:** Assigned after committed DLV-134 managed boundary `e847502`.
-DLV-130 and platform DLV-131 are integrated. Do not claim production preview
-through the ordinary overlay until platform DLV-145 is accepted.
+**State:** Done and accepted as widgets `3c93abb`, independently integrated on
+main as `e6dc10e`. The implementation makes no production-overlay preview
+claim and does not integrate held DLV-134.
 
 **Baseline/dependencies:** merge current planner main `73e1e17` at the clean
 widgets boundary while retaining `e847502`. Use the accepted strict data-only
@@ -128,10 +131,13 @@ recovery.
 
 ### Widgets Ready queue
 
-No later widget milestone is executable until DLV-135 commits and the planner
-reviews DLV-134/DLV-145 integration order. The lane must stop at that clean
-boundary rather than invent provider, enrichment, content-operation, or account
-work.
+No later widget milestone is safely executable while platform DLV-145 is
+changing the ordinary Game Launcher production path and held DLV-134 remains in
+the widgets ancestry. The lane is intentionally stopped at clean `3c93abb`;
+after paired DLV-134/DLV-145 acceptance, the planner will assign the next
+visible launcher recovery or experience-management outcome from production
+evidence. Do not invent provider, enrichment, content-operation, account, or a
+second consecutive tooling-only milestone merely to keep the lane busy.
 
 ## Platform lane
 
@@ -150,8 +156,8 @@ projection owner, ordinary host render/pointer/focus/scroll/UIA integration,
 focused native tests, production-host proof, and directly affected native
 documentation.
 
-**Concurrency:** widgets owns DLV-135 CLI/catalog tooling. No managed Game
-Launcher, Widget SDK/protocol, pack schema, provider, Settings, compositor/
+**Concurrency:** DLV-135 is accepted and the widgets lane is stopped cleanly.
+No managed Game Launcher, Widget SDK/protocol, pack schema, provider, Settings, compositor/
 HWND/placement, reviewer document, capture, credential, aggregate, or push
 changes.
 
@@ -206,9 +212,8 @@ evidence; do not manufacture them in parallel.
 
 1. Hold widgets `e847502` and the future DLV-145 native commit together until
    end-to-end DLV-134 acceptance. Do not expose the no-op picker on main.
-2. DLV-135 may integrate after the pair, or independently only when review
-   confirms its artifacts and docs make no ordinary-overlay preview claim that
-   depends on the unaccepted hook.
+2. DLV-135 is already integrated independently as `e6dc10e`; its artifacts and
+   docs make no ordinary-overlay preview claim and require no pair action.
 3. External metadata/artwork, GOG/Amazon adapters, trusted content operations,
    and pack gallery/update work remain later scoped milestones.
 
@@ -226,7 +231,7 @@ evidence; do not manufacture them in parallel.
 
 ## Verification queue
 
-1. User visual verdict on PID 25004 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 9192 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
@@ -243,6 +248,7 @@ evidence; do not manufacture them in parallel.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-135 | `3c93abb` | `e6dc10e` | Deterministic data-only Launcher Experience new/validate/preview/pack/inspect/install/list/remove workflow; 61/61 CLI, 17/17 catalog, 1,361 native offscreen checks. |
 | DLV-143 | `157384f` | `cc0018a` | First compact dashboard commit is bottom-anchored; paint, pointer, UIA, and absolute diagnostics agree. |
 | DLV-144 | `bbed0bc` | `abb1e8d` | Spotify compact player retains the controller rail, one focus-revealing viewport, and cross-branch focus identity; 49/49. |
 | DLV-130/138/139/142 | `da08c44`, `c82f111`, `2281548`, `ecfdd18` | `a3f883e` | Normalized app-library model, focused validation, Windows/Xbox and opt-in Epic installed sources; SDK 89/89, Games 62/62, Launcher 65/65. |
@@ -252,7 +258,6 @@ evidence; do not manufacture them in parallel.
 | DLV-127 | `df07d7c` | `2ac0a5a` | Stable shared shell/tray and work-area fit across widget switching. |
 | DLV-126 | `a45166c` | `2c58ba7` | Game Launcher top controls, contextual shortcuts/help, and collection continuation; 60/60. |
 | DLV-123/125 | `552d250`, `ccabb0e` | `8c40a6d`, `418d11f` | Exact uninstall confirmation and canonical verifier inclusion for MSTest.Sdk scenarios. |
-| DLV-118/121 | `5d86cd6`, `fb0ad51` | `4bc0baa`, `a758508` | Exact tray catalog replacement and corrected Audio Mixer production traversal evidence. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. On crossing 1,000, snapshot and compact according to
