@@ -342,12 +342,14 @@ eligibility; credential-free structural work continues independently.
 1. Correct and accept the committed DLV-130/138/139 normalized app-library and
    provider prefix through DLV-142.
 2. Continue visible platform launcher style/recovery through DLV-133.
-3. Independently review the committed Windows/Xbox and opt-in Epic installed-
+3. Immediately follow DLV-133 with DLV-143 so the first cold-start dashboard
+   frame is bottom-anchored before later platform work.
+4. Independently review the committed Windows/Xbox and opt-in Epic installed-
    game adapters while their prefix remains held.
-4. Continue production experience
+5. Continue production experience
    projection, then author tooling.
-5. Keep user-reported visible regressions ahead of internal refactors.
-6. Continue other credential-free roadmap features while account, hardware,
+6. Keep user-reported visible regressions ahead of internal refactors.
+7. Continue other credential-free roadmap features while account, hardware,
    or supported-API work is blocked.
 
 ## Explicit blockers
