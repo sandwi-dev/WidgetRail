@@ -272,8 +272,8 @@ Branch: `codex/impl-platform-switch`
 
 ### DLV-127 — Keep tray placement stable and fit the overlay during widget switching
 
-**State:** Assigned after the clean platform lane merges exact accepted main
-containing DLV-123 and this planner assignment
+**State:** Accepted as `df07d7c`, integrated through `2ac0a5a`; exact-main
+native Release refresh and the user's live switching verdict remain
 **Baseline/dependencies:** accepted main `8c40a6d`; live user report against
 planner-launched Release PID 36488. The 2026-08-12 00:16-00:17 log shows the
 same switch changing tray visibility from six to eight items while composition
@@ -320,11 +320,12 @@ renderer ownership model, a substantial DirectComposition redesign, or a UX
 choice about whether large content shrinks versus scrolls that is not already
 fixed above.
 
-### Platform ready queue
+### Platform current assignment
 
 ### DLV-124 — Reconcile native session, tray, and UIA state after uninstall
 
-**State:** Ready after DLV-127
+**State:** Assigned after committed DLV-127; the platform lane took this
+evidence-first item immediately without waiting for planner review, as required
 **Baseline/dependencies:** accepted DLV-123 `552d250`, integrated through
 `8c40a6d`, plus accepted DLV-118 catalog reconciliation/generation teardown
 **Owner:** platform lane; native catalog-removal reconciliation and focused host
@@ -337,6 +338,8 @@ Settings remains selected. Add production code only for a reproduced gap.
 or aggregate.
 **Stop:** the defect belongs to managed catalog state or post-uninstall
 selection requires a material UX choice.
+
+### Platform ready queue
 
 No later independent platform item is authorized after DLV-124. Do not repeat the corrected
 Audio Mixer fixture or manufacture compositor/backend work while live user
@@ -381,6 +384,7 @@ continue immediately in their respective lanes.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-127 | `df07d7c` | `2ac0a5a` | Widget switches retain one work-area-fitted shared shell and tray while preferred width/height remain bounded inner-body hints. Eight real host transitions retain exact shell/tray/selection geometry with zero widget-shell motion commits and bounded draw/commit/geometry timings; exact-main native rebuild and the user's live border/clipping/switching verdict remain. |
 | DLV-125 | `ccabb0e` | `418d11f` | The existing MSTest.Sdk 4.3.2 WidgetScenario project now has one bounded manifest step and exact-once discovery enforcement; direct/manifest execution passes 9/9. The one clean aggregate stopped later at Gbar CLI 57/58, isolated as DLV-129 rather than rerun or allowed to block visible work. |
 | DLV-126 | `a45166c` | `2c58ba7` | Game Launcher derives warm anchors from the exact rendered non-hidden rows, publishes shortcuts/help only for actionable game tiles, and retains host-owned single-step collection continuation. Focused Release evidence is 60/60; exact main is rebuilt, packaged, and visibly running as PID 16824 for the user's top-control, shortcut, and paging verdict. |
 | DLV-123 | `552d250` | `8c40a6d` | Disabled Community widgets now expose an exact path-free nested uninstall confirmation in Settings; built-in/enabled/stale/resident identities fail closed, all package versions retire together, unrelated widgets and private data remain, and one catalog revision is published. Focused Release evidence is green; the inherited verifier-manifest omission is isolated to DLV-125. |
