@@ -22,14 +22,18 @@ other failure/error/exception/timeout/malformed/denial/crash/protocol/warning/
 rejection/unavailable signature. Historical August 10 Spotify/YT Music worker-
 start and Settings invalid-payload entries did not recur and are not reopened.
 
-This is a shared bridge regression, not a Game Launcher implementation defect.
+This was a shared bridge regression, not a Game Launcher implementation defect.
 Protocol v15 and the SDK validate and emit `TextEntry`; Network Controls also
 emits it for protected Wi-Fi; the native bridge parser and host-owned modal
 already support it. `BridgeRenderStyles.RoleFor` omits the node and throws while
 building computed styles. Tests prove the components on either side but no
 production-shaped case sends the existing node through bridge style resolution.
-DLV-100 owns the one-role correction and exact installed route without expanding
-into protocol or native-modal redesign.
+Accepted DLV-100 `760a9bb`, integrated through `54fbd12`, adds exactly one
+canonical `textEntry` role and exact installed Game Launcher/Network Controls
+route without expanding into protocol or native-modal redesign. Unknown kinds
+remain fail-closed. Focused evidence passes Bridge 77/77, Game Launcher 45/45,
+Network Controls 24/24, the installed route, and 55 docs. The coherent main
+Release was fully repackaged and launched as PID 26556 for live confirmation.
 
 ### Current review delta — full-application widget resource boundary
 
@@ -51,6 +55,23 @@ allocation, retains the last valid view when possible, and returns a precise
 diagnostic rather than truncating content. Job accounting, non-breakaway
 process-tree ownership, kill-on-close, integrity, UI restrictions, and bounded
 teardown also remain containment requirements, not product-size quotas.
+
+### Current review delta — trusted artwork failure presentation
+
+The packaged DLV-100 session corrected TextEntry admission but exposed a
+separate shared native presentation defect. PID 26556 logged 45 Game Launcher
+`image_failed` lines for 15 stable node IDs in five seconds; all were the same
+terminal `Trusted artwork is unavailable` result repeated across three paints.
+The lazy provider contract legitimately cannot know that artwork exists until
+the visible host requests it, so removing handles through eager catalog probes
+would regress the accepted demand-only architecture.
+
+DLV-102 therefore belongs to the native cache/renderer boundary after DLV-025:
+terminal-unavailable trusted artwork must render the existing shared tile glyph
+and diagnose only the failure-state transition, while pending, late success,
+new revision recovery, stale rejection, focus/UIA, and cache bounds remain
+intact. This is not authority for a widget-specific placeholder, suppressed
+global diagnostics, provider redesign, or unbounded failed-handle history.
 
 ### Current review delta — protected Wi-Fi candidate
 

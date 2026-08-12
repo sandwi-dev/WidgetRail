@@ -97,7 +97,7 @@ Branch: `codex/impl-widgets`
 
 ### DLV-100 — Admit `TextEntry` through bridge render styles
 
-**State:** Assigned
+**State:** Done; accepted as `760a9bb`, integrated through `54fbd12`
 **Baseline:** planner control-plane commit `66a3f57`
 **Dependencies:** accepted DLV-075/DLV-079 and protocol v15; DLV-099 is the
 clean prior widgets boundary
@@ -137,10 +137,18 @@ text entry. No aggregate or screenshot gate.
 **Stop:** public protocol/native modal change, materially ambiguous GBSS role
 semantics, or pressure for a widget-local fallback.
 
+**Reviewer disposition:** Accepted. One canonical `textEntry` role closes the
+bridge omission without changing protocol, SDK, native modal, or widget layout.
+Unknown future node kinds remain fail-closed. Retained focused evidence passes
+WidgetBridge 77/77, Game Launcher 45/45, Network Controls 24/24, the exact
+installed AppContainer TextEntry route, and documentation 55/55. Main was fully
+repackaged after integration and the accepted Release is visibly running as PID
+26556 for the user's Game Launcher check.
+
 ### DLV-101 — Remove arbitrary private-worker size ceilings
 
-**State:** Ready after DLV-100
-**Baseline:** accepted DLV-100 widgets boundary
+**State:** Assigned; implementation started after committed DLV-100
+**Baseline:** accepted DLV-100 widgets commit `760a9bb`
 **Dependencies:** DLV-100 and current AppContainer/Job/runtime/manifest/private-
 state contracts
 **Owner:** managed installed-widget runtime, manifest resource semantics, Job
@@ -195,8 +203,8 @@ authority, removing a quota permits Job escape or host allocation growth, or
 the change requires native compositor work. Report the exact prerequisite
 instead of restoring the prototype quota.
 
-**Queue note:** The widgets lane has one Ready item because DLV-101 may reveal a
-separate scalable-storage prerequisite. Do not manufacture two speculative
+**Queue note:** No later widgets item is Ready because DLV-101 may reveal a
+separate scalable-storage prerequisite. Do not manufacture speculative
 successors before that evidence exists.
 
 ## Platform lane
@@ -267,9 +275,76 @@ presentation owner, public protocol/threat-model change, or user-only physical
 evidence. A surface that cannot coordinate committed content with HWND geometry
 is non-integrable evidence.
 
-**Queue note:** No later platform item is Ready until DLV-025 establishes its
-integration result. DLV-033 depends on that architecture decision; DLV-062 is
-blocked by its material resource gate. Do not create backend filler.
+### DLV-102 — Fall back cleanly when trusted app artwork is unavailable
+
+**State:** Ready after DLV-025
+**Baseline:** accepted DLV-025 platform boundary plus integrated DLV-100 main
+**Dependencies:** accepted DLV-094/096/098/099 lazy-artwork ownership and the
+existing trusted-artwork cache/renderer contract
+**Owner:** native trusted-artwork result/cache state, shared Image/AppTile
+failure presentation, diagnostic transition ownership, and production-shaped
+Game Launcher/Games & Apps host fixtures
+**Concurrency:** Begins only after DLV-025 commits. Do not change game-library
+provider discovery, widget catalog/persistence, DLV-101 worker policy, public
+capability authority, or reviewer documents.
+
+**Visible outcome:** A game/application whose trusted icon cannot be loaded
+shows the stable shared fallback glyph instead of a missing/blank image, and the
+overlay log no longer floods the same `image_failed` line on every repaint.
+
+**Reproduction evidence:** In the fully packaged DLV-100 Release session for
+PID 26556, Game Launcher emitted 45 `image_failed` diagnostics for 15 stable
+artwork node IDs from 17:23:26.682 through 17:23:31.476. Every result was
+`Trusted artwork is unavailable`; the same 15 failures were reported three
+times as the surface repainted. This is separate from the corrected TextEntry
+route and matches the user-visible missing-icon concern.
+
+**Objective:** Give failed trusted artwork one shared, stable presentation and
+one state-transition diagnostic without weakening demand-only loading,
+generation/revision safety, or host resource bounds.
+
+**In scope:** distinguish pending, supplied, and terminal-unavailable trusted
+artwork in the existing bounded native cache; render the existing semantic
+tile/image fallback when the current handle is terminally unavailable; retain
+layout, clipping, focus, hit testing, UIA name/role, and tile action; emit an
+error diagnostic only when a handle/revision enters a new terminal failure
+state rather than on every paint; invalidate exactly once when result state
+changes; allow a new handle/revision or explicit retry generation to recover;
+representative unavailable, late-success, failure-then-new-revision,
+repaint/snapshot-refresh, cache-eviction, Game Launcher, and Games & Apps
+fixtures.
+
+**Out of scope:** eager catalog/icon probing, changing Steam/source discovery,
+inventing artwork bytes, per-widget IDs or layouts, hiding all renderer errors,
+unbounded failure history, remote-HTTPS retry redesign, public protocol/API
+changes, DLV-025 compositor changes, screenshots, or the canonical aggregate.
+
+**Acceptance:** every unavailable trusted artwork tile remains visibly
+actionable with the shared glyph and no layout/focus/accessibility shift; each
+widget/handle/revision terminal failure produces at most one diagnostic until
+its state changes; repeated paint, snapshot refresh, focus, and transition
+frames produce no duplicate; pending work is not prematurely shown as failure;
+late success and newer revisions replace the fallback; stale results cannot
+replace current artwork; cache/error bookkeeping stays within existing bounds;
+available artwork and remote images retain current behavior.
+
+**Verification:** Tier 1 RemoteImageCache, declarative renderer, shared tile/
+image, and host Release tests. Tier 2 uses one production-shaped Game Launcher
+and Games & Apps fixture containing available, pending, and unavailable trusted
+handles, then repaints and republishes the same snapshot while asserting pixels/
+semantic fallback state and one diagnostic transition. Build OverlayHost
+Release. No screenshot harness, provider suite, aggregate, or live Steam
+account.
+
+**Stop:** a correct fallback cannot be expressed without a public presentation
+contract change, failure identity is not available without crossing provider
+authority, or the change would add unbounded host state. Preserve evidence for
+a serialized contract assignment rather than adding widget-specific behavior.
+
+**Queue note:** DLV-102 is the first Ready platform item after DLV-025 because it
+is a reproduced visible regression. DLV-033 remains dependency-blocked on the
+accepted compositor result and is internal; DLV-062 remains blocked by its
+material resource gate.
 
 ## Integration queue
 
@@ -322,6 +397,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-100 | `760a9bb` | `54fbd12` | Game Launcher and protected Network Controls TextEntry snapshots pass the canonical bridge style route; the packaged Release is running for live confirmation. |
 | DLV-094/096/098/099 | `fb7fa34` contiguous widgets prefix | `c6d76a3` | Steam artwork is demand-only, stale-safe, generation-coupled, and fully drained before provider disposal. |
 | DLV-095/097 | corrected running-app prefix through `46d1938` | `c6d76a3` | Games & Apps and Game Launcher add a validated current running app through opaque trusted authority. |
 | DLV-087/091/093 | corrected Network Controls prefix through `3ce8991` | `63ca3a2` | Protected Personal Wi-Fi and exact Bluetooth removal use host-owned credential/authority boundaries. |
