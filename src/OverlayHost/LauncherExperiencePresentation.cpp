@@ -1,4 +1,5 @@
 #include "LauncherExperiencePresentation.h"
+#include "RemoteImageCache.h"
 
 #include <Windows.h>
 #include <wincodec.h>
@@ -16,6 +17,8 @@ using Microsoft::WRL::ComPtr;
 constexpr std::size_t kFailureLimit = 3;
 constexpr double kInputLatencyBudgetMilliseconds = 8.0;
 constexpr double kRenderBudgetMilliseconds = 16.0;
+constexpr double kInputToFocusBudgetMilliseconds = 50.0;
+constexpr std::size_t kMaximumInputToFocusSamples = 512;
 
 WidgetStyleValue Number(const double value) {
     return {L"number", std::to_wstring(value), value, {}};
@@ -73,9 +76,10 @@ void ApplyFocusEffect(
         style.insert_or_assign(L"scale", Number(1.04));
         style.insert_or_assign(L"translate-y", Length(-6.0));
     } else if (effect == FocusEffect::Glow) {
-        style.insert_or_assign(L"shadow-blur", Length(12.0));
         style.insert_or_assign(L"outline-width", Length(2.0));
     }
+    if (effect != FocusEffect::None)
+        style.insert_or_assign(L"outline-width", Length(2.0));
     style.insert_or_assign(
         L"transition-duration", Duration(static_cast<double>(TransitionDuration(intensity))));
     ApplyAccessibility(style, accessibility);
@@ -91,6 +95,18 @@ void ApplyToFocusedNode(
 }
 
 } // namespace
+
+const std::uint8_t* DecodedLauncherAsset::pixels() const noexcept {
+    return sharedDecodedImage
+        ? sharedDecodedImage->premultipliedBgra.data()
+        : premultipliedBgra.data();
+}
+
+std::size_t DecodedLauncherAsset::pixelBytes() const noexcept {
+    return sharedDecodedImage
+        ? sharedDecodedImage->premultipliedBgra.size()
+        : premultipliedBgra.size();
+}
 
 AssetDecodeResult DecodeSealedLauncherAsset(
     IWICImagingFactory* imagingFactory,
@@ -214,7 +230,7 @@ bool LauncherExperiencePresentationOwner::Activate(
     LauncherPresentationFrame candidate;
     candidate.revision = request.revision;
     candidate.preset = request.preset;
-    candidate.builtIn = false;
+    candidate.builtIn = request.builtIn;
     candidate.useGlobalAppearance = request.useGlobalAppearance;
     candidate.backgroundBlurEnabled = !accessibility.reducedTransparency &&
         !accessibility.highContrast;
@@ -302,6 +318,35 @@ void LauncherExperiencePresentationOwner::RecordFrameTiming(
     if (quality_ != previous) ++metrics_.degradedFrameCount;
 }
 
+void LauncherExperiencePresentationOwner::RecordInputToFocus(
+    const double inputToFocusMilliseconds) noexcept {
+    if (!std::isfinite(inputToFocusMilliseconds) || inputToFocusMilliseconds < 0)
+        return;
+    metrics_.lastInputToFocusMilliseconds = inputToFocusMilliseconds;
+    ++metrics_.inputToFocusSampleCount;
+    if (recentInputToFocusMilliseconds_.size() == kMaximumInputToFocusSamples)
+        recentInputToFocusMilliseconds_.erase(recentInputToFocusMilliseconds_.begin());
+    recentInputToFocusMilliseconds_.push_back(inputToFocusMilliseconds);
+    auto ordered = recentInputToFocusMilliseconds_;
+    std::sort(ordered.begin(), ordered.end());
+    const auto rank = static_cast<std::size_t>(std::ceil(ordered.size() * 0.95));
+    metrics_.p95InputToFocusMilliseconds =
+        ordered[std::min(ordered.size() - 1, rank == 0 ? 0 : rank - 1)];
+    if (inputToFocusMilliseconds > kInputToFocusBudgetMilliseconds &&
+        quality_ != EffectQuality::Immediate) {
+        quality_ = EffectQuality::Immediate;
+        ++metrics_.degradedFrameCount;
+    }
+}
+
+void LauncherExperiencePresentationOwner::FinishTransitions() noexcept {
+    current_.previousBackground.reset();
+    current_.previousBackgroundOpacity = 0;
+    current_.currentBackgroundOpacity = 1;
+    current_.transitionActive = false;
+    transitionDurationMilliseconds_ = 0;
+}
+
 LauncherPresentationFrame LauncherExperiencePresentationOwner::Sample(
     const std::uint64_t nowMilliseconds) const {
     auto result = current_.revision.empty() ? BuiltIn(Preset::HeroRail) : current_;
@@ -315,12 +360,14 @@ LauncherPresentationFrame LauncherExperiencePresentationOwner::Sample(
         result.focusedGameStyle.insert_or_assign(L"transition-duration", Duration(0.0));
         result.previousBackgroundOpacity = 0;
         result.currentBackgroundOpacity = 1;
+        result.transitionActive = false;
         return result;
     }
     if (!result.currentBackground || !result.previousBackground ||
         transitionDurationMilliseconds_ == 0) {
         result.previousBackgroundOpacity = 0;
         result.currentBackgroundOpacity = 1;
+        result.transitionActive = false;
         return result;
     }
     const auto elapsed = nowMilliseconds > transitionStartMilliseconds_
@@ -330,6 +377,7 @@ LauncherPresentationFrame LauncherExperiencePresentationOwner::Sample(
         0.0F, 1.0F);
     result.previousBackgroundOpacity = 1.0F - progress;
     result.currentBackgroundOpacity = progress;
+    result.transitionActive = progress < 1.0F;
     return result;
 }
 

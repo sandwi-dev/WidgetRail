@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LauncherExperienceAdapter.h"
+#include "RemoteImageCache.h"
 
 #include <d2d1.h>
 #include <wrl/client.h>
@@ -22,9 +23,18 @@ struct ProductionProjectionResult final {
     ProductionProjectionDisposition disposition{
         ProductionProjectionDisposition::Ordinary};
     std::optional<Preset> preset;
+    bool presentationActive{};
+    EffectQuality effectQuality{EffectQuality::Full};
+    bool backgroundIsFallback{true};
+    bool backgroundTransitionActive{};
+    float previousBackgroundOpacity{};
+    float currentBackgroundOpacity{1.0F};
+    std::wstring backgroundFocusId;
+    LauncherPresentationMetrics presentationMetrics;
 };
 
 [[nodiscard]] std::wstring_view PresetName(Preset preset) noexcept;
+[[nodiscard]] std::wstring_view EffectQualityName(EffectQuality quality) noexcept;
 
 /// Owns the private first-party projection boundary between one admitted Game
 /// Launcher snapshot and the existing native Launcher Experience adapter. It
@@ -36,11 +46,19 @@ public:
     [[nodiscard]] ProductionProjectionResult Render(
         DeclarativeRenderer& renderer,
         ID2D1RenderTarget* target,
+        RemoteImageCache* imageCache,
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot,
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options);
+
+    /// Records the existing host input owner's exact focus-change edge. The
+    /// projection consumes it only for Game Launcher and closes it when the
+    /// corresponding immutable presentation frame is committed.
+    void ObserveFocusInput(
+        std::wstring_view widgetId,
+        std::uint64_t nowMilliseconds) noexcept;
 
     /// Returns the canonical snapshot only while it is the projection of this
     /// exact immutable source generation. All other callers retain the source.
@@ -48,11 +66,29 @@ public:
         std::wstring_view widgetId,
         const WidgetSnapshot& source) const noexcept;
 
+    /// Returns an authored focus edge only from the last complete canonical
+    /// frame committed by the Launcher Experience projection. This lets
+    /// an internal game-to-game move complete before the ordinary collection
+    /// prefetch action observes the newly focused edge.
+    [[nodiscard]] std::optional<std::wstring> ProjectedFocusTarget(
+        std::wstring_view widgetId,
+        std::wstring_view focusedElementId,
+        std::wstring_view direction) const;
+
     void DiscardTargetResources() noexcept;
 
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING
     void FailNextAdapterFrameForTesting() noexcept {
         failNextAdapterFrameForTesting_ = true;
+    }
+    void RecordPresentationTimingForTesting(
+        double inputDispatchMilliseconds,
+        double renderCommitMilliseconds) noexcept {
+        presentationOwner_.RecordFrameTiming(
+            inputDispatchMilliseconds, renderCommitMilliseconds);
+    }
+    void RecordInputToFocusForTesting(double milliseconds) noexcept {
+        presentationOwner_.RecordInputToFocus(milliseconds);
     }
 #endif
 
@@ -69,6 +105,15 @@ private:
     [[nodiscard]] bool EnsureStagingTarget(
         ID2D1RenderTarget* target,
         declarative::Rect viewport);
+    [[nodiscard]] LauncherPresentationFrame PreparePresentation(
+        RemoteImageCache* imageCache,
+        std::wstring_view widgetId,
+        const Projection& projection,
+        const WidgetSnapshot& snapshot,
+        std::wstring_view focusedElementId,
+        const NativeAccessibilityPolicy& accessibility,
+        std::uint64_t nowMilliseconds);
+    void RetirePresentation() noexcept;
     void RetainCanonical(
         std::wstring_view widgetId,
         WidgetSnapshot snapshot);
@@ -79,6 +124,9 @@ private:
     Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> stagingTarget_;
     std::wstring canonicalWidgetId_;
     std::optional<WidgetSnapshot> canonicalSnapshot_;
+    LauncherExperiencePresentationOwner presentationOwner_;
+    std::wstring activePresentationKey_;
+    std::optional<std::uint64_t> pendingFocusInputMilliseconds_;
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING
     bool failNextAdapterFrameForTesting_{};
 #endif

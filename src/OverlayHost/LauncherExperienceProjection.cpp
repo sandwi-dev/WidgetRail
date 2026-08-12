@@ -1,7 +1,7 @@
 #include "LauncherExperienceProjection.h"
-
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <map>
 #include <utility>
@@ -30,6 +30,17 @@ constexpr std::array<std::pair<std::wstring_view, Slot>, 6> kSlots{{
     {L"operation-status", Slot::OperationStatus},
     {L"controller-hints", Slot::ControllerHints},
 }};
+
+const WidgetNode* FindProjectedNode(
+    const WidgetNode& node,
+    const std::wstring_view id) {
+    if (node.id == id) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = FindProjectedNode(child, id))
+            return found;
+    }
+    return nullptr;
+}
 
 std::size_t ClassCount(
     const WidgetNode& node,
@@ -70,6 +81,37 @@ void AddFallbackDiagnostic(
         RenderDiagnosticSeverity::Warning, {}, code, message});
 }
 
+const WidgetNode* FindNode(
+    const WidgetNode& root,
+    const std::wstring_view id) noexcept {
+    if (root.id == id) return &root;
+    for (const auto& child : root.children) {
+        if (const auto* result = FindNode(child, id)) return result;
+    }
+    return nullptr;
+}
+
+template <typename ProjectionType>
+const WidgetNode* FocusedGameNode(
+    const ProjectionType& projection,
+    const std::wstring_view focusedElementId) noexcept {
+    const auto rail = std::find_if(
+        projection.contents.begin(), projection.contents.end(),
+        [](const auto& content) { return content.slot == Slot::GameRail; });
+    return rail == projection.contents.end()
+        ? nullptr
+        : FindNode(rail->snapshot.root, focusedElementId);
+}
+
+const WidgetNode* ArtworkNode(const WidgetNode* root) noexcept {
+    if (!root) return nullptr;
+    if (!root->artworkHandle.empty()) return root;
+    for (const auto& child : root->children) {
+        if (const auto* result = ArtworkNode(&child)) return result;
+    }
+    return nullptr;
+}
+
 } // namespace
 
 std::wstring_view PresetName(const Preset preset) noexcept {
@@ -78,6 +120,15 @@ std::wstring_view PresetName(const Preset preset) noexcept {
     case Preset::CoverWall: return L"cover-wall";
     case Preset::Carousel: return L"carousel";
     case Preset::CompactGrid: return L"compact-grid";
+    }
+    return L"unknown";
+}
+
+std::wstring_view EffectQualityName(const EffectQuality quality) noexcept {
+    switch (quality) {
+    case EffectQuality::Full: return L"full";
+    case EffectQuality::OpacityOnly: return L"opacity-only";
+    case EffectQuality::Immediate: return L"immediate";
     }
     return L"unknown";
 }
@@ -154,18 +205,94 @@ bool LauncherExperienceProjection::EnsureStagingTarget(
     return true;
 }
 
+LauncherPresentationFrame LauncherExperienceProjection::PreparePresentation(
+    RemoteImageCache* imageCache,
+    const std::wstring_view widgetId,
+    const Projection& projection,
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId,
+    const NativeAccessibilityPolicy& accessibility,
+    const std::uint64_t nowMilliseconds) {
+    const auto* focused = FocusedGameNode(projection, focusedElementId);
+    const auto* artwork = ArtworkNode(focused);
+    const std::wstring artworkKey = artwork
+        ? RemoteImageCache::TrustedArtworkKey(
+            widgetId, artwork->id, artwork->artworkHandle)
+        : std::wstring{};
+    const auto decoded = imageCache && !artworkKey.empty()
+        ? imageCache->GetReadyImage(artworkKey)
+        : std::shared_ptr<const RemoteDecodedImage>{};
+    const bool decodedValid = decoded && decoded->width > 0 && decoded->height > 0 &&
+        decoded->stride == decoded->width * 4U &&
+        decoded->premultipliedBgra.size() ==
+            static_cast<std::size_t>(decoded->stride) * decoded->height;
+
+    std::wstring key = std::to_wstring(static_cast<int>(projection.preset)) + L"\n" +
+        snapshot.instanceId + L"\n" + std::wstring(focusedElementId) + L"\n" +
+        artworkKey + L"\n" + (decodedValid ? L"ready" : L"fallback") + L"\n" +
+        (accessibility.reducedMotion ? L"motion-reduced" : L"motion-full") + L"\n" +
+        (accessibility.reducedTransparency ? L"transparency-reduced" :
+                                             L"transparency-full") + L"\n" +
+        (accessibility.contrastHook ? L"contrast-high" : L"contrast-standard");
+    if (key != activePresentationKey_) {
+        LauncherPresentationRequest request;
+        request.revision = L"builtin-live:" +
+            std::wstring(PresetName(projection.preset));
+        request.preset = projection.preset;
+        request.builtIn = true;
+        request.useGlobalAppearance = false;
+        request.backgroundMode = BackgroundMode::SelectedGameArtwork;
+        request.focusEffect = focused ? FocusEffect::Lift : FocusEffect::None;
+        request.motionIntensity = MotionIntensity::Standard;
+        if (decodedValid) {
+            auto background = std::make_shared<DecodedLauncherAsset>();
+            background->opaqueAssetId = focused->id;
+            background->revision = artworkKey;
+            background->width = decoded->width;
+            background->height = decoded->height;
+            background->stride = decoded->stride;
+            background->sharedDecodedImage = decoded;
+            request.selectedGameArtworkRevision = artworkKey;
+            request.selectedGameBackground = std::move(background);
+        } else if (!artworkKey.empty()) {
+            request.selectedGameArtworkRevision = artworkKey;
+        }
+        std::wstring diagnostic;
+        if (presentationOwner_.Activate(
+                request,
+                {.reducedMotion = accessibility.reducedMotion,
+                 .reducedTransparency = accessibility.reducedTransparency,
+                 .highContrast = static_cast<bool>(accessibility.contrastHook)},
+                nowMilliseconds, diagnostic)) {
+            activePresentationKey_ = std::move(key);
+        }
+    }
+    return presentationOwner_.Sample(nowMilliseconds);
+}
+
+void LauncherExperienceProjection::RetirePresentation() noexcept {
+    presentationOwner_.FinishTransitions();
+    activePresentationKey_.clear();
+    pendingFocusInputMilliseconds_.reset();
+}
+
 ProductionProjectionResult LauncherExperienceProjection::Render(
     DeclarativeRenderer& renderer,
     ID2D1RenderTarget* target,
+    RemoteImageCache* imageCache,
     const std::wstring_view widgetId,
     const WidgetSnapshot& snapshot,
     const std::wstring_view focusedElementId,
     const declarative::Rect viewport,
     const DeclarativeRenderOptions& options) {
+    const auto renderStarted = std::chrono::steady_clock::now();
+    const auto presentationTime = options.animationTimestampMilliseconds.value_or(
+        GetTickCount64());
     bool markerPresent{};
     auto projection = Recognize(widgetId, snapshot, markerPresent);
     if (!projection) {
         ClearCanonical();
+        RetirePresentation();
         auto render = renderer.Render(
             target, snapshot, focusedElementId, viewport, options);
         if (markerPresent && widgetId == kWidgetId) {
@@ -179,6 +306,7 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
 
     if (!EnsureStagingTarget(target, viewport)) {
         ClearCanonical();
+        RetirePresentation();
         auto render = renderer.Render(
             target, snapshot, focusedElementId, viewport, options);
         AddFallbackDiagnostic(
@@ -191,10 +319,13 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     stagingTarget_->BeginDraw();
     stagingTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
     stagingTarget_->Clear(D2D1::ColorF(0, 0.0F));
+    const auto presentation = PreparePresentation(
+        imageCache, widgetId, *projection, snapshot, focusedElementId,
+        options.accessibility, presentationTime);
     auto staged = RenderExperience(
         renderer, stagingTarget_.Get(), nullptr, projection->preset,
         {0, 0, viewport.width, viewport.height}, projection->contents,
-        focusedElementId, options, nullptr, &snapshot);
+        focusedElementId, options, &presentation, &snapshot);
     const HRESULT endResult = stagingTarget_->EndDraw();
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING
     const bool forcedFailure = std::exchange(failNextAdapterFrameForTesting_, false);
@@ -204,6 +335,7 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     if (forcedFailure || FAILED(endResult) ||
         !staged.layout.valid() || !staged.render.succeeded) {
         ClearCanonical();
+        presentationOwner_.FinishTransitions();
         auto render = renderer.Render(
             target, snapshot, focusedElementId, viewport, options);
         AddFallbackDiagnostic(
@@ -216,6 +348,7 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
     if (FAILED(stagingTarget_->GetBitmap(bitmap.ReleaseAndGetAddressOf())) || !bitmap) {
         ClearCanonical();
+        presentationOwner_.FinishTransitions();
         auto render = renderer.Render(
             target, snapshot, focusedElementId, viewport, options);
         AddFallbackDiagnostic(
@@ -232,8 +365,42 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
         D2D1::RectF(0, 0, viewport.width, viewport.height));
     OffsetRenderResult(staged.render, viewport.x, viewport.y);
     RetainCanonical(widgetId, std::move(staged.semanticSnapshot));
-    return {std::move(staged.render), ProductionProjectionDisposition::Adopted,
-            projection->preset};
+    const auto committedAt = GetTickCount64();
+    const auto renderCommitMilliseconds = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - renderStarted).count();
+    presentationOwner_.RecordFrameTiming(0.0, renderCommitMilliseconds);
+    if (pendingFocusInputMilliseconds_ &&
+        committedAt >= *pendingFocusInputMilliseconds_) {
+        presentationOwner_.RecordInputToFocus(static_cast<double>(
+            committedAt - *pendingFocusInputMilliseconds_));
+        pendingFocusInputMilliseconds_.reset();
+    }
+    const auto nextPresentation = presentationOwner_.Sample(committedAt);
+    staged.render.animationActive = staged.render.animationActive ||
+        presentation.transitionActive ||
+        nextPresentation.effectQuality != presentation.effectQuality;
+    ProductionProjectionResult result{
+        std::move(staged.render), ProductionProjectionDisposition::Adopted,
+        projection->preset};
+    result.presentationActive = true;
+    result.effectQuality = presentation.effectQuality;
+    result.backgroundIsFallback = presentation.backgroundIsFallback;
+    result.backgroundTransitionActive = presentation.transitionActive;
+    result.previousBackgroundOpacity = presentation.previousBackgroundOpacity;
+    result.currentBackgroundOpacity = presentation.currentBackgroundOpacity;
+    result.backgroundFocusId = presentation.currentBackground
+        ? presentation.currentBackground->opaqueAssetId
+        : std::wstring{};
+    result.presentationMetrics = presentationOwner_.metrics();
+    return result;
+}
+
+void LauncherExperienceProjection::ObserveFocusInput(
+    const std::wstring_view widgetId,
+    const std::uint64_t nowMilliseconds) noexcept {
+    if (widgetId != kWidgetId) return;
+    if (!pendingFocusInputMilliseconds_)
+        pendingFocusInputMilliseconds_ = nowMilliseconds;
 }
 
 const WidgetSnapshot& LauncherExperienceProjection::InteractionSnapshot(
@@ -247,11 +414,31 @@ const WidgetSnapshot& LauncherExperienceProjection::InteractionSnapshot(
     return source;
 }
 
+std::optional<std::wstring> LauncherExperienceProjection::ProjectedFocusTarget(
+    const std::wstring_view widgetId,
+    const std::wstring_view focusedElementId,
+    const std::wstring_view direction) const {
+    if (!canonicalSnapshot_ || canonicalWidgetId_ != widgetId)
+        return std::nullopt;
+    const auto& canonical = *canonicalSnapshot_;
+    const auto* focused = FindProjectedNode(canonical.root, focusedElementId);
+    if (!focused) return std::nullopt;
+    const std::wstring* target = nullptr;
+    if (direction == L"up") target = &focused->focusUp;
+    else if (direction == L"down") target = &focused->focusDown;
+    else if (direction == L"left") target = &focused->focusLeft;
+    else if (direction == L"right") target = &focused->focusRight;
+    if (!target || target->empty()) return std::nullopt;
+    const auto* resolved = FindProjectedNode(canonical.root, *target);
+    return resolved ? std::optional<std::wstring>{resolved->id} : std::nullopt;
+}
+
 void LauncherExperienceProjection::DiscardTargetResources() noexcept {
     stagingTarget_.Reset();
     parentTarget_ = nullptr;
     stagingSize_ = {};
     ClearCanonical();
+    RetirePresentation();
 }
 
 void LauncherExperienceProjection::RetainCanonical(

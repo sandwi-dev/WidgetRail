@@ -3293,6 +3293,8 @@ private:
                     }
                     (void)pressedInteraction_.Clear();
                     sliderInteraction_.DeactivateAll();
+                    launcherExperienceProjection_.ObserveFocusInput(
+                        widget, GetTickCount64());
                     focusedElementId_ = hit->id;
                     focusMemory_.Remember(widget, *snapshot, focusedElementId_);
                     InvalidateRect(window_, nullptr, FALSE);
@@ -4272,6 +4274,8 @@ private:
                     state_.activeWidget() != request.widgetId) continue;
                 sliderInteraction_.DeactivateAll();
                 (void)pressedInteraction_.Clear();
+                launcherExperienceProjection_.ObserveFocusInput(
+                    request.widgetId, GetTickCount64());
                 focusedElementId_ = resolved->nodeId;
                 focusMemory_.Remember(request.widgetId, *snapshot, focusedElementId_);
                 (void)SetFocus(window_);
@@ -4578,6 +4582,19 @@ private:
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
         }
+        const auto projectedDirection =
+            direction == gba::input::NavigationDirection::Left ? L"left" :
+            direction == gba::input::NavigationDirection::Right ? L"right" :
+            direction == gba::input::NavigationDirection::Up ? L"up" : L"down";
+        const auto projectedFocusTarget =
+            launcherExperienceProjection_.ProjectedFocusTarget(
+                widgetId, focusedElementId_, projectedDirection);
+        if ((phase != gba::input::NavigationEventPhase::Repeated ||
+             repeatedCanNavigate) &&
+            projectedFocusTarget) {
+            MoveWidgetFocus(projectedDirection);
+            return;
+        }
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
         if (!focused) return;
@@ -4749,16 +4766,37 @@ private:
         if (*visibleFocus != focusedElementId_) {
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
+            launcherExperienceProjection_.ObserveFocusInput(
+                widgetId, GetTickCount64());
             focusedElementId_ = *visibleFocus;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
+        const auto projectedTarget =
+            launcherExperienceProjection_.ProjectedFocusTarget(
+                widgetId, focusedElementId_, direction);
+        if (projectedTarget && gba::input::IsEnabledFocusTarget(
+                *projectedTarget, lastWidgetRenderResult_)) {
+            sliderInteraction_.DeactivateAll();
+            (void)pressedInteraction_.Clear();
+            launcherExperienceProjection_.ObserveFocusInput(
+                widgetId, GetTickCount64());
+            focusedElementId_ = *projectedTarget;
+            (void)scrollEvidenceProbe_.RecordTarget(
+                focusedElementId_, direction);
+            focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
+            InvalidateRect(window_, nullptr, FALSE);
+            DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
+            return;
+        }
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, activeScope);
         if (!focused) return;
-        // Resolve the current Scroll edge before an explicit or geometric move
-        // can leave that Scroll and make its pagination action undiscoverable.
+        // Ordinary collection prefetch remains authoritative unless the exact
+        // immutable Launcher Experience frame already projects an internal
+        // game-to-game edge. In that case commit focus first, then let the
+        // existing pagination owner observe the newly focused collection edge.
         if (DispatchScrollPagination(widgetId, *snapshot, navigationDirection))
             return;
         const std::wstring* target = nullptr;
@@ -4776,6 +4814,8 @@ private:
         if (explicitMoves) {
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
+            launcherExperienceProjection_.ObserveFocusInput(
+                widgetId, GetTickCount64());
             focusedElementId_ = explicitTarget->id;
             (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
@@ -4789,6 +4829,8 @@ private:
         if (fallback) {
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
+            launcherExperienceProjection_.ObserveFocusInput(
+                widgetId, GetTickCount64());
             focusedElementId_ = *fallback;
             (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
@@ -6065,13 +6107,41 @@ private:
                     }
                 }
                 auto launcherProjection = launcherExperienceProjection_.Render(
-                    *declarativeRenderer_, renderTarget_.Get(), renderedWidget,
+                    *declarativeRenderer_, renderTarget_.Get(), imageCache_.get(), renderedWidget,
                     *snapshot, renderedFocusId, viewport, options);
                 auto result = std::move(launcherProjection.render);
                 const auto& semanticSnapshot =
                     launcherExperienceProjection_.InteractionSnapshot(
                         renderedWidget, *snapshot);
                 if (result.succeeded) {
+                    const auto launcherGameNavigationCount =
+                        static_cast<std::size_t>(std::count_if(
+                            result.navigationRects.begin(),
+                            result.navigationRects.end(),
+                            [](const auto& entry) {
+                                return std::wstring_view{entry.first}.starts_with(
+                                    L"game-launcher.item.grid.game.");
+                            }));
+                    std::wstring launcherRailPrevious;
+                    std::wstring launcherRailNext;
+                    if (launcherProjection.preset) {
+                        if (const auto* focusedLauncherNode =
+                                gba::input::FindNodeInInputScope(
+                                    semanticSnapshot, renderedFocusId,
+                                    semanticSnapshot.activeInputScopeId)) {
+                            const bool verticalRail =
+                                *launcherProjection.preset ==
+                                    gba::launcher::Preset::CoverWall ||
+                                *launcherProjection.preset ==
+                                    gba::launcher::Preset::CompactGrid;
+                            launcherRailPrevious = verticalRail
+                                ? focusedLauncherNode->focusUp
+                                : focusedLauncherNode->focusLeft;
+                            launcherRailNext = verticalRail
+                                ? focusedLauncherNode->focusDown
+                                : focusedLauncherNode->focusRight;
+                        }
+                    }
                     const std::wstring inputOwner =
                         state_.focusRegion() == gba::FocusRegion::Tray
                             ? L"tray"
@@ -6112,12 +6182,24 @@ private:
                             std::to_wstring(trayLayout->stripBounds.width) + L"," +
                             std::to_wstring(trayLayout->stripBounds.height)
                         : L"\nmissing";
+                    const std::wstring launcherPresentationKey =
+                        launcherProjection.presentationActive
+                            ? L"\nlauncher-presentation\n" +
+                                std::wstring(gba::launcher::EffectQualityName(
+                                    launcherProjection.effectQuality)) + L"\n" +
+                                (launcherProjection.backgroundIsFallback
+                                    ? L"fallback"
+                                    : launcherProjection.backgroundFocusId) + L"\n" +
+                                (launcherProjection.backgroundTransitionActive
+                                    ? L"transitioning"
+                                    : L"settled")
+                            : L"\nlauncher-presentation\ninactive";
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
                         (retainedCommittedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
-                        L"\n" + semanticFocus + trayState;
+                        L"\n" + semanticFocus + trayState + launcherPresentationKey;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
                         if (launcherProjection.disposition ==
@@ -6129,7 +6211,48 @@ private:
                                     *launcherProjection.preset)) +
                                 L" sequence=" + std::to_wstring(snapshot->sequence) +
                                 L" instance=" + snapshot->instanceId +
-                                L" scope=" + snapshot->activeInputScopeId);
+                                L" scope=" + snapshot->activeInputScopeId +
+                                L" focus=" +
+                                (renderedFocusId.empty()
+                                    ? std::wstring{L"none"}
+                                    : std::wstring{renderedFocusId}) +
+                                L" game-navigation=" + std::to_wstring(
+                                    launcherGameNavigationCount) +
+                                L" rail-previous=" +
+                                (launcherRailPrevious.empty()
+                                    ? std::wstring{L"none"}
+                                    : launcherRailPrevious) +
+                                L" rail-next=" +
+                                (launcherRailNext.empty()
+                                    ? std::wstring{L"none"}
+                                    : launcherRailNext) +
+                                L" effect=" + std::wstring(
+                                    gba::launcher::EffectQualityName(
+                                        launcherProjection.effectQuality)) +
+                                L" background=" +
+                                (launcherProjection.backgroundIsFallback
+                                    ? std::wstring{L"fallback"}
+                                    : std::wstring{L"ready"}) +
+                                L" background-focus=" +
+                                (launcherProjection.backgroundFocusId.empty()
+                                    ? std::wstring{L"none"}
+                                    : launcherProjection.backgroundFocusId) +
+                                L" crossfade=" +
+                                (launcherProjection.backgroundTransitionActive
+                                    ? L"active"
+                                    : L"settled") +
+                                L" input-to-focus-last-ms=" + std::to_wstring(
+                                    launcherProjection.presentationMetrics
+                                        .lastInputToFocusMilliseconds) +
+                                L" input-to-focus-p95-ms=" + std::to_wstring(
+                                    launcherProjection.presentationMetrics
+                                        .p95InputToFocusMilliseconds) +
+                                L" input-samples=" + std::to_wstring(
+                                    launcherProjection.presentationMetrics
+                                        .inputToFocusSampleCount) +
+                                L" degraded=" + std::to_wstring(
+                                    launcherProjection.presentationMetrics
+                                        .degradedFrameCount));
                         }
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +

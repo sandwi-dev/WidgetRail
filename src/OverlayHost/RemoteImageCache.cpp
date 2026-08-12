@@ -399,6 +399,31 @@ RemoteImageCacheStats RemoteImageCache::GetStats() const {
     return {entries_.size(), decodedBytes_, pending};
 }
 
+std::shared_ptr<const RemoteDecodedImage> RemoteImageCache::GetReadyImage(
+    const std::wstring_view key) {
+    std::lock_guard lock(mutex_);
+    const auto found = entries_.find(std::wstring(key));
+    if (found == entries_.end() || found->second.state != RemoteImageState::Ready ||
+        !found->second.image)
+        return {};
+    found->second.lastUse = ++useCounter_;
+    return found->second.image;
+}
+
+std::wstring RemoteImageCache::TrustedArtworkKey(
+    const std::wstring_view widgetId,
+    const std::wstring_view nodeId,
+    const std::wstring_view artworkHandle) {
+    if (widgetId.empty() || nodeId.empty() || artworkHandle.empty()) return {};
+    std::wstring result = L"gbar-artwork\x1f";
+    result.append(widgetId);
+    result.push_back(L'\x1f');
+    result.append(nodeId);
+    result.push_back(L'\x1f');
+    result.append(artworkHandle);
+    return result;
+}
+
 HRESULT RemoteImageCache::CreateBitmap(
     ID2D1RenderTarget* renderTarget,
     std::wstring_view url,

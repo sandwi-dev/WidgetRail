@@ -250,6 +250,12 @@ WidgetSnapshot ProjectedProductionSnapshot(
     rail.children[0].collectionItemKey = L"saved-id-0-exact";
     rail.children[1].collectionItemKey = L"saved-id-1-exact";
     rail.children[2].collectionItemKey = L"saved-id-2-exact";
+    auto firstArtwork = Node(L"launcher.game.0.artwork", L"image", L"Game zero artwork");
+    firstArtwork.artworkHandle = L"library.art.00000000000000000000000000000000";
+    rail.children[0].children.push_back(std::move(firstArtwork));
+    auto secondArtwork = Node(L"launcher.game.1.artwork", L"image", L"Game one artwork");
+    secondArtwork.artworkHandle = L"library.art.11111111111111111111111111111111";
+    rail.children[1].children.push_back(std::move(secondArtwork));
     return result;
 }
 
@@ -678,7 +684,7 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
             target->BeginDraw();
             target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1));
             auto adopted = projection.Render(
-                renderer, target.Get(), L"game-launcher", snapshot,
+                renderer, target.Get(), nullptr, L"game-launcher", snapshot,
                 L"launcher.game.0", viewport, options);
             Check(SUCCEEDED(target->EndDraw()),
                 "complete production projection frame");
@@ -695,8 +701,25 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
                   semantic.root.id == snapshot.root.id &&
                   semantic.root.styleClasses == snapshot.root.styleClasses,
                 "projection preserves snapshot and root identity");
+            const auto canonicalScope = [&](const auto& self,
+                                            const WidgetNode& node) -> bool {
+                return node.inputScopeId == snapshot.activeInputScopeId &&
+                    std::all_of(
+                        node.children.begin(), node.children.end(),
+                        [&](const auto& child) { return self(self, child); });
+            };
+            Check(canonicalScope(canonicalScope, semantic.root),
+                "projection assigns one canonical active scope to every adopted slot descendant");
             const auto* rail = FindNode(semantic.root, L"launcher.game-rail");
             const auto* game = FindNode(semantic.root, L"launcher.game.0");
+            const auto expectedDirection =
+                (expectedPreset == Preset::CoverWall ||
+                 expectedPreset == Preset::CompactGrid)
+                ? std::wstring_view{L"down"}
+                : std::wstring_view{L"right"};
+            const auto projectedFocus = projection.ProjectedFocusTarget(
+                L"game-launcher", L"launcher.game.0",
+                expectedDirection);
             const auto* primary = FindNode(semantic.root, L"launcher.primary-action");
             Check(rail && rail->kind == L"scroll" &&
                   rail->scrollNearStartActionId == L"game-launcher.page.before.exact" &&
@@ -709,6 +732,8 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
                   game->collectionItemKey == L"saved-id-0-exact" &&
                   primary && primary->actionId == L"host.launch.exact-saved-id",
                 "projection preserves exact game, action, and collection identities");
+            Check(projectedFocus && *projectedFocus == L"launcher.game.1",
+                "canonical projection exposes the preset-oriented internal game focus edge");
             Check(adopted.render.focusRects.contains(L"launcher.game.0"),
                 "projection publishes exact focused game geometry");
             const auto focus = adopted.render.focusRects.at(L"launcher.game.0");
@@ -744,7 +769,7 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
         options.collectAccessibility = true;
         target->BeginDraw();
         auto result = projection.Render(
-            renderer, target.Get(), L"game-launcher", snapshot,
+            renderer, target.Get(), nullptr, L"game-launcher", snapshot,
             L"launcher.game.0", {0, 0, 1280, 720}, options);
         Check(SUCCEEDED(target->EndDraw()), "complete ordinary fallback frame");
         Check(result.disposition == ProductionProjectionDisposition::Fallback &&
@@ -771,7 +796,7 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
     projection.FailNextAdapterFrameForTesting();
     target->BeginDraw();
     auto recovered = projection.Render(
-        renderer, target.Get(), L"game-launcher", adapterFailure,
+        renderer, target.Get(), nullptr, L"game-launcher", adapterFailure,
         L"launcher.game.0", {0, 0, 1280, 720}, {});
     Check(SUCCEEDED(target->EndDraw()), "complete forced adapter recovery frame");
     Check(recovered.disposition == ProductionProjectionDisposition::Fallback &&
@@ -793,13 +818,151 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
         ordinary.root.styleClasses.end());
     target->BeginDraw();
     auto ordinaryResult = projection.Render(
-        renderer, target.Get(), L"spotify", ordinary,
+        renderer, target.Get(), nullptr, L"spotify", ordinary,
         L"launcher.game.0", {0, 0, 1280, 720}, {});
     Check(SUCCEEDED(target->EndDraw()), "complete non-launcher ordinary frame");
     Check(ordinaryResult.disposition == ProductionProjectionDisposition::Ordinary &&
           ordinaryResult.render.succeeded &&
           &projection.InteractionSnapshot(L"spotify", ordinary) == &ordinary,
         "other widgets remain on the ordinary declarative path");
+}
+
+void ProductionProjectionUsesOneAtomicPresentationFrame() {
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create motion D2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create motion DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create motion WIC factory");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        1280, 720, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "create motion WIC canvas");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf())),
+        "create motion render target");
+
+    constexpr std::wstring_view png =
+        L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
+    gba::RemoteImageCache cache(
+        {}, {}, {}, [](std::wstring_view) { return true; });
+    gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+    LauncherExperienceProjection projection;
+    const auto draw = [&](const std::wstring_view profile,
+                          const std::wstring_view focus,
+                          const std::uint64_t now,
+                          const gba::NativeAccessibilityPolicy accessibility = {}) {
+        auto snapshot = ProjectedProductionSnapshot(profile);
+        gba::DeclarativeRenderOptions options;
+        options.collectAccessibility = true;
+        options.artworkWidgetId = L"game-launcher";
+        options.animationTimestampMilliseconds = now;
+        options.accessibility = accessibility;
+        target->BeginDraw();
+        auto result = projection.Render(
+            renderer, target.Get(), &cache, L"game-launcher", snapshot,
+            focus, {0, 0, 1280, 720}, options);
+        Check(SUCCEEDED(target->EndDraw()) && result.render.succeeded,
+            "complete immutable presentation frame");
+        return result;
+    };
+
+    for (const auto profile : {L"hero-rail", L"cover-wall", L"carousel", L"compact-grid"}) {
+        const auto first = draw(profile, L"launcher.game.0", 100);
+        const auto firstKey = gba::RemoteImageCache::TrustedArtworkKey(
+            L"game-launcher", L"launcher.game.0.artwork",
+            L"library.art.00000000000000000000000000000000");
+        Check(first.presentationActive &&
+              (first.backgroundIsFallback || !first.backgroundFocusId.empty()),
+            "pending trusted artwork keeps a complete fallback or last-good frame");
+        if (!cache.GetReadyImage(firstKey)) {
+            Check(cache.SupplyTrustedArtwork(
+                L"game-launcher", L"library.art.00000000000000000000000000000000",
+                std::wstring(png)), "supply first decoded trusted background");
+        }
+        for (int attempt = 0; attempt < 200 && !cache.GetReadyImage(firstKey); ++attempt)
+            Sleep(5);
+        Check(cache.GetReadyImage(firstKey) != nullptr,
+            "first trusted background decodes before publication");
+        const auto ready = draw(profile, L"launcher.game.0", 200);
+        Check(!ready.backgroundIsFallback &&
+              ready.backgroundFocusId == L"launcher.game.0" &&
+              std::abs(ready.previousBackgroundOpacity +
+                       ready.currentBackgroundOpacity - 1.0F) <= 0.01F,
+            "decoded background enters one complete adopted frame");
+
+        const auto secondKey = gba::RemoteImageCache::TrustedArtworkKey(
+            L"game-launcher", L"launcher.game.1.artwork",
+            L"library.art.11111111111111111111111111111111");
+        const bool secondWasReady = cache.GetReadyImage(secondKey) != nullptr;
+        const auto secondPending = draw(profile, L"launcher.game.1", 240);
+        Check(secondWasReady ||
+              (secondPending.backgroundFocusId == L"launcher.game.0" &&
+               !secondPending.backgroundIsFallback),
+            "stale or pending next artwork retains the last-good background");
+        if (!secondWasReady) {
+            Check(cache.SupplyTrustedArtwork(
+                L"game-launcher", L"library.art.11111111111111111111111111111111",
+                std::wstring(png)), "supply second decoded trusted background");
+        }
+        for (int attempt = 0; attempt < 200 && !cache.GetReadyImage(secondKey); ++attempt)
+            Sleep(5);
+        Check(cache.GetReadyImage(secondKey) != nullptr,
+            "second trusted background decodes before publication");
+        const auto crossfade = draw(profile, L"launcher.game.1", 300);
+        Check(crossfade.backgroundTransitionActive &&
+              crossfade.backgroundFocusId == L"launcher.game.1" &&
+              crossfade.previousBackgroundOpacity > 0.0F &&
+              crossfade.currentBackgroundOpacity >= 0.0F &&
+              crossfade.currentBackgroundOpacity < 1.0F,
+            "complete next background crossfades from one last-good frame");
+        const auto focus = crossfade.render.focusRects.at(L"launcher.game.1");
+        const auto hit = std::find_if(
+            crossfade.render.hitRegions.begin(), crossfade.render.hitRegions.end(),
+            [](const auto& item) { return item.nodeId == L"launcher.game.1"; });
+        const auto uia = std::find_if(
+            crossfade.render.accessibilityRegions.begin(),
+            crossfade.render.accessibilityRegions.end(),
+            [](const auto& item) { return item.nodeId == L"launcher.game.1"; });
+        Check(hit != crossfade.render.hitRegions.end() &&
+              uia != crossfade.render.accessibilityRegions.end(),
+            "moving focus retains pointer and UIA geometry");
+        Near(focus.x, hit->rect.x, "motion frame focus and pointer x agree");
+        Near(focus.y, uia->rect.y, "motion frame focus and UIA y agree");
+    }
+
+    gba::NativeAccessibilityPolicy reduced;
+    reduced.reducedMotion = true;
+    reduced.reducedTransparency = true;
+    const auto accessible = draw(
+        L"hero-rail", L"launcher.game.1", 600, reduced);
+    Check(!accessible.backgroundTransitionActive &&
+          accessible.currentBackgroundOpacity == 1.0F,
+        "reduced motion snaps the background swap without another frame");
+
+    projection.RecordPresentationTimingForTesting(1.0, 20.0);
+    const auto opacityOnly = draw(
+        L"hero-rail", L"launcher.game.1", 700);
+    Check(opacityOnly.effectQuality == EffectQuality::OpacityOnly,
+        "render pressure deterministically degrades transforms before input");
+    projection.RecordInputToFocusForTesting(55.0);
+    const auto immediate = draw(
+        L"hero-rail", L"launcher.game.1", 800);
+    Check(immediate.effectQuality == EffectQuality::Immediate &&
+          immediate.presentationMetrics.p95InputToFocusMilliseconds == 55.0 &&
+          immediate.presentationMetrics.degradedFrameCount >= 2,
+        "input-to-focus budget makes effects immediate and retains p95 evidence");
 }
 
 } // namespace
@@ -813,6 +976,7 @@ int main() {
     ScopedCascadeAccessibilityAndRecoveryStayAtomic();
     RenderedSlotsSharePaintPointerFocusAndUiaGeometry();
     ProductionProjectionAdoptsOnlyTheExactFirstPartyShape();
+    ProductionProjectionUsesOneAtomicPresentationFrame();
     std::cout << "LauncherExperienceTests: " << checks << " checks passed\n";
     CoUninitialize();
     return EXIT_SUCCESS;

@@ -23,15 +23,26 @@ namespace {
 
 constexpr DWORD kStartupTimeoutMilliseconds = 30'000;
 constexpr DWORD kStepTimeoutMilliseconds = 10'000;
+constexpr DWORD kStressWindowMilliseconds = 60'000;
 constexpr wchar_t kEvidenceNonce[] =
     L"1461461461461461461461461461461461461461461461461461461461461461";
 constexpr wchar_t kSeededGameName[] = L"DLV-146 Trusted Game";
+constexpr wchar_t kMotionGameName[] = L"DLV-148 Motion Game";
 
 struct ProjectionRecord final {
     std::string preset;
     long long sequence{};
     std::string instance;
     std::string scope;
+    std::string focus;
+    std::string effect;
+    std::string background;
+    std::string backgroundFocus;
+    std::string railPrevious;
+    std::string railNext;
+    double inputP95Milliseconds{};
+    std::size_t inputSamples{};
+    std::size_t degraded{};
 };
 
 ComPtr<IUIAutomationElement> RootForWindow(
@@ -230,6 +241,10 @@ public:
             if (!diagnostic.empty())
                 std::cerr << "LauncherExperienceHostTests diagnostic:\n" <<
                     diagnostic << '\n';
+            const auto backend = ReadUtf8(BackendDiagnosticPath());
+            if (!backend.empty())
+                std::cerr << "LauncherExperienceHostTests backend:\n" <<
+                    backend << '\n';
         }
         std::error_code ignored;
         fs::remove_all(root_, ignored);
@@ -245,6 +260,10 @@ public:
     [[nodiscard]] const std::wstring& Profile() const noexcept { return profile_; }
     [[nodiscard]] fs::path LogPath() const {
         return localAppData_ / L"GameBarAlternative" / L"overlay.log";
+    }
+    [[nodiscard]] fs::path BackendDiagnosticPath() const {
+        return localAppData_ / L"GameBarAlternative" /
+            L"launcher-experience-backend.txt";
     }
 
 private:
@@ -280,12 +299,90 @@ std::vector<ProjectionRecord> ProjectionRecords(const fs::path& log) {
         const auto sequence = Field(line, "sequence=");
         const auto instance = Field(line, "instance=");
         const auto scope = Field(line, "scope=");
+        const auto focus = Field(line, "focus=");
+        const auto effect = Field(line, "effect=");
+        const auto background = Field(line, "background=");
+        const auto backgroundFocus = Field(line, "background-focus=");
+        const auto railPrevious = Field(line, "rail-previous=");
+        const auto railNext = Field(line, "rail-next=");
+        const auto inputP95 = Field(line, "input-to-focus-p95-ms=");
+        const auto inputSamples = Field(line, "input-samples=");
+        const auto degraded = Field(line, "degraded=");
         if (preset && sequence && instance && scope) {
-            records.push_back({*preset, std::stoll(*sequence), *instance, *scope});
+            ProjectionRecord record{*preset, std::stoll(*sequence), *instance, *scope};
+            record.focus = focus.value_or("");
+            record.effect = effect.value_or("");
+            record.background = background.value_or("");
+            record.backgroundFocus = backgroundFocus.value_or("");
+            record.railPrevious = railPrevious.value_or("");
+            record.railNext = railNext.value_or("");
+            record.inputP95Milliseconds = inputP95 ? std::stod(*inputP95) : 0;
+            record.inputSamples = inputSamples
+                ? static_cast<std::size_t>(std::stoull(*inputSamples)) : 0;
+            record.degraded = degraded
+                ? static_cast<std::size_t>(std::stoull(*degraded)) : 0;
+            records.push_back(std::move(record));
         }
         cursor = end == std::string::npos ? text.size() : end + 1;
     }
     return records;
+}
+
+ProjectionRecord WaitForFocusPresentation(
+    const fs::path& log,
+    const std::string_view preset,
+    const std::wstring_view automationId,
+    const std::size_t /*priorCount*/) {
+    const auto rawFocus = WideToUtf8(
+        automationId.starts_with(L"widget:") ? automationId.substr(7) : automationId);
+    std::optional<ProjectionRecord> result;
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(log);
+        const auto found = std::find_if(records.rbegin(), records.rend(),
+            [&](const auto& record) {
+                return record.preset == preset && record.focus == rawFocus &&
+                    record.background == "ready" &&
+                    record.backgroundFocus == rawFocus;
+            });
+        if (found == records.rend()) return false;
+        result = *found;
+        return true;
+    }), "Production host did not atomically commit focused Launcher artwork.");
+    return *result;
+}
+
+struct TraversedGames final {
+    std::wstring first;
+    std::wstring second;
+};
+
+TraversedGames TraverseTwoGames(
+    IUIAutomation* automation,
+    const HWND window,
+    const fs::path& log,
+    const std::string_view preset) {
+    ComPtr<IUIAutomationElement> first;
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        auto root = RootForWindow(automation, window);
+        first = FindByAutomationIdPrefix(
+            automation, root.Get(), L"widget:game-launcher.item.grid.game.");
+        return first != nullptr;
+    }), "Production host omitted the first trusted game tile.");
+    const auto firstId = StringProperty(first.Get(), UIA_AutomationIdPropertyId);
+    RequireInsideWindow(first.Get(), window);
+    const auto firstCount = ProjectionRecords(log).size();
+    RequireFocusedIdentity(automation, first.Get(), firstId);
+    const auto firstPresentation = WaitForFocusPresentation(
+        log, preset, firstId, firstCount);
+    Require(!firstPresentation.railNext.empty() &&
+            firstPresentation.railNext != "none",
+        "The canonical Launcher frame omitted its second-game focus edge.");
+    const std::wstring railNextWide(
+        firstPresentation.railNext.begin(), firstPresentation.railNext.end());
+    const std::wstring secondId = L"widget:" + railNextWide;
+    Require(secondId != firstId,
+        "The projected rail edge did not expose a distinct second game identity.");
+    return {firstId, secondId};
 }
 
 ProjectionRecord WaitForNewProjection(
@@ -398,6 +495,10 @@ void RunAdoption(
     const fs::path& installationPath,
     const fs::path& fixtureBridge) {
     RunningHost running(installationPath, fixtureBridge, "adoption\n");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        return ReadUtf8(running.installation.BackendDiagnosticPath()).find(
+            "items=2") != std::string::npos;
+    }), "The trusted app-library backend did not seed exactly two games.");
     auto tray = WaitForElement(
         automation, running.window, L"tray:tray.game-launcher");
     RequireInsideWindow(tray.Get(), running.window);
@@ -405,6 +506,7 @@ void RunAdoption(
     const auto first = WaitForNewProjection(
         running.installation.LogPath(), "hero-rail", 0);
     auto seededIdentity = AssertSeededGame(automation, running.window);
+    std::optional<TraversedGames> stableGameIdentities;
     long long lastSequence = first.sequence;
     for (const std::string_view preset :
          {"cover-wall", "carousel", "compact-grid", "hero-rail"}) {
@@ -434,7 +536,60 @@ void RunAdoption(
         lastSequence = record.sequence;
         seededIdentity = AssertSeededGame(
             automation, running.window, seededIdentity);
+        const auto games = TraverseTwoGames(
+            automation, running.window, running.installation.LogPath(), preset);
+        if (!stableGameIdentities) stableGameIdentities = games;
+        Require(games.first == stableGameIdentities->first &&
+                games.second == stableGameIdentities->second,
+            "Game identity changed across Launcher Experience presets.");
+        stableGameIdentities = games;
     }
+
+    const auto stressStarted = GetTickCount64();
+    const auto stressEnds = stressStarted + kStressWindowMilliseconds;
+    bool moveToFirst = false;
+    auto root = RootForWindow(automation, running.window);
+    auto firstGame = FindByAutomationId(
+        automation, root.Get(), stableGameIdentities->first.c_str());
+    auto focusAlternate = FindByAutomationId(
+        automation, root.Get(), L"widget:game-launcher.experiences.open");
+    Require(firstGame && focusAlternate,
+        "The production stress fixture omitted an actionable focus identity.");
+    while (GetTickCount64() < stressEnds) {
+        const auto expected = moveToFirst
+            ? stableGameIdentities->first
+            : std::wstring{L"widget:game-launcher.experiences.open"};
+        auto* target = moveToFirst ? firstGame.Get() : focusAlternate.Get();
+        Require(SUCCEEDED(target->SetFocus()),
+            "Production UIA focus input failed during Launcher stress.");
+        Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+            ComPtr<IUIAutomationElement> focused;
+            return SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+                focused && StringProperty(
+                    focused.Get(), UIA_AutomationIdPropertyId) == expected;
+        }), "Production actionable focus did not reach the expected identity.");
+        moveToFirst = !moveToFirst;
+        Sleep(75);
+    }
+    std::optional<ProjectionRecord> stressRecord;
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        if (records.empty()) return false;
+        const auto found = std::find_if(records.rbegin(), records.rend(),
+            [](const auto& item) { return item.inputSamples >= 2; });
+        if (found == records.rend()) return false;
+        stressRecord = *found;
+        return true;
+    }), "The production host omitted Launcher input timing samples.");
+    Require(stressRecord->inputP95Milliseconds < 50.0,
+        "The production Launcher input-to-focus p95 exceeded 50 ms.");
+    Require(stressRecord->degraded >= 2 && stressRecord->effect == "immediate",
+        "The production Launcher did not deterministically degrade effects before focus semantics.");
+    const auto log = ReadUtf8(running.installation.LogPath());
+    Require(log.find("launcher_projection_render_failed") == std::string::npos &&
+            log.find("launcher_projection_bitmap_unavailable") == std::string::npos &&
+            log.find("launcher_background_bitmap") == std::string::npos,
+        "The 60-second Launcher motion window exposed an incomplete frame.");
 
     SendKey(running.window, VK_ESCAPE);
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
@@ -444,7 +599,10 @@ void RunAdoption(
                 L"tray:tray.game-launcher";
     }), "Game Launcher Back route did not return focus to its tray identity.");
     running.Stop();
-    std::cout << "LauncherExperienceHostTests: deterministic live preset adoption passed\n";
+    std::cout << "LauncherExperienceHostTests: deterministic live preset adoption and "
+                 "60-second motion budget passed (p95=" <<
+        stressRecord->inputP95Milliseconds << " ms, degraded=" <<
+        stressRecord->degraded << ")\n";
 }
 
 void RunFallback(

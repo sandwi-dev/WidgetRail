@@ -14,6 +14,7 @@
 #include <vector>
 
 struct IWICImagingFactory;
+namespace gba { struct RemoteDecodedImage; }
 
 namespace gba::launcher {
 
@@ -46,6 +47,13 @@ struct DecodedLauncherAsset final {
     std::uint32_t height{};
     std::uint32_t stride{};
     std::vector<std::uint8_t> premultipliedBgra;
+    /// Ordinary trusted app artwork remains owned by RemoteImageCache. The
+    /// launcher presentation frame may share that immutable decoded payload
+    /// without copying it into a second native image cache.
+    std::shared_ptr<const gba::RemoteDecodedImage> sharedDecodedImage;
+
+    [[nodiscard]] const std::uint8_t* pixels() const noexcept;
+    [[nodiscard]] std::size_t pixelBytes() const noexcept;
 };
 
 struct AssetDecodeResult final {
@@ -70,6 +78,7 @@ struct LauncherAccessibility final {
 struct LauncherPresentationRequest final {
     std::wstring revision;
     Preset preset{Preset::HeroRail};
+    bool builtIn{};
     bool useGlobalAppearance{};
     bool safeStart{};
     BackgroundMode backgroundMode{BackgroundMode::Global};
@@ -98,11 +107,15 @@ struct LauncherPresentationFrame final {
     std::shared_ptr<const DecodedLauncherAsset> currentBackground;
     float previousBackgroundOpacity{};
     float currentBackgroundOpacity{1.0F};
+    bool transitionActive{};
 };
 
 struct LauncherPresentationMetrics final {
     double maximumInputDispatchMilliseconds{};
     double maximumRenderCommitMilliseconds{};
+    double lastInputToFocusMilliseconds{};
+    double p95InputToFocusMilliseconds{};
+    std::size_t inputToFocusSampleCount{};
     std::size_t degradedFrameCount{};
 };
 
@@ -123,6 +136,8 @@ public:
     void RecordFrameTiming(
         double inputDispatchMilliseconds,
         double renderCommitMilliseconds) noexcept;
+    void RecordInputToFocus(double inputToFocusMilliseconds) noexcept;
+    void FinishTransitions() noexcept;
     [[nodiscard]] LauncherPresentationFrame Sample(
         std::uint64_t nowMilliseconds) const;
     [[nodiscard]] bool IsRevisionDisabled(std::wstring_view revision) const;
@@ -141,6 +156,7 @@ private:
     EffectQuality quality_{EffectQuality::Full};
     std::map<std::wstring, std::size_t, std::less<>> failures_;
     std::set<std::wstring, std::less<>> disabledRevisions_;
+    std::vector<double> recentInputToFocusMilliseconds_;
     LauncherPresentationMetrics metrics_;
 };
 

@@ -3497,7 +3497,7 @@ No production source or alternate automation surface is retained. A product UX
 decision is required to permit taskbar/Alt-Tab presence or a supported control-
 tool change is required to admit the existing tool/owned overlay identity.
 
-### Game Launcher native-experience managed boundary (DLV-134 partial)
+### Game Launcher native-experience managed boundary (DLV-134)
 
 Game Launcher now owns one bounded persisted built-in experience selection and
 one pure semantic-state partition. Hero Rail, Cover Wall, Carousel, and Compact
@@ -3523,18 +3523,10 @@ library refreshes and two reads, so no launch action was admitted. That
 provider/current-resolution limitation is outside this managed projection
 change; the failed run is retained and was not repeated.
 
-Production adoption remains blocked on a platform-owned private hook. The
-ordinary host currently calls `DeclarativeRenderer::Render` directly in
-`OverlayHost/main.cpp`; `LauncherExperienceAdapter::RenderExperience` is used
-only by focused tests and the sealed host proof. The missing hook must map the
-first-party marker plus six slot roots to the selected native preset, feed the
-same admitted snapshot/focus/options/work-area into the adapter, and use the
-returned render geometry plus canonical semantic snapshot for pointer, focus,
-scroll, and UIA publication. It must preserve the original instance, sequence,
-input scope, cursor scroll/anchor semantics, and exact node actions. No public
-WidgetProtocol/WidgetSdk expansion is required. Until that hook exists, the
-ordinary declarative rendering path remains the safe fallback and DLV-134 is
-not complete.
+DLV-145/146 subsequently connected this held managed contract to the ordinary
+production host through the private native projection seam. The same admitted
+snapshot identities, actions, cursor semantics, and persisted profile remain
+managed-owned; no public WidgetProtocol/WidgetSdk expansion was introduced.
 
 ### Game Launcher production slot adoption (DLV-145)
 
@@ -3553,22 +3545,54 @@ unchanged ordinary declarative tree with one bounded diagnostic.
 | Input, focus, scroll, and UIA | Production pointer/focus/action/scroll/UIA consumers used the admitted ordinary tree and its one render result. | Those same consumers use the canonical snapshot only when it matches the exact widget, instance, sequence, and input scope that produced the current adapter geometry. Exact node/action/focus IDs, collection anchor/keys, sequence, instance, surface, and Back scope remain authored by Game Launcher. |
 | Domain, protocol, and presentation lifetime | Game Launcher owned provider, organization, cursor, action, and persisted profile state; the ordinary host owned one renderer/window/compositor. | Those owners are unchanged. Native code adds no game/provider/action state, public schema, protocol field, managed edit, window, compositor, or second renderer. One reusable compatible target is discarded with existing graphics resources. |
 
-Focused Release evidence passes 1,540 launcher layout/adapter/renderer/focus/
+Focused Release evidence originally passed 1,540 launcher layout/adapter/renderer/focus/
 pointer/UIA checks. It covers all four profiles over compact, standard, wide,
 125%-pixel-scale, 150%-text-scale, and nonzero work-area origins; exact root,
 instance, sequence, scope, node/action/focus, collection-anchor/item, pagination,
 and Scroll identity; shared paint/pointer/focus/UIA bounds; malformed private
 shapes and forced adapter failure with one ordinary-path diagnostic; and
-semantic-equivalent non-launcher rendering. A fresh isolated production
-`OverlayHost.exe` built and launched the
-held packaged Game Launcher, selected its real tray/UIA surface, and retained
-current ordinary paint and targetable profile controls. That machine supplied
-no projectable live game rail during the run, so the held projector emitted no
-private marker and the fixture correctly proved the ordinary fallback rather
-than claiming live profile adoption. The retained managed 68/68 evidence covers
-profile selection, long-title/missing-art states, exact identities, and bounded
-2,000/10,000-item cursor projection. No aggregate, capture, push, or main
-integration was performed.
+semantic-equivalent non-launcher rendering. DLV-146 then replaced the
+provider-unavailable-only host proof with a deterministic test-only trusted
+app-library backend behind the normal broker and capability path. The ordinary
+production host adopted Hero Rail, Cover Wall, Carousel, and Compact Grid with
+stable instance/sequence/scope/game identities, then returned to Hero Rail; a
+separate unavailable-provider scenario retained the ordinary declarative
+fallback. The retained managed 68/68 evidence covers profile selection,
+long-title/missing-art states, exact identities, and bounded 2,000/10,000-item
+cursor projection. No production bypass was added.
+
+### Launcher Experience production presentation (DLV-148)
+
+The existing `LauncherExperienceProjection` now connects one native
+presentation owner to the ordinary adopted Game Launcher path. Each complete
+frame atomically carries the selected background, slot paint, focus effects,
+pointer geometry, canonical input scope, and UIA semantics for the same
+admitted snapshot sequence. Trusted artwork is decoded through the existing
+bounded image cache before a background swap; pending or failed artwork retains
+the last good background or built-in fallback. Graphics teardown, ordinary
+fallback, and hidden/unselected retirement finish presentation transitions
+without adding a window, compositor, renderer, timer, protocol field, managed
+schema, or provider authority.
+
+The four closed presets project orientation-specific game focus edges onto the
+same collection identities. Internal game focus commits before the existing
+near-edge collection prefetch action; other widgets retain ordinary pagination
+order. Reduced motion removes transforms, reduced transparency uses an opaque
+fallback, and render/input pressure deterministically drops effects from full
+to opacity-only and then immediate while focus and UIA remain current. The
+production diagnostic records preset, sequence, focus, game count, rail edges,
+background readiness, transition state, effect quality, input-to-focus p95 and
+sample count, and degradation count only when presentation state changes.
+
+Focused Release evidence passes 1,685 native launcher presentation/layout/
+renderer/focus/pointer/UIA checks. The isolated ordinary production-host fixture
+seeds two trusted games through the normal broker/capability path, adopts all
+four presets plus Hero Rail return with stable identities and a distinct
+canonical second-game edge, validates decoded artwork readiness and shared
+visible focus/UIA bounds, and passes a 60-second actionable-focus stress window
+with input-to-focus p95 strictly below 50 ms and deterministic immediate-effect
+degradation. A separate provider-unavailable run remains effect-free ordinary
+fallback. The named suites ran without aggregate or capture evidence.
 
 ### Launcher Experience deterministic authoring toolchain (DLV-135)
 

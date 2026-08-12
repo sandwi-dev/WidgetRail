@@ -114,6 +114,21 @@ public:
     [[nodiscard]] std::wstring GetError(std::wstring_view url) const;
     [[nodiscard]] RemoteImageCacheStats GetStats() const;
 
+    /// Returns one immutable, fully decoded cache entry without creating a
+    /// render-target resource. Launcher presentation uses this only after the
+    /// ordinary trusted-artwork request path has completed, so a background
+    /// swap never exposes a partial decode or another image lifetime owner.
+    [[nodiscard]] std::shared_ptr<const RemoteDecodedImage> GetReadyImage(
+        std::wstring_view key);
+
+    /// Canonical host-only key shared by the ordinary renderer and the native
+    /// Launcher Experience presentation seam. Widget snapshots cannot author
+    /// this namespace directly.
+    [[nodiscard]] static std::wstring TrustedArtworkKey(
+        std::wstring_view widgetId,
+        std::wstring_view nodeId,
+        std::wstring_view artworkHandle);
+
     /// Creates a render-target-owned bitmap from a ready CPU cache entry.
     /// Returns E_PENDING while queued/loading and HRESULT_FROM_WIN32(ERROR_NOT_FOUND)
     /// for missing/failed entries.

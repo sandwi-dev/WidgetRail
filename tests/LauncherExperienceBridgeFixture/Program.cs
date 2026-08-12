@@ -74,7 +74,8 @@ internal static class Program
                 simulator,
                 simulator,
                 appLibrary: scenario == "adoption"
-                    ? SeededAppLibrary.Instance
+                    ? new SeededAppLibrary(Path.Combine(
+                        settingsRoot, "launcher-experience-backend.txt"))
                     : UnavailableAppLibrary.Instance,
                 privateState: simulator);
 
@@ -132,19 +133,34 @@ internal static class Program
         internal static UnavailableAppLibrary Instance { get; } = new();
     }
 
-    private sealed class SeededAppLibrary : IAppLibraryPlatformBrokerBackend
+    private sealed class SeededAppLibrary(string diagnosticPath) : IAppLibraryPlatformBrokerBackend
     {
-        private static readonly AppLibraryBackendItemSummary Game = new(
-            "dlv146-provider-game",
-            "dlv146-stable-game",
-            "DLV-146 Trusted Game",
-            AppLibraryKind.Game,
-            SourceAttribution: "DLV-146 Fixture")
-        {
-            SourceIdentity = "dlv146-fixture",
-        };
-
-        internal static SeededAppLibrary Instance { get; } = new();
+        private const string ArtworkPngBase64 =
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
+            "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
+        private static readonly AppLibraryBackendItemSummary[] Games =
+        [
+            new(
+                "dlv146-provider-game",
+                "dlv146-stable-game",
+                "DLV-146 Trusted Game",
+                AppLibraryKind.Game,
+                ArtworkRevision: "dlv148-artwork-1",
+                SourceAttribution: "DLV-146 Fixture")
+            {
+                SourceIdentity = "dlv146-fixture",
+            },
+            new(
+                "dlv148-provider-game",
+                "dlv148-stable-game",
+                "DLV-148 Motion Game",
+                AppLibraryKind.Game,
+                ArtworkRevision: "dlv148-artwork-2",
+                SourceAttribution: "DLV-146 Fixture")
+            {
+                SourceIdentity = "dlv146-fixture",
+            },
+        ];
 
         public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
             AppLibraryBackendCursorRequest request,
@@ -153,17 +169,33 @@ internal static class Program
             cancellationToken.ThrowIfCancellationRequested();
             ArgumentNullException.ThrowIfNull(request);
             var admitted = request.Cursor is null &&
-                request.Query.Kind is null or AppLibraryKind.Game &&
-                (request.Query.SourceAttribution is null ||
-                    request.Query.SourceAttribution == Game.SourceAttribution) &&
-                (request.Query.SearchText is null || Game.DisplayName.Contains(
-                    request.Query.SearchText, StringComparison.OrdinalIgnoreCase)) &&
-                (request.Query.StableIdentityFilter is null ||
-                    request.Query.StableIdentityFilter.Contains(
-                        Game.StableProviderIdentity, StringComparer.Ordinal));
-            IReadOnlyList<AppLibraryBackendItemSummary> items = admitted ? [Game] : [];
+                request.Query.Kind is null or AppLibraryKind.Game;
+            IReadOnlyList<AppLibraryBackendItemSummary> items = admitted
+                ? Games.Where(game =>
+                    (request.Query.SourceAttribution is null ||
+                        request.Query.SourceAttribution == game.SourceAttribution) &&
+                    (request.Query.SearchText is null || game.DisplayName.Contains(
+                        request.Query.SearchText, StringComparison.OrdinalIgnoreCase)) &&
+                    (request.Query.StableIdentityFilter is null ||
+                        request.Query.StableIdentityFilter.Contains(
+                            game.StableProviderIdentity, StringComparer.Ordinal)))
+                    .ToArray()
+                : [];
+            File.AppendAllText(diagnosticPath,
+                $"query limit={request.Limit} items={items.Count} cursor={request.Cursor ?? "first"}{Environment.NewLine}");
             return Task.FromResult(new AppLibraryBackendCursorPage(
                 items, null, null, "dlv146-seeded-revision"));
+        }
+
+        public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
+            string appId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new AppLibraryIconSummary(
+                Games.Any(game => game.ProviderAppId == appId)
+                    ? ArtworkPngBase64
+                    : null));
         }
 
         public Task LaunchAppLibraryItemAsync(
@@ -171,7 +203,7 @@ internal static class Program
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (appId != Game.ProviderAppId)
+            if (!Games.Any(game => game.ProviderAppId == appId))
                 throw new BrokerException("app_not_found", "Seeded game was not found.");
             return Task.CompletedTask;
         }

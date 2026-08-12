@@ -14,6 +14,40 @@ const SlotContent* FindContent(const std::vector<SlotContent>& contents, const S
     return found == contents.end() ? nullptr : &*found;
 }
 
+void CollectGameTiles(
+    WidgetNode& node,
+    std::vector<WidgetNode*>& tiles) {
+    if (!node.collectionItemKey.empty()) {
+        tiles.push_back(&node);
+    }
+    for (auto& child : node.children) CollectGameTiles(child, tiles);
+}
+
+void ApplyGameRailFocusEdges(
+    WidgetNode& root,
+    const Orientation orientation) {
+    std::vector<WidgetNode*> tiles;
+    CollectGameTiles(root, tiles);
+    for (std::size_t index = 0; index < tiles.size(); ++index) {
+        auto& previous = orientation == Orientation::Vertical
+            ? tiles[index]->focusUp : tiles[index]->focusLeft;
+        auto& next = orientation == Orientation::Vertical
+            ? tiles[index]->focusDown : tiles[index]->focusRight;
+        if (previous.empty() && index != 0)
+            previous = tiles[index - 1]->id;
+        if (next.empty() && index + 1 < tiles.size())
+            next = tiles[index + 1]->id;
+    }
+}
+
+void ApplyCanonicalInputScope(
+    WidgetNode& node,
+    const std::wstring_view activeInputScopeId) {
+    node.inputScopeId = activeInputScopeId;
+    for (auto& child : node.children)
+        ApplyCanonicalInputScope(child, activeInputScopeId);
+}
+
 WidgetSnapshot AdaptSnapshot(
     const SlotContent& content,
     const SlotPlacement& placement,
@@ -26,6 +60,7 @@ WidgetSnapshot AdaptSnapshot(
             snapshot.root.scrollAxis = vertical ? L"vertical" : L"horizontal";
         else
             snapshot.root.kind = vertical ? L"column" : L"row";
+        ApplyGameRailFocusEdges(snapshot.root, *placement.orientation);
     }
     if (presentation)
         ApplyLauncherPresentationStyles(
@@ -38,7 +73,7 @@ bool PaintBackgroundLayer(
     const std::shared_ptr<const DecodedLauncherAsset>& asset,
     const declarative::Rect bounds,
     const float opacity) {
-    if (!target || !asset || asset->premultipliedBgra.empty() || opacity <= 0.0F)
+    if (!target || !asset || asset->pixelBytes() == 0 || opacity <= 0.0F)
         return true;
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
     const auto properties = D2D1::BitmapProperties(
@@ -47,7 +82,7 @@ bool PaintBackgroundLayer(
             D2D1_ALPHA_MODE_PREMULTIPLIED));
     if (FAILED(target->CreateBitmap(
             D2D1::SizeU(asset->width, asset->height),
-            asset->premultipliedBgra.data(), asset->stride,
+            asset->pixels(), asset->stride,
             properties, bitmap.ReleaseAndGetAddressOf())))
         return false;
     target->DrawBitmap(
@@ -113,7 +148,7 @@ WidgetSnapshot AggregateSnapshot(
     for (const auto& placement : layout.semanticPlacements) {
         if (const auto* content = FindContent(contents, placement.slot)) {
             auto root = AdaptSnapshot(*content, placement, nullptr, focusedElementId).root;
-            if (root.inputScopeId.empty()) root.inputScopeId = aggregate.activeInputScopeId;
+            ApplyCanonicalInputScope(root, aggregate.activeInputScopeId);
             aggregate.root.children.push_back(std::move(root));
         }
     }

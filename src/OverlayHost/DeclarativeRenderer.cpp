@@ -1983,17 +1983,10 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ImagePresentationState& presentationState) {
     presentationState = ImagePresentationState::Failed;
     const bool trustedArtwork = !node.artworkHandle.empty() && node.imageSource.empty();
-    std::wstring source;
-    if (trustedArtwork && !artworkWidgetId.empty()) {
-        source = L"gbar-artwork\x1f";
-        source.append(artworkWidgetId);
-        source.push_back(L'\x1f');
-        source.append(node.id);
-        source.push_back(L'\x1f');
-        source.append(node.artworkHandle);
-    } else {
-        source = node.imageSource;
-    }
+    std::wstring source = trustedArtwork
+        ? RemoteImageCache::TrustedArtworkKey(
+            artworkWidgetId, node.id, node.artworkHandle)
+        : node.imageSource;
     if (!imageCache_ || !renderTarget || source.empty()) {
         pass.Add(node.id, L"missing_image", L"Image has no HTTPS source or image cache.");
         return {};
