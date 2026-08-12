@@ -3378,6 +3378,56 @@ focused Release fixture passes 17/17 and covers all-valid, all-forbidden, mixed,
 and repeated-unsafe over-limit sets with a bounded diagnostic count and an
 unvisited invalid tail.
 
+### Launcher-scoped presentation and recovery ownership (DLV-133)
+
+Launcher Experience presentation now has one native owner downstream of the
+accepted catalog and responsive layout foundation. It merges launcher-only pack
+and user slot styles after the existing global computed appearance, applies
+accessibility last, decodes sealed static bytes through bounded WIC ownership,
+and atomically publishes revision-bound backgrounds and focus effects. No path,
+URL, package record, action, or game/provider identity crosses into a worker.
+
+| Responsibility | Before | After |
+| --- | --- | --- |
+| Catalog and package safety | `LauncherExperienceCatalog` validated immutable recipes, GBSS files, asset headers, identity, digest, and package bounds. | It remains the only package-selection/validation authority; native presentation accepts only an opaque revision and sealed bytes/styles. |
+| Responsive layout and semantics | `LauncherExperienceLayout` and `LauncherExperienceAdapter` owned slot bounds, orientation, renderer projection, focus, pointer, and UIA geometry. | Those owners are unchanged; the adapter consumes an optional immutable presentation frame and paints its decoded background through the existing D2D target before rendering the same host-owned slots. |
+| Style, artwork, and recovery | No native launcher-only cascade, decode-before-crossfade state, revision quarantine, or safe-start owner existed. | `LauncherExperiencePresentation` exclusively owns pack/user overrides, bounded PNG/JPEG/WebP decode, selected-art revision matching, last-good background retention, effect timing/degradation, accessibility overrides, three-failure revision isolation, and built-in safe-start recovery. |
+| Domain/actions/compositor | Fixed host proof content supplied exact action IDs; live Game Launcher projection and composition lifetime were deliberately absent. | They remain absent. Presentation cannot create content/actions, change focus identity, change window/compositor ownership, or project live launcher state. |
+
+Focused Release evidence passes 1,361 native style/asset/recovery/layout/
+renderer/focus/pointer/UIA checks. It includes successful real WIC decode for
+PNG, JPEG, and standard VP8L WebP; container mismatch, corruption, encoded and
+decoded bounds; exact slot scoping; `Use global appearance`; selected-art
+last-good retention; accessibility-final overrides; atomic crossfade; and
+render/input-budget degradation. The rebuilt production `OverlayHost.exe`
+presentation lifecycle route exits zero after switching two decoded revisions,
+retaining exact focus/actions, and recovering only the repeatedly failing
+revision to the built-in launcher. No aggregate, capture, network, animated
+media, audio, managed widget, public protocol, window, or compositor behavior
+changed.
+
+### Production computer-control targetability gate (DLV-136)
+
+The bounded product experiment reached the assignment's material-UX stop and
+was removed. The accepted main popup (`WS_EX_TOOLWINDOW |
+WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST`) is absent from supported
+computer-control window/app discovery. A non-tool popup owned by the existing
+tool/no-activate backdrop preserved shell exclusion and passed 13 focused
+identity/activation/lifecycle checks plus 152 UIA-provider and 34 host-
+accessibility checks, but the supported tool still omitted it and Windows
+reported the backdrop as the process main window.
+
+On isolated candidate PID 41748, temporarily removing only the owner made the
+exact titled main HWND appear in both supported `list_windows()` and
+`list_apps()` while `WS_EX_NOREDIRECTIONBITMAP` remained set, proving that
+DirectComposition capture identity is not the blocker. The unowned non-tool
+popup is eligible for normal taskbar/Alt-Tab shell identity. Adding
+`WS_EX_NOACTIVATE` suppressed that shell identity but again removed the surface
+from supported discovery and contradicted the required activation/focus path.
+No production source or alternate automation surface is retained. A product UX
+decision is required to permit taskbar/Alt-Tab presence or a supported control-
+tool change is required to admit the existing tool/owned overlay identity.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

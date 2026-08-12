@@ -137,3 +137,19 @@ The four built-in recovery presets and the reference left-rail/glass recipe are
 covered across compact, 720p, 1080p, taskbar-reserved, and 150%-scale profiles.
 An incompatible recipe is replaced atomically by the matching built-in preset;
 rejected content never supplies fallback actions or semantics.
+
+The native `LauncherExperiencePresentation` owner applies only launcher-slot
+pack and user overrides after the already-computed global appearance. Choosing
+`Use global appearance` omits both launcher layers. Reduced motion,
+transparency, and high contrast are applied last and can remove blur,
+translation, scale, background art, and transition duration.
+
+Static package artwork crosses the catalog/media boundary as immutable encoded
+bytes plus an opaque asset and revision identity—never as a path, URL, or
+worker value. The host bounds encoded bytes and decoded pixels, validates the
+declared PNG/JPEG/WebP container, rejects multi-frame content, and publishes a
+new revision only after successful decode. Selected-game artwork must match the
+current artwork revision. A failed decode retains the previous professional
+background or the code-owned fallback; three failures disable only that pack
+revision and select the matching built-in recovery experience. The documented
+safe-start route always bypasses the selected pack for that activation.

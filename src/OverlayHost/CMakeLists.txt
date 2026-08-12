@@ -40,6 +40,7 @@ add_executable(OverlayHost WIN32
     DeclarativeRenderer.cpp
     LauncherExperienceLayout.cpp
     LauncherExperienceAdapter.cpp
+    LauncherExperiencePresentation.cpp
     LauncherExperienceHostProof.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
@@ -400,6 +401,7 @@ if(GBA_BUILD_TESTS)
 
     add_executable(LauncherExperienceTests
         LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
+        LauncherExperiencePresentation.cpp
         AccessibilityTree.cpp FocusNavigation.cpp ControllerNavigation.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp
         DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)

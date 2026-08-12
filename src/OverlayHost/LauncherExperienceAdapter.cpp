@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <set>
 
+#include <wrl/client.h>
+
 namespace gba::launcher {
 namespace {
 
@@ -14,11 +16,41 @@ const SlotContent* FindContent(const std::vector<SlotContent>& contents, const S
 
 WidgetSnapshot AdaptSnapshot(
     const SlotContent& content,
-    const SlotPlacement& placement) {
+    const SlotPlacement& placement,
+    const LauncherPresentationFrame* presentation,
+    const std::wstring_view focusedElementId) {
     auto snapshot = content.snapshot;
     if (placement.slot == Slot::GameRail && placement.orientation)
         snapshot.root.kind = *placement.orientation == Orientation::Vertical ? L"column" : L"row";
+    if (presentation)
+        ApplyLauncherPresentationStyles(
+            placement.slot, snapshot, *presentation, focusedElementId);
     return snapshot;
+}
+
+bool PaintBackgroundLayer(
+    ID2D1RenderTarget* target,
+    const std::shared_ptr<const DecodedLauncherAsset>& asset,
+    const declarative::Rect bounds,
+    const float opacity) {
+    if (!target || !asset || asset->premultipliedBgra.empty() || opacity <= 0.0F)
+        return true;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+    const auto properties = D2D1::BitmapProperties(
+        D2D1::PixelFormat(
+            DXGI_FORMAT_B8G8R8A8_UNORM,
+            D2D1_ALPHA_MODE_PREMULTIPLIED));
+    if (FAILED(target->CreateBitmap(
+            D2D1::SizeU(asset->width, asset->height),
+            asset->premultipliedBgra.data(), asset->stride,
+            properties, bitmap.ReleaseAndGetAddressOf())))
+        return false;
+    target->DrawBitmap(
+        bitmap.Get(),
+        D2D1::RectF(bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height),
+        std::clamp(opacity, 0.0F, 1.0F),
+        D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    return true;
 }
 
 void Append(RenderResult& destination, RenderResult source) {
@@ -69,7 +101,7 @@ WidgetSnapshot AggregateSnapshot(
     aggregate.root.inputScopeId = aggregate.activeInputScopeId;
     for (const auto& placement : layout.semanticPlacements) {
         if (const auto* content = FindContent(contents, placement.slot)) {
-            auto root = AdaptSnapshot(*content, placement).root;
+            auto root = AdaptSnapshot(*content, placement, nullptr, focusedElementId).root;
             if (root.inputScopeId.empty()) root.inputScopeId = aggregate.activeInputScopeId;
             aggregate.root.children.push_back(std::move(root));
         }
@@ -87,11 +119,27 @@ RenderedExperience RenderExperience(
     const declarative::Rect workArea,
     const std::vector<SlotContent>& contents,
     const std::wstring_view focusedElementId,
-    DeclarativeRenderOptions options) {
+    DeclarativeRenderOptions options,
+    const LauncherPresentationFrame* presentation) {
     RenderedExperience result;
     result.layout = ResolveLayout(recipe, preset, workArea, options.accessibility.textScale);
     result.semanticSnapshot = AggregateSnapshot(contents, result.layout, focusedElementId);
     result.render.succeeded = result.layout.valid() && target != nullptr;
+    if (presentation) {
+        if (const auto* hero = result.layout.Find(Slot::HeroBackground)) {
+            const bool previous = PaintBackgroundLayer(
+                target, presentation->previousBackground, hero->bounds,
+                presentation->previousBackgroundOpacity);
+            const bool current = PaintBackgroundLayer(
+                target, presentation->currentBackground, hero->bounds,
+                presentation->currentBackgroundOpacity);
+            if (!previous || !current) {
+                result.render.diagnostics.push_back({
+                    RenderDiagnosticSeverity::Warning, {}, L"launcher_background_bitmap",
+                    L"Decoded launcher background could not create a render-target bitmap; the host fallback remained visible."});
+            }
+        }
+    }
     std::set<std::wstring, std::less<>> renderedIds;
     std::set<Slot> suppliedSlots;
     for (const auto& content : contents) {
@@ -114,7 +162,8 @@ RenderedExperience RenderExperience(
     for (const auto& placement : result.layout.paintPlacements) {
         const auto* content = FindContent(contents, placement.slot);
         if (!content) continue;
-        auto snapshot = AdaptSnapshot(*content, placement);
+        auto snapshot = AdaptSnapshot(
+            *content, placement, presentation, focusedElementId);
         options.responsiveViewport = declarative::Size{
             placement.bounds.width, placement.bounds.height};
         bool duplicateIdentity{};
