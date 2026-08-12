@@ -39,6 +39,10 @@ struct ScreenTransform final {
     double pixelsPerDip{1.0};
     double width{};
     double height{};
+    double scaleX{};
+    double scaleY{};
+    double visualOffsetX{};
+    double visualOffsetY{};
 };
 
 struct ResolvedAction final {

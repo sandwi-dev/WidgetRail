@@ -31,6 +31,15 @@ public:
         bool waitedForCompletion{};
     };
 
+    struct VisualPresentation final {
+        float scaleX{1.0F};
+        float scaleY{1.0F};
+        float offsetX{};
+        float offsetY{};
+        float clipWidth{};
+        float clipHeight{};
+    };
+
     bool Initialize(HWND window, ID2D1Factory1* factory, std::wstring& error);
     void Reset() noexcept;
 
@@ -42,7 +51,11 @@ public:
     HRESULT BeginFrame(unsigned int width, unsigned int height, Frame& frame) noexcept;
     HRESULT EndFrame(Frame& frame) noexcept;
     HRESULT CommitFrame(
-        Frame& frame, bool waitForCompletion, CommitTiming& timing) noexcept;
+        Frame& frame, bool waitForCompletion, CommitTiming& timing,
+        const VisualPresentation* presentation = nullptr) noexcept;
+    HRESULT CommitPresentation(
+        const VisualPresentation& presentation, CommitTiming& timing) noexcept;
+    HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 
 private:
@@ -52,9 +65,12 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionDevice2> device_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> target_;
     Microsoft::WRL::ComPtr<IDCompositionVisual2> visual_;
+    Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
     Microsoft::WRL::ComPtr<IDCompositionSurface> surface_;
     unsigned int width_{};
     unsigned int height_{};
+
+    HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;
 };
 
 } // namespace gba
