@@ -287,7 +287,7 @@ route.
 
 ### DLV-104 — Make Game Launcher content fit and scroll without clipping
 
-**State:** Assigned; implementation active after committed DLV-103
+**State:** Done; accepted as `99e4932`, integrated through `1ef4666`
 **Baseline:** accepted DLV-103 widgets commit `f87631c`
 **Dependencies:** current Game Launcher wide surface, responsive grid,
 `game-launcher.library.scroll`, shared SDK layout components, and accepted
@@ -346,6 +346,140 @@ Release package. Live visual confirmation remains with the user.
 placement, shared component semantics would break another consumer, or the
 only passing approach is a larger fixed surface. Return the exact emitted-tree
 and native-bounds discrepancy to the planner.
+
+**Reviewer disposition:** Accepted for packaged user verification. One stable
+vertical collection viewport now owns remaining height; fixed header, source,
+query, actions, and guidance no longer compete for the same vertical offset.
+Compact title/source branches retain the same route and collection identities,
+and narrow action strips are horizontally reachable. Focused evidence passes
+Game Launcher 46/46, DeclarativeRenderer 4,777, shared geometry 589,
+documentation 58/58, and the unchanged public package path. Automated evidence
+proves the semantic/flex ownership contract; the freshly launched Release and
+the user's live view remain authoritative for final visual clipping closure.
+
+### DLV-108 — Execute named widget scenarios in an isolated preview worker
+
+**State:** Assigned after accepted DLV-104
+**Baseline:** widgets clean boundary `7181205` containing DLV-104 and main
+`6fc8fa5`
+**Dependencies:** current data-only `gbar preview` scenario manifest, generic
+AppContainer worker/runtime, Job containment, local SDK release unit, and
+generated scaffold snapshot proof
+**Owner:** widgets lane; Gbar CLI scenario command, isolated managed preview
+worker protocol/lifetime, public scenario contract, fixtures, and author docs
+**Concurrency:** May run while platform owns DLV-107. Do not touch native
+composition, capture tooling, package trust policy, or reviewer documents.
+
+**Developer-visible outcome:** An author can run one named credential-free
+scenario from a widget project and receive its real bounded semantic snapshot;
+the CLI no longer stops after listing scenarios, and author code never executes
+inside the CLI process.
+
+**Objective:** Reuse the existing worker/AppContainer/Job path to execute one
+strict named scenario behind a forcibly terminable process boundary. Keep the
+first slice semantic and data-oriented; do not turn it into screenshot tooling
+or a generic browser/desktop sandbox.
+
+**In scope:** versioned scenario descriptor and result; exact package/content
+lease; lifecycle Created -> Visible -> Interactive -> Background -> Destroyed;
+typed fake services supplied by the scenario; bounded stdout/result framing,
+diagnostics, snapshot size, case count, timeout, process tree, and teardown;
+unknown/malformed scenario, crash, hang, stale result, cancellation, and
+neighboring CLI invocation; one generated/basic and one capability-backed
+fixture; copyable author command/docs.
+
+**Out of scope:** native pixels, screenshots/capture, real credentials or
+hardware, arbitrary DLL execution in the CLI, ambient authority, interactive
+controller replay, broad test framework, external SDK publication, or Tier 3.
+
+**Acceptance:** selecting a declared scenario runs only in the contained
+worker and returns a deterministic validated semantic snapshot plus sanitized
+diagnostics; malformed/hung/crashed code cannot retain a child or affect the
+CLI/neighbor; undeclared code and ambient services remain unavailable; the
+generated author path works without repository project references.
+
+**Verification:** Tier 1 CLI, SDK scenario contract, runtime/worker, docs, and
+new `MSTest.Sdk` 4.3.2 scenario tests. Tier 2 runs the two external-directory
+fixtures through the installed AppContainer route. No aggregate or capture.
+
+**Stop:** isolation would require in-process reflection/execution, fake timeout
+claims, new ambient authority, or public package-trust redesign.
+
+### DLV-109 — Add a deterministic high-level widget scenario test API
+
+**State:** Ready after DLV-108
+**Baseline:** accepted DLV-108 widgets boundary
+**Dependencies:** DLV-108 scenario contract, `WidgetTestHostServicesBuilder`,
+SDK operation/lifecycle ownership, and current semantic snapshot assertions
+**Owner:** widgets lane; optional SDK testing helpers, fake-service completion,
+portable structured results, focused examples, and public testing docs
+**Concurrency:** Managed-only after DLV-108; no native host or verifier rewrite.
+
+**Developer-visible outcome:** Authors can express activate, action, provider
+completion, semantic expectation, and deactivate/no-work checks without custom
+task registries, sleeps, or repository-specific PASS-line runners.
+
+**Objective:** Add one small composable `WidgetScenario` API over the accepted
+isolated contract, proved by two materially different consumers before it is
+recommended.
+
+**In scope:** deterministic operation barriers, lifecycle, action dispatch,
+focus/text/busy assertions, delayed/denied/revoked/stale fake capability
+states, leak detection, stable case IDs, structured result, and concise basic
+plus media/data examples.
+
+**Out of scope:** virtualizing all time, UI automation, pixels/capture,
+replacing MSTest, migrating existing suites, universal widget base classes,
+provider-specific helpers, or external publication.
+
+**Acceptance:** both consumers remove handwritten orchestration while retaining
+explicit lifecycle/cancellation ownership; failures name the scenario step and
+semantic mismatch; no sleeps, detached work, or hidden polling are introduced.
+
+**Verification:** Tier 1 SDK and `MSTest.Sdk` 4.3.2 scenario-helper tests plus
+compiled examples/docs. Tier 2 executes both consumers through DLV-108.
+
+**Stop:** the API needs provider-specific policy, a universal coordinator, or
+cannot remain optional and renderer-neutral.
+
+### DLV-110 — Ship advanced widget templates by complexity
+
+**State:** Ready after DLV-109
+**Baseline:** accepted DLV-109 widgets boundary
+**Dependencies:** transactional scaffold DLV-046, canonical author journey
+DLV-048, compatibility baseline DLV-047/050, and DLV-108/109 scenario path
+**Owner:** widgets lane; scaffold template inventory, generated sibling tests,
+offline SDK feed, examples, and author documentation
+**Concurrency:** Managed/tooling only; no native, capability-authority, or
+package-trust redesign.
+
+**Developer-visible outcome:** Authors can choose `basic`, `data`, `media`, or
+`multipage` starters and receive readable production-helper examples plus a
+working credential-free scenario test, instead of stretching one trivial
+template into an advanced widget.
+
+**Objective:** Add the smallest distinct template set that demonstrates public
+resource/error states, optimistic media commands/progress, and responsive route
+navigation without copying first-party application-sized classes.
+
+**In scope:** strict versioned inventory, transactional generation, stable
+template selection, offline build, fake services, sibling `MSTest.Sdk` 4.3.2
+tests, semantic scenarios, package/validate commands, and compiled docs.
+
+**Out of scope:** companion/network credentials, third-party login, store
+adapters, source generators/analyzers, external publication, native previews,
+or compatibility shims for unreleased templates.
+
+**Acceptance:** every template generates atomically into an external directory,
+builds offline, runs its scenario/tests, validates and packages deterministically,
+and remains small enough that domain behavior is findable without framework
+internals; malformed selection leaves no partial target.
+
+**Verification:** Tier 1 scaffold/CLI/template/docs and generated MSTest suites.
+Tier 2 runs the complete external-directory journey for all four profiles once.
+
+**Stop:** completion requires credentials, a new public authority, duplicated
+SDK primitives, or a repository checkout reference.
 
 ## Platform lane
 
@@ -502,7 +636,7 @@ responsive PID 9228 from exact planner tip `c836960`.
 
 ### DLV-107 — Restore transparent composition and professional widget motion
 
-**State:** Ready immediately after already-active DLV-106
+**State:** Assigned; implementation active after committed DLV-106
 **Baseline:** accepted DLV-105 and DLV-106 platform boundary plus the planner
 commit that records DLV-025's live rejection
 **Dependencies:** integrated DLV-025 surface owner, HWND/backdrop transparency,
@@ -587,8 +721,7 @@ shipping abrupt motion.
 
 ### DLV-106 — Keep tray cycling out of outgoing widget focus
 
-**State:** Assigned; conditional gate reproduced and implementation started
-after DLV-105 commit `42bcf9c` before the DLV-107 planner correction arrived
+**State:** Done; accepted as `f119a1f`, integrated through `dde4981`
 **Baseline:** accepted DLV-105 `42bcf9c`, integrated through `d23db8b`
 **Dependencies:** integrated DLV-025 presentation semantics, OverlayState tray
 focus region, controller/keyboard routing, retained-content transition path,
@@ -642,6 +775,14 @@ with the user.
 **Stop:** the regression is absent on the accepted DLV-025 package, correction
 requires changing managed widget focus links, or presentation/input authority
 cannot be made atomic within the accepted single-owner compositor design.
+
+**Reviewer disposition:** Accepted. Tray focus now clears the committed widget
+focus ID before retained content paints and publishes only current destination
+tray semantics while the cold widget starts. The exact Audio Mixer -> Game
+Launcher production-host fixture proves retained and admitted frames have tray
+input ownership, no visual widget focus, and no outgoing widget UIA focus; the
+destination enters only after explicit Up/A. The diff stays within host focus,
+accessibility projection, bounded diagnostics, and the existing switch fixture.
 
 ### DLV-102 — Fall back cleanly when trusted app artwork is unavailable
 
@@ -710,11 +851,13 @@ authority, or the change would add unbounded host state. Preserve evidence for
 a serialized contract assignment rather than adding widget-specific behavior.
 
 **Queue note:** DLV-106 crossed its clean boundary and became active before the
-DLV-107 planner correction arrived, so finish it without interruption while the
-planner reviews committed DLV-105. DLV-107 is mandatory next because live
-packaged evidence rejects DLV-025's transparency and motion result. DLV-102
-follows DLV-107. DLV-033 is dependency-blocked and internal; DLV-062 remains
-blocked by its material resource gate.
+DLV-107 planner correction arrived and is now accepted/integrated. DLV-107 is
+active because live packaged evidence rejects DLV-025's transparency and motion
+result; DLV-102 follows it. The widgets lane runs DLV-108 then DLV-109/110 while
+platform owns those visible defects. DLV-033 is dependency-blocked and internal;
+DLV-062 remains blocked by its material resource gate. Fewer than three safe
+platform Ready items exist because DLV-107 must establish the compositor
+baseline before artwork fallback, and the remaining rich-media gate is blocked.
 
 ## Integration queue
 
@@ -767,6 +910,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-104/106 | `99e4932` and `f119a1f` | `1ef4666` and `dde4981` | Game Launcher has one bounded collection viewport beneath fixed chrome, and cold tray switching never gives outgoing widget content visual/input/UIA focus. The fully packaged Release is ready for live verification. |
 | DLV-101/103 | `f27f4d7` and `f87631c` | `9c5de8e` | Full-application widget workers can own contained helper process trees without prototype memory/process ceilings, and Now Playing has current-generation retry, last-good retention, and safe typed diagnostics. The fully packaged Release is visibly running as PID 32140. |
 | DLV-105 | `42bcf9c` | `d23db8b` | Compact trays keep the selected widget visible and expose explicit previous/next controls; controller order, pointer hit testing, and full-set UIA semantics share one layout. |
 | DLV-025 / correction DLV-107 | `16f9f47` rejected by live verification | `5b8556a` retained as correction baseline | PID 25164 proved complete-surface ordering alone is insufficient: the composed client has an opaque black perimeter and transition cadence is visibly poor. DLV-107 follows already-active DLV-106. |

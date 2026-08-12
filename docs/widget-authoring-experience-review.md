@@ -2,10 +2,9 @@
 
 Status: living assessment; core coordination primitives, bounded route navigation, responsive focus persistence, one navigation recipe, unified managed action admission, bounded composed native action-failure presentation, data-only inspection, a cloneable offline SDK scaffold with generated lifecycle/state/action proof, source-aware packaging, transactional versioned template generation, a checked-in pre-release SDK/API release unit, and a compile-tested canonical offline author journey are implemented; manual GitHub package lifecycle, pre-routed focus-edge paging, a composite open-widget UI Automation preview, explicit input origin, collision-proof composite identity, focus-aware allocation-free nested Back, bounded enabled-history catalog recovery, inner physical-only gesture enforcement, coherent advanced-widget presentation state, and substantive Games & Apps/Network/YT Music responsibility splits are implemented; real advanced-widget failure-route proof, real-host accessibility proof, shared native/managed Back ownership, a composed/live Spotify 12/12/5 route, final clean evidence, verified publisher trust, automated update discovery, an externally published/versioned SDK, isolated semantic preview execution, broader recipes, and onboarding remain open<br>
 Date: 2026-08-11<br>
-Reassessed: 2026-08-11 against integrated `main` `3d8f486`, including the
-accepted DLV-060 installed Game Launcher, DLV-066 organization policy, and
-DLV-074 public cursor-contract correction plus DLV-067 evidence-backed launch
-lifecycle<br>
+Reassessed: 2026-08-11 against integrated `main` through DLV-104/106, including
+full-application worker support, current-generation Media Sessions recovery,
+and the responsive Game Launcher viewport<br>
 Scope: public widget authoring APIs, tooling, examples, and the complexity exposed by advanced widgets such as Spotify
 
 Related: [Engineering Quality Review](engineering-quality-review.md) covers the
@@ -140,6 +139,15 @@ loading provider assemblies. Selecting a scenario fails closed until execution
 can move behind an isolated, forcibly terminable process boundary. Semantic
 snapshot execution, interaction, viewport rendering, capture, fake-service
 lifecycle support, and template integration remain open.
+
+That gap is now dispositioned without reopening capture work. DLV-108 is the
+assigned isolated semantic-execution slice: author code runs only in the
+existing AppContainer/Job worker path and returns one bounded validated snapshot
+plus sanitized diagnostics. DLV-109 then adds an optional deterministic
+scenario interaction API, and DLV-110 applies the accepted path to basic, data,
+media, and multipage templates. Native pixels, screenshot tooling, real
+credentials/hardware, external publication, and a universal widget framework
+remain outside this sequence.
 
 `gbar render` is now also strictly data-only. It rejects DLL input before
 resolving a type or touching an output path, closing the full-trust author-code

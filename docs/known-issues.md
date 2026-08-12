@@ -96,6 +96,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-075 | P0 | Verifying on packaged main | WidgetBridge computed styles / protocol-v15 `TextEntry` / Game Launcher / Network Controls | Accepted DLV-100 `760a9bb`, integrated through `54fbd12`, adds the missing canonical `textEntry` bridge role and exact installed routes. The fully packaged Release is running as PID 26556 for live Game Launcher confirmation. |
 | GBA-076 | P1 | Verifying on packaged main | Installed-widget runtime / manifest resources / worker Job policy / authoring contract | Accepted DLV-101 `f27f4d7`, integrated through `9c5de8e`, removes prototype hard worker-memory and one-process ceilings while retaining pre-resume Job containment, accounting, kill-on-close, bounded host admission, and strict shared-host boundaries. |
 | GBA-077 | P1 | Ready as DLV-102 | Native trusted-artwork cache / declarative renderer / Game Launcher / Games & Apps | The packaged PID 26556 session reports the same 15 unavailable Game Launcher artwork handles three times in five seconds (45 `image_failed` lines), while failed artwork lacks a stable shared tile fallback. DLV-102 follows DLV-025. |
+| GBA-078 | P0 | Verifying on packaged main | Game Launcher presentation / responsive layout | Accepted DLV-104 `99e4932`, integrated through `1ef4666`, gives fixed chrome and the collection one bounded vertical viewport without increasing preferred height. The fully packaged Release is ready for the user's live clipping check. |
+| GBA-079 | P0 | Verifying on packaged main | OverlayHost tray focus / retained presentation / accessibility | Accepted DLV-106 `f119a1f`, integrated through `dde4981`, makes tray selection the sole visual/input/UIA focus owner throughout a cold widget switch. The fully packaged Release is ready for the user's live Audio Mixer Left check. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -2482,6 +2484,26 @@ logged once per widget/handle/revision state transition, not per paint or
 snapshot refresh. Pending, late success, new revision recovery, stale result,
 eviction, and neighboring available artwork remain correct and bounded in
 production-shaped Game Launcher and Games & Apps fixtures.
+
+## GBA-078 — Game Launcher fixed chrome and collection are clipped
+
+**Evidence:** The user's live wide Game Launcher cut the title/source region,
+lower collection row, and guidance around the tray. Accepted DLV-104 `99e4932`,
+integrated through `1ef4666`, keeps header, source status, query controls,
+actions, and guidance fixed while `game-launcher.library.scroll` alone owns the
+bounded vertical collection extent. Compact and expanded headings retain one
+route/focus model. Focused Game Launcher 46/46, renderer 4,777, shared geometry
+589, docs 58/58, and package validation pass. Live packaged confirmation remains.
+
+## GBA-079 — Tray cycling briefly focuses outgoing Audio Mixer content
+
+**Evidence:** Pressing Left from the Audio Mixer tray item visibly focused the
+master slider before Game Launcher appeared. Accepted DLV-106 `f119a1f`,
+integrated through `dde4981`, clears committed widget focus before retained
+content paints and publishes only selected destination tray semantics during
+the cold interval. The production-host fixture proves retained and admitted
+frames have tray input ownership, no widget focus ring, and no outgoing widget
+UIA focus until explicit Up/A. Live keyboard/controller confirmation remains.
 
 ## Closed issues
 
