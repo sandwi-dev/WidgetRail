@@ -807,6 +807,17 @@ worker. This does not solve author discovery, remote graphical acquisition,
 publisher signing, automatic updates, or marketplace trust, but recipients no
 longer need the CLI merely to choose and stage a local package.
 
+Accepted DLV-123 closes the matching local-removal friction point. A disabled
+Community package now exposes **Uninstall widget** in Settings with an exact
+publisher/version/all-installed-version confirmation and no deletion path in
+the widget or Settings process. Successful removal retires every immutable
+package version while preserving widget-private data, credentials, provider
+state, themes, settings, and user files; **Clear local data** remains a separate
+explicit action. Built-in, enabled, stale, forged, wrong-version, and resident
+requests fail before mutation. This makes local graphical install/disable/
+uninstall coherent, but still does not provide remote acquisition, publisher
+verification, updates, or marketplace policy.
+
 The workflow still asks too much of both authors and users. Authors have no
 supported public SDK package/template feed or signing command. They must arrange
 an independent authenticated channel for the digest and explain why a GitHub

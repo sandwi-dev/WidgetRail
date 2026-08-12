@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-11
+Status: reviewer-owned two-lane execution queue, 2026-08-12
 Planning owner: independent review and delivery-planning agent
 Execution owners: `widgets` and `platform`
 
@@ -81,110 +81,198 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### DLV-123 — Uninstall a disabled community widget from Settings
+### DLV-126 — Restore Game Launcher controls, shortcuts, and collection continuation
 
 **State:** Assigned after the clean widgets lane merges exact accepted main
-containing this planner assignment
-**Baseline/dependencies:** accepted main after DLV-121 and the existing typed
-catalog capability, Settings installed-package details, enable/disable,
-version retirement, clear-local-data, and local package install flows
-**Owner:** widgets lane as the serialized lead for the managed catalog
-capability/protocol, bridge/catalog operation, Settings consumer, focused
-managed tests, and directly affected public installation/retention guidance
-**Concurrency:** no native host, renderer, tray, compositor, theme, marketplace,
-signing, remote download, updater, credential, or reviewer-document changes.
+containing DLV-123 and this planner assignment
+**Baseline/dependencies:** accepted main `8c40a6d`; live user report against
+planner-launched Release PID 36488. `overlay.log` repeatedly records
+`missing_collection_anchor` at
+`$.root.children[3].children[1].collectionAnchorKey` after Game Launcher top-
+control actions at 00:14:47 through 00:17:48 on 2026-08-12.
+**Owner:** widgets lane for Game Launcher action/presentation/navigation policy,
+its authored shortcut/help contract, any genuinely reusable SDK collection-
+continuation seam required by the same production widget, focused managed tests,
+and directly affected public widget documentation
+**Concurrency:** no native tray, compositor, HWND, placement, worker-isolation,
+catalog-provider breadth, store integration, reviewer-document, capture, or push
+changes.
 
-**User-visible outcome:** a user can open a Community widget in Settings,
-disable it, choose **Uninstall widget**, confirm the exact package identity, and
-remove all installed immutable versions without using the CLI. Built-in and
-enabled packages remain visibly protected.
+**User-visible outcome:** every visible Game Launcher top control completes
+without replacing the current view with a protocol error; the on-screen
+shortcut legend lists only actions that work for the current focused game; and
+Down from the last visible game row continues to the next game row/page instead
+of escaping prematurely to **Previous page** or the footer controls.
 
-**Objective/in scope:** extend the existing typed widget-catalog capability with
-one exact disabled-only uninstall operation. Bind the request to the current
-installed identity/catalog revision or equivalent stale-safe token; revalidate
-disabled state and identity in the trusted catalog service; never send a path,
-directory, executable, or deletion target to Settings. Add a nested destructive
-confirmation with deterministic Cancel/Back and return focus. On success,
-refresh the installed list and retain a clear path back to **Install local
-widget**. On stale, busy, resident, I/O, recovery-pending, or partial cleanup,
-show bounded specific feedback and preserve the current valid catalog.
+**Objective/scope:** reproduce each current top control (Add games, Add running
+app, Hidden, Favorites, Recent, Source/sort, and query clear) through its real
+action route and correct the invalid collection anchor at the managed
+presentation source. Audit X/Y/LB/RB/View ownership from the exact focused tile
+through `OnAction`; remove or disable any help entry that is not currently
+actionable. Preserve A activation and B scope behavior. Implement one
+deterministic collection-boundary continuation: when more games exist, Down
+from the last visible grid row advances and focuses the nearest column in the
+next row/page; footer controls remain explicitly reachable after the final
+collection row or by an authored navigation route. Prefer an existing generic
+SDK collection primitive; extend it only if the required behavior is reusable
+and cannot be expressed safely in Game Launcher.
 
-**Retention policy:** uninstall removes package versions only. It does not
-silently remove widget-private local data, credentials, provider data, themes,
-or user files. Settings must explain and preserve the separately explicit
-**Clear local data** flow. Do not add a combined destructive action.
+**Acceptance:** all named top controls publish protocol-valid current snapshots
+with stable focus and no `missing_collection_anchor`; X/Y/LB/RB/View each
+dispatch exactly once to the focused stable game identity and their rendered
+help matches enabled state; stale/absent/focused-wrong-generation identities
+fail closed with honest feedback; last-row Down loads/advances exactly once,
+keeps the closest column, never jumps to page buttons while a next row exists,
+and does not loop or duplicate results. Empty, single-row, partial-last-row,
+final-page, filter, refresh, and Back cases retain deterministic focus.
 
-**Architecture:** this touches the large Settings/catalog surface. Record the
-before/after responsibility map and extend the existing installed-package
-policy/operation owners; do not add uninstall state, tokens, cancellation, and
-view composition directly to another monolithic branch in `SettingsWidget`.
+**Architecture:** `GameLauncherWidget` remains a hotspot. Provide a before/
+after responsibility map and keep collection navigation, action vocabulary,
+and snapshot composition in their existing focused policy/presentation owners;
+do not add another task registry, lock, generation owner, or monolithic action
+branch to the root.
 
-**Acceptance:** controller, keyboard, and semantic action paths show Uninstall
-only for a current disabled Community identity; built-in/enabled/stale/forged/
-wrong-publisher/wrong-version requests are refused before mutation; successful
-uninstall removes every immutable version, publishes one catalog revision,
-tears down no unrelated widget, returns stable focus, and retains private data;
-pending cleanup is honest and retryable.
+**Verification:** Tier 1 Game Launcher Release tests covering every named
+control, exact shortcut dispatch/help, and 1/2/many-page grid continuation;
+Tier 2 Widget SDK/protocol/installed-worker validation only if a shared
+collection contract changes. Inspect the resulting typed failure log. No
+aggregate or capture.
 
-**Verification:** Tier 1 Settings presentation/action/persistence and catalog
-uninstall/recovery suites; Tier 2 generic worker/bridge capability framing,
-catalog revision, stale-operation, resident lease, partial cleanup, and an
-unaffected neighbor. Because this changes a public cross-process capability,
-run the canonical Tier 3 verifier once from the final coherent commit, not on
-both dirty and committed trees. No capture.
-
-**Stop:** the existing trusted catalog cannot expose a path-free stale-safe
-uninstall operation, the change requires native shell authority, or retention/
-cleanup has materially different product choices not already fixed above.
+**Stop:** a shortcut fails before managed action admission, the required
+navigation behavior needs a native focus-engine contract change, or the Add/
+filter/sort behavior requires a new product choice or unsupported provider API.
 
 ### Widgets ready queue
 
-**Queue note:** no later independent widgets item is pre-authorized. Game
-Launcher store breadth lacks a supported consumer API, Audio endpoint selection
+### DLV-125 — Restore the canonical verifier manifest and close DLV-123 evidence
+
+**State:** Ready after DLV-126; do not let this internal release-evidence repair
+preempt the newly confirmed visible Game Launcher regressions
+**Baseline/dependencies:** accepted DLV-123 `552d250`, integrated through
+`8c40a6d`; its focused Release evidence passes Catalog 35/35, diagnostics 17/17,
+Settings 57/57, Bridge 83/83, generic-worker conformance 6/6, and docs 59, but
+the one exact-commit Tier-3 attempt stopped before product tests because the
+verification manifest omits the existing `WidgetScenario.Tests` project
+**Owner:** widgets lane for the verification manifest/runner contract and
+directly affected verification documentation only
+**Concurrency:** no product code, public protocol/API, widget behavior, native
+host, package policy, test-framework migration, reviewer documents, capture, or
+push.
+
+**Outcome/objective:** restore complete project discovery in the bounded
+canonical verifier by adding the existing `MSTest.Sdk` 4.3.2 scenario project
+to the manifest with its documented Microsoft Testing Platform invocation.
+Do not convert another suite or redesign the verifier.
+
+**Acceptance:** the self-test proves every test project is represented exactly
+once; the new step emits machine-readable bounded results and fails closed; the
+scenario project passes through both its focused command and manifest-selected
+runner path; no existing step ID, lane selection, timeout, or result schema
+changes except what is strictly required for this omitted project.
+
+**Verification:** Tier 1 verifier self-test plus only the new manifest-selected
+scenario step. Commit the correction, then run one canonical Tier-3 aggregate
+from that exact clean commit to close the DLV-123 public cross-process
+checkpoint. Do not rerun an unchanged failure and do not run dirty plus clean
+aggregates.
+
+**Stop:** the project is intentionally excluded for a documented reason, the
+runner cannot invoke it without a material architecture/schema change, or the
+aggregate exposes an unrelated product failure requiring planner triage.
+
+**Queue note:** no later independent widgets item is pre-authorized after
+DLV-125. Game Launcher store breadth lacks a supported consumer API, Audio endpoint selection
 lacks a supported setter, YouTube is blocked at the trusted-media cost gate,
 and Spotify/YT Music account work needs authentication or live evidence. A
-DLV-123 review correction, if any, is queued next without interrupting new work.
+DLV-126 review correction, if any, is queued next without interrupting new work.
 
 ## Platform lane
 
 Task identity: `platform`
 Branch: `codex/impl-platform-switch`
 
-### Current platform assignment
+### DLV-127 — Keep tray placement stable and fit the overlay during widget switching
 
-**State:** No Assigned platform item. DLV-121 `fb0ad51` is accepted and
-integrated through `a758508`. The next platform outcome depends on accepted
-DLV-123 catalog removal or fresh live evidence for existing visual regressions.
+**State:** Assigned after the clean platform lane merges exact accepted main
+containing DLV-123 and this planner assignment
+**Baseline/dependencies:** accepted main `8c40a6d`; live user report against
+planner-launched Release PID 36488. The 2026-08-12 00:16-00:17 log shows the
+same switch changing tray visibility from six to eight items while composition
+geometry moves between 829x1152, 1381x969, 592x698, and widget extents; the user
+observes the tray moving and the overlay clipped at both screen edges.
+**Owner:** platform lane for native monitor/work-area fitting, shell/body/tray
+placement, composition-motion policy, pointer/focus/UIA bounds, production-host
+temporal evidence, and directly affected native documentation
+**Concurrency:** no managed widget layout, Game Launcher actions, tray order/
+catalog semantics, new animation library, capture harness, reviewer documents,
+or push.
+
+**User-visible outcome:** cycling between small and large widgets keeps the icon
+tray visually stationary, keeps the full overlay within the active monitor's
+usable bounds, and never clips the top or bottom of widget content, shortcut
+guide, or tray.
+
+**Objective/scope:** trace one real small→Game Launcher→small interval through
+the accepted composition path. Separate stable shell/tray placement from the
+widget-body extent transform, or otherwise prove one atomic policy that keeps
+the tray anchor invariant. Fit requested widget/body plus guides/tray to the
+current work area and DPI before committing motion; below preferred size,
+allocate the bounded body viewport/scroll region rather than positioning any
+essential shell region outside the monitor. Retained inert content must use the
+same final shell bounds without changing tray capacity during one transition.
+
+**Acceptance:** tray center/baseline and selected item bounds are invariant
+through every frame of small↔Game Launcher and small↔Spotify cycles; semantic,
+pointer, and painted tray bounds agree; final host bounds remain within the
+named work area at compact, current 1316x896-class, 1080p, 150%, and monitor-
+change profiles; top header, bottom guide, and tray remain reachable; no black
+border, flash, stale input, focus transfer, or six→eight→six tray-capacity churn
+occurs during the same identity switch. Record timing/geometry/state evidence,
+not screenshots.
+
+**Verification:** Tier 1 placement/composition/tray-layout and focused native
+Release groups; Tier 2 production-host temporal fixture across the named widget
+sizes and one runtime work-area/DPI change. No aggregate or capture.
+
+**Architecture/stop:** do not add widget-specific offsets or another geometry
+authority in `OverlayApp`. Stop if the correction requires a second HWND/
+renderer ownership model, a substantial DirectComposition redesign, or a UX
+choice about whether large content shrinks versus scrolls that is not already
+fixed above.
 
 ### Platform ready queue
 
-No later independent platform item is authorized. Do not repeat the corrected
+### DLV-124 — Reconcile native session, tray, and UIA state after uninstall
+
+**State:** Ready after DLV-127
+**Baseline/dependencies:** accepted DLV-123 `552d250`, integrated through
+`8c40a6d`, plus accepted DLV-118 catalog reconciliation/generation teardown
+**Owner:** platform lane; native catalog-removal reconciliation and focused host
+state/focus/accessibility/process-lifecycle evidence only
+**Outcome/scope:** prove whether existing DLV-118 teardown already ensures that
+uninstalling a disabled Community widget leaves no stale tray identity, cached
+presentation, worker/session generation, pointer target, or UIA node while
+Settings remains selected. Add production code only for a reproduced gap.
+**Verification:** Tier 1/2 production-host uninstall semantics only; no capture
+or aggregate.
+**Stop:** the defect belongs to managed catalog state or post-uninstall
+selection requires a material UX choice.
+
+No later independent platform item is authorized after DLV-124. Do not repeat the corrected
 Audio Mixer fixture or manufacture compositor/backend work while live user
 verdicts remain the closing evidence.
 
-**Queue note:** further platform correction depends on the user's fresh verdict
-for integrated DLV-115 (black border/transition), DLV-104 (Game Launcher
-clipping), and DLV-106 (Audio Mixer tray-Left focus). These are live-verification
-gates, not permission to repeat backend work. Do not manufacture filler.
+**Queue note:** the user's fresh verdict confirms the moving-tray/work-area
+regression and is now DLV-127. DLV-104 Game Launcher content clipping and
+DLV-106 Audio Mixer tray-Left focus retain their existing live-verification
+dispositions unless the new bounded evidence directly reproduces them. Do not
+manufacture adjacent work.
 
 ## Serialized integration queue
 
-### DLV-124 — Reconcile native session, tray, and UIA state after uninstall
-
-**State:** Awaiting accepted DLV-123 integration; not executable
-**Owner:** platform lane; native catalog-removal reconciliation and focused host
-state/focus/accessibility/process-lifecycle evidence only
-**Outcome:** uninstalling the selected disabled Community widget cannot leave a
-stale tray identity, cached presentation, worker/session generation, pointer
-target, or UIA node. Settings remains the exact selected tray identity and sole
-focus owner throughout the operation.
-**Scope/verification:** begin only from the accepted DLV-123 product path. First
-prove whether existing DLV-118 catalog reconciliation and generation teardown
-already satisfy the behavior. Add production code only for a reproduced native
-gap; otherwise close with a focused production-host uninstall semantic fixture
-and documentation. Tier 1/2 only; no capture or aggregate.
-**Stop:** DLV-123 is unaccepted, the defect belongs to managed catalog state, or
-the desired post-uninstall selection requires a material UX choice.
+No cross-lane item is awaiting integration. DLV-126 and DLV-127 consume the
+same accepted main baseline and may run concurrently; DLV-125 and DLV-124 then
+continue immediately in their respective lanes.
 
 ## Blocked work
 
@@ -213,6 +301,7 @@ the desired post-uninstall selection requires a material UX choice.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-123 | `552d250` | `8c40a6d` | Disabled Community widgets now expose an exact path-free nested uninstall confirmation in Settings; built-in/enabled/stale/resident identities fail closed, all package versions retire together, unrelated widgets and private data remain, and one catalog revision is published. Focused Release evidence is green; the inherited verifier-manifest omission is isolated to DLV-125. |
 | DLV-121 | `fb0ad51` | `a758508` | The Audio Mixer production fixture now traverses the real clipped/revealed controls instead of directly focusing an absent offscreen UIA node; live product behavior is unchanged and still awaits user verification. |
 | DLV-118 | `5d86cd6` | `4bc0baa` | Small and wide widget surfaces retain one selected tray identity, explicit reachable overflow, exact order, and synchronous catalog replacement without stale tray dispatch. |
 | DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
@@ -222,7 +311,6 @@ the desired post-uninstall selection requires a material UX choice.
 | DLV-033 | `1ec2b70` | `4fa8f63` | Bridge-facing catalog, snapshot, failure, lifecycle, retry, and request policy now has one off-UI-thread coordinator; the host retains renderer/input/presentation authority. |
 | DLV-110 | `e90e729` | `4e02184` | Basic, data, media, and multipage starters now generate atomically outside the checkout with MSTest.Sdk 4.3.2 scenarios, isolated preview, validation, and deterministic packaging. |
 | DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |
-| DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

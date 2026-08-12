@@ -162,7 +162,21 @@ remains off until the publisher-trust gates in Phase 4.
   cancellation-ignoring stale pairing/poll/transport outcomes. Focused YT Music
   coverage passes 51/51; real companion and physical evidence remain.
 - Finish Settings controller reachability, diagnostics/recovery, local package
-  and theme workflows, and permission/version consistency
+  and theme workflows, and permission/version consistency. Accepted DLV-123
+  adds a visible disabled-Community **Uninstall widget** confirmation backed by
+  one exact path-free catalog identity token. It removes all immutable package
+  versions, preserves private data and the separate clear-local-data action,
+  protects built-in/enabled/stale/resident identities, and publishes one
+  catalog revision. Native tray/session teardown verification follows in
+  DLV-124; remote discovery, signing, updater, and marketplace trust remain
+  separate Phase-4 work.
+- Restore the newly confirmed Game Launcher production route before adding
+  store breadth. DLV-126 owns the repeated top-control
+  `missing_collection_anchor` failure, dishonest/nonfunctional contextual
+  shortcuts, and last-row Down escaping to footer controls while more games
+  exist. DLV-127 concurrently keeps the tray stationary and fits the full shell
+  to the active work area while cycling between small and large widgets. These
+  visible regressions outrank verifier cleanup and internal decomposition.
 - Finish the evidence matrix for the implemented packaged-regression fixes:
   transparent native client pixels outside content surfaces (GBA-036), a fresh
   Now Playing read/subscription generation on Retry (GBA-037), lazy Games

@@ -4778,6 +4778,42 @@ FocusNavigation 49, DeclarativeRenderer 4,839, ScrollEvidenceProbe 35,
 AccessibilityTree 16, and HostAccessibility 34 checks. No product code changed;
 GBA-003 therefore remains Verifying on the live packaged path.
 
+## 2026-08-12 accepted uninstall and live regression delta
+
+DLV-123 `552d250` is accepted and integrated through `8c40a6d`. The change
+keeps destructive authority in `WidgetCatalog`, carries no path through the
+trusted Settings companion, revalidates publisher/active-version/enabled/all-
+version digest identity under the catalog operation lock, and forces one
+post-mutation catalog revision. Settings adds focused value-only admission and
+operation owners while remaining the sole committed page/status owner. Package
+removal explicitly preserves private data, credentials, provider state,
+themes, settings, and user files. Focused Release evidence passes Catalog
+35/35, diagnostics 17/17, Settings 57/57, Bridge 83/83, generic-worker
+conformance 6/6, and 59 documentation contracts. The exact clean Tier-3 attempt
+stopped before product tests because the manifest omits the already existing
+`WidgetScenario.Tests` project; DLV-125 owns only that bounded evidence repair
+after current visible regressions.
+
+Fresh user evidence against accepted Release PID 36488 reopens the visible
+front of the queue. The 2026-08-12 session log repeatedly records Game Launcher
+snapshot rejection at
+`$.root.children[3].children[1].collectionAnchorKey` with
+`missing_collection_anchor` after top-control interactions. This is production
+evidence, not a capture artifact. The same live run reports nonfunctional
+View/X/Y/LB/RB help and last-row Down escaping to the footer while another game
+row/page exists. DLV-126 correctly belongs to the managed Game Launcher
+presentation/action/navigation owners, with a stop-and-reassign boundary if
+shortcut dispatch fails before managed admission.
+
+The user's live shell also moves the icon tray and clips the overlay at the top
+and bottom while cycling. The correlated log shows tray capacity changing from
+six to eight during one switch while composition geometry traverses 829x1152,
+1381x969, 592x698, and large-widget extents. DLV-127 belongs to native work-area
+fit and shell/body/tray composition policy. The acceptance contract keeps tray
+placement invariant and all essential painted/pointer/UIA bounds on-screen;
+widget-specific offsets and another `OverlayApp` geometry authority are
+explicitly forbidden.
+
 ## Recommended next actions
 
 Continue enforcing EQ-024's path-ownership rule: `ddb66c2`, `7c8a5b8`,
@@ -4786,17 +4822,22 @@ documents untouched, and the implementation stream must continue to leave them
 unstaged. This workflow boundary does not replace the visible-first sequence
 below.
 
-1. **Live-check accepted DLV-049 and DLV-051.** DLV-049 is integrated as
+1. **Fix the confirmed Game Launcher and shell regressions first.** DLV-126
+   restores protocol-valid top controls, exact contextual shortcuts, and
+   collection continuation. DLV-127 keeps the tray stationary and fits the
+   overlay to the active work area. Both use functional/log/geometry evidence;
+   the user's live visual verdict remains the closing gate.
+2. **Live-check accepted DLV-049 and DLV-051.** DLV-049 is integrated as
    `a8bcb27` and binds the exact four-session reverse edge to DLV-021's corrected
    geometry; DLV-051 is integrated as `822d29c` and authors Spotify seek Left to
    the selected responsive destination. Keep GBA-003/GBA-056 Verifying until the
    freshly rebuilt Release passes the user's direct keyboard/controller checks.
-2. **Verify accepted widgets DLV-019 physically.** Commit `6afd60b` delivers
+3. **Verify accepted widgets DLV-019 physically.** Commit `6afd60b` delivers
    LB/RB five-point master-volume adjustment and X master mute through exact
    dashboard-gesture authority. The installed production route is green; keep
    GBA-062 Verifying until the freshly launched Release overlay passes the
    physical-controller step, rapid-input, mute, failure, and reopen checks.
-3. **Live-check the accepted visible widgets sequence, then close package
+4. **Live-check the accepted visible widgets sequence, then close package
    reproducibility.** DLV-006 is accepted through `9c7438f`; DLV-022, DLV-018,
    DLV-053, and DLV-054 are coherently integrated through `8c1bbdf`. Accepted
    DLV-055 `efffa53` packages, installs, selects, and first-renders the latest
@@ -4807,17 +4848,17 @@ below.
    detached-root/installed/planner-refresh hashes for main-built `0.2.14`
    without deleting older immutable generations. Run the visible overlay and
    keep any new live defect ahead of internal cleanup.
-4. **Deliver the next requested visible platform and widget foundations.**
+5. **Deliver the next requested visible platform and widget foundations.**
    Platform DLV-058/068/069 ships generic pinning lifecycle, placement, and
    input/UIA composition before DLV-062's fixed-video feasibility gate. Widgets
    DLV-059 directly unlocks DLV-060's installed-only Game Launcher, followed by
    explicit organization and honest launch-state slices. Keep discovery/cache/
    launch authority in the trusted normalized service, not the widget.
-5. **Preserve DLV-025 until the compositor decision is authorized.** The
+6. **Preserve DLV-025 until the compositor decision is authorized.** The
    current HWND render-target path failed the real temporal gate. Keep its dirty
    evidence untouched while other visible work proceeds; resume only with a
    bounded offscreen atomic-present or DirectComposition/swap-chain decision.
-6. **Keep internal debt dispositioned, not dominant.** DLV-040, DLV-043, and
+7. **Keep internal debt dispositioned, not dominant.** DLV-040, DLV-043, and
    DLV-038 remain valid deferred ownership/test-architecture work. Promote at
    most one while the other lane is delivering visible behavior or when it is
    the immediate named prerequisite for a visible outcome. Hotspot size alone
