@@ -38,6 +38,7 @@ enum class LiveSetting {
 enum class HostAction {
     None,
     ActivateTrayItem,
+    SelectTrayOverflow,
     BackToTray,
     BackWithinWidget,
     CloseOverlay,
@@ -75,6 +76,8 @@ struct Node final {
     double rangeMinimum{};
     double rangeMaximum{};
     double rangeStep{};
+    int positionInSet{};
+    int sizeOfSet{};
     bool enabled{true};
     bool selected{};
     bool focused{};

@@ -864,6 +864,16 @@ verifies the typed queued authority. The dashboard also publishes its heading,
 static help, and transient live status. The open-widget composite retains those
 tray items alongside widget content and typed Back/Close/footer semantics.
 
+DLV-105 makes that visible window explicit when a compact surface cannot fit
+the complete catalog. `TrayLayout` reserves stable previous/next controls,
+keeps the selected stable ID visible, and exposes the exact adjacent off-page
+target without changing persisted order. Paint, pointer hit testing, and the
+host accessibility tree consume the same control bounds. Pointer/UIA overflow
+selection moves the tray window without entering widget content; ordinary
+Left/Right still visits every enabled widget in catalog order. Visible UIA
+ListItems report `PositionInSet` and `SizeOfSet`, while overflow buttons announce
+their direction and hidden count.
+
 The visible shell uses separate panel and dimming-backdrop windows on the active
 external foreground app's nearest monitor. An outside backdrop click closes the
 overlay. Both windows are topmost only while visible. Ordinary controller reads

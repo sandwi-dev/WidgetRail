@@ -25,27 +25,35 @@ int main() {
         {L"gallery", L"SDK Gallery"},
     };
     const auto layout = gba::shell::ComputeTrayLayout(240, 500, items.size(), 2);
-    Check(layout && layout->tiles.size() == 2, "fixture exposes a clipped tray window");
+    Check(layout && layout->tiles.size() == 1 && layout->previousOverflow &&
+          layout->nextOverflow, "fixture exposes one tile between explicit overflow controls");
     const auto tree = gba::accessibility::BuildTrayTree(items, *layout, 2, 17);
     Check(tree.widgetId == L"host.tray" && tree.runtimeGeneration == L"host" &&
           tree.snapshotSequence == 17 && tree.activeInputScopeId == L"host.tray",
           "host tree retains closed shell authority");
-    Check(tree.nodes.size() == 2 && tree.nodes[0].hostTargetId == L"music" &&
-          tree.nodes[1].hostTargetId == L"performance",
-          "only final visible tray items are published in catalog order");
-    Check(tree.nodes[0].name == L"YT Music" &&
-          tree.nodes[0].role == gba::accessibility::Role::ListItem &&
-          tree.nodes[0].domain == gba::accessibility::ElementDomain::Tray,
+    Check(tree.nodes.size() == 3 && tree.nodes[0].hostTargetId == L"music" &&
+          tree.nodes[1].hostTargetId == L"performance" &&
+          tree.nodes[2].hostTargetId == L"gallery",
+          "overflow controls and visible tile preserve catalog reachability order");
+    Check(tree.nodes[0].hostAction ==
+              gba::accessibility::HostAction::SelectTrayOverflow &&
+          tree.nodes[0].name == L"2 previous widgets" &&
+          tree.nodes[2].name == L"1 more widgets",
+          "overflow controls announce direction and hidden count without activation");
+    Check(tree.nodes[1].name == L"Performance" &&
+          tree.nodes[1].role == gba::accessibility::Role::ListItem &&
+          tree.nodes[1].domain == gba::accessibility::ElementDomain::Tray,
           "tray item exposes its accessible list-item name");
     Check(tree.nodes[1].hostAction == gba::accessibility::HostAction::ActivateTrayItem,
           "tray activation is a closed typed action");
     Check(tree.nodes[1].selected && tree.nodes[1].focused && !tree.nodes[1].enabled &&
-          tree.focusedNode == 1,
+          tree.focusedNode == 1 && tree.nodes[1].positionInSet == 3 &&
+          tree.nodes[1].sizeOfSet == 4,
           "selected, focused, and enabled states remain independent");
-    Check(tree.nodes[0].bounds.x == layout->tiles[0].bounds.x &&
-          tree.nodes[0].bounds.y == layout->tiles[0].bounds.y &&
-          tree.nodes[0].bounds.width == layout->tiles[0].bounds.width &&
-          tree.nodes[0].bounds.height == layout->tiles[0].bounds.height,
+    Check(tree.nodes[1].bounds.x == layout->tiles[0].bounds.x &&
+          tree.nodes[1].bounds.y == layout->tiles[0].bounds.y &&
+          tree.nodes[1].bounds.width == layout->tiles[0].bounds.width &&
+          tree.nodes[1].bounds.height == layout->tiles[0].bounds.height,
           "accessibility uses the exact shared paint/hit-test rectangle");
 
     const gba::accessibility::DashboardSemantics dashboard{
@@ -55,7 +63,7 @@ int main() {
     };
     const auto dashboardTree = gba::accessibility::BuildTrayTree(
         items, *layout, 2, 18, &dashboard);
-    Check(dashboardTree.nodes.size() == 4 &&
+    Check(dashboardTree.nodes.size() == 5 &&
           dashboardTree.nodes[0].id == L"host.dashboard.title" &&
           dashboardTree.nodes[0].domain == gba::accessibility::ElementDomain::HostShell &&
           dashboardTree.nodes[0].role == gba::accessibility::Role::Heading &&
@@ -63,13 +71,13 @@ int main() {
           "dashboard title is a level-one heading with exact host-owned text");
     Check(dashboardTree.nodes[0].bounds.x == dashboard.titleBounds.x &&
           dashboardTree.nodes[0].bounds.y == dashboard.titleBounds.y &&
-          dashboardTree.nodes[3].bounds.width == dashboard.helpBounds.width &&
-          dashboardTree.nodes[3].bounds.height == dashboard.helpBounds.height,
+          dashboardTree.nodes[4].bounds.width == dashboard.helpBounds.width &&
+          dashboardTree.nodes[4].bounds.height == dashboard.helpBounds.height,
           "dashboard semantic text uses the exact paint rectangles");
-    Check(dashboardTree.nodes[3].id == L"host.dashboard.help" &&
-          dashboardTree.nodes[3].name == dashboard.help &&
-          dashboardTree.nodes[3].role == gba::accessibility::Role::Text &&
-          dashboardTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Off,
+    Check(dashboardTree.nodes[4].id == L"host.dashboard.help" &&
+          dashboardTree.nodes[4].name == dashboard.help &&
+          dashboardTree.nodes[4].role == gba::accessibility::Role::Text &&
+          dashboardTree.nodes[4].liveSetting == gba::accessibility::LiveSetting::Off,
           "routine dashboard guidance is discoverable without becoming live");
     Check(dashboardTree.focusedNode == 2 && dashboardTree.nodes[2].hostTargetId == L"performance",
           "non-focusable dashboard text does not disturb tray focus identity");
@@ -82,10 +90,10 @@ int main() {
           "dashboard status changes invalidate the host projection revision");
     const auto statusTree = gba::accessibility::BuildTrayTree(
         items, *layout, 2, 19, &changedDashboard);
-    Check(statusTree.nodes.size() == 4 &&
-          statusTree.nodes[3].id == L"host.dashboard.status" &&
-          statusTree.nodes[3].role == gba::accessibility::Role::Status &&
-          statusTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
+    Check(statusTree.nodes.size() == 5 &&
+          statusTree.nodes[4].id == L"host.dashboard.status" &&
+          statusTree.nodes[4].role == gba::accessibility::Role::Status &&
+          statusTree.nodes[4].liveSetting == gba::accessibility::LiveSetting::Polite,
           "transient dashboard feedback replaces help with one polite status region");
     auto renamedItems = items;
     renamedItems[1].name = L"YouTube Music";
@@ -113,8 +121,11 @@ int main() {
         L"X Play  LB Previous  RB Next", {20, 440, 286, 30},
         L"", {20, 440, 286, 30},
     };
+    const auto openLayout = gba::shell::ComputeTrayLayout(240, 500, items.size(), 1);
+    Check(openLayout && openLayout->tiles.front().slot == 1,
+          "open fixture keeps its selected tray identity visible");
     const auto openTree = gba::accessibility::BuildOpenWidgetTree(
-        widgetTree, items, *layout, 1, false, open);
+        widgetTree, items, *openLayout, 1, false, open);
     auto nestedOpen = open;
     nestedOpen.backAction = gba::accessibility::HostAction::BackWithinWidget;
     nestedOpen.backTargetId = L"music.sheet";
@@ -147,11 +158,13 @@ int main() {
           openTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Off &&
           openTree.nodes[3].bounds.width == open.helpBounds.width,
           "visible widget shortcut guidance is readable non-live text with exact bounds");
-    Check(openTree.nodes.size() == 6 &&
-          openTree.nodes[4].id == L"tray.music" &&
-          openTree.nodes[5].id == L"tray.performance" &&
-          !openTree.nodes[4].focused && !openTree.nodes[5].focused,
-          "open shell appends only the visible tray window without stealing widget focus");
+    Check(openTree.nodes.size() == 7 &&
+          openTree.nodes[4].id == L"overflow.previous" &&
+          openTree.nodes[5].id == L"tray.music" &&
+          openTree.nodes[6].id == L"overflow.next" &&
+          !openTree.nodes[4].focused && !openTree.nodes[5].focused &&
+          !openTree.nodes[6].focused,
+          "open shell appends overflow and visible tray semantics without stealing widget focus");
 
     auto statusOpen = open;
     statusOpen.help.clear();

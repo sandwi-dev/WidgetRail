@@ -55,7 +55,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
 | GBA-036 | P1 | Verifying | OverlayHost / native composition / declarative surface | The native client clears unused pixels to the layered color key and one packaged standard-viewport capture shows no opaque canvas; the broader paint/scale/contrast matrix remains. |
-| GBA-037 | P0 | Verifying | Now Playing / media provider / retry | Current-state reads are independent from live subscription failure and Retry creates a fresh generation; packaged provider-failure recovery remains to verify visually. |
+| GBA-037 | P0 | Verifying on packaged main | Now Playing / media provider / retry | Accepted DLV-103 `f87631c`, integrated through `9c5de8e`, gives activation and Retry one SDK-owned Active generation, retains last-good sessions, rejects stale completions, and records safe typed stage/code transitions. The fully packaged Release is visibly running as PID 32140 for live recurrence testing. |
 | GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | DLV-004 adds shared loading/empty/failure surfaces, bounded Previous/Next Catalog pages, long/max-library coverage, exact installed conformance, and a retained multi-profile capture matrix; physical packaged shell/controller review remains. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
 | GBA-040 | P0 | Verifying | Native declarative layout / Spotify / responsive text | Intrinsic leaves now measure height against their authored width/max-width before layout, with exact Spotify state/setup regressions at compact and 150% text scales; packaged visual verification remains. |
@@ -94,7 +94,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-073 | P1 | Closed | Protected Wi-Fi host transport / Native Wi-Fi rollback | Accepted DLV-093 `3ce8991`, integrated with DLV-087 through `63ca3a2`, replaces password-bearing JSON/string copies with a bounded mutable zeroed frame and requires an exact per-attempt profile ownership token before deletion. Mismatch, unavailable verification, and delete failure are explicit and preserve current Windows state. |
 | GBA-074 | P1 | Verifying on packaged main | Running-app observation / Widget SDK / Games & Apps / Game Launcher | DLV-095 corrected by accepted DLV-097 is integrated through `c6d76a3`; native inspection is bounded before eligibility and confirmed items are fully validated before either widget can mutate state. The fully packaged Release is visibly running for the user's live route check. |
 | GBA-075 | P0 | Verifying on packaged main | WidgetBridge computed styles / protocol-v15 `TextEntry` / Game Launcher / Network Controls | Accepted DLV-100 `760a9bb`, integrated through `54fbd12`, adds the missing canonical `textEntry` bridge role and exact installed routes. The fully packaged Release is running as PID 26556 for live Game Launcher confirmation. |
-| GBA-076 | P1 | Assigned as DLV-101 | Installed-widget runtime / manifest resources / worker Job policy / authoring contract | Prototype hard worker-memory and one-process ceilings contradict the approved full-application widget model. Private worker execution must not be arbitrarily product-capped; shared-host messages, presentation/native resources, capability traffic, and host admission remain bounded. |
+| GBA-076 | P1 | Verifying on packaged main | Installed-widget runtime / manifest resources / worker Job policy / authoring contract | Accepted DLV-101 `f27f4d7`, integrated through `9c5de8e`, removes prototype hard worker-memory and one-process ceilings while retaining pre-resume Job containment, accounting, kill-on-close, bounded host admission, and strict shared-host boundaries. |
 | GBA-077 | P1 | Ready as DLV-102 | Native trusted-artwork cache / declarative renderer / Game Launcher / Games & Apps | The packaged PID 26556 session reports the same 15 unavailable Game Launcher artwork handles three times in five seconds (45 `image_failed` lines), while failed artwork lacks a stable shared tile fallback. DLV-102 follows DLV-025. |
 
 ## GBA-001 — Per-application audio controls have no real effect
@@ -289,19 +289,23 @@ plus 54 targeting and 56 transition checks. Keep this sub-fix Verifying until
 the freshly relaunched packaged overlay passes live widget cycling. DLV-025's
 separate HWND resize/compositor tearing remains blocked and is not claimed fixed.
 
-DLV-025 `16f9f47`, integrated through `5b8556a`, now implements the authorized
-Windows-10-compatible compositor decision. One native surface owner renders the
-entire detached destination, ends the update, commits and waits, then exposes
-the final HWND geometry; ordinary same-size repaints reuse that owner and the
-old HWND render target remains failure fallback only. The production-shaped
-switch fixture covers Audio Mixer, Network Controls, Spotify, Games & Apps,
-delayed startup, reversal, and reload without entering fallback. The freshly
-built main Release is running as PID 25164; its initial live handoffs reported
-complete-content draw no higher than 5.921 ms, commit no higher than 16.017 ms,
-and coordinated geometry no higher than 18.437 ms, with no immediate compositor
-error. Automated evidence establishes ordering and timing, not the user's
-visual result, so GBA-004 remains Verifying until live cycling confirms the
-former black/gray bands and flicker are gone.
+DLV-025 `16f9f47`, integrated through `5b8556a`, implemented the authorized
+Windows-10-compatible complete-surface prototype, but the user's recording from
+the freshly built PID 25164 session rejects its packaged result. The complete
+client area now appears as an opaque near-black rectangle around the authored
+widget and tray, and different-size widget transitions again look visibly ugly.
+The composed surface uses premultiplied alpha but every full update is cleared
+to opaque RGB(1,2,3), while the HWND still relies on that RGB value as a legacy
+color key. Those are not one demonstrated transparency contract. The same
+session also records equivalent size changes as several waited composition/
+geometry commits over roughly 100-150 ms, with populated Game Launcher draws
+around 49-63 ms. The recording timestamp itself has no typed transition line,
+which remains an observability gap; the video proves the visual defect and the
+nearby same-session transitions prove the cadence pattern. GBA-004 is Open and
+DLV-107 owns one bounded alpha-and-motion correction after already-active
+DLV-106 reaches a clean boundary. The integrated prototype remains evidence
+and must not be hidden with per-
+widget masks, opaque backdrop growth, delays, or a second permanent renderer.
 
 **Acceptance:**
 
@@ -2447,6 +2451,15 @@ proves an owned child process cannot escape and is reclaimed, and preserves
 fail-closed oversized-message/snapshot behavior without harming a neighboring
 widget. It must also name the scalable widget-private data path rather than
 misrepresent the bounded host `PrivateState` document as application storage.
+
+**Implementation evidence:** Accepted DLV-101 `f27f4d7`, integrated through
+`9c5de8e`, makes worker memory guidance optional advisory metadata, retains a
+bounded application-worker count, and removes Job memory/active-process product
+ceilings without weakening non-breakaway containment. Focused Runtime 74/74,
+Bridge 78/78, SDK 87/87, worker-host 10/10, and Catalog 35/35 evidence passes.
+The installed AppContainer fixture owns a helper process and private data, both
+processes appear in Job accounting, and Stop reclaims the complete tree. An
+oversized presentation still fails without affecting a neighboring widget.
 
 ## GBA-077 — Unavailable trusted artwork has no stable fallback and floods logs
 
