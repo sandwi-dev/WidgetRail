@@ -3088,6 +3088,21 @@ Settings 57/57, and WidgetBridge 83/83. The generic-worker and documentation
 groups plus the required single exact-commit canonical checkpoint are recorded
 with the closing commit evidence.
 
+### Game Launcher control and collection continuity (DLV-126)
+
+Game Launcher now derives every warm replacement anchor from the exact rendered
+non-hidden rows instead of the unfiltered private display projection. Add games,
+Add running app, Hidden, Favorites, Recent, Source, Sort, and Clear therefore
+retain protocol-valid current snapshots while their managed replacement is in
+flight and after it commits. Current game tiles publish View/X/Y and contextual
+LB/RB shortcuts only while those actions are enabled; the matching visible help
+is removed during launch or organization work and restored with actionability.
+The existing host-owned scroll-edge contract remains unchanged: one Down-edge
+cursor action appends the next bounded provider page and requests an entering
+game focus, while final partial rows expose no looping continuation. Focused
+Release evidence passes Game Launcher 60/60. No Widget SDK, protocol, provider,
+native host, or launch-authority contract changed.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/
