@@ -350,14 +350,15 @@ eligibility; credential-free structural work continues independently.
    category capacity and adds direct LT/RT collection switching through
    `6abfb60`. DLV-157 exact per-game title overrides and serialized DLV-149/150
    installed pack selection/reload/safe-start are accepted through `523aed7`.
-   DLV-159 scalable titles and DLV-152's installed pack matrix are accepted
-   through `3a5b46a`. DLV-160 awaits bounded recovery of the platform worktree.
+   DLV-159 scalable titles, DLV-152's installed pack matrix, and DLV-162's
+   identity-less media-session recovery are accepted through `06d3d84`.
+   DLV-160 awaits bounded recovery of the platform worktree.
 3. Deliver local custom-pack selection as the serialized DLV-149/DLV-150 pair:
    trusted Settings selection/metadata/removal policy followed by private native
    adoption, last-good reload, and one-activation safe start. Do not expose a
    visible no-op selector on main.
 4. Keep accepted dashboard DLV-143, Spotify DLV-144, and Game Launcher
-   DLV-148/149/150/151/152/154/156/157/159 live-verifying on PID 24112 and queue any user-observed correction ahead of
+   DLV-148/149/150/151/152/154/156/157/159/162 live-verifying on PID 30900 and queue any user-observed correction ahead of
    later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
 6. Continue other credential-free roadmap features while account, hardware,

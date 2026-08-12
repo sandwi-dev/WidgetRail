@@ -204,6 +204,20 @@ Native evidence remains 1,691 checks. The implementation task's later failed
 main merge is an operational blocker only; it is not part of this accepted diff
 and requires explicit recovery authorization before DLV-160.
 
+DLV-162 `31bc594`, integrated as `06d3d84`, closes one credential-free Now
+Playing omission without broadening provider authority: null/blank GSMTC source
+identity receives the fixed sanitized `Media app` label before friendly-name
+path processing. Windows Media passes 14/14, Now Playing 23/23, and the installed
+initial/empty/transient Retry/stale/reactivation/teardown route passes.
+
+The post-integration PID 30900 live first-page smoke admitted all eight installed
+widgets and published no UIA rectangle outside the host. Its exact log interval
+did expose one credible managed authoring defect: Game Launcher's controller-
+hints slot applies a wrapping footer style to a `Stack`, producing a native
+`invalid_style` diagnostic and ignored `flex-wrap`. DLV-164 corrects the managed
+element/style contract; weakening the renderer's closed layout validation would
+be the wrong owner.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -258,7 +272,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. Game Launcher now has one scoped controller action sheet. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, hardware, and recovery issues remain Verifying. | User verdict on PID 24112 and continuing visible-first assignments. |
+| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. Game Launcher now has one scoped controller action sheet. DLV-163 reconfirmed the current Audio Mixer reverse path from Master through every live row to the tray and back. PID 30900 admitted all eight first pages with contained UIA geometry. | DLV-164 corrects the live Game Launcher ignored hint style; user verdict on PID 30900 remains authoritative for visual cadence and layout. |
 | Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. | Recover the conflicted platform worktree with user authorization, then run DLV-160 end-to-end author lifecycle. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -288,13 +302,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-162 live Now Playing recovery evidence and any exact provider/
-   widget correction ahead of more launcher features.
+1. Review DLV-164's managed Game Launcher controller-hint element/style
+   correction and exact installed diagnostic evidence.
 2. Keep platform stopped until the user authorizes bounded abort of the failed
    merge; then review DLV-160 end-to-end author lifecycle.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 24112 visible for the user's dashboard, Spotify, and Game Launcher
+4. Keep PID 30900 visible for the user's dashboard, Spotify, and Game Launcher
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.
