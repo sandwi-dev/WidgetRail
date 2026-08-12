@@ -334,7 +334,7 @@ Branch: `codex/impl-platform-switch`
 
 ### DLV-025 — Eliminate transition tearing and UI-thread stutter
 
-**State:** Assigned; bounded DirectComposition prototype authorized 2026-08-11
+**State:** Done; accepted as `16f9f47`, integrated through `5b8556a`
 **Baseline:** planner control-plane commit `66a3f57`
 **Dependencies:** accepted DLV-020 and DLV-078 presentation ordering
 **Owner:** OverlayHost transition scheduling, Win32/DWM composition, Direct2D
@@ -395,11 +395,26 @@ presentation owner, public protocol/threat-model change, or user-only physical
 evidence. A surface that cannot coordinate committed content with HWND geometry
 is non-integrable evidence.
 
+**Reviewer disposition:** Accepted with live visual confirmation still pending.
+One 213-line `OverlayCompositionSurface` owner renders a complete detached
+destination, ends the full update, commits and waits before changed HWND
+geometry is exposed, then uses the same surface for ordinary repaints. The
+legacy HWND target remains a failure-only fallback; extent interpolation is
+disabled on the composed path, reduced motion is therefore immediate, and no
+public protocol or second permanent renderer was added. Retained focused
+evidence covers Audio Mixer, Network Controls, Spotify, Games & Apps, delayed
+startup, reversal, reload, targeting, transition policy, and the Release host.
+Independent diff review found cohesive surface ownership, bounded fallback and
+no whitespace/generated/reviewer-document contamination. Fresh accepted-main
+Release build succeeded; PID 25164 activated DirectComposition with no fallback
+or immediate error. Its first live geometry handoffs logged complete-content
+draw <= 5.921 ms, commit <= 16.017 ms, and coordinated geometry <= 18.437 ms.
+The user must still confirm the former black-band/flicker reproduction visually.
+
 ### DLV-105 — Keep every widget reachable in a narrow icon tray
 
-**State:** Ready after DLV-025; first platform follow-up
-**Baseline:** accepted DLV-025 platform boundary plus the planner commit that
-introduces this assignment
+**State:** Assigned; implementation started after clean merge `28fb330`
+**Baseline:** accepted DLV-025 `16f9f47` plus planner commit `de95720`
 **Dependencies:** host-owned tray catalog/order/selection, `TrayLayout`, host
 accessibility tree, focus/navigation, placement bands, and runtime extent
 changes
@@ -636,6 +651,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-025 | `16f9f47` | `5b8556a` | Complete DirectComposition destination surfaces are committed before HWND geometry; accepted Release PID 25164 is running for the user's black-band/flicker check. |
 | DLV-100 | `760a9bb` | `54fbd12` | Game Launcher and protected Network Controls TextEntry snapshots pass the canonical bridge style route; the packaged Release is running for live confirmation. |
 | DLV-094/096/098/099 | `fb7fa34` contiguous widgets prefix | `c6d76a3` | Steam artwork is demand-only, stale-safe, generation-coupled, and fully drained before provider disposal. |
 | DLV-095/097 | corrected running-app prefix through `46d1938` | `c6d76a3` | Games & Apps and Game Launcher add a validated current running app through opaque trusted authority. |

@@ -11,6 +11,7 @@
 #include "NativeIcons.h"
 #include "NativeStyle.h"
 #include "OverlayChrome.h"
+#include "OverlayCompositionSurface.h"
 #include "OverlayPlacement.h"
 #include "OverlayProcessOwner.h"
 #include "OverlayTargeting.h"
@@ -29,7 +30,7 @@
 #include "TrayLayout.h"
 
 #include <Windows.h>
-#include <d2d1.h>
+#include <d2d1_1.h>
 #include <dwrite.h>
 #include <dwmapi.h>
 #include <GameInput.h>
@@ -438,6 +439,15 @@ public:
             IID_PPV_ARGS(d2dFactory_.ReleaseAndGetAddressOf()));
         if (FAILED(d2dResult)) {
             return FailHresult(L"D2D1CreateFactory", d2dResult);
+        }
+        std::wstring compositionError;
+        if (compositionSurface_.Initialize(window_, d2dFactory_.Get(), compositionError)) {
+            AppendDiagnostic(
+                L"DirectComposition complete-content presentation owner active");
+        } else {
+            AppendDiagnostic(
+                L"DirectComposition unavailable; retaining HWND render-target fallback: " +
+                compositionError);
         }
         const HRESULT dwriteResult = DWriteCreateFactory(
             DWRITE_FACTORY_TYPE_SHARED,
@@ -1441,15 +1451,15 @@ private:
             const auto width = static_cast<unsigned int>(LOWORD(lParam));
             const auto height = static_cast<unsigned int>(HIWORD(lParam));
             const auto resize = gba::PlanRenderTargetResize(
-                static_cast<bool>(renderTarget_), wParam == SIZE_MINIMIZED,
+                static_cast<bool>(hwndRenderTarget_), wParam == SIZE_MINIMIZED,
                 width, height);
-            if (resize.resizeInPlace) {
+            if (!compositionSurface_.available() && resize.resizeInPlace) {
                 // Resize keeps the HWND target allocation/lifecycle stable;
                 // viewport-derived brushes, text formats, renderer resources,
                 // focus geometry, and semantics are rebuilt by the committed
                 // paint at the new extent.
                 DiscardGraphicsResources(false);
-                const HRESULT result = renderTarget_->Resize(D2D1::SizeU(width, height));
+                const HRESULT result = hwndRenderTarget_->Resize(D2D1::SizeU(width, height));
                 if (FAILED(result)) {
                     AppendDiagnostic(
                         L"Overlay render target resize failed; recreating target hresult=" +
@@ -1464,7 +1474,8 @@ private:
             }
             if (accessibilityActive_) ClearAccessibilityTree();
             (void)ReconcileResponsiveFocusPersistence();
-            if (resize.invalidate) InvalidateRect(window_, nullptr, FALSE);
+            if (resize.invalidate && !compositionPlacementInProgress_)
+                InvalidateRect(window_, nullptr, FALSE);
             return 0;
         }
         case WM_DPICHANGED:
@@ -1570,6 +1581,8 @@ private:
 
     void Shutdown() {
         pinnedSurfaceCoordinator_.Dispose();
+        DiscardGraphicsResources();
+        compositionSurface_.Reset();
         declarativeRenderer_.reset();
         if (imageCache_) {
             imageCache_->Shutdown();
@@ -2415,6 +2428,87 @@ private:
         AdvanceOverlayTransition(GetTickCount64());
     }
 
+    bool PresentCompositionPlacement(
+        const gba::OverlayPlacement& placement,
+        const UINT dpi,
+        const bool wasVisible) {
+        const unsigned int priorWidth = compositionSurface_.width();
+        const unsigned int priorHeight = compositionSurface_.height();
+        const auto geometry = gba::PlanCompositionGeometry(
+            priorWidth, priorHeight,
+            static_cast<unsigned int>(placement.width),
+            static_cast<unsigned int>(placement.height));
+
+        gba::OverlayCompositionSurface::Frame frame;
+        std::uint64_t drawMicroseconds{};
+        if (!RenderCompositionFrame(
+                static_cast<unsigned int>(placement.width),
+                static_cast<unsigned int>(placement.height), dpi,
+                frame, drawMicroseconds)) {
+            DisableCompositionFallback(L"destination draw failed before geometry");
+            return false;
+        }
+
+        struct PlacementGuard final {
+            bool& active;
+            explicit PlacementGuard(bool& value) : active(value) { active = true; }
+            ~PlacementGuard() { active = false; }
+        } guard(compositionPlacementInProgress_);
+        const auto geometryStarted = std::chrono::steady_clock::now();
+        if (wasVisible && geometry.clipBeforeCommit) {
+            if (!SetWindowPos(
+                    window_, nullptr, 0, 0,
+                    static_cast<int>(geometry.retainedClipWidth),
+                    static_cast<int>(geometry.retainedClipHeight),
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW)) {
+                compositionSurface_.AbandonFrame(frame);
+                DisableCompositionFallback(
+                    L"retained-content clip failed error=" +
+                    std::to_wstring(GetLastError()));
+                return false;
+            }
+        }
+
+        gba::OverlayCompositionSurface::CommitTiming commitTiming;
+        const HRESULT commitResult = compositionSurface_.CommitFrame(
+            frame, true, commitTiming);
+        if (FAILED(commitResult)) {
+            DisableCompositionFallback(
+                L"destination commit failed hresult=" +
+                std::to_wstring(static_cast<unsigned long>(commitResult)));
+            return false;
+        }
+
+        const BOOL placed = SetWindowPos(
+            window_, HWND_TOPMOST,
+            placement.x, placement.y, placement.width, placement.height,
+            SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW);
+        const auto geometryMicroseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - geometryStarted).count());
+        if (!placed) {
+            AppendDiagnostic(
+                L"Committed composition surface could not be placed error=" +
+                std::to_wstring(GetLastError()));
+            return false;
+        }
+
+        AppendDiagnostic(
+            L"Composition placement committed content=complete from=" +
+            std::to_wstring(priorWidth) + L"x" + std::to_wstring(priorHeight) +
+            L" to=" + std::to_wstring(placement.width) + L"x" +
+            std::to_wstring(placement.height) +
+            L" order=" + (geometry.clipBeforeCommit
+                ? L"clip-commit-place" : L"commit-place") +
+            L" draw-us=" + std::to_wstring(drawMicroseconds) +
+            L" commit-us=" + std::to_wstring(commitTiming.commitMicroseconds) +
+            L" geometry-us=" + std::to_wstring(geometryMicroseconds) +
+            L" waited=true");
+        if (performanceCountersActive_) ++performanceSuccessfulFrames_;
+        BeginOpenAfterSuccessfulPaint();
+        return true;
+    }
+
     OverlayShowResult ShowOverlay(const bool atomicVisibleTransition = false) {
         if (!placementRefreshGate_.TryEnter()) return OverlayShowResult::Deferred;
         struct PlacementScope final {
@@ -2486,12 +2580,19 @@ private:
             monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
             monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
             SWP_SHOWWINDOW | SWP_NOACTIVATE);
-        const UINT overlayPlacementFlags = SWP_SHOWWINDOW | SWP_NOACTIVATE |
-            (atomicVisibleTransition && wasVisible ? SWP_NOREDRAW : 0U);
-        const BOOL overlayPlaced = SetWindowPos(
-            window_, HWND_TOPMOST, placement->x, placement->y,
-            placement->width, placement->height,
-            overlayPlacementFlags);
+        BOOL overlayPlaced = FALSE;
+        if (compositionSurface_.available()) {
+            overlayPlaced = PresentCompositionPlacement(
+                *placement, dpi, wasVisible) ? TRUE : FALSE;
+        }
+        if (!compositionSurface_.available()) {
+            const UINT overlayPlacementFlags = SWP_SHOWWINDOW | SWP_NOACTIVATE |
+                (atomicVisibleTransition && wasVisible ? SWP_NOREDRAW : 0U);
+            overlayPlaced = SetWindowPos(
+                window_, HWND_TOPMOST, placement->x, placement->y,
+                placement->width, placement->height,
+                overlayPlacementFlags);
+        }
         if (!backdropPlaced || !overlayPlaced) {
             AppendDiagnostic(L"Overlay placement failed error=" +
                              std::to_wstring(GetLastError()));
@@ -2708,6 +2809,13 @@ private:
                 Dispatch(gba::Command::CloseOverlay);
                 return;
             }
+            if (result == OverlayShowResult::Shown &&
+                compositionSurface_.available()) {
+                // ShowOverlay already rendered and transactionally committed
+                // the complete destination before exposing its final HWND.
+                ValidateRect(window_, nullptr);
+                return;
+            }
             InvalidateRect(window_, nullptr, FALSE);
             const bool initialFrameCommitRequired =
                 result == OverlayShowResult::Shown &&
@@ -2740,7 +2848,8 @@ private:
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
             state_.surface() == gba::Surface::Widget &&
-            priorPresentedExtent != nextExtent;
+            priorPresentedExtent != nextExtent &&
+            !compositionSurface_.available();
         if (animateWidgetExtent)
             BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
         const auto presentation = gba::DecideOverlayPresentation(
@@ -2757,7 +2866,9 @@ private:
                 std::to_wstring(nextExtent.heightDip) + L" identity=" +
                 (priorWidget == currentWidget ? L"retained" : L"changed") +
                 L" target=" +
-                (CurrentAccessibilityPolicy().reducedMotion
+                (compositionSurface_.available()
+                    ? L"composition-surface-commit"
+                    : CurrentAccessibilityPolicy().reducedMotion
                     ? L"resize-in-place"
                     : L"animated-resize-in-place"));
         }
@@ -4606,22 +4717,31 @@ private:
                hintFormat_ && iconFormat_;
     }
 
-    bool EnsureGraphicsResources() {
+    bool EnsureGraphicsResources(
+        const unsigned int requestedWidth = 0,
+        const unsigned int requestedHeight = 0,
+        const UINT requestedDpi = 0) {
         if (renderTarget_ && GraphicsResourcesReady()) return true;
         RECT client{};
         GetClientRect(window_, &client);
         const auto size = D2D1::SizeU(
-            static_cast<UINT32>(client.right - client.left),
-            static_cast<UINT32>(client.bottom - client.top));
+            requestedWidth != 0
+                ? requestedWidth
+                : static_cast<UINT32>(client.right - client.left),
+            requestedHeight != 0
+                ? requestedHeight
+                : static_cast<UINT32>(client.bottom - client.top));
         if (!renderTarget_) {
             if (FAILED(d2dFactory_->CreateHwndRenderTarget(
                     D2D1::RenderTargetProperties(),
                     D2D1::HwndRenderTargetProperties(window_, size),
-                    renderTarget_.ReleaseAndGetAddressOf()))) {
+                    hwndRenderTarget_.ReleaseAndGetAddressOf()))) {
                 return false;
             }
+            renderTarget_ = hwndRenderTarget_;
         }
-        const float windowDpi = static_cast<float>(GetDpiForWindow(window_));
+        const float windowDpi = static_cast<float>(
+            requestedDpi != 0 ? requestedDpi : GetDpiForWindow(window_));
         renderTarget_->SetDpi(windowDpi > 0 ? windowDpi : 96.0F,
                               windowDpi > 0 ? windowDpi : 96.0F);
 
@@ -4807,7 +4927,10 @@ private:
         dashboardTextBrush_.Reset();
         cardBrush_.Reset();
         backgroundBrush_.Reset();
-        if (discardRenderTarget) renderTarget_.Reset();
+        if (discardRenderTarget) {
+            renderTarget_.Reset();
+            hwndRenderTarget_.Reset();
+        }
     }
 
     void DrawTextLine(std::wstring_view text,
@@ -4818,42 +4941,30 @@ private:
                                  rectangle, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
 
-    void Paint() {
-        PAINTSTRUCT paint{};
-        BeginPaint(window_, &paint);
-        if (state_.surface() == gba::Surface::Hidden || !EnsureGraphicsResources()) {
-            declarativeMotionActive_ = false;
-            EndPaint(window_, &paint);
-            return;
-        }
-
-        RECT client{};
-        GetClientRect(window_, &client);
-        float dpiX = 96.0F;
-        float dpiY = 96.0F;
-        renderTarget_->GetDpi(&dpiX, &dpiY);
+    void DrawCurrentFrame(
+        const unsigned int width,
+        const unsigned int height,
+        const UINT dpi,
+        const POINT updateOffset) {
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
         const auto metrics = gba::ComputeOverlayRenderMetrics(
-            client.right - client.left,
-            client.bottom - client.top,
-            dpiX > 0 ? static_cast<UINT>(std::lround(dpiX)) : 96U,
-            interfaceScale);
-        if (!metrics) {
-            EndPaint(window_, &paint);
-            return;
-        }
-        renderTarget_->BeginDraw();
-        // The HWND is a color-keyed layered window above a separately dimmed
-        // full-screen backdrop. Only the authored panel/tray surfaces belong
-        // to this window; painting the theme canvas across the client creates
-        // an opaque rectangular box around those content-shaped surfaces.
-        // Keep the canvas color for style inheritance/contrast, but clear the
-        // unused client area to the exact transparency key.
+            static_cast<int>(width), static_cast<int>(height),
+            dpi != 0 ? dpi : 96U, interfaceScale);
+        if (!metrics) return;
+
+        // BeginDraw supplied by DirectComposition selects the surface and
+        // update clip on this context. Clear that complete clip, then account
+        // for the update offset while retaining the existing DIP transform.
+        renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
         renderTarget_->Clear(D2DColor(kSafeCanvasFallback));
-        renderTarget_->SetTransform(D2D1::Matrix3x2F::Scale(
-            metrics->interfaceScale, metrics->interfaceScale));
+        renderTarget_->SetTransform(
+            D2D1::Matrix3x2F::Scale(
+                metrics->interfaceScale, metrics->interfaceScale) *
+            D2D1::Matrix3x2F::Translation(
+                static_cast<float>(updateOffset.x),
+                static_cast<float>(updateOffset.y)));
 
         if (state_.surface() == gba::Surface::Widget) {
             DrawWidget(metrics->viewportWidthDip, metrics->viewportHeightDip,
@@ -4863,6 +4974,140 @@ private:
             DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip);
         }
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+    }
+
+    bool RenderCompositionFrame(
+        const unsigned int width,
+        const unsigned int height,
+        const UINT dpi,
+        gba::OverlayCompositionSurface::Frame& frame,
+        std::uint64_t& drawMicroseconds) {
+        const auto started = std::chrono::steady_clock::now();
+        HRESULT result = compositionSurface_.BeginFrame(width, height, frame);
+        if (FAILED(result)) {
+            AppendDiagnostic(
+                L"DirectComposition BeginDraw failed hresult=" +
+                std::to_wstring(static_cast<unsigned long>(result)));
+            return false;
+        }
+
+        if (frame.replacement) DiscardGraphicsResources();
+        renderTarget_ = frame.target;
+        renderTarget_->SetDpi(
+            static_cast<float>(dpi != 0 ? dpi : 96U),
+            static_cast<float>(dpi != 0 ? dpi : 96U));
+        if (!EnsureGraphicsResources(width, height, dpi)) {
+            renderTarget_.Reset();
+            compositionSurface_.AbandonFrame(frame);
+            AppendDiagnostic(
+                L"DirectComposition destination resources could not be created");
+            return false;
+        }
+
+        DrawCurrentFrame(width, height, dpi, frame.updateOffset);
+        renderTarget_.Reset();
+        result = compositionSurface_.EndFrame(frame);
+        drawMicroseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started).count());
+        if (FAILED(result)) {
+            AppendDiagnostic(
+                L"DirectComposition EndDraw failed hresult=" +
+                std::to_wstring(static_cast<unsigned long>(result)));
+            return false;
+        }
+        return true;
+    }
+
+    void DisableCompositionFallback(const std::wstring_view reason) {
+        AppendDiagnostic(
+            L"DirectComposition presentation disabled; using HWND fallback: " +
+            std::wstring(reason));
+        DiscardGraphicsResources();
+        compositionSurface_.Reset();
+        if (window_ && state_.surface() != gba::Surface::Hidden)
+            InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    bool CommitCompositionRepaint(
+        const unsigned int width,
+        const unsigned int height,
+        const UINT dpi) {
+        const std::wstring priorPresentationPaintKey =
+            lastWidgetPresentationPaintKey_;
+        gba::OverlayCompositionSurface::Frame frame;
+        std::uint64_t drawMicroseconds{};
+        if (!RenderCompositionFrame(width, height, dpi, frame, drawMicroseconds)) {
+            DisableCompositionFallback(L"destination draw failed");
+            return false;
+        }
+        const bool replacement = frame.replacement;
+        gba::OverlayCompositionSurface::CommitTiming timing;
+        const HRESULT result = compositionSurface_.CommitFrame(
+            frame, replacement, timing);
+        if (FAILED(result)) {
+            DisableCompositionFallback(
+                L"surface commit failed hresult=" +
+                std::to_wstring(static_cast<unsigned long>(result)));
+            return false;
+        }
+        const bool presentationChanged =
+            priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
+        if (replacement || presentationChanged || performanceCountersActive_) {
+            AppendDiagnostic(
+                L"Composition frame committed content=complete size=" +
+                std::to_wstring(width) + L"x" + std::to_wstring(height) +
+                L" order=commit-no-geometry" +
+                L" draw-us=" + std::to_wstring(drawMicroseconds) +
+                L" commit-us=" + std::to_wstring(timing.commitMicroseconds) +
+                L" geometry-us=0" +
+                L" waited=" + (timing.waitedForCompletion ? L"true" : L"false") +
+                L" geometry=unchanged");
+        }
+        if (performanceCountersActive_) ++performanceSuccessfulFrames_;
+        BeginOpenAfterSuccessfulPaint();
+        return true;
+    }
+
+    void Paint() {
+        PAINTSTRUCT paint{};
+        BeginPaint(window_, &paint);
+        if (state_.surface() == gba::Surface::Hidden) {
+            declarativeMotionActive_ = false;
+            EndPaint(window_, &paint);
+            return;
+        }
+
+        RECT client{};
+        GetClientRect(window_, &client);
+        const auto width = static_cast<unsigned int>(client.right - client.left);
+        const auto height = static_cast<unsigned int>(client.bottom - client.top);
+        const UINT windowDpi = GetDpiForWindow(window_);
+        if (compositionSurface_.available()) {
+            (void)CommitCompositionRepaint(width, height, windowDpi);
+            EndPaint(window_, &paint);
+            return;
+        }
+        if (!EnsureGraphicsResources(width, height, windowDpi)) {
+            declarativeMotionActive_ = false;
+            EndPaint(window_, &paint);
+            return;
+        }
+
+        float dpiX = 96.0F;
+        float dpiY = 96.0F;
+        renderTarget_->GetDpi(&dpiX, &dpiY);
+        renderTarget_->BeginDraw();
+        // The HWND is a color-keyed layered window above a separately dimmed
+        // full-screen backdrop. Only the authored panel/tray surfaces belong
+        // to this window; painting the theme canvas across the client creates
+        // an opaque rectangular box around those content-shaped surfaces.
+        // Keep the canvas color for style inheritance/contrast, but clear the
+        // unused client area to the exact transparency key.
+        DrawCurrentFrame(
+            width, height,
+            dpiX > 0 ? static_cast<UINT>(std::lround(dpiX)) : 96U,
+            POINT{});
 
         const HRESULT result = renderTarget_->EndDraw();
         if (result == D2DERR_RECREATE_TARGET) {
@@ -5595,9 +5840,12 @@ private:
     bool compatibilityDeviceTrackingAvailable_{};
     GameInputCallbackToken guideCallback_{};
     GameInputCallbackToken guideCompatibilityDeviceCallback_{};
-    ComPtr<ID2D1Factory> d2dFactory_;
+    ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
-    ComPtr<ID2D1HwndRenderTarget> renderTarget_;
+    gba::OverlayCompositionSurface compositionSurface_;
+    bool compositionPlacementInProgress_{};
+    ComPtr<ID2D1HwndRenderTarget> hwndRenderTarget_;
+    ComPtr<ID2D1RenderTarget> renderTarget_;
     ComPtr<ID2D1SolidColorBrush> backgroundBrush_;
     ComPtr<ID2D1SolidColorBrush> cardBrush_;
     ComPtr<ID2D1SolidColorBrush> textBrush_;
