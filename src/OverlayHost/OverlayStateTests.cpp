@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <set>
 #include <string_view>
 #include <vector>
 
@@ -156,6 +157,27 @@ int main() {
     Check(!directSelection.TrySelectTrayWidget(L"one") &&
           directSelection.selectedWidget() == L"three",
           "widget-owned input rejects direct tray selection");
+
+    std::vector<std::wstring> largeCatalog;
+    for (int index = 0; index < 15; ++index)
+        largeCatalog.push_back(L"widget-" + std::to_wstring(index));
+    OverlayState large({}, largeCatalog);
+    Send(large, Command::ToggleOverlay);
+    std::set<std::wstring> visited;
+    visited.emplace(large.selectedWidget());
+    for (std::size_t index = 1; index < largeCatalog.size(); ++index) {
+        Send(large, Command::NavigateRight);
+        visited.emplace(large.selectedWidget());
+        Check(large.focusRegion() == FocusRegion::Tray,
+              "large-catalog cycling never enters widget content");
+    }
+    Check(visited.size() == largeCatalog.size() &&
+          large.selectedWidget() == largeCatalog.back(),
+          "Right reaches every enabled widget once in stable catalog order");
+    for (std::size_t index = 1; index < largeCatalog.size(); ++index)
+        Send(large, Command::NavigateLeft);
+    Check(large.selectedWidget() == largeCatalog.front(),
+          "Left reaches the first widget through the same stable order");
 
     OverlayState empty({}, {});
     Send(empty, Command::ToggleOverlay);
