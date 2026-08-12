@@ -4579,6 +4579,34 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ## 2026-08-11 accepted integration delta
 
+### Returned candidate review — DLV-114 and DLV-112
+
+- **DLV-114 candidate `f285c9d` is returned for DLV-117.** The change keeps
+  exact SavedId selection, disappearing-identity refusal, Back focus/scroll
+  restoration, and snapshot-only details policy/presentation outside the
+  lifecycle owner. `GameLauncherWidget` grows from 1,140 to 1,207 physical
+  lines but gains only one immutable selection reference and route/action
+  adaptation—no task, lock, timer, resource, provider, or second committed-
+  state owner. The visible action contract is not yet acceptable: the details
+  page labels one activation **Group variant** or **Ungroup variant**, while the
+  reused implementation starts or completes a two-distinct-game sequence, and
+  the details page does not render the resulting status. DLV-117 must make that
+  interaction honest and add exact first/second/removal evidence before the
+  contiguous prefix can integrate.
+
+- **DLV-112 candidate `1dd2dd5` is returned for DLV-116 after active DLV-115.**
+  The separate native picker, managed single-flight install service, exact
+  current bundled-Settings admission, reparse-resistant locked source stream,
+  catalog-owned pre-publish policy, disabled publication, and bounded path-free
+  result queue are credible ownership boundaries. The production prerequisite
+  is incomplete because `OverlayApp::BeginLocalWidgetPackageImport` has no
+  caller or closed action-admission seam, while DLV-113 is widgets-only and
+  cannot add native work. The new completion-event assertions in
+  `WidgetBridgeCatalogTests` also use `assert` in a Release `/DNDEBUG` build, so
+  they execute no checks, and the required implementation-status responsibility
+  record is missing. DLV-116 must close those exact gaps without reopening
+  package policy or exposing a generic widget/file capability.
+
 - **DLV-033 (`1ec2b70`, integrated through `4fa8f63`)** moves descriptor,
   snapshot, typed failure, lifecycle-target, catalog-retry, generation, and
   bounded request-queue ownership from `OverlayApp` into one native

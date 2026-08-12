@@ -648,9 +648,10 @@ through `ef8fbab`, carries bounded sanitized source health through the existing
 query revision and renders partial success without adapter control. Accepted
 DLV-083 `f441472`, integrated through `464460c`, scopes LB/RB page switching to
 the current Game Launcher results scroll without changing native routing.
-Accepted DLV-088/090 close durable hide/restore. Assigned DLV-114 now adds a
-controller-first selected-game details route over existing normalized state,
-without new provider data or launch authority. Additional store adapters remain
+Accepted DLV-088/090 close durable hide/restore. DLV-114 candidate `f285c9d`
+adds a controller-first selected-game details route over existing normalized
+state without new provider data or launch authority; DLV-117 owns the required
+honest two-selection variant-action correction before acceptance. Additional store adapters remain
 behind the documented-registration admission gate; current official
 [GOG client](https://docs.gog.com/gc-client-overview/) and
 [SDK](https://docs.gog.com/sdk/) material describes game-side/client integration
