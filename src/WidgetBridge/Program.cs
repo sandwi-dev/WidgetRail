@@ -73,7 +73,9 @@ internal static class Program
                 new WindowsMediaPlatformBackend(),
                 new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
                     cancellationToken => settingsStore.LoadAsync(cancellationToken)
-                        .GetAwaiter().GetResult().AppLibrary.EpicInstalledGamesEnabled),
+                        .GetAwaiter().GetResult().AppLibrary.EpicInstalledGamesEnabled,
+                    cancellationToken => settingsStore.LoadAsync(cancellationToken)
+                        .GetAwaiter().GetResult().AppLibrary.GogInstalledGamesEnabled),
                 communityBackend,
                 communityBackend,
                 communityBackend,

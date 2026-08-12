@@ -17,6 +17,7 @@ internal enum SettingsPreferenceKind
     BoldText,
     ReducedTransparency,
     EpicInstalledGames,
+    GogInstalledGames,
     Theme,
 }
 
@@ -34,6 +35,14 @@ internal readonly record struct SettingsPreferenceMutation(
             {
                 EpicInstalledGamesEnabled =
                     !current.AppLibrary.EpicInstalledGamesEnabled,
+            },
+        },
+        SettingsPreferenceKind.GogInstalledGames => current with
+        {
+            AppLibrary = current.AppLibrary with
+            {
+                GogInstalledGamesEnabled =
+                    !current.AppLibrary.GogInstalledGamesEnabled,
             },
         },
         _ => current with { Appearance = Apply(current.Appearance) },
@@ -174,6 +183,9 @@ internal static class SettingsPreferencePolicy
             "app-library.epic.toggle" => new(
                 SettingsPreferenceKind.EpicInstalledGames,
                 "Epic installed-game discovery preference saved"),
+            "app-library.gog.toggle" => new(
+                SettingsPreferenceKind.GogInstalledGames,
+                "GOG installed-game discovery preference saved"),
             _ => default,
         };
         return mutation.SuccessStatus is not null;

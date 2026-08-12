@@ -258,13 +258,19 @@ internal static class SettingsPresentation
                 "app-library.epic.toggle",
                 "app-library.epic.toggle")
             .Busy(busy).Classes("setting-row");
+        var gog = UI.ToggleButton(
+                "GOG installed games",
+                settings.AppLibrary.GogInstalledGamesEnabled,
+                "app-library.gog.toggle",
+                "app-library.gog.toggle")
+            .Busy(busy).Classes("setting-row");
         return View(header,
             PageScope("app-library.sources.page",
                 UI.Text("Game sources", "app-library.sources.heading",
                     "Installed game sources").Classes("page-heading"),
-                epic,
+                epic, gog,
                 UI.Text(
-                    "Epic discovery is opt-in, reads installed manifests locally, and never signs in or uses the network.",
+                    "Epic and GOG discovery are separately opt-in, read only local installed registrations, and never sign in or use the network.",
                     "app-library.sources.help", "Installed game source help")
                     .Classes("page-help")),
             "app-library.epic.toggle",

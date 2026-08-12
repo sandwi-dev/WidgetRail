@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Windows package games auto-curate with exact source truth",
         WindowsPackageGameProjectsTruthfully),
     ("Epic games auto-curate with exact source truth", EpicGameProjectsTruthfully),
+    ("GOG games auto-curate through normalized source truth", GogGameProjectsTruthfully),
     ("Broker-shaped opaque IDs survive reconciliation and persistence", BrokerOpaqueIdsPersist),
     ("Automatic discovery walks bounded pages for trusted games", AutoCuratesGamesBeyondFirstPage),
     ("Refresh preserves order and focus while appending newly trusted games", RefreshAppendsGames),
@@ -286,6 +287,27 @@ static async Task EpicGameProjectsTruthfully()
     Assert.Equal("Epic", current.Presentation.Source.DisplayName);
     Assert.True(ActionSurfaces(Snapshot(widget, 911).Root).Any(node =>
         node.AccessibilityLabel?.Contains("Epic", StringComparison.Ordinal) == true));
+    await Background(widget);
+}
+
+static async Task GogGameProjectsTruthfully()
+{
+    var game = InstalledItem(
+        "app-gog", "saved-gog", "GOG Game", WidgetAppLibraryKind.Game,
+        "source-gog-installed", "GOG");
+    var fake = new FakeAppLibraryHost
+    {
+        Pages = { [0] = Page([game], null) },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+        widget.CuratedItems.Any(item => item.SavedId == game.SavedId));
+
+    var current = widget.CuratedItems.Single(item => item.SavedId == game.SavedId);
+    Assert.Equal("GOG", current.Presentation.Source.DisplayName);
+    Assert.True(ActionSurfaces(Snapshot(widget, 912).Root).Any(node =>
+        node.AccessibilityLabel?.Contains("GOG", StringComparison.Ordinal) == true));
     await Background(widget);
 }
 

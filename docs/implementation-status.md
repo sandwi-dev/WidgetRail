@@ -3308,6 +3308,43 @@ read, add/remove, stale launch, unavailable last-good display, exact status, and
 constrained URI cases. The normalized cross-process DTO did not change, so no
 installed-worker rerun was required.
 
+### Opt-in GOG installed-game source (DLV-147)
+
+Settings now exposes a separately persisted **GOG installed games** toggle under
+**Game sources**. The production Bridge reads that host-owned preference when it
+constructs the trusted Windows app-library provider. Disabled mode returns
+`source_disabled` before opening a GOG registry key or file. Enabled mode reads
+only the fixed machine-wide `SOFTWARE\GOG.com\Games` root in the 32-bit and
+64-bit Windows registry views, bounded to 4,096 records, and requires the exact
+matching `goggame-<product-id>.info` file plus the fixed GOG Galaxy client.
+
+The responsibility change is source-local rather than another provider/widget
+switch:
+
+| Responsibility | Before | After |
+|---|---|---|
+| Fixed registration access | No GOG owner. | `WindowsGogRegistryReader` alone opens the two fixed machine registry views and returns bounded trusted records. |
+| Registration validation and exact refresh | No GOG owner. | `GogInstalledGameApplicationSource` owns opt-in admission, strict numeric identity, safe install/info-file evidence, duplicate/mixed health, stable reads, and exact reread. |
+| Normalized catalog and authority | The provider composed Windows, Microsoft/Xbox, Steam, and Epic sources. | `GogGameLibrarySource` implements the same private source contract and owns GOG attribution, opaque identity, last-good display, and stale-authority denial; `WindowsAppLibraryProvider` only composes it. |
+| Launch | No GOG adapter. | `WindowsGogLauncher` alone builds the fixed Galaxy `runGame` request from the freshly revalidated product ID/install root. Widget and broker callers still supply only the short-lived opaque AppId. |
+| Preference UI | Settings owned the ordinary Epic toggle. | The same closed `SettingsPreferencePolicy` and snapshot-only Settings presentation own the independent GOG toggle; the Settings widget root gains no provider or registry dependency. |
+
+Product IDs, registry views/keys, install paths, info-file bytes, Galaxy path,
+and command arguments remain inside the trusted provider. Two same-title games
+remain distinct by numeric product identity. Malformed, duplicate, missing,
+replaced, disabled, unavailable, or stale registrations cannot expose Launch;
+one failing GOG source does not disturb another source. No login, credentials,
+network request, account-owned catalog, installation/content operation,
+user-selected path, external helper, public SDK/protocol change, native work, or
+capture work is included.
+
+Focused Release evidence passes Windows app-library provider 75/75,
+PlatformSettings 17/17, Settings 58/58, Games & Apps 63/63, and Game Launcher
+69/69. A dedicated installed generic-worker/AppContainer route proves disabled
+zero-I/O admission, enabled GOG attribution, and stale-registration launch denial
+without invoking the launcher. The documentation contract passes across 66
+Markdown files.
+
 ### Normalized app-library validation ownership correction (DLV-142)
 
 The public normalized app-library shape is unchanged, but SDK validation no

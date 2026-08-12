@@ -83,6 +83,8 @@ public sealed record AppLibrarySourceSettings
 {
     public bool EpicInstalledGamesEnabled { get; init; }
 
+    public bool GogInstalledGamesEnabled { get; init; }
+
     public static AppLibrarySourceSettings Default { get; } = new();
 }
 

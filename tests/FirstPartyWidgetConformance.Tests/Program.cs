@@ -94,6 +94,18 @@ if (args.Contains("--steam-artwork-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--gog-installed-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await InstalledGogRunsIsolated(installed.Catalog);
+    Console.WriteLine("PASS opt-in GOG installed-game generic-worker acceptance");
+    return 0;
+}
+
 if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
@@ -567,6 +579,89 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         throw new TimeoutException(
             $"Installed Steam artwork for {displayName} did not rotate.");
     }
+}
+
+static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
+{
+    using var fixture = new InstalledGogFixture();
+    var enabled = false;
+    var registry = new InstalledGogRegistry(fixture.Records);
+    var launcher = new InstalledGogLauncher();
+    await using var provider = new WindowsAppLibraryProvider(
+        [new GogGameLibrarySource(
+            new GogInstalledGameApplicationSource(
+                registry, _ => enabled, fixture.ClientPath),
+            launcher)],
+        ShellStaExecutor.Shared);
+    var simulator = CreateBackend();
+    await using var backend = new CompositePlatformBrokerBackend(
+        simulator, simulator,
+        activity: simulator,
+        bluetooth: simulator,
+        media: simulator,
+        appLibrary: provider,
+        privateSecrets: simulator,
+        loopbackHttp: simulator,
+        privateState: simulator,
+        spotify: simulator);
+    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    using var consentRoot = new TemporaryDirectory("gba-installed-gog-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var disabled = await WaitForSnapshotAsync(client, "No installed games");
+    Assert.True(!Nodes(disabled.Root).Any(node =>
+        string.Equals(node.Text, fixture.DisplayName, StringComparison.Ordinal)),
+        "Disabled GOG source reached the installed worker.");
+    Assert.Equal(0, registry.ReadCount);
+
+    enabled = true;
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.refresh", "game-launcher.refresh"));
+    var enabledSnapshot = await WaitForSnapshotAsync(client, fixture.DisplayName);
+    Assert.True(Nodes(enabledSnapshot.Root).Any(node =>
+        string.Equals(node.Text, "GOG", StringComparison.Ordinal)),
+        "Enabled GOG source attribution did not reach the installed worker.");
+    Assert.True(registry.ReadCount > 0,
+        "Enabled GOG source did not read the fixed registration surface.");
+
+    var launch = Nodes(enabledSnapshot.Root).Single(node =>
+        node.ActionId == "game-launcher.launch" &&
+        Nodes(node).Any(descendant => string.Equals(
+            descendant.Text, fixture.DisplayName, StringComparison.Ordinal)));
+    registry.Records.Clear();
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.launch", launch.Id));
+    await WaitForSnapshotAsync(client, "The selected game is no longer installed");
+    Assert.Equal(0, launcher.Count);
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
 }
 
 static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
@@ -3176,6 +3271,77 @@ file sealed class InstalledArtworkSteamLauncher : IWindowsSteamLauncher
 {
     public void Launch(string exactSteamAppId, CancellationToken cancellationToken) =>
         cancellationToken.ThrowIfCancellationRequested();
+}
+
+file sealed class InstalledGogFixture : IDisposable
+{
+    private readonly TemporaryDirectory _directory = new("gba-installed-gog");
+
+    internal InstalledGogFixture()
+    {
+        ClientPath = Path.Combine(_directory.Path, "GOG Galaxy", "GalaxyClient.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(ClientPath)!);
+        File.WriteAllBytes(ClientPath, [1, 2, 3]);
+        var install = Path.Combine(_directory.Path, "Installed GOG Game");
+        Directory.CreateDirectory(install);
+        File.WriteAllText(Path.Combine(install, "goggame-100.info"),
+            JsonSerializer.Serialize(new
+            {
+                gameId = "100",
+                rootGameId = "100",
+                name = DisplayName,
+                playTasks = Array.Empty<object>(),
+            }));
+        Records.Add(new(
+            WindowsGogRegistryReader.Registry32,
+            "100", "100", DisplayName, install));
+    }
+
+    internal string ClientPath { get; }
+    internal string DisplayName => "Installed GOG Game";
+    internal List<GogRegistryRecord> Records { get; } = [];
+
+    public void Dispose() => _directory.Dispose();
+}
+
+file sealed class InstalledGogRegistry(
+    List<GogRegistryRecord> records) : IGogRegistryReader
+{
+    internal List<GogRegistryRecord> Records => records;
+    internal int ReadCount { get; private set; }
+
+    public GogRegistrySnapshot Enumerate(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ReadCount++;
+        return new(true, records.ToArray());
+    }
+
+    public GogRegistryRecord? ReadExact(
+        string registryView,
+        string keyName,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ReadCount++;
+        return records.SingleOrDefault(record =>
+            string.Equals(record.RegistryView, registryView, StringComparison.Ordinal) &&
+            string.Equals(record.KeyName, keyName, StringComparison.Ordinal));
+    }
+}
+
+file sealed class InstalledGogLauncher : IWindowsGogLauncher
+{
+    internal int Count { get; private set; }
+
+    public void Launch(
+        string productId,
+        string installLocation,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Count++;
+    }
 }
 
 file sealed class TemporaryDirectory : IDisposable

@@ -130,6 +130,15 @@ explicitly. Raw manifest fields, install paths, catalog IDs, and launch URIs
 never enter widget state; activation requires a fresh exact manifest and
 executable match before the host constructs its constrained Epic launcher URI.
 
+GOG installed-game discovery has its own opt-in on that page. Disabled mode
+performs no GOG registration or file I/O. Enabled mode reads only the fixed
+machine-wide GOG game registry views, requires the corresponding bounded local
+`goggame-<product-id>.info` record and the fixed Galaxy client, and reports
+disabled, unavailable, degraded, or healthy status independently. Product IDs,
+registry keys, install paths, info bytes, and launcher arguments remain trusted
+host state. A tile is launchable only after the source rereads the exact current
+registry/info generation; retained or replaced display rows cannot launch.
+
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains
 below 64 KiB. At most 32 distinct SavedIds may participate in favorites or explicit

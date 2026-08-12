@@ -176,6 +176,58 @@ internal interface IWindowsEpicLauncher
         CancellationToken cancellationToken);
 }
 
+internal sealed record GogRegistryRecord(
+    string RegistryView,
+    string KeyName,
+    object? GameId,
+    object? GameName,
+    object? InstallPath);
+
+internal sealed record GogRegistrySnapshot(
+    bool IsAvailable,
+    IReadOnlyList<GogRegistryRecord> Records);
+
+internal interface IGogRegistryReader
+{
+    GogRegistrySnapshot Enumerate(CancellationToken cancellationToken);
+    GogRegistryRecord? ReadExact(
+        string registryView,
+        string keyName,
+        CancellationToken cancellationToken);
+}
+
+internal sealed record GogGameRegistration(
+    string IdentityKey,
+    string DisplayName,
+    string ProductId,
+    string RegistryView,
+    string RegistryKeyName,
+    string InstallLocation,
+    string InfoPath,
+    string RevalidationKey);
+
+internal sealed record GogApplicationSourceCandidate(
+    GameLibrarySourceHealth Health,
+    IReadOnlyList<GogGameRegistration> Registrations);
+
+internal interface IGogApplicationSource
+{
+    GogApplicationSourceCandidate Enumerate(CancellationToken cancellationToken);
+    GogGameRegistration? ReadExact(
+        string registryView,
+        string registryKeyName,
+        string productId,
+        CancellationToken cancellationToken);
+}
+
+internal interface IWindowsGogLauncher
+{
+    void Launch(
+        string productId,
+        string installLocation,
+        CancellationToken cancellationToken);
+}
+
 internal interface IWindowsPackageRegistrationCatalog
 {
     IReadOnlyList<WindowsPackageRegistrationCandidate> Enumerate(

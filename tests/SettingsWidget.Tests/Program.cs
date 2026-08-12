@@ -21,7 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancelled section refresh preserves committed state", SettingsPolicyScenarios.CancelledSectionRefreshPreservesCommittedState),
     ("Settings uses a bounded controller-scroll surface", ControllerScrollSurface),
     ("Nested pages own scoped B navigation", NestedScopesAndBack),
-    ("Epic installed-game discovery is explicit and persisted", EpicSourceOptIn),
+    ("Epic and GOG installed-game discovery are explicit and persisted", GameSourcesOptIn),
     ("Settings composites expose controller semantics", CompositeControls),
     ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
@@ -152,7 +152,7 @@ static async Task NestedScopesAndBack()
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
 }
 
-static async Task EpicSourceOptIn()
+static async Task GameSourcesOptIn()
 {
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
@@ -162,6 +162,8 @@ static async Task EpicSourceOptIn()
     Assert.Equal("app-library.sources.page", initial.ActiveInputScopeId);
     Assert.True(Button(initial.Root, "app-library.epic.toggle").IsSelected is not true,
         "Epic opt-in started selected.");
+    Assert.True(Button(initial.Root, "app-library.gog.toggle").IsSelected is not true,
+        "GOG opt-in started selected.");
     Assert.HasShortcut(initial.Root, "app-library.sources.page", ControllerButton.B,
         "back");
 
@@ -170,6 +172,16 @@ static async Task EpicSourceOptIn()
         .AppLibrary.EpicInstalledGamesEnabled);
     Assert.Equal(true, Button(Snapshot(widget).Root,
         "app-library.epic.toggle").IsSelected);
+
+    await Action(widget, "app-library.gog.toggle");
+    Assert.Equal(true, (await Store(temp.Path).LoadAsync())
+        .AppLibrary.GogInstalledGamesEnabled);
+    Assert.Equal(true, Button(Snapshot(widget).Root,
+        "app-library.gog.toggle").IsSelected);
+
+    await Action(widget, "app-library.gog.toggle");
+    Assert.Equal(false, (await Store(temp.Path).LoadAsync())
+        .AppLibrary.GogInstalledGamesEnabled);
 
     await Action(widget, "app-library.epic.toggle");
     Assert.Equal(false, (await Store(temp.Path).LoadAsync())

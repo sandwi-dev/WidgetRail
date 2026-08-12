@@ -454,8 +454,18 @@ registrations fail closed. For Steam, launch re-reads the exact manifest and
 requires the same identity, path, and content hash before Shell-opening only
 the constrained `steam://rungameid/<numeric-id>` URI.
 
-The present source does not enumerate Xbox/Epic/GOG launcher libraries. Start
-Menu and AppsFolder entries remain conservatively classified as Application.
+Installed Microsoft/Xbox games require the exact current package generation,
+AUMID, and bounded `MicrosoftGame.config` evidence. Epic and GOG are separately
+opt-in host sources. Epic reads only its fixed ProgramData installed-manifest
+root. GOG reads only the fixed machine-wide GOG game registry in the 32-bit and
+64-bit Windows views, then validates the matching bounded
+`goggame-<product-id>.info` file and fixed Galaxy client. Both sources keep
+provider identifiers, paths, file evidence, and launch components inside the
+trusted provider, publish explicit per-source health, and require an exact
+fresh generation before their constrained launcher adapter can run.
+
+The present source does not enumerate other launcher or account libraries.
+Start Menu and AppsFolder entries remain conservatively classified as Application.
 AppsFolder is a
 Windows Shell view, not a guarantee that every installed package, alias, or
 launcher-owned game is returned under every Windows policy. For the user's

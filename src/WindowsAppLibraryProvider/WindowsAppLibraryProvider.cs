@@ -43,20 +43,24 @@ public sealed class WindowsAppLibraryProvider :
     private long _catalogRevision;
 
     public WindowsAppLibraryProvider() : this(
+        _ => false,
         _ => false)
     {
     }
 
     internal WindowsAppLibraryProvider(
-        Func<CancellationToken, bool> epicEnabled) : this(
-        CreateDefaultSources(epicEnabled), ShellStaExecutor.Shared)
+        Func<CancellationToken, bool> epicEnabled,
+        Func<CancellationToken, bool> gogEnabled) : this(
+        CreateDefaultSources(epicEnabled, gogEnabled), ShellStaExecutor.Shared)
     {
     }
 
     private static IReadOnlyList<IGameLibrarySource> CreateDefaultSources(
-        Func<CancellationToken, bool> epicEnabled)
+        Func<CancellationToken, bool> epicEnabled,
+        Func<CancellationToken, bool> gogEnabled)
     {
         ArgumentNullException.ThrowIfNull(epicEnabled);
+        ArgumentNullException.ThrowIfNull(gogEnabled);
         var packagedLauncher = new WindowsPackagedAppLauncher();
         var iconSource = new WindowsAppIconSource();
         return
@@ -79,6 +83,12 @@ public sealed class WindowsAppLibraryProvider :
                     EpicInstalledGameApplicationSource.DefaultManifestRoot,
                     epicEnabled),
                 new WindowsEpicLauncher()),
+            new GogGameLibrarySource(
+                new GogInstalledGameApplicationSource(
+                    new WindowsGogRegistryReader(),
+                    gogEnabled,
+                    WindowsGogLauncher.DefaultClientPath),
+                new WindowsGogLauncher()),
         ];
     }
 

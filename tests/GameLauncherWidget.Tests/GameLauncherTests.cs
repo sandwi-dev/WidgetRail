@@ -73,6 +73,31 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task GogGameProjectsExactSourceAndLaunchIdentity()
+    {
+        var host = new FakeHost(1)
+        {
+            ItemFactory = _ => InstalledItem(
+                "app-gog", "saved-gog", "GOG Game",
+                WidgetAppLibraryKind.Game,
+                "source-gog-installed", "GOG"),
+        };
+        host.ResolveHandler = _ => [host.ItemFactory(0)];
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var item = widget.Collection.Items.Single();
+        Assert.AreEqual("GOG", item.Presentation.Source.DisplayName);
+        var tile = Nodes(Snapshot(widget, 3).Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        StringAssert.Contains(tile.AccessibilityLabel!, "GOG");
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        Assert.AreEqual("app-gog", host.Launches.Single());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task WindowsPackageGameProjectsExactSourceAndLaunchIdentity()
     {
         var host = new FakeHost(1)

@@ -288,10 +288,10 @@ launch.
 
 ## Trusted Windows provider boundary
 
-The current provider merges five bounded trusted Windows sources: current-user/
+The current provider merges bounded trusted Windows sources: current-user/
 all-user Start Menu Programs shortcuts, the current user's Shell `AppsFolder`
 namespace, installed Microsoft/Xbox package registrations, and registered Steam
-libraries, plus explicitly enabled local Epic installed manifests. It:
+libraries, plus separately enabled local Epic and GOG installed registrations. It:
 
 - treats Windows-installed and Steam libraries as ordinary implementations of
   one private source contract, with source-owned discovery, exact resolution,
@@ -320,6 +320,12 @@ libraries, plus explicitly enabled local Epic installed manifests. It:
   unknown format versions, duplicate identities, unsafe/reparse paths, partial
   writes, unsupported application records, and missing exact executables fail
   closed without exposing manifest fields;
+- when separately enabled on the same page, reads at most 4,096 machine-wide
+  registrations from GOG's fixed 32-bit and 64-bit registry roots and requires
+  the matching bounded `goggame-<product-id>.info` file under an existing,
+  non-reparse install root; a missing Galaxy client, malformed or duplicate
+  product ID, unsafe path, partial file read, or mismatched product/name is
+  isolated as unavailable or degraded without publishing launch authority;
 - sanitizes display names, deduplicates the same trusted target identity, and
   serves the normalized catalog through revision-bound pages of at most 64;
 - assigns random opaque IDs that stay stable only while that registration
@@ -355,13 +361,17 @@ Epic launch likewise re-reads the exact current manifest and executable
 evidence, then constructs the fixed Epic launcher URI from validated
 provider-private catalog components. Widget code never supplies a URI, path,
 argument, or Epic identifier.
+GOG launch similarly re-reads the exact registry view/key and matching info-file
+revision, then invokes only the provider-owned Galaxy client route with the
+validated product ID and install root. Registry keys, product IDs, paths, client
+arguments, and info-file bytes never enter widget IPC or private state.
 
 ## Honest limitations
 
 - Discovery covers bounded Start Menu `.lnk`, current-user AppsFolder/AUMID,
   installed Microsoft/Xbox package registrations with explicit game evidence,
   registered Steam manifests, and explicitly enabled installed-only Epic
-  manifests. GOG and other launcher catalogs are not integrated; package
+  manifests and GOG registrations. Other launcher catalogs are not integrated; package
   registration is not a promise that every alias,
   launcher-owned game, account-owned title, or machine policy will be visible.
 - Curation is durable for the package, but deduplication across launchers,
