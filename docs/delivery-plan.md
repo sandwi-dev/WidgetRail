@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 13:42 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 14:34 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -71,6 +71,14 @@ That snapshot is historical evidence, not implementation authority.
   all eight first pages inside the host with no error-class host, worker,
   protocol, broker, or provider records. The post-start tray UIA completion
   defect remains separately owned by DLV-168.
+- DLV-172 `d9356f6`, DLV-173 `7407f41`, and DLV-174 `251152d` are cleanly
+  committed but rejected and remain unintegrated. DLV-172 admits empty source
+  collections, can throw on an SDK-valid oversized last-played timestamp, and
+  spreads collection state across four mutable fields in the existing Launcher
+  hotspot. DLV-173 lets cancellation-ignoring explicit Refresh failures mutate
+  a later Active generation. DLV-174 rejects stale successes but still lets a
+  stale failed command overwrite replacement-session status. DLV-175/176/177
+  own bounded corrections before this prefix can be reconsidered.
 
 ## Execution protocol
 
@@ -109,37 +117,41 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-172: Game Launcher M1 organization and details outcome
+### Current assignment — DLV-175: correct Game Launcher M1 collection truth and ownership
 
-**State:** Assigned after accepted DLV-169/170/171 contiguous prefix. The
-widgets task must begin immediately from clean branch `055f72a`.
+**State:** Assigned correction after rejected DLV-172/173/174. The widgets task
+must begin immediately from clean branch `251152d`; rejected commits remain
+unintegrated until the complete correction prefix is accepted.
 
-**Baseline/dependencies:** widgets branch `055f72a`; accepted product `d58e50e`.
-This assignment owns managed Game Launcher organization, details/action-sheet
-presentation, private state, and directly required existing SDK seams. Do not
-touch the native host, source launch authority, remote metadata, accounts,
-reviewer docs, or Launcher Experience pack schemas.
+**Baseline/dependencies:** widgets branch `251152d`; accepted product `d58e50e`.
+This correction owns only DLV-172's managed Game Launcher collection state,
+source-option admission, metadata formatting, focused tests, and directly
+affected implementation/public docs. Preserve the remainder of DLV-172 and do
+not edit YT Music, Media Sessions, native host, provider authority, public
+protocol, reviewer docs, or Launcher Experience pack schemas.
 
-**User-visible outcome:** Favorites, Hidden/Restore, Continue/Recent, All
-installed, Manual, and non-empty source collections are controller reachable;
-View opens truthful details and Y opens a scoped action sheet, and returning
-restores the exact collection, tile, page, and focus.
+**User-visible outcome:** the new collection strip shows only collections with
+known matching games, never opens an advertised source into an unexplained
+empty page, and details remain usable for every SDK-valid metadata value.
 
-**Objective/acceptance:** close the smallest coherent M1 slice of GL-CAT-004/005
-and GL-UX-002/005 using exact SavedId operations and conflict-safe existing
-state. Details expose title, source, availability, primary action, favorite,
-category/variant, last-played/playtime, and operation state only when known.
-Nested scopes consume Back before the root and never leak LB/RB or contextual
-shortcuts. Implement visible production behavior, not a test-only audit; if a
-required public SDK/native capability is missing, report the exact boundary for
-planner assignment rather than substituting widget-local authority.
+**Objective/acceptance:** gate source options on bounded proven membership, not
+the provider's global source-observation list; add an installed empty-source
+case. Safely omit or render any nonnegative last-played value admitted by the
+current SDK without throwing, including `long.MaxValue`. Replace `_query`,
+`_favoriteFilter`, `_recentMode`, and `_manualFilter` as competing collection
+identity with one cohesive private selection owner/state while preserving
+legacy filter actions and exact query semantics. Tests must prove displayed
+selection always matches the actual intersection/query and hide/details return
+focus remains valid. Supply the before/after responsibility map required for
+the 1,990-line `GameLauncherWidget` hotspot; material root growth is not
+acceptable unless it demonstrably removes more coordination than it adds.
 
 **Verification/stop:** Tier 1 Game Launcher and directly affected managed suite;
-Tier 2 one existing installed generic-worker route covering favorite,
-details/action sheet, return-focus, Hide/Restore, and restart. No aggregate,
-capture, remote service, credential, native change, broad test-infrastructure
-rewrite, or security hardening. Keep verification proportional to the visible
-outcome.
+Tier 2 extend the existing installed generic-worker organization route with an
+empty observed source and maximum timestamp. No aggregate, capture, remote
+service, credential, native/provider authority change, broad fixture rewrite,
+or security hardening. Stop and report if truthful non-empty membership needs a
+new provider/public SDK seam rather than guessing from incomplete rows.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -444,26 +456,33 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-172 — DLV-173: YT Music credential-free transport and recovery outcome.**
-   Make the first page and contextual tray actions truthful for no companion,
-   pairing, connected idle, playing/paused, stale, disconnect, reconnect, and
-   deactivation generations. Existing supported play/pause, previous, next,
-   shuffle, repeat, rating, seek, and refresh actions must appear only with
-   current authority, preserve last-good presentation during a transient
-   disconnect, and reject late completion. Implement reproduced managed widget
-   or existing SDK lifecycle gaps. Tier 1 YT Music plus one installed fake-
-   companion route; no real account/network, native host, package bump,
-   capture, aggregate, or speculative API expansion.
-2. **Ready after DLV-173 — DLV-174: Now Playing visible recovery and quick-action outcome.**
-   Keep the selected Windows media session and its metadata/transport controls
-   usable through empty, identity-less, transient provider failure, Retry,
-   session replacement, and worker reactivation. Dashboard shortcuts must be
-   truthful for the current selected session and stale completions must not
-   replace newer state. Implement only a reproduced managed provider/widget or
-   existing SDK lifecycle defect and stop on native-only tray routing. Tier 1
-   Windows Media/Now Playing plus the existing installed recovery route; no
-   native, account, screenshot, aggregate, broad fixture rewrite, or security
-   work.
+1. **Ready after DLV-175 — DLV-176: correct YT Music explicit-refresh generation ownership.**
+   Preserve DLV-173's connected-idle and last-good UI, but bind every explicit
+   Refresh success, ordinary failure, and authorization failure to the exact
+   current Active operation generation. A cancellation-ignoring completion
+   after deactivate/reactivate must not change presentation, status, pairing,
+   or authority. Add direct late ordinary-failure and authorization-failure
+   cases plus the existing installed fake-companion route. Tier 1 YT Music and
+   that one Tier-2 route only; no real account/network, native, package bump,
+   capture, aggregate, or framework expansion.
+2. **Ready after DLV-176 — DLV-177: correct Now Playing stale command failure.**
+   Preserve DLV-174's identity validation and stale-success behavior, but make
+   the failure reducer return current state wholesale when run generation,
+   snapshot revision, or admitted session is no longer current. A late failure
+   cannot overwrite replacement-session status, metadata, pending state, or
+   quick actions. Add late-failure coverage after session replacement and
+   Active-generation replacement. Tier 1 Media Sessions plus the existing
+   installed recovery route; no native, account, capture, aggregate, provider
+   protocol, or broad fixture work.
+3. **Ready after DLV-177 — DLV-178: Game Launcher controller search and scope restoration outcome.**
+   Complete the visible M1 search route using the existing host-owned TextEntry:
+   committed query survives cancel, clearing restores the selected collection,
+   and Back/details/action-sheet transitions return to the exact search action
+   or originating game without leaking collection shortcuts. Implement only a
+   reproduced managed widget/SDK gap; report native-only focus ownership. Tier
+   1 Game Launcher plus one installed generic-worker search/cancel/return route;
+   no provider, remote metadata, native, public protocol, capture, aggregate,
+   or security work.
 
 ## Platform lane
 
