@@ -78,6 +78,22 @@ int main() {
               gba::RenderTargetResizePlan{},
           "zero-area size messages cannot disturb the retained target");
 
+    Check(gba::PlanCompositionGeometry(0, 0, 952, 698) ==
+              gba::CompositionGeometryPlan{952, 698, false, true},
+          "first composed frame is committed before its HWND is shown");
+    Check(gba::PlanCompositionGeometry(540, 620, 980, 700) ==
+              gba::CompositionGeometryPlan{540, 620, false, true},
+          "growth retains the old clip until the larger surface commits");
+    Check(gba::PlanCompositionGeometry(980, 700, 540, 620) ==
+              gba::CompositionGeometryPlan{540, 620, true, true},
+          "shrink clips the old surface before committing the smaller surface");
+    Check(gba::PlanCompositionGeometry(980, 620, 540, 700) ==
+              gba::CompositionGeometryPlan{540, 620, true, true},
+          "mixed geometry clips only shrinking dimensions before commit");
+    Check(gba::PlanCompositionGeometry(540, 620, 540, 620) ==
+              gba::CompositionGeometryPlan{540, 620, false, false},
+          "same-size repaint does not schedule HWND geometry work");
+
     Check(gba::ResolveWidgetExtentAuthority(true, true) ==
               gba::WidgetExtentAuthority::AdmittedSnapshot,
           "admitted snapshot owns extent even when a prior surface exists");

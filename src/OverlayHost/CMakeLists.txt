@@ -17,6 +17,7 @@ add_compile_options(/utf-8)
 
 add_executable(OverlayHost WIN32
     main.cpp
+    OverlayCompositionSurface.cpp
     OverlayProcessOwner.cpp
     OverlayState.cpp
     WidgetBridgeClient.cpp
@@ -68,6 +69,9 @@ target_link_libraries(OverlayHost PRIVATE
     d2d1
     dwrite
     dwmapi
+    d3d11
+    dxgi
+    dcomp
     gameinput
     shcore
     xinput9_1_0

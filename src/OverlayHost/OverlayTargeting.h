@@ -111,6 +111,39 @@ struct RenderTargetResizePlan final {
         const RenderTargetResizePlan&) noexcept = default;
 };
 
+struct CompositionGeometryPlan final {
+    unsigned int retainedClipWidth{};
+    unsigned int retainedClipHeight{};
+    bool clipBeforeCommit{};
+    bool placeAfterCommit{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CompositionGeometryPlan&,
+        const CompositionGeometryPlan&) noexcept = default;
+};
+
+/// Geometry never reveals pixels that have not been committed. When replacing
+/// a live surface, shrink either dimension before the visual commit and grow
+/// or move only after the complete destination surface is committed.
+[[nodiscard]] constexpr CompositionGeometryPlan PlanCompositionGeometry(
+    const unsigned int currentWidth,
+    const unsigned int currentHeight,
+    const unsigned int targetWidth,
+    const unsigned int targetHeight) noexcept {
+    if (targetWidth == 0 || targetHeight == 0) return {};
+    if (currentWidth == 0 || currentHeight == 0) {
+        return {targetWidth, targetHeight, false, true};
+    }
+    const auto clipWidth = currentWidth < targetWidth ? currentWidth : targetWidth;
+    const auto clipHeight = currentHeight < targetHeight ? currentHeight : targetHeight;
+    return {
+        clipWidth,
+        clipHeight,
+        clipWidth != currentWidth || clipHeight != currentHeight,
+        currentWidth != targetWidth || currentHeight != targetHeight,
+    };
+}
+
 /// A valid non-minimized WM_SIZE always invalidates viewport-derived geometry.
 /// When an HWND target already exists, resize that target in place and rebuild
 /// only its dependent resources. Destroying the target during a visible

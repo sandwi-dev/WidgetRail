@@ -379,6 +379,7 @@ if ($ProcessOwnerTestsOnly) {
 
 $hostArguments = $common + @(
     (Join-Path $projectDirectory 'main.cpp'),
+    (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
@@ -419,6 +420,7 @@ $hostArguments = $common + @(
     '/MANIFEST:EMBED',
     "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
     'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
+    'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
     'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',
     'uiautomationcore.lib', 'advapi32.lib'
