@@ -350,15 +350,21 @@ internal static class GameLauncherPresentation
                         .Disabled(!state.Interactive || state.OrganizationBusy ||
                             state.Organization.RecentSavedIds.Count == 0))
                 .Classes("game-launcher-actions");
-            var hintItems = new List<WidgetElement>
+            var hasActionableGame = state.Interactive && !state.OrganizationBusy &&
+                state.LaunchingSavedId is null &&
+                recentRows.Concat(manualRows)
+                    .Concat(orderedCatalog)
+                    .Any(row => row.Current is not null);
+            var hintItems = new List<WidgetElement>();
+            if (hasActionableGame)
             {
-                UI.ControllerHint(
-                    ControllerButton.View, "Game details", "game-launcher.hint.details"),
-                UI.ControllerHint(
-                    ControllerButton.X, "Favorite", "game-launcher.hint.favorite"),
-                UI.ControllerHint(
-                    ControllerButton.Y, "Hide selected", "game-launcher.hint.hide"),
-            };
+                hintItems.Add(UI.ControllerHint(
+                    ControllerButton.View, "Game details", "game-launcher.hint.details"));
+                hintItems.Add(UI.ControllerHint(
+                    ControllerButton.X, "Favorite", "game-launcher.hint.favorite"));
+                hintItems.Add(UI.ControllerHint(
+                    ControllerButton.Y, "Hide selected", "game-launcher.hint.hide"));
+            }
             if (pageBumpers)
             {
                 if (state.Interactive && snapshot.Status == WidgetPagedResourceStatus.Ready &&
@@ -372,7 +378,7 @@ internal static class GameLauncherPresentation
                         ControllerButton.RightBumper, "Next page",
                         "game-launcher.hint.next"));
             }
-            else
+            else if (hasActionableGame)
             {
                 hintItems.Add(UI.ControllerHint(
                     ControllerButton.LeftBumper, "Group variants",
@@ -381,10 +387,11 @@ internal static class GameLauncherPresentation
                     ControllerButton.RightBumper, "Prefer variant",
                     "game-launcher.hint.prefer"));
             }
-            var hints = UI.Row(
-                    "game-launcher.organization.hints", hintItems.ToArray())
-                .Classes("game-launcher-footer");
-            var children = new List<WidgetElement> { scroll, controls, hints };
+            var children = new List<WidgetElement> { scroll, controls };
+            if (hintItems.Count != 0)
+                children.Add(UI.Row(
+                        "game-launcher.organization.hints", hintItems.ToArray())
+                    .Classes("game-launcher-footer"));
             if (snapshot.Error is { } retained)
                 children.Add(UI.Alert("Some games are unavailable", retained.Message,
                         AlertTone.Warning, "game-launcher.retained-error",
@@ -411,10 +418,11 @@ internal static class GameLauncherPresentation
                      WidgetPagedResourceStatus.Error or
                      WidgetPagedResourceStatus.Ready)
         {
-            var warm = state.Organization.Items
+            var warmRows = state.Organization.Items
                 .Where(item => !state.Organization.ExcludedSavedIds.Contains(
                     item.SavedId, StringComparer.Ordinal))
-                .Select(item => Tile(
+                .ToArray();
+            var warm = warmRows.Select(item => Tile(
                 item.DisplayName, item.SourceAttribution, item.SavedId, null,
                 null, resolved: false,
                 launchState: null,
@@ -430,7 +438,7 @@ internal static class GameLauncherPresentation
                     UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, warm)
                         .Classes("game-launcher-grid")) with
                 { CollectionAnchorKey = GameLauncherIdentity.Key(
-                    state.Organization.Items[0].SavedId).Value };
+                    warmRows[0].SavedId).Value };
             warmScroll = warmScroll.Classes("game-launcher-scroll");
             content = UI.Stack("game-launcher.content",
                     UI.Alert("Checking installed games",
@@ -722,13 +730,15 @@ internal static class GameLauncherPresentation
                 "game-launcher.launch", id, subtitle: subtitle, artwork: artwork,
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)
-            .Shortcut(ControllerButton.View, actionId: "game-launcher.details.open")
-            .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
-            .Shortcut(ControllerButton.Y, actionId: "game-launcher.hide")
             .Busy(launching)
             .Disabled(!interactive || !resolved)
             .Classes("game-launcher-tile");
-        if (!pageBumpers)
+        if (interactive && resolved && !launching)
+            tile = tile
+                .Shortcut(ControllerButton.View, actionId: "game-launcher.details.open")
+                .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
+                .Shortcut(ControllerButton.Y, actionId: "game-launcher.hide");
+        if (interactive && resolved && !launching && !pageBumpers)
             tile = tile
                 .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
                 .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer");

@@ -32,3 +32,11 @@ labels the first step **Choose another variant**, returns to the Library with th
 first identity named in status, and labels a valid second step **Group with
 selected game** or **Remove from variant group**. The details status reports the
 committed result or failure; a same or stale identity cannot be paired.
+
+Every top control preserves a protocol-valid collection while its replacement
+query is pending. The viewport anchor always names a currently rendered game,
+including when the first saved display row is hidden. View, X, Y, LB, and RB are
+advertised only while the focused game can accept their exact action. At a
+non-terminal collection edge, Down admits one cursor continuation and restores
+focus to an entering game row; page and footer controls remain ordinary explicit
+navigation targets after the final game row.
