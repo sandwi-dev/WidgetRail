@@ -56,6 +56,30 @@ FocusedBackResolution ResolveFocusedBackInScope(
     return FocusedBackResolution::NotFound;
 }
 
+void AppendTrayOverflow(
+    Tree& tree,
+    const std::vector<TrayItem>& items,
+    const std::optional<shell::TrayOverflowLayout>& overflow) {
+    if (!overflow || overflow->targetSlot >= items.size()) return;
+    const auto& target = items[overflow->targetSlot];
+    if (target.widgetId.empty()) return;
+    Node node;
+    node.id = overflow->direction == shell::TrayOverflowDirection::Previous
+        ? L"overflow.previous"
+        : L"overflow.next";
+    node.domain = ElementDomain::Tray;
+    node.name = std::to_wstring(overflow->hiddenCount) +
+        (overflow->direction == shell::TrayOverflowDirection::Previous
+            ? L" previous widgets"
+            : L" more widgets");
+    node.hostTargetId = target.widgetId;
+    node.bounds = overflow->bounds;
+    node.role = Role::Button;
+    node.hostAction = HostAction::SelectTrayOverflow;
+    node.keyboardFocusable = false;
+    tree.nodes.push_back(std::move(node));
+}
+
 } // namespace
 
 bool HasActiveScopeBackShortcut(
@@ -148,7 +172,9 @@ Tree BuildTrayTree(
     tree.snapshotSequence = sequence;
     tree.activeInputScopeId = L"host.tray";
     tree.name = L"Game Bar Alternative";
-    tree.nodes.reserve(layout.tiles.size() + (dashboard ? 3U : 0U));
+    tree.nodes.reserve(
+        layout.tiles.size() + (layout.previousOverflow ? 1U : 0U) +
+        (layout.nextOverflow ? 1U : 0U) + (dashboard ? 3U : 0U));
     if (dashboard && !dashboard->title.empty()) {
         Node title;
         title.id = L"host.dashboard.title";
@@ -159,6 +185,7 @@ Tree BuildTrayTree(
         title.headingLevel = HeadingLevel::Level1;
         tree.nodes.push_back(std::move(title));
     }
+    AppendTrayOverflow(tree, items, layout.previousOverflow);
     for (const auto& tile : layout.tiles) {
         if (tile.slot >= items.size()) continue;
         const auto& item = items[tile.slot];
@@ -174,10 +201,13 @@ Tree BuildTrayTree(
         node.enabled = item.enabled;
         node.selected = tile.slot == selectedSlot;
         node.focused = node.selected;
+        node.positionInSet = static_cast<int>(tile.slot + 1);
+        node.sizeOfSet = static_cast<int>(items.size());
         const auto index = tree.nodes.size();
         tree.nodes.push_back(std::move(node));
         if (tree.nodes[index].focused) tree.focusedNode = index;
     }
+    AppendTrayOverflow(tree, items, layout.nextOverflow);
     if (dashboard && !dashboard->help.empty()) {
         Node help;
         help.id = L"host.dashboard.help";
@@ -262,6 +292,7 @@ Tree BuildOpenWidgetTree(
         widgetTree.nodes.push_back(std::move(status));
     }
 
+    AppendTrayOverflow(widgetTree, items, layout.previousOverflow);
     for (const auto& tile : layout.tiles) {
         if (tile.slot >= items.size()) continue;
         const auto& item = items[tile.slot];
@@ -277,10 +308,13 @@ Tree BuildOpenWidgetTree(
         node.enabled = item.enabled;
         node.selected = tile.slot == selectedSlot;
         node.focused = trayFocused && node.selected;
+        node.positionInSet = static_cast<int>(tile.slot + 1);
+        node.sizeOfSet = static_cast<int>(items.size());
         const auto index = widgetTree.nodes.size();
         widgetTree.nodes.push_back(std::move(node));
         if (widgetTree.nodes[index].focused) widgetTree.focusedNode = index;
     }
+    AppendTrayOverflow(widgetTree, items, layout.nextOverflow);
     return widgetTree;
 }
 

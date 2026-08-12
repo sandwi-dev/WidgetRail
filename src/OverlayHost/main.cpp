@@ -2876,7 +2876,12 @@ private:
         (void)ReconcileResponsiveFocusPersistence();
     }
 
-    [[nodiscard]] std::optional<std::size_t> HitTraySlot(
+    struct TrayPointerTarget final {
+        std::size_t slot{};
+        bool activate{};
+    };
+
+    [[nodiscard]] std::optional<TrayPointerTarget> HitTrayTarget(
         const float x,
         const float y,
         const float width,
@@ -2892,7 +2897,12 @@ private:
                 : std::nullopt);
         if (!layout) return std::nullopt;
         const auto* hit = gba::shell::HitTestTray(*layout, x, y);
-        return hit ? std::optional<std::size_t>{hit->slot} : std::nullopt;
+        if (hit) return TrayPointerTarget{hit->slot, true};
+        const auto* overflow = gba::shell::HitTestTrayOverflow(*layout, x, y);
+        return overflow
+            ? std::optional<TrayPointerTarget>{TrayPointerTarget{
+                overflow->targetSlot, false}}
+            : std::nullopt;
     }
 
     void HandlePointerActivation(const float clientX, const float clientY) {
@@ -2937,20 +2947,18 @@ private:
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
                 DesiredWidgetSurfaceTarget().panelWidthDip);
         }
-        const auto traySlot = HitTraySlot(
+        const auto trayTarget = HitTrayTarget(
             x, y, metrics->viewportWidthDip, metrics->viewportHeightDip,
             surfaceGeometry ? &*surfaceGeometry : nullptr);
-        if (!traySlot) return;
+        if (!trayTarget || trayTarget->slot >= state_.order().size()) return;
         if (state_.surface() == gba::Surface::Widget &&
             state_.focusRegion() == gba::FocusRegion::Widget) {
             Dispatch(gba::Command::SampleWidgetBack);
         }
         if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
-        for (std::size_t remaining = state_.order().size();
-             remaining > 0 && state_.selectedSlot() != *traySlot; --remaining) {
-            Dispatch(gba::Command::NavigateRight);
-        }
-        if (state_.selectedSlot() == *traySlot) {
+        const std::wstring targetWidget = state_.order()[trayTarget->slot];
+        if (!SelectTrayWidget(targetWidget)) return;
+        if (trayTarget->activate && state_.selectedSlot() == trayTarget->slot) {
             Dispatch(gba::Command::Activate);
         }
     }
@@ -3762,6 +3770,13 @@ private:
                     if (!SelectTrayWidget(request.hostTargetId)) continue;
                     if (request.kind == gba::accessibility::ActionKind::Invoke)
                         Dispatch(gba::Command::Activate);
+                } else if (request.hostAction ==
+                               gba::accessibility::HostAction::SelectTrayOverflow) {
+                    if (request.kind != gba::accessibility::ActionKind::Invoke ||
+                        state_.focusRegion() != gba::FocusRegion::Tray ||
+                        state_.reorderMode())
+                        continue;
+                    if (!SelectTrayWidget(request.hostTargetId)) continue;
                 } else if (request.hostAction ==
                                gba::accessibility::HostAction::BackToTray ||
                            request.hostAction ==
@@ -5144,6 +5159,29 @@ private:
         gba::shell::FillColorKeyRoundedRectangle(
             renderTarget_.Get(), strip, backgroundBrush_.Get());
 
+        const auto drawOverflow = [&](const gba::shell::TrayOverflowLayout& overflow) {
+            const auto& bounds = overflow.bounds;
+            const D2D1_ROUNDED_RECT control{
+                D2D1::RectF(
+                    bounds.x, bounds.y,
+                    bounds.x + bounds.width, bounds.y + bounds.height),
+                std::min(trayItemCornerRadius_, bounds.width * 0.35F),
+                std::min(trayItemCornerRadius_, bounds.height * 0.35F)};
+            renderTarget_->FillRoundedRectangle(control, trayItemBrush_.Get());
+            const float inset = std::max(5.0F, bounds.width * 0.22F);
+            (void)gba::icons::DrawNativeIcon(
+                renderTarget_.Get(),
+                overflow.direction == gba::shell::TrayOverflowDirection::Previous
+                    ? gba::icons::NativeIcon::Previous
+                    : gba::icons::NativeIcon::Next,
+                D2D1::RectF(
+                    bounds.x + inset, bounds.y + inset,
+                    bounds.x + bounds.width - inset,
+                    bounds.y + bounds.height - inset),
+                trayItemTextBrush_.Get(), 1.8F);
+        };
+        if (layout->previousOverflow) drawOverflow(*layout->previousOverflow);
+
         for (const auto& tileLayout : layout->tiles) {
             const std::size_t slot = tileLayout.slot;
             const float x = tileLayout.bounds.x;
@@ -5180,6 +5218,7 @@ private:
                     : trayItemTextBrush_.Get(),
                 2.35F);
         }
+        if (layout->nextOverflow) drawOverflow(*layout->nextOverflow);
         PublishTrayAccessibility(*layout, width, height, dashboard);
     }
 

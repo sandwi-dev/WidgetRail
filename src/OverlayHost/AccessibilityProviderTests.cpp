@@ -271,6 +271,8 @@ gba::accessibility::Tree HostTree(const bool includeDashboard = false) {
     music.bounds = {20, 220, 64, 64};
     music.role = gba::accessibility::Role::ListItem;
     music.hostAction = gba::accessibility::HostAction::ActivateTrayItem;
+    music.positionInSet = 3;
+    music.sizeOfSet = 8;
     music.selected = true;
     music.focused = true;
     tree.nodes.push_back(music);
@@ -565,6 +567,17 @@ int main() {
     Check(SUCCEEDED(trayFragment.As(&trayItem)) &&
           StringProperty(trayItem.Get(), UIA_NamePropertyId) == L"YT Music",
           "tray item exposes its shell-owned name");
+    VARIANT positionInSet{};
+    VARIANT sizeOfSet{};
+    Check(SUCCEEDED(trayItem->GetPropertyValue(
+              UIA_PositionInSetPropertyId, &positionInSet)) &&
+          V_VT(&positionInSet) == VT_I4 && V_I4(&positionInSet) == 3 &&
+          SUCCEEDED(trayItem->GetPropertyValue(
+              UIA_SizeOfSetPropertyId, &sizeOfSet)) &&
+          V_VT(&sizeOfSet) == VT_I4 && V_I4(&sizeOfSet) == 8,
+          "tray item announces its stable catalog position and full set size");
+    VariantClear(&positionInSet);
+    VariantClear(&sizeOfSet);
     ComPtr<IUnknown> selectionItemUnknown;
     Check(SUCCEEDED(trayItem->GetPatternProvider(
               UIA_SelectionItemPatternId, selectionItemUnknown.GetAddressOf())) &&

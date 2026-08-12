@@ -318,6 +318,12 @@ public:
         case UIA_IsOffscreenPropertyId: BoolVariant(false, result); break;
         case UIA_SelectionItemIsSelectedPropertyId:
             BoolVariant(node->selected, result); break;
+        case UIA_PositionInSetPropertyId:
+            if (node->positionInSet > 0) IntVariant(node->positionInSet, result);
+            break;
+        case UIA_SizeOfSetPropertyId:
+            if (node->sizeOfSet > 0) IntVariant(node->sizeOfSet, result);
+            break;
         case UIA_HeadingLevelPropertyId:
             IntVariant(HeadingLevelValue(node->headingLevel), result); break;
         case UIA_LiveSettingPropertyId:

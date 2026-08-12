@@ -97,9 +97,13 @@ the new app. On hide, both are removed from the topmost band and the host
 attempts to restore the prior foreground window.
 
 A left-button release on the backdrop closes the overlay. A left click on an
-icon-tray item selects/enters that widget; a left click on a visible declarative
-Button or Slider moves focus to its stable ID and invokes its A/select behavior
-when enabled. Pointer hit testing uses the renderer's clipped active-scope
+icon-tray item selects/enters that widget. When the complete catalog does not
+fit, stable previous/next controls select the adjacent off-page widget without
+entering its content; D-pad/keyboard Left and Right continue through every
+widget in catalog order. UI Automation exposes the same visible window plus
+the overflow controls and each tile's full-catalog position. A left click on a
+visible declarative Button or Slider moves focus to its stable ID and invokes
+its A/select behavior when enabled. Pointer hit testing uses the renderer's clipped active-scope
 geometry, so it cannot activate hidden or offscreen controls. The UI remains
 controller-first and no raw pointer event crosses into widget code.
 

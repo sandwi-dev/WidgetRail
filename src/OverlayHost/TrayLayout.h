@@ -18,9 +18,24 @@ struct TrayTileLayout final {
     declarative::Rect bounds;
 };
 
+enum class TrayOverflowDirection {
+    Previous,
+    Next,
+};
+
+struct TrayOverflowLayout final {
+    TrayOverflowDirection direction{TrayOverflowDirection::Previous};
+    std::size_t hiddenCount{};
+    std::size_t targetSlot{};
+    declarative::Rect bounds;
+};
+
 struct TrayLayout final {
     declarative::Rect stripBounds;
     std::vector<TrayTileLayout> tiles;
+    std::optional<TrayOverflowLayout> previousOverflow;
+    std::optional<TrayOverflowLayout> nextOverflow;
+    std::size_t totalCount{};
 };
 
 /// Computes the single authoritative tray geometry used by paint, pointer
@@ -33,6 +48,9 @@ struct TrayLayout final {
     std::optional<TrayBand> band = std::nullopt);
 
 [[nodiscard]] const TrayTileLayout* HitTestTray(
+    const TrayLayout& layout, float x, float y) noexcept;
+
+[[nodiscard]] const TrayOverflowLayout* HitTestTrayOverflow(
     const TrayLayout& layout, float x, float y) noexcept;
 
 } // namespace gba::shell
