@@ -2711,6 +2711,15 @@ with C++ installed:
   cancellation-ignoring gesture-revoke race; one bounded no-build rerun passed
   74/74, including exact content identity, AppContainer authority, Job process-
   tree kill-on-close, lifecycle, malformed snapshot, and hung destruction.
+
+  The optional DLV-109 `WidgetScenario` test helper builds on that contract with
+  named lifecycle/action/assertion steps, structured failures, and a generic
+  bounded typed-operation barrier. Basic action and media/data consumers prove
+  focus/text/busy assertions, delayed completion, denied/revoked responses,
+  latest-wins stale rejection, deactivation, and zero continuing fake work
+  without sleeps or hidden polling. Focused Release evidence passes the combined
+  scenario suite 9/9, Widget SDK 88/88, public API compatibility 12/12, and the
+  documentation contract across 58 Markdown files.
 - Universal controller suppression is unresolved for games using background
   Raw Input or direct HID access.
 - The quarantined XInput Guide fallback depends on an undocumented system-DLL

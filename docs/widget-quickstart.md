@@ -339,6 +339,13 @@ downloaded repositories. See the
 [widget authoring guide](widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test)
 for the complete contract.
 
+Unit tests can compose the same definition with the optional `WidgetScenario`
+runner. Named `Activate`, `Action`, `ExpectText`, `ExpectFocus`, `ExpectBusy`,
+`Deactivate`, and `ExpectIdle` steps return a portable structured result.
+`WidgetScenarioOperationBarrier` supplies exact delayed/failure/cancellation
+handshakes without sleeps; it does not replace the widget's operation or
+lifecycle ownership.
+
 ## Replay controller input
 
 <!-- canonical-author-journey:replay -->

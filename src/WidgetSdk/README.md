@@ -355,6 +355,13 @@ only in the capability-free AppContainer/Job worker. The returned
 `WidgetHostServices` supplies typed fakes; the output is a validated,
 deterministic `WidgetScenarioResult`, not native pixels.
 
+For discoverable tests, the optional `WidgetScenario` runner sequences named
+activation, action, exact async barriers, semantic expectations, deactivation,
+and idle checks over the same widget and fake services. Its structured result
+names the exact failing step and mismatch. `WidgetScenarioOperationBarrier`
+provides manually completed typed requests and cancellation observation without
+sleeps or polling; the widget still owns its lifecycle, operations, and state.
+
 When a widget combines a current snapshot with future events, open the typed
 acknowledged subscription first (`OpenSessionsSubscriptionAsync` or
 `OpenStatusSubscriptionAsync`), fetch current state second, then consume

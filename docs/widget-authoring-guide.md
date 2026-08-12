@@ -1640,6 +1640,33 @@ await WidgetTestHost.SetLifecycleStateAsync(
 await WidgetTestHost.DestroyAsync(widget);
 ```
 
+When a case needs several lifecycle and semantic steps, use the optional
+high-level runner rather than rebuilding orchestration:
+
+```csharp
+var result = await new WidgetScenario(
+        "volume-action",
+        new WidgetScenarioDefinition(widget, services))
+    .Activate()
+    .ExpectFocus("initial-focus", "raise")
+    .ExpectText("initial-value", "value", "Volume 50%")
+    .Action("raise", new WidgetActionEvent("raise", "raise"))
+    .ExpectText("raised-value", "value", "Volume 60%")
+    .Deactivate()
+    .RunAsync();
+
+Assert.IsTrue(result.Passed);
+```
+
+For delayed typed services, register
+`WidgetScenarioOperationBarrier<TRequest,TResponse>.InvokeAsync` with
+`WidgetTestHostServicesBuilder.WithHandler`, await the exact invocation, then
+complete or fail it. `CancellationObserved` and `HandlerCompleted` are explicit
+barriers for replacement, revoked/denied, stale-result, and lifecycle-drain
+cases. `ExpectBusy` and `ExpectIdle` assert semantic and no-work state without
+sleeps, hidden polling, virtual time, or provider-specific helpers. A failure
+returns the exact `StepId`, safe code, and bounded semantic mismatch.
+
 Test at least:
 
 - manifest and snapshot validation;
