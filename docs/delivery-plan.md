@@ -81,66 +81,110 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### Current widgets assignment
+### DLV-123 — Uninstall a disabled community widget from Settings
 
-**State:** No Assigned item. Accepted DLV-113/119/122 is integrated through
-`4949f6e` and awaits the freshly packaged user's Settings picker and Now Playing
-recovery verdict. The remaining named widgets features require fresh live
-evidence, unsupported audio-endpoint authority, store APIs not established as
-supported consumer contracts, or authentication. Do not invent backend work to
-keep the lane busy.
+**State:** Assigned after the clean widgets lane merges exact accepted main
+containing this planner assignment
+**Baseline/dependencies:** accepted main after DLV-121 and the existing typed
+catalog capability, Settings installed-package details, enable/disable,
+version retirement, clear-local-data, and local package install flows
+**Owner:** widgets lane as the serialized lead for the managed catalog
+capability/protocol, bridge/catalog operation, Settings consumer, focused
+managed tests, and directly affected public installation/retention guidance
+**Concurrency:** no native host, renderer, tray, compositor, theme, marketplace,
+signing, remote download, updater, credential, or reviewer-document changes.
+
+**User-visible outcome:** a user can open a Community widget in Settings,
+disable it, choose **Uninstall widget**, confirm the exact package identity, and
+remove all installed immutable versions without using the CLI. Built-in and
+enabled packages remain visibly protected.
+
+**Objective/in scope:** extend the existing typed widget-catalog capability with
+one exact disabled-only uninstall operation. Bind the request to the current
+installed identity/catalog revision or equivalent stale-safe token; revalidate
+disabled state and identity in the trusted catalog service; never send a path,
+directory, executable, or deletion target to Settings. Add a nested destructive
+confirmation with deterministic Cancel/Back and return focus. On success,
+refresh the installed list and retain a clear path back to **Install local
+widget**. On stale, busy, resident, I/O, recovery-pending, or partial cleanup,
+show bounded specific feedback and preserve the current valid catalog.
+
+**Retention policy:** uninstall removes package versions only. It does not
+silently remove widget-private local data, credentials, provider data, themes,
+or user files. Settings must explain and preserve the separately explicit
+**Clear local data** flow. Do not add a combined destructive action.
+
+**Architecture:** this touches the large Settings/catalog surface. Record the
+before/after responsibility map and extend the existing installed-package
+policy/operation owners; do not add uninstall state, tokens, cancellation, and
+view composition directly to another monolithic branch in `SettingsWidget`.
+
+**Acceptance:** controller, keyboard, and semantic action paths show Uninstall
+only for a current disabled Community identity; built-in/enabled/stale/forged/
+wrong-publisher/wrong-version requests are refused before mutation; successful
+uninstall removes every immutable version, publishes one catalog revision,
+tears down no unrelated widget, returns stable focus, and retains private data;
+pending cleanup is honest and retryable.
+
+**Verification:** Tier 1 Settings presentation/action/persistence and catalog
+uninstall/recovery suites; Tier 2 generic worker/bridge capability framing,
+catalog revision, stale-operation, resident lease, partial cleanup, and an
+unaffected neighbor. Because this changes a public cross-process capability,
+run the canonical Tier 3 verifier once from the final coherent commit, not on
+both dirty and committed trees. No capture.
+
+**Stop:** the existing trusted catalog cannot expose a path-free stale-safe
+uninstall operation, the change requires native shell authority, or retention/
+cleanup has materially different product choices not already fixed above.
 
 ### Widgets ready queue
 
-**Queue note:** widgets work waits on fresh live results for the newly packaged
-Settings local install, Game Launcher details/clipping, and Now Playing stage/
-code recovery surfaces. The planner will insert any live correction before
-unrelated work; no speculative filler is authorized.
+**Queue note:** no later independent widgets item is pre-authorized. Game
+Launcher store breadth lacks a supported consumer API, Audio endpoint selection
+lacks a supported setter, YouTube is blocked at the trusted-media cost gate,
+and Spotify/YT Music account work needs authentication or live evidence. A
+DLV-123 review correction, if any, is queued next without interrupting new work.
 
 ## Platform lane
 
 Task identity: `platform`
 Branch: `codex/impl-platform-switch`
 
-### DLV-121 — Restore the Audio Mixer production focus target fixture
+### Current platform assignment
 
-**State:** Assigned; the platform lane moved on immediately after committing
-DLV-118 and has no task-specific DLV-121 commit yet
-**Baseline/dependencies:** clean platform boundary `064a257`, containing
-accepted DLV-118 `5d86cd6` and accepted main `31ed686`; begin from the exact
-accepted-main Release failure
-`AudioMixerScrollHostTests failed: Requested production UIA focus target was
-absent.` Do not rerun the unchanged command merely to seek a pass.
-**Owner:** platform lane; production-host focus/UIA projection, scroll reveal,
-fixture admission, and directly affected focused tests/docs. If the missing node
-is authored by AudioMixerWidget rather than lost by the host, stop with the
-exact semantic snapshot evidence for widgets-lane reassignment.
-**Outcome/scope:** make the real accepted-main Master-to-session and session-to-
-Master traversal expose one current, reachable UIA focus target at the previously
-failing state. Trace the emitted snapshot, admitted input scope, rendered bounds,
-and projected UIA tree before changing the smallest owner. Preserve DLV-049's
-keyboard/controller behavior and DLV-106's tray focus ownership.
-**Acceptance/verification:** the focused production fixture fails before the
-change and passes after it; exact Up/Down reaches Master and the first/last
-session without cycling, hidden/clipped/stale nodes are excluded, and keyboard,
-controller, UIA, four-session, and variable-session states agree. Run this
-focused fixture once after the coherent correction, plus directly affected
-focus/scroll/accessibility suites. No aggregate, screenshot, or repeated
-unchanged rerun.
-**Stop:** evidence locates the defect in managed Audio Mixer authorship, requires
-a public protocol/layout redesign, or cannot reproduce from retained semantic/
-log state.
+**State:** No Assigned platform item. DLV-121 `fb0ad51` is accepted and
+integrated through `a758508`. The next platform outcome depends on accepted
+DLV-123 catalog removal or fresh live evidence for existing visual regressions.
 
 ### Platform ready queue
 
-No later platform item is authorized. DLV-121 remains active; its result must
-reach a coherent commit or an exact managed-authorship stop before the planner
-refills this queue.
+No later independent platform item is authorized. Do not repeat the corrected
+Audio Mixer fixture or manufacture compositor/backend work while live user
+verdicts remain the closing evidence.
 
 **Queue note:** further platform correction depends on the user's fresh verdict
 for integrated DLV-115 (black border/transition), DLV-104 (Game Launcher
 clipping), and DLV-106 (Audio Mixer tray-Left focus). These are live-verification
 gates, not permission to repeat backend work. Do not manufacture filler.
+
+## Serialized integration queue
+
+### DLV-124 — Reconcile native session, tray, and UIA state after uninstall
+
+**State:** Awaiting accepted DLV-123 integration; not executable
+**Owner:** platform lane; native catalog-removal reconciliation and focused host
+state/focus/accessibility/process-lifecycle evidence only
+**Outcome:** uninstalling the selected disabled Community widget cannot leave a
+stale tray identity, cached presentation, worker/session generation, pointer
+target, or UIA node. Settings remains the exact selected tray identity and sole
+focus owner throughout the operation.
+**Scope/verification:** begin only from the accepted DLV-123 product path. First
+prove whether existing DLV-118 catalog reconciliation and generation teardown
+already satisfy the behavior. Add production code only for a reproduced native
+gap; otherwise close with a focused production-host uninstall semantic fixture
+and documentation. Tier 1/2 only; no capture or aggregate.
+**Stop:** DLV-123 is unaccepted, the defect belongs to managed catalog state, or
+the desired post-uninstall selection requires a material UX choice.
 
 ## Blocked work
 
@@ -169,6 +213,7 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-121 | `fb0ad51` | `a758508` | The Audio Mixer production fixture now traverses the real clipped/revealed controls instead of directly focusing an absent offscreen UIA node; live product behavior is unchanged and still awaits user verification. |
 | DLV-118 | `5d86cd6` | `4bc0baa` | Small and wide widget surfaces retain one selected tray identity, explicit reachable overflow, exact order, and synchronous catalog replacement without stale tray dispatch. |
 | DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
 | DLV-114/117 | `f285c9d` and `6a96727` | `cff0d99` | Game Launcher has an exact-ID controller details route and honest two-selection variant actions with committed feedback and deterministic return focus. |
@@ -178,7 +223,6 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 | DLV-110 | `e90e729` | `4e02184` | Basic, data, media, and multipage starters now generate atomically outside the checkout with MSTest.Sdk 4.3.2 scenarios, isolated preview, validation, and deterministic packaging. |
 | DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |
 | DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |
-| DLV-104/106 | `99e4932` and `f119a1f` | `1ef4666` and `dde4981` | Bounded Game Launcher collection viewport and atomic tray focus ownership. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

@@ -4758,6 +4758,26 @@ addition/removal with the selected identity retained. This is sufficient for
 code acceptance; GBA-080 remains Verifying until the freshly rebuilt Release
 passes the user's direct tray interaction check.
 
+### Accepted platform review — DLV-121
+
+DLV-121 `fb0ad51` is accepted and integrated through main `a758508`. The
+accepted-main failure was in the test's authority model, not managed Audio Mixer
+authorship or native focus projection: resizing the raw HWND did not enlarge the
+committed DirectComposition content, and the fixture then attempted to focus a
+correctly absent clipped UIA descendant directly.
+
+The correction strengthens rather than bypasses the product route. It asserts
+the admitted `audio-mixer` scope and current Master/first/fourth-session
+endpoints, drives real Down navigation and scroll reveal, reverses through the
+first session and Microphone, and proves one Up reaches Master at the true zero
+boundary. It retains variable-session churn, motion settling, reopen, on-screen
+UIA bounds, and exclusion of clipped/stale/wrong-scope nodes. An isolated
+process profile also prevents the fixture from contending with the accepted
+production owner. Focused Release evidence passes the production fixture plus
+FocusNavigation 49, DeclarativeRenderer 4,839, ScrollEvidenceProbe 35,
+AccessibilityTree 16, and HostAccessibility 34 checks. No product code changed;
+GBA-003 therefore remains Verifying on the live packaged path.
+
 ## Recommended next actions
 
 Continue enforcing EQ-024's path-ownership rule: `ddb66c2`, `7c8a5b8`,
