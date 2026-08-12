@@ -3088,6 +3088,61 @@ Settings 57/57, and WidgetBridge 83/83. The generic-worker and documentation
 groups plus the required single exact-commit canonical checkpoint are recorded
 with the closing commit evidence.
 
+### Game Launcher control and collection continuity (DLV-126)
+
+Game Launcher now derives every warm replacement anchor from the exact rendered
+non-hidden rows instead of the unfiltered private display projection. Add games,
+Add running app, Hidden, Favorites, Recent, Source, Sort, and Clear therefore
+retain protocol-valid current snapshots while their managed replacement is in
+flight and after it commits. Current game tiles publish View/X/Y and contextual
+LB/RB shortcuts only while those actions are enabled; the matching visible help
+is removed during launch or organization work and restored with actionability.
+The existing host-owned scroll-edge contract remains unchanged: one Down-edge
+cursor action appends the next bounded provider page and requests an entering
+game focus, while final partial rows expose no looping continuation. Focused
+Release evidence passes Game Launcher 60/60. No Widget SDK, protocol, provider,
+native host, or launch-authority contract changed.
+
+### Game Launcher built-in hero rail (DLV-128)
+
+The Library route now composes one bounded selected-game hero above one
+horizontal cover rail while preserving the existing installed-only cursor,
+query, organization, details, and exact-SavedId action paths. Controller
+Left/Right projects the adjacent bounded rail identity into private in-memory
+selection state before native focus movement; it never calls the launch
+capability. A, View, X, Y, LB, and RB remain authored on the exact focused tile.
+The hero reuses only the selected row's opaque trusted artwork handle and falls
+back to a semantic Play glyph; snapshots and private state contain no URL, path,
+image bytes, or provider identity.
+
+Responsibility changed from `GameLauncherPresentation` owning Library ordering
+and three responsive grids to `GameLauncherHeroRailPolicy` owning the bounded
+recent/manual/catalog rail projection plus deterministic nearest-index fallback,
+and `GameLauncherHeroRailPresentation` owning hero semantics and fallback.
+`GameLauncherWidget` remains the sole lifecycle, cursor, committed organization,
+launch, and invalidation owner; its only new responsibility is the two-field
+in-memory hero selection and controller admission that feeds the pure policy.
+There is no new task, lock, resource, capability, protocol, or native layout
+owner. Focused Release evidence is recorded with the closing milestone commit.
+The root moves from 1,279 to 1,350 physical lines because it remains the one
+cohesive lifecycle/cursor/capability/action owner and now admits focused-element
+selection; the general presenter falls from 747 to 694 lines, while the new
+271-line hero policy/component contains the extracted ordering and composition.
+Final focused evidence passes Game Launcher 62/62 and the documentation contract
+across 61 Markdown files.
+
+### Complete scenario verification discovery (DLV-125)
+
+The canonical verification manifest now represents the existing
+`WidgetScenario.Tests` `MSTest.Sdk` 4.3.2 project exactly once. Its dedicated
+managed step uses the bounded Microsoft Testing Platform invocation, requires at
+least nine discoverable cases, preserves the current result schema and lane
+selection, and changes no existing step ID or timeout. The verifier self-test
+passes complete project discovery and fail-closed result fixtures; the scenario
+project passes 9/9 both directly and through the manifest-selected runner. The
+required single clean exact-commit aggregate is closing-commit evidence rather
+than a dirty-worktree run.
+
 ### Work-area-fitted shared widget shell (DLV-127)
 
 Widget-to-widget presentation now keeps one host-owned shell and tray rectangle
@@ -3116,32 +3171,23 @@ adaptive bodies; it records zero widget-shell motion commits, live placement
 re-resolution, contained `rcWork` bounds, and maxima of 3,023 us draw, 1,339 us
 commit, and 1,510 us coordinated geometry.
 
-### Game Launcher control and collection continuity (DLV-126)
+### Deterministic Gbar dev cancellation fixture (DLV-129)
 
-Game Launcher now derives every warm replacement anchor from the exact rendered
-non-hidden rows instead of the unfiltered private display projection. Add games,
-Add running app, Hidden, Favorites, Recent, Source, Sort, and Clear therefore
-retain protocol-valid current snapshots while their managed replacement is in
-flight and after it commits. Current game tiles publish View/X/Y and contextual
-LB/RB shortcuts only while those actions are enabled; the matching visible help
-is removed during launch or organization work and restored with actionability.
-The existing host-owned scroll-edge contract remains unchanged: one Down-edge
-cursor action appends the next bounded provider page and requests an entering
-game focus, while final partial rows expose no looping continuation. Focused
-Release evidence passes Game Launcher 60/60. No Widget SDK, protocol, provider,
-native host, or launch-authority contract changed.
+The retained clean aggregate `20260812T074036Z-37ce8dc0` passed 57/58 Gbar CLI
+cases and timed out only while the dev retention fixture waited 30 seconds for a
+cold nested Release generation after preceding dev/process-tree cases. An exact
+isolated run passed without production changes, identifying cross-test build
+scheduling rather than a dev-session lifecycle defect.
 
-### Complete scenario verification discovery (DLV-125)
-
-The canonical verification manifest now represents the existing
-`WidgetScenario.Tests` `MSTest.Sdk` 4.3.2 project exactly once. Its dedicated
-managed step uses the bounded Microsoft Testing Platform invocation, requires at
-least nine discoverable cases, preserves the current result schema and lane
-selection, and changes no existing step ID or timeout. The verifier self-test
-passes complete project discovery and fail-closed result fixtures; the scenario
-project passes 9/9 both directly and through the manifest-selected runner. The
-required single clean exact-commit aggregate is closing-commit evidence rather
-than a dirty-worktree run.
+The fixture now prepares one catalog-valid package directory using the existing
+isolated builder and unchanged 90-second product build deadline before starting
+its lifecycle assertions. A new exact-name runner filter executes only this case;
+ordinary complete-suite discovery and counts are unchanged. Three consecutive
+bounded focused runs pass 1/1 and prove authenticated Ready publication,
+last-good retention after an invalid declared style change, caller cancellation,
+temporary catalog cleanup, and child-host Job exit. Persistent build-server
+arguments remain covered by their existing separate test. No production dev
+session, timeout, verifier schema, or aggregate behavior changed.
 
 ## Next vertical slices
 

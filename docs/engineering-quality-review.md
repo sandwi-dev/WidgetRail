@@ -4808,14 +4808,14 @@ help follow actionable game tiles, and focused Release evidence passes 60/60.
 The freshly packaged PID 16824 awaits the user's direct control and continuation
 verdict; no shared SDK/protocol or native routing change was needed.
 
-The user's live shell also moves the icon tray and clips the overlay at the top
-and bottom while cycling. The correlated log shows tray capacity changing from
-six to eight during one switch while composition geometry traverses 829x1152,
-1381x969, 592x698, and large-widget extents. DLV-127 belongs to native work-area
-fit and shell/body/tray composition policy. The acceptance contract keeps tray
-placement invariant and all essential painted/pointer/UIA bounds on-screen;
-widget-specific offsets and another `OverlayApp` geometry authority are
-explicitly forbidden.
+The user's live shell also moved the icon tray and clipped the overlay at the
+top and bottom while cycling. Accepted DLV-127 `df07d7c`, integrated through
+`2ac0a5a`, removes the duplicate widget-sized shell authority: `ShowOverlay`
+retains the sole live `rcWork`/DPI/interface-scale fit, while widget width and
+height are clamped inner-body hints. Focused native groups and eight real host
+transitions retain identical painted/pointer/UIA tray geometry, record zero
+widget-shell motion commits, and remain within the selected work area. The
+user's direct border/clipping/switching verdict remains the closing gate.
 
 ## Recommended next actions
 
@@ -4827,9 +4827,10 @@ below.
 
 1. **Live-check Game Launcher and finish the shell regression next.** Accepted
    DLV-126 restores protocol-valid top controls, actionable contextual
-   shortcuts, and collection continuation on packaged PID 16824. DLV-127 keeps
-   the tray stationary and fits the overlay to the active work area. Both use
-   functional/log/geometry evidence; the user's live visual verdict remains the
+   shortcuts, and collection continuation on packaged PID 16824. Accepted
+   DLV-127 keeps the tray stationary and fits the overlay to the active work
+   area; rebuilt exact-main PID 18392 is visibly running. Both use functional/
+   log/geometry evidence, while the user's live visual verdict remains the
    closing gate.
 2. **Live-check accepted DLV-049 and DLV-051.** DLV-049 is integrated as
    `a8bcb27` and binds the exact four-session reverse edge to DLV-021's corrected

@@ -16,7 +16,9 @@ internal sealed record GameLauncherPresentationState(
     bool FavoriteFilter,
     GameLauncherRoute Route,
     GameLauncherFixedRows FixedRows,
-    IReadOnlyList<WidgetAppLibrarySource> Sources);
+    IReadOnlyList<WidgetAppLibrarySource> Sources,
+    string? HeroSavedId,
+    int HeroIndex);
 
 internal enum GameLauncherRecentMode
 {
@@ -230,108 +232,35 @@ internal static class GameLauncherPresentation
                      !state.Organization.ExcludedSavedIds.Contains(
                          item.Value.SavedId, StringComparer.Ordinal)))
         {
-            var pageBumpers = snapshot.HasBefore || snapshot.HasAfter;
-            var favorites = state.Organization.FavoriteSavedIds
-                .Select((savedId, index) => (savedId, index))
-                .ToDictionary(value => value.savedId, value => value.index,
-                    StringComparer.Ordinal);
-            var preferred = state.Organization.VariantGroups.ToDictionary(
-                group => group.PreferredSavedId, group => group.Id, StringComparer.Ordinal);
-            var groups = state.Organization.VariantGroups
-                .SelectMany(group => group.SavedIds.Select(savedId => (savedId, group)))
-                .ToDictionary(value => value.savedId, value => value.group,
-                    StringComparer.Ordinal);
-            var resolvedFixed = snapshot.Items.Concat(state.FixedRows.All)
-                .DistinctBy(item => item.Value.SavedId, StringComparer.Ordinal)
-                .ToDictionary(item => item.Value.SavedId, StringComparer.Ordinal);
-            var stored = state.Organization.Items.ToDictionary(
-                item => item.SavedId, StringComparer.Ordinal);
-            var used = new HashSet<string>(StringComparer.Ordinal);
-            var excluded = state.Organization.ExcludedSavedIds
-                .ToHashSet(StringComparer.Ordinal);
-            var recentRows = state.RecentMode == GameLauncherRecentMode.Off
-                ? []
-                : state.Organization.RecentSavedIds
-                    .Where(savedId => !excluded.Contains(savedId))
-                    .Select(savedId => PresentedRowFor(savedId, resolvedFixed, stored))
-                    .Where(row => row is not null && MatchesFixedQuery(
-                        row.Display, state.Query, state.FavoriteFilter, favorites))
-                    .Select(row => row!)
-                    .Take(GameLauncherPrivateState.MaximumRecentItems)
-                    .ToArray();
-            foreach (var row in recentRows) used.Add(row.Display.SavedId);
-            var manualRows = state.RecentMode == GameLauncherRecentMode.RecentOnly
-                ? []
-                : state.Organization.ManualSavedIds
-                    .Where(savedId => !used.Contains(savedId) && !excluded.Contains(savedId))
-                    .Select(savedId => PresentedRowFor(savedId, resolvedFixed, stored))
-                    .Where(row => row is not null &&
-                        row.Current?.Value.Kind != WidgetAppLibraryKind.Game &&
-                        MatchesFixedQuery(
-                            row.Display, state.Query, state.FavoriteFilter, favorites))
-                    .Select(row => row!)
-                    .OrderBy(row => row, PresentedRowComparer(state.Query.Sort))
-                    .Take(GameLauncherPrivateState.MaximumManualItems)
-                    .ToArray();
-            foreach (var row in manualRows) used.Add(row.Display.SavedId);
-            var orderedCatalog = snapshot.Items
-                .Where(item => !used.Contains(item.Value.SavedId) &&
-                    !excluded.Contains(item.Value.SavedId))
-                .Select((item, index) => (item, index))
-                .OrderBy(value => favorites.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
-                .ThenBy(value => favorites.GetValueOrDefault(
-                    value.item.Value.SavedId, int.MaxValue))
-                .ThenBy(value => preferred.ContainsKey(value.item.Value.SavedId) ? 0 : 1)
-                .ThenBy(value => value.index)
-                .Select(value => new PresentedRow(value.item, new(
-                    value.item.Value.SavedId, value.item.Value.DisplayName,
-                    value.item.Value.SourceAttribution)))
+            var rail = GameLauncherHeroRailPolicy.Project(
+                state, state.HeroSavedId, state.HeroIndex);
+            var tiles = rail.Items.Select(row => Tile(
+                    row.Display.DisplayName,
+                    row.Display.SourceAttribution,
+                    row.Display.SavedId,
+                    row.Current?.Value.ArtworkHandle,
+                    state.LaunchingSavedId,
+                    state.LaunchStates.GetValueOrDefault(row.Display.SavedId),
+                    resolved: row.Current is not null,
+                    row.Favorite,
+                    row.Preferred,
+                    row.GroupSize,
+                    state.Interactive && !state.OrganizationBusy,
+                    row.Key,
+                    rail.PageBumpers,
+                    row.CollectionItem))
                 .ToArray();
-            var liveIds = state.FixedRows.All.Concat(snapshot.Items)
-                .Select(item => item.Value.SavedId)
-                .ToHashSet(StringComparer.Ordinal);
-            var fixedMembership = state.Organization.RecentSavedIds
-                .Concat(state.Organization.ManualSavedIds)
-                .ToHashSet(StringComparer.Ordinal);
-            var unavailableRows = state.Organization.Items.Where(item =>
-                    GameLauncherOrganizationPolicy.ReferencedSavedIds(state.Organization)
-                        .Contains(item.SavedId, StringComparer.Ordinal) &&
-                    !fixedMembership.Contains(item.SavedId) &&
-                    !excluded.Contains(item.SavedId) &&
-                    !liveIds.Contains(item.SavedId) &&
-                    MatchesFixedQuery(item, state.Query, state.FavoriteFilter, favorites))
-                .Select(item => new PresentedRow(null, item))
-                .ToArray();
-            var sections = new List<WidgetElement>();
-            AddSection(sections, "Recent", "game-launcher.recent.section", recentRows,
-                favorites, preferred, groups, state, pageBumpers, collectionItems: false);
-            AddSection(sections, "Added games", "game-launcher.manual.section", manualRows,
-                favorites, preferred, groups, state, pageBumpers, collectionItems: false);
-            AddSection(sections, recentRows.Length != 0 || manualRows.Length != 0
-                    ? "Catalog" : "Library",
-                "game-launcher.catalog.section",
-                [.. orderedCatalog, .. unavailableRows], favorites, preferred, groups, state,
-                pageBumpers, collectionItems: true);
-            var scroll = UI.VerticalScroll(ScrollId,
-                    UI.Stack("game-launcher.library.sections", sections.ToArray())
-                        .Classes("game-launcher-sections"))
-                .Classes("game-launcher-scroll");
+            var scroll = UI.HorizontalScroll(ScrollId, tiles)
+                .Classes("game-launcher-scroll", "game-launcher-rail");
             if (snapshot.Status != WidgetPagedResourceStatus.Error &&
                 (snapshot.HasBefore || snapshot.HasAfter))
                 scroll = scroll.Paginate(
                     snapshot.HasBefore ? "game-launcher.library.cursor.before" : null,
                     snapshot.HasAfter ? "game-launcher.library.cursor.after" : null, 2);
             scroll = PageShortcuts(scroll, snapshot, state.Interactive);
-            var catalogIds = orderedCatalog.Select(row => row.Display.SavedId)
-                .ToHashSet(StringComparer.Ordinal);
-            var retainedCatalogAnchor = snapshot.Anchor is { } anchor &&
-                snapshot.Items.Any(item => item.Key == anchor &&
-                    catalogIds.Contains(item.Value.SavedId))
-                ? anchor.Value
-                : orderedCatalog.FirstOrDefault()?.Current?.Key.Value;
             scroll = scroll with
             {
-                CollectionAnchorKey = retainedCatalogAnchor,
+                CollectionAnchorKey = rail.CatalogAnchorKey,
             };
             var controls = UI.HorizontalScroll("game-launcher.actions",
                     UI.Button("Previous page", "game-launcher.previous", "game-launcher.previous")
@@ -352,9 +281,7 @@ internal static class GameLauncherPresentation
                 .Classes("game-launcher-actions");
             var hasActionableGame = state.Interactive && !state.OrganizationBusy &&
                 state.LaunchingSavedId is null &&
-                recentRows.Concat(manualRows)
-                    .Concat(orderedCatalog)
-                    .Any(row => row.Current is not null);
+                rail.Items.Any(row => row.Current is not null);
             var hintItems = new List<WidgetElement>();
             if (hasActionableGame)
             {
@@ -365,7 +292,7 @@ internal static class GameLauncherPresentation
                 hintItems.Add(UI.ControllerHint(
                     ControllerButton.Y, "Hide selected", "game-launcher.hint.hide"));
             }
-            if (pageBumpers)
+            if (rail.PageBumpers)
             {
                 if (state.Interactive && snapshot.Status == WidgetPagedResourceStatus.Ready &&
                     snapshot.HasBefore)
@@ -387,7 +314,13 @@ internal static class GameLauncherPresentation
                     ControllerButton.RightBumper, "Prefer variant",
                     "game-launcher.hint.prefer"));
             }
-            var children = new List<WidgetElement> { scroll, controls };
+            var children = new List<WidgetElement>
+            {
+                GameLauncherHeroRailPresentation.Render(
+                    rail.Selected, state.LaunchingSavedId, state.LaunchStates),
+                scroll,
+                controls,
+            };
             if (hintItems.Count != 0)
                 children.Add(UI.Row(
                         "game-launcher.organization.hints", hintItems.ToArray())
@@ -399,14 +332,7 @@ internal static class GameLauncherPresentation
                     .Classes("game-launcher-warning"));
             content = UI.Stack("game-launcher.content", children.ToArray())
                 .Classes("game-launcher-content");
-            initialFocus ??= recentRows.Concat(manualRows).FirstOrDefault() is { } fixedFirst
-                ? GameLauncherIdentity.FocusId(
-                    "grid", GameLauncherIdentity.Key(fixedFirst.Display.SavedId))
-                : retainedCatalogAnchor is { } focusAnchor
-                    ? GameLauncherIdentity.FocusId(
-                        "grid", new WidgetCollectionItemKey(focusAnchor))
-                    : snapshot.Items.Count == 0 ? null
-                    : GameLauncherIdentity.FocusId("grid", snapshot.Items[0].Key);
+            initialFocus ??= rail.Selected?.FocusId;
         }
         else if (state.Route == GameLauncherRoute.Library &&
                  state.Organization.Items.Any(item =>
@@ -434,13 +360,14 @@ internal static class GameLauncherPresentation
                     state.Organization, item.SavedId)?.SavedIds.Count ?? 0,
                 interactive: false, key: GameLauncherIdentity.Key(item.SavedId),
                 pageBumpers: false)).ToArray();
-            var warmScroll = UI.VerticalScroll(ScrollId,
-                    UI.ResponsiveGrid("game-launcher.library.grid", 170, 5, warm)
-                        .Classes("game-launcher-grid")) with
+            var warmScroll = UI.HorizontalScroll(ScrollId, warm) with
                 { CollectionAnchorKey = GameLauncherIdentity.Key(
                     warmRows[0].SavedId).Value };
-            warmScroll = warmScroll.Classes("game-launcher-scroll");
+            warmScroll = warmScroll.Classes("game-launcher-scroll", "game-launcher-rail");
             content = UI.Stack("game-launcher.content",
+                    GameLauncherHeroRailPresentation.Fallback(
+                        warmRows[0].DisplayName,
+                        "Checking current availability · " + warmRows[0].SourceAttribution),
                     UI.Alert("Checking installed games",
                         snapshot.Error?.Message ?? "Saved display rows cannot launch until current provider resolution succeeds.",
                         snapshot.Error is null ? AlertTone.Info : AlertTone.Warning,
@@ -453,26 +380,46 @@ internal static class GameLauncherPresentation
         else if (snapshot.Status is WidgetPagedResourceStatus.Loading or
                  WidgetPagedResourceStatus.Refreshing or WidgetPagedResourceStatus.NotLoaded)
         {
-            content = UI.Card("game-launcher.loading",
-                UI.LoadingIndicator("game-launcher.loading.indicator", "Loading installed games"),
-                UI.Text("Reading the trusted installed-game catalog…",
-                    "game-launcher.loading.text", "Loading installed games"));
+            content = UI.Stack("game-launcher.content",
+                    GameLauncherHeroRailPresentation.Fallback(
+                        "Loading installed games",
+                        "Reading the trusted installed-game catalog…"),
+                    UI.Card("game-launcher.loading",
+                        UI.LoadingIndicator("game-launcher.loading.indicator",
+                            "Loading installed games"),
+                        UI.Text("Reading the trusted installed-game catalog…",
+                            "game-launcher.loading.text", "Loading installed games")))
+                .Classes("game-launcher-content");
         }
         else if (snapshot.Status == WidgetPagedResourceStatus.Error)
         {
-            content = UI.Alert("Game library unavailable",
-                snapshot.Error?.Message ?? "The installed game library could not be loaded.",
-                AlertTone.Danger, "game-launcher.error",
-                new ComponentAction("Try again", "game-launcher.retry", WidgetGlyph.Refresh));
+            content = UI.Stack("game-launcher.content",
+                    GameLauncherHeroRailPresentation.Fallback(
+                        "Game library unavailable",
+                        snapshot.Error?.Message ??
+                        "The installed game library could not be loaded."),
+                    UI.Alert("Game library unavailable",
+                        snapshot.Error?.Message ??
+                        "The installed game library could not be loaded.",
+                        AlertTone.Danger, "game-launcher.error",
+                        new ComponentAction("Try again", "game-launcher.retry",
+                            WidgetGlyph.Refresh)))
+                .Classes("game-launcher-content");
             initialFocus = "game-launcher.error.action";
         }
         else
         {
-            content = UI.EmptyState("No installed games",
-                "No trusted installed game registrations are currently available.",
-                "game-launcher.empty",
-                new ComponentAction("Refresh", "game-launcher.refresh", WidgetGlyph.Refresh),
-                WidgetGlyph.Play);
+            content = UI.Stack("game-launcher.content",
+                    GameLauncherHeroRailPresentation.Fallback(
+                        "No installed games",
+                        "Trusted installed games will appear here."),
+                    UI.EmptyState("No installed games",
+                        "No trusted installed game registrations are currently available.",
+                        "game-launcher.empty",
+                        new ComponentAction("Refresh", "game-launcher.refresh",
+                            WidgetGlyph.Refresh),
+                        WidgetGlyph.Play))
+                .Classes("game-launcher-content");
             initialFocus = "game-launcher.empty.action";
         }
 
@@ -592,46 +539,6 @@ internal static class GameLauncherPresentation
             return result != 0 ? result : string.CompareOrdinal(
                 left.Display.SavedId, right.Display.SavedId);
         });
-
-    private static void AddSection(
-        ICollection<WidgetElement> sections,
-        string title,
-        string id,
-        IReadOnlyList<PresentedRow> rows,
-        IReadOnlyDictionary<string, int> favorites,
-        IReadOnlyDictionary<string, string> preferred,
-        IReadOnlyDictionary<string, GameLauncherVariantGroup> groups,
-        GameLauncherPresentationState state,
-        bool pageBumpers,
-        bool collectionItems)
-    {
-        if (rows.Count == 0) return;
-        var gridId = id == "game-launcher.catalog.section"
-            ? "game-launcher.library.grid"
-            : id + ".grid";
-        var tiles = rows.Select(row => Tile(
-                row.Display.DisplayName,
-                row.Display.SourceAttribution,
-                row.Display.SavedId,
-                row.Current?.Value.ArtworkHandle,
-                state.LaunchingSavedId,
-                state.LaunchStates.GetValueOrDefault(row.Display.SavedId),
-                resolved: row.Current is not null,
-                favorite: favorites.ContainsKey(row.Display.SavedId),
-                preferred: preferred.ContainsKey(row.Display.SavedId),
-                groupSize: groups.GetValueOrDefault(row.Display.SavedId)?.SavedIds.Count ?? 0,
-                state.Interactive && !state.OrganizationBusy,
-                row.Current?.Key ?? GameLauncherIdentity.Key(row.Display.SavedId),
-                pageBumpers,
-                collectionItem: collectionItems && row.Current is not null))
-            .ToArray();
-        sections.Add(UI.Stack(id,
-                UI.SectionHeader(title, id + ".header",
-                    description: $"{rows.Count} {(rows.Count == 1 ? "item" : "items")}"),
-                UI.ResponsiveGrid(gridId, 170, 5, tiles)
-                    .Classes("game-launcher-grid"))
-            .Classes("game-launcher-library-section"));
-    }
 
     private static WidgetElement ManualTile(
         GameLauncherItem item,

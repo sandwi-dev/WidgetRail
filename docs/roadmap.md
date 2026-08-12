@@ -174,10 +174,11 @@ remains off until the publisher-trust gates in Phase 4.
   store breadth. Accepted DLV-126 `a45166c`, integrated through `2c58ba7`, owns
   the repeated top-control `missing_collection_anchor` failure, contextual
   shortcut actionability, and last-row continuation while more games exist.
-  Packaged PID 16824 is the current user-test build. DLV-127 concurrently keeps
-  the tray stationary and fits the full shell to the active work area while
-  cycling between small and large widgets. These visible regressions outrank
-  verifier cleanup and internal decomposition.
+  Packaged PID 16824 is the current Game Launcher user-test build. Accepted
+  DLV-127 `df07d7c`, integrated through `2ac0a5a`, now keeps one shared tray and
+  shell fitted to the active work area while preferred widget size remains an
+  inner body hint. Rebuilt exact-main PID 18392 is the current live-check build.
+  These visible regressions outrank verifier cleanup and internal decomposition.
 - Finish the evidence matrix for the implemented packaged-regression fixes:
   transparent native client pixels outside content surfaces (GBA-036), a fresh
   Now Playing read/subscription generation on Retry (GBA-037), lazy Games

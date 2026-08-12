@@ -38,21 +38,26 @@ public sealed class GameLauncherLayoutTests
         };
         var ready = Snapshot(WidgetPagedResourceStatus.Ready, items,
             before: "cursor.before", after: "cursor.after");
-        var cases = new (string Name, GameLauncherPresentationState State, bool Scroll)[]
+        var cases = new (string Name, GameLauncherPresentationState State,
+            ScrollAxis? Axis)[]
         {
-            ("library", State(ready, organized, GameLauncherRoute.Library, sources), true),
-            ("add", State(ready, organized, GameLauncherRoute.AddGames, sources), true),
-            ("running", State(ready, organized, GameLauncherRoute.Running, sources), true),
-            ("hidden", State(ready, organized, GameLauncherRoute.Hidden, sources), true),
+            ("library", State(ready, organized, GameLauncherRoute.Library, sources),
+                ScrollAxis.Horizontal),
+            ("add", State(ready, organized, GameLauncherRoute.AddGames, sources),
+                ScrollAxis.Vertical),
+            ("running", State(ready, organized, GameLauncherRoute.Running, sources),
+                ScrollAxis.Vertical),
+            ("hidden", State(ready, organized, GameLauncherRoute.Hidden, sources),
+                ScrollAxis.Vertical),
             ("warm", State(Snapshot(WidgetPagedResourceStatus.Loading, []), organized,
-                GameLauncherRoute.Library, sources), true),
+                GameLauncherRoute.Library, sources), ScrollAxis.Horizontal),
             ("loading", State(Snapshot(WidgetPagedResourceStatus.Loading, []),
-                GameLauncherPrivateState.Empty, GameLauncherRoute.Library, sources), false),
+                GameLauncherPrivateState.Empty, GameLauncherRoute.Library, sources), null),
             ("error", State(Snapshot(WidgetPagedResourceStatus.Error, [],
                     error: new WidgetResourceError("platform_unavailable", "Try again.")),
-                GameLauncherPrivateState.Empty, GameLauncherRoute.Library, sources), false),
+                GameLauncherPrivateState.Empty, GameLauncherRoute.Library, sources), null),
             ("empty", State(Snapshot(WidgetPagedResourceStatus.Ready, []),
-                GameLauncherPrivateState.Empty, GameLauncherRoute.Library, sources), false),
+                GameLauncherPrivateState.Empty, GameLauncherRoute.Library, sources), null),
         };
 
         foreach (var scenario in cases)
@@ -110,20 +115,23 @@ public sealed class GameLauncherLayoutTests
                 nodes.Single(node => node.Id == "game-launcher.sources.expanded").VisibleWhen,
                 $"{scenario.Name}: expanded source detail missing");
 
-            var vertical = nodes.Where(node => node.Kind == ViewNodeKind.Scroll &&
-                node.ScrollAxis == ScrollAxis.Vertical).ToArray();
-            Assert.AreEqual(scenario.Scroll ? 1 : 0, vertical.Length,
-                $"{scenario.Name}: vertical scroll ownership changed");
-            if (scenario.Scroll)
+            var collection = nodes.Where(node => node.Kind == ViewNodeKind.Scroll &&
+                node.Id == GameLauncherPresentation.ScrollId).ToArray();
+            Assert.AreEqual(scenario.Axis is null ? 0 : 1, collection.Length,
+                $"{scenario.Name}: collection scroll ownership changed");
+            if (scenario.Axis is { } axis)
             {
-                Assert.AreEqual(GameLauncherPresentation.ScrollId, vertical[0].Id,
-                    $"{scenario.Name}: collection viewport identity changed");
-                Assert.IsTrue(vertical[0].StyleClasses.Contains(
+                Assert.AreEqual(axis, collection[0].ScrollAxis,
+                    $"{scenario.Name}: collection axis changed");
+                Assert.IsTrue(collection[0].StyleClasses.Contains(
                     "game-launcher-scroll", StringComparer.Ordinal),
                     $"{scenario.Name}: collection viewport does not own remaining height");
-                Assert.IsTrue(Nodes(root.Children[^1]).Any(node => node.Id == vertical[0].Id),
+                Assert.IsTrue(Nodes(root.Children[^1]).Any(node => node.Id == collection[0].Id),
                     $"{scenario.Name}: collection viewport escaped the main region");
             }
+            if (scenario.State.Route == GameLauncherRoute.Library)
+                Assert.AreEqual(1, nodes.Count(node => node.Id == "game-launcher.hero"),
+                    $"{scenario.Name}: Library route omitted its single hero region");
 
             var filters = nodes.SingleOrDefault(node => node.Id == "game-launcher.filters");
             Assert.AreEqual(ScrollAxis.Horizontal,
@@ -183,6 +191,10 @@ public sealed class GameLauncherLayoutTests
             ".game-launcher-main { flex-grow: 1; min-height: 0; }");
         StringAssert.Contains(styles,
             ".game-launcher-scroll { flex-grow: 1; min-height: 0;");
+        StringAssert.Contains(styles,
+            ".game-launcher-hero { flex-shrink: 0; min-height: 150px;");
+        StringAssert.Contains(styles,
+            ".game-launcher-rail { flex-shrink: 0; min-height: 178px;");
         StringAssert.Contains(styles,
             ".game-launcher-footer { flex-shrink: 0; flex-wrap: wrap;");
     }
@@ -266,6 +278,72 @@ public sealed class GameLauncherLayoutTests
             .All(node => node.IsDisabled is true));
     }
 
+    [TestMethod, Timeout(30_000)]
+    public void HeroRailPolicyBoundsLongFallbackAndSelectedState()
+    {
+        var longTitle = new string('H', 96);
+        var items = Enumerable.Range(0, 20).Select(index =>
+            GameLauncherItem.From(new WidgetAppLibraryItem(
+                $"app-hero-{index:D2}", index == 7 ? longTitle : $"Hero {index:D2}",
+                WidgetAppLibraryKind.Game)
+            {
+                SavedId = $"saved-hero-{index:D2}",
+                SourceAttribution = index % 2 == 0 ? "Steam" : "Windows",
+                ArtworkHandle = index == 7
+                    ? null
+                    : $"hero.art.{index:D2}.0123456789abcdef0123456789abcdef",
+            })).ToArray();
+        var organization = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion,
+            items.Select(item => new GameLauncherDisplayItem(
+                item.Value.SavedId, item.Value.DisplayName,
+                item.Value.SourceAttribution)).ToArray())
+        {
+            FavoriteSavedIds = [items[7].Value.SavedId],
+            VariantGroups = [new("variant.hero",
+                [items[7].Value.SavedId, items[8].Value.SavedId],
+                items[7].Value.SavedId)],
+        };
+        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items), organization,
+            GameLauncherRoute.Library, [] ) with
+        {
+            HeroSavedId = items[7].Value.SavedId,
+            HeroIndex = 7,
+        };
+        var model = GameLauncherHeroRailPolicy.Project(
+            state, state.HeroSavedId, state.HeroIndex);
+        Assert.AreEqual(20, model.Items.Count);
+        Assert.AreEqual(items[7].Value.SavedId, model.Selected?.Display.SavedId);
+        var snapshot = new PresentationWidget(GameLauncherPresentation.Render(state))
+            .RenderSnapshot("hero.layout", 30);
+        var nodes = Nodes(snapshot.Root).ToArray();
+        Assert.AreEqual(longTitle, nodes.Single(node =>
+            node.Id == "game-launcher.hero.title").Text);
+        Assert.IsNull(nodes.Single(node =>
+            node.Id == "game-launcher.hero.artwork").ArtworkHandle,
+            "Missing selected artwork must use a semantic fallback.");
+        StringAssert.Contains(nodes.Single(node =>
+            node.Id == "game-launcher.hero.state").Text!, "Favorite");
+        StringAssert.Contains(nodes.Single(node =>
+            node.Id == "game-launcher.hero.state").Text!, "Preferred variant");
+        Assert.IsLessThanOrEqualTo(20 * 8 + 32, nodes.Length,
+            "Hero-rail semantic nodes must remain linear in the bounded page.");
+
+        var filtered = state with
+        {
+            Collection = Snapshot(WidgetPagedResourceStatus.Ready,
+                items.Where((_, index) => index != 7).ToArray()),
+            Organization = organization with
+            {
+                ExcludedSavedIds = [items[7].Value.SavedId],
+            },
+        };
+        var fallback = GameLauncherHeroRailPolicy.Project(
+            filtered, state.HeroSavedId, state.HeroIndex);
+        Assert.AreEqual(items[8].Value.SavedId, fallback.Selected?.Display.SavedId,
+            "A removed selection must choose the nearest retained rail position.");
+    }
+
     private static GameLauncherPresentationState State(
         WidgetCursorResourceSnapshot<GameLauncherItem> collection,
         GameLauncherPrivateState organization,
@@ -275,7 +353,7 @@ public sealed class GameLauncherLayoutTests
             new Dictionary<string, GameLauncherLaunchState>(StringComparer.Ordinal),
             OrganizationBusy: false, Interactive: true, new WidgetAppLibraryQuery(),
             GameLauncherRecentMode.Off, FavoriteFilter: false, route,
-            GameLauncherFixedRows.Empty, sources);
+            GameLauncherFixedRows.Empty, sources, HeroSavedId: null, HeroIndex: 0);
 
     private static WidgetCursorResourceSnapshot<GameLauncherItem> Snapshot(
         WidgetPagedResourceStatus status,
