@@ -2777,6 +2777,19 @@ with C++ installed:
   the unchanged version. No private-state schema, public protocol, package
   enablement, or removal behavior changed.
 
+- DLV-100 closes the protocol-v15 TextEntry bridge-style admission gap at the
+  canonical computed-style role switch. `textEntry` now resolves as a distinct
+  closed GBSS role, null/default themes still emit an empty style entry keyed by
+  the stable node ID, and unknown node kinds retain an exact fail-closed bridge
+  diagnostic. The production-shaped installed AppContainer route admits both
+  the Game Launcher search entry and Network Controls protected entry, then
+  commits a Game Launcher search through the existing action path. Focused
+  Release evidence passes WidgetBridge 77/77, Game Launcher 45/45, Network
+  Controls 24/24, the exact installed TextEntry route, and 55 documentation
+  files. The first broader installed attempt continued past this milestone into
+  an unrelated unavailable-launch workflow; the final acceptance mode is
+  intentionally bounded to TextEntry admission and committed search.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:
