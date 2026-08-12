@@ -346,14 +346,15 @@ eligibility; credential-free structural work continues independently.
    evidence remains, while the undocumented Galaxy command and all GOG launch
    authority are removed. DLV-151 scoped Game Launcher actions are accepted
    through `b92e0ff`. DLV-148 production presentation and DLV-154 exact category
-   foundations are accepted through `d78fc98`; DLV-156 now removes prototype
-   category capacity and adds direct LT/RT collection switching.
+   foundations are accepted through `d78fc98`; DLV-156 removes prototype
+   category capacity and adds direct LT/RT collection switching through
+   `6abfb60`. DLV-157 now adds exact per-game title overrides.
 3. Deliver local custom-pack selection as the serialized DLV-149/DLV-150 pair:
    trusted Settings selection/metadata/removal policy followed by private native
    adoption, last-good reload, and one-activation safe start. Do not expose a
    visible no-op selector on main.
 4. Keep accepted dashboard DLV-143, Spotify DLV-144, and Game Launcher
-   DLV-148/151/154 live-verifying on PID 31668 and queue any user-observed correction ahead of
+   DLV-148/151/154/156 live-verifying on PID 30680 and queue any user-observed correction ahead of
    later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
 6. Continue other credential-free roadmap features while account, hardware,

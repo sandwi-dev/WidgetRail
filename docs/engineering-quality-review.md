@@ -168,6 +168,13 @@ member prototype capacity is not senior-product quality for the stated full-app
 direction, so DLV-156 immediately replaces those product caps with byte-budget-
 driven practical capacity and direct LT/RT collection switching.
 
+DLV-156 `66a34ba`, integrated as `6abfb60`, accepts 64 categories, 512 members
+per category, and 2,048 aggregate memberships as validation-work ceilings while
+the existing 64-KiB encoded shared-state boundary remains authoritative. A
+32-category/256-membership fixture passes, byte-budget rejection preserves the
+committed state, LT/RT wrap through All Games and categories without leaking
+through modal scopes, and the integrated focused suite passes 75/75.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -252,13 +259,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-156 for practical byte-budget-driven category capacity, exact
-   identity, LT/RT switching, and no new coordination owner.
+1. Review DLV-157 for exact-ID title override/reset truth and no provider or
+   launch-authority drift.
 2. Review the serialized DLV-149/150 selection/reload/safe-start outcome without
    exposing executable pack content or a second renderer.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 31668 visible for the user's dashboard, Spotify, and Game Launcher
+4. Keep PID 30680 visible for the user's dashboard, Spotify, and Game Launcher
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.

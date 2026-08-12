@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 09:04 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 09:31 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,10 +13,10 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `d78fc98`; worktree clean when this plan was
+- Local product baseline: `6abfb60`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-148 and DLV-154 through `d78fc98`.
-- Visible accepted Release: PID 31668, launched at 09:00:03 after the accepted
+- Latest implementation integration: DLV-156 through `6abfb60`.
+- Visible accepted Release: PID 30680, launched at 09:28:32 after the accepted
   Launcher Experience production presentation and Game Launcher categories. Its first
   dashboard frame is
   bottom-anchored at absolute
@@ -28,8 +28,9 @@ That snapshot is historical evidence, not implementation authority.
   exposing a platform test fixture with the same title. Do not substitute that
   fixture or infer product defects from capture; user visual testing remains
   the first-page gate.
-- DLV-148 `34e3746` and DLV-154 `a78693c` were reviewed and cherry-picked as
-  `838af96` and `d78fc98`. DLV-149 remains held only until DLV-150 consumes it.
+- DLV-156 `66a34ba` was reviewed and cherry-picked as `6abfb60`; its integrated
+  Game Launcher suite passes 75/75. Platform has consumed DLV-149 privately for
+  active DLV-150; the selection remains absent from main until the pair passes.
 
 ## Execution protocol
 
@@ -68,9 +69,42 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-156: scalable categories and direct collection switching
+### Current assignment — DLV-157: exact per-game title override
 
-**State:** Assigned correction immediately after accepted DLV-154 `a78693c`.
+**State:** Assigned automatically after accepted DLV-156 `66a34ba`; implementation
+is already active and is not interrupted by this review update.
+
+**Baseline/dependencies:** widgets branch `66a34ba`; accepted product `6abfb60`.
+Reuse the existing action sheet, TextEntry, exact SavedId, category/private-state
+CAS and display-projection owners. DLV-150 is concurrent and private native/
+Settings work; do not consume it or edit held selection code.
+
+**Owner/outcome:** widgets lane adds one controller-reachable Rename title/
+Reset title flow for the exact focused game. The bounded user override persists,
+appears consistently in rails/grids/categories/details/search, and never changes
+provider title, opaque identity, source attribution, variant grouping, or launch
+authority.
+
+**Acceptance:** normalize bounded nonblank input, visibly reject duplicate/no-op/
+oversize/byte-budget/CAS failure, preserve the original provider title for
+reset and recovery, and reset only title-override fields when malformed. Rename,
+replace, clear, Back, restart, stale/missing provider, category membership,
+favorite/hidden/recent/variant state, search, and exact current launch
+revalidation remain coherent. A provider refresh cannot silently erase the
+override; reset immediately restores current provider display truth.
+
+**Architecture/verification:** immutable override validation/projection stays in
+a focused owner; `GameLauncherWidget` remains lifecycle/effect/committed-state
+adapter. Tier 1 Game Launcher Release suite; Tier 2 ordinary generic-worker
+rename/restart/search/reset/exact-launch route. No artwork/file path, provider,
+public SDK/protocol, native, aggregate, capture, account, or reviewer-doc edit.
+
+**Stop:** artwork/background/logo selection, new storage API, provider mutation,
+title-derived identity, or shared/native work is required.
+
+### Accepted milestone — DLV-156: scalable categories and direct collection switching
+
+**State:** Done and accepted through main `6abfb60`.
 
 **Baseline/dependencies:** widgets branch `a78693c`; accepted product
 `d78fc98`. Preserve DLV-154's exact identity, atomic category-only recovery,
@@ -255,13 +289,15 @@ for adoption.
    appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
    disclosure, and selected-version removal denial. It remains unintegrated
    until DLV-150 privately consumes it. Do not redo or expose it alone.
-2. **Ready after DLV-156 — DLV-157: exact per-game title override.** Add a
-   controller-reachable TextEntry action from the existing game action sheet
-   that stores or clears one bounded user title override by exact SavedId. The
-   override affects presentation/search only, never provider identity, source,
-   launch authority, or another variant. Preserve provider title for recovery
-   and expose Reset title. Use the category/CAS state owners and focused worker
-   evidence; no artwork/file picker, provider, public protocol, or native work.
+2. **Ready after DLV-157 — DLV-158: Spotify credential-free regression audit.**
+   Inspect the current selected installed Spotify package/source and focused
+   suites against seek-Left routing, forward/reverse queue and playlist paging,
+   top-row/list focus, clipped Library header, transient worker/provider recovery,
+   contextual help, and first-page responsive bounds. Implement only a
+   reproducible credential-free widget/SDK gap and run its smallest focused
+   route. Do not require OAuth/Premium, screenshots, native animation work, an
+   aggregate, or speculative refactoring; if all named invariants hold, report
+   retained evidence and stop without a code commit.
 
 ## Platform lane
 
@@ -395,7 +431,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 31668 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 30680 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
