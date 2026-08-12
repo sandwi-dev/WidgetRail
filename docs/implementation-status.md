@@ -3490,6 +3490,40 @@ WidgetProtocol/WidgetSdk expansion is required. Until that hook exists, the
 ordinary declarative rendering path remains the safe fallback and DLV-134 is
 not complete.
 
+### Game Launcher production slot adoption (DLV-145)
+
+The ordinary production host now recognizes only the first-party
+`game-launcher-experience` root with one closed profile marker and exactly one
+of each six held slot classes. A focused native projection owner extracts those
+slots, renders the existing Launcher Experience adapter into one reusable
+offscreen D2D target, and commits the complete bitmap only after every slot
+succeeds. Missing, duplicate, unknown, or failed projection renders the
+unchanged ordinary declarative tree with one bounded diagnostic.
+
+| Responsibility | Before | After |
+| --- | --- | --- |
+| Private marker recognition and fallback | No production owner consumed the held managed marker; `OverlayApp` always called the ordinary renderer directly. | `LauncherExperienceProjection` exclusively validates the exact first-party widget/root/profile/six-slot shape, selects the existing preset, owns atomic staging and last canonical result, and otherwise delegates to the same ordinary renderer. |
+| Layout and paint | `LauncherExperienceAdapter` was exercised only by focused proof code and synthesized a test-only semantic envelope. | The production seam supplies admitted snapshot metadata, focus, viewport, accessibility/options, and work area to the same adapter. The adapter preserves a real Scroll root and changes only its preset orientation while retaining pagination and collection identity. |
+| Input, focus, scroll, and UIA | Production pointer/focus/action/scroll/UIA consumers used the admitted ordinary tree and its one render result. | Those same consumers use the canonical snapshot only when it matches the exact widget, instance, sequence, and input scope that produced the current adapter geometry. Exact node/action/focus IDs, collection anchor/keys, sequence, instance, surface, and Back scope remain authored by Game Launcher. |
+| Domain, protocol, and presentation lifetime | Game Launcher owned provider, organization, cursor, action, and persisted profile state; the ordinary host owned one renderer/window/compositor. | Those owners are unchanged. Native code adds no game/provider/action state, public schema, protocol field, managed edit, window, compositor, or second renderer. One reusable compatible target is discarded with existing graphics resources. |
+
+Focused Release evidence passes 1,540 launcher layout/adapter/renderer/focus/
+pointer/UIA checks. It covers all four profiles over compact, standard, wide,
+125%-pixel-scale, 150%-text-scale, and nonzero work-area origins; exact root,
+instance, sequence, scope, node/action/focus, collection-anchor/item, pagination,
+and Scroll identity; shared paint/pointer/focus/UIA bounds; malformed private
+shapes and forced adapter failure with one ordinary-path diagnostic; and
+semantic-equivalent non-launcher rendering. A fresh isolated production
+`OverlayHost.exe` built and launched the
+held packaged Game Launcher, selected its real tray/UIA surface, and retained
+current ordinary paint and targetable profile controls. That machine supplied
+no projectable live game rail during the run, so the held projector emitted no
+private marker and the fixture correctly proved the ordinary fallback rather
+than claiming live profile adoption. The retained managed 68/68 evidence covers
+profile selection, long-title/missing-art states, exact identities, and bounded
+2,000/10,000-item cursor projection. No aggregate, capture, push, or main
+integration was performed.
+
 ### Launcher Experience deterministic authoring toolchain (DLV-135)
 
 `gbar launcher-theme` now owns one focused data-only command surface for

@@ -40,6 +40,7 @@ add_executable(OverlayHost WIN32
     DeclarativeRenderer.cpp
     LauncherExperienceLayout.cpp
     LauncherExperienceAdapter.cpp
+    LauncherExperienceProjection.cpp
     LauncherExperiencePresentation.cpp
     LauncherExperienceHostProof.cpp
     GuideInputCompatibility.cpp
@@ -380,6 +381,17 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(AudioMixerScrollHostTests PRIVATE
         user32 gdi32 windowscodecs ole32 oleaut32 uiautomationcore)
 
+    # The held first-party Game Launcher package is exercised through the
+    # ordinary production OverlayHost and its real UIA/action boundary.
+    add_executable(LauncherExperienceHostTests
+        LauncherExperienceHostTests.cpp OverlayHostTestSupport.cpp)
+    target_compile_features(LauncherExperienceHostTests PRIVATE cxx_std_20)
+    target_compile_options(LauncherExperienceHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(LauncherExperienceHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(LauncherExperienceHostTests PRIVATE
+        user32 ole32 oleaut32 uiautomationcore)
+
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)
     target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)
@@ -412,6 +424,7 @@ if(GBA_BUILD_TESTS)
 
     add_executable(LauncherExperienceTests
         LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
+        LauncherExperienceProjection.cpp
         LauncherExperiencePresentation.cpp
         AccessibilityTree.cpp FocusNavigation.cpp ControllerNavigation.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp

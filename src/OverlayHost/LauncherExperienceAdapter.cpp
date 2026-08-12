@@ -20,8 +20,13 @@ WidgetSnapshot AdaptSnapshot(
     const LauncherPresentationFrame* presentation,
     const std::wstring_view focusedElementId) {
     auto snapshot = content.snapshot;
-    if (placement.slot == Slot::GameRail && placement.orientation)
-        snapshot.root.kind = *placement.orientation == Orientation::Vertical ? L"column" : L"row";
+    if (placement.slot == Slot::GameRail && placement.orientation) {
+        const auto vertical = *placement.orientation == Orientation::Vertical;
+        if (snapshot.root.kind == L"scroll")
+            snapshot.root.scrollAxis = vertical ? L"vertical" : L"horizontal";
+        else
+            snapshot.root.kind = vertical ? L"column" : L"row";
+    }
     if (presentation)
         ApplyLauncherPresentationStyles(
             placement.slot, snapshot, *presentation, focusedElementId);
@@ -90,15 +95,21 @@ void Append(RenderResult& destination, RenderResult source) {
 WidgetSnapshot AggregateSnapshot(
     const std::vector<SlotContent>& contents,
     const LayoutResult& layout,
-    const std::wstring_view focusedElementId) {
-    WidgetSnapshot aggregate;
-    aggregate.sequence = 1;
-    aggregate.instanceId = L"launcher-experience";
-    aggregate.activeInputScopeId = L"launcher-root";
-    aggregate.initialFocusId = focusedElementId;
-    aggregate.root.id = L"launcher-experience-root";
-    aggregate.root.kind = L"column";
-    aggregate.root.inputScopeId = aggregate.activeInputScopeId;
+    const std::wstring_view focusedElementId,
+    const WidgetSnapshot* semanticEnvelope) {
+    WidgetSnapshot aggregate = semanticEnvelope
+        ? *semanticEnvelope
+        : WidgetSnapshot{};
+    if (!semanticEnvelope) {
+        aggregate.sequence = 1;
+        aggregate.instanceId = L"launcher-experience";
+        aggregate.activeInputScopeId = L"launcher-root";
+        aggregate.initialFocusId = focusedElementId;
+        aggregate.root.id = L"launcher-experience-root";
+        aggregate.root.kind = L"column";
+        aggregate.root.inputScopeId = aggregate.activeInputScopeId;
+    }
+    aggregate.root.children.clear();
     for (const auto& placement : layout.semanticPlacements) {
         if (const auto* content = FindContent(contents, placement.slot)) {
             auto root = AdaptSnapshot(*content, placement, nullptr, focusedElementId).root;
@@ -120,10 +131,12 @@ RenderedExperience RenderExperience(
     const std::vector<SlotContent>& contents,
     const std::wstring_view focusedElementId,
     DeclarativeRenderOptions options,
-    const LauncherPresentationFrame* presentation) {
+    const LauncherPresentationFrame* presentation,
+    const WidgetSnapshot* semanticEnvelope) {
     RenderedExperience result;
     result.layout = ResolveLayout(recipe, preset, workArea, options.accessibility.textScale);
-    result.semanticSnapshot = AggregateSnapshot(contents, result.layout, focusedElementId);
+    result.semanticSnapshot = AggregateSnapshot(
+        contents, result.layout, focusedElementId, semanticEnvelope);
     result.render.succeeded = result.layout.valid() && target != nullptr;
     if (presentation) {
         if (const auto* hero = result.layout.Find(Slot::HeroBackground)) {

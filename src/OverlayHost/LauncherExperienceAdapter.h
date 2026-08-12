@@ -32,6 +32,7 @@ struct RenderedExperience final {
     const std::vector<SlotContent>& contents,
     std::wstring_view focusedElementId,
     DeclarativeRenderOptions options = {},
-    const LauncherPresentationFrame* presentation = nullptr);
+    const LauncherPresentationFrame* presentation = nullptr,
+    const WidgetSnapshot* semanticEnvelope = nullptr);
 
 } // namespace gba::launcher

@@ -18,7 +18,8 @@ param(
     [switch]$LocalPackageImportTestsOnly,
     [switch]$WidgetSurfaceTestsOnly,
     [switch]$ColdDashboardTestsOnly,
-    [switch]$LauncherExperienceTestsOnly
+    [switch]$LauncherExperienceTestsOnly,
+    [switch]$LauncherExperienceHostTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -132,7 +133,8 @@ $widgetSessionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-sessi
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
 $launcherExperienceTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory | Out-Null
+$launcherExperienceHostTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-host-tests'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -793,6 +795,7 @@ function Invoke-LauncherExperienceTests {
         (Join-Path $projectDirectory 'LauncherExperienceTests.cpp'),
         (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
         (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
+        (Join-Path $projectDirectory 'LauncherExperienceProjection.cpp'),
         (Join-Path $projectDirectory 'LauncherExperiencePresentation.cpp'),
         (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         (Join-Path $projectDirectory 'FocusNavigation.cpp'),
@@ -817,6 +820,27 @@ function Invoke-LauncherExperienceTests {
     & (Join-Path $outputDirectory 'LauncherExperienceTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "LauncherExperienceTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-LauncherExperienceHostTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'LauncherExperienceHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$launcherExperienceHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\LauncherExperienceHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "LauncherExperienceHostTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') `
+        --installation $outputDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "LauncherExperienceHostTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -877,6 +901,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
     (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
     (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
+    (Join-Path $projectDirectory 'LauncherExperienceProjection.cpp'),
     (Join-Path $projectDirectory 'LauncherExperiencePresentation.cpp'),
     (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
@@ -1097,6 +1122,14 @@ if ($ColdDashboardTestsOnly) {
         throw 'ColdDashboardTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-ColdDashboardTests
+    return
+}
+
+if ($LauncherExperienceHostTestsOnly) {
+    if ($SkipTests -or $SkipPackaging) {
+        throw 'LauncherExperienceHostTestsOnly requires tests and packaging.'
+    }
+    Invoke-LauncherExperienceHostTests
     return
 }
 

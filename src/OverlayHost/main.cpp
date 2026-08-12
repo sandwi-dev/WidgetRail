@@ -20,6 +20,7 @@
 #include "RemoteImageCache.h"
 #include "ScrollEvidenceProbe.h"
 #include "LocalWidgetPackageImport.h"
+#include "LauncherExperienceProjection.h"
 #include "LauncherExperienceHostProof.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
@@ -3282,7 +3283,7 @@ private:
 
         if (state_.surface() == gba::Surface::Widget) {
             const std::wstring widget{state_.activeWidget()};
-            const auto* snapshot = SnapshotFor(widget);
+            const auto* snapshot = InteractionSnapshotFor(widget);
             if (snapshot) {
                 const auto hit = gba::input::FindPointerHitTarget(
                     x, y, snapshot->activeInputScopeId, lastWidgetRenderResult_);
@@ -4123,14 +4124,22 @@ private:
         return sessions_.Snapshot(widgetId);
     }
 
+    const gba::WidgetSnapshot* InteractionSnapshotFor(
+        const std::wstring_view widgetId) const noexcept {
+        const auto* source = SnapshotFor(widgetId);
+        return source
+            ? &launcherExperienceProjection_.InteractionSnapshot(widgetId, *source)
+            : nullptr;
+    }
+
     void RememberCurrentFocus(const std::wstring_view widgetId) {
-        const auto* snapshot = SnapshotFor(widgetId);
+        const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot || focusedElementId_.empty()) return;
         focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
     }
 
     void RestoreFocusForActiveSurface(const std::wstring_view widgetId) {
-        const auto* snapshot = SnapshotFor(widgetId);
+        const auto* snapshot = InteractionSnapshotFor(widgetId);
         focusedElementId_ = snapshot
             ? focusMemory_.Restore(widgetId, *snapshot)
             : std::wstring{};
@@ -4190,7 +4199,7 @@ private:
                         !IsBridgeWidget(request.widgetId))
                         continue;
                     const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
-                    const auto* snapshot = SnapshotFor(request.widgetId);
+                    const auto* snapshot = InteractionSnapshotFor(request.widgetId);
                     if (!descriptor || !snapshot ||
                         descriptor->runtimeGeneration != request.runtimeGeneration ||
                         snapshot->sequence != request.snapshotSequence ||
@@ -4242,7 +4251,7 @@ private:
                 continue;
             }
             const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
-            const auto* snapshot = SnapshotFor(request.widgetId);
+            const auto* snapshot = InteractionSnapshotFor(request.widgetId);
             if (!descriptor || !snapshot) {
                 AppendDiagnostic(L"Dropped stale accessibility action for " + request.widgetId);
                 continue;
@@ -4462,7 +4471,7 @@ private:
             return false;
         }
         const std::wstring widget{state_.activeWidget()};
-        const auto* snapshot = SnapshotFor(widget);
+        const auto* snapshot = InteractionSnapshotFor(widget);
         if (!snapshot || focusedElementId_.empty()) return false;
 
         RECT client{};
@@ -4559,7 +4568,7 @@ private:
         if (state_.surface() != gba::Surface::Widget ||
             state_.focusRegion() != gba::FocusRegion::Widget) return;
         const std::wstring_view widgetId = state_.activeWidget();
-        const auto* snapshot = SnapshotFor(widgetId);
+        const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot) return;
         const auto visible = gba::input::ResolveVisibleFocusTarget(
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
@@ -4712,7 +4721,7 @@ private:
             return;
         }
         const std::wstring_view widgetId = state_.activeWidget();
-        const auto* snapshot = SnapshotFor(widgetId);
+        const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot) return;
         const auto activeScope = std::wstring_view(snapshot->activeInputScopeId);
         gba::input::NavigationDirection navigationDirection =
@@ -4819,7 +4828,7 @@ private:
         if (state_.surface() != gba::Surface::Widget ||
             state_.focusRegion() != gba::FocusRegion::Widget) return false;
         const std::wstring_view widget = state_.activeWidget();
-        const auto* snapshot = SnapshotFor(widget);
+        const auto* snapshot = InteractionSnapshotFor(widget);
         if (!snapshot) return false;
         const auto visible = gba::input::ResolveVisibleFocusTarget(
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
@@ -4923,7 +4932,7 @@ private:
                 RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             }
             const auto protocolButton = ProtocolButton(button);
-            const auto* snapshot = SnapshotFor(widget);
+            const auto* snapshot = InteractionSnapshotFor(widget);
             if (protocolButton.empty() || !snapshot) return;
             const bool isOpen = interactiveWidget;
             const auto visibleFocus = isOpen
@@ -4979,7 +4988,7 @@ private:
             } else {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" has no " + std::wstring(button) + L" action here";
-                snapshot = SnapshotFor(widget);
+                snapshot = InteractionSnapshotFor(widget);
                 const auto unhandledContext = snapshot &&
                     std::wstring_view(snapshot->activeInputScopeId) ==
                         gba::input::RootInputScope(*snapshot)
@@ -5041,7 +5050,7 @@ private:
             modalTitle, request->maximumLength, protectedWifi);
         if (committed) {
             const auto* currentDescriptor = sessions_.FindDescriptor(request->widgetId);
-            const auto* currentSnapshot = SnapshotFor(request->widgetId);
+            const auto* currentSnapshot = InteractionSnapshotFor(request->widgetId);
             const auto target = currentDescriptor && currentSnapshot
                 ? gba::input::ResolveTextEntryActionTarget(
                     *request,
@@ -5283,6 +5292,7 @@ private:
 
     void DiscardGraphicsResources(const bool discardRenderTarget = true) {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
+        launcherExperienceProjection_.DiscardTargetResources();
         // Hit and focus rectangles are valid only for the render target's
         // logical viewport. Never dispatch controller focus through geometry
         // retained across a resize, DPI migration, or appearance rebuild.
@@ -5761,7 +5771,7 @@ private:
     std::wstring OpenWidgetPrompt() const {
         if (sessions_.Failure(state_.activeWidget()))
             return L"A  Retry    B  Back";
-        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
         if (!snapshot) return L"A  Select";
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
         CollectShortcutPrompts(snapshot->root, prompts);
@@ -5826,7 +5836,7 @@ private:
         const auto status = OpenWidgetStatus();
         const std::wstring help = OpenWidgetPrompt();
         const std::wstring prompt = status ? *status : help;
-        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
         const bool rootScope = snapshot &&
             std::wstring_view(snapshot->activeInputScopeId) ==
                 gba::input::RootInputScope(*snapshot);
@@ -6054,10 +6064,13 @@ private:
                         options.pressedElementId = focused->id;
                     }
                 }
-                auto result = declarativeRenderer_->Render(
-                    renderTarget_.Get(), *snapshot,
-                    renderedFocusId,
-                    viewport, options);
+                auto launcherProjection = launcherExperienceProjection_.Render(
+                    *declarativeRenderer_, renderTarget_.Get(), renderedWidget,
+                    *snapshot, renderedFocusId, viewport, options);
+                auto result = std::move(launcherProjection.render);
+                const auto& semanticSnapshot =
+                    launcherExperienceProjection_.InteractionSnapshot(
+                        renderedWidget, *snapshot);
                 if (result.succeeded) {
                     const std::wstring inputOwner =
                         state_.focusRegion() == gba::FocusRegion::Tray
@@ -6107,6 +6120,17 @@ private:
                         L"\n" + semanticFocus + trayState;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
+                        if (launcherProjection.disposition ==
+                            gba::launcher::ProductionProjectionDisposition::Adopted) {
+                            AppendDiagnostic(
+                                L"Launcher Experience projection adopted widget=" +
+                                std::wstring(renderedWidget) + L" preset=" +
+                                std::wstring(gba::launcher::PresetName(
+                                    *launcherProjection.preset)) +
+                                L" sequence=" + std::to_wstring(snapshot->sequence) +
+                                L" instance=" + snapshot->instanceId +
+                                L" scope=" + snapshot->activeInputScopeId);
+                        }
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +
                             L" content=" +
@@ -6162,13 +6186,13 @@ private:
                 declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;
                 if (!retainedCommittedSnapshot) {
                     if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
-                        focusedElementId_, snapshot->activeInputScopeId, result);
+                        focusedElementId_, semanticSnapshot.activeInputScopeId, result);
                         visibleFocus && *visibleFocus != focusedElementId_) {
                         (void)pressedInteraction_.Clear();
                         focusedElementId_ = *visibleFocus;
                         (void)scrollEvidenceProbe_.RecordTarget(
                             *visibleFocus, L"reconcile");
-                        focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+                        focusMemory_.Remember(widget, semanticSnapshot, focusedElementId_);
                         // The completed pass used the old focus state. Schedule one
                         // more paint so the recovered target receives its ring.
                         InvalidateRect(window_, nullptr, FALSE);
@@ -6184,13 +6208,13 @@ private:
                 }
                 if (!retainedCommittedSnapshot && renderedFocusId == focusedElementId_) {
                     (void)scrollEvidenceProbe_.Publish(
-                        widget, *snapshot, result, renderedFocusId,
+                        widget, semanticSnapshot, result, renderedFocusId,
                         options.pixelScale, options.accessibility.textScale);
                 }
                 if (!retainedCommittedSnapshot && collectAccessibility) {
                     widgetAccessibilityTree_ = gba::accessibility::BuildWidgetTree(
                         std::wstring{widget}, descriptor->runtimeGeneration,
-                        *snapshot, result,
+                        semanticSnapshot, result,
                         state_.focusRegion() == gba::FocusRegion::Widget
                             ? std::wstring_view{focusedElementId_}
                             : std::wstring_view{},
@@ -6338,6 +6362,7 @@ private:
     float focusOutlineWidth_{2.0F};
     std::unique_ptr<gba::RemoteImageCache> imageCache_;
     std::unique_ptr<gba::DeclarativeRenderer> declarativeRenderer_;
+    gba::launcher::LauncherExperienceProjection launcherExperienceProjection_;
     gba::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
