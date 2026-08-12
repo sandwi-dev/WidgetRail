@@ -141,66 +141,68 @@ displace it.
 Task identity: `platform`
 Branch: `codex/impl-platform-switch`
 
-### DLV-033 — Establish a host-owned widget session coordinator
+### DLV-112 — Establish host-owned local widget package import
 
-**State:** Assigned after accepted DLV-107/102
-**Baseline:** accepted main through `bc484f0` plus the planner assignment commit
-**Dependencies:** accepted DLV-032 request dispatcher, DLV-078 retained-content
-ordering, and DLV-107 composition/presentation authority
-**Owner:** platform lane; native bridge-facing widget session state and focused
-native tests/documentation
-**Concurrency:** Runs while widgets owns developer-visible DLV-110. Do not touch
-managed SDK/templates, renderer/compositor geometry, pinned surfaces, public
-protocol, reviewer documents, or capture tooling.
+**State:** Assigned after accepted DLV-033
+**Baseline:** accepted DLV-033 `1ec2b70` integrated into main through `4fa8f63`
+plus the planner assignment commit
+**Dependencies:** immutable local widget package installer/catalog, authenticated
+bridge, exact catalog-change notification, host modal/focus ownership, and
+bundled Settings identity
+**Owner:** platform lane; host-owned picker adapter, private install request and
+origin policy, existing catalog installer integration, bounded platform tests,
+and directly affected platform/package documentation
+**Concurrency:** Runs while widgets owns DLV-111. Do not touch SettingsWidget,
+PlatformSettings, `gbar theme`, renderer/compositor geometry, pinned surfaces,
+reviewer documents, or capture tooling. Shared package-import protocol is led
+only by this lane until accepted.
 
-**Release-enabling outcome:** Normal widget-session changes no longer require
-understanding the roughly application-sized `OverlayApp`; later virtualized
-Game Launcher and rich-media work can add session behavior without growing the
-Win32/render/input owner again.
+**Immediate visible prerequisite:** DLV-113 will add **Install local widget** to
+Settings. DLV-112 supplies the one trusted picker/install path so that consumer
+does not receive a filesystem path, shell out to `gbar`, duplicate installer
+rules, or grant normal widgets package-management authority.
 
-**Objective:** Extract one directly tested `WidgetSessionCoordinator` above
-`WidgetBridgeClient` owning descriptor/snapshot collections, catalog retry,
-lifecycle target, runtime/presentation generation, typed session status, and
-bounded asynchronous request completion. `OverlayApp` remains the Win32,
-focus, renderer, D2D/DWrite, input, and presentation adapter.
+**Objective:** Add a typed host-owned `.gbarwidget` selection and disabled-only
+local installation operation restricted to the exact bundled Settings origin
+while Interactive.
 
-**In scope:** before/after logical-type responsibility map; descriptor and
-snapshot replacement/removal; last-good retry; current-generation admission;
-typed start/snapshot/protocol failure; lifecycle target/drain; bounded pending
-request correlation; cancellation and late completion; one stalled widget
-while Close/Guide and another widget remain responsive; focused dependency
-injection without a generic service locator.
+**In scope:** injectable `IFileOpenDialog` adapter filtered to `.gbarwidget`;
+owner-window, cancellation, focus, and activation restoration; exact Settings
+origin/lifecycle/generation admission; native-to-bridge request framing; reuse
+of the existing immutable package validator/installer; disabled publication;
+catalog revision notification; bounded safe status/result returned without the
+selected path; deterministic fake-picker and production-shaped catalog tests.
 
-**Out of scope:** public protocol/API changes, compositor or UI redesign,
-renderer/focus/input state in the coordinator, generic event bus/mediator,
-managed bridge rewrite, new feature behavior, compatibility shims, screenshot
-work, or the canonical aggregate.
+**Out of scope:** Settings presentation/action code, arbitrary file browsing,
+worker-visible paths, normal community-widget authority, automatic enablement
+or consent, remote URL/GitHub install, updates, signing/revocation, theme import,
+custom game selection, shelling out to the CLI, screenshots, or compatibility
+shims.
 
-**Acceptance:** `OverlayApp` loses the named session collections/generations/
-retry/lifecycle request policy and materially shrinks; one coordinator owns
-that mutable knowledge with a narrow value/event boundary; no second renderer,
-focus, input, HWND, or presentation authority appears; replacement/removal,
-last-good retry, stale rejection, failure classes, drain, and concurrent stall
-are deterministic; existing widget lifecycle, retained presentation, Close,
-Guide, and hidden/idle behavior do not change.
+**Acceptance:** only the current Interactive bundled Settings generation can
+open one picker and submit one exact selected stream/path to trusted install
+code. Cancel is a quiet no-op. A valid package is installed disabled and emits
+one catalog revision; invalid, duplicate, stale, background, forged-origin,
+reparse/race, cancellation, and installer failure preserve the catalog and
+produce bounded path-free diagnostics. The picker cannot outlive overlay close,
+duplicate on repeated input, steal focus after cancellation, or expose generic
+filesystem authority. Existing CLI install and catalog invariants remain one
+shared implementation.
 
-**Verification:** Tier 1 coordinator, WidgetBridgeClient, OverlayState,
-lifecycle, switch/retained-content, failure-feedback, and Release host suites.
-Tier 2 uses two production-shaped widget sessions with one stalled request and
-proves the other session plus Close/Guide remain responsive. No aggregate or
-capture.
+**Verification:** Tier 1 picker/origin policy, bridge request, WidgetCatalog,
+catalog-revision, modal/focus, and Release host suites. Tier 2 injects cancel,
+valid, invalid, duplicate, stale-origin, and changing-file outcomes through one
+production-shaped Settings request and proves disabled publication plus no path
+in response/log projections. No aggregate or capture.
 
-**Stop:** extraction requires public protocol/product behavior changes, creates
-another authority owner, materially couples to DLV-110 managed work, or cannot
-reduce `OverlayApp` mutable knowledge without a broader architecture choice.
-Preserve the clean boundary and report evidence instead of moving code by file
-count alone.
+**Stop:** implementation requires sending a path to a widget worker, allowing a
+non-Settings package to invoke install, enabling without review, duplicating or
+weakening package validation, launching a CLI child process, or changing the
+native compositor/input authority.
 
-**Queue note:** DLV-107 `b662e9a` and DLV-102 `e4f9880` are accepted and
-integrated through `0e0bf77`. DLV-033 is the one permitted internal platform
-milestone while widgets delivers DLV-110; another internal milestone may not
-follow it. DLV-062 remains blocked by the rich-media resource gate, so fewer
-than three safe platform Ready items exist.
+**Queue note:** DLV-033 `1ec2b70` is accepted and integrated through `4fa8f63`.
+DLV-112 is the permitted immediate visible prerequisite after that internal
+milestone. Its Settings consumer remains serialized as DLV-113 after acceptance.
 
 ## Blocked work
 
@@ -229,6 +231,7 @@ than three safe platform Ready items exist.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-033 | `1ec2b70` | `4fa8f63` | Bridge-facing catalog, snapshot, failure, lifecycle, retry, and request policy now has one off-UI-thread coordinator; the host retains renderer/input/presentation authority. |
 | DLV-110 | `e90e729` | `4e02184` | Basic, data, media, and multipage starters now generate atomically outside the checkout with MSTest.Sdk 4.3.2 scenarios, isolated preview, validation, and deterministic packaging. |
 | DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |
 | DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |

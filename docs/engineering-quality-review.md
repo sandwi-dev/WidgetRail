@@ -4579,6 +4579,17 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ## 2026-08-11 accepted integration delta
 
+- **DLV-033 (`1ec2b70`, integrated through `4fa8f63`)** moves descriptor,
+  snapshot, typed failure, lifecycle-target, catalog-retry, generation, and
+  bounded request-queue ownership from `OverlayApp` into one native
+  `WidgetSessionCoordinator`. `OverlayApp` drops the named collections and 167
+  physical lines while remaining the only Win32, renderer, focus, input,
+  accessibility, and presentation authority. Focused evidence passes six
+  coordinator scenarios plus state/lifecycle/failure and retained-content
+  groups. The stall evidence proves UI-thread Close/Guide intent and retained
+  neighbor presentation remain responsive; it is not parallel bridge-request
+  or pipelining evidence.
+
 - **DLV-110 (`e90e729`, integrated through `4e02184`)** replaces the single
   trivial scaffold with basic, data, media, and multipage profiles over the
   existing public SDK. The strict versioned inventory stays transactional; each
