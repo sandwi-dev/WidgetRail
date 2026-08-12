@@ -807,6 +807,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
 
 public sealed class BrokerPipeClient : IAsyncDisposable
 {
+    private const int MaximumCanceledRequestCorrelations = 128;
     private readonly string _pipeName;
     private readonly BrokerWidgetIdentity _identity;
     private readonly string _nonce;
@@ -815,6 +816,9 @@ public sealed class BrokerPipeClient : IAsyncDisposable
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<BrokerPipeEnvelope>> _pending = new();
     private readonly ConcurrentDictionary<string, Channel<BrokerEventEnvelope>> _events = new(StringComparer.Ordinal);
+    private readonly object _canceledRequestsGate = new();
+    private readonly Queue<long> _canceledRequestOrder = [];
+    private readonly HashSet<long> _canceledRequests = [];
     private NamedPipeClientStream? _pipe;
     private BrokerPipeFrameChannel? _channel;
     private Task? _reader;
@@ -974,12 +978,20 @@ public sealed class BrokerPipeClient : IAsyncDisposable
             try { return await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
             {
-                if (sendCancellation) await SendCancellationSafeAsync(correlation).ConfigureAwait(false);
+                if (sendCancellation)
+                {
+                    RecordCanceledRequest(correlation);
+                    await SendCancellationSafeAsync(correlation).ConfigureAwait(false);
+                }
                 throw new TimeoutException("Broker transport request timed out.");
             }
             catch (OperationCanceledException)
             {
-                if (sendCancellation) await SendCancellationSafeAsync(correlation).ConfigureAwait(false);
+                if (sendCancellation)
+                {
+                    RecordCanceledRequest(correlation);
+                    await SendCancellationSafeAsync(correlation).ConfigureAwait(false);
+                }
                 throw;
             }
         }
@@ -1024,9 +1036,15 @@ public sealed class BrokerPipeClient : IAsyncDisposable
                             "capability_revoked", "Capability subscription was revoked."));
                     continue;
                 }
-                if (message.CorrelationId <= 0 ||
-                    !_pending.TryRemove(message.CorrelationId, out var completion))
+                if (message.CorrelationId <= 0)
                     throw new BrokerException("protocol_violation", "Broker response correlation is unknown.");
+                if (!_pending.TryRemove(message.CorrelationId, out var completion))
+                {
+                    if (TryConsumeCanceledRequest(message.CorrelationId)) continue;
+                    throw new BrokerException(
+                        "protocol_violation", "Broker response correlation is unknown.");
+                }
+                _ = TryConsumeCanceledRequest(message.CorrelationId);
                 completion.TrySetResult(message);
             }
         }
@@ -1076,6 +1094,22 @@ public sealed class BrokerPipeClient : IAsyncDisposable
 
     private long NextCorrelation() => Interlocked.Increment(ref _correlationId);
 
+    private void RecordCanceledRequest(long correlation)
+    {
+        lock (_canceledRequestsGate)
+        {
+            if (!_canceledRequests.Add(correlation)) return;
+            _canceledRequestOrder.Enqueue(correlation);
+            while (_canceledRequestOrder.Count > MaximumCanceledRequestCorrelations)
+                _canceledRequests.Remove(_canceledRequestOrder.Dequeue());
+        }
+    }
+
+    private bool TryConsumeCanceledRequest(long correlation)
+    {
+        lock (_canceledRequestsGate) return _canceledRequests.Remove(correlation);
+    }
+
     private void FailPending(Exception exception)
     {
         foreach (var entry in _pending.ToArray())
@@ -1097,6 +1131,11 @@ public sealed class BrokerPipeClient : IAsyncDisposable
         FailPending(new ObjectDisposedException(nameof(BrokerPipeClient)));
         foreach (var channel in _events.Values) channel.Writer.TryComplete();
         _events.Clear();
+        lock (_canceledRequestsGate)
+        {
+            _canceledRequests.Clear();
+            _canceledRequestOrder.Clear();
+        }
     }
 }
 

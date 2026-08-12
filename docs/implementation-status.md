@@ -3896,3 +3896,19 @@ Focused Release evidence passes PlatformSettings/catalog 18/18, native Launcher
 Experience 1,691 checks, and the production-host selection, safe-start, custom
 matrix, provider-fallback, and 60-second motion scenarios. The temporal window
 records p95 input-to-focus latency of 16 ms with 2 degraded frames.
+
+### Exact Game Launcher launch availability (DLV-165)
+
+The managed broker pipe now retains a bounded set of explicitly canceled
+request correlations so one late `request_canceled` response cannot invalidate
+the channel used by the replacement app-library request. Unknown and duplicate
+correlations still fail closed, and the retained cancellation set is capped at
+128 entries and cleared with the client lifetime.
+
+The deterministic broker regression pauses the first canceled response, admits
+a replacement request on the same channel, releases the late response, and
+proves both the replacement and a later request succeed. Focused Release
+evidence passes Platform Broker 56/56 and Game Launcher 77/77. The exact
+ installed AppContainer route passes after Hide, Restore, Back, current provider
+ resolution, and exact launch revalidation, with no temporary diagnostics in the
+ committed route.

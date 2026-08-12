@@ -3390,6 +3390,18 @@ static async Task PipeCancellationIsObserved()
     cancellation.Cancel();
     await Assert.ThrowsAsync<OperationCanceledException>(() => request);
     await backend.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var replacement = client.RequestAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        new { });
+    backend.ReleaseCancellation.TrySetResult();
+    Assert.True((await replacement.WaitAsync(TimeSpan.FromSeconds(2))).Succeeded,
+        "A late canceled response poisoned the replacement broker request.");
+    Assert.True((await client.RequestAsync(
+        PlatformCapabilities.AudioSessionsReadV1,
+        PlatformCapabilities.AudioSessionsList,
+        new { }).WaitAsync(TimeSpan.FromSeconds(2))).Succeeded,
+        "The broker channel did not remain usable after consuming one canceled response.");
     await client.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
 }
@@ -3889,15 +3901,20 @@ sealed class BlockingBrokerBackend : IPlatformBrokerBackend
         TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource CancellationObserved { get; } = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseCancellation { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _requests;
 
     public async Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(
         CancellationToken cancellationToken)
     {
+        if (Interlocked.Increment(ref _requests) != 1) return [];
         RequestStarted.TrySetResult();
         try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
         catch (OperationCanceledException)
         {
             CancellationObserved.TrySetResult();
+            await ReleaseCancellation.Task.ConfigureAwait(false);
             throw;
         }
         return [];

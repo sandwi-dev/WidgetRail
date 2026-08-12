@@ -118,6 +118,24 @@ if (args.Contains("--game-launcher-category-acceptance", StringComparer.Ordinal)
     return 0;
 }
 
+if (args.Contains("--game-launcher-launch-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    var package = deployment.Packages.Single(candidate =>
+        candidate.Manifest.Id == "org.gbar.firstparty.game-launcher");
+    await RunCatalogAsync(
+        installed.Catalog,
+        [package],
+        candidate => candidate.Manifest.Id,
+        "installed-launch-revalidation");
+    Console.WriteLine("PASS exact installed Game Launcher launch acceptance");
+    return 0;
+}
+
 if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
