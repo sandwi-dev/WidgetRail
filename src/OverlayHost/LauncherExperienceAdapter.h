@@ -2,6 +2,7 @@
 
 #include "DeclarativeRenderer.h"
 #include "LauncherExperienceLayout.h"
+#include "LauncherExperiencePresentation.h"
 
 #include <string>
 #include <vector>
@@ -30,6 +31,7 @@ struct RenderedExperience final {
     declarative::Rect workArea,
     const std::vector<SlotContent>& contents,
     std::wstring_view focusedElementId,
-    DeclarativeRenderOptions options = {});
+    DeclarativeRenderOptions options = {},
+    const LauncherPresentationFrame* presentation = nullptr);
 
 } // namespace gba::launcher

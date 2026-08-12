@@ -3,6 +3,7 @@
 #include "AccessibilityTree.h"
 #include "FocusNavigation.h"
 #include "LauncherExperienceAdapter.h"
+#include "LauncherExperiencePresentation.h"
 
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -70,6 +71,20 @@ bool Contains(const Rect outer, const Rect inner) noexcept {
         inner.y + inner.height <= outer.y + outer.height + 0.05F;
 }
 
+std::shared_ptr<const DecodedLauncherAsset> Background(
+    const wchar_t* id,
+    const wchar_t* revision,
+    const std::array<std::uint8_t, 4> pixel) {
+    auto result = std::make_shared<DecodedLauncherAsset>();
+    result->opaqueAssetId = id;
+    result->revision = revision;
+    result->width = 1;
+    result->height = 1;
+    result->stride = 4;
+    result->premultipliedBgra.assign(pixel.begin(), pixel.end());
+    return result;
+}
+
 } // namespace
 
 bool RunProductionHostSemanticProof(std::wstring& diagnostic) {
@@ -111,10 +126,39 @@ bool RunProductionHostSemanticProof(std::wstring& diagnostic) {
     DeclarativeRenderOptions options;
     options.collectAccessibility = true;
     const Rect workArea{0, 0, 1280, 720};
+    LauncherExperiencePresentationOwner presentationOwner;
+    LauncherPresentationRequest first;
+    first.revision = L"production-proof:1";
+    first.preset = Preset::HeroRail;
+    first.backgroundMode = BackgroundMode::PackAsset;
+    first.focusEffect = FocusEffect::Lift;
+    first.packBackground = Background(
+        L"production.pack-background", first.revision.c_str(),
+        {0x28, 0x38, 0x78, 0xFF});
+    first.packStyles[Slot::GameRail].emplace(
+        L"background", WidgetStyleValue{L"color", L"#203060ff", {}, {}});
+    std::wstring presentationDiagnostic;
+    if (!presentationOwner.Activate(first, {}, 100, presentationDiagnostic))
+        return finish(false, L"production presentation activation failed");
+    auto second = first;
+    second.revision = L"production-proof:2";
+    second.backgroundMode = BackgroundMode::SelectedGameArtwork;
+    second.selectedGameArtworkRevision = L"selected-game:7";
+    second.selectedGameBackground = Background(
+        L"production.selected-game-background", L"selected-game:7",
+        {0x78, 0x38, 0x28, 0xFF});
+    if (!presentationOwner.Activate(second, {}, 200, presentationDiagnostic))
+        return finish(false, L"production presentation switch failed");
+    const auto presentation = presentationOwner.Sample(290);
+    if (!presentation.previousBackground || !presentation.currentBackground ||
+        presentation.previousBackgroundOpacity <= 0 ||
+        presentation.currentBackgroundOpacity <= 0)
+        return finish(false, L"production decode-before-crossfade lifecycle failed");
+
     target->BeginDraw();
     const auto experience = RenderExperience(
         renderer, target.Get(), nullptr, Preset::HeroRail, workArea,
-        HostContents(), L"launcher.game.0", options);
+        HostContents(), L"launcher.game.0", options, &presentation);
     if (FAILED(target->EndDraw()) || !experience.layout.valid() ||
         !experience.render.succeeded ||
         !experience.render.focusRects.contains(L"launcher.game.0"))
@@ -138,7 +182,32 @@ bool RunProductionHostSemanticProof(std::wstring& diagnostic) {
         !action(L"launcher.primary-action", L"host.launch.exact-saved-id") ||
         !action(L"launcher.back", L"host.back"))
         return finish(false, L"production pointer, focus, UIA, or action agreement failed");
-    return finish(true, L"passed");
+
+    for (int attempt = 0; attempt < 3; ++attempt)
+        presentationOwner.RejectRevision(
+            second.revision, Preset::HeroRail, L"fixture decode failure");
+    const auto recovery = presentationOwner.Sample(500);
+    if (!recovery.builtIn || !presentationOwner.IsRevisionDisabled(second.revision) ||
+        presentationOwner.IsRevisionDisabled(first.revision))
+        return finish(false, L"production revision-scoped recovery failed");
+    target->BeginDraw();
+    const auto recoveredExperience = RenderExperience(
+        renderer, target.Get(), nullptr, Preset::HeroRail, workArea,
+        HostContents(), L"launcher.game.0", options, &recovery);
+    if (FAILED(target->EndDraw()) || !recoveredExperience.render.succeeded ||
+        !recoveredExperience.render.focusRects.contains(L"launcher.game.0"))
+        return finish(false, L"production built-in recovery render failed");
+    const auto recoveredTree = accessibility::BuildWidgetTree(
+        L"game-launcher", L"production-host-proof-recovery",
+        recoveredExperience.semanticSnapshot, recoveredExperience.render,
+        L"launcher.game.0");
+    if (!std::any_of(recoveredTree.nodes.begin(), recoveredTree.nodes.end(),
+            [](const auto& node) {
+                return node.id == L"launcher.primary-action" &&
+                    node.actionId == L"host.launch.exact-saved-id";
+            }))
+        return finish(false, L"production recovery changed host action authority");
+    return finish(true, L"presentation lifecycle passed");
 }
 
 } // namespace gba::launcher

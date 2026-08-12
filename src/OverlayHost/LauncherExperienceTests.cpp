@@ -1,11 +1,13 @@
 #include "AccessibilityTree.h"
 #include "FocusNavigation.h"
 #include "LauncherExperienceAdapter.h"
+#include "LauncherExperiencePresentation.h"
 
 #include <wincodec.h>
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -50,6 +52,79 @@ WidgetNode Node(const wchar_t* id, const wchar_t* kind, const wchar_t* label = L
 
 gba::WidgetStyleValue Length(const double value) {
     return {L"length", std::to_wstring(value) + L"px", value, L"px"};
+}
+
+gba::WidgetStyleValue Number(const double value) {
+    return {L"number", std::to_wstring(value), value, {}};
+}
+
+gba::WidgetStyleValue Color(const wchar_t* value) {
+    return {L"color", value, {}, {}};
+}
+
+std::vector<std::uint8_t> EncodeSinglePixel(
+    IWICImagingFactory* factory,
+    const GUID& container) {
+    ComPtr<IStream> stream;
+    Check(SUCCEEDED(CreateStreamOnHGlobal(nullptr, TRUE, stream.ReleaseAndGetAddressOf())),
+          "create in-memory image stream");
+    ComPtr<IWICBitmapEncoder> encoder;
+    Check(SUCCEEDED(factory->CreateEncoder(
+        container, nullptr, encoder.ReleaseAndGetAddressOf())),
+        "create static image encoder");
+    Check(SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)),
+          "initialize static image encoder");
+    ComPtr<IWICBitmapFrameEncode> frame;
+    Check(SUCCEEDED(encoder->CreateNewFrame(frame.ReleaseAndGetAddressOf(), nullptr)),
+          "create static image frame");
+    Check(SUCCEEDED(frame->Initialize(nullptr)), "initialize static image frame");
+    Check(SUCCEEDED(frame->SetSize(1, 1)), "size static image frame");
+    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+    Check(SUCCEEDED(frame->SetPixelFormat(&format)), "set static image pixel format");
+    ComPtr<IWICBitmap> source;
+    Check(SUCCEEDED(factory->CreateBitmap(
+        1, 1, GUID_WICPixelFormat32bppBGRA, WICBitmapCacheOnLoad,
+        source.ReleaseAndGetAddressOf())), "create static image source");
+    WICRect area{0, 0, 1, 1};
+    ComPtr<IWICBitmapLock> lock;
+    Check(SUCCEEDED(source->Lock(
+        &area, WICBitmapLockWrite, lock.ReleaseAndGetAddressOf())),
+        "lock static image source");
+    UINT size{};
+    BYTE* pixels{};
+    Check(SUCCEEDED(lock->GetDataPointer(&size, &pixels)) && size >= 4,
+          "write static image source");
+    pixels[0] = 0x20;
+    pixels[1] = 0x70;
+    pixels[2] = 0xE0;
+    pixels[3] = 0xFF;
+    lock.Reset();
+    Check(SUCCEEDED(frame->WriteSource(source.Get(), nullptr)), "encode static image source");
+    Check(SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit()),
+          "commit static image source");
+    HGLOBAL memory{};
+    Check(SUCCEEDED(GetHGlobalFromStream(stream.Get(), &memory)) && memory,
+          "read encoded static image memory");
+    const auto byteCount = GlobalSize(memory);
+    const auto* bytes = static_cast<const std::uint8_t*>(GlobalLock(memory));
+    Check(bytes && byteCount > 0, "lock encoded static image memory");
+    std::vector<std::uint8_t> result(bytes, bytes + byteCount);
+    GlobalUnlock(memory);
+    return result;
+}
+
+std::shared_ptr<const DecodedLauncherAsset> SolidAsset(
+    const wchar_t* id,
+    const wchar_t* revision,
+    const std::array<std::uint8_t, 4> pixel) {
+    auto result = std::make_shared<DecodedLauncherAsset>();
+    result->opaqueAssetId = id;
+    result->revision = revision;
+    result->width = 1;
+    result->height = 1;
+    result->stride = 4;
+    result->premultipliedBgra.assign(pixel.begin(), pixel.end());
+    return result;
 }
 
 WidgetSnapshot Content(const Slot slot) {
@@ -203,6 +278,148 @@ void InvalidRecipeFallsBackAtomically() {
     Check(layout.preset == Preset::CompactGrid, "fallback preserves selected recovery preset");
     Check(layout.Find(Slot::GameRail) && layout.Find(Slot::ControllerHints),
           "fallback retains rail and Back affordance slots");
+}
+
+void StaticAssetsDecodeWithinTheHostBoundary() {
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create WIC factory for sealed launcher assets");
+    const auto png = EncodeSinglePixel(wic.Get(), GUID_ContainerFormatPng);
+    const auto jpeg = EncodeSinglePixel(wic.Get(), GUID_ContainerFormatJpeg);
+    const auto pngResult = DecodeSealedLauncherAsset(
+        wic.Get(), {L"pack-background", L"pack:1", StaticImageFormat::Png, png});
+    const auto jpegResult = DecodeSealedLauncherAsset(
+        wic.Get(), {L"pack-preview", L"pack:1", StaticImageFormat::Jpeg, jpeg});
+    const std::vector<std::uint8_t> webp{
+        0x52,0x49,0x46,0x46,0x1A,0x00,0x00,0x00,0x57,0x45,0x42,0x50,
+        0x56,0x50,0x38,0x4C,0x0D,0x00,0x00,0x00,0x2F,0x00,0x00,0x00,
+        0x10,0x07,0x10,0x11,0x11,0x88,0x88,0xFE,0x07,0x00};
+    const auto webpResult = DecodeSealedLauncherAsset(
+        wic.Get(), {L"pack-webp", L"pack:1", StaticImageFormat::WebP, webp});
+    Check(pngResult.succeeded() && pngResult.asset->width == 1 &&
+          pngResult.asset->premultipliedBgra.size() == 4,
+          "bounded PNG bytes decode to sealed premultiplied pixels");
+    Check(jpegResult.succeeded() && jpegResult.asset->height == 1 &&
+          jpegResult.asset->premultipliedBgra.size() == 4,
+          "bounded JPEG bytes decode to sealed premultiplied pixels");
+    Check(webpResult.succeeded() && webpResult.asset->width == 1 &&
+          webpResult.asset->height == 1,
+          "bounded standard VP8L WebP decodes through the host media owner");
+    Check(!DecodeSealedLauncherAsset(
+              wic.Get(), {L"mismatch", L"pack:1", StaticImageFormat::WebP, png}).succeeded(),
+          "declared WebP cannot smuggle PNG bytes");
+    Check(!DecodeSealedLauncherAsset(
+              wic.Get(), {L"corrupt", L"pack:1", StaticImageFormat::WebP,
+                          {'R','I','F','F',0,0,0,0,'W','E','B','P'}}).succeeded(),
+          "corrupt WebP retains the professional fallback");
+    std::vector<std::uint8_t> oversized(MaximumLauncherAssetBytes + 1, 0);
+    Check(!DecodeSealedLauncherAsset(
+              wic.Get(), {L"oversized", L"pack:1", StaticImageFormat::Png,
+                          std::move(oversized)}).succeeded(),
+          "encoded asset bound is enforced before WIC decode");
+}
+
+void ScopedCascadeAccessibilityAndRecoveryStayAtomic() {
+    LauncherExperiencePresentationOwner owner;
+    LauncherPresentationRequest first;
+    first.revision = L"dev.example.deep-space:1.0.0:digest-a";
+    first.preset = Preset::HeroRail;
+    first.backgroundMode = BackgroundMode::PackAsset;
+    first.focusEffect = FocusEffect::Lift;
+    first.packBackground = SolidAsset(L"pack.background", first.revision.c_str(), {0x20, 0x40, 0x80, 0xFF});
+    first.packStyles[Slot::GameRail].emplace(L"background", Color(L"#203050ff"));
+    first.packStyles[Slot::GameRail].emplace(L"background-blur", Length(12));
+    first.userStyles[Slot::GameRail].emplace(L"background", Color(L"#405080ff"));
+    std::wstring diagnostic;
+    Check(owner.Activate(first, {}, 100, diagnostic),
+          "valid launcher-only pack revision activates atomically");
+    auto frame = owner.Sample(100);
+    Check(!frame.builtIn && frame.currentBackground == first.packBackground &&
+          frame.backgroundBlurEnabled,
+          "sealed pack background and bounded effects publish together");
+    Check(frame.slotStyles.at(Slot::GameRail).at(L"background").text == L"#405080ff",
+          "launcher user adjustment follows the pack layer");
+    auto rail = Content(Slot::GameRail);
+    auto details = Content(Slot::DetailsPanel);
+    ApplyLauncherPresentationStyles(
+        Slot::GameRail, rail, frame, L"launcher.game.0");
+    ApplyLauncherPresentationStyles(
+        Slot::DetailsPanel, details, frame, L"launcher.game.0");
+    Check(rail.root.baseStyle.contains(L"background") &&
+          !details.root.baseStyle.contains(L"background"),
+          "pack rules cannot escape their launcher semantic role");
+    Check(rail.root.children.front().focusedStyle.contains(L"scale") &&
+          rail.root.children.front().focusedStyle.contains(L"translate-y"),
+          "bounded lift effect targets only the exact focused game");
+
+    LauncherPresentationRequest second = first;
+    second.revision = L"dev.example.deep-space:1.1.0:digest-b";
+    second.backgroundMode = BackgroundMode::SelectedGameArtwork;
+    second.selectedGameArtworkRevision = L"game-art:42";
+    second.selectedGameBackground = SolidAsset(
+        L"selected-game.background", L"game-art:42", {0x80, 0x40, 0x20, 0xFF});
+    Check(owner.Activate(second, {}, 200, diagnostic),
+          "decoded revision-bound game art stages before experience publication");
+    const auto midpoint = owner.Sample(290);
+    Near(midpoint.previousBackgroundOpacity, 0.5F,
+         "previous background remains during bounded crossfade");
+    Near(midpoint.currentBackgroundOpacity, 0.5F,
+         "new background becomes visible only after successful decode");
+    auto missingArtwork = second;
+    missingArtwork.revision = L"dev.example.deep-space:1.2.0:digest-c";
+    missingArtwork.selectedGameArtworkRevision = L"game-art:43";
+    missingArtwork.selectedGameBackground.reset();
+    Check(owner.Activate(missingArtwork, {}, 380, diagnostic),
+          "experience styling remains usable when selected artwork is unavailable");
+    Check(owner.Sample(380).currentBackground == second.selectedGameBackground,
+          "failed selected-game decode retains the prior professional background");
+
+    owner.RecordFrameTiming(2.0, 19.0);
+    Check(owner.Sample(290).effectQuality == EffectQuality::OpacityOnly,
+          "render-budget pressure removes focus transforms before input latency");
+    owner.RecordFrameTiming(9.0, 4.0);
+    const auto degraded = owner.Sample(290);
+    Check(degraded.effectQuality == EffectQuality::Immediate &&
+          !degraded.focusedGameStyle.contains(L"scale") &&
+          degraded.previousBackgroundOpacity == 0.0F,
+          "input-budget pressure makes presentation effects immediate");
+    Check(owner.metrics().degradedFrameCount == 2 &&
+          owner.metrics().maximumInputDispatchMilliseconds == 9.0,
+          "bounded frame metrics retain the measured degradation evidence");
+
+    LauncherExperiencePresentationOwner accessibleOwner;
+    Check(accessibleOwner.Activate(
+              first, {.reducedMotion = true, .reducedTransparency = true,
+                      .highContrast = true}, 0, diagnostic),
+          "accessibility-final launcher revision activates");
+    const auto accessible = accessibleOwner.Sample(0);
+    Check(!accessible.backgroundBlurEnabled && accessible.backgroundIsFallback &&
+          !accessible.focusedGameStyle.contains(L"scale") &&
+          !accessible.focusedGameStyle.contains(L"translate-y") &&
+          accessible.focusedGameStyle.at(L"outline-width").number == 3.0,
+          "high contrast and reduced preferences override every pack effect");
+
+    LauncherExperiencePresentationOwner globalOwner;
+    auto global = first;
+    global.useGlobalAppearance = true;
+    Check(globalOwner.Activate(global, {}, 0, diagnostic),
+          "Use global appearance activates without pack styling");
+    const auto globalFrame = globalOwner.Sample(0);
+    Check(globalFrame.slotStyles.empty() && globalFrame.focusedGameStyle.empty() &&
+          globalFrame.backgroundIsFallback,
+          "Use global appearance reproduces the pre-pack style path");
+
+    for (int attempt = 0; attempt < 3; ++attempt)
+        owner.RejectRevision(second.revision, Preset::HeroRail, L"decode failed");
+    Check(owner.IsRevisionDisabled(second.revision) &&
+          !owner.IsRevisionDisabled(first.revision) && owner.Sample(400).builtIn,
+          "repeated failure disables only the offending revision and restores built-in");
+    auto safeStart = first;
+    safeStart.safeStart = true;
+    Check(owner.Activate(safeStart, {}, 500, diagnostic) && owner.Sample(500).builtIn,
+          "safe-start bypass selects the code-owned recovery experience");
 }
 
 void RenderedSlotsSharePaintPointerFocusAndUiaGeometry() {
@@ -359,6 +576,8 @@ int main() {
     Check(SUCCEEDED(initialized), "initialize COM");
     ResponsiveProfilesStayInsideWorkArea();
     InvalidRecipeFallsBackAtomically();
+    StaticAssetsDecodeWithinTheHostBoundary();
+    ScopedCascadeAccessibilityAndRecoveryStayAtomic();
     RenderedSlotsSharePaintPointerFocusAndUiaGeometry();
     std::cout << "LauncherExperienceTests: " << checks << " checks passed\n";
     CoUninitialize();
