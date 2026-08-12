@@ -58,6 +58,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Manifest presentation uses only closed semantic host icons", ManifestPresentationIsSemantic),
     ("Manifest permission declarations are bounded ASCII-safe and unambiguous", ManifestPermissionsAreBounded),
     ("Residency policy is versioned bounded and legacy compatible", ResidencyPolicyIsVersioned),
+    ("Worker memory guidance is optional advisory metadata", WorkerMemoryGuidanceIsAdvisory),
     ("Unsafe manifest values report errors", UnsafeManifestFails),
     ("Null manifest collections report validation errors", NullManifestCollectionsFail),
     ("Clock sample renders controller metadata", ClockRenders),
@@ -3027,6 +3028,30 @@ static Task UnsafeManifestFails()
     Assert.True(errors.Any(error => error.Code == "unsupported_runtime"), "Expected unsupported_runtime.");
     Assert.True(errors.Any(error => error.Code == "duplicate_permission"), "Expected duplicate_permission.");
     Assert.True(errors.Count >= 6, "Expected independent manifest failures.");
+    return Task.CompletedTask;
+}
+
+static Task WorkerMemoryGuidanceIsAdvisory()
+{
+    var omitted = ValidManifest() with { ResourceRequest = new WidgetResourceRequest() };
+    Assert.Equal(0, WidgetManifestValidator.Validate(omitted).Count);
+    Assert.Equal(null, omitted.ResourceRequest.MemoryMb);
+
+    var fullApplication = omitted with
+    {
+        ResourceRequest = new WidgetResourceRequest(1_024, 1),
+    };
+    Assert.Equal(0, WidgetManifestValidator.Validate(fullApplication).Count);
+    var roundTrip = ManifestJson.Deserialize(ManifestJson.Serialize(fullApplication));
+    Assert.Equal(1_024, roundTrip.ResourceRequest.MemoryMb);
+
+    var invalid = omitted with
+    {
+        ResourceRequest = new WidgetResourceRequest(0, 1),
+    };
+    Assert.True(WidgetManifestValidator.Validate(invalid).Any(error =>
+        error.Path == "$.resourceRequest.memoryMb" && error.Code == "out_of_range"),
+        "Non-positive memory guidance did not fail manifest validation.");
     return Task.CompletedTask;
 }
 

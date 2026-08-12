@@ -28,7 +28,7 @@ flowchart LR
 | --- | --- |
 | `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus plus explicit protocol-v13 cross-presentation focus persistence, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, and generic reference-widget rendering. |
 | `src/WidgetBridge` | Disposable managed sidecar with a current-user-only host pipe. `WidgetBridgeServer` owns the pipe session, framing, request routing, reserved Stop lane, replies, and serialized writes; one internal client registry owns catalog revisions, worker generations, residency admission, idle unload, restart, replacement/removal, and terminal client disposal. The bridge also owns trusted mandatory community AppContainer selection, per-session verified-content lease handoff, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
-| `src/WidgetRuntime` | Lazy worker process client/server, host-derived content-generation AppContainer profiles for installed/community packages, exact non-inheriting verified-file grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch content/residency leases plus Job Object memory/process/UI/cleanup policy. |
+| `src/WidgetRuntime` | Lazy worker process client/server, host-derived content-generation AppContainer profiles for installed/community packages, exact non-inheriting verified-file grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch content/residency leases plus Job Object process-tree accounting/UI/cleanup policy. |
 | `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies inside the mandatory AppContainer, connects an authenticated broker client when declared, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network/Bluetooth/recent-activity/app-library/media services/DTOs. |
@@ -262,10 +262,11 @@ authority application, and dispatcher drain remain part of the open aggregate
 start-admission design.
 
 On Windows the runtime creates each worker suspended, assigns it to a dedicated
-Job Object, then resumes it. Trusted bridge catalog policy supplies a bounded
-memory ceiling; the job permits one active process and terminates the worker on
-job close, rejects unhandled-exception continuation, and applies the complete
-basic UI-restriction set.
+Job Object, then resumes it. The Job admits a non-breakaway helper process tree,
+accounts that tree, terminates it on job close, rejects unhandled-exception
+continuation, and applies the complete basic UI-restriction set. Optional
+manifest memory guidance is diagnostic metadata rather than a private-memory
+ceiling.
 
 The managed runtime keeps host lifecycle, restart-budget, and failure policy in
 one `WidgetProcessClient`. Each lazy launch creates one `WidgetProcessSession`
@@ -479,7 +480,7 @@ then deterministic geometry from the last render.
   signature verification. Supported capability declarations receive the authenticated
   broker path; unknown IDs cause that package to be skipped.
 - Mandatory capability-free AppContainer launch for installed/community
-  workers, exact session-scoped verified-content authority, Job Object memory/process/UI/cleanup policy, PID-bound typed
+  workers, exact session-scoped verified-content authority, Job Object process-tree accounting/UI/cleanup policy, PID-bound typed
   capability IPC, consent UI, and prompt fail-closed revocation are implemented
   and tested. Publisher signatures/package revocation, CPU quotas, disk/profile
   quotas and cleanup, security audit/history, migration of trusted built-ins,

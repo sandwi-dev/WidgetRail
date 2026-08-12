@@ -544,8 +544,8 @@ request/result/event contracts, nonce/identity-bound pipe transport, a closed
 capability vocabulary, manifest/consent/lifecycle checks, controller grant/
 deny/revoke UI, sanitized DTO validation, durable consent storage, coalesced
 subscriptions, and an initial simulator. Windows workers also have pre-launch
-Job Object containment with a trusted memory ceiling, one-process limit, UI
-restrictions, and kill-on-close cleanup. Installed/community workers require a
+Job Object containment with complete process-tree accounting, UI restrictions,
+and kill-on-close cleanup. Installed/community workers require a
 capability-free Low-integrity AppContainer and exact-SID/Low-label/PID-bound
 broker endpoint in addition to nonce/full-identity authentication. The audio
 implementation adds a lazy, event-driven Core Audio session backend on top of

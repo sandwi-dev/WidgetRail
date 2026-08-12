@@ -22,5 +22,6 @@
     <ProjectReference Include="..\..\src\WidgetCatalog\WidgetCatalog.csproj" />
     <ProjectReference Include="..\..\src\WidgetWorkerHost\WidgetWorkerHost.csproj" />
     <ProjectReference Include="..\..\tools\GbarCli\GbarCli.csproj" />
+    <ProjectReference Include="..\FullApplicationWidgetFixture\FullApplicationWidgetFixture.csproj" />
   </ItemGroup>
 </Project>

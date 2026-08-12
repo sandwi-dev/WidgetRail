@@ -6,6 +6,22 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-101 removes the arbitrary private-worker 256 MiB and one-active-process
+ceilings while preserving the security and transport boundary. Every Windows
+worker is still created suspended, assigned before resume to one non-breakaway
+Job, accounted as a complete process tree, and terminated through kill-on-close.
+Optional `resourceRequest.memoryMb` is positive advisory diagnostics metadata;
+host admission still bounds application worker sessions and retains all IPC,
+snapshot, capability, package, and lifecycle limits. A credential-free installed
+AppContainer fixture writes 128 KiB to its private local-data profile, starts a
+package helper, renders a bounded first snapshot, proves both processes are Job
+accounted, and proves Stop kills both. Runtime coverage also admits a worker
+above the former 256 MiB boundary, while Bridge coverage rejects an oversized
+presentation without affecting its admitted neighbor. Focused Release evidence
+passes Runtime 74/74, Bridge 78/78, Widget SDK 87/87, generic worker host 10/10,
+and Widget Catalog 35/35; the latter three are retained at
+`artifacts/verification/20260812T004209Z-f969acb6`.
+
 DLV-015 composes representative Settings, YT Music, and Spotify semantic trees
 through the production native accessibility adapter, open-widget shell,
 free-threaded provider, `WM_GETOBJECT`, and a real Windows UI Automation client
@@ -926,7 +942,7 @@ Up/Down navigation.
   verified-file grants, host-owned schema-2 write-ahead DACL recovery with a
   global cross-process authority lock and persisted volume/file identities,
   PID-bound isolated
-  pipes, and pre-launch Job Object memory/process/UI/cleanup
+  pipes, and pre-launch Job Object process-tree accounting/UI/cleanup
   containment. Public custom workers use
   `WidgetWorkerBootstrap`, which validates host arguments, authenticates the
   optional broker before constructing the widget, attaches host services before
@@ -2072,9 +2088,10 @@ callback listener exists only for that explicit attempt. The host-granted
 bounded private-state read/write/clear service
 remains available
 there for persistence and is denied during Destroying.
-Separately, trusted bridge policy now bounds each Windows worker with a Job
-Object memory ceiling and one-process limit regardless of lifecycle. Crash,
-hang, shutdown, and user-requested termination remain separate safety/
+Separately, trusted bridge policy assigns each Windows worker process tree to
+one accounting Job before resume and retains kill-on-close regardless of
+lifecycle. It does not impose an arbitrary memory or one-process ceiling.
+Crash, hang, shutdown, and user-requested termination remain separate safety/
 administrative paths.
 
 ### Current native performance baselines
@@ -2674,11 +2691,12 @@ with C++ installed:
   supported contracts.
 - The manifest protocol retains `keep-alive` as its compatibility default, but
   the controller scaffold and Clock sample now select five-minute idle unload.
-  The bridge atomically caps application residency at eight workers and 512 MiB
-  of declared Job memory by default, refuses overcommit without evicting pinned
-  workers, and preserves a separately reported trusted Settings control-plane
-  slot. Per-widget measured telemetry, user overrides, critical-work leases,
-  packaged resource measurements, and long-duration churn remain open.
+  The bridge atomically caps application residency at eight worker sessions,
+  refuses overcommit without evicting pinned workers, reports optional memory
+  guidance without treating it as reserved capacity, and preserves a separately
+  reported trusted Settings control-plane slot. Per-widget measured telemetry,
+  user overrides, critical-work leases, packaged resource measurements, and
+  long-duration churn remain open.
 - Recent activity observation starts lazily on the first authorized read, then
   remains event-driven until the bridge/backend is disposed. Consent revocation
   blocks delivery and activation and cancels in-flight broker requests, but

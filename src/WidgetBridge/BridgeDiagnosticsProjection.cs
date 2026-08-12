@@ -140,11 +140,10 @@ internal sealed class BridgeDiagnosticsProjection(
             Area("bridge", "Bridge", PlatformDiagnosticState.Healthy,
                 $"Native host connected; application workers " +
                 $"{Math.Max(0, residency.ApplicationWorkers)}/" +
-                $"{Math.Max(0, residency.MaximumApplicationWorkers)}; reserved memory " +
-                $"{Math.Max(0, residency.ApplicationMemoryMb)}/" +
-                $"{Math.Max(0, residency.MaximumApplicationMemoryMb)} MiB; control plane " +
+                $"{Math.Max(0, residency.MaximumApplicationWorkers)}; reported memory guidance " +
+                $"{Math.Max(0, residency.ApplicationAdvisoryMemoryMb)} MiB; control plane " +
                 $"{Math.Max(0, residency.ControlPlaneWorkers)} " +
-                $"({Math.Max(0, residency.ControlPlaneMemoryMb)} MiB)"),
+                $"({Math.Max(0, residency.ControlPlaneAdvisoryMemoryMb)} MiB reported)"),
             Area("catalog", "Widget catalog", catalogState, catalogSummary),
             appearance,
             input.ProvidersConfigured

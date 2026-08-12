@@ -63,6 +63,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
     public int Starts => Volatile.Read(ref _starts);
     internal int? WorkerProcessId => Volatile.Read(ref _session)?.Process?.Id;
+    internal WindowsWorkerJobAccounting? AppliedJobAccounting =>
+        Volatile.Read(ref _session)?.WindowsJob?.Accounting;
     internal long? AppliedJobMemoryLimitBytes =>
         Volatile.Read(ref _session)?.WindowsJob?.MemoryLimitBytes;
     internal uint? AppliedJobActiveProcessLimit =>
@@ -481,7 +483,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         Process.Start(startInfo) ??
                             throw new WidgetProcessException("Worker process did not start."),
                         null);
-                var job = WindowsWorkerJob.Create(_options.MemoryLimitBytes);
+                var job = WindowsWorkerJob.Create();
                 try { return (job.StartProcess(startInfo, appContainer), job); }
                 catch
                 {

@@ -134,6 +134,9 @@ internal static class Program
     internal static WorkerResidencyBudgetOptions ResolveWorkerResidencyBudget(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
+        if (args.Contains("--max-resident-memory-mb", StringComparer.Ordinal))
+            throw new ArgumentException(
+                "--max-resident-memory-mb is no longer supported; worker memory is reported, not capped.");
         return new WorkerResidencyBudgetOptions
         {
             MaximumApplicationWorkers = OptionalInt(
@@ -142,12 +145,6 @@ internal static class Program
                 WorkerResidencyBudgetOptions.DefaultMaximumApplicationWorkers,
                 1,
                 256),
-            MaximumApplicationMemoryMb = OptionalInt(
-                args,
-                "--max-resident-memory-mb",
-                WorkerResidencyBudgetOptions.DefaultMaximumApplicationMemoryMb,
-                16,
-                16_384),
         };
     }
 }

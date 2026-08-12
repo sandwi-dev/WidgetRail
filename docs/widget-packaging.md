@@ -321,8 +321,9 @@ The runtime separately
 grants the generic worker executable, supplies a stripped environment, and
 launches at Low integrity. Token SID, integrity, and zero-capability state are
 verified before resume. The Job Object
-also enforces the trusted memory ceiling, one active process, kill-on-close,
-die-on-unhandled-exception, and basic UI restrictions.
+accounts the complete non-breakaway worker process tree and enforces
+kill-on-close, die-on-unhandled-exception, and basic UI restrictions. Optional
+`resourceRequest.memoryMb` is advisory diagnostics metadata, not a hard limit.
 
 The content lease follows the exact process session and is reacquired after a
 crash, intentional unload, or restart. Disable/removal, failed connection, and

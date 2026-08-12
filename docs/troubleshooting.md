@@ -123,7 +123,8 @@ evidence that the package version or running provider was refreshed.
 - Use reverse-DNS lowercase `id` and `publisher` values.
 - The only supported runtime is `dotnet-worker`.
 - Entrypoint assembly paths use forward slashes and cannot contain `.` or `..`.
-- Resource requests are 16–256 MB and 1–60 Hz.
+- `resourceRequest.memoryMb`, when present, is a positive advisory estimate;
+  `updateHz` is 1–60 Hz metadata.
 - Architectures are `x64` and/or `arm64`.
 
 Run `gbar validate <manifest.json>` for the precise JSON path and diagnostic.

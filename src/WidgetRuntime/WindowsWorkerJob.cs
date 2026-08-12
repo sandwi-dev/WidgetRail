@@ -6,6 +6,11 @@ using Microsoft.Win32.SafeHandles;
 
 namespace GameBarAlternative.WidgetRuntime;
 
+internal readonly record struct WindowsWorkerJobAccounting(
+    uint TotalProcesses,
+    uint ActiveProcesses,
+    uint TotalTerminatedProcesses);
+
 /// <summary>
 /// Windows worker containment. Processes are created suspended so no worker
 /// code can run before assignment to the job. Community workers additionally
@@ -14,6 +19,7 @@ namespace GameBarAlternative.WidgetRuntime;
 internal sealed class WindowsWorkerJob : IDisposable
 {
     private const uint JobObjectExtendedLimitInformationClass = 9;
+    private const uint JobObjectBasicAccountingInformationClass = 1;
     private const uint JobObjectBasicUiRestrictionsClass = 4;
     private const uint JobObjectLimitActiveProcess = 0x00000008;
     private const uint JobObjectLimitJobMemory = 0x00000200;
@@ -28,16 +34,52 @@ internal sealed class WindowsWorkerJob : IDisposable
     private readonly SafeJobHandle _handle;
     private bool _disposed;
 
-    private WindowsWorkerJob(SafeJobHandle handle, long memoryLimitBytes)
+    private WindowsWorkerJob(SafeJobHandle handle) => _handle = handle;
+
+    public long? MemoryLimitBytes
     {
-        _handle = handle;
-        MemoryLimitBytes = memoryLimitBytes;
+        get
+        {
+            var limits = ReadLimits();
+            return (limits.BasicLimitInformation.LimitFlags & JobObjectLimitJobMemory) == 0
+                ? null
+                : checked((long)limits.JobMemoryLimit);
+        }
     }
 
-    public long MemoryLimitBytes { get; }
-    public uint ActiveProcessLimit => 1;
+    public uint? ActiveProcessLimit
+    {
+        get
+        {
+            var limits = ReadLimits();
+            return (limits.BasicLimitInformation.LimitFlags & JobObjectLimitActiveProcess) == 0
+                ? null
+                : limits.BasicLimitInformation.ActiveProcessLimit;
+        }
+    }
 
-    public static WindowsWorkerJob Create(long memoryLimitBytes)
+    public WindowsWorkerJobAccounting Accounting
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var information = new JobObjectBasicAccountingInformation();
+            if (!NativeMethods.QueryInformationJobObjectAccounting(
+                    _handle,
+                    JobObjectBasicAccountingInformationClass,
+                    ref information,
+                    (uint)Marshal.SizeOf<JobObjectBasicAccountingInformation>(),
+                    IntPtr.Zero))
+                throw new Win32Exception(
+                    Marshal.GetLastWin32Error(), "Could not query worker Job accounting.");
+            return new WindowsWorkerJobAccounting(
+                information.TotalProcesses,
+                information.ActiveProcesses,
+                information.TotalTerminatedProcesses);
+        }
+    }
+
+    public static WindowsWorkerJob Create()
     {
         var handle = NativeMethods.CreateJobObjectW(IntPtr.Zero, null);
         if (handle.IsInvalid)
@@ -48,13 +90,9 @@ internal sealed class WindowsWorkerJob : IDisposable
             {
                 BasicLimitInformation = new JobObjectBasicLimitInformation
                 {
-                    LimitFlags = JobObjectLimitActiveProcess |
-                                 JobObjectLimitJobMemory |
-                                 JobObjectLimitDieOnUnhandledException |
+                    LimitFlags = JobObjectLimitDieOnUnhandledException |
                                  JobObjectLimitKillOnJobClose,
-                    ActiveProcessLimit = 1,
                 },
-                JobMemoryLimit = checked((nuint)memoryLimitBytes),
             };
             if (!NativeMethods.SetInformationJobObject(
                     handle,
@@ -73,7 +111,7 @@ internal sealed class WindowsWorkerJob : IDisposable
                     (uint)Marshal.SizeOf<JobObjectBasicUiRestrictions>()))
                 throw new Win32Exception(
                     Marshal.GetLastWin32Error(), "Could not configure worker UI restrictions.");
-            return new WindowsWorkerJob(handle, memoryLimitBytes);
+            return new WindowsWorkerJob(handle);
         }
         catch
         {
@@ -176,6 +214,21 @@ internal sealed class WindowsWorkerJob : IDisposable
         if (_disposed) return;
         _disposed = true;
         _handle.Dispose();
+    }
+
+    private JobObjectExtendedLimitInformation ReadLimits()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var information = new JobObjectExtendedLimitInformation();
+        if (!NativeMethods.QueryInformationJobObjectLimits(
+                _handle,
+                JobObjectExtendedLimitInformationClass,
+                ref information,
+                (uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>(),
+                IntPtr.Zero))
+            throw new Win32Exception(
+                Marshal.GetLastWin32Error(), "Could not query worker Job containment.");
+        return information;
     }
 
     private static string BuildCommandLine(string executable, IReadOnlyCollection<string> arguments)
@@ -357,6 +410,19 @@ internal sealed class WindowsWorkerJob : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct JobObjectBasicAccountingInformation
+    {
+        public long TotalUserTime;
+        public long TotalKernelTime;
+        public long ThisPeriodTotalUserTime;
+        public long ThisPeriodTotalKernelTime;
+        public uint TotalPageFaultCount;
+        public uint TotalProcesses;
+        public uint ActiveProcesses;
+        public uint TotalTerminatedProcesses;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct JobObjectBasicUiRestrictions
     {
         public uint UiRestrictionsClass;
@@ -485,6 +551,24 @@ internal sealed class WindowsWorkerJob : IDisposable
             uint informationClass,
             ref JobObjectBasicUiRestrictions information,
             uint informationLength);
+
+        [DllImport("kernel32.dll", EntryPoint = "QueryInformationJobObject", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool QueryInformationJobObjectLimits(
+            SafeJobHandle job,
+            uint informationClass,
+            ref JobObjectExtendedLimitInformation information,
+            uint informationLength,
+            IntPtr returnLength);
+
+        [DllImport("kernel32.dll", EntryPoint = "QueryInformationJobObject", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool QueryInformationJobObjectAccounting(
+            SafeJobHandle job,
+            uint informationClass,
+            ref JobObjectBasicAccountingInformation information,
+            uint informationLength,
+            IntPtr returnLength);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

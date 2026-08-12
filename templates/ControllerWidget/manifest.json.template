@@ -22,7 +22,6 @@
     "idleSeconds": 300
   },
   "resourceRequest": {
-    "memoryMb": 32,
     "updateHz": 4
   },
   "architectures": [

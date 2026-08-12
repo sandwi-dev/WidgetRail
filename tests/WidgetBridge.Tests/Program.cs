@@ -27,7 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
     ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),
-    ("Catalog owns bounded worker memory policy", CatalogMemoryPolicyIsTrusted),
+    ("Catalog treats worker memory guidance as optional advisory metadata", CatalogMemoryGuidanceIsAdvisory),
     ("Worker residency budget options are bounded and explicit", WorkerResidencyBudgetOptionsAreBounded),
     ("Worker residency budget admission is race safe", WorkerResidencyBudgetAdmissionIsRaceSafe),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
@@ -95,8 +95,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
+    ("Oversized worker presentation fails without harming its neighbor", OversizedPresentationPreservesNeighbor),
     ("Worker residency budget refuses count overcommit and releases failures", WorkerResidencyCountIsBounded),
-    ("Worker residency budget accounts declared memory and preserves Settings access", WorkerResidencyMemoryIsBounded),
+    ("Worker residency reports memory guidance without private-size refusal", WorkerResidencyMemoryIsAdvisory),
 };
 
 var failures = new List<string>();
@@ -236,18 +237,16 @@ static Task WorkerResidencyBudgetOptionsAreBounded()
 {
     var defaults = GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget([]);
     Assert.Equal(8, defaults.MaximumApplicationWorkers);
-    Assert.Equal(512, defaults.MaximumApplicationMemoryMb);
 
     var configured = GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget(
-        ["--max-resident-workers", "3", "--max-resident-memory-mb", "192"]);
+        ["--max-resident-workers", "3"]);
     Assert.Equal(3, configured.MaximumApplicationWorkers);
-    Assert.Equal(192, configured.MaximumApplicationMemoryMb);
     Assert.Throws<ArgumentException>(() =>
         GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget(
             ["--max-resident-workers", "0"]));
     Assert.Throws<ArgumentException>(() =>
         GameBarAlternative.WidgetBridge.Program.ResolveWorkerResidencyBudget(
-            ["--max-resident-memory-mb", "15"]));
+            ["--max-resident-memory-mb", "192"]));
     return Task.CompletedTask;
 }
 
@@ -256,14 +255,13 @@ static async Task WorkerResidencyBudgetAdmissionIsRaceSafe()
     var budget = new WorkerResidencyBudget(new WorkerResidencyBudgetOptions
     {
         MaximumApplicationWorkers = 4,
-        MaximumApplicationMemoryMb = 64,
     });
     var owners = Enumerable.Range(0, 32).Select(_ => new object()).ToArray();
     var admissions = await Task.WhenAll(owners.Select((owner, index) => Task.Run(() =>
     {
         try
         {
-            budget.Reserve(owner, $"race-{index}", 16, isControlPlane: false);
+            budget.Reserve(owner, $"race-{index}", 1_024, isControlPlane: false);
             return true;
         }
         catch (WidgetProcessAdmissionException)
@@ -274,10 +272,10 @@ static async Task WorkerResidencyBudgetAdmissionIsRaceSafe()
 
     Assert.Equal(4, admissions.Count(admitted => admitted));
     Assert.Equal(4, budget.Snapshot.ApplicationWorkers);
-    Assert.Equal(64, budget.Snapshot.ApplicationMemoryMb);
+    Assert.Equal(4_096L, budget.Snapshot.ApplicationAdvisoryMemoryMb);
     foreach (var owner in owners) budget.Release(owner);
     Assert.Equal(0, budget.Snapshot.ApplicationWorkers);
-    Assert.Equal(0, budget.Snapshot.ApplicationMemoryMb);
+    Assert.Equal(0L, budget.Snapshot.ApplicationAdvisoryMemoryMb);
 }
 
 static async Task SettingsUsesSelectedCatalog()
@@ -299,17 +297,15 @@ static async Task SettingsUsesSelectedCatalog()
         "Catalog alignment must not change the exact trusted Settings worker policy.");
 }
 
-static Task CatalogMemoryPolicyIsTrusted()
+static Task CatalogMemoryGuidanceIsAdvisory()
 {
-    using var valid = TemporaryCatalog.Create(memoryLimitMb: 48);
+    using var valid = TemporaryCatalog.Create(memoryLimitMb: 1_024);
     var configured = BridgeCatalog.Load(valid.Path).GetConfigured("test-widget");
-    Assert.Equal(48, configured.MemoryLimitMb);
+    Assert.Equal(1_024, configured.MemoryRequestMb);
     Assert.True(!configured.RequiresAppContainer,
         "Trusted built-in catalog workers must remain explicitly host-owned.");
-    using var tooSmall = TemporaryCatalog.Create(memoryLimitMb: 15);
-    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(tooSmall.Path));
-    using var tooLarge = TemporaryCatalog.Create(memoryLimitMb: 257);
-    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(tooLarge.Path));
+    using var invalid = TemporaryCatalog.Create(memoryLimitMb: 0);
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(invalid.Path));
     return Task.CompletedTask;
 }
 
@@ -1197,7 +1193,7 @@ static async Task InstalledWidgetsJoinCatalog()
         .Single(widget => widget.Id == "dev.example.enabled")
         .ActiveVersion;
     var installedManifest = installedVersion.Manifest;
-    Assert.Equal(64, installed.MemoryLimitMb);
+    Assert.Equal(256, installed.MemoryRequestMb);
     Assert.Equal(WidgetGlyph.Music, installed.Icon);
     Assert.Equal(Environment.ProcessPath, installed.WorkerExecutable);
     Assert.Equal("styles/default.gbss", installed.StyleFile);
@@ -2021,7 +2017,7 @@ static async Task IdleUnloadIsPolicyDriven()
     await WaitUntilAsync(() => harness.Server.RunningWorkerCount == 0,
         TimeSpan.FromSeconds(WidgetResidencyPolicies.MinimumIdleSeconds + 3));
     Assert.Equal(0, harness.Server.ResidencyBudget.ApplicationWorkers);
-    Assert.Equal(0, harness.Server.ResidencyBudget.ApplicationMemoryMb);
+    Assert.Equal(0L, harness.Server.ResidencyBudget.ApplicationAdvisoryMemoryMb);
 
     var cachedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
@@ -2475,6 +2471,46 @@ static async Task WorkerFailureIsSurfaced()
     Assert.Equal(BridgeMessageTypes.Widgets, widgets.Type);
 }
 
+static async Task OversizedPresentationPreservesNeighbor()
+{
+    await using var harness = await BridgeHarness.StartBudgetAsync(
+        new WorkerResidencyBudgetOptions { MaximumApplicationWorkers = 2 },
+        new TemporaryWidgetDefinition(
+            "oversized", "dev.test.oversized", "dev.test", "oversized.instance"),
+        new TemporaryWidgetDefinition(
+            "neighbor", "dev.test.neighbor", "dev.test", "neighbor.instance"));
+
+    foreach (var id in new[] { "oversized", "neighbor" })
+    {
+        var lifecycle = await harness.Client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest(id, WidgetLifecycleState.Visible));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+        var initial = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot, new WidgetIdRequest(id));
+        Assert.Equal(BridgeMessageTypes.Snapshot, initial.Type);
+    }
+
+    var admission = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "oversized", new WidgetActionEvent("oversize", "button")));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, admission.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var rejected = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("oversized"));
+    Assert.Equal(BridgeMessageTypes.Error, rejected.Type);
+    Assert.True(!string.IsNullOrWhiteSpace(
+        rejected.Payload.GetProperty("message").GetString()),
+        "Oversized presentation rejection omitted its bounded diagnostic.");
+
+    var neighbor = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("neighbor"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, neighbor.Type);
+    Assert.Equal("neighbor.instance",
+        neighbor.Payload.GetProperty("snapshot").GetProperty("widgetInstanceId").GetString());
+}
+
 static async Task ActionFailureIsGenerationOwned()
 {
     await using var harness = await BridgeHarness.StartAsync();
@@ -2505,7 +2541,6 @@ static async Task WorkerResidencyCountIsBounded()
         new WorkerResidencyBudgetOptions
         {
             MaximumApplicationWorkers = 1,
-            MaximumApplicationMemoryMb = 128,
         },
         new TemporaryWidgetDefinition("worker-0", "dev.test.worker0", "dev.test", "worker.0", 64),
         new TemporaryWidgetDefinition("worker-1", "dev.test.worker1", "dev.test", "worker.1", 64));
@@ -2516,7 +2551,7 @@ static async Task WorkerResidencyCountIsBounded()
     Assert.Equal(BridgeMessageTypes.Acknowledged, first.Type);
     Assert.Equal(1, harness.Server.RunningWorkerCount);
     Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
-    Assert.Equal(64, harness.Server.ResidencyBudget.ApplicationMemoryMb);
+    Assert.Equal(64L, harness.Server.ResidencyBudget.ApplicationAdvisoryMemoryMb);
 
     var refused = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
@@ -2546,16 +2581,15 @@ static async Task WorkerResidencyCountIsBounded()
     Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
 }
 
-static async Task WorkerResidencyMemoryIsBounded()
+static async Task WorkerResidencyMemoryIsAdvisory()
 {
     await using var harness = await BridgeHarness.StartBudgetAsync(
         new WorkerResidencyBudgetOptions
         {
             MaximumApplicationWorkers = 3,
-            MaximumApplicationMemoryMb = 96,
         },
         new TemporaryWidgetDefinition("worker-64", "dev.test.worker64", "dev.test", "worker.64", 64),
-        new TemporaryWidgetDefinition("worker-48", "dev.test.worker48", "dev.test", "worker.48", 48),
+        new TemporaryWidgetDefinition("worker-1024", "dev.test.worker1024", "dev.test", "worker.1024", 1_024),
         new TemporaryWidgetDefinition("settings", "org.gbar.firstparty.settings",
             "org.gbar.firstparty", "settings.instance", 64));
 
@@ -2564,26 +2598,22 @@ static async Task WorkerResidencyMemoryIsBounded()
         new BridgeWidgetLifecycleRequest("worker-64", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, first.Type);
 
-    var refused = await harness.Client.RequestAsync(
+    var second = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
-        new BridgeWidgetLifecycleRequest("worker-48", WidgetLifecycleState.Visible));
-    Assert.Equal(BridgeMessageTypes.Error, refused.Type);
-    Assert.True(
-        refused.Payload.GetProperty("message").GetString()!
-            .Contains("application memory limit (64+48/96 MiB)", StringComparison.Ordinal),
-        "Memory-bound refusal did not explain the accounted Job limit.");
+        new BridgeWidgetLifecycleRequest("worker-1024", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, second.Type);
 
     var settings = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("settings", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, settings.Type);
     var budget = harness.Server.ResidencyBudget;
-    Assert.Equal(1, budget.ApplicationWorkers);
-    Assert.Equal(64, budget.ApplicationMemoryMb);
+    Assert.Equal(2, budget.ApplicationWorkers);
+    Assert.Equal(1_088L, budget.ApplicationAdvisoryMemoryMb);
     Assert.Equal(1, budget.ControlPlaneWorkers);
-    Assert.Equal(64, budget.ControlPlaneMemoryMb);
-    Assert.Equal(2, budget.TotalWorkers);
-    Assert.Equal(128, budget.TotalMemoryMb);
+    Assert.Equal(64L, budget.ControlPlaneAdvisoryMemoryMb);
+    Assert.Equal(3, budget.TotalWorkers);
+    Assert.Equal(1_152L, budget.TotalAdvisoryMemoryMb);
 }
 
 static string RequiredValue(string[] values, string name)
@@ -2600,11 +2630,17 @@ file sealed class BridgeTestWidget : Widget
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, string>
         _inputOrigins = new();
     private readonly bool _artworkFixture;
+    private readonly bool _oversizedFixture;
+    private bool _oversized;
     private WidgetAppLibraryItem? _artworkItem;
 
-    internal BridgeTestWidget(string instanceId) =>
+    internal BridgeTestWidget(string instanceId)
+    {
         _artworkFixture = string.Equals(
             instanceId, "artwork.instance", StringComparison.Ordinal);
+        _oversizedFixture = string.Equals(
+            instanceId, "oversized.instance", StringComparison.Ordinal);
+    }
 
     public override WidgetView Render()
     {
@@ -2629,6 +2665,12 @@ file sealed class BridgeTestWidget : Widget
                     new WidgetArtworkHandle(handle), "artwork.image", "Application icon",
                     ImageFit.Contain)
                 : UI.Icon(WidgetGlyph.Play, "artwork.image", "Application icon fallback"));
+        }
+        if (_oversizedFixture && _oversized)
+        {
+            var maximumText = new string('X', ProtocolConstants.MaximumStringLength);
+            for (var index = 0; index < 300; index++)
+                children.Add(UI.Text(maximumText, $"oversized.presentation.{index}"));
         }
         return new WidgetView(
             UI.Stack("root", children.ToArray()),
@@ -2729,6 +2771,11 @@ file sealed class BridgeTestWidget : Widget
         }
         else if (action.ActionId == "hang")
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        else if (action.ActionId == "oversize" && _oversizedFixture)
+        {
+            _oversized = true;
+            Invalidate();
+        }
         else if (action.ActionId == "fail")
             throw new InvalidOperationException("intentional bridge action failure");
         else if (action.ActionId == "ordered.first")

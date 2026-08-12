@@ -52,7 +52,6 @@ static async Task RunsIsolatedWorker()
         ConnectTimeout = TimeSpan.FromSeconds(3),
         RequestTimeout = TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = 64L * 1024 * 1024,
     });
     var snapshot = await client.GetSnapshotAsync();
     Assert.Equal("worker-host.test", snapshot.WidgetInstanceId);
@@ -102,7 +101,6 @@ static async Task BrokerServicesPrecedeWidgetCreation()
         ConnectTimeout = TimeSpan.FromSeconds(3),
         RequestTimeout = TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = 64L * 1024 * 1024,
     });
 
     var snapshot = await client.GetSnapshotAsync();
@@ -141,7 +139,6 @@ static async Task AppContainerBrokerIsBound()
         ConnectTimeout = TimeSpan.FromSeconds(8),
         RequestTimeout = TimeSpan.FromSeconds(3),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = 96L * 1024 * 1024,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = "community-v1\ndev.test\ndev.test.isolated",
         ReadOnlyPaths = [Path.GetDirectoryName(assembly)!],
@@ -219,7 +216,6 @@ static async Task LoaderFailureCodeIsSafe()
         ConnectTimeout = TimeSpan.FromSeconds(3),
         RequestTimeout = TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = 64L * 1024 * 1024,
         StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
     });
     client.Failed += (_, item) => failure = item;

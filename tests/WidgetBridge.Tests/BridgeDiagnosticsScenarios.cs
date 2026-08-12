@@ -193,7 +193,7 @@ internal static class BridgeDiagnosticsScenarios
                 new BridgeClientWorkerStatus("unsafe widget", "bad\r\nname", false, -1,
                     "C:\\private\\failure", true),
             ],
-            new WorkerResidencyBudgetSnapshot(1, 48, 8, 512, 1, 32)),
+            new WorkerResidencyBudgetSnapshot(1, 48, 8, 1, 32)),
         CatalogDiagnosticRevision: 4,
         CatalogDiagnosticCount: 0,
         CatalogRetainedLastGood: false,

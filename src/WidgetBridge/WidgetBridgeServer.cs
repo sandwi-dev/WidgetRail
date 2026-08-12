@@ -529,7 +529,6 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             RequestTimeout = TimeSpan.FromSeconds(2),
             MaximumMessageBytes = _maximumMessageBytes,
             MaximumRestartAttempts = 2,
-            MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
             StartupExitDiagnostics = configured.UsesGenericWorkerHost
                 ? WidgetWorkerStartupDiagnostics.LoaderExitCodes
                 : new Dictionary<int, string>(),

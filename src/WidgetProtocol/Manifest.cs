@@ -43,7 +43,9 @@ public sealed record WidgetManifest
 public sealed record HostApiRange(string Minimum, int MaximumMajor);
 public sealed record WidgetEntrypoint(string Runtime, string Assembly, string Type);
 public sealed record WidgetPresentation(WidgetGlyph Icon = WidgetGlyph.Connection);
-public sealed record WidgetResourceRequest(int MemoryMb = 48, int UpdateHz = 1);
+public sealed record WidgetResourceRequest(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MemoryMb = null,
+    int UpdateHz = 1);
 public sealed record ManifestValidationError(string Path, string Code, string Message);
 
 /// <summary>
@@ -195,8 +197,9 @@ public static partial class WidgetManifestValidator
             Add("$.resourceRequest", "required", "Resource request is required.");
         else
         {
-            if (manifest.ResourceRequest.MemoryMb is < 16 or > 256)
-                Add("$.resourceRequest.memoryMb", "out_of_range", "Memory request must be between 16 and 256 MB.");
+            if (manifest.ResourceRequest.MemoryMb is <= 0)
+                Add("$.resourceRequest.memoryMb", "out_of_range",
+                    "Optional memory guidance must be a positive advisory value in MB.");
             if (manifest.ResourceRequest.UpdateHz is < 1 or > 60)
                 Add("$.resourceRequest.updateHz", "out_of_range", "Update rate must be between 1 and 60 Hz.");
         }

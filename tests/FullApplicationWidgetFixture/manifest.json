@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "id": "dev.gbar.tests.full-application",
+  "publisher": "dev.gbar.tests",
+  "name": "Full Application Fixture",
+  "version": "1.0.0",
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/FullApplicationWidgetFixture.dll",
+    "type": "GameBarAlternative.Tests.FullApplicationWidgetFixture.FullApplicationWidget"
+  },
+  "presentation": { "icon": "play" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "keep-alive" },
+  "resourceRequest": { "memoryMb": 1024, "updateHz": 1 },
+  "architectures": [ "x64" ]
+}

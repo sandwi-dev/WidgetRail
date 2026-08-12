@@ -622,7 +622,6 @@ internal static class BridgeClientRegistryScenarios
             options: new WorkerResidencyBudgetOptions
             {
                 MaximumApplicationWorkers = 1,
-                MaximumApplicationMemoryMb = 64,
             },
             configure: (configured, client) =>
             {
@@ -723,7 +722,7 @@ internal static class BridgeClientRegistryScenarios
         Name = id,
         InstanceId = $"{id}.instance",
         WorkerExecutable = Environment.ProcessPath!,
-        MemoryLimitMb = 64,
+        MemoryRequestMb = 64,
         ResidencyPolicy = residency ?? new WidgetResidencyPolicy(),
         WorkerFingerprint = Fingerprint(worker),
         CatalogFingerprint = Fingerprint(catalog),

@@ -822,8 +822,9 @@ that bounded policy for ordinary widgets. Choose `keep-alive` only when a
 documented process-lifetime Background operation genuinely requires it.
 
 Before launch, the bridge also admits application workers against a host-wide
-default envelope of eight processes and 512 MiB of declared Job memory. It
-never silently evicts a `keep-alive` worker. When capacity is full, a new launch
+default envelope of eight worker sessions. Optional memory guidance is reported
+but neither reserved nor enforced as a private-size limit. It never silently
+evicts a `keep-alive` worker. When capacity is full, a new launch
 fails with a remediation message until a resident worker is disabled, removed,
 crashes, or reaches its explicit idle-unload bound. The trusted Settings worker
 has one separate control-plane slot so diagnostics remain reachable.
@@ -1512,7 +1513,7 @@ scope, limits, errors, and tests. YT Music is the first migration consumer.
 | `residencyPolicy.mode` | `keep-alive`, `suspend-when-hidden`, or `unload-after-idle`. Omit the object for keep-alive default. |
 | `residencyPolicy.idleSeconds` | Required only for `unload-after-idle`; integer 5–86,400. |
 | `backgroundPolicy` | Legacy manifest-v1 migration alias only: `none` → keep-alive, `suspend` → suspend-when-hidden. It cannot coexist with `residencyPolicy`. |
-| `resourceRequest.memoryMb` | 16–256. The host owns the effective limit. |
+| `resourceRequest.memoryMb` | Optional positive advisory estimate for diagnostics. It is not reserved capacity or a hard private-memory limit. |
 | `resourceRequest.updateHz` | 1–60 metadata request. SDK periodic helpers are independently limited to at most 4 Hz. |
 | `architectures` | One or both of `x64`, `arm64`; the current machine architecture must be listed. |
 
