@@ -539,8 +539,11 @@ network, or implementation of CLI commands owned by DLV-135.
 
 ### DLV-132 — Render host-owned launcher slots with validated responsive layout
 
-**State:** Assigned from clean `100c646` before the DLV-131 review completed;
-finish and commit this coherent in-progress milestone, then take DLV-137
+**State:** Implemented as `874f778` but not accepted or integrated. Review found
+that the standalone WIC fixture renders only one 1280x720 left-rail profile,
+while the required compact/standard/wide, taskbar-reserved, 150%-scale, all-four-
+preset geometry agreement and production-host semantic fixture are absent.
+DLV-140 is the queued correction after already-active DLV-137.
 **Owner/outcome:** platform lane for the native recipe adapter and declarative
 layout/paint/focus/pointer/UIA support needed by validated launcher slots. A
 fixed semantic fixture must render the bottom hero rail and the left vertical
@@ -608,9 +611,40 @@ work, capture, network, new media dependency, or unrelated hardening.
 the correction needs a public schema/budget change rather than validation of
 the already documented format.
 
+### DLV-140 — Prove Launcher Experience geometry through the production host
+
+**State:** Ready immediately after the already-active DLV-137; this is the
+DLV-132 review correction and precedes DLV-136 and DLV-133
+**Baseline/dependencies:** committed DLV-132 `874f778` plus accepted DLV-137;
+do not broaden the recipe schema/catalog or Game Launcher domain contract
+**Owner/outcome:** platform lane for the smallest adapter/fixture correction
+needed to make the documented native Launcher Experience support truthful
+across every required responsive profile and through the real OverlayHost
+semantic rendering path.
+**Acceptance:** fixed host-owned slot content renders bottom `hero-rail`, left
+vertical rail with independent glass details panel, `cover-wall`, `carousel`,
+and `compact-grid` through compact/standard/wide profiles, 720p, 1080p,
+taskbar-reserved work areas, 150% text scale, long titles, and missing artwork.
+For every profile, painted focus, pointer hit target, controller/keyboard focus,
+semantic focus, UIA bounds/order, exact host action routes, and Back agree and
+remain inside the live work area. Changing paint z-order does not alter semantic
+geometry/order. Invalid or incompatible recipes atomically render the matching
+built-in fallback. Add one bounded production-host semantic fixture that
+actually invokes the adapter from the host path; merely compiling otherwise
+unreferenced adapter objects into `OverlayHost.exe` or using only an offscreen
+WIC unit executable is insufficient. Existing widget flex/grid/scroll behavior
+must remain unchanged.
+**Verification:** Tier 1 Launcher Experience layout/renderer/focus/pointer/UIA
+Release group plus the named Tier 2 production-host semantic fixture. No
+aggregate, capture, pack CLI/catalog change, launcher domain work, motion, or
+unrelated renderer refactor.
+**Stop:** satisfying the production fixture requires projecting live Game
+Launcher domain state before DLV-134, changing the window/compositor ownership
+model, or weakening the existing semantic/action authority boundary.
+
 ### DLV-136 — Make the production overlay reachable by the planner UI smoke
 
-**State:** Ready immediately after DLV-137; take this before DLV-133
+**State:** Ready immediately after DLV-140; take this before DLV-133
 **Owner/outcome:** platform lane for the smallest production-host change that
 lets the supported Windows computer-control surface discover, activate, and
 capture the exact visible `Game Bar Alternative` main window after `--show`.
@@ -652,9 +686,10 @@ manufacture adjacent work.
 1. DLV-130 owns the normalized public launcher data contract; no other lane
    edits that broker/bridge/SDK boundary until it is accepted.
 2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
-   catalog. Already-active DLV-132 finishes first; DLV-137 closes the bounded
-   package-validation review gaps, then DLV-136 restores required planner
-   UI-smoke reachability before DLV-133 continues platform presentation work.
+   catalog. DLV-137 closes its bounded package-validation review gaps, DLV-140
+   closes the committed DLV-132 responsive/production-host evidence gaps, then
+   DLV-136 restores required planner UI-smoke reachability before DLV-133
+   continues platform presentation work.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.
