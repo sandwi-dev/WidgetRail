@@ -4801,9 +4801,12 @@ snapshot rejection at
 `missing_collection_anchor` after top-control interactions. This is production
 evidence, not a capture artifact. The same live run reports nonfunctional
 View/X/Y/LB/RB help and last-row Down escaping to the footer while another game
-row/page exists. DLV-126 correctly belongs to the managed Game Launcher
-presentation/action/navigation owners, with a stop-and-reassign boundary if
-shortcut dispatch fails before managed admission.
+row/page exists. Accepted DLV-126 `a45166c`, integrated through `2c58ba7`, keeps
+the correction in the managed Game Launcher presentation/action/navigation
+owners: warm anchors now use the exact rendered non-hidden rows, shortcuts and
+help follow actionable game tiles, and focused Release evidence passes 60/60.
+The freshly packaged PID 16824 awaits the user's direct control and continuation
+verdict; no shared SDK/protocol or native routing change was needed.
 
 The user's live shell also moves the icon tray and clips the overlay at the top
 and bottom while cycling. The correlated log shows tray capacity changing from
@@ -4822,11 +4825,12 @@ documents untouched, and the implementation stream must continue to leave them
 unstaged. This workflow boundary does not replace the visible-first sequence
 below.
 
-1. **Fix the confirmed Game Launcher and shell regressions first.** DLV-126
-   restores protocol-valid top controls, exact contextual shortcuts, and
-   collection continuation. DLV-127 keeps the tray stationary and fits the
-   overlay to the active work area. Both use functional/log/geometry evidence;
-   the user's live visual verdict remains the closing gate.
+1. **Live-check Game Launcher and finish the shell regression next.** Accepted
+   DLV-126 restores protocol-valid top controls, actionable contextual
+   shortcuts, and collection continuation on packaged PID 16824. DLV-127 keeps
+   the tray stationary and fits the overlay to the active work area. Both use
+   functional/log/geometry evidence; the user's live visual verdict remains the
+   closing gate.
 2. **Live-check accepted DLV-049 and DLV-051.** DLV-049 is integrated as
    `a8bcb27` and binds the exact four-session reverse edge to DLV-021's corrected
    geometry; DLV-051 is integrated as `822d29c` and authors Spotify seek Left to

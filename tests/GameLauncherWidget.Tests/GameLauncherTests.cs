@@ -55,6 +55,215 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task EveryTopControlKeepsPendingAndCommittedSnapshotsValid()
+    {
+        var displays = Enumerable.Range(0, 3)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-{index:D5}", $"Game {index:D5}",
+                index % 2 == 0 ? "Steam" : "Windows"))
+            .ToArray();
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, displays)
+        {
+            FavoriteSavedIds = [displays[1].SavedId],
+            RecentSavedIds = [displays[2].SavedId],
+            ExcludedSavedIds = [displays[0].SavedId],
+        };
+        var host = new FakeHost(3, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "top-control warm state");
+        long sequence = 700;
+
+        foreach (var actionId in new[]
+                 {
+                     "game-launcher.filter.favorites",
+                     "game-launcher.filter.recent",
+                     "game-launcher.filter.source",
+                     "game-launcher.filter.sort",
+                     "game-launcher.query.clear",
+                 })
+        {
+            var started = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource<WidgetAppLibraryPage>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var before = host.Queries.Count;
+            host.QueryHandler = (request, token) =>
+            {
+                started.TrySetResult();
+                return new(release.Task.WaitAsync(token));
+            };
+
+            await widget.OnActionAsync(new(actionId, actionId));
+            await Bounded(started.Task, actionId + " admission");
+            Assert.AreEqual(before + 1, host.Queries.Count,
+                actionId + " must admit one replacement query.");
+            AssertValidCollectionAnchor(Snapshot(widget, sequence++));
+
+            release.TrySetResult(new(
+                [Item(0), Item(1), Item(2)], null, null, actionId));
+            await Bounded(widget.WhenLibraryIdleAsync(), actionId + " drain");
+            AssertValidCollectionAnchor(Snapshot(widget, sequence++));
+        }
+
+        host.QueryHandler = null;
+        await AssertRoute("game-launcher.add.open", GameLauncherRoute.AddGames);
+        await AssertRoute("game-launcher.running.open", GameLauncherRoute.Running);
+        await AssertRoute("game-launcher.hidden.open", GameLauncherRoute.Hidden);
+        await Background(widget);
+
+        async Task AssertRoute(string actionId, GameLauncherRoute expected)
+        {
+            var beforeQueries = host.Queries.Count;
+            var beforeRunning = host.RunningObservationCount;
+            await widget.OnActionAsync(new(actionId, actionId));
+            await Bounded(widget.WhenLibraryIdleAsync(), actionId + " route load");
+            var route = Snapshot(widget, sequence++);
+            var expectedTitle = expected switch
+            {
+                GameLauncherRoute.AddGames => "Add games",
+                GameLauncherRoute.Running => "Add running app",
+                _ => "Hidden games",
+            };
+            Assert.AreEqual(expectedTitle, Nodes(route.Root).Single(node =>
+                node.Id == "game-launcher.compact.title").Text);
+            if (expected == GameLauncherRoute.Running)
+                Assert.AreEqual(beforeRunning + 1, host.RunningObservationCount);
+            else
+                Assert.AreEqual(beforeQueries + 1, host.Queries.Count);
+
+            var backId = expected switch
+            {
+                GameLauncherRoute.AddGames => "game-launcher.add.back",
+                GameLauncherRoute.Running => "game-launcher.running.back",
+                _ => "game-launcher.hidden.back",
+            };
+            await widget.OnActionAsync(new(backId, backId));
+            await Bounded(widget.WhenLibraryIdleAsync(), backId + " route load");
+            AssertValidCollectionAnchor(Snapshot(widget, sequence++));
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    [DataRow(1)]
+    [DataRow(65)]
+    [DataRow(130)]
+    public async Task LastGameRowContinuesExactlyAcrossAvailableCursorPages(int total)
+    {
+        var host = new FakeHost(total);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var expectedQueries = 1;
+        var expectedPages = (total + LauncherWidget.PageSize - 1) /
+            LauncherWidget.PageSize;
+
+        for (var page = 1; page < expectedPages; page++)
+        {
+            var before = Snapshot(widget, 800 + page);
+            var scroll = Nodes(before.Root).Single(node =>
+                node.Id == GameLauncherPresentation.ScrollId);
+            Assert.IsNotNull(scroll.ScrollNearEndActionId,
+                "A non-terminal last row must expose one managed continuation action.");
+            var lastGame = Nodes(scroll).Last(node => node.CollectionItemKey is not null);
+            Assert.IsFalse(lastGame.Id.StartsWith("game-launcher.previous",
+                StringComparison.Ordinal));
+
+            var action = new WidgetActionEvent(
+                scroll.ScrollNearEndActionId!, scroll.Id,
+                ControllerButton.DPadDown, ControllerEventPhase.Pressed,
+                InputScopeId: before.ActiveInputScopeId);
+            await widget.OnActionAsync(action);
+            await Bounded(widget.WhenLibraryIdleAsync(), "last-row cursor continuation");
+            expectedQueries++;
+            Assert.AreEqual(expectedQueries, host.Queries.Count,
+                "One edge input must load the next cursor page exactly once.");
+            Assert.IsNotNull(widget.Collection.RequestedFocusId);
+            Assert.IsTrue(widget.Collection.RequestedFocusId!.StartsWith(
+                "game-launcher.item.grid.", StringComparison.Ordinal));
+            Assert.IsTrue(Nodes(Snapshot(widget, 850 + page).Root).Any(node =>
+                node.Id == widget.Collection.RequestedFocusId &&
+                node.ActionId == "game-launcher.launch"),
+                "Continuation focus must land on a game rather than page/footer controls.");
+        }
+
+        var final = Snapshot(widget, 900 + total);
+        var finalScroll = Nodes(final.Root).Single(node =>
+            node.Id == GameLauncherPresentation.ScrollId);
+        Assert.IsNull(finalScroll.ScrollNearEndActionId,
+            "A final partial row must not expose a looping continuation.");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task FocusedShortcutLegendMatchesExactActionability()
+    {
+        var launchStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLaunch = new TaskCompletionSource<WidgetAppLaunchObservation>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new FakeHost(2)
+        {
+            LaunchHandler = (_, _) =>
+            {
+                launchStarted.TrySetResult();
+                return new(releaseLaunch.Task);
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+
+        var ready = Snapshot(widget, 950);
+        var tile = Nodes(ready.Root).First(node =>
+            node.ActionId == "game-launcher.launch");
+        var shortcuts = tile.Shortcuts.ToDictionary(shortcut => shortcut.Button);
+        Assert.AreEqual("game-launcher.details.open",
+            shortcuts[ControllerButton.View].ActionId);
+        Assert.AreEqual("game-launcher.favorite",
+            shortcuts[ControllerButton.X].ActionId);
+        Assert.AreEqual("game-launcher.hide",
+            shortcuts[ControllerButton.Y].ActionId);
+        Assert.AreEqual("game-launcher.variant",
+            shortcuts[ControllerButton.LeftBumper].ActionId);
+        Assert.AreEqual("game-launcher.prefer",
+            shortcuts[ControllerButton.RightBumper].ActionId);
+        foreach (var hintId in new[]
+                 {
+                     "game-launcher.hint.details",
+                     "game-launcher.hint.favorite",
+                     "game-launcher.hint.hide",
+                     "game-launcher.hint.variant",
+                     "game-launcher.hint.prefer",
+                 })
+            Assert.IsTrue(Nodes(ready.Root).Any(node => node.Id == hintId));
+
+        var launch = widget.OnActionAsync(new(
+            "game-launcher.launch", tile.Id)).AsTask();
+        await Bounded(launchStarted.Task, "shortcut busy admission");
+        var busy = Snapshot(widget, 951);
+        var busyTile = Nodes(busy.Root).Single(node => node.Id == tile.Id);
+        Assert.IsTrue(busyTile.IsBusy);
+        Assert.AreEqual(0, busyTile.Shortcuts.Count,
+            "A busy game must not advertise shortcuts it cannot dispatch.");
+        Assert.IsFalse(Nodes(busy.Root).Any(node =>
+            node.Id == "game-launcher.organization.hints"),
+            "The static legend must not outlive current focused-game actionability.");
+
+        releaseLaunch.TrySetResult(new(
+            WidgetAppLaunchObservationState.LauncherStarted, false, false));
+        await Bounded(launch, "shortcut busy completion");
+        await Bounded(widget.WhenLibraryIdleAsync(), "shortcut recent refresh");
+        var completed = Snapshot(widget, 952);
+        Assert.AreEqual(5, Nodes(completed.Root).Single(node =>
+            node.Id == tile.Id).Shortcuts.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task CommittedQueryReplacesGenerationAndStaleCompletionCannotPublish()
     {
         var host = new FakeHost(2);
@@ -2295,6 +2504,20 @@ public sealed class GameLauncherTests
             shortcut.ActionId == "game-launcher.next"));
     }
 
+    private static void AssertValidCollectionAnchor(ViewSnapshot snapshot)
+    {
+        var scroll = Nodes(snapshot.Root).SingleOrDefault(node =>
+            node.Id == GameLauncherPresentation.ScrollId);
+        if (scroll is null) return;
+        var keys = Nodes(scroll).Where(node => node.CollectionItemKey is not null)
+            .Select(node => node.CollectionItemKey!).ToHashSet(StringComparer.Ordinal);
+        if (keys.Count == 0)
+            Assert.IsNull(scroll.CollectionAnchorKey);
+        else
+            Assert.IsTrue(keys.Contains(scroll.CollectionAnchorKey ?? string.Empty),
+                "The collection anchor must identify one currently rendered keyed row.");
+    }
+
     private static IEnumerable<ViewNode> Nodes(ViewNode root)
     {
         yield return root;
@@ -2327,6 +2550,7 @@ public sealed class GameLauncherTests
         internal WidgetTestPrivateState State => _state;
         internal int MaximumObservedIndex { get; private set; } = -1;
         internal int MaximumRequestedLimit { get; private set; }
+        internal int RunningObservationCount { get; private set; }
         internal int? FailAfterOffset { get; set; }
         internal Func<int, WidgetAppLibraryItem> ItemFactory { get; set; } = Item;
         internal Func<WidgetAppLibraryCursorRequest, CancellationToken,
@@ -2361,6 +2585,7 @@ public sealed class GameLauncherTests
                 (_, token) =>
                 {
                     token.ThrowIfCancellationRequested();
+                    RunningObservationCount++;
                     return ValueTask.FromResult(RunningObservation);
                 })
             .WithHandler(WidgetAppLibraryCapabilities.ConfirmRunning,
