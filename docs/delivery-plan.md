@@ -470,7 +470,7 @@ network, or implementation of CLI commands owned by DLV-135.
 
 ### DLV-132 — Render host-owned launcher slots with validated responsive layout
 
-**State:** Ready after DLV-131
+**State:** Ready after DLV-136
 **Owner/outcome:** platform lane for the native recipe adapter and declarative
 layout/paint/focus/pointer/UIA support needed by validated launcher slots. A
 fixed semantic fixture must render the bottom hero rail and the left vertical
@@ -509,6 +509,40 @@ crossfade and degrade effects before focus latency. Tier 1 style/asset/recovery
 groups and Tier 2 production-host lifecycle fixture; no animated media, audio,
 remote assets, gallery, network, screenshot, or aggregate.
 
+### DLV-136 — Make the production overlay reachable by the planner UI smoke
+
+**State:** Ready immediately after accepted DLV-131; take this before DLV-132
+without interrupting the active assignment
+**Owner/outcome:** platform lane for the smallest production-host change that
+lets the supported Windows computer-control surface discover, activate, and
+capture the exact visible `Game Bar Alternative` main window after `--show`.
+The planner must then be able to send normal Left/Right or equivalent tray
+navigation and inspect the admitted first page of every installed widget.
+**Reproduction:** accepted Release PID 32952 is visibly resident and receives
+the authenticated Show activation, but `@oai/sky` returns no OverlayHost entry
+from either `list_windows()` or `list_apps()`. Direct tool launch fails with
+`launched app did not expose a targetable window`. The production window
+already has a stable title but is a topmost `WS_POPUP` with
+`WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP`.
+**Acceptance:** one and only one live main OverlayHost surface is returned by
+the supported computer-control discovery path while visible; activation,
+window-state capture, and keyboard tray cycling operate on that exact surface;
+the backdrop is never independently targetable. Preserve the overlay's normal
+topmost, no-taskbar/Alt-Tab, focus/input, transparency, composition, security,
+and graceful lifecycle behavior. Add only bounded production-window identity
+and discovery evidence; do not build a new screenshot harness or a parallel
+automation-only UI. Planner acceptance requires the real computer-control
+first-page smoke, not only a synthetic enumeration test.
+**Verification:** Tier 1/2 native window identity, accessibility, activation,
+and lifecycle groups plus one bounded production-host discovery proof. No
+aggregate, launcher experience implementation, renderer refactor, or unrelated
+capture work.
+**Stop:** computer-control reachability requires removing
+`WS_EX_NOREDIRECTIONBITMAP`, exposing the backdrop, adding taskbar/Alt-Tab
+presence, weakening composition/security, or making another material product
+UX choice. Preserve evidence and ask the planner instead of shipping that
+tradeoff.
+
 **Queue note:** the user's fresh verdict confirms the moving-tray/work-area
 regression and is now DLV-127. DLV-104 Game Launcher content clipping and
 DLV-106 Audio Mixer tray-Left focus retain their existing live-verification
@@ -520,7 +554,8 @@ manufacture adjacent work.
 1. DLV-130 owns the normalized public launcher data contract; no other lane
    edits that broker/bridge/SDK boundary until it is accepted.
 2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
-   catalog. DLV-132 and DLV-133 consume it in platform order.
+   catalog. DLV-136 restores the required planner UI-smoke reachability before
+   DLV-132 and DLV-133 consume the schema in platform order.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.
@@ -550,6 +585,12 @@ manufacture adjacent work.
 7. Packaged widget-switch transparency and temporal continuity after DLV-115.
 8. Games & Apps cold-restart, trusted artwork, and running-app live checks.
 9. Audio Mixer LB/RB/X physical dashboard controls.
+10. Planner first-page computer-control smoke. The 2026-08-12 01:42 local
+    attempt left accepted PID 32952 visibly running and its exact Show interval
+    contained no new worker, protocol, provider, or presentation failure, but
+    the native surface was absent from computer-control discovery. No widget
+    received a visual pass or failure verdict from that attempt; DLV-136 owns
+    the targetability prerequisite.
 
 ## Recent acceptance delta
 
