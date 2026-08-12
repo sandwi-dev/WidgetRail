@@ -33,6 +33,9 @@ giving themes code execution.
 - Treat One Game Launcher's MYUI as evidence that users value complete layout
   personalities, live backgrounds, animated cover art, and console metaphors;
   do not reproduce its localhost/WebView execution model.
+- Use IGDB as the optional non-commercial metadata provider and SteamGridDB as
+  the optional non-commercial artwork provider. Both are host-brokered,
+  user-configured, replaceable, and never required for discovery or launch.
 - Preserve the existing global theme. A launcher experience is an explicit
   launcher-only selection layered on top of global appearance, and host
   accessibility policy remains final and authoritative.
@@ -226,10 +229,21 @@ presentation gaps.
 An API becomes useful for optional enrichment: better covers/heroes/logos,
 release year, genres, developer/publisher, age ratings, descriptions, aggregate
 ratings, and estimated completion time. The recommended first spike is a
-host-brokered IGDB adapter using developer-owned test credentials, but it must
-remain disabled in production until product use and credential delivery are
-covered by IGDB/Twitch terms or a commercial partnership. No external provider
-is a launch authority or a hard dependency.
+host-brokered IGDB adapter. This project will use IGDB only for its documented
+non-commercial use, so commercial partnership is not a current release blocker.
+Credential delivery and attribution still have to satisfy the IGDB/Twitch
+terms. Any future monetization, paid distribution, advertising, commercial
+service, or other change in use pauses the integration until the terms are
+reviewed again. No external provider is a launch authority or a hard
+dependency.
+
+SteamGridDB is the selected complementary artwork provider for this
+non-commercial open-source project. It supplies community grids, heroes, logos,
+and icons while IGDB remains the general metadata source. SteamGridDB access is
+user-enabled with the user's own API key and is limited to documented API
+functionality and personal, non-commercial presentation. Assets are cached only
+for that user's local launcher and are never bundled into the application,
+experience packs, fixture libraries, release screenshots, or exported caches.
 
 If “GameDB” means **TheGamesDB**, it is not the recommended baseline today: its
 official site exposes an authenticated API, but its current public pages do not
@@ -241,9 +255,9 @@ before implementing it.
 
 | Provider | Relevant value | Current constraints | Product decision |
 | --- | --- | --- | --- |
-| [IGDB](https://api-docs.igdb.com/) | Covers, artwork, screenshots, external store mappings, companies, genres, ratings, age ratings, release data, and a Game Time To Beat endpoint. | Requires a Twitch confidential client ID/secret and OAuth; 4 requests/second and 8 concurrent requests. Public docs say free non-commercial use and direct commercial users to a partnership. Browser calls are unsupported. | **Preferred enrichment spike**, broker-only. Complete commercial/attribution and desktop-credential review first. Never compile the confidential secret into this open-source client. |
+| [IGDB](https://api-docs.igdb.com/) | Covers, artwork, screenshots, external store mappings, companies, genres, ratings, age ratings, release data, and a Game Time To Beat endpoint. | Requires a Twitch confidential client ID/secret and OAuth; 4 requests/second and 8 concurrent requests. Public docs allow free non-commercial use and direct commercial users to a partnership. Browser calls are unsupported. | **Selected M2 enrichment provider for this non-commercial project**, broker-only. Record required attribution and use user-supplied credentials unless IGDB approves another desktop flow. Never compile the confidential secret into this open-source client. |
 | [RAWG](https://rawg.io/apidocs) | Broad catalog, screenshots, ratings, Metacritic value, and average playtime with a relatively simple key. | Free-plan and API terms impose key, quota, attribution/link, usage, and redistribution conditions; current commercial wording must be reconciled before release. | **Fallback candidate**, not a default dependency. Legal/UX review must prove that overlay attribution and intended scale comply. |
-| [SteamGridDB](https://www.steamgriddb.com/api/v2) | Particularly strong community grids, heroes, logos, and icons. | API/key availability and commercial artwork rights are not sufficiently stable or permissive for a bundled baseline; underlying art has its own rights. | **User-opt-in artwork candidate only** after written permission and a per-asset provenance policy. |
+| [SteamGridDB](https://www.steamgriddb.com/api/v2) | Particularly strong community grids, heroes, logos, and icons. Its organization publishes open-source API wrappers and integrations. | Requires a personal API key. Its [terms](https://www.steamgriddb.com/terms) limit service use to personal, non-commercial use and prohibit scraping/unreasonable automation. Artwork is user-submitted content with independent rights and takedown risk. | **Selected optional M2 artwork provider** for this non-commercial project. Use the documented API, each user's key, bounded local caching, provenance, and no redistribution. |
 | [TheGamesDB](https://api.thegamesdb.net/) | General game records and artwork. | Login/key required; current public commercial, cache, attribution, quota, and redistribution terms are insufficiently explicit for this decision. | **Defer** pending written provider terms. |
 | [MobyGames](https://www.mobygames.com/info/api/) | Curated historical metadata and credits. | The free allowance is non-commercial; current commercial subscriptions are paid and require attribution/use restrictions. | **Do not use as the free default.** Re-evaluate only for a funded licensed tier. |
 | [PCGamingWiki](https://www.pcgamingwiki.com/wiki/PCGamingWiki:API) | Compatibility notes, fixes, save/config locations, and exact store-ID redirects. | MediaWiki/Cargo rate limits and content attribution/license obligations; not a general hero-art service. | Prefer an **Open PCGamingWiki** details action using an exact provider ID. Structured import is a later, separately reviewed feature. |
@@ -266,7 +280,9 @@ abuse, retention, and availability plan; or a provider-approved desktop/public
 client grant. A secret embedded in source, binaries, package resources, public
 configuration, or a theme is forbidden. A host credential vault isolates a
 user-supplied secret from widgets; it does not magically make a shipped shared
-secret confidential.
+secret confidential. The initial non-commercial implementation uses
+user-supplied Twitch developer credentials so the launcher does not require a
+hosted service or distribute a shared secret.
 
 - **GL-META-001 (M2):** Enrichment is a separate user consent and capability.
   Disabling it stops requests and leaves the installed library fully usable.
@@ -303,6 +319,23 @@ secret confidential.
 - **GL-META-009 (M2):** Provider terms, quotas, response schema, attribution,
   credential rotation, revocation behavior, and representative match quality
   have contract fixtures before the adapter can ship.
+- **GL-META-010 (M2):** The shipped IGDB integration is explicitly classified
+  as non-commercial. Release review must confirm that distribution and current
+  product behavior remain within that classification; a commercial scope
+  change disables new IGDB requests until a new agreement is recorded.
+- **GL-META-011 (M2):** SteamGridDB is an optional user-enabled artwork source
+  using the user's personal API key. Requests use only its documented API and
+  exact store mappings where available; title-search matches require the same
+  confidence/confirmation rules as other enrichment.
+- **GL-META-012 (M2):** SteamGridDB assets retain provider asset ID, type,
+  author/provenance when returned, retrieval time, and source revision. The
+  cache is bounded, local, purgeable, and excluded from experience packs,
+  fixture data, support bundles, cache export, installers, and release media.
+  Removed or unavailable assets fall back without affecting game identity.
+- **GL-META-013 (M2):** SteamGridDB use remains personal and non-commercial. A
+  monetization or distribution-model change, provider-terms change, key
+  revocation, or takedown disables new requests until reviewed; already cached
+  content is removed when the applicable terms or takedown require it.
 
 ## Functional requirements
 
@@ -777,12 +810,18 @@ offline, corrupt-cache, helper-crash, and revocation fixtures. Xbox/Microsoft
 Store, Epic, GOG, Amazon, EA, Ubisoft, and Battle.net are listed as supported
 only for the exact operations proven by their adapter tests.
 
-An enrichment provider is accepted only after current product-use terms and
-attribution are recorded, secrets remain broker-private, exact-ID and ambiguous
-matching fixtures pass, quota/offline/revocation states degrade cleanly, cache
-and deletion behavior comply with its terms, and missing metadata leaves every
-experience navigable. The provider can be disabled without changing discovery
-or launch acceptance.
+IGDB enrichment is accepted after its non-commercial product-use basis and
+required attribution are recorded, secrets remain broker-private, exact-ID and
+ambiguous matching fixtures pass, quota/offline/revocation states degrade
+cleanly, cache and deletion behavior comply with its terms, and missing
+metadata leaves every experience navigable. The provider can be disabled
+without changing discovery or launch acceptance.
+
+SteamGridDB artwork is accepted after user-key setup, exact-ID and confirmed
+search matching, grid/hero/logo/icon selection, bounded cache eviction, asset
+removal/takedown, corrupt-media fallback, provider outage, key revocation, and
+terms-change fixtures pass. Disabling it restores IGDB, provider-native, manual,
+or built-in fallback artwork without changing the library or selected theme.
 
 Animated artwork or background media is accepted only with hardware-decoded
 native playback, static fallback, lifecycle/battery/reduced-motion suspension,
@@ -807,16 +846,19 @@ fixtures. Passing for one source does not authorize the operation for another.
 3. Add validated slot composition, launcher-specific selection, static asset
    broker, CLI tooling, native fixture preview, last-good reload, and safe-start
    recovery.
-4. Spike brokered IGDB enrichment with exact-ID matching and fixture data, but
-   do not ship it until product terms/attribution are approved; keep manual and
-   provider-native artwork complete without it.
-5. Expand installed-library adapters one source at a time, starting with
+4. Implement brokered IGDB enrichment for the documented non-commercial use,
+   with user-supplied Twitch developer credentials, exact-ID matching,
+   attribution, and fixture data; keep manual and provider-native artwork
+   complete without it.
+5. Add optional SteamGridDB artwork selection with a user API key, exact store
+   mappings, bounded local cache, provenance, and no asset redistribution.
+6. Expand installed-library adapters one source at a time, starting with
    supported Windows/Xbox registration and opt-in Epic/GOG/Amazon discovery.
-6. Add the durable operations queue and prove install/update for one source
+7. Add the durable operations queue and prove install/update for one source
    before generalizing the contract.
-7. Gate animated media, account integration, cloud saves, and each additional
+8. Gate animated media, account integration, cloud saves, and each additional
    destructive operation behind their own measured security/reliability work.
-8. Add signing, gallery, and automatic update only after local immutable packs
+9. Add signing, gallery, and automatic update only after local immutable packs
    and recovery have production evidence.
 
 The first shippable target is therefore intentionally ambitious in feel but
