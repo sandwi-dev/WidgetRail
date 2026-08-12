@@ -50,6 +50,17 @@ provider identity, infer games from titles, or cache a complete library.
   the existing Refresh action in charge of recovery. The displayed source ID,
   label, revision, and safe status carry no adapter-control or launch authority.
 
+Press **View** on a current Library tile to open its bounded game-details route.
+The route shows the full title, normalized source, availability, launch state,
+favorite state, and variant-group/preference state for that exact opaque SavedId.
+**A** launches through the existing fresh SavedId resolution, **X** toggles the
+favorite, and **Y** hides the game. On a single-page collection **LB/RB** retain
+their existing group/prefer meaning; on a paged collection they remain reserved
+for Library traversal and are not reassigned inside details. **B** returns to the
+originating tile and retained collection offset. A removed or replaced identity
+keeps only its sanitized display projection, becomes visibly unavailable, and
+cannot launch or mutate a different same-title row.
+
 ## Artwork, state, and launch authority
 
 Rows carry a generation-bound opaque artwork handle. Listing does not load PNG
@@ -193,6 +204,9 @@ lazy artwork semantics, explicit favorite/group/preference mutations, CAS
 conflicts and failures, bounded hide/restore, non-authorizing missing exclusions,
 replacement independence, restart, full source disappearance/reappearance,
 same-identity refresh, identity replacement, incompatible reset, and
-cancellation-ignoring lifecycle completion. The
+cancellation-ignoring lifecycle completion. It also covers exact same-title
+details routing, View/A/B and unchanged X/Y/LB/RB semantics, unavailable
+identity refusal, exact Back focus restoration, long labels, and deterministic
+bounded detail layout. The
 installed generic-worker fixture covers the bundled manifest/catalog route,
 10,000-row broker source, adjacent grid focus, artwork handle, and exact launch.

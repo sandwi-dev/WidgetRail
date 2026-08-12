@@ -353,6 +353,8 @@ internal static class GameLauncherPresentation
             var hintItems = new List<WidgetElement>
             {
                 UI.ControllerHint(
+                    ControllerButton.View, "Game details", "game-launcher.hint.details"),
+                UI.ControllerHint(
                     ControllerButton.X, "Favorite", "game-launcher.hint.favorite"),
                 UI.ControllerHint(
                     ControllerButton.Y, "Hide selected", "game-launcher.hint.hide"),
@@ -720,6 +722,7 @@ internal static class GameLauncherPresentation
                 "game-launcher.launch", id, subtitle: subtitle, artwork: artwork,
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)
+            .Shortcut(ControllerButton.View, actionId: "game-launcher.details.open")
             .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
             .Shortcut(ControllerButton.Y, actionId: "game-launcher.hide")
             .Busy(launching)

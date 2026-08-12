@@ -43,6 +43,7 @@ public sealed class GameLauncherWidget : Widget
     private GameLauncherRecentMode _recentMode;
     private GameLauncherFixedRows _fixedRows = GameLauncherFixedRows.Empty;
     private IReadOnlyList<WidgetAppLibrarySource> _sourceObservations = [];
+    private GameLauncherDetailsSelection? _detailsSelection;
     private string? _runningRevision;
     private long _fixedRowsRevision;
     private string? _pendingRestoredSavedId;
@@ -52,7 +53,7 @@ public sealed class GameLauncherWidget : Widget
     public GameLauncherWidget()
     {
         _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
-            maximumDepth: 1, maximumRoutes: 4);
+            maximumDepth: 1, maximumRoutes: 5);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()
         {
             PageSize = PageSize,
@@ -91,6 +92,7 @@ public sealed class GameLauncherWidget : Widget
     public override WidgetView Render()
     {
         GameLauncherPresentationState state;
+        GameLauncherDetailsState? details = null;
         bool preferLibraryContentFocus;
         var navigation = _navigation.Value;
         lock (_gate)
@@ -110,9 +112,16 @@ public sealed class GameLauncherWidget : Widget
                 navigation.Route,
                 _fixedRows,
                 _sourceObservations);
+            if (navigation.Route == GameLauncherRoute.Details && _detailsSelection is { } selected)
+                details = GameLauncherDetailsPolicy.Project(selected, _library.Snapshot,
+                    _fixedRows, _organization, _launchingSavedId, _launchStates,
+                    _organizationBusy,
+                    LifecycleState == WidgetLifecycleState.Interactive);
             preferLibraryContentFocus = _preferLibraryContentFocus;
         }
-        var view = GameLauncherPresentation.Render(state);
+        var view = details is null
+            ? GameLauncherPresentation.Render(state)
+            : GameLauncherDetailsPresentation.Render(details);
         var root = _navigation.Scope(navigation, (StackElement)view.Root);
         return view with
         {
@@ -139,6 +148,8 @@ public sealed class GameLauncherWidget : Widget
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         _library.Reset(invalidate: false);
+        if (_navigation.Value.Route == GameLauncherRoute.Details)
+            _navigation.Back();
         lock (_gate)
         {
             _launchingSavedId = null;
@@ -147,6 +158,7 @@ public sealed class GameLauncherWidget : Widget
             _organizationBusy = false;
             _fixedRows = GameLauncherFixedRows.Empty;
             _sourceObservations = [];
+            _detailsSelection = null;
             _fixedRowsRevision++;
             _status = "Game Launcher is paused";
         }
@@ -165,9 +177,17 @@ public sealed class GameLauncherWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        var routeBeforeBack = _navigation.Value.Route;
         if (_navigation.TryHandleBack(action, action.SourceElementId))
         {
-            await ReturnToLibraryAsync().ConfigureAwait(false);
+            if (routeBeforeBack == GameLauncherRoute.Details)
+            {
+                lock (_gate) _detailsSelection = null;
+            }
+            else
+            {
+                await ReturnToLibraryAsync().ConfigureAwait(false);
+            }
             return;
         }
         if (_library.TryHandlePagination(action, out _))
@@ -177,6 +197,9 @@ public sealed class GameLauncherWidget : Widget
         }
         switch (action.ActionId)
         {
+            case "game-launcher.details.open":
+                OpenDetails(action.SourceElementId);
+                return;
             case "game-launcher.previous":
                 TryMovePage(action, WidgetCursorDirection.Before);
                 return;
@@ -191,18 +214,24 @@ public sealed class GameLauncherWidget : Widget
                 _ = _library.Retry();
                 return;
             case "game-launcher.launch":
-                await LaunchAsync(action.SourceElementId, cancellationToken).ConfigureAwait(false);
+                if (ResolveActionSource(action.SourceElementId) is { } launchSource)
+                    await LaunchAsync(launchSource, cancellationToken).ConfigureAwait(false);
                 return;
             case "game-launcher.favorite":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                await ToggleFavoriteAsync(action.SourceElementId, cancellationToken)
-                    .ConfigureAwait(false);
+                if (ResolveActionSource(action.SourceElementId) is { } favoriteSource)
+                    await ToggleFavoriteAsync(favoriteSource, cancellationToken)
+                        .ConfigureAwait(false);
                 return;
             case "game-launcher.hide":
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route != GameLauncherRoute.Library) return;
-                await SetHiddenAsync(action.SourceElementId, hidden: true, cancellationToken)
-                    .ConfigureAwait(false);
+                    _navigation.Value.Route is not (GameLauncherRoute.Library or
+                        GameLauncherRoute.Details) ||
+                    ResolveActionSource(action.SourceElementId) is not { } hideSource) return;
+                if (await SetHiddenAsync(hideSource, hidden: true, cancellationToken)
+                        .ConfigureAwait(false) &&
+                    _navigation.Value.Route == GameLauncherRoute.Details)
+                    CloseDetails();
                 return;
             case "game-launcher.restore":
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -212,13 +241,15 @@ public sealed class GameLauncherWidget : Widget
                 return;
             case "game-launcher.variant":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                await ToggleVariantAsync(action.SourceElementId, cancellationToken)
-                    .ConfigureAwait(false);
+                if (ResolveActionSource(action.SourceElementId) is { } variantSource)
+                    await ToggleVariantAsync(variantSource, cancellationToken)
+                        .ConfigureAwait(false);
                 return;
             case "game-launcher.prefer":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                await PreferVariantAsync(action.SourceElementId, cancellationToken)
-                    .ConfigureAwait(false);
+                if (ResolveActionSource(action.SourceElementId) is { } preferSource)
+                    await PreferVariantAsync(preferSource, cancellationToken)
+                        .ConfigureAwait(false);
                 return;
             case "game-launcher.organization.reset":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -839,7 +870,7 @@ public sealed class GameLauncherWidget : Widget
         }
     }
 
-    private async Task SetHiddenAsync(
+    private async Task<bool> SetHiddenAsync(
         string sourceElementId,
         bool hidden,
         CancellationToken cancellationToken)
@@ -860,7 +891,7 @@ public sealed class GameLauncherWidget : Widget
                 display = savedId is null ? null : DisplayForSavedLocked(savedId);
             }
         }
-        if (display is null) return;
+        if (display is null) return false;
         await MutateOrganizationAsync(
             state => GameLauncherOrganizationPolicy.SetExcluded(state, display, hidden),
             hidden ? $"Hidden {display.DisplayName}" : $"Restored {display.DisplayName}",
@@ -875,6 +906,7 @@ public sealed class GameLauncherWidget : Widget
                 lock (_gate) _pendingRestoredSavedId = display.SavedId;
             await ReloadQueryAsync().ConfigureAwait(false);
         }
+        return applied;
     }
 
     private async Task ToggleManualAsync(
@@ -1119,6 +1151,44 @@ public sealed class GameLauncherWidget : Widget
             StringComparison.Ordinal));
         return item is null ? null : new(
             item.Value.SavedId, item.Value.DisplayName, item.Value.SourceAttribution);
+    }
+
+    private void OpenDetails(string sourceElementId)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive ||
+            _navigation.Value.Route != GameLauncherRoute.Library) return;
+        GameLauncherFixedRows fixedRows;
+        lock (_gate) fixedRows = _fixedRows;
+        var selection = GameLauncherDetailsPolicy.Select(
+            sourceElementId, _library.Snapshot, fixedRows);
+        if (selection is null) return;
+        lock (_gate)
+        {
+            _detailsSelection = selection;
+            _preferLibraryContentFocus = false;
+        }
+        if (_navigation.Push(GameLauncherRoute.Details, sourceElementId) !=
+            WidgetNavigationResult.Changed)
+            lock (_gate) _detailsSelection = null;
+    }
+
+    private string? ResolveActionSource(string sourceElementId)
+    {
+        GameLauncherDetailsSelection? selection;
+        GameLauncherFixedRows fixedRows;
+        lock (_gate)
+        {
+            selection = _detailsSelection;
+            fixedRows = _fixedRows;
+        }
+        return GameLauncherDetailsPolicy.ResolveActionSource(
+            selection, sourceElementId, _library.Snapshot, fixedRows);
+    }
+
+    private void CloseDetails()
+    {
+        lock (_gate) _detailsSelection = null;
+        _navigation.Back();
     }
 
     private GameLauncherDisplayItem? DisplayForSavedLocked(string savedId) =>

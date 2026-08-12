@@ -2919,6 +2919,19 @@ with C++ installed:
   files, 803,117 bytes). No native layout semantics, preferred-height increase,
   provider behavior, or screenshot acceptance was introduced.
 
+- DLV-114 adds one bounded Game Launcher details route without adding provider,
+  lifecycle, persistence, or launch authority. View selects an exact current
+  SavedId and immutable return-focus identity; a separate pure details policy and
+  presenter project full title, normalized source, availability, launch evidence,
+  favorite, group, and preferred state. A reuses fresh exact-SavedId launch
+  resolution, X/Y reuse favorite/hide policy, and LB/RB retain their existing
+  single-page group/prefer or multi-page traversal meaning. B restores the
+  originating tile and retained collection offset. Removed/replaced identities
+  become unavailable and cannot route actions to a same-title neighbor. Focused
+  Release evidence passes Game Launcher 50/50, including duplicate titles,
+  disappearing identities, busy/unavailable action state, exact Back focus,
+  page-bumper non-overlap, long labels, and deterministic bounded rendering.
+
 - DLV-102 gives trusted app artwork an explicit bounded terminal-unavailable
   state in the existing native image cache. One bridge result moves every
   matching widget/handle entry once, posts one invalidation, and emits one

@@ -28,6 +28,7 @@ internal sealed record GameLauncherFixedRows(
 internal enum GameLauncherRoute
 {
     Library,
+    Details,
     AddGames,
     Running,
     Hidden,

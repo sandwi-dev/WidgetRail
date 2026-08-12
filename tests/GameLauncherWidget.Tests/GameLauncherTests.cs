@@ -1861,6 +1861,128 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task ViewOpensExactDetailsAndBackRestoresOriginTile()
+    {
+        var host = new FakeHost(2)
+        {
+            ItemFactory = index => Item(index) with
+            {
+                DisplayName = "Shared title",
+                SourceAttribution = index == 0 ? "Steam" : "Windows",
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 40);
+        var tiles = Nodes(library.Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+
+        Assert.IsTrue(tiles[1].Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.View &&
+            shortcut.ActionId == "game-launcher.details.open"));
+        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+        var details = Snapshot(widget, 41);
+        Assert.AreEqual("Shared title", Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.title").Text);
+        StringAssert.Contains(Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.source").Text!, "Windows");
+        Assert.AreEqual("game-launcher.details.launch", details.InitialFocusId);
+
+        await widget.OnActionAsync(new("game-launcher.favorite",
+            "game-launcher.details.favorite"));
+        Assert.IsTrue(widget.Organization.FavoriteSavedIds.Contains(
+            "saved-00001", StringComparer.Ordinal));
+
+        await widget.OnActionAsync(new("game-launcher.launch",
+            "game-launcher.details.launch"));
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
+
+        var afterLaunch = Snapshot(widget, 42);
+        var collectionRevision = widget.Collection.Revision;
+        var collectionAnchor = widget.Collection.Anchor;
+        var back = afterLaunch.Root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.B);
+        await widget.OnActionAsync(new(back.ActionId, "game-launcher.details.launch",
+            ControllerButton.B, ControllerEventPhase.Pressed,
+            InputScopeId: afterLaunch.ActiveInputScopeId));
+        var returned = Snapshot(widget, 43);
+        Assert.AreEqual(tiles[1].Id, returned.InitialFocusId);
+        Assert.IsTrue(Nodes(returned.Root).Any(node => node.Id == tiles[1].Id));
+        Assert.AreEqual(collectionRevision, widget.Collection.Revision);
+        Assert.AreEqual(collectionAnchor, widget.Collection.Anchor);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsPreserveContextShortcutsAndFailClosedWhenIdentityDisappears()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 44);
+        var tile = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        Assert.IsTrue(tile.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.View &&
+            shortcut.ActionId == "game-launcher.details.open"));
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        var details = Snapshot(widget, 45);
+        var detailScroll = Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.scroll");
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.X &&
+            shortcut.ActionId == "game-launcher.favorite"));
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.Y &&
+            shortcut.ActionId == "game-launcher.hide"));
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.LeftBumper &&
+            shortcut.ActionId == "game-launcher.variant"));
+        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.RightBumper &&
+            shortcut.ActionId == "game-launcher.prefer"));
+
+        host.QueryHandler = (_, _) => ValueTask.FromResult(
+            new WidgetAppLibraryPage([], null, null, "removed"));
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "details disappearance refresh");
+        var unavailable = Snapshot(widget, 46);
+        StringAssert.Contains(Nodes(unavailable.Root).Single(node =>
+            node.Id == "game-launcher.details.availability").Text!, "Unavailable");
+        Assert.IsTrue(Nodes(unavailable.Root).Single(node =>
+            node.Id == "game-launcher.details.launch").IsDisabled);
+        await widget.OnActionAsync(new("game-launcher.launch",
+            "game-launcher.details.launch"));
+        Assert.AreEqual(0, host.Launches.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task PagedDetailsDoNotReplaceLibraryBumperSemantics()
+    {
+        var host = new FakeHost(LauncherWidget.PageSize + 1);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var library = Snapshot(widget, 47);
+        var tile = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch");
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        var details = Snapshot(widget, 48);
+        var scroll = Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.scroll");
+        Assert.IsFalse(scroll.Shortcuts.Any(shortcut => shortcut.Button is
+            ControllerButton.LeftBumper or ControllerButton.RightBumper));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task AdjacentFailureRetainsLastGoodWindow()
     {
         var host = new FakeHost(300);
