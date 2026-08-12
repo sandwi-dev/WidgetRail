@@ -170,6 +170,16 @@ package ID/version, revalidates it under the catalog mutation lock, and refuses
 to remove a built-in. There is no URL install, automatic update, signing,
 gallery, action binding, or provider/content capability in this workflow.
 
+Settings provides trusted local version management for this catalog. A user
+can select one exact installed ID/version, return to **Use global appearance**
+without forgetting the last known-good exact selection, or restore the
+built-in Hero Rail in one action. Review shows the full content digest, claimed
+publisher, layout preset, bounded file/image counts, validation status, and an
+explicit unsigned-local-package disclosure. The selected exact version cannot
+be removed through Settings; an inactive non-built-in version requires an
+exact confirmation. This is local selection and recovery—not signing, remote
+gallery discovery, or automatic update.
+
 ## Native host contract
 
 The host resolves each recipe against the live work area and chooses its

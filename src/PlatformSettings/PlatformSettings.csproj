@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\LauncherExperienceCatalog\LauncherExperienceCatalog.csproj" />
     <ProjectReference Include="..\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
   <ItemGroup>

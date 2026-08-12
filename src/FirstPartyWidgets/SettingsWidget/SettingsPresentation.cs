@@ -102,6 +102,9 @@ internal static class SettingsPresentation
         var gameSources = UI.Button(
                 "Game sources", "open.app-library-sources", "category.game-sources")
             .Busy(busy).Classes("category-card");
+        var launcherExperiences = UI.Button(
+                "Launcher Experiences", "open.launcher-experiences", "category.launcher-experiences")
+            .Busy(busy).Classes("category-card");
         var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
             .Classes("category-card");
         var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
@@ -115,6 +118,7 @@ internal static class SettingsPresentation
                     "settings.summary", "Selected theme").Classes("settings-summary"),
                 UI.ResponsiveGrid("settings.category-grid", 250, 2,
                         appearance, accessibility, overlay, installedWidgets, gameSources,
+                        launcherExperiences,
                         diagnostics, refresh, reset)
                     .Classes("category-grid")).Classes("category-list"),
             "category.appearance",
@@ -640,6 +644,7 @@ internal static class SettingsNavigationPolicy
             "authority.recovery.cancel" => SettingsPage.Diagnostics,
             "open.reset" => SettingsPage.Reset,
             "open.themes" => SettingsPage.ThemePicker,
+            "open.launcher-experiences" => SettingsPage.LauncherExperiences,
             "reset.cancel" => SettingsPage.Root,
             "back" => Parent(currentPage, packageCapabilitiesReturnPage),
             _ => currentPage,
@@ -656,6 +661,7 @@ internal static class SettingsNavigationPolicy
             "authority.recovery.cancel" or
             "open.reset" or
             "open.themes" or
+            "open.launcher-experiences" or
             "reset.cancel" or
             "back";
     }
@@ -667,6 +673,9 @@ internal static class SettingsNavigationPolicy
             SettingsPage.ThemePicker => SettingsPage.Appearance,
             SettingsPage.ThemeVersion => SettingsPage.ThemePicker,
             SettingsPage.ThemeRemoval => SettingsPage.ThemeVersion,
+            SettingsPage.LauncherExperiences => SettingsPage.Root,
+            SettingsPage.LauncherExperienceVersion => SettingsPage.LauncherExperiences,
+            SettingsPage.LauncherExperienceRemoval => SettingsPage.LauncherExperienceVersion,
             SettingsPage.AccessibilityVisual => SettingsPage.Accessibility,
             SettingsPage.AppLibrarySources => SettingsPage.Root,
             SettingsPage.InstalledWidgetDetails => SettingsPage.InstalledWidgets,

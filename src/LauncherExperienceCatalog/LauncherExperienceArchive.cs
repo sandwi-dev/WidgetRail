@@ -231,6 +231,35 @@ internal static class LauncherExperienceArchive
         string version,
         CancellationToken cancellationToken)
     {
+        await ExecuteMutationAsync(
+            catalogRoot,
+            (root, _) =>
+            {
+                RemoveUnderMutationLock(root, id, version);
+                return Task.FromResult(true);
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static async Task<T> ExecuteMutationAsync<T>(
+        string catalogRoot,
+        Func<string, CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        var root = Path.GetFullPath(catalogRoot);
+        Directory.CreateDirectory(root);
+        LauncherExperienceFileGuard.RejectReparsePoint(root);
+        await using var mutation = await AcquireMutationLockAsync(
+            root, cancellationToken).ConfigureAwait(false);
+        return await operation(root, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static void RemoveUnderMutationLock(
+        string root,
+        string id,
+        string version)
+    {
         if (!LauncherExperienceIdentity.IsValidId(id) ||
             !LauncherExperienceIdentity.TryParseCanonicalVersion(version, out _))
             throw new LauncherExperiencePackageException(
@@ -238,11 +267,9 @@ internal static class LauncherExperienceArchive
         if (id.StartsWith(LauncherExperienceBuiltIns.Publisher + ".", StringComparison.Ordinal))
             throw new LauncherExperiencePackageException(
                 "built_in_protected", "Built-in recovery experiences cannot be removed.");
-        var root = Path.GetFullPath(catalogRoot);
         if (!Directory.Exists(root))
             throw new LauncherExperiencePackageException("experience_not_found", "Launcher Experience is not installed.");
         LauncherExperienceFileGuard.RejectReparsePoint(root);
-        await using var mutation = await AcquireMutationLockAsync(root, cancellationToken).ConfigureAwait(false);
         var destination = Path.Combine(root, id, version);
         if (!LauncherExperienceFileGuard.IsWithin(root, destination) || !Directory.Exists(destination))
             throw new LauncherExperiencePackageException("experience_not_found", "Launcher Experience is not installed.");

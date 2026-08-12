@@ -3783,3 +3783,23 @@ the requested SavedId override.
 Focused Release evidence passes Game Launcher 77/77. The ordinary generic
 AppContainer worker route edits a title, restarts, renders and exactly launches
 the retained override, resets it, and restores the provider title.
+
+### Trusted Launcher Experience selection and Settings management (DLV-149)
+
+PlatformSettings now owns one additive exact Launcher Experience selection:
+global-appearance mode, selected ID/version, and last-known-good ID/version.
+The focused mutation policy revalidates exact immutable catalog entries under
+the catalog's existing mutation lock. It selects only valid versions, restores
+the built-in Hero Rail in one action, and denies Settings-managed removal of
+the selected exact version even while global appearance is active.
+
+Settings projects catalog state through a separate snapshot-only presenter. It
+shows exact identity, full content digest, claimed publisher, layout preset,
+bounded package/image counts, validation state, and built-in versus unsigned
+local trust. Controller-scoped list, details, recovery, and removal-confirmation
+routes preserve the existing widget lifecycle and committed-state owner. No
+public widget protocol, native host, remote gallery, update, signing, provider,
+or content authority changed. The commit remains held until its private native
+consumer is accepted.
+
+Focused Release evidence passes PlatformSettings 18/18 and Settings 59/59.
