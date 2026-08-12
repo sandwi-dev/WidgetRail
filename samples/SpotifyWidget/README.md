@@ -61,8 +61,11 @@ focus and action targets across retained pages and refresh churn.
 Repeated identical edge input joins one in-flight provider request; a genuinely
 different cursor intent remains latest-wins. Detail Play points to the first
 row and that row points back to Play; a singleton row has no self edge, while a
-multi-row first row continues forward into the list. Failures retain the last-good window
-and require the visible Retry action. The automated 29-item contract covers
+multi-row first row continues forward into the list. Queue, playlist, and
+playlist-detail rows expose exact adjacent focus edges; terminal input stays on
+the terminal row rather than wrapping into earlier content or page chrome.
+Failures retain the last-good window and require the visible Retry action. The
+automated 29-item contract covers
 compact and expanded 12/12/5 forward/reverse traversal for both playlist tiles
 and detail tracks. A
 physical-controller retest with live Spotify data remains part of the manual

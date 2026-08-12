@@ -471,7 +471,19 @@ internal static class SpotifyPresentation
                 $"spotify.queue.empty.{mode}",
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Next).Classes("spotify-page");
-        var rows = queue.Items.Select(item => QueueRow(item, mode))
+        var rows = queue.Items.Select((item, index) => QueueRow(
+                item,
+                mode,
+                index == 0
+                    ? SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, item.Key)
+                    : SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, queue.Items[index - 1].Key),
+                index == queue.Items.Count - 1
+                    ? SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, item.Key)
+                    : SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, queue.Items[index + 1].Key)))
             .ToArray();
         var scroll = UI.VerticalScroll($"spotify.queue.scroll.{mode}", rows)
             .Classes("spotify-page-scroll") with
@@ -501,7 +513,8 @@ internal static class SpotifyPresentation
                 $"spotify.playlists.empty.{mode}",
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Music).Classes("spotify-page");
-        var rows = playlists.Items.Select(item => UI.MediaTile(
+        var rows = playlists.Items.Select((item, index) =>
+            (Item: item, Row: UI.MediaTile(
                 item.Value.Name, $"{item.Value.ItemCount} items",
                 $"spotify.playlist.open.{item.Key.Value}",
                 SpotifyCollectionIdentity.FocusId("spotify.playlist.item", mode, item.Key),
@@ -509,10 +522,19 @@ internal static class SpotifyPresentation
                 item.Value.Description, Artwork(item.Value.ArtworkUrl, item.Value.Name),
                 $"Open playlist {item.Value.Name}")
                 .PersistFocusAs(SpotifyCollectionIdentity.FocusId(
-                    "spotify.playlist.persist", "shared", item.Key)))
-            .Select((row, index) => playlists.Items[index] is { } item
-                ? row.CollectionItem(item.Key) : row)
-            .Select(row => row.Classes("spotify-media-row"))
+                    "spotify.playlist.persist", "shared", item.Key))))
+            .Select((entry, index) =>
+            {
+                var row = entry.Row.FocusUp(index == 0
+                        ? entry.Row.Id
+                        : SpotifyCollectionIdentity.FocusId(
+                            "spotify.playlist.item", mode, playlists.Items[index - 1].Key))
+                    .FocusDown(index == playlists.Items.Count - 1
+                        ? entry.Row.Id
+                        : SpotifyCollectionIdentity.FocusId(
+                            "spotify.playlist.item", mode, playlists.Items[index + 1].Key));
+                return row.CollectionItem(entry.Item.Key).Classes("spotify-media-row");
+            })
             .ToList<WidgetElement>();
         if (rows.Count == 0)
             rows.Add(SparsePagePlaceholder("playlist", mode));
@@ -542,11 +564,24 @@ internal static class SpotifyPresentation
         if (items.Error is { } itemError && items.Items.Count == 0)
             return PageFailure("Playlist unavailable", itemError.Message, mode);
         var rows = items.Items.Select((item, index) => PlaylistTrackRow(
-                item, mode, index == 0 && !items.HasBefore,
-                index == 0 && !items.HasBefore && items.Items.Count > 1
-                    ? SpotifyCollectionIdentity.FocusId("spotify.playlist.track", mode,
-                        items.Items[1].Key)
-                    : null))
+                item,
+                mode,
+                items.Items.Count == 1
+                    ? $"spotify.playlist.play.{mode}"
+                    : index == 0
+                        ? !items.HasBefore
+                            ? $"spotify.playlist.play.{mode}"
+                            : SpotifyCollectionIdentity.FocusId(
+                                "spotify.playlist.track", mode, item.Key)
+                        : SpotifyCollectionIdentity.FocusId(
+                            "spotify.playlist.track", mode, items.Items[index - 1].Key),
+                items.Items.Count == 1
+                    ? null
+                    : index == items.Items.Count - 1
+                        ? SpotifyCollectionIdentity.FocusId(
+                            "spotify.playlist.track", mode, item.Key)
+                        : SpotifyCollectionIdentity.FocusId(
+                            "spotify.playlist.track", mode, items.Items[index + 1].Key)))
             .ToList<WidgetElement>();
         var scroll = PresentCursor(
             UI.VerticalScroll($"spotify.playlist.detail.scroll.{mode}", rows.ToArray()),
@@ -689,28 +724,32 @@ internal static class SpotifyPresentation
         .PersistFocusAs(focusPersistenceId)
         .Classes("spotify-media-row");
 
-    private static WidgetElement QueueRow(SpotifyMediaCollectionItem item, string mode) =>
-        MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
+    private static WidgetElement QueueRow(
+        SpotifyMediaCollectionItem item,
+        string mode,
+        string up,
+        string down)
+    {
+        var row = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
                 SpotifyCollectionIdentity.FocusId("spotify.queue.item", mode, item.Key),
                 SpotifyCollectionIdentity.FocusId(
-                    "spotify.queue.persist", "shared", item.Key))
-            .CollectionItem(item.Key);
+                    "spotify.queue.persist", "shared", item.Key));
+        row = row.FocusUp(up).FocusDown(down);
+        return row.CollectionItem(item.Key);
+    }
 
     private static WidgetElement PlaylistTrackRow(
         SpotifyMediaCollectionItem item,
         string mode,
-        bool first,
-        string? firstDown)
+        string up,
+        string? down)
     {
         var row = MediaRow(item.Value, $"spotify.playlist.track.{item.Key.Value}",
             SpotifyCollectionIdentity.FocusId("spotify.playlist.track", mode, item.Key),
             SpotifyCollectionIdentity.FocusId(
                 "spotify.playlist.track.persist", "shared", item.Key));
-        if (first)
-        {
-            row = row.FocusUp($"spotify.playlist.play.{mode}");
-            if (firstDown is not null) row = row.FocusDown(firstDown);
-        }
+        row = row.FocusUp(up);
+        if (down is not null) row = row.FocusDown(down);
         return row.CollectionItem(item.Key);
     }
 

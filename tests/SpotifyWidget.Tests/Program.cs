@@ -25,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Responsive player fits named host envelopes and preserves focus identity", SpotifyResponsiveLayoutTests.NamedHostEnvelopesFitAndPreserveFocus),
     ("Seek Left follows the selected responsive destination", SeekLeftFollowsResponsiveDestination),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
+    ("Queue traverses every bounded occurrence without wrapping", QueueTraversesContinuously),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Controller edges traverse compact and expanded 12/12/5 playlist pages", ControllerPlaylistPaginationRoundTrip),
     ("Continuous playlist detail preserves keyed refresh and one header edge", ContinuousPlaylistDetailAnchorAndHeader),
@@ -553,6 +554,58 @@ static async Task LazyPageLoading()
     Assert.Equal(1, harness.PlaylistCalls);
     Assert.NotNull(Find(widget.RenderSnapshot("spotify.playlists", 1).Root,
         PlaylistFocus("wide", "playlist-one")));
+    await StopAsync(widget);
+}
+
+static async Task QueueTraversesContinuously()
+{
+    var items = Enumerable.Range(0, 50)
+        .Select(index => new WidgetSpotifyMediaItemSummary(
+            WidgetSpotifyPlaybackItemType.Track,
+            $"Queue track {index:D2}",
+            $"Artist {index:D2}",
+            180_000 + index,
+            null,
+            $"spotify:track:queue-{index:D2}",
+            $"https://open.spotify.com/track/queue-{index:D2}",
+            true))
+        .ToArray();
+    var harness = SpotifyHarness.Ready();
+    harness.Queue = new(harness.Queue.CurrentlyPlaying, items, false);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
+    await WaitUntil(() => harness.QueueCalls == 1);
+
+    var snapshot = widget.RenderSnapshot("spotify.queue.continuous", 1);
+    var rows = Find(snapshot.Root, "spotify.queue.scroll.wide").Children.ToArray();
+    Assert.Equal(50, rows.Length);
+    Assert.Equal(50, rows.Select(row => row.Id).Distinct(StringComparer.Ordinal).Count());
+    Assert.Equal(50, rows.Select(row => row.CollectionItemKey)
+        .Distinct(StringComparer.Ordinal).Count());
+    var replay = ControllerReplay.Run(snapshot, new InputReplay
+    {
+        InitialFocusId = rows[0].Id,
+        Events = Enumerable.Repeat(
+            new ReplayInputEvent { Button = ControllerButton.DPadDown }, 50).ToArray(),
+    });
+    Assert.True(replay[^1].FocusAfter == rows[^1].Id,
+        $"Terminal Queue Down moved to row {Array.FindIndex(rows, row => row.Id == replay[^1].FocusAfter)}.");
+    Assert.True(replay[^2].FocusAfter == rows[^1].Id,
+        $"The final in-range Queue Down reached row {Array.FindIndex(rows, row => row.Id == replay[^2].FocusAfter)}.");
+    var reverse = ControllerReplay.Run(snapshot, new InputReplay
+    {
+        InitialFocusId = rows[^1].Id,
+        Events = Enumerable.Repeat(
+            new ReplayInputEvent { Button = ControllerButton.DPadUp }, 49).ToArray(),
+    });
+    Assert.Equal(rows[0].Id, reverse[^1].FocusAfter);
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    var reactivated = widget.RenderSnapshot("spotify.queue.reactivated", 2);
+    Assert.Equal(50, Find(reactivated.Root, "spotify.queue.scroll.wide").Children.Count);
+    Assert.Equal(1, harness.QueueCalls);
     await StopAsync(widget);
 }
 
@@ -1130,6 +1183,9 @@ static async Task ControllerPlaylistPaginationRoundTrip()
             (focus, sequence, _) = await PressPlaylistDirectionAsync(
                 widget, mode, focus, sequence, down: true);
         Assert.Equal(PlaylistFocus(mode, "playlist-28"), focus);
+        Assert.Equal(focus, Find(
+            widget.RenderSnapshot("spotify.playlists.terminal", sequence).Root,
+            focus).Focus!.Down);
         var finalFocus = focus;
         (finalFocus, sequence, paged) = await PressPlaylistDirectionAsync(
             widget, mode, focus, sequence, down: true);
@@ -1171,6 +1227,16 @@ static async Task ControllerPlaylistPaginationRoundTrip()
             widget, mode, focus, sequence, down: true);
         Assert.True(paged && focus == TrackFocus(mode, "spotify:track:track-24"),
             $"{mode} playlist-detail Down did not enter the final page.");
+        for (var index = 0; index < 4; index++)
+            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+                widget, mode, focus, sequence, down: true);
+        Assert.Equal(TrackFocus(mode, "spotify:track:track-28"), focus);
+        Assert.Equal(focus, Find(
+            widget.RenderSnapshot("spotify.playlist-detail.terminal", sequence).Root,
+            focus).Focus!.Down);
+        for (var index = 0; index < 4; index++)
+            (focus, sequence, _) = await PressPlaylistItemDirectionAsync(
+                widget, mode, focus, sequence, down: false);
         (focus, sequence, paged) = await PressPlaylistItemDirectionAsync(
             widget, mode, focus, sequence, down: false);
         Assert.True(!paged && focus == TrackFocus(mode, "spotify:track:track-23"),

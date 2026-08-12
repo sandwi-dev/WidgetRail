@@ -3943,3 +3943,18 @@ code, retained active row, read-only details, unrelated appearance settings,
 reactivation, clean restart after catalog change, and explicit Retry recovery.
 Focused Release evidence passes Settings 60/60, Widget Catalog 35/35, and the
 documentation contract over 66 Markdown files.
+
+### Spotify continuous-list composition audit (DLV-169)
+
+The credential-free Queue, Playlists, and playlist-detail projections now own
+explicit adjacent focus edges over their immutable retained rows. Forward and
+reverse controller traversal reaches every occurrence exactly once; terminal
+input remains on the terminal row instead of wrapping to prior content or page
+chrome. The shared bounded cursor resource, repeated-occurrence identity,
+12/12/5 paging, eviction/refetch, sparse final page, retry, refresh, and
+lifecycle contracts remain unchanged.
+
+Focused Release evidence passes Spotify 50/50 and Widget SDK 89/89. The
+isolated Community-package recovery route also launches the current Spotify and
+YT Music packages in AppContainer workers and leaves the real user catalog
+unchanged.
