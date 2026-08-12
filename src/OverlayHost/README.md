@@ -119,7 +119,12 @@ next pointer message, so persisted order, selected identity, painted tiles,
 overflow targets, and UI Automation never describe different catalog frames.
 The deduplicated `Widget presentation paint` diagnostic includes the total and
 visible tray counts, previous/next overflow state, and whether the selected
-identity is visible.
+identity is visible. It also records shared shell, bounded body/viewport, tray,
+and selected-tile bounds. Widget surface hints affect only that inner body: the
+host recomputes one work-area-fitted shell from live `rcWork`, DPI, and interface
+scale, so small, Game Launcher, and Spotify switches cannot move the tray or
+change its capacity. Paint, pointer hit testing, and UI Automation continue to
+consume the same tray layout.
 
 When Left/Right changes the selected widget from the tray, the outgoing
 snapshot may remain visible while a cold destination starts, but it is rendered

@@ -159,10 +159,13 @@ struct ControllerGuideAction final {
 /// Computes bounded shell and widget geometry for the current responsive
 /// logical viewport. The result remains contained even for narrow portrait or
 /// pathological tiny extents; content may collapse to zero when no safe space
-/// remains, but coordinates never invert or escape the viewport.
+/// remains, but coordinates never invert or escape the viewport. Preferred
+/// body height is optional for legacy callers; when present it may shrink the
+/// body but never moves the host-owned tray or expands the shared shell.
 [[nodiscard]] std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     float viewportWidthDip,
     float viewportHeightDip,
-    float preferredPanelWidthDip) noexcept;
+    float preferredPanelWidthDip,
+    std::optional<float> preferredPanelHeightDip = std::nullopt) noexcept;
 
 } // namespace gba
