@@ -222,8 +222,12 @@ Catalog usable.
 opaque cursor with its direction, and a page size of 1–64. It returns
 `WidgetAppLibraryPage`, containing sanitized `WidgetAppLibraryItem` records,
 opaque Before/After cursors, and a provider revision. Each item has a short-lived
-`AppId` for launch, a durable `SavedId` for private state, and a sanitized source
-label. Cursors are traversal-only: never parse them or use them as launch or
+`AppId` for launch, a durable `SavedId` for private state, and one authoritative
+versioned `Presentation`. That immutable value carries the sanitized title and
+closed kind, opaque source reference, closed availability/launchability,
+role-keyed artwork, optional revisioned metadata with attribution, a closed
+capability set, and an optional current operation. No legacy scalar aliases are
+retained. Cursors are traversal-only: never parse them or use them as launch or
 durable identity.
 `ResolveSavedAsync` accepts at most 64 unique SavedIds, refreshes the provider,
 preserves request order, and omits apps that are no longer available. A
@@ -232,8 +236,9 @@ package IDs; it remains stable across worker/host restarts and package updates,
 but it cannot be correlated or reused by another widget package. The widget
 instance ID is intentionally not part of this durable authority.
 
-Current items may set `ArtworkHandle`, an opaque generation-bound registration
-that is neither a path nor a URL. Pass it to `UI.Artwork`,
+Current items may include a Tile artwork role in `Presentation.Artwork`; its
+handle is an opaque generation-bound registration that is neither a path nor a
+URL. Pass it to `UI.Artwork`,
 `Button.LeadingArtwork`, or `TileArtwork.FromHandle` and retain a semantic glyph
 fallback when it is absent. The host asks the trusted provider for pixels only
 when the artwork is rendered. Demand is admitted quickly and provider I/O runs

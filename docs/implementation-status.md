@@ -3189,6 +3189,38 @@ temporary catalog cleanup, and child-host Job exit. Persistent build-server
 arguments remain covered by their existing separate test. No production dev
 session, timeout, verifier schema, or aggregate behavior changed.
 
+### Normalized app-library presentation contract (DLV-130)
+
+The app-library capability now publishes one versioned immutable presentation
+per opaque AppId/SavedId pair. Item/source identity, closed availability,
+role-keyed artwork, optional attributed metadata, closed capabilities, and an
+optional operation are separate focused values; the removed title/kind/source/
+artwork scalar constructors and accessors have no compatibility facade. The SDK
+validates the complete shape, cross-checks explicit launchability with the
+Launch capability, and rejects unknown versions, enums, duplicate roles or
+actions, unsafe provenance, and malformed operations as `malformed_response`.
+Game Launcher and Games & Apps consume this same model, keep retained rows
+explicitly non-authorizing, and enable launch only after fresh exact resolution.
+
+The trusted provider supplies only currently proven installed/source/artwork
+facts. Broker projection preserves an exact sanitized page source ID when one
+exists and never exposes provider identity, paths, commands, AUMIDs, Steam IDs,
+or artwork bytes. During installed acceptance, a no-artwork row exposed that the
+registry had generated a handle with an empty revision; registry admission now
+keeps that row's artwork set empty and retires any prior handle instead. The
+production Bridge fixture directly covers a multi-source Game/Application page,
+including the no-artwork Game fallback.
+
+Retained dirty-worktree Release run `20260812T085816Z-dc9417d9` passes Widget
+SDK 88/88, API compatibility 12/12, Windows app-library provider 62/62, Games &
+Apps 59/59, Game Launcher 62/62, Bridge 83/83, and 61-document validation. After
+the empty-artwork correction, focused run `20260812T091559Z-f1574fba` passes
+broker 56/56 and Bridge 83/83. The exact bounded command
+`dotnet run --project tests/FirstPartyWidgetConformance.Tests/FirstPartyWidgetConformance.Tests.csproj --configuration Release -- --games-apps-installed-acceptance`
+passes the installed generic-worker/AppContainer Games & Apps route. No canonical
+aggregate, native layout, external provider, credential, content-operation, or
+package-schema work was run or changed.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

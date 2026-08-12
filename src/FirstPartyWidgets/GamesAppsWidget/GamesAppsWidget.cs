@@ -271,8 +271,8 @@ public sealed class GamesAppsWidget : Widget
                     GamesAppsLibraryMutationRejection.ExclusionStorageFull =>
                         "Add a previously excluded game back before removing another",
                     _ => isVisibleMember
-                        ? $"Removed {item.DisplayName}"
-                        : $"Added {item.DisplayName} to your library",
+                        ? $"Removed {GamesAppsAppLibraryPresentation.DisplayName(item)}"
+                        : $"Added {GamesAppsAppLibraryPresentation.DisplayName(item)} to your library",
                 };
                 _libraryMutationBusy = !rejected;
             }
@@ -357,7 +357,7 @@ public sealed class GamesAppsWidget : Widget
                 rejected = !mutation.Accepted;
                 toastMessage = rejected
                     ? "Add a previously excluded game back before removing another"
-                    : $"Removed {item.DisplayName}";
+                    : $"Removed {GamesAppsAppLibraryPresentation.DisplayName(item)}";
                 _libraryMutationBusy = !rejected;
             }
             Invalidate();
@@ -420,7 +420,8 @@ public sealed class GamesAppsWidget : Widget
             : checking != 0
                 ? $"{count} saved · checking {checking} launch " +
                   (checking == 1 ? "entry" : "entries")
-            : $"{count} saved · {curated.Count(item => item.Kind == WidgetAppLibraryKind.Game)} " +
+            : $"{count} saved · {curated.Count(item =>
+                GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game)} " +
               "games · recent first";
     }
 
@@ -678,7 +679,8 @@ public sealed class GamesAppsWidget : Widget
                         _persistedLibraryState.AutoGameSavedIds.Contains(
                             id, StringComparer.Ordinal) &&
                         _libraryItems.Any(item => item.SavedId == id &&
-                            item.Kind == WidgetAppLibraryKind.Game))
+                            GamesAppsAppLibraryPresentation.Kind(item) ==
+                                WidgetAppLibraryKind.Game))
                     : 0;
             }
             Invalidate();
@@ -850,11 +852,20 @@ public sealed class GamesAppsWidget : Widget
             var observed = await HostServices.AppLibrary.ObserveRunningAsync(lifetime.Token)
                 .ConfigureAwait(false);
             var items = observed.Items.Select(item => new WidgetAppLibraryItem(
-                item.SavedId, item.DisplayName, item.Kind)
-            {
-                SavedId = item.SavedId,
-                SourceAttribution = item.SourceAttribution,
-            }).ToArray();
+                item.SavedId,
+                item.SavedId,
+                new WidgetAppLibraryPresentation(
+                    item.DisplayName,
+                    item.Kind,
+                    new WidgetAppLibrarySourceReference(
+                        "source-running", item.SourceAttribution),
+                    new WidgetAppLibraryAvailability(
+                        WidgetAppLibraryAvailabilityState.StaleSource,
+                        false, "confirmation_required"),
+                    new WidgetAppLibraryArtworkSet([]),
+                    Metadata: null,
+                    new WidgetAppLibraryCapabilitySet([]),
+                    ActiveOperation: null))).ToArray();
             lock (_gate)
             {
                 if (_page != GamesAppsPage.Running) return;
@@ -1035,7 +1046,7 @@ public sealed class GamesAppsWidget : Widget
                     return;
                 _selectedAppId = selected.AppId;
                 _launchingAppId = selected.AppId;
-                _status = $"Opening {selected.DisplayName}…";
+                _status = $"Opening {GamesAppsAppLibraryPresentation.DisplayName(selected)}…";
             }
             Invalidate();
             var resolved = await HostServices.AppLibrary.ResolveSavedAsync(
@@ -1043,7 +1054,7 @@ public sealed class GamesAppsWidget : Widget
                 .ConfigureAwait(false);
             var current = resolved.SingleOrDefault(item => string.Equals(
                 item.SavedId, selected.SavedId, StringComparison.Ordinal));
-            if (current is null)
+            if (current is null || !GamesAppsAppLibraryPresentation.CanLaunch(current))
                 throw new WidgetCapabilityException(
                     "app_not_found", "The selected app is no longer available.");
             await HostServices.AppLibrary.LaunchAsync(
@@ -1065,9 +1076,11 @@ public sealed class GamesAppsWidget : Widget
                 persistedExclusions = desired.ExcludedGameSavedIds;
                 persistenceCandidates = _libraryItems.ToArray();
                 _launchingAppId = null;
-                _status = $"Opened {selected.DisplayName}";
+                _status = $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}";
             }
-            ShowToast("Application opened", $"Opened {selected.DisplayName}", ToastTone.Success);
+            ShowToast("Application opened",
+                $"Opened {GamesAppsAppLibraryPresentation.DisplayName(selected)}",
+                ToastTone.Success);
             await PersistLibraryAsync(
                 persistedOrder,
                 persistedAutoGames,
@@ -1086,7 +1099,7 @@ public sealed class GamesAppsWidget : Widget
             lock (_gate) _launchingAppId = null;
             var message = ApplyCommandError(exception, selected is null
                 ? "The selected app could not be opened"
-                : $"{selected.DisplayName} could not be opened");
+                : $"{GamesAppsAppLibraryPresentation.DisplayName(selected)} could not be opened");
             ShowToast("Application not opened", message, ToastTone.Danger);
             return;
         }
@@ -1368,7 +1381,8 @@ public sealed class GamesAppsWidget : Widget
         IReadOnlyList<WidgetAppLibraryItem> items,
         bool hasMore)
     {
-        var games = items.Count(item => item.Kind == WidgetAppLibraryKind.Game);
+        var games = items.Count(item =>
+            GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game);
         return $"{items.Count}{(hasMore ? "+" : string.Empty)} available · " +
                $"{games} {(games == 1 ? "game" : "games")} loaded";
     }

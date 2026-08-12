@@ -260,11 +260,24 @@ edge, and refresh follows the segment containing the anchor. Page size is
 history is capped at 256. Duplicate keys, cursor loops, stale completions, and
 malformed pages fail without partial publication.
 
+`WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
+there are no duplicate scalar title/kind/source/artwork accessors. It contains
+the sanitized display name and closed kind, one opaque source reference, one
+closed availability/launchability status, role-keyed artwork (`Tile`, `Cover`,
+`Hero`, or `Logo`), optional revisioned metadata with explicit attribution, a
+closed capability set, and an optional current operation. `AppId` remains a
+short-lived exact launch token and `SavedId` remains the only durable identity.
+Unknown presentation versions, enum values, duplicate artwork roles or
+capabilities, inconsistent launchability, unsafe attribution, and malformed
+operation state fail with `malformed_response`; callers must rebuild against
+this pre-release contract rather than retaining the removed scalar model.
+
 `WidgetAppLibraryPage.Sources` carries at most 16 immutable value-only source
 observations for the same page revision. Each row contains an opaque
 observation-only `SourceId`, sanitized display label, closed
 `Healthy`/`Degraded`/`Unavailable`/`Refreshing` health, monotonic source
-revision, and a bounded safe status code. It grants no adapter selection,
+revision, bounded account state and last-successful-refresh observation, and a
+bounded safe status code. It grants no adapter selection,
 refresh, launch, filesystem, registry, store, or account authority. Keep usable
 items visible when another source is degraded, and use the existing page
 refresh operation rather than creating a per-source refresh pipeline.
@@ -274,8 +287,8 @@ refresh operation rather than creating a per-source refresh pipeline.
 that the trusted host mapped exactly to current installed SavedIds plus one
 short-lived revision. Call `ConfirmRunningAsync(savedId, revision)` before a
 durable add. A non-null confirmation is accepted only when its SavedId exactly
-matches the request and its AppId, SavedId, kind, display name, and source label
-pass the same closed validation as paged/resolved app-library items; otherwise
+matches the request and its complete normalized presentation passes the same
+closed validation as paged/resolved app-library items; otherwise
 the SDK throws `WidgetCapabilityException` with `malformed_response`. Neither
 method exposes process/window/path identity or grants launch authority, and
 ordinary catalog access remains independently consented.

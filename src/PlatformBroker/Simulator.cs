@@ -141,9 +141,23 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
 
     public void SetAppLibrary(IEnumerable<AppLibraryItemSummary> items)
     {
+        var normalized = items.ToArray();
         _appLibrary.Clear();
-        _appLibrary.AddRange(items.Select(item => new AppLibraryBackendItemSummary(
-            item.AppId, item.AppId, item.DisplayName, item.Kind)));
+        _appLibrary.AddRange(normalized.Select(item => new AppLibraryBackendItemSummary(
+            item.AppId, item.SavedId, item.Presentation.DisplayName,
+            item.Presentation.Kind,
+            item.Presentation.Artwork.Items.FirstOrDefault()?.Revision ?? string.Empty,
+            item.Presentation.Source.DisplayName)
+        {
+            SourceIdentity = item.Presentation.Source.SourceId,
+        }));
+        AppLibrarySources = normalized
+            .Select(item => item.Presentation.Source)
+            .DistinctBy(source => source.SourceId, StringComparer.Ordinal)
+            .Select(source => new AppLibrarySourceSummary(
+                source.SourceId, source.DisplayName,
+                AppLibrarySourceHealth.Healthy, 0, "healthy"))
+            .ToArray();
         _appLibraryRevision++;
     }
 

@@ -134,17 +134,20 @@ internal static class GamesAppsPresentation
             var isResolved = state.ResolvedSavedIds.Contains(item.SavedId);
             var tileState = isOpening ? "Opening…" : isResolved ? "Ready" : "Checking…";
             var tile = UI.AppTile(
-                    item.DisplayName,
+                    GamesAppsAppLibraryPresentation.DisplayName(item),
                     tileState,
                     "games.launch",
                     id,
-                    subtitle: AppKindLabel(item.Kind),
-                    artwork: AppArtwork(item, $"{item.DisplayName} icon"),
+                    subtitle: AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item)),
+                    artwork: AppArtwork(item,
+                        $"{GamesAppsAppLibraryPresentation.DisplayName(item)} icon"),
                     accessibilityLabel:
-                        $"{item.DisplayName}, {AppKindLabel(item.Kind)}, {tileState}")
+                        $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, " +
+                        $"{AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item))}, {tileState}")
                 .Shortcut(ControllerButton.X, actionId: "games.remove")
                 .Busy(isOpening)
-                .Disabled(!isResolved || state.LaunchingAppId is not null ||
+                .Disabled(!isResolved || !GamesAppsAppLibraryPresentation.CanLaunch(item) ||
+                    state.LaunchingAppId is not null ||
                     state.LibraryMutationBusy ||
                     state.LifecycleState != WidgetLifecycleState.Interactive)
                 .Selected(string.Equals(
@@ -156,7 +159,8 @@ internal static class GamesAppsPresentation
                 .FocusLeft(id)
                 .FocusRight(id)
                 .AddClasses("games-card-action", "games-app-row",
-                    item.Kind == WidgetAppLibraryKind.Game ? "is-game" : "is-application");
+                    GamesAppsAppLibraryPresentation.Kind(item) == WidgetAppLibraryKind.Game
+                        ? "is-game" : "is-application");
             rows.Add(tile);
         }
 
@@ -249,15 +253,16 @@ internal static class GamesAppsPresentation
                 : state.HasNextPage ? "games.load-more" : id;
             var running = state.Page == GamesAppsPage.Running;
             rows.Add(UI.AppTile(
-                    item.DisplayName,
+                    GamesAppsAppLibraryPresentation.DisplayName(item),
                     saved ? "Already included" : running ? "Running" : "Available",
                     "games.toggle-curation",
                     id,
-                    subtitle: AppKindLabel(item.Kind),
-                    artwork: AppArtwork(item, $"{item.DisplayName} icon"),
+                    subtitle: AppKindLabel(GamesAppsAppLibraryPresentation.Kind(item)),
+                    artwork: AppArtwork(item,
+                        $"{GamesAppsAppLibraryPresentation.DisplayName(item)} icon"),
                     accessibilityLabel: saved
-                        ? $"{item.DisplayName}, already included"
-                        : $"{item.DisplayName}, available, A adds to library")
+                        ? $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, already included"
+                        : $"{GamesAppsAppLibraryPresentation.DisplayName(item)}, available, A adds to library")
                 .Selected(saved)
                 .Disabled(saved && running || state.LaunchingAppId is not null || state.LoadingMore ||
                     state.LifecycleState != WidgetLifecycleState.Interactive)
@@ -419,8 +424,8 @@ internal static class GamesAppsPresentation
     private static TileArtwork AppArtwork(
         WidgetAppLibraryItem item,
         string accessibilityLabel) =>
-        item.ArtworkHandle is { Length: > 0 } handle
+        GamesAppsAppLibraryPresentation.TileArtwork(item) is { } artwork
             ? TileArtwork.FromHandle(
-                new WidgetArtworkHandle(handle), accessibilityLabel, ImageFit.Contain)
+                new WidgetArtworkHandle(artwork.Handle), accessibilityLabel, ImageFit.Contain)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, accessibilityLabel);
 }

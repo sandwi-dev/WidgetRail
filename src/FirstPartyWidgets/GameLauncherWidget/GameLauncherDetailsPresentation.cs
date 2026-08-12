@@ -43,8 +43,8 @@ internal static class GameLauncherDetailsPolicy
             item.Value.SavedId,
             item.Key,
             sourceElementId,
-            item.Value.DisplayName,
-            item.Value.SourceAttribution,
+            item.Presentation.DisplayName,
+            item.Presentation.Source.DisplayName,
             collection.HasBefore || collection.HasAfter);
     }
 
@@ -90,8 +90,8 @@ internal static class GameLauncherDetailsPolicy
             : "Group with selected game";
         return new(
             selection,
-            current?.Value.DisplayName ?? selection.DisplayName,
-            current?.Value.SourceAttribution ?? selection.SourceAttribution,
+            current?.Presentation.DisplayName ?? selection.DisplayName,
+            current?.Presentation.Source.DisplayName ?? selection.SourceAttribution,
             resolved ? interactive ? "Available" : "Paused" : "Unavailable",
             launchStatus,
             organization.FavoriteSavedIds.Contains(

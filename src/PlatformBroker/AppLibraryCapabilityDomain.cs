@@ -308,12 +308,10 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             }
             TouchLaunch(publicId, item.ProviderAppId);
             projected[index] = new AppLibraryItemSummary(
-                publicId, item.DisplayName, item.Kind)
-            {
-                SavedId = _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
-                ArtworkHandle = artworkHandles.GetValueOrDefault(item.ProviderAppId),
-                SourceAttribution = item.SourceAttribution,
-            };
+                publicId,
+                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                CreatePresentation(item,
+                    artworkHandles.GetValueOrDefault(item.ProviderAppId), page.Sources));
         }
         TrimLaunchWindow();
         return new AppLibraryCursorPageSummary(
@@ -321,6 +319,48 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         {
             Sources = page.Sources.ToArray(),
         };
+    }
+
+    private static AppLibraryItemPresentation CreatePresentation(
+        AppLibraryBackendItemSummary item,
+        string? artworkHandle,
+        IReadOnlyList<AppLibrarySourceSummary> sources)
+    {
+        var sourceMaterial = string.IsNullOrEmpty(item.SourceIdentity)
+            ? item.SourceAttribution
+            : item.SourceIdentity;
+        var derivedSourceId = "source-" + Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                Encoding.UTF8.GetBytes(sourceMaterial)).AsSpan(0, 12))
+            .ToLowerInvariant();
+        var exactSource = sources.SingleOrDefault(source => string.Equals(
+            source.SourceId, derivedSourceId, StringComparison.Ordinal));
+        if (exactSource is null)
+        {
+            var displayMatches = sources.Where(source => string.Equals(
+                source.DisplayName, item.SourceAttribution, StringComparison.Ordinal)).ToArray();
+            if (displayMatches.Length == 1) exactSource = displayMatches[0];
+        }
+        var sourceId = exactSource?.SourceId ?? derivedSourceId;
+        var fallback = item.Kind == AppLibraryKind.Game
+            ? AppLibraryArtworkFallback.Game
+            : AppLibraryArtworkFallback.Application;
+        AppLibraryArtworkSummary[] artwork = artworkHandle is null ? [] :
+        [
+            new(AppLibraryArtworkRole.Tile, artworkHandle,
+                item.ArtworkRevision, fallback),
+        ];
+        return new AppLibraryItemPresentation(
+            item.DisplayName,
+            item.Kind,
+            new AppLibrarySourceReference(
+                sourceId, exactSource?.DisplayName ?? item.SourceAttribution),
+            new AppLibraryAvailabilitySummary(
+                AppLibraryAvailabilityState.Installed, true, "installed"),
+            new AppLibraryArtworkSet(artwork),
+            Metadata: null,
+            new AppLibraryCapabilitySet([AppLibraryAction.Launch]),
+            ActiveOperation: null);
     }
 
     private void EnsureRevision(string revision)
@@ -412,6 +452,8 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             AppLibrarySavedIdIssuer.ValidateStableProviderIdentity(item.StableProviderIdentity);
             ContractValidation.DisplayName(item.DisplayName);
             ContractValidation.DisplayName(item.SourceAttribution);
+            if (!string.IsNullOrEmpty(item.ArtworkRevision))
+                ContractValidation.OpaqueId(item.ArtworkRevision, "invalid_backend_data");
             if (!providerIds.Add(item.ProviderAppId) ||
                 !stableIds.Add(item.StableProviderIdentity)) throw InvalidItem();
         }
@@ -419,7 +461,9 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         foreach (var source in page.Sources)
         {
             if (source is null || !Enum.IsDefined(source.Health) ||
+                !Enum.IsDefined(source.AccountState) ||
                 source.Revision < 0 ||
+                source.LastSuccessfulRefreshAtUnixMilliseconds is < 0 ||
                 source.StatusCode is not { Length: > 0 and <= 48 } ||
                 source.StatusCode.Any(character =>
                     !char.IsAsciiLetterOrDigit(character) && character is not '_' and not '-' and not '.') ||

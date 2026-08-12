@@ -397,6 +397,118 @@ public enum WidgetAppLibraryKind
     Game,
 }
 
+public enum WidgetAppLibraryAvailabilityState
+{
+    Installed,
+    Unavailable,
+    StaleSource,
+}
+
+public sealed record WidgetAppLibraryAvailability(
+    WidgetAppLibraryAvailabilityState State,
+    bool IsLaunchable,
+    string StatusCode);
+
+public enum WidgetAppLibraryArtworkRole { Tile, Cover, Hero, Logo }
+public enum WidgetAppLibraryArtworkFallback { Application, Game }
+
+public sealed record WidgetAppLibraryArtwork(
+    WidgetAppLibraryArtworkRole Role,
+    [property: JsonRequired] string Handle,
+    [property: JsonRequired] string Revision,
+    WidgetAppLibraryArtworkFallback Fallback);
+
+public sealed record WidgetAppLibraryArtworkSet(
+    [property: JsonRequired] IReadOnlyList<WidgetAppLibraryArtwork> Items)
+{
+    public WidgetAppLibraryArtwork? Find(WidgetAppLibraryArtworkRole role) =>
+        Items.FirstOrDefault(item => item.Role == role);
+}
+
+public sealed record WidgetAppLibraryMetadataAttribution(
+    [property: JsonRequired] string Provider,
+    [property: JsonRequired] string RecordRevision,
+    [property: JsonRequired] string Attribution,
+    long RetrievedAtUnixMilliseconds);
+
+public sealed record WidgetAppLibraryMetadata(
+    [property: JsonRequired] string Revision,
+    [property: JsonRequired] WidgetAppLibraryMetadataAttribution Attribution)
+{
+    public string? SortTitle { get; init; }
+    public string? Version { get; init; }
+    public long? LastPlayedAtUnixMilliseconds { get; init; }
+    public long? PlaytimeMinutes { get; init; }
+    public IReadOnlyList<string> Categories { get; init; } = [];
+    public string? Description { get; init; }
+}
+
+public enum WidgetAppLibraryAction
+{
+    Launch,
+    Install,
+    Pause,
+    Resume,
+    Cancel,
+    Update,
+    Repair,
+    Move,
+    Import,
+    Uninstall,
+    CloudSync,
+    OpenSourceClient,
+    ManageAddOns,
+}
+
+public sealed record WidgetAppLibraryCapabilitySet(
+    [property: JsonRequired] IReadOnlyList<WidgetAppLibraryAction> Actions)
+{
+    public bool Supports(WidgetAppLibraryAction action) => Actions.Contains(action);
+}
+
+public enum WidgetAppLibraryOperationKind
+{
+    Launch,
+    Install,
+    Update,
+    Repair,
+    Move,
+    Import,
+    Uninstall,
+    CloudSync,
+}
+
+public enum WidgetAppLibraryOperationState
+{
+    Pending,
+    RequestAccepted,
+    LauncherStarted,
+    Running,
+    Paused,
+    Completed,
+    Failed,
+}
+
+public sealed record WidgetAppLibraryOperation(
+    [property: JsonRequired] string OperationId,
+    WidgetAppLibraryOperationKind Kind,
+    WidgetAppLibraryOperationState State,
+    [property: JsonRequired] string StatusCode);
+
+public sealed record WidgetAppLibrarySourceReference(
+    [property: JsonRequired] string SourceId,
+    [property: JsonRequired] string DisplayName);
+
+public sealed record WidgetAppLibraryPresentation(
+    [property: JsonRequired] string DisplayName,
+    WidgetAppLibraryKind Kind,
+    [property: JsonRequired] WidgetAppLibrarySourceReference Source,
+    [property: JsonRequired] WidgetAppLibraryAvailability Availability,
+    [property: JsonRequired] WidgetAppLibraryArtworkSet Artwork,
+    WidgetAppLibraryMetadata? Metadata,
+    [property: JsonRequired] WidgetAppLibraryCapabilitySet Capabilities,
+    WidgetAppLibraryOperation? ActiveOperation);
+
 /// <summary>
 /// Sanitized launchable app metadata. AppId is a short-lived launch token.
 /// SavedId is a durable opaque token scoped to this widget authority and is the
@@ -405,20 +517,14 @@ public enum WidgetAppLibraryKind
 /// </summary>
 public sealed record WidgetAppLibraryItem(
     [property: JsonRequired] string AppId,
-    [property: JsonRequired] string DisplayName,
-    [property: JsonRequired] WidgetAppLibraryKind Kind)
+    [property: JsonRequired] string SavedId,
+    [property: JsonRequired] WidgetAppLibraryPresentation Presentation)
 {
-    [JsonRequired]
-    public string SavedId { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Optional opaque host artwork registration. It carries no path, URL,
-    /// image bytes, provider identity, or launch authority.
-    /// </summary>
-    public string? ArtworkHandle { get; init; }
+    public const int CurrentPresentationVersion = 1;
 
     [JsonRequired]
-    public string SourceAttribution { get; init; } = string.Empty;
+    public int PresentationVersion { get; init; } = CurrentPresentationVersion;
+
 }
 
 public enum WidgetAppLibrarySortOrder
@@ -436,6 +542,17 @@ public enum WidgetAppLibrarySourceHealth
     Refreshing,
 }
 
+public enum WidgetAppLibrarySourceAccountState
+{
+    NotApplicable,
+    SignedOut,
+    SigningIn,
+    Ready,
+    Expired,
+    Denied,
+    Unavailable,
+}
+
 /// <summary>
 /// Sanitized observation-only status for one normalized local library source.
 /// SourceId cannot be used to query, refresh, or launch through that source.
@@ -445,7 +562,12 @@ public sealed record WidgetAppLibrarySource(
     [property: JsonRequired] string DisplayName,
     [property: JsonRequired] WidgetAppLibrarySourceHealth Health,
     [property: JsonRequired] long Revision,
-    [property: JsonRequired] string StatusCode);
+    [property: JsonRequired] string StatusCode)
+{
+    public WidgetAppLibrarySourceAccountState AccountState { get; init; } =
+        WidgetAppLibrarySourceAccountState.NotApplicable;
+    public long? LastSuccessfulRefreshAtUnixMilliseconds { get; init; }
+}
 
 public sealed record WidgetAppLibraryQuery(
     bool InstalledOnly = true,
@@ -1370,7 +1492,9 @@ public sealed class WidgetAppLibraryService
         foreach (var source in sources)
         {
             if (source is null || !Enum.IsDefined(source.Health) ||
+                !Enum.IsDefined(source.AccountState) ||
                 source.Revision < 0 ||
+                source.LastSuccessfulRefreshAtUnixMilliseconds is < 0 ||
                 string.IsNullOrWhiteSpace(source.DisplayName) ||
                 source.DisplayName.Length > 64 || source.DisplayName.Any(char.IsControl) ||
                 source.StatusCode is not { Length: > 0 and <= 48 } ||
@@ -1397,9 +1521,9 @@ public sealed class WidgetAppLibraryService
 
     private static bool IsValidAppLibraryItem(WidgetAppLibraryItem? item)
     {
-        if (item is null || !Enum.IsDefined(item.Kind) ||
-            !IsDisplayValue(item.DisplayName, 160) ||
-            !IsDisplayValue(item.SourceAttribution, 64)) return false;
+        if (item is null ||
+            item.PresentationVersion != WidgetAppLibraryItem.CurrentPresentationVersion ||
+            !IsValidPresentation(item)) return false;
         try
         {
             ValidateOpaqueId(item.AppId, nameof(item));
@@ -1411,6 +1535,74 @@ public sealed class WidgetAppLibraryService
             return false;
         }
     }
+
+    private static bool IsValidPresentation(WidgetAppLibraryItem item)
+    {
+        var value = item.Presentation;
+        if (value is null || !Enum.IsDefined(value.Kind) ||
+            !IsDisplayValue(value.DisplayName, 160) || value.Source is null ||
+            !IsDisplayValue(value.Source.DisplayName, 64) ||
+            value.Availability is null || !Enum.IsDefined(value.Availability.State) ||
+            !IsStatusCode(value.Availability.StatusCode) ||
+            value.Artwork?.Items is null || value.Artwork.Items.Count > 4 ||
+            value.Capabilities?.Actions is null || value.Capabilities.Actions.Count > 13 ||
+            value.Capabilities.Actions.Distinct().Count() != value.Capabilities.Actions.Count ||
+            value.Capabilities.Actions.Any(action => !Enum.IsDefined(action)) ||
+            value.Availability.IsLaunchable !=
+                value.Capabilities.Actions.Contains(WidgetAppLibraryAction.Launch))
+            return false;
+        try { ValidateOpaqueId(value.Source.SourceId, nameof(item)); }
+        catch (ArgumentException) { return false; }
+
+        var roles = new HashSet<WidgetAppLibraryArtworkRole>();
+        foreach (var artwork in value.Artwork.Items)
+        {
+            if (artwork is null || !Enum.IsDefined(artwork.Role) ||
+                !Enum.IsDefined(artwork.Fallback) || !roles.Add(artwork.Role)) return false;
+            try
+            {
+                ValidateOpaqueId(artwork.Handle, nameof(item));
+                ValidateOpaqueId(artwork.Revision, nameof(item));
+            }
+            catch (ArgumentException) { return false; }
+        }
+
+        if (value.Metadata is { } metadata && !IsValidMetadata(metadata)) return false;
+        if (value.ActiveOperation is { } operation)
+        {
+            if (!Enum.IsDefined(operation.Kind) || !Enum.IsDefined(operation.State) ||
+                !IsStatusCode(operation.StatusCode)) return false;
+            try { ValidateOpaqueId(operation.OperationId, nameof(item)); }
+            catch (ArgumentException) { return false; }
+        }
+        return true;
+    }
+
+    private static bool IsValidMetadata(WidgetAppLibraryMetadata metadata)
+    {
+        if (metadata.Attribution is null ||
+            metadata.Revision is not { Length: > 0 and <= 128 } ||
+            metadata.Attribution.RecordRevision is not { Length: > 0 and <= 128 } ||
+            !IsDisplayValue(metadata.Attribution.Provider, 64) ||
+            !IsDisplayValue(metadata.Attribution.Attribution, 160) ||
+            metadata.Attribution.RetrievedAtUnixMilliseconds < 0 ||
+            metadata.SortTitle is { } sort && !IsDisplayValue(sort, 160) ||
+            metadata.Version is { } version && !IsDisplayValue(version, 64) ||
+            metadata.LastPlayedAtUnixMilliseconds is < 0 ||
+            metadata.PlaytimeMinutes is < 0 or > 100_000_000 ||
+            metadata.Categories is null || metadata.Categories.Count > 32 ||
+            metadata.Categories.Distinct(StringComparer.Ordinal).Count() !=
+                metadata.Categories.Count ||
+            metadata.Categories.Any(category => !IsDisplayValue(category, 64)) ||
+            metadata.Description is { Length: > 2048 } ||
+            metadata.Description is { } description && description.Any(char.IsControl))
+            return false;
+        return true;
+    }
+
+    private static bool IsStatusCode(string? value) =>
+        value is { Length: > 0 and <= 48 } && value.All(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
 
     private static void ValidateOpaqueId(string value, string parameterName)
     {

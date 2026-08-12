@@ -5,6 +5,13 @@ application library. It can search, filter, organize, and launch only identities
 resolved through the app-library capability; saved display rows never grant launch
 authority.
 
+Every provider row enters the widget as one immutable normalized presentation
+containing its sanitized item/source identity, availability, role-keyed artwork,
+optional attributed metadata, closed capabilities, and optional operation. The
+widget keeps no parallel scalar model: unavailable retained rows are explicit
+non-authorizing presentations, and launch requires a freshly resolved row whose
+availability and Launch capability agree.
+
 The surface requests 980 by 700 DIPs and supports a 420 by 340 DIP minimum. The
 Library route opens as the built-in `hero-rail` experience: a bounded selected-game
 hero above one horizontal cover rail. Left/Right focus movement changes only the

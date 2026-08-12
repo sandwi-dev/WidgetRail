@@ -284,7 +284,8 @@ public sealed class GameLauncherTests
                 staleStarted.TrySetResult();
                 return new ValueTask<WidgetAppLibraryPage>(releaseStale.Task);
             }
-            var item = Item(1) with { DisplayName = request.Query.SearchText ?? "All" };
+            var item = WithPresentation(
+                Item(1), displayName: request.Query.SearchText ?? "All");
             return ValueTask.FromResult(new WidgetAppLibraryPage(
                 [item], null, null, "query-" + (request.Query.SearchText ?? "all")));
         };
@@ -296,10 +297,11 @@ public sealed class GameLauncherTests
         await widget.OnActionAsync(new WidgetActionEvent(
             "game-launcher.search.commit", "game-launcher.search")
             { CommittedText = "Beta" });
-        releaseStale.TrySetResult(new([Item(0) with { DisplayName = "Alpha" }],
+        releaseStale.TrySetResult(new([WithPresentation(Item(0), displayName: "Alpha")],
             null, null, "query-alpha"));
         await Bounded(widget.WhenLibraryIdleAsync(), "replacement query drain");
-        Assert.AreEqual("Beta", widget.Collection.Items.Single().Value.DisplayName);
+        Assert.AreEqual("Beta",
+            widget.Collection.Items.Single().Presentation.DisplayName);
 
         var snapshot = Snapshot(widget, 99);
         var search = Nodes(snapshot.Root).Single(node => node.Id == "game-launcher.search");
@@ -334,7 +336,7 @@ public sealed class GameLauncherTests
         Assert.IsLessThanOrEqualTo(LauncherWidget.MaximumRetainedItems,
             widget.Collection.Items.Count);
         Assert.AreEqual($"Game {total - 1:D5}",
-            widget.Collection.Items[^1].Value.DisplayName);
+            widget.Collection.Items[^1].Presentation.DisplayName);
         var serialized = Snapshot(widget, total);
         Assert.AreEqual(widget.Collection.Items.Count, Nodes(serialized.Root).Count(node =>
             node.ActionId == "game-launcher.launch"));
@@ -349,7 +351,7 @@ public sealed class GameLauncherTests
         var finalPageStart = (pages - 1) * LauncherWidget.PageSize;
         var reversePageStart = finalPageStart - LauncherWidget.MaximumRetainedItems;
         Assert.AreEqual($"Game {reversePageStart:D5}",
-            widget.Collection.Items[0].Value.DisplayName);
+            widget.Collection.Items[0].Presentation.DisplayName);
         Assert.AreEqual(
             GameLauncherIdentity.FocusId("grid", widget.Collection.Items[63].Key),
             widget.Collection.RequestedFocusId);
@@ -466,7 +468,7 @@ public sealed class GameLauncherTests
         {
             if (request.Query.SearchText == "Current")
                 return ValueTask.FromResult(new WidgetAppLibraryPage(
-                    [Item(1) with { DisplayName = "Current" }], null, null,
+                    [WithPresentation(Item(1), displayName: "Current")], null, null,
                     "current-revision"));
             staleStarted.TrySetResult();
             return new(releaseStale.Task);
@@ -487,11 +489,13 @@ public sealed class GameLauncherTests
             "game-launcher.search.commit", "game-launcher.search")
             { CommittedText = "Current" });
         releaseStale.TrySetResult(new(
-            [Item(64) with { DisplayName = "Stale" }], "cursor.0", "cursor.65",
+            [WithPresentation(Item(64), displayName: "Stale")], "cursor.0", "cursor.65",
             "stale-revision"));
         await Bounded(widget.WhenLibraryIdleAsync(), "bumper replacement drain");
-        Assert.AreEqual("Current", widget.Collection.Items.Single().Value.DisplayName);
-        Assert.IsFalse(widget.Collection.Items.Any(item => item.Value.DisplayName == "Stale"));
+        Assert.AreEqual("Current",
+            widget.Collection.Items.Single().Presentation.DisplayName);
+        Assert.IsFalse(widget.Collection.Items.Any(item =>
+            item.Presentation.DisplayName == "Stale"));
         await Background(widget);
     }
 
@@ -717,7 +721,7 @@ public sealed class GameLauncherTests
         var privateState = new WidgetTestPrivateState(JsonSerializer.Serialize(persisted), 1);
         var host = new FakeHost(1, privateState)
         {
-            ItemFactory = _ => Item(1) with { DisplayName = hidden.DisplayName },
+            ItemFactory = _ => WithPresentation(Item(1), displayName: hidden.DisplayName),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -738,7 +742,8 @@ public sealed class GameLauncherTests
 
         var reclassifiedHost = new FakeHost(1, privateState)
         {
-            ItemFactory = _ => Item(0) with { Kind = WidgetAppLibraryKind.Application },
+            ItemFactory = _ => WithPresentation(
+                Item(0), kind: WidgetAppLibraryKind.Application),
         };
         var reclassified = Create(reclassifiedHost);
         await Interactive(reclassified);
@@ -835,7 +840,7 @@ public sealed class GameLauncherTests
         var state = new WidgetTestPrivateState();
         var host = new FakeHost(2, state)
         {
-            ItemFactory = index => Item(index) with { DisplayName = "Shared title" },
+            ItemFactory = index => WithPresentation(Item(index), displayName: "Shared title"),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -943,23 +948,17 @@ public sealed class GameLauncherTests
         {
             FavoriteSavedIds = [old.SavedId],
         };
-        var sameIdentity = GameLauncherItem.From(new WidgetAppLibraryItem(
-            "app-new", "Updated title", WidgetAppLibraryKind.Game)
-        {
-            SavedId = old.SavedId,
-            SourceAttribution = "Steam",
-        });
+        var sameIdentity = GameLauncherItem.From(InstalledItem(
+            "app-new", old.SavedId, "Updated title", WidgetAppLibraryKind.Game,
+            "source-steam", "Steam"));
         var refreshed = GameLauncherOrganizationPolicy.ProjectPage(state, [sameIdentity]);
         Assert.AreEqual("Updated title",
             refreshed.Items.Single(item => item.SavedId == old.SavedId).DisplayName);
         Assert.IsTrue(refreshed.FavoriteSavedIds.Contains(old.SavedId));
 
-        var replacement = GameLauncherItem.From(new WidgetAppLibraryItem(
-            "app-replacement", "Updated title", WidgetAppLibraryKind.Game)
-        {
-            SavedId = "saved-replacement",
-            SourceAttribution = "Steam",
-        });
+        var replacement = GameLauncherItem.From(InstalledItem(
+            "app-replacement", "saved-replacement", "Updated title",
+            WidgetAppLibraryKind.Game, "source-steam", "Steam"));
         var replaced = GameLauncherOrganizationPolicy.ProjectPage(refreshed, [replacement]);
         Assert.IsTrue(replaced.FavoriteSavedIds.Contains(old.SavedId));
         Assert.IsFalse(replaced.FavoriteSavedIds.Contains("saved-replacement"));
@@ -1033,15 +1032,12 @@ public sealed class GameLauncherTests
     {
         var host = new FakeHost(3)
         {
-            ItemFactory = index => Item(index) with
-            {
-                Kind = index switch
+            ItemFactory = index => WithPresentation(Item(index), kind: index switch
                 {
                     0 => WidgetAppLibraryKind.Game,
                     1 => WidgetAppLibraryKind.Application,
                     _ => WidgetAppLibraryKind.Unknown,
-                },
-            },
+                }),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -1085,12 +1081,9 @@ public sealed class GameLauncherTests
                     "Windows"),
             ], "running-revision"),
             ConfirmRunningHandler = request => request.Revision == "running-revision"
-                ? new WidgetAppLibraryItem(
-                    "app-current-running", "Visible app", WidgetAppLibraryKind.Application)
-                {
-                    SavedId = request.SavedId,
-                    SourceAttribution = "Windows",
-                }
+                ? InstalledItem(
+                    "app-current-running", request.SavedId, "Visible app",
+                    WidgetAppLibraryKind.Application, "source-windows", "Windows")
                 : null,
         };
         var widget = Create(host);
@@ -1131,12 +1124,11 @@ public sealed class GameLauncherTests
                 new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
                     "Windows"),
             ], "running-revision"),
-            ConfirmRunningHandler = request => new WidgetAppLibraryItem(
-                "app-current-running", "Visible app", WidgetAppLibraryKind.Application)
-            {
-                SavedId = request.SavedId,
-                SourceAttribution = "bad\nsource",
-            },
+            ConfirmRunningHandler = request => WithPresentation(
+                InstalledItem(
+                    "app-current-running", request.SavedId, "Visible app",
+                    WidgetAppLibraryKind.Application, "source-windows", "Windows"),
+                source: "bad\nsource"),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -1175,12 +1167,9 @@ public sealed class GameLauncherTests
         var state = new WidgetTestPrivateState();
         var host = new FakeHost(2, state)
         {
-            ItemFactory = index => Item(index) with
-            {
-                Kind = index == 1
+            ItemFactory = index => WithPresentation(Item(index), kind: index == 1
                     ? WidgetAppLibraryKind.Application
-                    : WidgetAppLibraryKind.Game,
-            },
+                    : WidgetAppLibraryKind.Game),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -1195,11 +1184,9 @@ public sealed class GameLauncherTests
 
         var restartedHost = new FakeHost(1, state)
         {
-            ResolveHandler = request => request.SavedIds.Select(_ => Item(1) with
-            {
-                AppId = "app-fresh-manual",
-                Kind = WidgetAppLibraryKind.Application,
-            }).ToArray(),
+            ResolveHandler = request => request.SavedIds.Select(_ =>
+                WithPresentation(Item(1) with { AppId = "app-fresh-manual" },
+                    kind: WidgetAppLibraryKind.Application)).ToArray(),
             LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
                 WidgetAppLaunchObservationState.LauncherStarted, false, false)),
         };
@@ -1241,12 +1228,9 @@ public sealed class GameLauncherTests
         var host = new FakeHost(LauncherWidget.PageSize, new WidgetTestPrivateState(
             JsonSerializer.Serialize(persisted), 1))
         {
-            ItemFactory = index => Item(index) with
-            {
-                Kind = index >= 96
+            ItemFactory = index => WithPresentation(Item(index), kind: index >= 96
                     ? WidgetAppLibraryKind.Application
-                    : WidgetAppLibraryKind.Game,
-            },
+                    : WidgetAppLibraryKind.Game),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -1558,24 +1542,19 @@ public sealed class GameLauncherTests
         var resolveGeneration = 0;
         var host = new FakeHost(3)
         {
-            ItemFactory = index => Item(index) with
-            {
-                DisplayName = $"Current game {index}",
-                SourceAttribution = "Current catalog",
-                ArtworkHandle = artwork,
-            },
+            ItemFactory = index => WithPresentation(Item(index),
+                displayName: $"Current game {index}", source: "Current catalog",
+                artworkHandle: artwork),
             LaunchHandler = (_, _) => ValueTask.FromResult(new WidgetAppLaunchObservation(
                 WidgetAppLaunchObservationState.LauncherStarted, false, false)),
         };
         host.ResolveHandler = request => request.SavedIds.Select(savedId =>
         {
             var index = int.Parse(savedId.AsSpan(savedId.LastIndexOf('-') + 1));
-            return host.ItemFactory(index) with
-            {
-                AppId = $"fresh-app-{++resolveGeneration}",
-                DisplayName = $"Resolved game {index}",
-                SourceAttribution = "Resolved catalog",
-            };
+            return WithPresentation(
+                host.ItemFactory(index) with
+                    { AppId = $"fresh-app-{++resolveGeneration}" },
+                displayName: $"Resolved game {index}", source: "Resolved catalog");
         }).ToArray();
         var widget = Create(host);
         await Interactive(widget);
@@ -1859,11 +1838,8 @@ public sealed class GameLauncherTests
         {
             RecentSavedIds = [old.SavedId],
         };
-        var replacement = GameLauncherItem.From(Item(0) with
-        {
-            SavedId = "saved-new",
-            DisplayName = old.DisplayName,
-        });
+        var replacement = GameLauncherItem.From(WithPresentation(
+            Item(0) with { SavedId = "saved-new" }, displayName: old.DisplayName));
 
         var projected = GameLauncherOrganizationPolicy.ProjectPage(state, [replacement]);
 
@@ -2047,11 +2023,8 @@ public sealed class GameLauncherTests
     {
         var host = new FakeHost(2)
         {
-            ItemFactory = index => Item(index) with
-            {
-                DisplayName = "Shared title",
-                SourceAttribution = index == 0 ? "Steam" : "Windows",
-            },
+            ItemFactory = index => WithPresentation(Item(index),
+                displayName: "Shared title", source: index == 0 ? "Steam" : "Windows"),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -2076,11 +2049,8 @@ public sealed class GameLauncherTests
     {
         var host = new FakeHost(2)
         {
-            ItemFactory = index => Item(index) with
-            {
-                DisplayName = "Shared title",
-                SourceAttribution = index == 0 ? "Steam" : "Windows",
-            },
+            ItemFactory = index => WithPresentation(Item(index),
+                displayName: "Shared title", source: index == 0 ? "Steam" : "Windows"),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -2393,10 +2363,8 @@ public sealed class GameLauncherTests
     {
         var host = new FakeHost(1)
         {
-            ItemFactory = index => Item(index) with
-            {
-                ArtworkHandle = "library.art.0123456789abcdef0123456789abcdef",
-            },
+            ItemFactory = index => WithPresentation(Item(index), artworkHandle:
+                "library.art.0123456789abcdef0123456789abcdef"),
         };
         var widget = Create(host);
         await Interactive(widget);
@@ -2575,12 +2543,63 @@ public sealed class GameLauncherTests
         }
     }
 
-    private static WidgetAppLibraryItem Item(int index) => new(
-        $"app-{index:D5}", $"Game {index:D5}", WidgetAppLibraryKind.Game)
+    private static WidgetAppLibraryItem Item(int index) =>
+        InstalledItem(
+            $"app-{index:D5}", $"saved-{index:D5}", $"Game {index:D5}",
+            WidgetAppLibraryKind.Game,
+            index % 2 == 0 ? "source-steam" : "source-windows",
+            index % 2 == 0 ? "Steam" : "Windows");
+
+    private static WidgetAppLibraryItem InstalledItem(
+        string appId,
+        string savedId,
+        string displayName,
+        WidgetAppLibraryKind kind,
+        string sourceId,
+        string sourceDisplayName) =>
+        new(appId, savedId, new(
+            displayName,
+            kind,
+            new(sourceId, sourceDisplayName),
+            new(WidgetAppLibraryAvailabilityState.Installed, true, "installed"),
+            new([]),
+            Metadata: null,
+            new([WidgetAppLibraryAction.Launch]),
+            ActiveOperation: null));
+
+    private static WidgetAppLibraryItem WithPresentation(
+        WidgetAppLibraryItem item,
+        string? displayName = null,
+        WidgetAppLibraryKind? kind = null,
+        string? source = null,
+        string? artworkHandle = null)
     {
-        SavedId = $"saved-{index:D5}",
-        SourceAttribution = index % 2 == 0 ? "Steam" : "Windows",
-    };
+        var presentation = item.Presentation;
+        var updatedKind = kind ?? presentation.Kind;
+        WidgetAppLibraryArtworkSet artwork = artworkHandle is null
+            ? presentation.Artwork
+            : new([
+                new(WidgetAppLibraryArtworkRole.Tile, artworkHandle, "fixture",
+                    updatedKind == WidgetAppLibraryKind.Game
+                        ? WidgetAppLibraryArtworkFallback.Game
+                        : WidgetAppLibraryArtworkFallback.Application),
+                new(WidgetAppLibraryArtworkRole.Hero, artworkHandle, "fixture",
+                    updatedKind == WidgetAppLibraryKind.Game
+                        ? WidgetAppLibraryArtworkFallback.Game
+                        : WidgetAppLibraryArtworkFallback.Application),
+            ]);
+        return item with
+        {
+            Presentation = presentation with
+            {
+                DisplayName = displayName ?? presentation.DisplayName,
+                Kind = updatedKind,
+                Source = source is null ? presentation.Source :
+                    presentation.Source with { DisplayName = source },
+                Artwork = artwork,
+            },
+        };
+    }
 
     private sealed class FakeHost
     {

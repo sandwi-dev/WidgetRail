@@ -10,6 +10,8 @@ internal sealed record GameLauncherItem(
 {
     internal static GameLauncherItem From(WidgetAppLibraryItem item) =>
         new(item, GameLauncherIdentity.Key(item.SavedId));
+
+    internal WidgetAppLibraryPresentation Presentation => Value.Presentation;
 }
 
 internal sealed record GameLauncherDisplayItem(

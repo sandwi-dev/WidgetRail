@@ -14,6 +14,14 @@ tray. Both consume the same normalized installed-game records, opaque SavedIds,
 and fresh launch resolution. The widget does not discover stores, retain raw
 provider identity, infer games from titles, or cache a complete library.
 
+Each current row is projected from one versioned immutable app-library
+presentation: item/source, availability, role-keyed artwork, optional attributed
+metadata, closed capabilities, and optional operation state. Game Launcher does
+not retain legacy scalar aliases. It uses Tile artwork for rows and Hero artwork
+for the hero only when those roles are present, and enables launch only when the
+current availability and explicit Launch capability agree. Unknown or malformed
+presentation versions fail closed before they can enter widget state.
+
 ## Collection and controller behavior
 
 - **Search installed games** opens one host-owned text-entry modal. Keyboard or

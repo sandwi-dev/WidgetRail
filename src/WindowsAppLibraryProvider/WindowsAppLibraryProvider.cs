@@ -321,7 +321,10 @@ public sealed class WindowsAppLibraryProvider :
                 entry.app.DisplayName,
                 ToBrokerKind(entry.registration.Kind),
                 ArtworkRevision(entry.registration.ArtworkRevision),
-                entry.registration.Attribution)).ToArray();
+                entry.registration.Attribution)
+            {
+                SourceIdentity = entry.registration.SourceIdentity,
+            }).ToArray();
             var before = offset > 0
                 ? CreateCursor(Math.Max(0, offset - request.Limit),
                     AppLibraryCursorDirection.Before, _catalogRevision, queryHash)
