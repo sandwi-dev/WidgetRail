@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
-| GBA-004 | P1 | Verifying on accepted DLV-107 Release | OverlayHost UI thread / presentation / composition | Accepted DLV-107 `b662e9a`, integrated through `0e0bf77`, replaces the live-rejected mixed color-key/opaque-surface path with one premultiplied-alpha composition owner and transform-only extent motion inside a fixed transparent container. The fully repackaged Release is visibly running as PID 32508 for the user's black-border, flicker, cadence, and rapid-cycling check. |
+| GBA-004 | P1 | Open; DLV-115 Ready after DLV-112 | OverlayHost UI thread / presentation / composition | The user's current packaged video rejects accepted DLV-107: a black outer rectangle is visible around the whole overlay and different-size widget cycling has returned to ugly multi-step transitions. DLV-115 owns the correction after the active platform milestone. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -54,7 +54,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable curation, Start Menu/AppsFolder plus bounded Steam discovery, evidence-backed Steam Game classification, exact revalidated launch, and close-after-correlated-success are implemented; additional launchers and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
-| GBA-036 | P1 | Verifying on accepted DLV-107 Release | OverlayHost / native composition / declarative surface | DLV-107 `b662e9a` clears the composed premultiplied surface to alpha zero, paints only authored panel/tray pixels, returns unused client space as pointer-transparent, and keeps the separate backdrop as the sole dimmer. Focused alpha/geometry checks pass; live supported-widget/scale confirmation remains. |
+| GBA-036 | P1 | Open with GBA-004; DLV-115 Ready | OverlayHost / native composition / declarative surface | DLV-107's focused alpha checks did not predict the current packaged outer rectangle. DLV-115 must re-establish one coherent alpha contract and transparent unused client pixels without using screenshot output as acceptance. |
 | GBA-037 | P0 | Verifying on packaged main | Now Playing / media provider / retry | Accepted DLV-103 `f87631c`, integrated through `9c5de8e`, gives activation and Retry one SDK-owned Active generation, retains last-good sessions, rejects stale completions, and records safe typed stage/code transitions. The fully packaged Release is visibly running as PID 32140 for live recurrence testing. |
 | GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | DLV-004 adds shared loading/empty/failure surfaces, bounded Previous/Next Catalog pages, long/max-library coverage, exact installed conformance, and a retained multi-profile capture matrix; physical packaged shell/controller review remains. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
@@ -308,6 +308,17 @@ DLV-107 owns one bounded alpha-and-motion correction after already-active
 DLV-106 reaches a clean boundary. The integrated prototype remains evidence
 and must not be hidden with per-
 widget masks, opaque backdrop growth, delays, or a second permanent renderer.
+
+Accepted DLV-107 `b662e9a`, integrated through `0e0bf77`, replaced that mixed
+color-key/opaque path with one premultiplied-alpha owner and transform-only
+extent motion. The user's current packaged recording on 2026-08-11 nevertheless
+shows a black rectangle around the full overlay and visibly ugly different-size
+widget transitions. That direct product evidence reopens GBA-004/GBA-036; the
+focused alpha/geometry checks are retained as useful but insufficient. DLV-115
+is Ready immediately after active DLV-112 and must correlate current typed logs,
+alpha clearing, and transition timing before changing the smallest native owner.
+It must not spend time correcting or interpreting clipped screenshot output;
+the closing gate is the freshly launched Release and the user's live verdict.
 
 **Acceptance:**
 
