@@ -795,7 +795,7 @@ public sealed class GameLauncherTests
     [TestMethod, Timeout(30_000)]
     public async Task EveryTopControlKeepsPendingAndCommittedSnapshotsValid()
     {
-        var displays = Enumerable.Range(0, 3)
+        var displays = Enumerable.Range(0, 32)
             .Select(index => new GameLauncherDisplayItem(
                 $"saved-{index:D5}", $"Game {index:D5}",
                 index % 2 == 0 ? "Steam" : "Windows"))
@@ -807,7 +807,7 @@ public sealed class GameLauncherTests
             RecentSavedIds = [displays[2].SavedId],
             ExcludedSavedIds = [displays[0].SavedId],
         };
-        var host = new FakeHost(3, new WidgetTestPrivateState(
+        var host = new FakeHost(32, new WidgetTestPrivateState(
             JsonSerializer.Serialize(persisted), 1));
         var widget = Create(host);
         await Interactive(widget);
@@ -850,6 +850,7 @@ public sealed class GameLauncherTests
         host.QueryHandler = null;
         await AssertRoute("game-launcher.add.open", GameLauncherRoute.AddGames);
         await AssertRoute("game-launcher.running.open", GameLauncherRoute.Running);
+        await AssertRoute("game-launcher.experiences.open", GameLauncherRoute.Experiences);
         await AssertRoute("game-launcher.hidden.open", GameLauncherRoute.Hidden);
         await Background(widget);
 
@@ -864,19 +865,32 @@ public sealed class GameLauncherTests
             {
                 GameLauncherRoute.AddGames => "Add games",
                 GameLauncherRoute.Running => "Add running app",
+                GameLauncherRoute.Experiences => "Launcher experience",
                 _ => "Hidden games",
             };
             Assert.AreEqual(expectedTitle, Nodes(route.Root).Single(node =>
                 node.Id == "game-launcher.compact.title").Text);
             if (expected == GameLauncherRoute.Running)
                 Assert.AreEqual(beforeRunning + 1, host.RunningObservationCount);
-            else
+            else if (expected != GameLauncherRoute.Experiences)
                 Assert.AreEqual(beforeQueries + 1, host.Queries.Count);
+            else
+            {
+                Assert.AreEqual(beforeQueries, host.Queries.Count);
+                Assert.AreEqual(
+                    "Choose a layout. Content, actions, and game identity stay the same.",
+                    Nodes(route.Root).Single(node =>
+                        node.Id == "game-launcher.experiences.help").Text);
+                Assert.AreEqual(4, Nodes(route.Root).Count(node =>
+                    node.ActionId?.StartsWith("game-launcher.experience.select.",
+                        StringComparison.Ordinal) == true));
+            }
 
             var backId = expected switch
             {
                 GameLauncherRoute.AddGames => "game-launcher.add.back",
                 GameLauncherRoute.Running => "game-launcher.running.back",
+                GameLauncherRoute.Experiences => "game-launcher.experiences.back",
                 _ => "game-launcher.hidden.back",
             };
             await widget.OnActionAsync(new(backId, backId));
@@ -969,15 +983,19 @@ public sealed class GameLauncherTests
             shortcuts[ControllerButton.LeftBumper].ActionId);
         Assert.AreEqual("game-launcher.prefer",
             shortcuts[ControllerButton.RightBumper].ActionId);
-        foreach (var hintId in new[]
+        foreach (var (hintId, label) in new[]
                  {
-                     "game-launcher.hint.details",
-                     "game-launcher.hint.favorite",
-                     "game-launcher.hint.actions",
-                     "game-launcher.hint.variant",
-                     "game-launcher.hint.prefer",
+                     ("game-launcher.hint.details", "Game details"),
+                     ("game-launcher.hint.favorite", "Favorite"),
+                     ("game-launcher.hint.actions", "Game actions"),
+                     ("game-launcher.hint.variant", "Group variants"),
+                     ("game-launcher.hint.prefer", "Prefer variant"),
                  })
+        {
             Assert.IsTrue(Nodes(ready.Root).Any(node => node.Id == hintId));
+            Assert.AreEqual(label, Nodes(ready.Root).Single(node =>
+                node.Id == hintId + ".label").Text);
+        }
 
         var launch = widget.OnActionAsync(new(
             "game-launcher.launch", tile.Id)).AsTask();

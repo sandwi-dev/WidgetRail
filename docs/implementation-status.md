@@ -3972,3 +3972,17 @@ absent.
 Focused Release evidence passes Windows App Library Provider 75/75 and Games &
 Apps 64/64. The dedicated installed generic-AppContainer Games & Apps normalized
 app-library acceptance also passes through two worker generations.
+
+### Game Launcher controls and continuation audit (DLV-171)
+
+No managed product gap reproduced. The existing credential-free 32-game
+projection admits Add games, Add running app, Experiences, filters, and current
+focused-game View/X/Y/LB/RB shortcuts through one exact action each. Controller
+help labels match those admitted actions and disappear while the focused game is
+busy. Full, partial, and final cursor pages retain valid collection anchors;
+last-row Down advances once to the adjacent entering game while more results
+exist, and a terminal page exposes no continuation loop or footer substitution.
+
+Focused Release evidence passes Game Launcher 77/77. The dedicated installed
+generic-AppContainer exact-launch acceptance also passes with current SavedId
+resolution and launch revalidation.
