@@ -393,6 +393,47 @@ semantics beyond the documented closed vocabulary, or DLV-138 has already
 published a conflicting contract that cannot be corrected without a material
 provider/API decision.
 
+### DLV-144 — Restore Spotify's usable responsive player layout
+
+**State:** Ready immediately after the already-active DLV-142. This fresh
+user-visible correction precedes later widgets features or refactoring; do not
+interrupt or mix it into DLV-142.
+**Baseline/dependencies:** completed DLV-142 branch plus accepted host geometry
+from DLV-127. The user's accepted-Release screenshot shows the authored compact
+Spotify branch at the approximately `978x466` inner viewport: horizontal tabs
+replace the established rail hierarchy and the primary transport row is clipped
+below the visible player panel. Current Spotify tests prove only that expanded
+and compact nodes exist, not that the selected branch fits a real host viewport.
+**Owner/outcome:** widgets lane for Spotify presentation, surface hints, styles,
+and focused responsive fixtures. Restore a deliberate controller-first first
+page at the actual host envelope: navigation and the complete player transport
+remain visible or predictably focus-scrollable, with no content hidden behind
+the shell or tray.
+**Acceptance:** at minimum-width `620x400`, intermediate `760x440`, accepted
+`978x466`, preferred `980x560`, and wider work-area fixtures at 100%, 125%, and
+150% scale, the selected branch has one title/status, one destination control,
+artwork/metadata, seek control and times, primary transport row, and required
+footer/actions wholly inside the body or inside one focus-revealing scroll
+viewport. Horizontal tabs are used only where their player composition fits;
+the accepted standard viewport retains the established rail/compact hierarchy
+unless a demonstrably clearer layout fits all controls. Seek Left reaches the
+selected destination navigation edge, Back/shortcuts stay truthful, and Player,
+Queue, Playlists, and Devices preserve focus and scroll position across branch
+changes. No clipped controls, pixel-offset compensation, duplicate semantic
+branches, fixed shell sizing, account/network work, or provider behavior change.
+**Architecture/verification:** keep responsive composition in
+`SpotifyPresentation` and GBSS; provide a before/after responsibility map and do
+not grow the 1,275-line `SpotifyWidget` root. Add focused real-layout semantic
+fixtures that execute responsive selection and assert selected-node bounds and
+focus reveal, not source-string existence alone. Tier 1 Spotify and smallest
+SDK responsive/scroll fixtures; Tier 2 production-host semantic fixture only if
+a shared contract changes. No aggregate, capture automation, credentials, or
+live Spotify dependency.
+**Stop:** focused evidence proves that `ResponsiveVisibility` selects the wrong
+generic branch or that the native scroll/layout engine cannot reveal a valid
+focused descendant. Record the exact shared failure and return it for a bounded
+platform/SDK assignment instead of compensating inside Spotify.
+
 ### Widgets held dependent milestone
 
 ### DLV-139 — Add opt-in Epic installed-game discovery
@@ -426,8 +467,9 @@ helper binary.
 revalidated without relying on account secrets, arbitrary executable/protocol
 input, or an undocumented mutable Epic database.
 
-**Queue depth note:** DLV-142 is the current widgets assignment. DLV-138 and
-DLV-139 are complete but held as one unaccepted prefix with DLV-130. GOG/Amazon
+**Queue depth note:** DLV-142 is the current widgets assignment and DLV-144 is
+Ready immediately afterward. DLV-138 and DLV-139 are complete but held as one
+unaccepted prefix with DLV-130. GOG/Amazon
 adapters are not Ready until that prefix is accepted and a stable bounded local
 installed-record and launch-revalidation contract is evidenced; DLV-135/134
 remain dependency-ordered behind the platform experience work.
@@ -638,6 +680,63 @@ crossfade and degrade effects before focus latency. Tier 1 style/asset/recovery
 groups and Tier 2 production-host lifecycle fixture; no animated media, audio,
 remote assets, gallery, network, screenshot, or aggregate.
 
+### DLV-143 — Bottom-anchor the first cold-start dashboard frame
+
+**State:** Ready immediately after the already-active DLV-133. This fresh
+user-visible correction precedes later platform presentation or refactoring
+work; do not interrupt or mix it into DLV-133.
+**Baseline/dependencies:** accepted planner main `4beb961` plus the completed
+DLV-133 commit. User screenshot from the exact accepted Release and PID 17576
+startup log at 02:43:32 on 2026-08-12. The first composition commits content
+`from=0x0 to=1549x236`, while work-area placement reserves
+`host=1785,481,1549,919` inside `work=0,0,5120,1440` at 120 DPI and 1.05
+interface scale. The 236-pixel dashboard is therefore painted at the top of a
+919-pixel bottom-aligned host, making the visible Settings title/guide/tray
+appear around screen center until a full widget surface is admitted.
+**Owner:** platform lane for cold process-owner startup, native dashboard
+surface geometry, composition placement/visibility ordering, tray paint/
+pointer/UIA bounds, focused native tests, diagnostic geometry, and directly
+affected native documentation
+**Concurrency:** no managed Settings/widget/SDK changes, Launcher Experience
+style/artwork/recovery changes, window-discovery/taskbar identity, controller
+routing, capture tooling, second HWND, reviewer documents, aggregate, or push.
+
+**User-visible outcome:** the first frame of a newly started overlay presents
+the Settings dashboard and icon tray at the normal bottom-centered work-area
+anchor. It never dwells or flashes in the middle before moving into place.
+
+**Objective/scope:** trace the cold owner-election path from the first
+dashboard snapshot through the first visible DirectComposition commit. Give
+the existing placement/composition owner one coherent mapping between the
+smaller dashboard content extent and physical host extent: either bottom-align
+the dashboard inside the retained shared host or atomically size/place the
+initial host to the dashboard before visibility. The first visible commit must
+already use final paint, pointer, semantic, and UIA geometry. Preserve the
+accepted shared-shell/tray invariant when a widget opens, the resident `--show`
+path, work-area/DPI changes, and transparent complete-content presentation.
+
+**Acceptance:** cold process start exposes no visible frame whose compact
+dashboard is top-aligned inside a taller bottom-positioned host. Dashboard
+title, help, selected tray item, painted tray, pointer targets, semantic focus,
+and UIA bounds agree and are fully inside the live work area with the standard
+bottom margin. Deterministic cold-start fixtures cover compact/720p/1080p/
+1440p, 125% DPI, 150% text/interface scale, taskbar-reserved work areas, and a
+non-primary monitor; opening the first widget and hiding/re-showing retain the
+same tray anchor with no black frame, stale input, focus loss, or intermediate
+centered geometry. The production log records both absolute host bounds and
+absolute visible-content bounds/anchor for the first commit.
+
+**Architecture/verification:** keep cold-start placement in the existing
+surface/placement/composition-motion owners; provide a before/after
+responsibility map and do not add another geometry policy to `OverlayApp`.
+Tier 1 placement, composition, dashboard-shell, pointer, and UIA Release groups;
+Tier 2 one production-host temporal fixture that observes the first visible
+commit from a new process. No screenshot gate or repository aggregate.
+
+**Stop:** the correction requires a second render/window ownership model,
+widget-specific offsets, a substantial compositor redesign, or a product
+choice that changes the accepted bottom-centered overlay behavior.
+
 ### DLV-137 — Close the Launcher Experience package-validation gaps
 
 **State:** Accepted as `41da5b7` with DLV-141 correction `878b484`, integrated
@@ -773,13 +872,15 @@ manufacture adjacent work.
 
 ## Serialized integration queue
 
-1. DLV-130 owns the normalized public launcher data contract. DLV-138 may
-   and DLV-139 are committed on that shape, but DLV-142 must close validation
+1. DLV-130 owns the normalized public launcher data contract. DLV-138 and
+   DLV-139 are committed on that shape, but DLV-142 must close validation
    ownership before the complete widgets prefix is accepted or later work
    begins.
 2. DLV-131/132 plus DLV-137/140/141 are accepted and integrated through
    `2f766fe`. DLV-136 stopped without product change; DLV-133 may now continue
-   visible platform presentation work independently.
+   visible platform presentation work independently. DLV-143 is the next
+   platform assignment and closes the cold-start centered-dashboard regression
+   before later platform work.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.

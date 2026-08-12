@@ -1,7 +1,7 @@
 # Engineering Quality Review
 
 Status: active independent quality audit<br>
-Last reassessed: 2026-08-12 against integrated `main` `2f766fe`<br>
+Last reassessed: 2026-08-12 against integrated `main` `aa0a600`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, accessibility, and product readiness
 
@@ -78,6 +78,21 @@ known launcher/app-library issue. DLV-136 stopped at evidence-only `83edb39`
 because direct discovery would add taskbar/Alt-Tab eligibility; no product
 window change is warranted for planner automation.
 
+### Spotify responsive tests do not prove usable branch fit
+
+Fresh user evidence from the accepted Release shows Spotify selecting its
+authored compact branch at the approximately `978x466` inner viewport. That
+branch replaces the established rail hierarchy with horizontal tabs while its
+primary transport row is clipped below the visible player panel. This is not a
+provider failure: the current presentation deliberately publishes expanded and
+compact branches, and the current tests assert their presence and visibility
+tags without executing real host branch selection or proving selected-node
+bounds and focus reveal. DLV-144 is Ready immediately after DLV-142 to correct
+the Spotify presentation and add proportional real-layout semantic evidence.
+If the focused fixture identifies a generic visibility or native scroll defect,
+the widget lane must stop and return that exact shared seam rather than add a
+Spotify-only offset.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -88,6 +103,7 @@ window change is warranted for planner automation.
 | EQ-013 | P1 | Architecturally implemented with bounded process leases and refusal policy; packaged aggregate-residency evidence remains. | Named multi-widget churn/residency run with exact process, cleanup, refusal, CPU, and memory evidence. |
 | EQ-015 | P1 | Partially implemented. Cloneable offline SDK, release unit, compatibility checks, starters, package lifecycle, and docs exist; external publication/version/update governance remains open. | A real external repository consumes a versioned SDK/template without checkout references and completes build, scenario, pack, install, rollback, and removal. |
 | EQ-020 | P1 | Open native responsiveness risk. Much bridge coordination moved off the UI thread, but synchronous startup/request paths still need exact-content latency and cancellation proof. | Production-host timing and cancellation evidence under slow/nonresponsive worker conditions without UI starvation or stale publication. |
+| EQ-035 | P1 | Confirmed cold-start geometry regression. PID 17576 first commits 1549x236 dashboard content into the top of a bottom-positioned 1549x919 host, so the visible shell appears centered. DLV-143 is Ready after active DLV-133. | One native placement owner bottom-anchors the first visible dashboard commit; paint/pointer/UIA agree across the responsive matrix and a cold production-host temporal fixture observes no intermediate centered frame. |
 | EQ-023 | P1 | Materially advanced. Native UIA/provider/action/Back semantics have deterministic host coverage; physical Narrator/MSAA and packaged assistive-technology proof remain. | Named packaged keyboard/controller/UIA/Narrator matrix on the accepted Release. |
 | EQ-026 | P1 | Implemented in focused fixtures but still Verifying for user-reproduced list and reverse-scroll cases. | Corrected packaged Release passes the user's exact Audio Mixer and Spotify focus-edge reproductions. |
 | EQ-027 | P1 | Verifier overlap and result provenance are guarded, but release input mutability and clean-current provenance are not a universal gate. | One named exact-commit Tier-3 checkpoint with immutable inputs, hashes, final status, and no duplicate dirty/clean run. |
@@ -110,12 +126,12 @@ one class automatically.
 
 | Production owner | Current signal | Disposition |
 | --- | ---: | --- |
-| `OverlayApp` / `main.cpp` host application | `main.cpp` 6,436 physical lines; dominant logical owner remains several thousand lines | **Open, dependency-ordered.** DLV-136 must keep window identity in its focused owner. Revisit another extraction only as a named visible/release prerequisite. |
+| `OverlayApp` / `main.cpp` host application | `main.cpp` 6,436 physical lines; dominant logical owner remains several thousand lines | **Open, dependency-ordered.** DLV-143 must keep cold-start geometry in the existing placement/composition owners and provide a before/after responsibility map. Revisit another extraction only as a named visible/release prerequisite. |
 | `GameLauncherWidget` | 1,350-line root plus focused model/presentation/organization owners | **Active conditional exception.** DLV-138 and DLV-142 require before/after maps; no provider adapter, validation policy, or new coordination primitive may enter the root. |
 | `GamesAppsWidget` | 1,376-line root | **Conditional exception.** Sole lifecycle/provider-effect/action/committed-state adapter over separate presentation, catalog, persistence, reconciliation, and app-library projection policies. Reopen for store/domain growth. |
 | `AudioMixerWidget` | 1,702-line root | **Conditional exception.** One state/action/effect/selection/status/invalidation transaction owner over separate provider session, command transition, and presenter. Reopen for another coordination domain. |
 | `SettingsWidget` | 1,503-line root | **Conditional exception.** One lifecycle/service-effect/committed-state adapter over separate section, permission, installed-package, and theme policies. Reopen for another service lifecycle or material unrelated growth. |
-| `SpotifyWidget` | 1,275-line non-partial root | **Conditional exception.** Sole lifecycle/provider-call/resource/task/committed-state/invalidation owner over value policies and snapshot presenter. Reopen if policy/presentation or another coordination owner returns. |
+| `SpotifyWidget` | 1,275-line non-partial root plus focused presentation owner | **Active conditional exception.** DLV-144 must keep responsive composition in `SpotifyPresentation`/GBSS, provide a before/after responsibility map, and add no layout or responsive policy to the root. Reopen if another coordination owner returns. |
 | `NetworkControlsWidget` | approximately 1,500 lines at last focused audit | **Conditional exception.** Singular lifecycle/host-command/committed-state/invalidation adapter over separate provider, command, identity, action, and presenter seams. Remeasure on next touch. |
 | `UI` SDK facade | approximately 1,471 lines across component-family partials | **Cohesive stateless exception.** No lifecycle, task, lock, resource, or mutable model. Reopen if component families share hidden state. |
 | `WidgetBridgeServer` | 887-line file; focused registry/dispatcher/recovery owners exist | **Conditional exception.** Retain session/framing/routing/write ownership only; reopen if catalog/residency/diagnostics policy returns. |
@@ -131,8 +147,8 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | Many focused corrections are integrated, but several user-reported navigation, clipping, transition, shortcut, and recovery issues remain Verifying. | Fresh accepted Release plus user/live computer-control verification; visible defects stay ahead of internal cleanup. |
-| Launcher platform | Data-only pack validation and four native responsive presets are accepted. Normalized managed presentation is returned for correction; Windows/Xbox import is active. | DLV-142, accepted DLV-138, DLV-136 live smoke, launcher style/recovery, production state projection, then author tooling. |
+| Visible UI and controller behavior | Many focused corrections are integrated, but several user-reported navigation, clipping, transition, shortcut, and recovery issues remain Verifying; Spotify's selected compact first page currently clips transport controls. | DLV-143 and DLV-144, then fresh accepted Release plus user/live computer-control verification; visible defects stay ahead of internal cleanup. |
+| Launcher platform | Data-only pack validation and four native responsive presets are accepted. Normalized managed presentation is returned for correction; Windows/Xbox and Epic imports are committed but held. | DLV-142, accepted DLV-138/139, launcher style/recovery, DLV-143 cold-start placement, production state projection, then author tooling. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -170,7 +186,11 @@ its change is accepted.
    main.
 4. Continue visible DLV-133 now; keep DLV-134 and author tooling dependency-
    ordered behind accepted platform and managed contracts.
-5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
+5. Review DLV-143 immediately after DLV-133 as the next visible platform
+   correction; cold process start must be the production-host evidence path.
+6. Review DLV-144 immediately after DLV-142 as the next visible widgets
+   correction; require executed responsive fit and focus-reveal evidence.
+7. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.
 
 If no implementation or live evidence changes, record no material review
