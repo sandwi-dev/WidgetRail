@@ -126,6 +126,22 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown commands return usage errors", UnknownCommand),
 };
 
+if (args is ["--test", var exactName])
+{
+    tests = tests.Where(test => string.Equals(
+        test.Name, exactName, StringComparison.Ordinal)).ToArray();
+    if (tests.Length == 0)
+    {
+        Console.Error.WriteLine($"Unknown exact Gbar CLI test: {exactName}");
+        return 2;
+    }
+}
+else if (args.Length != 0)
+{
+    Console.Error.WriteLine("Usage: GbarCli.Tests [--test <exact-name>]");
+    return 2;
+}
+
 var failures = new List<string>();
 foreach (var test in tests)
 {
@@ -1066,18 +1082,20 @@ static async Task DevRetainsAndCleans()
     var sourceRoot = Path.Combine(temp.Path, "LivePanel");
     Assert.Equal(0, (await RunCli("new", "widget", "LivePanel", "--output", sourceRoot,
         "--id", "dev.test.live-panel", "--publisher", "dev.test")).Code);
+    var packageRoot = Path.Combine(temp.Path, "LivePanelPackage");
+    await PrepareDevPackageDirectoryAsync(sourceRoot, packageRoot);
     var outputBuffer = new StringWriter();
     var errorBuffer = new StringWriter();
     var output = TextWriter.Synchronized(outputBuffer);
     var error = TextWriter.Synchronized(errorBuffer);
     var session = new DevSession(
-        DevWidgetSource.Discover(sourceRoot), Environment.ProcessPath!, "Release",
+        DevWidgetSource.Discover(packageRoot), Environment.ProcessPath!, "Release",
         TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error);
     var sessionRoot = session.SessionRoot;
-    // Dev intentionally disables every persistent build/compiler server. A
-    // cold Release generation can exceed ten seconds on a busy test host, so
-    // keep the product's 90-second build bound while giving this integration
-    // fixture enough scheduler headroom to observe both generations.
+    // Real isolated build behavior and the 90-second product deadline have
+    // dedicated tests. This lifecycle fixture starts from one catalog-valid
+    // package directory so Ready/retention/cleanup cannot inherit cold-build
+    // scheduler state from earlier dev cases.
     using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(40));
     var run = session.RunAsync(cancellation.Token);
     int? activePid = null;
@@ -1088,7 +1106,7 @@ static async Task DevRetainsAndCleans()
         var firstPid = session.ActiveHostProcessId;
         activePid = firstPid;
         Assert.True(firstPid.HasValue, "Dev host was not retained after the first good build.");
-        await File.WriteAllTextAsync(Path.Combine(sourceRoot, "styles", "default.gbss"),
+        await File.WriteAllTextAsync(Path.Combine(packageRoot, "styles", "default.gbss"),
             "button { background: url(https://unsafe.example/x); }");
         await WaitUntilAsync(() => errorBuffer.ToString().Contains("Retained the last-good", StringComparison.Ordinal),
             TimeSpan.FromSeconds(5));
@@ -1105,6 +1123,17 @@ static async Task DevRetainsAndCleans()
     Assert.True(!Directory.Exists(sessionRoot), "Dev cancellation leaked its temporary catalog.");
     Assert.True(activePid.HasValue, "Dev integration did not capture the child host PID.");
     AssertProcessExited(activePid.GetValueOrDefault());
+}
+
+static async Task PrepareDevPackageDirectoryAsync(string sourceRoot, string packageRoot)
+{
+    var buildRoot = Path.Combine(Path.GetDirectoryName(packageRoot)!,
+        Path.GetFileName(packageRoot) + ".build");
+    var prepared = await DevGenerationBuilder.PreparePackageAsync(
+        DevWidgetSource.Discover(sourceRoot), buildRoot, "Release",
+        TimeSpan.FromSeconds(90), TextWriter.Null, TextWriter.Null,
+        CancellationToken.None);
+    ZipFile.ExtractToDirectory(prepared.PackagePath, packageRoot);
 }
 
 static async Task DevBrokenEntrypointRetainsLastGood()
