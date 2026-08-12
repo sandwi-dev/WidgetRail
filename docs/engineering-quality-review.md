@@ -92,6 +92,16 @@ production-host lifecycle scenario. Planner PID 25004 reproduces the expected
 first absolute content bounds `1785,1164,1549,236`, admits all eight first
 pages inside the host, and emits no product failure in the exact interval.
 
+### Game Launcher production projection split at the correct boundary
+
+DLV-134 managed commit `e847502` is coherent but held unintegrated. It adds a
+controller-reachable persisted closed experience selection and partitions the
+one authoritative view into six non-authorizing semantic slots. Its 68/68
+managed evidence preserves exact SavedId, action, focus, cursor, and provider
+authority. The ordinary host still bypasses `LauncherExperienceAdapter`, so
+integrating the picker alone would ship a visible no-op. DLV-145 now owns the
+private native adoption hook; the pair is reviewed and integrated together.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -147,7 +157,7 @@ its change is accepted.
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
 | Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 25004 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, and launcher-scoped presentation recovery are accepted. | DLV-143 cold-start placement, active production state projection DLV-134, then author tooling. |
+| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, and launcher-scoped presentation recovery are accepted. DLV-134's managed six-slot boundary is held. | Active native production adoption DLV-145 plus concurrent author tooling DLV-135, then paired projection acceptance. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -176,11 +186,11 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active DLV-134 as the next visible Game Launcher milestone, including
-   exact SavedId/action/focus agreement across all four native experiences.
-2. If DLV-134 reports a missing native private projection hook, assign that
-   exact bounded prerequisite to the clean platform lane before DLV-135.
-3. Keep DLV-135 Ready behind DLV-134 at the next clean widgets boundary.
+1. Review active DLV-145 against held `e847502`, including exact SavedId/action/
+   focus/scroll agreement across all four ordinary-host native experiences.
+2. Review concurrent DLV-135 without accepting any ordinary-overlay preview
+   claim before DLV-145.
+3. Integrate DLV-134 and DLV-145 as one visible product outcome.
 4. Keep PID 25004 visible for the user's dashboard, Spotify, and installed-
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
