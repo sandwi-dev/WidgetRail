@@ -50,6 +50,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed version changes immediately refresh permission authority", InstalledVersionRefreshesPermissions),
     ("Malformed installed widget catalogs fail closed", InstalledWidgetCatalogFailure),
     ("Over-limit catalogs expose confirmed inactive-version recovery", InstalledWidgetCatalogRecovery),
+    ("Version-limit faults retain last-good inventory and recover on Retry", InstalledWidgetVersionLimitRetry),
     ("Installed widget review reloads only on activation", InstalledWidgetActivationReload),
     ("Incompatible installed widgets cannot be enabled", IncompatibleInstalledWidget),
     ("Permissions use nested controller-scroll scopes and B-only Back", PermissionScopesAreScrollable),
@@ -1346,6 +1347,75 @@ static async Task InstalledWidgetCatalogRecovery()
         "Settings recovery retained the exact retired version.");
     Assert.Valid(list);
     Assert.Valid(confirmation);
+    Assert.Valid(recovered);
+}
+
+static async Task InstalledWidgetVersionLimitRetry()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var retainedSettings = PlatformSettingsDocument.Default with
+    {
+        Appearance = PlatformSettingsDocument.Default.Appearance with
+        {
+            BackdropOpacity = 0.73,
+        },
+    };
+    await Store(temp.Path).ReplaceAsync(retainedSettings);
+    for (var major = 1; major <= 8; major++)
+        WriteInstalledWidget(
+            catalogRoot, "dev.test.quota", "dev.publisher.quota",
+            "Quota widget", [], [], version: $"{major}.0.0");
+    var catalog = new WidgetCatalog(catalogRoot);
+    await catalog.SetEnabledAsync("dev.test.quota", true);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    Assert.Contains("Quota widget", Button(Snapshot(widget).Root, "installed.item.0").Text!);
+
+    WriteInstalledWidget(
+        catalogRoot, "dev.test.quota", "dev.publisher.quota",
+        "Quota widget", [], [], version: "9.0.0");
+    await Action(widget, "refresh");
+    var limited = Snapshot(widget);
+    Assert.Contains("installed_widget_version_limit",
+        Text(limited.Root, "installed.help").Text!);
+    Assert.Contains("Last good", Button(limited.Root, "installed.item.0").Text!);
+    Assert.True(Buttons(limited.Root).Any(button => button.ActionId == "refresh" &&
+        button.Id == "installed.retry"), "The quota state did not expose Retry.");
+    Assert.True(!Nodes(limited.Root).Any(node => node.Id == "installed.empty"),
+        "The quota fault collapsed the retained inventory to an empty page.");
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
+    var reactivated = Snapshot(widget);
+    Assert.Contains("Last good", Button(reactivated.Root, "installed.item.0").Text!);
+
+    await Action(widget, "installed.select.0");
+    var details = Snapshot(widget);
+    Assert.Contains("last-good package remains reviewable",
+        Text(details.Root, "installed.details.catalog-status").Text!);
+    Assert.Equal(true, Button(details.Root, "installed.details.toggle").IsDisabled);
+    await Action(widget, "back");
+
+    var excess = Path.Combine(catalogRoot, "packages", "dev.test.quota", "9.0.0");
+    Directory.Move(excess, Path.Combine(temp.Path, "quota-version-outside-catalog"));
+    var restarted = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent-restarted")));
+    await Activate(restarted);
+    await Action(restarted, "open.installed-widgets");
+    Assert.Contains("Quota widget", Button(
+        Snapshot(restarted).Root, "installed.item.0").Text!);
+    await Action(widget, "refresh");
+    var recovered = Snapshot(widget);
+    Assert.Contains("Quota widget", Button(recovered.Root, "installed.item.0").Text!);
+    Assert.True(!Button(recovered.Root, "installed.item.0").Text!
+        .Contains("Last good", StringComparison.Ordinal),
+        "Retry did not replace the last-good catalog projection.");
+    Assert.Equal(retainedSettings, await Store(temp.Path).LoadAsync());
+    Assert.Valid(limited);
+    Assert.Valid(reactivated);
+    Assert.Valid(details);
     Assert.Valid(recovered);
 }
 

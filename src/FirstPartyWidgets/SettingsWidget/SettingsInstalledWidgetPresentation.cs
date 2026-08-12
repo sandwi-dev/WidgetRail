@@ -19,7 +19,7 @@ internal static class SettingsInstalledWidgetPresentation
         var page = state.Page;
         var selectedBuiltInId = state.SelectedBuiltInId;
 
-        if (!valid) return RenderInstalledCatalogRecoveryList(
+        if (!valid && snapshot.Widgets.Count == 0) return RenderInstalledCatalogRecoveryList(
             header, busy, diagnostic, state);
 
         var lastPage = SettingsInstalledWidgetPolicy.LastCatalogPage(snapshot);
@@ -31,14 +31,14 @@ internal static class SettingsInstalledWidgetPresentation
             UI.Text("Installed widgets", "installed.heading", "Installed widgets").Classes("page-heading"),
             UI.Text(valid
                     ? "Built-in widgets are included with the app. Community packages are unsigned: review their exact sealed bytes and requested capabilities before enabling. Publisher labels are unverified."
-                    : diagnostic ?? "Installed widget catalog is unavailable.",
+                    : $"{diagnostic ?? "Installed widget catalog is unavailable."} Last-good installed versions remain available for review; retry after the catalog changes.",
                 "installed.help", "Installed widget help")
                 .Classes(valid ? "page-help" : "diagnostic-error"),
             UI.Button(
                     "Install local widget",
                     "host.install-local-widget",
                     "installed.install-local")
-                .Busy(busy)
+                .Disabled(!valid).Busy(busy)
                 .Classes("setting-row", "primary-button"),
             UI.Text(
                     "Choose one local .gbarwidget in the host picker. Successful packages are installed disabled for review; the selected path is never shared with this widget.",
@@ -46,6 +46,9 @@ internal static class SettingsInstalledWidgetPresentation
                     "Local widget installation safety")
                 .Classes("page-help"),
         };
+        if (!valid)
+            children.Add(UI.Button("Retry installed catalog", "refresh", "installed.retry")
+                .Busy(busy).Classes("setting-row", "primary-button"));
 
         if (builtIn.Count != 0)
         {
@@ -78,9 +81,10 @@ internal static class SettingsInstalledWidgetPresentation
                 ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
                 : compatibility.IsSupported ? "Disabled · unsigned review required" : "Incompatible";
             children.Add(UI.Button(
-                    $"{package.Name} · {package.ActiveVersion.Version} · {status}",
+                    $"{package.Name} · {package.ActiveVersion.Version} · " +
+                    (valid ? status : $"Last good · {status}"),
                     $"installed.select.{index}", $"installed.item.{index}")
-                .Disabled(!valid).Busy(busy)
+                .Busy(busy)
                 .Selected(package.Enabled)
                 .Classes("setting-row", package.Enabled ? "is-enabled" : "is-disabled"));
         }
@@ -263,7 +267,7 @@ internal static class SettingsInstalledWidgetPresentation
                 builtInHasPermissions ? "installed.details.permissions" : "installed.details.back",
                 "installed.details");
         }
-        if (package is null || !valid)
+        if (package is null)
             return SettingsPresentation.View(header,
                 SettingsPresentation.PageScope("installed.details",
                     UI.Text("Package unavailable", "installed.details.heading", "Package unavailable")
@@ -295,29 +299,32 @@ internal static class SettingsInstalledWidgetPresentation
         var contentDigest = package.ActiveVersion.ContentDigest.ToLowerInvariant();
         var action = package.Enabled ? "Disable widget" : "Enable unsigned widget";
         var canToggle = package.Enabled || compatibility.IsSupported;
+        var canToggleNow = valid && canToggle;
         var hasPermissions = permissionCatalogValid &&
             permissionPackageIds.Contains(manifest.Id, StringComparer.Ordinal);
         var versionsButton = UI.Button(
                 $"Manage versions ({package.Versions.Count})", "installed.versions.open",
                 "installed.details.versions")
-            .Busy(busy).Classes("setting-row");
+            .Disabled(!valid).Busy(busy).Classes("setting-row");
         var permissionsButton = UI.Button(
                 hasPermissions
                     ? "Permissions & configuration"
                     : "No host permissions requested",
                 "installed.permissions.open", "installed.details.permissions")
             .FocusUp("installed.details.versions")
-            .FocusDown(canToggle ? "installed.details.toggle" : "installed.details.back")
-            .Disabled(!hasPermissions).Busy(busy).Classes("setting-row");
+            .FocusDown(canToggleNow ? "installed.details.toggle" : "installed.details.back")
+            .Disabled(!valid || !hasPermissions).Busy(busy).Classes("setting-row");
         var actionButton = UI.Button(action, "installed.toggle", "installed.details.toggle")
             .FocusUp("installed.details.permissions")
-            .FocusDown("installed.details.local-data").Busy(busy).Disabled(!canToggle)
+            .FocusDown("installed.details.local-data").Busy(busy)
+            .Disabled(!canToggleNow)
             .Classes(package.Enabled ? "danger-button" : "primary-button");
-        var canUninstall = !package.Enabled && state.PackageUninstall is { } uninstall &&
+        var canUninstall = valid && !package.Enabled && state.PackageUninstall is { } uninstall &&
             SettingsInstalledWidgetUninstallPolicy.Matches(package, uninstall) &&
             uninstall is { CanUninstall: true, ConfirmationToken: not null };
         var localDataButton = LocalDataButton(state, busy)
-            .FocusUp(canToggle ? "installed.details.toggle" : "installed.details.permissions")
+            .Disabled(!valid)
+            .FocusUp(canToggleNow ? "installed.details.toggle" : "installed.details.permissions")
             .FocusDown(canUninstall ? SettingsInstalledWidgetUninstallPolicy.FocusId :
                 "installed.details.back");
         var uninstallButton = UI.Button(
@@ -340,6 +347,11 @@ internal static class SettingsInstalledWidgetPresentation
         var details = new List<WidgetElement>
         {
                 UI.Text(package.Name, "installed.details.heading", "Installed widget name").Classes("page-heading"),
+                UI.Text(valid
+                        ? "Installed catalog is current."
+                        : "Installed catalog refresh is required. This last-good package remains reviewable, but package mutations are disabled until Retry succeeds.",
+                    "installed.details.catalog-status", "Installed catalog status")
+                    .Classes(valid ? "diagnostic-ok" : "diagnostic-error"),
                 UI.Text("Trust: Unsigned · publisher unverified", "installed.details.trust",
                     "Unsigned package trust status").Classes("diagnostic-error"),
                 UI.Text($"ID: {manifest.Id}", "installed.details.id", "Package ID").Classes("diagnostic-line"),
@@ -382,7 +394,7 @@ internal static class SettingsInstalledWidgetPresentation
             SettingsPresentation.PageScope("installed.details", details.ToArray()),
             canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
                 ? SettingsInstalledWidgetUninstallPolicy.FocusId
-                : canToggle ? "installed.details.toggle" : "installed.details.back",
+                : canToggleNow ? "installed.details.toggle" : "installed.details.back",
             "installed.details");
     }
 

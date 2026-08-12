@@ -110,10 +110,12 @@ internal static class SettingsInstalledWidgetPolicy
     }
 
     public static SettingsInstalledWidgetTransition Failure(
+        SettingsInstalledWidgetState current,
         string diagnostic,
         WidgetCatalogHealthSnapshot health,
         SettingsPage page)
     {
+        ArgumentNullException.ThrowIfNull(current);
         ArgumentException.ThrowIfNullOrWhiteSpace(diagnostic);
         ArgumentNullException.ThrowIfNull(health);
         if (page is SettingsPage.InstalledWidgetDetails or
@@ -121,21 +123,30 @@ internal static class SettingsInstalledWidgetPolicy
             SettingsPage.InstalledWidgetRecovery or
             SettingsPage.InstalledWidgetLocalData)
             page = SettingsPage.InstalledWidgets;
-        return new(
-            SettingsInstalledWidgetState.Empty with
-            {
-                Health = health,
-                CatalogValid = false,
-                Diagnostic = diagnostic,
-            },
-            page);
+        var retainedCatalog = current.Catalog.Widgets.Count != 0;
+        return new(current with
+        {
+            Health = health,
+            CatalogValid = false,
+            Diagnostic = diagnostic,
+            Page = retainedCatalog
+                ? Math.Clamp(current.Page, 0, LastCatalogPage(current.Catalog))
+                : 0,
+            VersionPage = 0,
+            SelectedInstalledId = null,
+            SelectedBuiltInId = null,
+            SelectedRepair = null,
+            LocalData = null,
+            PackageUninstall = null,
+            DetailsFocusId = null,
+        }, page);
     }
 
     public static SettingsInstalledWidgetState ChangeCatalogPage(
         SettingsInstalledWidgetState state,
         int delta)
     {
-        var count = state.CatalogValid
+        var count = state.Catalog.Widgets.Count != 0
             ? state.Catalog.Widgets.Count
             : state.Health.Candidates.Count(item => item.CanRemove);
         var last = Math.Max(0, (count - 1) / SettingsWidget.InstalledWidgetsPerPage);
@@ -147,7 +158,7 @@ internal static class SettingsInstalledWidgetPolicy
         int index,
         out SettingsInstalledWidgetTransition transition)
     {
-        if (!state.CatalogValid || index < 0 || index >= state.Catalog.Widgets.Count)
+        if (index < 0 || index >= state.Catalog.Widgets.Count)
         {
             transition = default;
             return false;
@@ -196,7 +207,8 @@ internal static class SettingsInstalledWidgetPolicy
         out SettingsInstalledWidgetTransition transition)
     {
         var removable = state.Health.Candidates.Where(item => item.CanRemove).ToArray();
-        if (state.CatalogValid || index < 0 || index >= removable.Length)
+        if (state.CatalogValid || state.Catalog.Widgets.Count != 0 ||
+            index < 0 || index >= removable.Length)
         {
             transition = default;
             return false;
@@ -211,7 +223,8 @@ internal static class SettingsInstalledWidgetPolicy
         SettingsInstalledWidgetState state,
         out SettingsInstalledWidgetTransition transition)
     {
-        if (state.SelectedInstalled is null || state.SelectedBuiltIn is not null)
+        if (!state.CatalogValid || state.SelectedInstalled is null ||
+            state.SelectedBuiltIn is not null)
         {
             transition = default;
             return false;

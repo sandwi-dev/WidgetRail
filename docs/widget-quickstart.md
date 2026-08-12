@@ -473,6 +473,14 @@ package contents, never removes the selected generation, and can retire inactive
 history while that selected version remains enabled. It has no force or
 caller-supplied recursive path.
 
+If the quota appears while **Installed widgets** already has a validated
+inventory, Settings keeps that last-good inventory visible for review, labels
+it as stale, disables package mutations, and exposes **Retry installed
+catalog**. A successful Retry or later activation replaces it with the current
+catalog. The quota never raises itself and Settings never deletes a package
+automatically; a cold start without last-good inventory uses the bounded
+Catalog recovery list above.
+
 After local review, remove the disabled widget and all of its immutable
 versions:
 

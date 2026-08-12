@@ -1236,6 +1236,7 @@ public sealed class SettingsWidget : Widget
         lock (_stateLock)
         {
             var transition = SettingsInstalledWidgetPolicy.Failure(
+                _installedState,
                 diagnostic,
                 health ?? new WidgetCatalogHealthSnapshot(null, []),
                 _page);

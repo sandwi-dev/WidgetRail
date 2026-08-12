@@ -3927,3 +3927,19 @@ Application, stops the first worker, and proves the fresh worker renders the
 saved row plus the unrelated trusted Game before completing normal lifecycle
 teardown. Focused Release evidence passes Games & Apps 63/63, Windows App
 Library Provider 75/75, and the installed restart route.
+
+### Settings installed-catalog quota recovery (DLV-167)
+
+An `installed_widget_version_limit` fault no longer collapses a previously
+validated Installed widgets inventory to an empty recovery page. Settings keeps
+the immutable last-good rows visible for review, labels them stale, disables
+package mutations, and exposes one **Retry installed catalog** action. A cold
+start without last-good inventory retains the existing bounded inactive-version
+recovery view; no quota is raised and no package is deleted automatically.
+
+The ordinary filesystem-backed Settings route creates eight valid versions,
+admits the active widget, introduces a ninth version, and proves the typed quota
+code, retained active row, read-only details, unrelated appearance settings,
+reactivation, clean restart after catalog change, and explicit Retry recovery.
+Focused Release evidence passes Settings 60/60, Widget Catalog 35/35, and the
+documentation contract over 66 Markdown files.

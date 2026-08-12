@@ -202,6 +202,7 @@ internal static class SettingsPolicyScenarios
             "Removed catalog identity retained a stale version page.");
 
         var failed = SettingsInstalledWidgetPolicy.Failure(
+            state,
             "Catalog unavailable (test)",
             new WidgetCatalogHealthSnapshot("test_failure", []),
             SettingsPage.InstalledWidgetDetails);
@@ -301,6 +302,7 @@ internal static class SettingsPolicyScenarios
             Error: false);
         var header = SettingsPresentation.Header(headerState);
         var failed = SettingsInstalledWidgetPolicy.Failure(
+            SettingsInstalledWidgetState.Empty,
             "Catalog unavailable (test)",
             new WidgetCatalogHealthSnapshot(
                 "test_failure",
