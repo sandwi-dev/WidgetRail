@@ -410,8 +410,7 @@ revert, reset, or layer per-widget masking over this integrated evidence.
 
 ### DLV-105 — Keep every widget reachable in a narrow icon tray
 
-**State:** Assigned; implementation committed as `42bcf9c` and pending review
-after the clean planner-baseline merge
+**State:** Done; accepted as `42bcf9c`, integrated through `d23db8b`
 **Baseline:** accepted DLV-025 `16f9f47` plus planner commit `de95720`
 **Dependencies:** host-owned tray catalog/order/selection, `TrayLayout`, host
 accessibility tree, focus/navigation, placement bands, and runtime extent
@@ -466,6 +465,18 @@ Build OverlayHost Release; no aggregate or capture harness.
 catalog/order semantics, the product must choose between materially different
 wrap/page interaction models not resolved by existing controller principles,
 or DLV-025 leaves tray geometry without one stable committed width.
+
+**Reviewer disposition:** Accepted. One pure `TrayLayout` owner computes the
+same bounded visible window and previous/next overflow controls for paint,
+pointer hit testing, and accessibility. Stable catalog Left/Right traversal is
+unchanged; pointer/UIA overflow moves to the exact adjacent hidden stable ID
+without entering widget content. Visible list items expose full-set position and
+overflow buttons expose direction/count. The 331-line diff contains no managed
+catalog, persistence, public API, compositor, or reviewer-document changes.
+Retained focused Release evidence passes TrayLayout 54, HostAccessibility 34,
+AccessibilityProvider 150, ControllerNavigation 107, OverlayPlacement 108,547,
+RealHostAccessibility 271, OverlayState traversal, and the host build. Live
+compact/wide confirmation remains with the user.
 
 ### DLV-107 — Restore transparent composition and professional widget motion
 
@@ -556,7 +567,7 @@ shipping abrupt motion.
 
 **State:** Assigned; conditional gate reproduced and implementation started
 after DLV-105 commit `42bcf9c` before the DLV-107 planner correction arrived
-**Baseline:** DLV-105 platform boundary pending independent review
+**Baseline:** accepted DLV-105 `42bcf9c`, integrated through `d23db8b`
 **Dependencies:** integrated DLV-025 presentation semantics, OverlayState tray
 focus region, controller/keyboard routing, retained-content transition path,
 declarative focus state, and accessibility publication
@@ -734,6 +745,7 @@ Keep only the latest meaningful integrated delta here.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-105 | `42bcf9c` | `d23db8b` | Compact trays keep the selected widget visible and expose explicit previous/next controls; controller order, pointer hit testing, and full-set UIA semantics share one layout. |
 | DLV-025 / correction DLV-107 | `16f9f47` rejected by live verification | `5b8556a` retained as correction baseline | PID 25164 proved complete-surface ordering alone is insufficient: the composed client has an opaque black perimeter and transition cadence is visibly poor. DLV-107 follows already-active DLV-106. |
 | DLV-100 | `760a9bb` | `54fbd12` | Game Launcher and protected Network Controls TextEntry snapshots pass the canonical bridge style route; the packaged Release is running for live confirmation. |
 | DLV-094/096/098/099 | `fb7fa34` contiguous widgets prefix | `c6d76a3` | Steam artwork is demand-only, stale-safe, generation-coupled, and fully drained before provider disposal. |

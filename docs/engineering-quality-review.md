@@ -12,6 +12,21 @@ verification credibility, UI/UX foundations, and product readiness
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
 
+### Current review delta — compact tray reachability accepted
+
+DLV-105 `42bcf9c`, integrated through `d23db8b`, replaces silent catalog
+truncation with one `TrayLayout`-owned visible window and explicit previous/next
+overflow controls. Paint, pointer targeting, and host accessibility consume the
+same bounds; normal Left/Right retains stable full-catalog order, while pointer
+or UIA overflow selects the exact adjacent hidden stable ID without entering
+widget content. Visible ListItems publish full-set position/size and overflow
+Buttons announce direction plus hidden count. The diff does not alter managed
+catalog/persistence, public widget APIs, preferred extents, or compositor
+ownership. Retained focused Release evidence covers exact-fit, N+1, large
+catalogs, first/middle/last selection, compact scaling, pointer, keyboard,
+controller, and native UIA projection. User confirmation in the freshly
+launched compact and wide overlay remains the final visual check.
+
 ### Current review delta — complete-surface compositor rejected live
 
 DLV-025 `16f9f47`, integrated through `5b8556a`, proved that one cohesive
