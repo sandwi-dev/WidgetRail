@@ -2933,6 +2933,21 @@ with C++ installed:
 See the [documentation index](README.md), [security and trust](security-and-trust.md),
 and [troubleshooting](troubleshooting.md).
 
+### Advanced scaffold profiles (DLV-110)
+
+`gbar new widget --template` now selects one strict version-2 inventory entry:
+`basic`, `data`, `media`, or `multipage` (with `basic` as the compatible
+default). The generated sources demonstrate the public lifecycle/state,
+`WidgetResource`, `WidgetOptimisticCommand`, and responsive
+`WidgetNavigator`/`NavigationShell` paths without credentials, repository
+references, or first-party-sized classes. Every profile includes a sibling
+`MSTest.Sdk` 4.3.2 semantic test and the matching isolated `gbar preview`
+scenario declaration. Selection and generation remain one bounded staging-and-
+rename transaction; invalid selection and malformed inventory input publish no
+partial target. Focused Release evidence exercises all four external-directory
+journeys through build, one discoverable test, isolated preview, validation,
+and repeated byte-identical package creation.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

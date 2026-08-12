@@ -1,0 +1,49 @@
+using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}};
+
+public enum Route { Home, Library }
+
+public sealed class {{WidgetName}} : Widget
+{
+    private static readonly NavigationShellDestination[] Destinations =
+    [
+        new("home", "Home", "open-home", WidgetGlyph.Play),
+        new("library", "Library", "open-library", WidgetGlyph.Connection),
+    ];
+    private readonly WidgetNavigator<Route> _navigation;
+
+    public {{WidgetName}}() => _navigation = CreateNavigator("routes", Route.Home);
+
+    public override WidgetView Render()
+    {
+        var navigation = _navigation.Value;
+        var route = navigation.Route == Route.Home ? "Home route" : "Library route";
+        var content = UI.Stack("content",
+            UI.Text(route, "status"),
+            UI.Button("Open other page", "primary", "primary"));
+        return new(_navigation.Scope(navigation,
+            UI.NavigationShell("shell", navigation.Route == Route.Home ? "home" : "library",
+                "primary", content, Destinations)),
+            InitialFocusId: "primary", ActiveInputScopeId: navigation.InputScopeId);
+    }
+
+    public override ValueTask OnActionAsync(WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (action.ActionId is "primary" or "open-library")
+            _navigation.Navigate(Route.Library, action.SourceElementId);
+        else if (action.ActionId == "open-home")
+            _navigation.Navigate(Route.Home, action.SourceElementId);
+        return ValueTask.CompletedTask;
+    }
+}
+
+public static class Scenarios
+{
+    public const string ExpectedText = "Library route";
+    public static WidgetScenarioDefinition Ready() => new(
+        new {{WidgetName}}(), new WidgetTestHostServicesBuilder().Build());
+}

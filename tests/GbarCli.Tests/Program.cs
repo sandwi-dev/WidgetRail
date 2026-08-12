@@ -70,6 +70,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
+    ("New ships four deterministic template profiles", AdvancedTemplateProfiles),
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
@@ -333,7 +334,8 @@ static async Task NewScaffolds()
         .Select(File.ReadAllText));
     Assert.DoesNotContain("{{", allText);
     Assert.Contains("dev.test.media-deck", allText);
-    Assert.Contains("ControllerButton.LeftBumper", allText);
+    Assert.Contains("ControllerButton.RightBumper", allText);
+    Assert.Contains("Template: basic", result.Output);
     var project = File.ReadAllText(Path.Combine(destination, "MediaDeck.csproj"));
     Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", project);
     Assert.DoesNotContain("ProjectReference", project);
@@ -355,6 +357,58 @@ static async Task NewScaffolds()
     Assert.Equal(WidgetGlyph.Connection, manifest.Presentation.Icon);
     Assert.Equal(WidgetResidencyPolicies.UnloadAfterIdle, manifest.ResidencyPolicy?.Mode);
     Assert.Equal(300, manifest.ResidencyPolicy?.IdleSeconds);
+}
+
+static async Task AdvancedTemplateProfiles()
+{
+    using var temp = new TemporaryDirectory();
+    foreach (var profile in WidgetTemplateProfiles.All)
+    {
+        var typeName = char.ToUpperInvariant(profile[0]) + profile[1..] + "Starter";
+        var destination = Path.Combine(temp.Path, typeName);
+        var id = $"dev.templates.{profile}";
+        var created = await RunCli(
+            "new", "widget", typeName, "--template", profile,
+            "--output", destination, "--id", id, "--publisher", "dev.templates");
+        Assert.True(created.Code == 0, "create: " + created.Error);
+        Assert.Contains($"Template: {profile}", created.Output);
+
+        var project = Path.Combine(destination, typeName + ".csproj");
+        var build = await RunProcessAsync(
+            "dotnet", ["build", project, "-c", "Release", "--nologo"],
+            TimeSpan.FromSeconds(120), destination);
+        Assert.True(build.Code == 0, "build: " + build.Output);
+
+        var tests = await RunProcessAsync(
+            "dotnet", ["run", "--project", Path.Combine(destination, "tests", typeName + ".Tests.csproj"),
+                "-c", "Release"],
+            TimeSpan.FromSeconds(120), destination);
+        Assert.Equal(0, tests.Code);
+        Assert.Contains("Passed!", tests.Output);
+
+        var preview = await RunCli("preview", destination, "--scenario", "ready");
+        Assert.Equal(0, preview.Code);
+        Assert.Contains("\"scenario\":\"ready\"", preview.Output);
+        Assert.Equal(0, (await RunCli("validate", destination)).Code);
+
+        var first = Path.Combine(temp.Path, profile + ".gbarwidget");
+        var second = Path.Combine(temp.Path, profile + "-repeat.gbarwidget");
+        Assert.Equal(0, (await RunCli(
+            "pack", destination, "--configuration", "Release", "--output", first)).Code);
+        Assert.Equal(0, (await RunCli(
+            "pack", destination, "--configuration", "Release", "--output", second)).Code);
+        Assert.SequenceEqual(
+            await File.ReadAllBytesAsync(first), await File.ReadAllBytesAsync(second));
+    }
+
+    var invalidTarget = Path.Combine(temp.Path, "InvalidStarter");
+    var invalid = await RunCli(
+        "new", "widget", "InvalidStarter", "--template", "unknown",
+        "--output", invalidTarget);
+    Assert.Equal(2, invalid.Code);
+    Assert.Contains("Choose basic, data, media, or multipage", invalid.Error);
+    Assert.True(!Directory.Exists(invalidTarget),
+        "An invalid template selection published a partial target.");
 }
 
 static async Task NewScaffoldsOutsideCheckout()
@@ -403,25 +457,30 @@ static async Task NewScaffoldsOutsideCheckout()
         var scenario = await RunProcessAsync(
             "dotnet",
             ["run", "--project", Path.Combine(destination, "tests", "VolumeControl.Tests.csproj"),
-             "--configuration", "Release", "--", snapshot],
+             "--configuration", "Release"],
             TimeSpan.FromSeconds(90), destination);
-        Assert.Equal(0, scenario.Code);
-        Assert.Contains("PASS lifecycle, state, actions, and snapshot", scenario.Output);
+        Assert.True(scenario.Code == 0, "tests: " + scenario.Output);
+        Assert.Contains("Passed!", scenario.Output);
+        var scenarioResult = Path.Combine(destination, "fixtures", "ready.scenario.json");
+        var preview = await RunCli(
+            "preview", destination, "--scenario", "ready", "--output", scenarioResult);
+        Assert.True(preview.Code == 0, "preview: " + preview.Error);
+        using (var document = JsonDocument.Parse(await File.ReadAllBytesAsync(scenarioResult)))
+            await File.WriteAllTextAsync(snapshot,
+                document.RootElement.GetProperty("snapshot").GetRawText());
         Assert.True(File.Exists(snapshot), "Generated scenario did not export its snapshot.");
 
         var validation = await RunCli("validate", destination);
-        Assert.Equal(0, validation.Code);
+        Assert.True(validation.Code == 0, "validate: " + validation.Error);
         Assert.Contains("Valid:", validation.Output);
         var canonical = Path.Combine(destination, "fixtures", "ready.canonical.json");
         var rendered = await RunCli("render", snapshot, "--output", canonical);
-        Assert.Equal(0, rendered.Code);
+        Assert.True(rendered.Code == 0, "render: " + rendered.Error);
         Assert.Contains("Snapshot written", rendered.Output);
         var replayed = await RunCli(
             "replay", snapshot, Path.Combine(destination, "replays", "smoke.json"));
-        Assert.Equal(0, replayed.Code);
-        Assert.Contains("\"actionId\": \"lower\"", replayed.Output);
-        Assert.Contains("\"actionId\": \"raise\"", replayed.Output);
-        Assert.Contains("\"actionId\": \"apply\"", replayed.Output);
+        Assert.True(replayed.Code == 0, "replay: " + replayed.Error);
+        Assert.Contains("\"actionId\": \"primary\"", replayed.Output);
 
         CanonicalAuthorJourneyContract.VerifyQuickstart(
             originalDirectory,
@@ -440,7 +499,7 @@ static async Task NewScaffoldsOutsideCheckout()
         var packageOneRepeat = Path.Combine(externalRoot, "dev.example.volume-control-0.1.0-repeat.gbarwidget");
         var packedOne = await RunCli(
             "pack", destination, "--configuration", "Release", "--output", packageOne);
-        Assert.Equal(0, packedOne.Code);
+        Assert.True(packedOne.Code == 0, "pack: " + packedOne.Error);
         Assert.Contains(Path.GetFileName(packageOne), packedOne.Output);
         Assert.Equal(0, (await RunCli(
             "pack", project, "--configuration", "Release", "--output", packageOneRepeat)).Code);

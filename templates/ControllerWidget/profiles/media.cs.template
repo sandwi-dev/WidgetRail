@@ -1,0 +1,54 @@
+using GameBarAlternative.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}};
+
+public sealed record PlaybackState(int Percent, bool Pending, string? Error);
+
+public sealed class {{WidgetName}} : Widget
+{
+    private readonly WidgetModel<PlaybackState> _state;
+    private readonly WidgetOptimisticCommand<PlaybackState, int, int, int> _seek;
+
+    public {{WidgetName}}()
+    {
+        _state = CreateModel(new PlaybackState(45, false, null));
+        _seek = CreateOptimisticCommand("media.seek", _state,
+            new WidgetOptimisticCommandOptions<PlaybackState, int, int, int>
+            {
+                Policy = WidgetCommandPolicy.Latest,
+                Apply = (state, delta) => new(
+                    state with { Percent = Math.Clamp(state.Percent + delta, 0, 100), Pending = true, Error = null },
+                    Math.Clamp(state.Percent + delta, 0, 100)),
+                Execute = (percent, _) => ValueTask.FromResult(percent),
+                Reconcile = (state, _, percent) => state with { Percent = percent, Pending = false },
+                Rollback = (state, baseline, _) => state with { Percent = baseline.Percent, Pending = false },
+                MapError = _ => new("seek_failed", "Playback position could not be changed."),
+                Fail = (state, baseline, _, error) => state with
+                { Percent = baseline.Percent, Pending = false, Error = error.Message },
+            });
+    }
+
+    public override WidgetView Render()
+    {
+        var state = _state.Value;
+        return new(UI.Stack("root",
+            UI.Text($"Playing · {state.Percent}%", "status"),
+            UI.Slider(state.Percent, 0, 100, 5, "seek", "progress", "Progress"),
+            UI.Button("Skip 10%", "primary", "primary").Busy(state.Pending)),
+            InitialFocusId: "primary");
+    }
+
+    public override async ValueTask OnActionAsync(WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        if (action.ActionId == "primary")
+            await _seek.Run(10).Completion.WaitAsync(cancellationToken);
+    }
+}
+
+public static class Scenarios
+{
+    public const string ExpectedText = "Playing · 55%";
+    public static WidgetScenarioDefinition Ready() => new(
+        new {{WidgetName}}(), new WidgetTestHostServicesBuilder().Build());
+}

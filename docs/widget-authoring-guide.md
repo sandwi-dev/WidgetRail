@@ -115,11 +115,14 @@ second getting-started command sequence.
 
 The local package is a deterministic offline scaffold dependency bundled by
 that `gbar` version; it is not an externally published feed or proof of
-publisher identity. The generated executable test drives lifecycle changes,
-one state-changing action, retained state, and exports the bounded snapshot
-used by render/replay. If the CLI installation lacks its SDK assemblies or the
+publisher identity. Choose the `basic`, `data`, `media`, or `multipage`
+profile with `--template`. They respectively demonstrate local lifecycle state,
+`WidgetResource` loading/error/retry, `WidgetOptimisticCommand` progress and
+rollback, and `WidgetNavigator` plus one responsive `NavigationShell` tree.
+Each sibling `MSTest.Sdk` 4.3.2 test executes the same credential-free semantic
+scenario declared for isolated `gbar preview`. If the CLI installation lacks its SDK assemblies or the
 bundled template, scaffolding fails before the target directory is written.
-The bundled template's version-1 manifest is a closed inventory: it labels
+The bundled template's version-2 inventory is closed: it labels
 bounded UTF-8 replacement templates separately from byte-preserved assets and
 rejects missing, undeclared, duplicate, traversing, reparse, or oversized
 entries. Generation and validation occur in a private sibling staging
@@ -135,7 +138,12 @@ Contributors changing public SDK signatures must use the checked-in
 removals, and signature changes all require an intentional baseline diff, and
 breaking pre-release resets do not require retaining obsolete APIs.
 
-The complete compile-tested starter source is shown once in the
+Omitting `--template` selects `basic`; an unknown profile is rejected before
+staging and leaves no target. Every generated widget project builds from its
+project-local SDK feed without a checkout reference. The MSTest package itself
+is the standard Microsoft SDK restored by normal .NET tooling.
+
+The complete compile-tested basic source is shown once in the
 [quickstart](widget-quickstart.md#canonical-generated-widget-source). The
 smallest useful widget remains a public `Widget` subclass with a public
 parameterless constructor (or one whose parameters are all optional).

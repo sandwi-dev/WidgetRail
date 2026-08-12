@@ -1,6 +1,5 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="MSTest.Sdk/4.3.2">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -8,6 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\{{WidgetName}}.csproj" />
-    <PackageReference Include="GameBarAlternative.WidgetSdk" Version="{{SdkVersion}}" />
+    <PackageReference Include="{{SdkPackageId}}" Version="{{SdkVersion}}" />
   </ItemGroup>
 </Project>
