@@ -81,56 +81,21 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### DLV-122 — Correct local-install documentation contradictions
+### Current widgets assignment
 
-**State:** Assigned as the bounded correction to completed DLV-113; DLV-119 is
-reviewed as structurally credible but remains unintegrated behind this prefix
-**Baseline:** accepted main `d3bc4a4` plus clean widgets commits DLV-113
-`0994809` and DLV-119 `670e01d`; preserve both and add one correction commit
-**Dependencies:** DLV-113's visible exact Settings action and DLV-112/116's
-host-owned picker/import operation
-**Owner:** widgets lane; directly affected public package/install documentation
-only
-**Concurrency:** documentation only; no production code, tests, native host,
-package policy, public authority, reviewer documents, or generated artifacts.
-
-**Review disposition:** DLV-113 production scope and focused evidence are
-credible: it adds only the exact reserved action/source/scope, preserves one
-controller Scroll and B path, becomes busy with Settings, and relies on the
-host for picker/install/path-free result authority. Its documentation is
-self-contradictory after the feature lands: `publishing-and-installation.md`
-still says there is no file-picker/graphical installer, and
-`widget-packaging.md` still lists the visible Settings action as deliberately
-deferred. DLV-119's bounded stage/code projection, last-good retention, Retry/
-activation recovery, and focused 23/23, 88/88, 13/13 evidence introduce no new
-lifecycle or provider owner.
-
-**Objective/in scope:** remove only obsolete statements that deny the visible
-local picker/action, preserve the exact distinction between the host-owned local
-file import and still-absent remote marketplace/updater/signing experiences,
-and validate every affected link/document contract.
-
-**Out of scope:** implementation or test changes, new install capabilities,
-remote graphical acquisition, signing, marketplace/update work, broad prose
-rewrite, or unrelated documentation cleanup.
-
-**Acceptance:** no public page says the Settings local action or host file picker
-is future/missing; every page still says packages install disabled, paths never
-reach workers, ordinary widgets gain no picker/filesystem authority, and remote
-marketplace/updater/signing remain deferred. Documentation contract passes.
-
-**Verification:** Tier 1 documentation contract and targeted search for stale
-`forthcoming`, `not yet visible`, `no file-picker`, and deferred-visible-action
-claims. No build, product test, aggregate, or capture.
-
-**Stop:** correction requires changing product behavior, public authority, or
-package/install policy rather than correcting stale prose.
+**State:** No Assigned item. Accepted DLV-113/119/122 is integrated through
+`4949f6e` and awaits the freshly packaged user's Settings picker and Now Playing
+recovery verdict. The remaining named widgets features require fresh live
+evidence, unsupported audio-endpoint authority, store APIs not established as
+supported consumer contracts, or authentication. Do not invent backend work to
+keep the lane busy.
 
 ### Widgets ready queue
 
-**Queue note:** after DLV-122, widgets work waits on fresh live results for the
-newly packaged Settings local install, Game Launcher details/clipping, and
-Now Playing stage/code recovery surfaces. Do not manufacture internal filler.
+**Queue note:** widgets work waits on fresh live results for the newly packaged
+Settings local install, Game Launcher details/clipping, and Now Playing stage/
+code recovery surfaces. The planner will insert any live correction before
+unrelated work; no speculative filler is authorized.
 
 ## Platform lane
 
@@ -241,6 +206,7 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
 | DLV-114/117 | `f285c9d` and `6a96727` | `cff0d99` | Game Launcher has an exact-ID controller details route and honest two-selection variant actions with committed feedback and deterministic return focus. |
 | DLV-112/115/116 | `1dd2dd5`, `5c66f16`, and `0e1810f` | `d6f2780` | Host-owned local package import is consumable only by exact bundled Settings, and reopened widget motion retires hidden composition work; live border/transition verdict remains. |
 | DLV-111 | `a1f008b` | `83c5c1f` | Settings now groups exact installed theme versions, protects built-in/current selections, selects older valid versions, and confirms atomic inactive-version retirement with CLI parity. |
@@ -250,7 +216,6 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 | DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |
 | DLV-104/106 | `99e4932` and `f119a1f` | `1ef4666` and `dde4981` | Bounded Game Launcher collection viewport and atomic tray focus ownership. |
 | DLV-101/103 | `f27f4d7` and `f87631c` | `9c5de8e` | Full-application worker process trees and dependable Now Playing retry/last-good behavior. |
-| DLV-105 | `42bcf9c` | `d23db8b` | Explicit compact-tray overflow with shared controller/pointer/UIA order. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

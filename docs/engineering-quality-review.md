@@ -4595,6 +4595,13 @@ Settings host picker, and another still lists that visible Settings action as
 deferred. DLV-122 owns the documentation-only correction. Neither candidate is
 integrated until that contiguous corrected prefix is accepted.
 
+**Accepted correction disposition.** DLV-122 `6f604b8` removes both obsolete
+claims while preserving disabled review, worker path isolation, and the absence
+of remote graphical acquisition, updater, signing, or marketplace authority.
+The documentation contract passes across 59 files and the targeted stale-phrase
+search is clean. DLV-113/119/122 is accepted and integrated through `4949f6e`;
+the paragraph above is retained as review rationale rather than an open return.
+
 ### Prior returned candidate review — DLV-114 and DLV-112
 
 **Accepted correction disposition (2026-08-11).** DLV-117 `6a96727` closes the
