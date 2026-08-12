@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 05:08 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 06:46 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,18 +13,22 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local main: `e6dc10e`; worktree clean when this plan was published.
-- Latest implementation integration: DLV-135 through `e6dc10e`.
-- Visible accepted Release: PID 9192, launched at 05:03:26 after the accepted
-  DLV-135 toolchain integration. DLV-135 changes only Gbar/catalog artifacts;
-  the overlay runtime graph remains the accepted DLV-143/DLV-144 graph. The
-  first dashboard frame is bottom-anchored at absolute
+- Local product baseline: `4aa7284`; worktree clean when this plan was
+  published.
+- Latest implementation integration: DLV-134/DLV-145/DLV-146 through
+  `4aa7284`.
+- Visible accepted Release: PID 6168, launched at 06:31:35 after the accepted
+  managed/native Launcher Experience integration. The first dashboard frame is
+  bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
 - Required live smoke passed all eight first pages with zero named UIA bounds
   outside the host and no worker/protocol/provider/presentation error in the
-  exact PID 9192 interval.
-- DLV-134 managed commit `e847502` is held on the widgets branch. It is not in
-  main and must not be integrated without platform DLV-145.
+  exact PID 6168 interval. Game Launcher exposed its controller-reachable
+  `Experience: Hero Rail` control; this machine's live provider remained
+  pending during the first-page pass, so the deterministic seeded production
+  fixture remains the exact native-adoption evidence.
+- DLV-134 `e847502`, DLV-145 `7a566be`, and DLV-146 `8c6adb4` were reviewed as
+  one product chain and cherry-picked as `f88aa58`, `3a22bf9`, and `4aa7284`.
 
 ## Execution protocol
 
@@ -63,57 +67,72 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Accepted assignment — DLV-135: deterministic Launcher Experience authoring toolchain
+### Current assignment — DLV-147: opt-in GOG installed-game source
 
-**State:** Done and accepted as widgets `3c93abb`, independently integrated on
-main as `e6dc10e`. The implementation makes no production-overlay preview
-claim and does not integrate held DLV-134.
+**State:** Assigned. Consume current planner main at a clean committed boundary
+before task-specific edits. If the equivalent cherry-picked Launcher
+Experience chain conflicts with the widgets ancestry, stop and report rather
+than resolving a material conflict.
 
-**Baseline/dependencies:** merge current planner main `73e1e17` at the clean
-widgets boundary while retaining `e847502`. Use the accepted strict data-only
-catalog, recipe, GBSS, sealed-asset, digest, and install validators. DLV-145 may
-change only the private native adoption hook and is concurrent.
+**Baseline/dependencies:** accepted product baseline `4aa7284`. Reuse the
+normalized app-library contract, exact SavedId authority, accepted Windows/
+Xbox/Steam/Epic source patterns, host-owned source enablement, artwork
+fallback, and fresh launch revalidation. DLV-148 is native Launcher Experience
+presentation work and is concurrent; it must not touch the provider, Settings,
+or managed app-library projects.
 
-**Owner:** widgets lane for `gbar launcher-theme new`, `validate`, `preview`,
-`pack`, `inspect`, `install`, `list`, and `remove`; deterministic fixture data;
-focused CLI/catalog tests; and directly affected public author documentation.
+**Owner:** widgets lane for the trusted C# Windows app-library provider, one
+focused GOG installed-registration reader and exact launcher adapter, the
+existing Settings app-library preference surface, focused provider/Settings/
+Games & Apps/Game Launcher tests, and directly affected feature/status docs.
 
-**User/developer outcome:** an author can create, validate, preview, package,
-inspect, install, list, and remove a data-only Launcher Experience without
-hand-authoring undocumented JSON or reverse-engineering native host code.
+**User-visible outcome:** a user can explicitly enable local GOG installed-game
+discovery in Settings; current installed GOG games then appear in Games & Apps
+and Game Launcher with `GOG` attribution, stable opaque identity, honest source
+health, and exact current launch behavior. With the toggle off, no GOG
+registration I/O occurs.
 
-**Objective/scope:** every command must share the exact production manifest,
-recipe, GBSS, static-asset, digest, package, and catalog validators. Generate a
-minimal valid project atomically; preview the four accepted native presets over
-deterministic semantic fixture libraries; create deterministic immutable
-archives; inspect without execution; install by ID/version; and remove only the
-exact selected package/version under existing catalog authority.
+**Objective/scope:** add only credential-free installed-game truth from a
+fixed, provider-owned local registration surface with a documented stable GOG
+game identity and supported exact launcher route. Registration paths,
+commands, install locations, provider IDs, and protocol details remain inside
+the trusted provider. Emit normalized presentation and opaque SavedIds only;
+re-read and exactly match the current registration before launch. A missing,
+malformed, stale, disabled, or unavailable GOG installation must degrade only
+that source and retain unrelated source content.
 
-**Acceptance:** compact/standard/wide fixture preview covers empty, 20-game,
-2,000-game, offline, long-title, missing-art, active-operation, 150%-scale,
-reduced-motion, reduced-transparency, and high-contrast states. Repeated pack
-produces identical bytes/digest. Validation fails closed for unknown fields,
-remote URLs, HTML/JS, executables, path escape/reparse points, oversized or
-multi-frame assets, missing/duplicate critical slots, action/provider bindings,
-and inaccessible branches. Install/list/remove preserve immutable ID/version
-semantics and never grant game/content authority.
+**Acceptance:** the preference is persisted and controller/keyboard reachable
+with precise no-network/no-login copy. Disabled, client-missing, empty,
+malformed, duplicate, mixed-validity, cancellation, and refreshed-registration
+fixtures are deterministic and bounded. Two same-title GOG records remain
+distinct; a removed/replaced record cannot launch through retained display.
+Only validated current installed games expose Launch. Both widgets consume the
+same normalized source without GOG-specific presentation or authority logic.
+If no supported stable local registration plus launch contract can be
+established, retain the evidence and stop before adding registry heuristics or
+free-form command execution.
 
-**Architecture/verification:** reuse production validators rather than copy
-schemas into CLI tests. Keep orchestration out of the Gbar root hotspot through
-focused command owners and provide a before/after responsibility map. Tier 1
-Gbar/catalog/packaging Release tests and documentation contracts. Tier 2 native
-offscreen launcher fixture only for the existing preview contract; do not claim
-ordinary-overlay production adoption before DLV-145. No aggregate, network,
-gallery, signing, automatic update, animated media, credentials, or capture.
+**Architecture/verification:** follow the accepted Epic separation: focused
+registration reader, source adapter, and launcher owner; no GOG policy in
+`WindowsAppLibraryProvider`, `GamesAppsWidget`, `GameLauncherWidget`, or the
+shared validator. Provide a before/after responsibility map because the
+Settings and widget roots are registered hotspots. Tier 1 focused provider,
+Settings, Games & Apps, Game Launcher, and SDK Release suites only when
+affected. Tier 2 one generic-worker/broker conformance route for disabled,
+enabled, and stale launch. No aggregate, account, network, owned-but-not-
+installed catalog, content operations, helper binary, capture, or native edit.
 
-**Stop:** a command requires a second schema/validator, executable preview code,
-pack-authored actions/provider bindings, remote content, a public protocol
-change, or native production-hook edits. Report the exact dependency.
+**Stop:** the only available source is an undocumented mutable database, a
+user-selected path, raw executable/argument string, arbitrary URI, credential,
+network API, or helper executable; a public protocol change is required; or a
+material conflict appears while consuming current main. Report the exact
+missing supported contract rather than implementing a heuristic.
 
-### Held dependency — DLV-134: project state into four native experiences
+### Accepted dependency — DLV-134/DLV-145/DLV-146: live native experiences
 
-**State:** managed boundary committed as `e847502`, independently reviewed as
-coherent, and held unintegrated. Game Launcher passes 68/68.
+**State:** Done and accepted through main `4aa7284`. Managed 68/68, native
+1,588 checks, deterministic production adoption/fallback, and Game Launcher
+68/68 all pass independently.
 
 It adds persisted Hero Rail, Cover Wall, Carousel, and Compact Grid selection
 and one pure projection into exactly six host-known semantic slots: details
@@ -122,22 +141,27 @@ controller hints. It preserves exact SavedId, action, focus, cursor, provider,
 and organization authority. An invalid selection falls back to Hero Rail
 without resetting unrelated state. It adds no public protocol or native power.
 
-The complete DLV-134 visible outcome requires platform DLV-145. Do not integrate
-`e847502` alone because its visible selection would otherwise have no effect.
-After DLV-145 commits, review the pair for compact/standard/wide and 150%-scale
-fit, exact A/View/X/Y/LB/RB/Back dispatch, focus/profile persistence, 2,000-game
-bounded cursor projection, missing-art/long-title fallback, and ordinary-path
-recovery.
+The ordinary installed widget now adopts Hero Rail, Cover Wall, Carousel, and
+Compact Grid through the exact private six-slot seam. A deterministic test-only
+trusted provider drives every preset and return-to-Hero through the ordinary
+worker, bridge, capability, native host, UIA, focus, and Back path. Provider-
+unavailable fallback is a separate required scenario rather than a substitute
+for adoption.
 
 ### Widgets Ready queue
 
-No later widget milestone is safely executable while platform DLV-145 is
-changing the ordinary Game Launcher production path and held DLV-134 remains in
-the widgets ancestry. The lane is intentionally stopped at clean `3c93abb`;
-after paired DLV-134/DLV-145 acceptance, the planner will assign the next
-visible launcher recovery or experience-management outcome from production
-evidence. Do not invent provider, enrichment, content-operation, account, or a
-second consecutive tooling-only milestone merely to keep the lane busy.
+1. **Ready after DLV-147 — DLV-149: trusted Launcher Experience selection
+   model and Settings management.** Add exact installed ID/version selection,
+   Use global appearance, one-action built-in recovery, last-good state, exact
+   metadata/unsigned disclosure, and selected-version removal denial in the
+   trusted PlatformSettings/Settings owners. This commit is held until its
+   private native consumption assignment is accepted. No public widget
+   protocol, remote gallery, update, signing, or production-native edit.
+2. **Ready after DLV-149 — DLV-151: Game Launcher action-sheet polish.** Use
+   the existing SDK `ActionSheet` and details/organization owners to make Y open
+   one scoped, controller-complete action sheet with current Favorite, Hidden,
+   variant, and source recovery actions. Do not duplicate the existing View
+   details route or add content operations.
 
 ## Platform lane
 
@@ -145,79 +169,89 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-146: prove production Launcher Experience adoption
+### Current assignment — DLV-148: production Launcher Experience motion and effect budget
 
-**State:** Assigned correction after DLV-145 commit `7a566be`. DLV-145's focused
-1,540-check fixture is green, but its production-host fixture accepted a
-provider-unavailable ordinary fallback and therefore did not prove the assigned
-native adoption path. `e847502` and `7a566be` remain held and unintegrable.
+**State:** Assigned. Consume current planner main at a clean committed boundary
+before task-specific edits. If the equivalent cherry-picked DLV-134/145/146
+chain conflicts with the platform ancestry, stop and report rather than
+resolving a material conflict.
 
-**Baseline/dependencies:** continue from clean platform `7a566be`, which already
-contains held managed `e847502`. Do not merge newer main or rewrite either
-commit during this correction.
+**Baseline/dependencies:** accepted product baseline `4aa7284`. Reuse
+`LauncherExperienceProjection`, `LauncherExperiencePresentation`, the one
+shared compositor/window, and the deterministic seeded ordinary-host fixture.
+DLV-147 is managed GOG-provider work and is concurrent; do not touch provider,
+Settings, managed widget, SDK, protocol, or catalog code.
 
-**Owner:** platform lane for the production-host proof and a test-only seeded
-app-library/broker fixture needed to drive the held installed Game Launcher
-through its ordinary worker, bridge, capability, and native-host path. Existing
-DLV-145 production code remains in scope only if that proof exposes a concrete
-native defect.
+**Owner:** platform lane for connecting the already accepted launcher-scoped
+presentation/effect owner to the ordinary adopted Launcher Experience path;
+decode-before-crossfade, focus motion, accessibility overrides, measured
+degradation, diagnostics, and focused native/production-host evidence.
 
-**Concurrency:** DLV-135 is accepted and the widgets lane is stopped cleanly.
-No managed Game Launcher, Widget SDK/protocol, pack schema, provider, Settings, compositor/
-HWND/placement, reviewer document, capture, credential, aggregate, or push
-changes.
+**Concurrency:** no managed Game Launcher, Widget SDK/protocol, pack schema or
+catalog, provider, Settings, HWND/work-area/tray placement, reviewer document,
+capture, credential, aggregate, or push changes.
 
-**User-visible outcome:** the held pair has credible production-path evidence
-that selecting Hero Rail, Cover Wall, Carousel, or Compact Grid really changes
-the installed Game Launcher instead of silently falling back to the ordinary
-tree.
+**User-visible outcome:** changing focus in any live native Game Launcher
+experience produces smooth host-owned focus/background motion without flicker,
+dark borders, semantic lag, or input delay. Reduced motion removes translation/
+scale, and an overloaded renderer degrades effects before navigation.
 
-**Objective/scope:** replace the permissive `if adoption else fallback passes`
-production-host result with two explicit deterministic scenarios. The required
-success scenario seeds at least one trusted installed, launch-capable game
-through a test-only provider behind the normal capability boundary, starts the
-real held installed Game Launcher, and fails unless the production host logs
-and UIA prove adoption. A separate provider-unavailable scenario may retain
-ordinary fallback coverage, but it cannot satisfy adoption. Reuse existing
-broker simulator/protocol owners; do not add a second production provider or a
-test bypass in production package/widget/protocol code.
+**Objective/scope:** the ordinary projection must consume one immutable
+presentation frame from the existing presentation owner and commit background,
+slot paint, focus geometry, pointer geometry, and UIA from one current adopted
+sequence. Use only the accepted opacity, scale, translation, outline, and
+background-crossfade targets. Decode a new background completely before a
+single atomic swap; retain the last-good/fallback frame on failure. Pause or
+finish immediately while hidden/unselected and close degradation in explicit
+steps when measured input/render budgets are exceeded.
 
-**Acceptance:** the fresh production-host fixture observes
-`Launcher Experience projection adopted` for Hero Rail, Cover Wall, Carousel,
-Compact Grid, and the return to Hero Rail; exposes the seeded game's exact
-stable UIA/focus identity inside host bounds after every profile change; and
-retains the same instance, sequence, input scope, collection anchor/key, action
-IDs, and Back route. The fallback scenario independently proves provider-error
-content stays usable without an adoption marker. Existing 1,540 focused checks
-remain green. No success path may be conditional on local installed games,
-machine state, or elapsed provider discovery.
+**Acceptance:** seeded ordinary-host fixtures traverse at least two games in
+all four presets and prove no dark/uninitialized interval, no stale-background
+commit, stable exact focus/action/collection/UIA identity, and pointer/focus/
+paint agreement for every sampled frame. Reduced motion has no translation or
+scale; high contrast/reduced transparency remain final. Corrupt/missing/stale
+art retains last-good or built-in fallback. A named 60-second stress window
+records p95 input-to-focus under 50 ms and deterministic effect degradation;
+the test uses semantic/timing/log evidence, not screenshots. Ordinary provider
+fallback remains usable and effect-free where no projection is admitted.
 
-**Architecture/verification:** keep `LauncherExperienceProjection` as the sole
-production projection owner. Any new managed code is a test-only provider
-fixture published only into the isolated host-test installation. Tier 1 reruns
-the existing 1,540 launcher checks only if production code changes. Tier 2 runs
-the deterministic adoption and fallback production-host scenarios plus retained
-managed Game Launcher 68/68 evidence. No aggregate or screenshot/capture gate.
+**Architecture/verification:** keep `LauncherExperiencePresentation` as the
+sole style/artwork/effect/recovery state owner and
+`LauncherExperienceProjection` as the sole production adoption owner; do not
+move either concern into `OverlayApp`. Provide a before/after responsibility
+map and correct the stale DLV-134/DLV-145 implementation-status wording while
+documenting DLV-146 and this milestone. Tier 1 focused launcher presentation,
+layout, renderer, focus, pointer, UIA, and targeting Release suites. Tier 2 the
+seeded ordinary-host motion/degradation/fallback fixture. No canonical
+aggregate or screenshot/capture gate.
 
-**Stop:** deterministic seeding requires a public API/protocol, a production
-provider bypass, changes to the held six-slot schema, or product credentials.
-Return the exact missing test boundary instead of accepting fallback again.
+**Stop:** the outcome requires a second window/compositor/renderer, public
+protocol, managed widget/pack schema change, background URL/path exposure,
+arbitrary animation/media, or a widget-specific work-area offset. Report the
+missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-No later platform milestone is executable until DLV-146 commits. The next
-launcher safe-start/recovery and effect-performance production tasks depend on
-accepted ordinary-host projection and will be assigned only from reviewed
-evidence; do not manufacture them in parallel.
+1. **Ready after held widgets DLV-149 — DLV-150: installed Launcher Experience
+   selection, last-good reload, and safe start.** Consume the exact trusted
+   PlatformSettings selection through one private host boundary, load only the
+   accepted immutable catalog version, apply recipe/GBSS/sealed assets through
+   existing owners, retain last-good on invalid reload, and document a
+   controller safe-start gesture that bypasses the selected pack for one Game
+   Launcher activation. Integrate DLV-149/150 only as one visible outcome.
+2. **Ready after DLV-150 — DLV-152: custom-pack production matrix.** Prove the
+   bottom-rail and left-rail/glass reference recipes plus compact/standard/wide,
+   150% text, reduced motion/transparency, high contrast, long title, missing
+   art, invalid pack, removal denial, and exact recovery in the ordinary host.
 
 ## Serialized integration queue
 
-1. Hold widgets `e847502`, platform DLV-145 `7a566be`, and correction DLV-146
-   together until end-to-end DLV-134 acceptance. Do not expose the picker on
-   main without deterministic production adoption.
-2. DLV-135 is already integrated independently as `e6dc10e`; its artifacts and
-   docs make no ordinary-overlay preview claim and require no pair action.
-3. External metadata/artwork, GOG/Amazon adapters, trusted content operations,
+1. DLV-134/DLV-145/DLV-146 are accepted and integrated through `4aa7284`.
+2. DLV-147 and DLV-148 are independent and may integrate in either order after
+   review.
+3. Hold DLV-149 until DLV-150 consumes its selection/recovery state; integrate
+   the pair as one visible outcome.
+4. External metadata/artwork, Amazon adapters, trusted content operations,
    and pack gallery/update work remain later scoped milestones.
 
 ## Blocked work
@@ -234,7 +268,7 @@ evidence; do not manufacture them in parallel.
 
 ## Verification queue
 
-1. User visual verdict on PID 9192 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 6168 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
@@ -251,6 +285,7 @@ evidence; do not manufacture them in parallel.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-134/145/146 | `e847502`, `7a566be`, `8c6adb4` | `f88aa58`, `3a22bf9`, `4aa7284` | Persisted four-profile Game Launcher projection adopted through the ordinary production worker/bridge/host path; 1,588 native checks, explicit seeded adoption/fallback host scenarios, managed 68/68. |
 | DLV-135 | `3c93abb` | `e6dc10e` | Deterministic data-only Launcher Experience new/validate/preview/pack/inspect/install/list/remove workflow; 61/61 CLI, 17/17 catalog, 1,361 native offscreen checks. |
 | DLV-143 | `157384f` | `cc0018a` | First compact dashboard commit is bottom-anchored; paint, pointer, UIA, and absolute diagnostics agree. |
 | DLV-144 | `bbed0bc` | `abb1e8d` | Spotify compact player retains the controller rail, one focus-revealing viewport, and cross-branch focus identity; 49/49. |

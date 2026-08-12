@@ -339,17 +339,18 @@ eligibility; credential-free structural work continues independently.
 
 ## Current execution priorities
 
-1. Complete DLV-146's deterministic production-adoption correction over held
-   DLV-134 `e847502` and DLV-145 `7a566be`; provider-unavailable ordinary
-   fallback is useful coverage but cannot prove the visible native experience.
-2. DLV-135 author tooling is accepted through `e6dc10e`; retain its explicit
-   semantic/offscreen preview boundary until DLV-146 closes DLV-145 acceptance.
-3. Integrate the DLV-134/DLV-145 pair as one visible product outcome, then use
-   production evidence to select the next visible launcher recovery or
-   experience-management milestone.
+1. DLV-134/DLV-145/DLV-146 are accepted through `4aa7284`: all four built-in
+   Launcher Experiences now have unconditional seeded ordinary-host adoption
+   evidence plus a separate provider-fallback scenario.
+2. Run DLV-147's opt-in GOG installed-game source and DLV-148's production
+   Launcher Experience motion/effect-budget outcome concurrently. Both are
+   visible, credential-free work with exclusive managed/native ownership.
+3. Deliver local custom-pack selection as the serialized DLV-149/DLV-150 pair:
+   trusted Settings selection/metadata/removal policy followed by private native
+   adoption, last-good reload, and one-activation safe start. Do not expose a
+   visible no-op selector on main.
 4. Keep accepted dashboard DLV-143 and Spotify DLV-144 live-verifying on PID
-   9192 and queue any user-
-   observed correction ahead of later feature work.
+   6168 and queue any user-observed correction ahead of later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
 6. Continue other credential-free roadmap features while account, hardware,
    or supported-API work is blocked.

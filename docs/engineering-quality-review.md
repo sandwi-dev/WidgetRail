@@ -1,7 +1,7 @@
 # Engineering Quality Review
 
 Status: active independent quality audit<br>
-Last reassessed: 2026-08-12 against integrated `main` `e6dc10e`<br>
+Last reassessed: 2026-08-12 against integrated `main` `4aa7284`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, accessibility, and product readiness
 
@@ -92,23 +92,24 @@ production-host lifecycle scenario. Planner PID 25004 reproduces the expected
 first absolute content bounds `1785,1164,1549,236`, admits all eight first
 pages inside the host, and emits no product failure in the exact interval.
 
-### Game Launcher production projection split at the correct boundary
+### Game Launcher production projection accepted end to end
 
-DLV-134 managed commit `e847502` is coherent but held unintegrated. It adds a
-controller-reachable persisted closed experience selection and partitions the
-one authoritative view into six non-authorizing semantic slots. Its 68/68
-managed evidence preserves exact SavedId, action, focus, cursor, and provider
-authority. The ordinary host still bypasses `LauncherExperienceAdapter`, so
-integrating the picker alone would ship a visible no-op. DLV-145 now owns the
-private native adoption hook; the pair is reviewed and integrated together.
+DLV-134 `e847502`, DLV-145 `7a566be`, and correction DLV-146 `8c6adb4` are
+accepted and integrated as `f88aa58`, `3a22bf9`, and `4aa7284`. The managed
+widget retains one controller-reachable persisted built-in selection and six
+non-authorizing semantic slots. The native projection owner admits only that
+exact first-party shape and preserves the original SavedId, action, focus,
+cursor, collection, instance, sequence, input scope, and Back authority.
 
-DLV-145 commit `7a566be` is held for correction. Its focused production seam
-and 1,540 checks are coherent, but the fresh production-host fixture received
-no projectable game rail and deliberately passed ordinary fallback. That is
-valid fallback evidence, not evidence that the real installed widget adopts any
-native preset. DLV-146 must seed a deterministic test-only trusted app-library
-item behind the normal broker boundary and make all four production adoptions
-unconditional before the pair can enter main.
+Independent evidence passes 1,588 native checks, the managed Game Launcher
+68/68, and two explicit production-host scenarios. A test-only trusted provider
+behind the normal broker/capability path seeds one launchable game and requires
+Hero Rail, Cover Wall, Carousel, Compact Grid, and return-to-Hero adoption with
+stable UIA/focus identity. Provider-unavailable ordinary fallback is verified
+separately and cannot satisfy adoption. PID 6168 then admitted all eight first
+pages inside the host with no exact-interval product failure. Its live Game
+Launcher provider was still pending, so the deterministic ordinary-host
+fixture—not a fallback or screenshot—is the adoption proof.
 
 ### Launcher Experience authoring toolchain accepted
 
@@ -119,9 +120,10 @@ inspection, and immutable install/list/remove. The root CLI retains only
 dispatch/error mapping; archive/catalog authority remains in the focused
 Launcher Experience catalog assembly. Independent evidence passes 61/61 CLI,
 17/17 catalog, 1,361 native offscreen checks, and 66 documentation contracts.
-The tool and docs explicitly do not claim ordinary-overlay preview before
-DLV-145. PID 9192 smoke admitted every first page inside the host with no exact-
-interval product failure; this milestone itself changes no overlay runtime
+The tool and docs correctly keep semantic/offscreen preview distinct from live
+custom-pack selection. The later built-in ordinary-host adoption chain is now
+accepted, but installed custom-pack selection/reload/recovery remains the
+serialized DLV-149/150 outcome. DLV-135 itself changes no overlay runtime
 behavior.
 
 ## Active findings
@@ -178,8 +180,8 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 25004 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, and the DLV-135 local authoring workflow are accepted. DLV-134 and DLV-145 are held. | DLV-146 deterministic real-host adoption proof, then paired projection acceptance and a production-evidence-based visible successor. |
+| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 6168 and continuing visible-first assignments. |
+| Launcher platform | Data-only packs, four live native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, launcher-scoped recovery, author tooling, and deterministic ordinary-host adoption are accepted through `4aa7284`. | DLV-147 opt-in GOG installed truth, DLV-148 production motion/effect budgets, then serialized local-pack selection/safe-start recovery. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -208,12 +210,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-146's deterministic success path against held `e847502` and
-   `7a566be`; ordinary fallback must remain a separate scenario.
-2. Integrate DLV-134, DLV-145, and DLV-146 as one visible product outcome.
-3. Keep DLV-135's semantic preview claim separate from ordinary-overlay
-   production adoption.
-4. Keep PID 9192 visible for the user's dashboard, Spotify, and installed-
+1. Review DLV-147's supported GOG registration/launch evidence and reject
+   heuristics, raw commands, credentials, and undocumented mutable databases.
+2. Review DLV-148 for one presentation owner, frame-atomic paint/focus/UIA,
+   reduced-motion truth, and measured degradation before accepting animation.
+3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
+   selection; DLV-149/150 must integrate as one visible outcome.
+4. Keep PID 6168 visible for the user's dashboard, Spotify, and installed-
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.

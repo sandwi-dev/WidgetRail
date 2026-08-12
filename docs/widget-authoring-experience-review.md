@@ -1,7 +1,7 @@
 # Widget Authoring Experience Review
 
 Status: active independent assessment<br>
-Last reassessed: 2026-08-12 against integrated `main` `e6dc10e`<br>
+Last reassessed: 2026-08-12 against integrated `main` `4aa7284`<br>
 Scope: public Widget SDK APIs, tooling, examples, packages, diagnostics, and the
 experience of building basic through full application-scale widgets
 
@@ -100,8 +100,10 @@ the scalable path.
   author loop and reliable production-window targeting remain unfinished.
 - Layout recipes: reusable primitives, Launcher Experience native presets, and
   DLV-135 scaffold/validate/preview/pack/inspect/install/list/remove tooling
-  exist; ordinary-host production state projection remains held behind DLV-146
-  because DLV-145's live fixture proved only fallback.
+  exist. DLV-134/145/146 now prove all four presets through the ordinary
+  production worker/bridge/host path with separate provider fallback. Installed
+  custom-pack selection, last-good reload, and safe-start recovery remain the
+  next author-to-product gap.
 - Documentation examples: canonical starters compile, but many prose snippets
   are still not extracted into API-checked projects.
 
@@ -224,12 +226,13 @@ The authoring platform is ready for external preview when a new developer can:
 
 ## Prioritized review queue
 
-1. Review DLV-146 with held DLV-134/DLV-145 as the first deterministic
-   production projection of normalized Game Launcher state into every accepted
-   native experience.
-2. Keep accepted DLV-135's semantic/offscreen preview claim distinct from live
-   ordinary-overlay adoption and use DLV-145 evidence to scope its next visual
-   author-loop improvement.
+1. Review DLV-148 as the first production motion/effect-budget use of the
+   accepted Launcher Experience projection; authors must not gain arbitrary
+   animation or compositor authority.
+2. Keep DLV-135's semantic/offscreen preview claim distinct from live custom-
+   pack selection. Review the serialized DLV-149/150 pair for exact installed
+   version selection, metadata disclosure, removal denial, last-good reload,
+   and one-activation safe start before calling the local author loop complete.
 3. Keep the UIA-guided first-page smoke after each accepted
    Release; do not require a taskbar-visible production window merely for tool
    discovery. Use exact logs for real author diagnostics.
