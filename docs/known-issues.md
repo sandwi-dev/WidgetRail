@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
-| GBA-004 | P1 | Implementing in DLV-115 | OverlayHost UI thread / presentation / composition | The user's current packaged video rejects accepted DLV-107: a black outer rectangle is visible around the whole overlay and different-size widget cycling has returned to ugly multi-step transitions. DLV-115 is now active; its prefix remains unintegrated until the preceding DLV-112/116 correction is accepted. |
+| GBA-004 | P1 | Verifying on packaged main | OverlayHost UI thread / presentation / composition | Accepted DLV-115 `5c66f16`, integrated through `d6f2780`, retires interrupted composition geometry at logical hide and proves no hidden frame work before an atomic transparent reopen. The freshly rebuilt packaged Release still needs the user's live border/cadence verdict. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -54,7 +54,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-033 | P1 | Verifying | Games & Apps / catalog / host launch completion | Durable curation, Start Menu/AppsFolder plus bounded Steam discovery, evidence-backed Steam Game classification, exact revalidated launch, and close-after-correlated-success are implemented; additional launchers and packaged controller evidence remain. |
 | GBA-034 | P1 | Verifying | Network Controls / controller state model | Focus/selection is separated from authoritative Wi-Fi/Bluetooth state; pair/manage actions and stable focus/scroll behavior have focused coverage, with packaged churn/hardware verification remaining. |
 | GBA-035 | P0 | Verifying | Audio Mixer / capability degradation / focus | Optional device-name and microphone providers now degrade and recover independently without replacing healthy master/session controls; packaged partial-grant verification remains. |
-| GBA-036 | P1 | Implementing with GBA-004 in DLV-115 | OverlayHost / native composition / declarative surface | DLV-107's focused alpha checks did not predict the current packaged outer rectangle. Active DLV-115 must re-establish one coherent alpha contract and transparent unused client pixels without using screenshot output as acceptance. |
+| GBA-036 | P1 | Verifying with GBA-004 on packaged main | OverlayHost / native composition / declarative surface | Accepted DLV-115 keeps the class background absent, retires stale hidden motion, and requires an atomic premultiplied-clear complete surface on reopen. Live user verification, not capture output, remains the closing gate. |
 | GBA-037 | P0 | Verifying on packaged main | Now Playing / media provider / retry | Accepted DLV-103 `f87631c`, integrated through `9c5de8e`, gives activation and Retry one SDK-owned Active generation, retains last-good sessions, rejects stale completions, and records safe typed stage/code transitions. The fully packaged Release is visibly running as PID 32140 for live recurrence testing. |
 | GBA-038 | P1 | Verifying | Games & Apps / catalog loading / responsive text | DLV-004 adds shared loading/empty/failure surfaces, bounded Previous/Next Catalog pages, long/max-library coverage, exact installed conformance, and a retained multi-profile capture matrix; physical packaged shell/controller review remains. |
 | GBA-039 | P1 | Verifying | Settings permissions / responsive text / Scroll | Auto-height intrinsic leaves now retain measured wrapped height and long permission-copy scroll extent has native regression coverage; packaged visual verification remains. |
@@ -98,6 +98,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-077 | P1 | Verifying on packaged main | Native trusted-artwork cache / declarative renderer / Game Launcher / Games & Apps | Accepted DLV-102 `e4f9880`, integrated through `0e0bf77`, gives terminal trusted-artwork failures the shared actionable Play fallback and emits one widget/opaque-handle transition diagnostic instead of repaint-time duplicates. RemoteImageCache and 4,839 renderer checks pass; the visibly running PID 32508 Release awaits the user's live library check. |
 | GBA-078 | P0 | Verifying on packaged main | Game Launcher presentation / responsive layout | Accepted DLV-104 `99e4932`, integrated through `1ef4666`, gives fixed chrome and the collection one bounded vertical viewport without increasing preferred height. The fully packaged Release is ready for the user's live clipping check. |
 | GBA-079 | P0 | Verifying on packaged main | OverlayHost tray focus / retained presentation / accessibility | Accepted DLV-106 `f119a1f`, integrated through `dde4981`, makes tray selection the sole visual/input/UIA focus owner throughout a cold widget switch. The fully packaged Release is ready for the user's live Audio Mixer Left check. |
+| GBA-080 | P0 | Implementing in DLV-118 | OverlayHost tray layout / overflow / focus | In the user's small-widget state, installed widgets can disappear from the icon tray. DLV-118 owns host tray inventory and explicit overflow reachability across minimum surfaces and 100/125/150% scale; malformed captures are excluded and the fresh live Release is the visual gate. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -314,11 +315,13 @@ color-key/opaque path with one premultiplied-alpha owner and transform-only
 extent motion. The user's current packaged recording on 2026-08-11 nevertheless
 shows a black rectangle around the full overlay and visibly ugly different-size
 widget transitions. That direct product evidence reopens GBA-004/GBA-036; the
-focused alpha/geometry checks are retained as useful but insufficient. DLV-115
-is Ready immediately after active DLV-112 and must correlate current typed logs,
-alpha clearing, and transition timing before changing the smallest native owner.
-It must not spend time correcting or interpreting clipped screenshot output;
-the closing gate is the freshly launched Release and the user's live verdict.
+focused alpha/geometry checks are retained as useful but insufficient. Accepted
+DLV-115 `5c66f16`, integrated through `d6f2780`, traced the reopened case to
+composition motion surviving the logical hide boundary. The host now retires
+that geometry before the close fade and focused production-host evidence proves
+no later hidden motion/frame commit before an atomic premultiplied-clear reopen.
+It did not interpret clipped screenshot output; the closing gate remains the
+freshly launched Release and the user's live verdict.
 
 **Acceptance:**
 

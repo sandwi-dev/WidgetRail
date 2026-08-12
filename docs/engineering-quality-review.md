@@ -4581,6 +4581,19 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ### Returned candidate review — DLV-114 and DLV-112
 
+**Accepted correction disposition (2026-08-11).** DLV-117 `6a96727` closes the
+DLV-114 UX/correctness gap without adding another task, lock, timer, provider,
+or committed-state owner: first selection is named as a distinct-game step,
+second selection names the exact group/removal operation, and stale/same-ID
+cases fail closed. DLV-116 `0e1810f` closes the DLV-112 integration/evidence
+gaps with one exact bundled-Settings action admission seam, exact submitted-
+operation ownership, Release-hard framing failures, and the missing ownership
+record. DLV-115 `5c66f16` is also accepted for packaged live verification: it
+retires interrupted composition geometry at logical hide and proves no hidden
+frames before atomic transparent reopen. The corrected prefixes are integrated
+through `cff0d99`; the returned findings below remain as historical review
+rationale, not open rejection.
+
 - **DLV-114 candidate `f285c9d` is returned for DLV-117.** The change keeps
   exact SavedId selection, disappearing-identity refusal, Back focus/scroll
   restoration, and snapshot-only details policy/presentation outside the
