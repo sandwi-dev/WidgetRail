@@ -4579,7 +4579,23 @@ evidence, but it is not evidence of a missing enabled-ring implementation.
 
 ## 2026-08-11 accepted integration delta
 
-### Returned candidate review — DLV-114 and DLV-112
+### Returned documentation correction — DLV-113/119 prefix
+
+DLV-113 `0994809` keeps the visible Settings consumer narrow: its managed
+surface publishes only the private host-reserved action/source/scope and does
+not receive paths, package bytes, installer state, or a generic capability.
+DLV-119 `670e01d` adds a small consumer-boundary failure projection inside the
+existing Now Playing Active operation; it does not add tasks, cancellation,
+provider, transport, or retry authority, and retains last-good media. Both are
+structurally credible and their focused evidence is proportional.
+
+The prefix is returned only because DLV-113 leaves two public contradictions:
+one page still says there is no graphical file picker after documenting the
+Settings host picker, and another still lists that visible Settings action as
+deferred. DLV-122 owns the documentation-only correction. Neither candidate is
+integrated until that contiguous corrected prefix is accepted.
+
+### Prior returned candidate review — DLV-114 and DLV-112
 
 **Accepted correction disposition (2026-08-11).** DLV-117 `6a96727` closes the
 DLV-114 UX/correctness gap without adding another task, lock, timer, provider,
