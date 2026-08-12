@@ -1,5 +1,6 @@
 using System.Globalization;
 using GameBarAlternative.PlatformBroker;
+using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetRuntime;
 
@@ -15,6 +16,7 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
+        string? failureRoot = null;
         try
         {
             var pipeName = RequiredValue(args, "--host-pipe");
@@ -25,6 +27,7 @@ internal static class Program
                 throw new InvalidOperationException("Launcher Experience fixture control is invalid.");
             var scenario = control[0].Trim();
             var settingsRoot = Path.GetFullPath(control[1]);
+            failureRoot = settingsRoot;
             var installedCatalogRoot = OptionalValue(args, "--installed-catalog-root") is { } root
                 ? Path.GetFullPath(root)
                 : Path.Combine(settingsRoot, "widgets");
@@ -36,7 +39,7 @@ internal static class Program
                 BridgeProtocol.DefaultMaximumMessageBytes,
                 256,
                 BridgeProtocol.AbsoluteMaximumMessageBytes);
-            if (scenario is not ("adoption" or "fallback"))
+            if (scenario is not ("adoption" or "fallback" or "selection"))
                 throw new InvalidOperationException("Unknown Launcher Experience fixture scenario.");
 
             using var shutdown = new CancellationTokenSource();
@@ -58,6 +61,11 @@ internal static class Program
                 Console.Error.WriteLine($"Widget catalog warning: {warning}");
 
             var consent = new ConsentStore(Path.Combine(settingsRoot, "consent"));
+            var settingsStore = new PlatformSettingsStore(
+                new PlatformSettingsPaths(settingsRoot));
+            await using var launcherExperience = new LauncherExperienceSelectionService(
+                settingsStore);
+            await launcherExperience.StartAsync(shutdown.Token).ConfigureAwait(false);
             await consent.SetDecisionAsync(
                 GameLauncherIdentity,
                 PlatformCapabilities.AppLibraryReadV1,
@@ -73,7 +81,7 @@ internal static class Program
             await using var backend = new CompositePlatformBrokerBackend(
                 simulator,
                 simulator,
-                appLibrary: scenario == "adoption"
+                appLibrary: scenario is "adoption" or "selection"
                     ? new SeededAppLibrary(Path.Combine(
                         settingsRoot, "launcher-experience-backend.txt"))
                     : UnavailableAppLibrary.Instance,
@@ -84,7 +92,8 @@ internal static class Program
                 catalogLoad.Catalog,
                 maximumBytes,
                 consentStore: consent,
-                platformBackend: backend);
+                platformBackend: backend,
+                launcherExperience: launcherExperience);
             await server.RunAsync(
                 TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
@@ -92,6 +101,16 @@ internal static class Program
         }
         catch (Exception exception)
         {
+            if (failureRoot is not null)
+            {
+                try
+                {
+                    File.WriteAllText(
+                        Path.Combine(failureRoot, "launcher-experience-fixture-error.txt"),
+                        exception.ToString());
+                }
+                catch { }
+            }
             Console.Error.WriteLine($"Launcher Experience fixture failed: {exception.Message}");
             return 1;
         }

@@ -7,6 +7,7 @@ internal enum BridgeRequestKind
 {
     ListWidgets,
     GetPlatformAppearance,
+    GetLauncherExperience,
     GetSnapshot,
     ResolveArtwork,
     RestartWidget,
@@ -86,6 +87,8 @@ internal static class BridgeRequestClassifier
                     request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Empty(
                     request.Payload, BridgeRequestKind.GetPlatformAppearance),
+                BridgeMessageTypes.GetLauncherExperience => Empty(
+                    request.Payload, BridgeRequestKind.GetLauncherExperience),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),

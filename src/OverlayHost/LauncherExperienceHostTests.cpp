@@ -9,6 +9,7 @@
 #include <cwctype>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -229,6 +230,11 @@ public:
         localAppData_ = root_ / L"local-app-data";
         const auto settings = localAppData_ / L"GameBarAlternative";
         fs::create_directories(settings);
+        if (scenario.starts_with("selection")) {
+            WriteExperiencePackage(settings, "1.0.0", "cover-wall");
+            WriteExperiencePackage(settings, "2.0.0", "carousel");
+            WriteSelection("1.0.0", false);
+        }
         WriteUtf8(
             bridgeRoot / L"launcher-experience-provider-fixture.txt",
             std::string(scenario) + WideToUtf8(settings.wstring()) + "\n");
@@ -245,6 +251,11 @@ public:
             if (!backend.empty())
                 std::cerr << "LauncherExperienceHostTests backend:\n" <<
                     backend << '\n';
+            const auto fixtureError = ReadUtf8(
+                SettingsRoot() / L"launcher-experience-fixture-error.txt");
+            if (!fixtureError.empty())
+                std::cerr << "LauncherExperienceHostTests fixture:\n" <<
+                    fixtureError << '\n';
         }
         std::error_code ignored;
         fs::remove_all(root_, ignored);
@@ -265,8 +276,102 @@ public:
         return localAppData_ / L"GameBarAlternative" /
             L"launcher-experience-backend.txt";
     }
+    [[nodiscard]] fs::path SettingsRoot() const {
+        return localAppData_ / L"GameBarAlternative";
+    }
+    [[nodiscard]] fs::path ExperienceVersion(const std::wstring_view version) const {
+        return SettingsRoot() / L"launcher-experiences" /
+            L"dev.example.production" / std::wstring(version);
+    }
+    void WriteSelection(const std::string_view version, const bool global) const {
+        WriteUtf8(
+            SettingsRoot() / L"platform-settings.json",
+            "{\"schemaVersion\":1,\"appearance\":{"
+            "\"themeId\":\"builtin.default\",\"themeVersion\":\"1.0.0\","
+            "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
+            "\"motion\":\"system\"},\"launcherExperience\":{"
+            "\"useGlobalAppearance\":" + std::string(global ? "true" : "false") +
+            ",\"selectedId\":\"dev.example.production\",\"selectedVersion\":\"" +
+            std::string(version) +
+            "\",\"lastGoodId\":\"dev.example.production\",\"lastGoodVersion\":\"" +
+            std::string(version) + "\"}}");
+    }
+    void WriteBuiltInRecovery() const {
+        WriteUtf8(
+            SettingsRoot() / L"platform-settings.json",
+            "{\"schemaVersion\":1,\"appearance\":{"
+            "\"themeId\":\"builtin.default\",\"themeVersion\":\"1.0.0\","
+            "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
+            "\"motion\":\"system\"},\"launcherExperience\":{"
+            "\"useGlobalAppearance\":false,"
+            "\"selectedId\":\"org.gbar.builtin.hero-rail\","
+            "\"selectedVersion\":\"1.0.0\","
+            "\"lastGoodId\":\"org.gbar.builtin.hero-rail\","
+            "\"lastGoodVersion\":\"1.0.0\"}}");
+    }
+    void RewriteExperienceStyle(const std::wstring_view version) const {
+        WriteUtf8(
+            ExperienceVersion(version) / L"styles" / L"launcher.gbss",
+            "launcher-game-rail { color: #80ff80; } "
+            "launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
+    }
 
 private:
+    void WriteExperiencePackage(
+        const fs::path& settings,
+        const std::string_view version,
+        const std::string_view preset) const {
+        const auto directory = settings / L"launcher-experiences" /
+            L"dev.example.production" /
+            std::wstring(version.begin(), version.end());
+        fs::create_directories(directory / L"layouts");
+        fs::create_directories(directory / L"styles");
+        fs::create_directories(directory / L"assets");
+        WriteUtf8(directory / L"launcher.json",
+            "{\"schemaVersion\":1,\"id\":\"dev.example.production\","
+            "\"publisher\":\"dev.example\",\"name\":\"Production Fixture\","
+            "\"version\":\"" + std::string(version) + "\",\"layoutPreset\":\"" +
+            std::string(preset) +
+            "\",\"compositionFile\":\"layouts/layout.json\","
+            "\"styleFile\":\"styles/launcher.gbss\","
+            "\"previewFile\":\"assets/background.png\",\"parameters\":{"
+            "\"backgroundMode\":\"pack-asset\",\"focusEffect\":\"lift\","
+            "\"motionIntensity\":\"reduced\"}}");
+        const std::string root =
+            "{\"type\":\"overlay\",\"children\":["
+            "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{"
+            "\"x\":0,\"y\":0,\"width\":1,\"height\":1}},"
+            "{\"type\":\"region\",\"slot\":\"details-panel\",\"region\":{"
+            "\"x\":0.08,\"y\":0.08,\"width\":0.5,\"height\":0.36}},"
+            "{\"type\":\"region\",\"slot\":\"source-status\",\"region\":{"
+            "\"x\":0.68,\"y\":0.08,\"width\":0.24,\"height\":0.1}},"
+            "{\"type\":\"region\",\"slot\":\"game-rail\","
+            "\"orientation\":\"horizontal\",\"region\":{"
+            "\"x\":0.08,\"y\":0.55,\"width\":0.84,\"height\":0.27}},"
+            "{\"type\":\"region\",\"slot\":\"controller-hints\",\"region\":{"
+            "\"x\":0.52,\"y\":0.88,\"width\":0.4,\"height\":0.08}}]}";
+        WriteUtf8(directory / L"layouts" / L"layout.json",
+            "{\"schemaVersion\":1,\"branches\":{"
+            "\"compact\":{\"root\":" + root + "},"
+            "\"standard\":{\"root\":" + root + "},"
+            "\"wide\":{\"root\":" + root + "}}}");
+        WriteUtf8(directory / L"styles" / L"launcher.gbss",
+            "launcher-game-rail { color: #ffffff; } "
+            "launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
+        constexpr unsigned char png[]{
+            0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,
+            0x49,0x48,0x44,0x52,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,
+            0x08,0x06,0x00,0x00,0x00,0x1f,0x15,0xc4,0x89,0x00,0x00,0x00,
+            0x0d,0x49,0x44,0x41,0x54,0x78,0xda,0x63,0xfc,0xcf,0xc0,0x50,
+            0x0f,0x00,0x05,0x83,0x02,0x7f,0x94,0xad,0xf1,0x59,0x00,0x00,
+            0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82};
+        std::ofstream output(
+            directory / L"assets" / L"background.png",
+            std::ios::binary | std::ios::trunc);
+        output.write(reinterpret_cast<const char*>(png), sizeof(png));
+        Require(output.good(), "Could not seed Launcher Experience background.");
+    }
+
     fs::path root_;
     fs::path localAppData_;
     fs::path performancePath_;
@@ -415,9 +520,11 @@ struct RunningHost final {
     RunningHost(
         const fs::path& source,
         const fs::path& fixtureBridge,
-        const std::string_view scenario)
+        const std::string_view scenario,
+        const std::wstring_view performanceState = L"interactive")
         : installation(source, fixtureBridge, scenario),
-          host(installation.Root(), installation.LocalAppData(), Arguments()) {
+          host(installation.Root(), installation.LocalAppData(),
+               Arguments(performanceState)) {
         Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
             window = LocateHostWindow(host.Id());
             return window && IsWindowVisible(window);
@@ -429,9 +536,10 @@ struct RunningHost final {
             (void)PostMessageW(window, WM_CLOSE, 0, 0);
     }
 
-    [[nodiscard]] std::wstring Arguments() const {
+    [[nodiscard]] std::wstring Arguments(
+        const std::wstring_view performanceState) const {
         return L"--show --process-profile " + installation.Profile() +
-            L" --performance-state interactive"
+            L" --performance-state " + std::wstring(performanceState) +
             L" --performance-widget-id game-launcher"
             L" --performance-diagnostics-path " +
             QuoteArgument(installation.PerformancePath().wstring()) +
@@ -630,12 +738,115 @@ void RunFallback(
     std::cout << "LauncherExperienceHostTests: separate provider fallback passed\n";
 }
 
+void RunInstalledSelection(
+    IUIAutomation* automation,
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge) {
+    RunningHost running(installationPath, fixtureBridge, "selection\n");
+    auto tray = WaitForElement(
+        automation, running.window, L"tray:tray.game-launcher");
+    RequireInsideWindow(tray.Get(), running.window);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("preset=cover-wall") != std::string::npos &&
+            log.find("selection=dev.example.production@1.0.0") != std::string::npos &&
+            log.find("background-focus=pack:") != std::string::npos;
+    }), "Installed exact Launcher Experience did not adopt recipe, style, and sealed asset.");
+
+    running.installation.WriteSelection("1.0.0", true);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("selection=dev.example.production@1.0.0 appearance=global") !=
+            std::string::npos;
+    }), "Use global appearance did not retain the exact installed selection.");
+
+    running.installation.WriteSelection("2.0.0", false);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("preset=carousel") != std::string::npos &&
+            log.find("selection=dev.example.production@2.0.0 appearance=launcher") !=
+                std::string::npos;
+    }), "Valid installed replacement was not published atomically.");
+
+    running.installation.RewriteExperienceStyle(L"2.0.0");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find(
+            "retained-diagnostic=The selected immutable Launcher Experience content digest changed.") !=
+            std::string::npos;
+    }), "A same-version content rewrite did not retain the immutable last-good digest.");
+    const auto tamperRetained = ProjectionRecords(running.installation.LogPath());
+    Require(!tamperRetained.empty() && tamperRetained.back().preset == "carousel",
+        "A same-version content rewrite replaced the last-good production presentation.");
+
+    std::error_code removeError;
+    fs::remove_all(running.installation.ExperienceVersion(L"2.0.0"), removeError);
+    Require(!removeError, "Could not remove the selected fixture version.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("retained-diagnostic=") != std::string::npos &&
+            log.find("Applied Launcher Experience revision") != std::string::npos;
+    }), "Removed selected version did not retain last-good with one bounded diagnostic.");
+    const auto retained = ProjectionRecords(running.installation.LogPath());
+    Require(!retained.empty() && retained.back().preset == "carousel",
+        "Invalid reload replaced the last-good production presentation.");
+
+    running.installation.WriteBuiltInRecovery();
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("selection=org.gbar.builtin.hero-rail@1.0.0") !=
+            std::string::npos;
+    }), "Built-in controller-complete recovery selection did not activate.");
+    running.Stop();
+    std::cout << "LauncherExperienceHostTests: installed exact selection, global "
+                 "appearance, atomic replacement, tamper/removal last-good reload, "
+                 "and recovery passed\n";
+}
+
+void RunSafeStart(
+    IUIAutomation* automation,
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge) {
+    RunningHost running(
+        installationPath, fixtureBridge, "selection\n", L"safe-start");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("selection=dev.example.production@1.0.0") !=
+                std::string::npos &&
+            log.find("safe-start=true") != std::string::npos &&
+            log.find("background=fallback") != std::string::npos;
+    }), "The production safe-start activation did not bypass custom pack presentation.");
+
+    SendKey(running.window, VK_ESCAPE);
+    auto tray = WaitForElement(
+        automation, running.window, L"tray:tray.game-launcher");
+    FocusAndActivate(tray.Get(), running.window, "tray:tray.game-launcher");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find(
+            "selection=dev.example.production@1.0.0 appearance=launcher safe-start=false") !=
+                std::string::npos &&
+            log.find("background-focus=pack:") != std::string::npos;
+    }), "Safe start did not expire after exactly one Game Launcher activation.");
+    const auto settings = ReadUtf8(
+        running.installation.SettingsRoot() / L"platform-settings.json");
+    Require(settings.find("\"selectedVersion\":\"1.0.0\"") != std::string::npos &&
+            settings.find("\"selectedId\":\"dev.example.production\"") !=
+                std::string::npos,
+        "Safe start mutated the trusted exact Launcher Experience selection.");
+    running.Stop();
+    std::cout << "LauncherExperienceHostTests: one-activation safe start and "
+                 "unchanged exact selection passed\n";
+}
+
 void Run(const fs::path& installationPath, const fs::path& fixtureBridge) {
     ComPtr<IUIAutomation> automation;
     Require(SUCCEEDED(CoCreateInstance(
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
         "Windows UI Automation client is unavailable.");
+    RunInstalledSelection(automation.Get(), installationPath, fixtureBridge);
+    RunSafeStart(automation.Get(), installationPath, fixtureBridge);
     RunAdoption(automation.Get(), installationPath, fixtureBridge);
     RunFallback(automation.Get(), installationPath, fixtureBridge);
 }

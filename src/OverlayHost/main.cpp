@@ -619,6 +619,7 @@ public:
         if (bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             RefreshPlatformAppearance();
+            RefreshLauncherExperience();
             if (auto change = sessions_.EstablishCatalog()) {
                 ApplyWidgetCatalogChange(*change);
                 developmentCatalogReady = true;
@@ -806,9 +807,10 @@ private:
             std::transform(performanceState_->begin(), performanceState_->end(),
                            performanceState_->begin(), towlower);
             if (*performanceState_ != L"hidden" && *performanceState_ != L"visible" &&
-                *performanceState_ != L"interactive") {
+                *performanceState_ != L"interactive" &&
+                *performanceState_ != L"safe-start") {
                 initializationError_ =
-                    L"--performance-state must be hidden, visible, or interactive.";
+                    L"--performance-state must be hidden, visible, interactive, or safe-start.";
                 return false;
             }
             if (!validIdentity(performanceWidgetId_)) {
@@ -859,11 +861,17 @@ private:
             initializationError_ = L"The requested performance widget is not installed and enabled.";
             return false;
         }
-        if (*performanceState_ == L"interactive") {
+        if (*performanceState_ == L"interactive" ||
+            *performanceState_ == L"safe-start") {
+            // The bounded performance fixture enters through the same
+            // one-shot activation state as the physical LT+RT+A gesture. It
+            // does not change selection or add an action/protocol route.
+            launcherSafeStartPending_ = *performanceState_ == L"safe-start";
             Dispatch(gba::Command::Activate);
         }
 
-        const auto expected = *performanceState_ == L"interactive"
+        const auto expected = *performanceState_ == L"interactive" ||
+                              *performanceState_ == L"safe-start"
             ? gba::WidgetLifecycleState::Interactive
             : gba::WidgetLifecycleState::Visible;
         const auto lifecycle = sessions_.Lifecycle(*performanceWidgetId_);
@@ -1430,6 +1438,11 @@ private:
                         RefreshPlatformAppearance();
                     }
                 }
+                if (const auto revision =
+                        bridge_.TakeLauncherExperienceChangedRevision()) {
+                    if (*revision > launcherExperienceProjection_.selectionRevision())
+                        RefreshLauncherExperience();
+                }
                 if (const auto revision = bridge_.TakeWidgetCatalogChangedRevision()) {
                     sessions_.ResetCatalogRetry();
                     AppendDiagnostic(L"Reconciling widget catalog revision " +
@@ -1944,6 +1957,14 @@ private:
     }
 
     void Dispatch(const gba::Command command) {
+        if (command == gba::Command::Activate &&
+            state_.focusRegion() == gba::FocusRegion::Tray &&
+            state_.selectedWidget() == L"game-launcher") {
+            launcherExperienceProjection_.BeginActivation(
+                std::exchange(launcherSafeStartPending_, false));
+        } else if (command == gba::Command::Activate) {
+            launcherSafeStartPending_ = false;
+        }
         ApplyStateTransition([&] { return state_.Dispatch(command); });
     }
 
@@ -2137,6 +2158,30 @@ private:
             return;
         }
         ApplyPlatformAppearance();
+    }
+
+    void RefreshLauncherExperience() {
+        auto selection = bridge_.GetLauncherExperience();
+        if (!selection) {
+            AppendDiagnostic(
+                L"Launcher Experience refresh failed; retaining last good state: " +
+                bridge_.lastError());
+            return;
+        }
+        const long long revision = selection->revision;
+        std::wstring diagnostic;
+        if (!launcherExperienceProjection_.PublishSelection(
+                std::move(*selection), diagnostic)) {
+            AppendDiagnostic(
+                L"Launcher Experience revision " + std::to_wstring(revision) +
+                L" rejected; retaining last good state: " + diagnostic);
+            return;
+        }
+        AppendDiagnostic(
+            L"Applied Launcher Experience revision " + std::to_wstring(revision) +
+            (diagnostic.empty() ? L"" : L" retained-diagnostic=" + diagnostic));
+        if (state_.surface() != gba::Surface::Hidden)
+            InvalidateRect(window_, nullptr, FALSE);
     }
 
     void QueueDisplayEnvironmentRefresh(const gba::DisplayEnvironmentChange change) {
@@ -4028,6 +4073,20 @@ private:
             DispatchStickNavigation(*direction);
         }
 
+        const bool launcherSafeStartGesture =
+            (pressed & XINPUT_GAMEPAD_A) != 0 &&
+            state_.focusRegion() == gba::FocusRegion::Tray &&
+            state_.selectedWidget() == L"game-launcher" &&
+            controller.Gamepad.bLeftTrigger >= 30 &&
+            controller.Gamepad.bRightTrigger >= 30;
+        if (launcherSafeStartGesture) {
+            launcherSafeStartPending_ = true;
+            lastActionWidgetId_ = L"game-launcher";
+            lastActionMessage_ =
+                L"Game Launcher safe start: built-in experience for this activation";
+            lastActionExpiresAt_ = now + 5000;
+            AppendDiagnostic(lastActionMessage_);
+        }
         if (pressed & XINPUT_GAMEPAD_A) {
             DispatchControllerAction(L"A", true);
         }
@@ -4057,10 +4116,10 @@ private:
         }
         const bool leftTriggerPressed = connected && controller.Gamepad.bLeftTrigger >= 30;
         const bool rightTriggerPressed = connected && controller.Gamepad.bRightTrigger >= 30;
-        if (leftTriggerPressed && !leftTriggerPressed_) {
+        if (!launcherSafeStartGesture && leftTriggerPressed && !leftTriggerPressed_) {
             DispatchControllerAction(L"LT", true);
         }
-        if (rightTriggerPressed && !rightTriggerPressed_) {
+        if (!launcherSafeStartGesture && rightTriggerPressed && !rightTriggerPressed_) {
             DispatchControllerAction(L"RT", true);
         }
         if (!leftTriggerPressed && leftTriggerPressed_ &&
@@ -6192,7 +6251,11 @@ private:
                                     : launcherProjection.backgroundFocusId) + L"\n" +
                                 (launcherProjection.backgroundTransitionActive
                                     ? L"transitioning"
-                                    : L"settled")
+                                    : L"settled") + L"\n" +
+                                launcherProjection.selectionIdentity + L"\n" +
+                                (launcherProjection.selectionUsesGlobalAppearance
+                                    ? L"global" : L"launcher") + L"\n" +
+                                (launcherProjection.safeStart ? L"safe" : L"selected")
                             : L"\nlauncher-presentation\ninactive";
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
@@ -6226,6 +6289,13 @@ private:
                                 (launcherRailNext.empty()
                                     ? std::wstring{L"none"}
                                     : launcherRailNext) +
+                                L" selection=" +
+                                launcherProjection.selectionIdentity +
+                                L" appearance=" +
+                                (launcherProjection.selectionUsesGlobalAppearance
+                                    ? L"global" : L"launcher") +
+                                L" safe-start=" +
+                                (launcherProjection.safeStart ? L"true" : L"false") +
                                 L" effect=" + std::wstring(
                                     gba::launcher::EffectQualityName(
                                         launcherProjection.effectQuality)) +
@@ -6486,6 +6556,7 @@ private:
     std::unique_ptr<gba::RemoteImageCache> imageCache_;
     std::unique_ptr<gba::DeclarativeRenderer> declarativeRenderer_;
     gba::launcher::LauncherExperienceProjection launcherExperienceProjection_;
+    bool launcherSafeStartPending_{};
     gba::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;

@@ -11,6 +11,7 @@
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\PlatformDiagnostics\PlatformDiagnostics.csproj" />
     <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
+    <ProjectReference Include="..\LauncherExperienceCatalog\LauncherExperienceCatalog.csproj" />
     <ProjectReference Include="..\WidgetCatalog\WidgetCatalog.csproj" />
     <ProjectReference Include="..\WidgetRuntime\WidgetRuntime.csproj" />
     <ProjectReference Include="..\WidgetStyling\WidgetStyling.csproj" />

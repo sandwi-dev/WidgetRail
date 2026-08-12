@@ -43,7 +43,7 @@ public static class LauncherExperienceBuiltIns
             Slot(LauncherSlot.DetailsPanel, new(0.07, 0.08, 0.54, 0.42)),
             Slot(LauncherSlot.SourceStatus, new(0.67, 0.08, 0.26, 0.1)),
             Slot(LauncherSlot.GameRail, new(0.06, 0.62, 0.88, 0.25), LauncherOrientation.Horizontal),
-            Slot(LauncherSlot.ControllerHints, new(0.58, 0.9, 0.36, 0.07))));
+            Slot(LauncherSlot.ControllerHints, new(0.58, 0.89, 0.36, 0.08))));
 
     private static LauncherLayoutRecipe LeftRail() => Recipe(
         Node(LauncherLayoutPrimitive.Overlay, LauncherRegion.Full,
@@ -51,7 +51,7 @@ public static class LauncherExperienceBuiltIns
             Slot(LauncherSlot.GameRail, new(0.04, 0.08, 0.22, 0.78), LauncherOrientation.Vertical),
             Slot(LauncherSlot.DetailsPanel, new(0.32, 0.18, 0.47, 0.5), surface: LauncherSurfaceRole.Glass),
             Slot(LauncherSlot.SourceStatus, new(0.81, 0.08, 0.15, 0.12)),
-            Slot(LauncherSlot.ControllerHints, new(0.58, 0.9, 0.38, 0.07))));
+            Slot(LauncherSlot.ControllerHints, new(0.58, 0.89, 0.38, 0.08))));
 
     private static LauncherLayoutRecipe CoverWall() => Recipe(
         Node(LauncherLayoutPrimitive.Overlay, LauncherRegion.Full,
@@ -59,7 +59,7 @@ public static class LauncherExperienceBuiltIns
             Slot(LauncherSlot.GameRail, new(0.05, 0.18, 0.64, 0.66), LauncherOrientation.Vertical),
             Slot(LauncherSlot.DetailsPanel, new(0.72, 0.2, 0.23, 0.5)),
             Slot(LauncherSlot.SourceStatus, new(0.72, 0.08, 0.23, 0.08)),
-            Slot(LauncherSlot.ControllerHints, new(0.58, 0.9, 0.37, 0.07))));
+            Slot(LauncherSlot.ControllerHints, new(0.58, 0.89, 0.37, 0.08))));
 
     private static LauncherLayoutRecipe Carousel() => Recipe(
         Node(LauncherLayoutPrimitive.Overlay, LauncherRegion.Full,
@@ -67,14 +67,14 @@ public static class LauncherExperienceBuiltIns
             Slot(LauncherSlot.DetailsPanel, new(0.12, 0.1, 0.52, 0.3)),
             Slot(LauncherSlot.SourceStatus, new(0.7, 0.1, 0.23, 0.08)),
             Slot(LauncherSlot.GameRail, new(0.08, 0.5, 0.84, 0.32), LauncherOrientation.Horizontal),
-            Slot(LauncherSlot.ControllerHints, new(0.58, 0.9, 0.34, 0.07))));
+            Slot(LauncherSlot.ControllerHints, new(0.58, 0.89, 0.34, 0.08))));
 
     private static LauncherLayoutRecipe CompactGrid() => Recipe(
         Node(LauncherLayoutPrimitive.Overlay, LauncherRegion.Full,
             Slot(LauncherSlot.GameRail, new(0.04, 0.14, 0.68, 0.7), LauncherOrientation.Vertical),
             Slot(LauncherSlot.DetailsPanel, new(0.74, 0.18, 0.22, 0.44)),
             Slot(LauncherSlot.SourceStatus, new(0.74, 0.07, 0.22, 0.08)),
-            Slot(LauncherSlot.ControllerHints, new(0.52, 0.9, 0.44, 0.07))));
+            Slot(LauncherSlot.ControllerHints, new(0.52, 0.89, 0.44, 0.08))));
 
     private static LauncherLayoutRecipe Recipe(LauncherLayoutNode root) =>
         new(1, new ReadOnlyDictionary<LauncherResponsiveBranch, LauncherLayoutNode>(

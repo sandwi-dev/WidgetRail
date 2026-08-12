@@ -1,4 +1,5 @@
 #include "LauncherExperienceProjection.h"
+#include <wincodec.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -133,6 +134,74 @@ std::wstring_view EffectQualityName(const EffectQuality quality) noexcept {
     return L"unknown";
 }
 
+bool LauncherExperienceProjection::PublishSelection(
+    LauncherExperienceSelection selection,
+    std::wstring& diagnostic) {
+    diagnostic.clear();
+    if (selection.revision <= 0 || selection.presentationRevision.empty()) {
+        diagnostic = L"Launcher Experience selection identity is invalid.";
+        return false;
+    }
+    if (selection_ && selection.revision <= selection_->revision) {
+        diagnostic = L"Launcher Experience selection revision is stale.";
+        return false;
+    }
+    constexpr std::array<declarative::Rect, 4> profiles{{
+        {0, 0, 800, 450}, {0, 0, 1100, 650},
+        {0, 0, 1400, 900}, {0, 0, 1280, 720},
+    }};
+    for (std::size_t index = 0; index < profiles.size(); ++index) {
+        const auto layout = ResolveLayout(
+            &selection.recipe, selection.preset, profiles[index],
+            index == profiles.size() - 1 ? 1.5F : 1.0F);
+        if (!layout.valid() || layout.usedFallback) {
+            diagnostic = L"Launcher Experience recipe failed native compatibility validation.";
+            return false;
+        }
+    }
+
+    std::shared_ptr<const DecodedLauncherAsset> decoded;
+    if (selection.packBackground) {
+        SealedAssetBytes source;
+        source.opaqueAssetId = selection.packBackground->opaqueAssetId;
+        source.revision = selection.packBackground->revision;
+        source.bytes = selection.packBackground->bytes;
+        if (selection.packBackground->format == L"png")
+            source.format = StaticImageFormat::Png;
+        else if (selection.packBackground->format == L"jpeg")
+            source.format = StaticImageFormat::Jpeg;
+        else if (selection.packBackground->format == L"webp")
+            source.format = StaticImageFormat::WebP;
+        else {
+            diagnostic = L"Launcher Experience background format is invalid.";
+            return false;
+        }
+        Microsoft::WRL::ComPtr<IWICImagingFactory> imaging;
+        if (FAILED(CoCreateInstance(
+                CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(imaging.ReleaseAndGetAddressOf()))) || !imaging) {
+            diagnostic = L"Launcher Experience image decoder is unavailable.";
+            return false;
+        }
+        auto decodedResult = DecodeSealedLauncherAsset(imaging.Get(), source);
+        if (!decodedResult.succeeded()) {
+            diagnostic = decodedResult.diagnostic;
+            return false;
+        }
+        decoded = std::move(decodedResult.asset);
+    }
+    diagnostic = selection.diagnostic;
+    selection_ = std::move(selection);
+    packBackground_ = std::move(decoded);
+    activePresentationKey_.clear();
+    return true;
+}
+
+void LauncherExperienceProjection::BeginActivation(const bool safeStart) noexcept {
+    safeStartActivation_ = safeStart;
+    activePresentationKey_.clear();
+}
+
 std::optional<LauncherExperienceProjection::Projection>
 LauncherExperienceProjection::Recognize(
     const std::wstring_view widgetId,
@@ -227,7 +296,11 @@ LauncherPresentationFrame LauncherExperienceProjection::PreparePresentation(
         decoded->premultipliedBgra.size() ==
             static_cast<std::size_t>(decoded->stride) * decoded->height;
 
-    std::wstring key = std::to_wstring(static_cast<int>(projection.preset)) + L"\n" +
+    const auto* selected = selection_ && !selection_->followWidgetPreset
+        ? &*selection_ : nullptr;
+    std::wstring key = (selected ? selected->presentationRevision : L"builtin-live") +
+        L"\n" + (safeStartActivation_ ? L"safe-start" : L"selected") + L"\n" +
+        std::to_wstring(static_cast<int>(projection.preset)) + L"\n" +
         snapshot.instanceId + L"\n" + std::wstring(focusedElementId) + L"\n" +
         artworkKey + L"\n" + (decodedValid ? L"ready" : L"fallback") + L"\n" +
         (accessibility.reducedMotion ? L"motion-reduced" : L"motion-full") + L"\n" +
@@ -236,25 +309,45 @@ LauncherPresentationFrame LauncherExperienceProjection::PreparePresentation(
         (accessibility.contrastHook ? L"contrast-high" : L"contrast-standard");
     if (key != activePresentationKey_) {
         LauncherPresentationRequest request;
-        request.revision = L"builtin-live:" +
-            std::wstring(PresetName(projection.preset));
+        request.revision = selected
+            ? selected->presentationRevision
+            : L"builtin-live:" + std::wstring(PresetName(projection.preset));
         request.preset = projection.preset;
-        request.builtIn = true;
-        request.useGlobalAppearance = false;
-        request.backgroundMode = BackgroundMode::SelectedGameArtwork;
-        request.focusEffect = focused ? FocusEffect::Lift : FocusEffect::None;
-        request.motionIntensity = MotionIntensity::Standard;
-        if (decodedValid) {
-            auto background = std::make_shared<DecodedLauncherAsset>();
-            background->opaqueAssetId = focused->id;
-            background->revision = artworkKey;
-            background->width = decoded->width;
-            background->height = decoded->height;
-            background->stride = decoded->stride;
-            background->sharedDecodedImage = decoded;
+        request.builtIn = selected ? selected->builtIn : true;
+        request.useGlobalAppearance = selected ? selected->useGlobalAppearance : false;
+        request.safeStart = safeStartActivation_;
+        request.packStyles = selected ? selected->packStyles
+                                      : std::map<Slot, WidgetComputedStyle>{};
+        request.packBackground = packBackground_;
+        const auto backgroundMode = selected
+            ? selected->backgroundMode : std::wstring{L"selected-game-artwork"};
+        request.backgroundMode = backgroundMode == L"pack-asset"
+            ? BackgroundMode::PackAsset
+            : backgroundMode == L"selected-game-artwork"
+                ? BackgroundMode::SelectedGameArtwork
+                : BackgroundMode::Global;
+        const auto focus = selected ? selected->focusEffect : std::wstring{L"lift"};
+        request.focusEffect = !focused || focus == L"outline"
+            ? FocusEffect::None
+            : focus == L"scale" ? FocusEffect::Glow : FocusEffect::Lift;
+        const auto motion = selected
+            ? selected->motionIntensity : std::wstring{L"standard"};
+        request.motionIntensity = motion == L"none"
+            ? MotionIntensity::None
+            : motion == L"reduced" ? MotionIntensity::Reduced
+                                    : MotionIntensity::Standard;
+        if (request.backgroundMode == BackgroundMode::SelectedGameArtwork && decodedValid) {
+            auto selectedBackground = std::make_shared<DecodedLauncherAsset>();
+            selectedBackground->opaqueAssetId = focused->id;
+            selectedBackground->revision = artworkKey;
+            selectedBackground->width = decoded->width;
+            selectedBackground->height = decoded->height;
+            selectedBackground->stride = decoded->stride;
+            selectedBackground->sharedDecodedImage = decoded;
             request.selectedGameArtworkRevision = artworkKey;
-            request.selectedGameBackground = std::move(background);
-        } else if (!artworkKey.empty()) {
+            request.selectedGameBackground = std::move(selectedBackground);
+        } else if (request.backgroundMode == BackgroundMode::SelectedGameArtwork &&
+                   !artworkKey.empty()) {
             request.selectedGameArtworkRevision = artworkKey;
         }
         std::wstring diagnostic;
@@ -304,6 +397,9 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
         return {std::move(render), ProductionProjectionDisposition::Ordinary, {}};
     }
 
+    if (selection_ && !selection_->followWidgetPreset)
+        projection->preset = selection_->preset;
+
     if (!EnsureStagingTarget(target, viewport)) {
         ClearCanonical();
         RetirePresentation();
@@ -322,8 +418,11 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     const auto presentation = PreparePresentation(
         imageCache, widgetId, *projection, snapshot, focusedElementId,
         options.accessibility, presentationTime);
+    const Recipe* selectedRecipe = selection_ && !selection_->followWidgetPreset &&
+            !safeStartActivation_
+        ? &selection_->recipe : nullptr;
     auto staged = RenderExperience(
-        renderer, stagingTarget_.Get(), nullptr, projection->preset,
+        renderer, stagingTarget_.Get(), selectedRecipe, projection->preset,
         {0, 0, viewport.width, viewport.height}, projection->contents,
         focusedElementId, options, &presentation, &snapshot);
     const HRESULT endResult = stagingTarget_->EndDraw();
@@ -391,6 +490,13 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     result.backgroundFocusId = presentation.currentBackground
         ? presentation.currentBackground->opaqueAssetId
         : std::wstring{};
+    if (selection_ && !selection_->followWidgetPreset) {
+        result.selectionIdentity = selection_->id + L"@" + selection_->version;
+        result.selectionUsesGlobalAppearance = selection_->useGlobalAppearance;
+    } else {
+        result.selectionIdentity = L"widget-preset";
+    }
+    result.safeStart = safeStartActivation_;
     result.presentationMetrics = presentationOwner_.metrics();
     return result;
 }

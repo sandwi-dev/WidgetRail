@@ -30,6 +30,9 @@ struct ProductionProjectionResult final {
     float previousBackgroundOpacity{};
     float currentBackgroundOpacity{1.0F};
     std::wstring backgroundFocusId;
+    std::wstring selectionIdentity;
+    bool selectionUsesGlobalAppearance{};
+    bool safeStart{};
     LauncherPresentationMetrics presentationMetrics;
 };
 
@@ -43,6 +46,17 @@ struct ProductionProjectionResult final {
 /// native frame.
 class LauncherExperienceProjection final {
 public:
+    /// Atomically validates and publishes one complete private catalog value.
+    /// A rejected candidate leaves the last rendered selection untouched.
+    [[nodiscard]] bool PublishSelection(
+        LauncherExperienceSelection selection,
+        std::wstring& diagnostic);
+    [[nodiscard]] long long selectionRevision() const noexcept {
+        return selection_ ? selection_->revision : 0;
+    }
+    /// Sets the recovery route for the next Game Launcher activation. Ordinary
+    /// activation passes false and therefore retires any prior one-shot bypass.
+    void BeginActivation(bool safeStart) noexcept;
     [[nodiscard]] ProductionProjectionResult Render(
         DeclarativeRenderer& renderer,
         ID2D1RenderTarget* target,
@@ -125,6 +139,9 @@ private:
     std::wstring canonicalWidgetId_;
     std::optional<WidgetSnapshot> canonicalSnapshot_;
     LauncherExperiencePresentationOwner presentationOwner_;
+    std::optional<LauncherExperienceSelection> selection_;
+    std::shared_ptr<const DecodedLauncherAsset> packBackground_;
+    bool safeStartActivation_{};
     std::wstring activePresentationKey_;
     std::optional<std::uint64_t> pendingFocusInputMilliseconds_;
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING

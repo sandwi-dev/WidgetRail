@@ -963,6 +963,43 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
           immediate.presentationMetrics.p95InputToFocusMilliseconds == 55.0 &&
           immediate.presentationMetrics.degradedFrameCount >= 2,
         "input-to-focus budget makes effects immediate and retains p95 evidence");
+
+    gba::LauncherExperienceSelection installed;
+    installed.revision = 1;
+    installed.id = L"dev.example.installed";
+    installed.version = L"1.0.0";
+    installed.contentDigest = L"digest-installed";
+    installed.presentationRevision = L"dev.example.installed:1.0.0:digest-installed";
+    installed.preset = Preset::CoverWall;
+    installed.backgroundMode = L"global";
+    installed.focusEffect = L"lift";
+    installed.motionIntensity = L"standard";
+    installed.recipe = BuiltInRecipe(Preset::CoverWall);
+    std::wstring selectionDiagnostic;
+    Check(projection.PublishSelection(std::move(installed), selectionDiagnostic) &&
+          projection.selectionRevision() == 1,
+        "complete installed selection publishes atomically");
+    const auto selected = draw(L"hero-rail", L"launcher.game.1", 900);
+    Check(selected.preset == Preset::CoverWall && selected.presentationActive,
+        "installed exact selection overrides only the private presentation preset");
+
+    gba::LauncherExperienceSelection invalid;
+    invalid.revision = 2;
+    invalid.id = L"dev.example.invalid";
+    invalid.version = L"2.0.0";
+    invalid.contentDigest = L"digest-invalid";
+    invalid.presentationRevision = L"dev.example.invalid:2.0.0:digest-invalid";
+    invalid.preset = Preset::Carousel;
+    invalid.backgroundMode = L"global";
+    invalid.focusEffect = L"lift";
+    invalid.motionIntensity = L"standard";
+    Check(!projection.PublishSelection(std::move(invalid), selectionDiagnostic) &&
+          projection.selectionRevision() == 1,
+        "native-incompatible replacement retains the last-good exact revision");
+    projection.BeginActivation(true);
+    const auto safeStart = draw(L"hero-rail", L"launcher.game.1", 1000);
+    Check(safeStart.preset == Preset::CoverWall && safeStart.backgroundIsFallback,
+        "one-activation safe start uses code-owned recovery without mutating selection");
 }
 
 } // namespace

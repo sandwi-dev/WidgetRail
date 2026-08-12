@@ -5,9 +5,9 @@ They are separate from global `.gbartheme` packages and never change the shell,
 Settings, or another widget. The production schema/catalog validates expanded
 package directories and deterministic `.gbarlauncher` archives, and the native
 host maps validated recipes to host-owned semantic slots. The CLI owns the
-complete local authoring/package/catalog workflow. Ordinary-overlay adoption of
-an authored pack remains a separate private native-host integration; the data-
-only preview does not claim that production path.
+complete local authoring/package/catalog workflow. The ordinary overlay reads
+the exact local Settings selection through one private bridge boundary; the
+data-only preview remains an authoring aid rather than a production bypass.
 
 ## Authoring workflow
 
@@ -194,6 +194,16 @@ covered across compact, 720p, 1080p, taskbar-reserved, and 150%-scale profiles.
 An incompatible recipe is replaced atomically by the matching built-in preset;
 rejected content never supplies fallback actions or semantics.
 
+The private selection boundary publishes one complete immutable revision: exact
+package ID/version/content digest, validated recipe, resolved launcher-only
+GBSS values, closed presentation parameters, and optional sealed static art.
+The native host stages and validates the whole revision before replacing the
+last good presentation. Missing, removed, tampered, incompatible, or partially
+rewritten package state therefore keeps the prior admitted pixels and semantics
+and emits only one bounded diagnostic for that failure transition. Returning to
+the built-in Hero Rail is controller-complete and does not depend on the failed
+package.
+
 The native `LauncherExperiencePresentation` owner applies only launcher-slot
 pack and user overrides after the already-computed global appearance. Choosing
 `Use global appearance` omits both launcher layers. Reduced motion,
@@ -208,4 +218,7 @@ new revision only after successful decode. Selected-game artwork must match the
 current artwork revision. A failed decode retains the previous professional
 background or the code-owned fallback; three failures disable only that pack
 revision and select the matching built-in recovery experience. The documented
-safe-start route always bypasses the selected pack for that activation.
+safe-start gesture is **hold LT+RT and press A while Game Launcher is selected
+in the tray**. It uses the code-owned built-in experience for that one Game
+Launcher activation, leaves the saved exact selection unchanged, and restores
+ordinary selected-pack behavior on the next activation.

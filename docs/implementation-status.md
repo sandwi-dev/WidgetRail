@@ -3803,3 +3803,31 @@ or content authority changed. The commit remains held until its private native
 consumer is accepted.
 
 Focused Release evidence passes PlatformSettings 18/18 and Settings 59/59.
+
+### Installed Launcher Experience activation and recovery (DLV-150)
+
+The ordinary native host now consumes the exact trusted PlatformSettings
+selection through one private WidgetBridge boundary. The managed boundary loads
+only the accepted immutable catalog ID/version, resolves launcher-scoped GBSS,
+and publishes the recipe, closed presentation parameters, and optional sealed
+static art as one complete revision. The native projection validates every
+representative responsive profile and decodes sealed art before replacing its
+last good selection; paths, URLs, actions, provider identity, and public widget
+protocol remain outside that boundary.
+
+Catalog and settings watchers coalesce valid exact replacement into one atomic
+revision. Missing, invalid, removed, tampered, or native-incompatible reload
+retains the prior admitted presentation and emits one sanitized bounded
+diagnostic per failure transition. Built-in Hero Rail remains a complete
+controller recovery. Holding LT+RT while pressing A on the selected Game
+Launcher tray item bypasses the custom pack for that activation only and does
+not mutate the persisted exact selection. The existing single window,
+compositor, renderer, focus/action/UIA identities, accessibility finality, and
+presentation degradation owner are unchanged.
+
+Focused Release evidence passes PlatformSettings/catalog 18/18 and native
+Launcher Experience 1,691 checks. The ordinary production-host fixture admits
+an exact local pack with recipe, GBSS, and sealed art; switches global
+appearance; atomically replaces the exact version; retains it after removal
+with one diagnostic; and activates built-in recovery. Its inherited DLV-148
+motion window remains the separate timing/degradation assertion.

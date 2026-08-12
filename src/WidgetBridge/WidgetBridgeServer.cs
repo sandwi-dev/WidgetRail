@@ -15,6 +15,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly string _pipeName;
     private readonly int _maximumMessageBytes;
     private readonly PlatformAppearanceService? _appearance;
+    private readonly LauncherExperienceSelectionService? _launcherExperience;
     private readonly ConsentStore? _consentStore;
     private readonly IPlatformBrokerBackend? _platformBackend;
     private readonly AppLibraryArtworkRegistry? _appLibraryArtwork;
@@ -42,7 +43,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         ConsentStore? consentStore = null,
         IPlatformBrokerBackend? platformBackend = null,
         BridgeCatalogMonitor? catalogMonitor = null,
-        WorkerResidencyBudgetOptions? residencyBudget = null)
+        WorkerResidencyBudgetOptions? residencyBudget = null,
+        LauncherExperienceSelectionService? launcherExperience = null)
         : this(
             pipeName,
             catalog,
@@ -52,6 +54,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             platformBackend,
             catalogMonitor,
             residencyBudget,
+            launcherExperience,
             capabilityDiagnosticSink: null)
     {
     }
@@ -65,6 +68,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         IPlatformBrokerBackend? platformBackend,
         BridgeCatalogMonitor? catalogMonitor,
         WorkerResidencyBudgetOptions? residencyBudget,
+        LauncherExperienceSelectionService? launcherExperience,
         Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink)
     {
         _pipeName = ValidatePipeName(pipeName);
@@ -73,6 +77,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 ? maximumMessageBytes
                 : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
         _appearance = appearance;
+        _launcherExperience = launcherExperience;
         _consentStore = consentStore;
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
@@ -153,6 +158,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             _catalogMonitor.Changed += OnCatalogChanged;
             ApplyCatalog(_catalogMonitor.Current, _catalogMonitor.Revision, publishEvent: false);
         }
+        if (_launcherExperience is not null)
+            _launcherExperience.Changed += OnLauncherExperienceChanged;
         await using var pipe = new NamedPipeServerStream(
             _pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, 4096, 4096);
@@ -256,6 +263,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await requestDispatcher.CancelAndDrainAsync().ConfigureAwait(false);
             if (_catalogMonitor is not null) _catalogMonitor.Changed -= OnCatalogChanged;
             if (_appearance is not null) _appearance.Changed -= OnAppearanceChanged;
+            if (_launcherExperience is not null)
+                _launcherExperience.Changed -= OnLauncherExperienceChanged;
             _channel = null;
             try
             {
@@ -300,6 +309,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 BridgeMessageTypes.PlatformAppearance,
                 request.RequestId,
                 _appearance.CreatePayload(),
+                cancellationToken).ConfigureAwait(false);
+            break;
+        case BridgeMessageTypes.GetLauncherExperience:
+            if (_launcherExperience is null)
+                throw new BridgeProtocolException("Launcher Experience selection is unavailable.");
+            await ReplyAsync(
+                BridgeMessageTypes.LauncherExperience,
+                request.RequestId,
+                _launcherExperience.CreatePayload(),
                 cancellationToken).ConfigureAwait(false);
             break;
         case BridgeMessageTypes.GetSnapshot:
@@ -792,6 +810,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _ = SendEventAsync(
             BridgeMessageTypes.AppearanceChanged,
             new BridgeAppearanceChanged(snapshot.Revision));
+
+    private void OnLauncherExperienceChanged(object? sender, long revision) =>
+        _ = SendEventAsync(
+            BridgeMessageTypes.LauncherExperienceChanged,
+            new BridgeLauncherExperienceChanged(revision));
 
     private void OnCatalogChanged(object? sender, BridgeCatalogChanged change) =>
         ApplyCatalog(change.Catalog, change.Revision, publishEvent: true);

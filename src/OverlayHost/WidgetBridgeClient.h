@@ -2,7 +2,10 @@
 
 #include <Windows.h>
 
+#include "LauncherExperienceLayout.h"
+
 #include <cstddef>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -217,6 +220,34 @@ struct WidgetStyleValue final {
 using WidgetComputedStyle =
     std::unordered_map<std::wstring, WidgetStyleValue>;
 
+struct LauncherExperienceSealedAsset final {
+    std::wstring opaqueAssetId;
+    std::wstring revision;
+    std::wstring format;
+    std::vector<unsigned char> bytes;
+};
+
+/// Complete private settings/catalog projection. It contains no path, URL,
+/// action, provider identity, or public protocol value.
+struct LauncherExperienceSelection final {
+    long long revision{};
+    std::wstring id;
+    std::wstring version;
+    std::wstring contentDigest;
+    std::wstring presentationRevision;
+    launcher::Preset preset{launcher::Preset::HeroRail};
+    bool builtIn{};
+    bool followWidgetPreset{};
+    bool useGlobalAppearance{};
+    std::wstring backgroundMode;
+    std::wstring focusEffect;
+    std::wstring motionIntensity;
+    launcher::Recipe recipe;
+    std::map<launcher::Slot, WidgetComputedStyle> packStyles;
+    std::optional<LauncherExperienceSealedAsset> packBackground;
+    std::wstring diagnostic;
+};
+
 struct WidgetNode final {
     std::wstring id;
     std::wstring kind;
@@ -368,8 +399,14 @@ public:
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
     /// Retrieves immutable platform appearance without launching a widget worker.
     [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance();
+    /// Retrieves one immutable trusted Launcher Experience presentation value
+    /// without starting a widget worker.
+    [[nodiscard]] std::optional<LauncherExperienceSelection>
+        GetLauncherExperience();
     /// Coalesced latest revision announced by platform-appearance-changed events.
     [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
+    [[nodiscard]] std::optional<long long>
+        TakeLauncherExperienceChangedRevision() noexcept;
     /// Coalesced latest catalog revision announced by widget-catalog-changed events.
     [[nodiscard]] std::optional<long long> TakeWidgetCatalogChangedRevision() noexcept;
     /// Requeues an announced revision after a transient list/parse failure.
@@ -453,6 +490,7 @@ private:
     WidgetArtworkResultQueue artworkResults_;
     LocalWidgetPackageInstallResultQueue localPackageInstallResults_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
+    PlatformAppearanceRevisionTracker launcherExperienceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
     mutable std::recursive_mutex requestMutex_;
 };
@@ -465,6 +503,9 @@ namespace gba::testing {
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<PlatformAppearance> ParsePlatformAppearance(
+    std::string_view payloadUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<LauncherExperienceSelection> ParseLauncherExperience(
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(

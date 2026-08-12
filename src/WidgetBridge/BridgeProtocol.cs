@@ -21,6 +21,9 @@ internal static class BridgeMessageTypes
     public const string GetPlatformAppearance = "get-platform-appearance";
     public const string PlatformAppearance = "platform-appearance";
     public const string AppearanceChanged = "platform-appearance-changed";
+    public const string GetLauncherExperience = "get-launcher-experience";
+    public const string LauncherExperience = "launcher-experience";
+    public const string LauncherExperienceChanged = "launcher-experience-changed";
     public const string CatalogChanged = "widget-catalog-changed";
     public const string GetSnapshot = "get-snapshot";
     public const string ResolveArtwork = "resolve-artwork";
@@ -92,6 +95,7 @@ internal sealed record BridgeHostEffect(
     string Effect,
     long Sequence);
 internal sealed record BridgeAppearanceChanged(long Revision);
+internal sealed record BridgeLauncherExperienceChanged(long Revision);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);
 
