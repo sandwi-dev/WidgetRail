@@ -41,29 +41,29 @@ internal static class GameLauncherPresentation
     internal static WidgetView Render(GameLauncherPresentationState state)
     {
         var snapshot = state.Collection;
+        var routeTitle = state.Route switch
+        {
+            GameLauncherRoute.AddGames => "Add games",
+            GameLauncherRoute.Running => "Add running app",
+            GameLauncherRoute.Hidden => "Hidden games",
+            _ => "Game Launcher",
+        };
         var header = UI.Stack("game-launcher.header",
-                UI.Text("INSTALLED GAMES", "game-launcher.eyebrow", "Installed games")
-                    .Classes("game-launcher-eyebrow"),
-                UI.Text(state.Route switch
-                        {
-                            GameLauncherRoute.AddGames => "Add games",
-                            GameLauncherRoute.Running => "Add running app",
-                            GameLauncherRoute.Hidden => "Hidden games",
-                            _ => "Game Launcher",
-                        },
-                        "game-launcher.title",
-                        state.Route switch
-                        {
-                            GameLauncherRoute.AddGames => "Add games",
-                            GameLauncherRoute.Running => "Add running app",
-                            GameLauncherRoute.Hidden => "Hidden games",
-                            _ => "Game Launcher",
-                        })
-                    .Classes("game-launcher-title"),
-                UI.Text(state.Status, "game-launcher.status", state.Status)
-                    .Classes("game-launcher-status"))
-            .Classes("game-launcher-header");
-        var sourceStatus = SourceStatus(state.Sources, snapshot.Status);
+                UI.Text(routeTitle, "game-launcher.compact.title", routeTitle)
+                    .Classes("game-launcher-title")
+                    .VisibleWhen(ResponsiveVisibility.CompactOnly),
+                UI.Stack("game-launcher.header.expanded",
+                        UI.Text("INSTALLED GAMES", "game-launcher.eyebrow", "Installed games")
+                            .Classes("game-launcher-eyebrow"),
+                        UI.Text(routeTitle, "game-launcher.title", routeTitle)
+                            .Classes("game-launcher-title"),
+                        UI.Text(state.Status, "game-launcher.status", state.Status)
+                            .Classes("game-launcher-status"))
+                    .Classes("game-launcher-header-expanded")
+                    .VisibleWhen(ResponsiveVisibility.ExpandedOnly))
+            .Classes("game-launcher-header", "game-launcher-fixed");
+        var sourceStatus = SourceStatus(state.Sources, snapshot.Status)
+            .AddClasses("game-launcher-fixed");
 
         var filterControls = new List<WidgetElement>();
         if (state.Route != GameLauncherRoute.Library)
@@ -128,8 +128,8 @@ internal static class GameLauncherPresentation
         }
 
         WidgetElement queryControls = state.Route == GameLauncherRoute.Running
-            ? UI.Row("game-launcher.query", filterControls.ToArray())
-                .Classes("game-launcher-query")
+            ? UI.HorizontalScroll("game-launcher.query", filterControls.ToArray())
+                .Classes("game-launcher-query", "game-launcher-fixed")
             : UI.Stack("game-launcher.query",
             UI.TextEntry(
                     state.Query.SearchText ?? string.Empty,
@@ -144,9 +144,9 @@ internal static class GameLauncherPresentation
                     WidgetAppLibraryQuery.MaximumSearchTextLength)
                 .Disabled(!state.Interactive)
                 .Classes("game-launcher-search"),
-            UI.Row("game-launcher.filters", filterControls.ToArray())
+            UI.HorizontalScroll("game-launcher.filters", filterControls.ToArray())
                 .Classes("game-launcher-filters"))
-        .Classes("game-launcher-query");
+        .Classes("game-launcher-query", "game-launcher-fixed");
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
@@ -170,7 +170,7 @@ internal static class GameLauncherPresentation
             scroll = scroll with { CollectionAnchorKey = snapshot.Anchor?.Value };
             content = UI.Stack("game-launcher.content",
                     scroll,
-                    UI.Row("game-launcher.actions",
+                    UI.HorizontalScroll("game-launcher.actions",
                         UI.Button("Previous page", "game-launcher.previous",
                                 "game-launcher.previous")
                             .Disabled(!snapshot.HasBefore || !state.Interactive),
@@ -333,7 +333,7 @@ internal static class GameLauncherPresentation
             {
                 CollectionAnchorKey = retainedCatalogAnchor,
             };
-            var controls = UI.Row("game-launcher.actions",
+            var controls = UI.HorizontalScroll("game-launcher.actions",
                     UI.Button("Previous page", "game-launcher.previous", "game-launcher.previous")
                         .Disabled(!snapshot.HasBefore || !state.Interactive),
                     UI.Button("Refresh", "game-launcher.refresh", "game-launcher.refresh")
@@ -380,7 +380,8 @@ internal static class GameLauncherPresentation
                     "game-launcher.hint.prefer"));
             }
             var hints = UI.Row(
-                "game-launcher.organization.hints", hintItems.ToArray());
+                    "game-launcher.organization.hints", hintItems.ToArray())
+                .Classes("game-launcher-footer");
             var children = new List<WidgetElement> { scroll, controls, hints };
             if (snapshot.Error is { } retained)
                 children.Add(UI.Alert("Some games are unavailable", retained.Message,
@@ -428,6 +429,7 @@ internal static class GameLauncherPresentation
                         .Classes("game-launcher-grid")) with
                 { CollectionAnchorKey = GameLauncherIdentity.Key(
                     state.Organization.Items[0].SavedId).Value };
+            warmScroll = warmScroll.Classes("game-launcher-scroll");
             content = UI.Stack("game-launcher.content",
                     UI.Alert("Checking installed games",
                         snapshot.Error?.Message ?? "Saved display rows cannot launch until current provider resolution succeeds.",
@@ -464,6 +466,7 @@ internal static class GameLauncherPresentation
             initialFocus = "game-launcher.empty.action";
         }
 
+        content = content.AddClasses("game-launcher-main");
         var root = UI.Stack("game-launcher.root", header, sourceStatus, queryControls, content)
             .Classes("game-launcher-widget");
         return new WidgetView(root, initialFocus,
@@ -501,11 +504,22 @@ internal static class GameLauncherPresentation
             return UI.Text(text, "game-launcher.source." + source.SourceId, text)
                 .Classes("game-launcher-source-row");
         }).ToArray();
+        var attention = sources.Count(source => source.Health is
+            WidgetAppLibrarySourceHealth.Degraded or
+            WidgetAppLibrarySourceHealth.Unavailable);
+        var compactSummary = $"{sources.Count} library {(sources.Count == 1 ? "source" : "sources")}" +
+            (attention == 0 ? " · Healthy" : $" · {attention} need attention");
         return UI.Stack("game-launcher.sources",
-                UI.SectionHeader("Library sources", "game-launcher.sources.header",
-                    description: $"{sources.Count} active {(sources.Count == 1 ? "source" : "sources")}"),
-                UI.Stack("game-launcher.sources.rows", rows)
-                    .Classes("game-launcher-source-rows"))
+                UI.Text(compactSummary, "game-launcher.sources.compact", compactSummary)
+                    .Classes("game-launcher-source-summary")
+                    .VisibleWhen(ResponsiveVisibility.CompactOnly),
+                UI.Stack("game-launcher.sources.expanded",
+                        UI.SectionHeader("Library sources", "game-launcher.sources.header",
+                            description: $"{sources.Count} active {(sources.Count == 1 ? "source" : "sources")}"),
+                        UI.Stack("game-launcher.sources.rows", rows)
+                            .Classes("game-launcher-source-rows"))
+                    .Classes("game-launcher-source-expanded")
+                    .VisibleWhen(ResponsiveVisibility.ExpandedOnly))
             .Classes("game-launcher-source-status");
     }
 
