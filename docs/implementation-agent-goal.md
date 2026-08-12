@@ -38,12 +38,18 @@ The review and planning agent owns:
 - `docs/known-issues.md`
 - `docs/engineering-quality-review.md`
 - `docs/widget-authoring-experience-review.md`
+- `docs/history/**`
 
 Do not edit, stage, commit, rewrite, revert, or discard changes in those files.
 
 The roadmap describes long-term direction. The issue ledger records defects.
 The review documents contain evidence and recommendations. They provide context
 but do not independently authorize implementation.
+
+Timestamped files under `docs/history/` are immutable reviewer evidence, not
+implementation authority. Do not read them during normal assignment startup.
+Open one only when the active delivery assignment or planner names the exact
+historical snapshot and evidence chain required for the current milestone.
 
 A review finding, TODO, failing optional test, code smell, security idea, or
 opportunity noticed while reading the repository is not an assignment.

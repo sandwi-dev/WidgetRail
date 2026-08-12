@@ -45,6 +45,8 @@ You own:
   `docs/engineering-quality-review.md`, and
   `docs/widget-authoring-experience-review.md`.
 - `docs/implementation-agent-goal.md` and this planner goal.
+- Timestamped reviewer-owned snapshots under `docs/history/` and the
+  documentation directory map.
 - Creating, moving, messaging, monitoring, renaming, and coordinating the two
   Codex implementation tasks.
 - Reviewing implementation commits and returning precise corrections.
@@ -126,6 +128,56 @@ whole subsystem.
 Give each lane multiple pre-authorized tasks, but never manufacture filler work.
 If fewer than three safe independent Ready assignments exist, record why and
 prioritize creating sound prerequisite or evidence milestones.
+
+## Documentation organization and context budget
+
+Keep active control-plane documents operational rather than append-only. The
+planner must not make every continuation or implementation assignment reread
+closed history.
+
+Use this physical organization:
+
+- `docs/` root: stable active entry points, current control-plane documents,
+  and public pages whose paths are already part of the author workflow.
+- `docs/history/<document-name>/`: immutable timestamped snapshots removed
+  from active documents.
+- Future public-document category moves use one link-aware migration with
+  validated references; never scatter partial moves or break active agent paths
+  merely to make the directory tree look tidy.
+
+Timestamp snapshot names use a filesystem-safe local ISO form:
+`yyyy-MM-ddTHH-mm-sszzzz.md`, with colon characters replaced by hyphens.
+Every snapshot states that it is historical evidence, links back to the active
+document, and is not implementation authority.
+
+At every heartbeat and accepted integration, inspect active reviewer-document
+size and relevance:
+
+- Keep `docs/delivery-plan.md` below roughly 1,500 lines and normally below
+  1,000. It contains only the live execution protocol, current Assigned/Ready
+  work, integration dependencies, blockers, verification debt, and a small
+  recent-acceptance table.
+- Before the delivery plan exceeds that budget, move its complete current state
+  to `docs/history/delivery-plan/<timestamp>.md`, then compact the live file.
+  Preserve active assignment wording and dependencies exactly.
+- Keep no more than ten recent accepted milestones in the live delivery plan.
+  Older closing commits and detailed evidence belong in the timestamp snapshot.
+- Apply the same pattern to reviewer-owned issue/review/roadmap documents when
+  resolved evidence or superseded analysis dominates the active decisions.
+  Their live versions retain open findings, current dispositions, concise
+  accepted evidence, and links to the relevant timestamped history.
+- Do not archive public API/feature guidance merely because it is long; improve
+  its information architecture through an explicitly scoped link-aware
+  documentation assignment.
+
+Normal startup reads only the active planner goal, implementation goal, and live
+delivery plan. Never read `docs/history/**` wholesale. Open one timestamped
+snapshot only when a named historical DLV, commit, decision, or evidence chain
+cannot be reviewed from current sources.
+
+Compaction must preserve Git history, use immutable timestamped files rather
+than an ever-growing single archive, validate all links and documentation
+contracts, and be committed separately from implementation integration.
 
 ## Visible product outcome priority
 
@@ -299,6 +351,8 @@ rejected when its assigned automated acceptance criteria otherwise pass.
 - Refill Ready queues before a task runs out of independent work.
 - Update roadmap, issues, and review findings only when current evidence changes
   their disposition.
+- Enforce the documentation context budget above; snapshot and compact before
+  active planner files become append-only history.
 - Commit reviewer-owned document changes as a separate local commit; stage only
   explicit reviewer-owned files and run `git diff --cached --check`.
 
