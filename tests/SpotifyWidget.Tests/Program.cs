@@ -22,6 +22,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
+    ("Responsive player fits named host envelopes and preserves focus identity", SpotifyResponsiveLayoutTests.NamedHostEnvelopesFitAndPreserveFocus),
     ("Seek Left follows the selected responsive destination", SeekLeftFollowsResponsiveDestination),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
@@ -449,7 +450,7 @@ static async Task ResponsiveNavigation()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var snapshot = widget.RenderSnapshot("spotify.responsive", 1);
-    Assert.Equal(ProtocolConstants.SliderActivationVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.FocusPersistenceVersion, snapshot.ProtocolVersion);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly,
         Find(snapshot.Root, "spotify.shell.wide").VisibleWhen);
     Assert.Equal(ResponsiveVisibility.CompactOnly,

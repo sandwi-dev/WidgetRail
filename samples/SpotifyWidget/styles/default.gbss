@@ -262,7 +262,8 @@
 }
 
 /* Spotify 0.2 controller shell. Expanded mode keeps transport persistent while
-   the right context pane changes; compact mode presents one destination. */
+   the right context pane changes; compact mode retains the rail and presents
+   one destination in the remaining width. */
 .spotify-shell {
   min-width: 0px;
   min-height: 0px;
@@ -272,7 +273,7 @@
   overflow: clip;
 }
 .spotify-shell-wide { align: stretch; }
-.spotify-shell-compact { gap: 8px; }
+.spotify-shell-compact { align: stretch; gap: 8px; }
 .spotify-navigation {
   width: 142px;
   flex-shrink: 0;
@@ -306,20 +307,13 @@
   outline-width: 2px;
   outline-offset: -2px;
 }
-.spotify-navigation-tabs { flex-shrink: 0; }
+.spotify-navigation-compact { width: 128px; }
 .spotify-compact-player-scroll {
   width: 100%;
   min-width: 0px;
   min-height: 0px;
   flex-grow: 1;
   flex-shrink: 1;
-}
-.gbar-segmented-tabs__tab {
-  min-width: 0px;
-  flex-grow: 1;
-  padding: 8px 7px;
-  font-size: 10px;
-  max-lines: 1;
 }
 .spotify-player-pane {
   width: 340px;
@@ -349,6 +343,40 @@
   background: var(--surface-raised);
   corner-radius: 12px;
   overflow: clip;
+}
+.spotify-player-card-compact {
+  flex-grow: 0;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 10px;
+  justify: start;
+}
+.spotify-artwork-frame.spotify-compact-artwork-frame,
+.spotify-artwork.spotify-compact-artwork,
+.spotify-artwork-placeholder.spotify-compact-artwork-placeholder {
+  width: 96px;
+  height: 96px;
+}
+.spotify-artwork-placeholder.spotify-compact-artwork-placeholder { padding: 30px; }
+.spotify-compact-details {
+  min-height: 48px;
+  flex-shrink: 0;
+}
+.spotify-track-title.spotify-compact-track-title {
+  font-size: 18px;
+  max-lines: 1;
+}
+.spotify-compact-scrubber {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.spotify-compact-primary-controls {
+  min-height: 52px;
+  flex-shrink: 0;
+}
+.spotify-compact-attribution {
+  min-height: 12px;
+  flex-shrink: 0;
 }
 .spotify-artwork-frame,
 .spotify-artwork,
