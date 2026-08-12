@@ -676,12 +676,19 @@ crossfade and degrade effects before focus latency. Tier 1 style/asset/recovery
 groups and Tier 2 production-host lifecycle fixture; no animated media, audio,
 remote assets, gallery, network, screenshot, or aggregate.
 
-### Platform current assignment
+### Platform accepted milestone
 
 ### DLV-143 — Bottom-anchor the first cold-start dashboard frame
 
-**State:** Assigned on the platform lane after accepted DLV-133. This fresh
-user-visible correction precedes later platform presentation or refactoring.
+**State:** Accepted as `157384f` and integrated through planner merge
+`cc0018a`. Exact prebuilt evidence reran green: 111,381 placement checks, 66
+targeting checks, 283 tray checks, 34 accessibility checks, and the isolated
+fresh-production-host cold-start/hide/re-show scenario. Fresh planner PID 25004
+first committed `1549x236` content at absolute bounds
+`1785,1164,1549,236` inside the bottom-positioned `1549x919` host. All eight
+first pages then admitted with no named UIA rectangle outside the host and no
+worker, protocol, provider, or presentation error. The user's visual verdict
+remains the final regression gate.
 **Baseline/dependencies:** accepted planner main `4beb961` plus the completed
 DLV-133 commit. User screenshot from the exact accepted Release and PID 17576
 startup log at 02:43:32 on 2026-08-12. The first composition commits content
@@ -733,6 +740,17 @@ commit from a new process. No screenshot gate or repository aggregate.
 **Stop:** the correction requires a second render/window ownership model,
 widget-specific offsets, a substantial compositor redesign, or a product
 choice that changes the accepted bottom-centered overlay behavior.
+
+### Platform lane readiness
+
+No platform milestone is Assigned after DLV-143. Active widgets DLV-134 is
+currently determining whether production Launcher Experience projection lacks
+one native private hook. The platform lane has been instructed to merge
+accepted main `cc0018a` at its clean boundary and remain ready for that exact
+bounded visible prerequisite. Do not invent a parallel projection, public
+protocol, transition rewrite, or verification-only milestone before the
+widgets lane reports the missing input/output seam; this short dependency wait
+prevents both lanes editing the same host contract.
 
 ### DLV-137 — Close the Launcher Experience package-validation gaps
 
@@ -871,10 +889,11 @@ manufacture adjacent work.
 
 1. DLV-130/138/139/142 are accepted and integrated through `a3f883e`; DLV-144
    is accepted through `abb1e8d`.
-2. DLV-131/132/133/137/140/141 are accepted. DLV-143 is the active platform
-   assignment closing the cold-start centered-dashboard regression.
+2. DLV-131/132/133/137/140/141/143 are accepted. The platform lane is at a
+   clean accepted boundary awaiting DLV-134's exact native-hook disposition.
 3. DLV-134 is the active widgets assignment. DLV-135 follows after it at a
-   clean boundary so the visible production projection lands before tooling.
+   clean boundary unless a bounded native production-projection prerequisite
+   is returned first.
 4. External metadata/artwork sources and trusted store/content adapters remain
    later delivery steps and cannot broaden these M1 assignments.
 
@@ -902,23 +921,22 @@ manufacture adjacent work.
 7. Packaged widget-switch transparency and temporal continuity after DLV-115.
 8. Games & Apps cold-restart, trusted artwork, and running-app live checks.
 9. Audio Mixer LB/RB/X physical dashboard controls.
-10. Planner first-page live smoke. Exact accepted main `2f766fe` was rebuilt in
-    44.7 seconds, its production-host semantic proof exited 0, and Release PID
-    17576 launched at 02:43:32. At 03:02-03:04, direct mouse input selected
-    Settings, Now Playing, Games & Apps, Game Launcher, and Audio Mixer; current
-    UIA bounds reported every first-page element inside the host root. Re-read
-    tray bounds plus keyboard cycling admitted Network Controls, YT Music, and
-    Spotify. No worker/protocol/provider/presentation failure appeared in the
-    exact interval. Known terminal trusted-artwork-unavailable records remain
-    for Games & Apps/Game Launcher. The inspection shell taking foreground hid
-    the overlay normally after Spotify admission; it did not crash. Mouse hit
-    coordinates after Audio Mixer exposed the already-tracked moving-tray/
-    stale-bounds behavior rather than blocking the pass.
+10. Planner first-page live smoke. Exact accepted main `cc0018a` was rebuilt
+    native-only over the coherent accepted runtime graph and launched as PID
+    25004 at 03:59:28. Its first compact dashboard commit is bottom-anchored at
+    `1785,1164,1549,236`. Accessibility selection admitted all eight widget
+    first pages; every named UIA rectangle remained inside the `1549x919` host
+    and the exact session contains no worker/protocol/provider/presentation
+    error. The same live Audio Mixer traversed Master through four sessions to
+    the tray and reversed through every session back to Master, closing the
+    planner's keyboard-semantic reproduction while user visual/controller
+    verdicts remain authoritative.
 
 ## Recent acceptance delta
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-143 | `157384f` | `cc0018a` | The first compact dashboard frame is bottom-anchored before visibility; paint, pointer, and UIA share one composition transform. Fresh PID 25004 logs absolute host/content geometry, admits all eight first pages inside the host, and reports no product error in the smoke interval. |
 | DLV-131/132/137/140/141 | `100c646`, `874f778`, `41da5b7`, `5e3c69c`, and `878b484` | `2f766fe` | A strict data-only Launcher Experience catalog and four native host-owned responsive presets are accepted. Standard WebP and every package/catalog admission boundary are bounded; 17/17 catalog fixtures and 1,307 native semantic checks pass, and the rebuilt production-host proof exits 0. Production Game Launcher projection is still later work. PID 17576 completed a live first-page smoke through UIA-guided direct input; no new worker/protocol/provider/presentation failure appeared. |
 | DLV-128/129 | `344caa0` and `7f7d9d5` | `67c557d` and `d792e30`; packaged through planner main `d8c803a` | Game Launcher now presents the bounded selected-game hero and horizontal cover rail while retaining exact SavedId actions and current installed-only authority. The dev cancellation fixture is deterministic without changing product behavior. One full Release package refresh passed and PID 32952 is visibly running; its startup/admission log contains no new worker or protocol failure. |
 | DLV-127 | `df07d7c` | `2ac0a5a` | Widget switches retain one work-area-fitted shared shell and tray while preferred width/height remain bounded inner-body hints. Eight real host transitions retain exact shell/tray/selection geometry with zero widget-shell motion commits and bounded draw/commit/geometry timings; the prior PID 18392 was gracefully replaced by current accepted PID 32952. |
@@ -928,7 +946,6 @@ manufacture adjacent work.
 | DLV-121 | `fb0ad51` | `a758508` | The Audio Mixer production fixture now traverses the real clipped/revealed controls instead of directly focusing an absent offscreen UIA node; live product behavior is unchanged and still awaits user verification. |
 | DLV-118 | `5d86cd6` | `4bc0baa` | Small and wide widget surfaces retain one selected tray identity, explicit reachable overflow, exact order, and synchronous catalog replacement without stale tray dispatch. |
 | DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
-| DLV-114/117 | `f285c9d` and `6a96727` | `cff0d99` | Game Launcher has an exact-ID controller details route and honest two-selection variant actions with committed feedback and deterministic return focus. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

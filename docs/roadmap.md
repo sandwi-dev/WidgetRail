@@ -339,12 +339,15 @@ eligibility; credential-free structural work continues independently.
 
 ## Current execution priorities
 
-1. Complete active DLV-143 so the first cold-start dashboard frame is bottom-
-   anchored before later platform work.
-2. Complete active DLV-134 so real Game Launcher state drives all four accepted
+1. Complete active DLV-134 so real Game Launcher state drives all four accepted
    native experiences with unchanged action and focus authority.
-3. Keep DLV-135 author tooling Ready immediately after DLV-134.
-4. Keep accepted Spotify DLV-144 live-verifying on PID 25644 and queue any user-
+2. If DLV-134 proves one native production hook is missing, give that exact
+   bounded prerequisite to the clean platform lane without duplicating managed
+   projection work.
+3. Keep DLV-135 author tooling Ready immediately after DLV-134 and any required
+   native projection hook.
+4. Keep accepted dashboard DLV-143 and Spotify DLV-144 live-verifying on PID
+   25004 and queue any user-
    observed correction ahead of later feature work.
 5. Keep user-reported visible regressions ahead of internal refactors.
 6. Continue other credential-free roadmap features while account, hardware,

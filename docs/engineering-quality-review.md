@@ -1,7 +1,7 @@
 # Engineering Quality Review
 
 Status: active independent quality audit<br>
-Last reassessed: 2026-08-12 against integrated `main` `abb1e8d`<br>
+Last reassessed: 2026-08-12 against integrated `main` `cc0018a`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, accessibility, and product readiness
 
@@ -81,6 +81,17 @@ rectangles escaped the host and the interval contained no worker, protocol,
 provider, or presentation failure. The user's live visual verdict remains the
 closing regression gate.
 
+### Cold dashboard anchor accepted
+
+DLV-143 `157384f` is accepted through `cc0018a`. The existing composition-
+motion owner now bottom-anchors compact presented content inside the retained
+host; paint, pointer inversion, semantic/UIA projection, and absolute
+diagnostics consume the same transform. Independent reruns pass 111,381
+placement, 66 targeting, 283 tray, and 34 accessibility checks plus the fresh
+production-host lifecycle scenario. Planner PID 25004 reproduces the expected
+first absolute content bounds `1785,1164,1549,236`, admits all eight first
+pages inside the host, and emits no product failure in the exact interval.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -91,7 +102,7 @@ closing regression gate.
 | EQ-013 | P1 | Architecturally implemented with bounded process leases and refusal policy; packaged aggregate-residency evidence remains. | Named multi-widget churn/residency run with exact process, cleanup, refusal, CPU, and memory evidence. |
 | EQ-015 | P1 | Partially implemented. Cloneable offline SDK, release unit, compatibility checks, starters, package lifecycle, and docs exist; external publication/version/update governance remains open. | A real external repository consumes a versioned SDK/template without checkout references and completes build, scenario, pack, install, rollback, and removal. |
 | EQ-020 | P1 | Open native responsiveness risk. Much bridge coordination moved off the UI thread, but synchronous startup/request paths still need exact-content latency and cancellation proof. | Production-host timing and cancellation evidence under slow/nonresponsive worker conditions without UI starvation or stale publication. |
-| EQ-035 | P1 | Confirmed cold-start geometry regression. Fresh accepted PID 25644 again commits 1549x236 dashboard content into the top of a bottom-positioned 1549x919 host. DLV-143 is active. | One native placement owner bottom-anchors the first visible dashboard commit; paint/pointer/UIA agree across the responsive matrix and a cold production-host temporal fixture observes no intermediate centered frame. |
+| EQ-035 | P1 | Implemented by accepted DLV-143; fresh PID 25004 confirms the first compact frame is bottom-anchored and all subsequent first pages stay contained. | User visual verdict on the accepted Release; reopen only for a live recurrence or contradictory physical display/DPI evidence. |
 | EQ-023 | P1 | Materially advanced. Native UIA/provider/action/Back semantics have deterministic host coverage; physical Narrator/MSAA and packaged assistive-technology proof remain. | Named packaged keyboard/controller/UIA/Narrator matrix on the accepted Release. |
 | EQ-026 | P1 | Implemented in focused fixtures but still Verifying for user-reproduced list and reverse-scroll cases. | Corrected packaged Release passes the user's exact Audio Mixer and Spotify focus-edge reproductions. |
 | EQ-027 | P1 | Verifier overlap and result provenance are guarded, but release input mutability and clean-current provenance are not a universal gate. | One named exact-commit Tier-3 checkpoint with immutable inputs, hashes, final status, and no duplicate dirty/clean run. |
@@ -135,7 +146,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | Spotify's correction is accepted and live-verifying; several earlier navigation, transition, shortcut, and recovery issues remain Verifying. Cold-start dashboard placement still reproduces. | Active DLV-143, user verdict on PID 25644, and continuing visible-first assignments. |
+| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, shortcut, hardware, and recovery issues remain Verifying. | User verdict on PID 25004 and continuing visible-first assignments. |
 | Launcher platform | Data-only packs, four native responsive presets, normalized managed presentation, Windows/Xbox and Epic imports, and launcher-scoped presentation recovery are accepted. | DLV-143 cold-start placement, active production state projection DLV-134, then author tooling. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -165,12 +176,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active DLV-143 as the next visible platform correction; cold process
-   start must be the production-host evidence path.
-2. Review active DLV-134 as the next visible Game Launcher milestone, including
+1. Review active DLV-134 as the next visible Game Launcher milestone, including
    exact SavedId/action/focus agreement across all four native experiences.
+2. If DLV-134 reports a missing native private projection hook, assign that
+   exact bounded prerequisite to the clean platform lane before DLV-135.
 3. Keep DLV-135 Ready behind DLV-134 at the next clean widgets boundary.
-4. Keep PID 25644 visible for the user's Spotify and installed-library verdict.
+4. Keep PID 25004 visible for the user's dashboard, Spotify, and installed-
+   library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.
 
