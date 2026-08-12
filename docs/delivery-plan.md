@@ -259,11 +259,86 @@ command and proves Ready, retained-last-good, cancellation, temporary-catalog
 cleanup, and child-host exit. No unrelated Gbar tests, verifier schema changes,
 aggregate rerun, product feature work, or broad test migration.
 
-No later independent widgets item is pre-authorized after DLV-129. Audio
-endpoint selection lacks a supported setter, YouTube is blocked at the trusted-
-media cost gate, and Spotify/YT Music account work needs authentication or live
-evidence. New Game Launcher store/API breadth follows the approved requirements
-only through later bounded assignments.
+### DLV-130 — Publish the normalized launcher presentation contract
+
+**State:** Ready after DLV-129; shared managed contract work is serialized to
+the widgets lane and must merge before DLV-134 consumes it
+**Baseline/dependencies:** accepted DLV-128 plus
+`docs/game-launcher-requirements.md` delivery step 1. This is the smallest
+public SDK/broker prerequisite for the named console-home and safe-experience
+outcomes, not store-adapter or content-operation breadth.
+**Owner:** widgets lane for `PlatformBroker` value contracts, Widget Bridge
+mapping, public Widget SDK models/services, current Windows-provider projection,
+Game Launcher adoption, focused contract tests, and directly affected public
+SDK documentation
+**Concurrency:** no native layout/paint/focus implementation, pack catalog or
+CLI, external metadata/artwork provider, credentials, helper binary, content
+operation, reviewer document, capture, or push changes.
+
+**Outcome/objective:** replace the launch-only, single-artwork public projection
+with one versioned normalized launcher presentation contract. Preserve opaque
+`AppId`/`SavedId` authority while representing exact availability/launch
+evidence, source/account health, supported action vocabulary, revisioned
+optional metadata with attribution, and distinct tile/cover/hero/logo artwork
+roles with semantic fallbacks. The existing installed-only provider projects
+only facts it can prove; absent facts and unsupported actions remain absent.
+
+**Acceptance:** broker-to-bridge-to-SDK round trips preserve every closed enum,
+optional field, revision, attribution, and artwork role without exposing paths,
+commands, AUMIDs, store IDs, account identity, URLs, bytes, or provider-private
+records. Current Games & Apps and Game Launcher migrate coherently; installed,
+unavailable, stale-source, missing-art, retained-last-good, duplicate-title,
+and exact SavedId launch fixtures remain truthful. Protocol/schema mismatch
+fails closed with a stable diagnostic. The API documentation distinguishes
+presentation identity from action authority and marks M2/M3 fields as optional
+provider capability rather than inferred state.
+
+**Architecture/verification:** publish focused immutable value types rather
+than one catch-all bag or flag soup. Give source state, item availability,
+artwork set, metadata provenance, capability set, and active-operation summary
+separate validation owners. Tier 1 broker/bridge/SDK/provider/Game Launcher
+Release tests; Tier 2 installed-worker protocol compatibility. No aggregate,
+network, external fixtures, or speculative provider implementation.
+
+**Stop:** a field cannot be represented without exposing provider authority,
+the contract would grant content-management capability, or its final shape
+depends on an unselected external provider or destructive-operation UX.
+
+### DLV-135 — Add the deterministic Launcher Experience authoring toolchain
+
+**State:** Planned; becomes same-lane Ready after accepted DLV-130 and accepted
+platform DLV-131 are integrated into main
+**Owner/outcome:** widgets lane for `gbar launcher-theme new`, `validate`,
+`preview`, `pack`, `inspect`, `install`, `list`, and `remove`, sharing the exact
+production manifest/recipe/GBSS/asset/digest/catalog validators. Authors can
+build and inspect a data-only pack without hand-authoring undocumented JSON.
+**Acceptance:** deterministic archives and immutable ID/version installs;
+compact/standard/wide fixture preview for empty, 20-game, 2,000-game, offline,
+long-title, missing-art, active-operation, 150%-scale, reduced-motion, and high-
+contrast states; fail-closed rejection of unknown fields, remote URLs, HTML/JS,
+executables, path escape/reparse points, oversized assets, missing critical
+slots, action/provider bindings, and inaccessible branches. Focused CLI/catalog
+tests only; no gallery, signing, automatic update, animated media, or network.
+
+### DLV-134 — Project Game Launcher state into all four native experiences
+
+**State:** Planned; becomes same-lane Ready after accepted DLV-130, DLV-132,
+and DLV-133 are integrated into main
+**Owner/outcome:** widgets lane for the Game Launcher semantic-state adapter,
+experience selection/settings surface, and the `hero-rail`, `cover-wall`,
+`carousel`, and `compact-grid` production projections. All four presentations
+must retain the same exact SavedId actions, collection position, source truth,
+Back route, and bounded retained library.
+**Acceptance:** compact/standard/wide and 150%-scale fixtures prove complete
+controller/keyboard focus, UIA semantics, long-title/missing-art fallback,
+2,000-game bounded paging, selection persistence across profile changes, and
+safe fallback when an experience is unavailable. No provider/API breadth,
+content operations, or pack-authored actions.
+
+Audio endpoint selection still lacks a supported setter, YouTube remains
+blocked at the trusted-media cost gate, and Spotify/YT Music account work needs
+authentication or live evidence. Game Launcher IGDB, SteamGridDB, store-adapter,
+and content-operation breadth remains outside these M1 framework assignments.
 
 ## Platform lane
 
@@ -342,9 +417,84 @@ selection requires a material UX choice.
 
 ### Platform ready queue
 
-No later independent platform item is authorized after DLV-124. Do not repeat the corrected
-Audio Mixer fixture or manufacture compositor/backend work while live user
-verdicts remain the closing evidence.
+### DLV-131 — Freeze the data-only Launcher Experience Pack schema
+
+**State:** Ready after DLV-124; platform lane leads this shared schema/catalog
+foundation and then continues directly to DLV-132
+**Baseline/dependencies:** `docs/game-launcher-requirements.md` experience
+architecture, GL-THEME-001 through GL-THEME-012, GL-SEC-004, and delivery step
+1. It does not depend on DLV-130 because packs bind semantic slot names, never
+provider records or widget actions.
+**Owner:** platform lane for a distinct Launcher Experience manifest/catalog,
+strict recipe and parameter models, production validator, built-in recovery
+descriptors, focused tests, and directly affected platform documentation
+**Concurrency:** no global-theme schema mutation, native renderer change,
+Game Launcher state/action code, CLI commands, external/network asset, animated
+media, signing/gallery/update, reviewer document, capture, or push changes.
+
+**Outcome/objective:** define a versioned data-only package that may arrange
+only `hero-background`, `game-rail`, `details-panel`, `collection-tabs`,
+`source-status`, `operation-status`, `system-status`, and `controller-hints`
+through typed `region`, bounded `grid`, `stack`, `overlay`, `inset`, and
+alignment records in compact/standard/wide branches. It may supply scoped GBSS,
+sealed local assets, and bounded host-defined parameters; it cannot author
+content, actions, IDs, provider bindings, code, URLs, shaders, or scripts.
+
+**Acceptance:** strict parsing rejects duplicate/unknown fields, slot reuse,
+missing applicable critical slots, invalid overlap, out-of-bounds geometry,
+unbounded rows/columns, clipped focus extents, unreachable actions/Back,
+cross-widget selectors, remote content, executable/archive content, unsafe
+paths/reparse points, and the documented file/expanded/asset/dimension limits.
+The bottom-rail and left-rail/glass-panel reference recipes validate, while
+malformed variants fail with stable path-specific diagnostics. Keep this
+catalog separate from global `ThemeCatalog`; reuse proven identity, immutable
+version, digest, file-guard, GBSS, and atomic-selection utilities where their
+contracts actually match.
+
+**Verification:** Tier 1 schema/catalog/asset/GBSS validation plus deterministic
+malformed-package fixtures. No aggregate, native host launch, screenshot,
+network, or implementation of CLI commands owned by DLV-135.
+
+### DLV-132 — Render host-owned launcher slots with validated responsive layout
+
+**State:** Ready after DLV-131
+**Owner/outcome:** platform lane for the native recipe adapter and declarative
+layout/paint/focus/pointer/UIA support needed by validated launcher slots. A
+fixed semantic fixture must render the bottom hero rail and the left vertical
+rail with independent translucent details panel, plus safe built-in `cover-
+wall`, `carousel`, and `compact-grid` structures.
+**Acceptance:** the host, not the pack, injects slot content and action routes;
+overlay/inset/region layout stays within the live work area; z-order never
+changes semantic focus geometry; every required action and Back is reachable;
+pointer, painted focus, semantic focus, UIA bounds, and accessibility order
+agree at compact/standard/wide, 720p/1080p, taskbar-reserved, 150%-scale, long-
+title, and missing-art fixtures. Invalid or incompatible recipes atomically use
+the matching built-in fallback. Existing widgets and current flex/grid/scroll
+behavior do not change.
+**Architecture/verification:** extend the focused declarative layout/adapter
+owners rather than `OverlayApp`; keep recipe validation, layout, navigation,
+paint, and accessibility as separate testable concerns. Tier 1 native layout,
+renderer, focus, pointer, and UIA groups; Tier 2 one production-host semantic
+fixture. No aggregate, capture, pack CLI, Game Launcher domain code, or motion.
+
+### DLV-133 — Add launcher-scoped style, artwork, and recovery ownership
+
+**State:** Ready after DLV-132
+**Owner/outcome:** platform lane for the launcher-only cascade after global user
+appearance, sealed static pack assets, revision-bound selected-game background,
+decode-before-crossfade, bounded focus effects, user parameter overrides,
+last-good retention, and safe-start fallback. Accessibility policy remains the
+final layer and can remove blur/transparency/motion.
+**Acceptance:** `Use global appearance` reproduces current styling; pack rules
+cannot reach other widgets or shell roles; PNG/JPEG/WebP assets obey package and
+decode bounds and never expose paths to workers; failed/deleted/corrupt assets
+retain a professional fallback; experience switch/reload is atomic and keeps
+focus/actions; reduced motion/transparency and high contrast override every
+pack; repeated decode/style failure disables only the offending revision and
+retains a built-in launcher. Measure input/render budgets during background
+crossfade and degrade effects before focus latency. Tier 1 style/asset/recovery
+groups and Tier 2 production-host lifecycle fixture; no animated media, audio,
+remote assets, gallery, network, screenshot, or aggregate.
 
 **Queue note:** the user's fresh verdict confirms the moving-tray/work-area
 regression and is now DLV-127. DLV-104 Game Launcher content clipping and
@@ -354,9 +504,15 @@ manufacture adjacent work.
 
 ## Serialized integration queue
 
-No cross-lane item is awaiting integration. DLV-126 and DLV-127 consume the
-same accepted main baseline and may run concurrently; DLV-125 and DLV-124 then
-continue immediately in their respective lanes.
+1. DLV-130 owns the normalized public launcher data contract; no other lane
+   edits that broker/bridge/SDK boundary until it is accepted.
+2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
+   catalog. DLV-132 and DLV-133 consume it in platform order.
+3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
+   provided the planner rebases at a clean boundary and confirms exclusive
+   files. DLV-134 waits for accepted DLV-130/132/133.
+4. External metadata/artwork sources and trusted store/content adapters remain
+   later delivery steps and cannot broaden these M1 assignments.
 
 ## Blocked work
 
