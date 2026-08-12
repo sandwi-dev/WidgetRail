@@ -22,7 +22,7 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-001 | P0 | Verifying | Audio Mixer / broker / Windows audio provider | Per-application controls now target exact session IDs and the provider passes a reversible live-volume test; packaged row control still needs hands-on verification. |
 | GBA-002 | P1 | Verifying | Widget protocol / host placement | Per-view compact/standard/wide/adaptive surfaces and host work-area clamping are implemented; YT Music now has a 480 x 340 compact media budget, while packaged visual verification remains. |
 | GBA-003 | P1 | Verifying | Audio Mixer / declarative renderer | Accepted DLV-049 (`32af19b`, integrated as `a8bcb27`) locks the exact four-session Microphone-to-Master reverse edge to DLV-021's corrected geometry: one production HWND/UIA Up reaches Master and offset zero without cycling or `value_clamped`. Fresh live keyboard/controller confirmation remains. |
-| GBA-004 | P1 | Split: cold-start fix Verifying; DLV-025 blocked | OverlayHost UI thread / presentation / composition | Accepted DLV-078 `6d30f5e`, integrated through `a072d6f`, retains inert last-good pixels until the cold destination snapshot is admitted while revoking stale authority immediately. The separate real Games & Apps extent-animation gray/black-band defect remains blocked in DLV-025 pending an atomic compositor decision. |
+| GBA-004 | P1 | Split: cold-start fix Verifying; DLV-025 Assigned | OverlayHost UI thread / presentation / composition | Accepted DLV-078 `6d30f5e`, integrated through `a072d6f`, retains inert last-good pixels until the cold destination snapshot is admitted while revoking stale authority immediately. The separate real Games & Apps extent-animation gray/black-band defect is now assigned to the user-authorized Windows-10-compatible DirectComposition surface gate in DLV-025. |
 | GBA-005 | P0 | Verifying | OverlayHost controller routing | Hierarchical B routing is implemented across nested widget views, root widgets, and the icon tray; packaged controller verification remains. |
 | GBA-006 | P1 | Verifying | OverlayHost presentation | All direct snapshot refreshes compare prior/next surface extents; packaged resize verification remains. |
 | GBA-007 | P1 | Verifying | Declarative renderer / focus navigation | Nested fixed-point reveal and clip-feasibility filtering are implemented; packaged controller verification remains. |
@@ -93,6 +93,8 @@ in the packaged Release overlay and the closing commit is recorded.
 | GBA-072 | P1 | Closed | Settings local-data reset / installed identity | Accepted DLV-089 replaces the synthetic disabled namespace with the canonical version-derived installed identity. Bridge 73/73 covers enabled-to-disabled stale/clear/re-enable behavior with no worker creation and an unaffected neighbor. |
 | GBA-073 | P1 | Closed | Protected Wi-Fi host transport / Native Wi-Fi rollback | Accepted DLV-093 `3ce8991`, integrated with DLV-087 through `63ca3a2`, replaces password-bearing JSON/string copies with a bounded mutable zeroed frame and requires an exact per-attempt profile ownership token before deletion. Mismatch, unavailable verification, and delete failure are explicit and preserve current Windows state. |
 | GBA-074 | P1 | Verifying on packaged main | Running-app observation / Widget SDK / Games & Apps / Game Launcher | DLV-095 corrected by accepted DLV-097 is integrated through `c6d76a3`; native inspection is bounded before eligibility and confirmed items are fully validated before either widget can mutate state. The fully packaged Release is visibly running for the user's live route check. |
+| GBA-075 | P0 | Assigned as DLV-100 | WidgetBridge computed styles / protocol-v15 `TextEntry` / Game Launcher / Network Controls | Current production Game Launcher snapshots fail before native rendering because the bridge style-role resolver omits the already-supported `TextEntry` node kind. Five identical failures are present in the current PID 35472 session and no other current-session error signature was found. |
+| GBA-076 | P1 | Ready as DLV-101 | Installed-widget runtime / manifest resources / worker Job policy / authoring contract | Prototype hard worker-memory and one-process ceilings contradict the approved full-application widget model. Private worker execution must not be arbitrarily product-capped; shared-host messages, presentation/native resources, capability traffic, and host admission remain bounded. |
 
 ## GBA-001 — Per-application audio controls have no real effect
 
@@ -267,7 +269,7 @@ of adding retries or capture work.
 The next accepted-main refresh through DLV-067 integration `3d8f486` published
 the coherent managed/runtime graph and reached the same suite, which failed with
 more precise evidence: `Worker startup replaced the prior admitted content with
-a transient surface.` This narrows one defect away from DLV-025's blocked HWND
+a transient surface.` This narrowed one defect away from DLV-025's then-blocked HWND
 resize/compositor decision. Queued DLV-078 owns retained-content versus first-
 snapshot admission ordering only; it starts after DLV-075 releases the shared
 native host/build boundary and must pass the existing fixture without retries or
@@ -2379,6 +2381,55 @@ installed evidence before integration.
 Apps 59/59, Game Launcher 45/45, and documentation 55/55 pass. Both widgets
 retain neighbor state and perform no private-state CAS mutation on malformed
 confirmation. Only the user's live packaged verification remains.
+
+## GBA-075 — `TextEntry` is rejected by bridge style resolution
+
+**Evidence:** The current production session begins at 2026-08-11 16:00:20 for
+PID 35472. It contains five Game Launcher failures between 16:53:06 and
+16:55:11, all reporting `Unsupported view node kind 'TextEntry'`. A search of
+the 1,224 current-session log lines found no other failure, error, exception,
+timeout, malformed, denial, crash, protocol, warning, rejection, or unavailable
+signature. Older August 10 Spotify/YT Music worker-start and Settings payload
+failures did not recur and are not reopened by this audit.
+
+**Root cause:** Protocol v15 validation, the public SDK, Game Launcher, Network
+Controls, the native parser, and the host-owned text modal all support
+`TextEntry`. `BridgeRenderStyles.RoleFor(ViewNodeKind)` does not map that node
+kind and throws while constructing computed styles, so a valid snapshot never
+reaches the native host. Existing component tests cover each side of the seam
+but omit the production bridge style path.
+
+**Ownership and acceptance:** DLV-100 owns one canonical distinct GBSS role,
+default/themed resolution, production-shaped Game Launcher and protected
+Network Controls fixtures, and the smallest installed generic-worker proof.
+Game Launcher must open and Search must reach the unchanged host-owned modal;
+unknown future kinds must still fail closed. No widget-local fallback or public
+protocol/native modal redesign is permitted.
+
+## GBA-076 — Prototype worker quotas block full-application widgets
+
+**Evidence:** Current public documentation defines a 16-256 MiB worker memory
+request and a one-active-process Job policy, while other platform guidance says
+the public framework should support application-scale media, multipage, and
+large-collection experiences. These are prototype execution quotas, not trust-
+boundary limits, and they make a game-library application, rich media client,
+or helper-process architecture fail for reasons unrelated to native-host
+availability.
+
+**Approved product boundary:** A widget may own full application-scale private
+models, databases, indexes, caches, computation, navigation, and an owned helper
+process tree. The shared native host remains strictly bounded at IPC, current
+presentation, native/GPU allocation, update/action admission, capability,
+package-ingestion, cache, and concurrent-session boundaries. Job accounting,
+non-breakaway ownership, kill-on-close, integrity, UI restriction, and bounded
+teardown remain; ambient OS authority remains capability-gated.
+
+**Ownership and acceptance:** DLV-101 removes the default hard worker memory
+and one-process ceilings, aligns manifest semantics and public documentation,
+proves an owned child process cannot escape and is reclaimed, and preserves
+fail-closed oversized-message/snapshot behavior without harming a neighboring
+widget. It must also name the scalable widget-private data path rather than
+misrepresent the bounded host `PrivateState` document as application storage.
 
 ## Closed issues
 

@@ -202,8 +202,13 @@ Code should demonstrate:
 - Continuing work bound to an explicit widget, route, request, state, or
   lifecycle generation.
 - Observed task failures and rejection of stale results.
-- Bounded queues, caches, snapshots, messages, manifests, pages, retries,
-  history, strings, and retained resources.
+- Bounded untrusted boundary traffic and shared-host resources: IPC messages,
+  current snapshots, native/GPU resources, host queues and caches, capability
+  payloads, retries, strings, recursion, and retained presentation resources.
+- No arbitrary framework ceiling on widget-private application complexity,
+  domain state, databases, computation, or process-tree size. Full
+  application-scale widgets are supported; use paging, virtualization,
+  coalescing, and backpressure where their state enters the shared host.
 - Deterministic, side-effect-free rendering.
 - Immutable render-facing state where practical.
 - Stable typed identifiers and actions rather than hidden string protocols.
@@ -528,8 +533,9 @@ Authentication or user credentials must not block unrelated assigned work.
 ## Widget developer experience
 
 The public framework should support basic, capability-backed, media, multipage,
-and large-collection widgets without requiring authors to reproduce framework
-plumbing.
+large-collection, and full application-scale widgets without requiring authors
+to reproduce framework plumbing or compress their private application into a
+small-widget execution quota.
 
 Assigned developer-experience work should move toward:
 
@@ -560,6 +566,15 @@ a separately reviewed trusted provider process.
 Treat packages, manifests, snapshots, scenario inputs, companion responses,
 images, provider data, paths, and protocol messages as untrusted. Enforce
 appropriate size, count, path, origin, time, serialization, and retention bounds.
+
+Apply those bounds at trust and shared-resource boundaries. Do not treat them
+as authority to cap a widget's private model, database, computation, or helper
+process tree. Worker Jobs retain accounting, non-breakaway teardown,
+kill-on-close, integrity, and UI restrictions, but prototype hard memory and
+one-process ceilings are not the product model. The native host must remain
+bounded even when a widget is a full application: reject an unsafe submission
+before native allocation, preserve the last valid presentation when possible,
+and return a precise diagnostic rather than silently truncating it.
 
 Never present an in-process timeout, cancellation token, reflection filter, or
 assembly loader as a security sandbox.
@@ -602,8 +617,11 @@ When relevant to the assignment, measure:
 - Background polling and provider-call frequency.
 - Large-collection retained items, decoded image memory, and cache bounds.
 
-Prefer event-driven updates, bounded refresh rates, immutable cached state, lazy
-resources, and minimal native semantic/render tree churn.
+Prefer event-driven updates, coalesced host publication, immutable render-facing
+state, lazy host resources, and minimal native semantic/render tree churn.
+Measure widget-private resource use and report it without turning a prototype
+budget into an arbitrary product ceiling. Keep strict budgets for the native
+host and for resources a widget asks the host to own.
 
 Measure before and after significant performance changes. Do not optimize or
 claim success from intuition alone.

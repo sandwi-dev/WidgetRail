@@ -4,6 +4,25 @@ Status: active implementation sequence with evidence gates, 2026-08-07
 
 The next goal is not “build all widgets.” It is to prove that the operating-system constraints permit the product experience without turning the overlay into injected or driver-backed bloatware.
 
+## Widget scale and host-boundary policy
+
+An installed widget may be a full application, not merely a small panel. Its
+private domain model, database, indexes, caches, computation, navigation, and
+worker process tree are not subject to arbitrary framework product-size quotas.
+Large applications keep their complete state privately and project only the
+currently presented route or virtualized collection window into the overlay.
+
+The shared native host remains bounded. IPC frames, validated current render
+trees, native/GPU resources, pending actions, update admission, capability
+payloads, package ingestion, host caches, and concurrent host-owned surfaces
+retain explicit availability limits. These bounds fail before unsafe
+allocation, preserve the last valid presentation when possible, and produce
+specific diagnostics; they never silently truncate a widget. OS authority also
+remains behind declared, consented capabilities or a separately reviewed
+companion boundary. Remove prototype hard worker-memory and one-process quotas,
+but retain Job accounting, non-breakaway cleanup, kill-on-close, integrity, and
+UI restrictions.
+
 ## Phase 0: platform feasibility
 
 ### Spike A: Guide button
@@ -77,9 +96,10 @@ Exit criteria:
 
 - Worker failure never terminates or blocks the shell
 - Lazy cold start is acceptable or hidden by a cached snapshot
-- Job Object accounting and termination work (**initial memory, one-process,
-  pre-launch assignment, kill-on-close, and UI restrictions implemented and
-  tested**)
+- Job Object accounting and termination work (**pre-launch assignment,
+  non-breakaway process-tree ownership, kill-on-close, and UI restrictions
+  implemented and tested; the prototype hard memory and one-process quotas are
+  scheduled for removal under the full-application widget policy**)
 - Mandatory capability-free AppContainer launch plus exact-SID/Low-label/PID-
   bound main and broker communication is implemented and tested end to end
 - The supported Windows/version/architecture matrix and profile cleanup policy

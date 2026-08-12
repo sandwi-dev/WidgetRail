@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-10
+Status: reviewer-owned two-lane execution queue, 2026-08-11
 Planning owner: independent review and delivery-planning agent
 Execution owners: `widgets` implementation lane and `platform` implementation lane
 
@@ -846,6 +846,142 @@ not evidence that GBA-003 is fixed.
 
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
+
+### DLV-100 — Admit `TextEntry` through bridge render styles
+
+**State:** Assigned
+**Lane:** widgets, acting as the serialized managed bridge correction lead
+**Baseline:** current local `main` after the reviewer control-plane commit that
+records this assignment
+**Dependencies:** accepted DLV-075/DLV-079 and snapshot protocol v15; DLV-099
+only establishes the clean widgets-lane boundary
+**Owner:** WidgetBridge computed-style role normalization, exact bridge and
+installed-worker fixtures for existing `TextEntry`, and directly affected public
+documentation
+**Concurrency:** May run while the platform lane executes DLV-025. Do not touch
+native compositor/renderer code, worker resource policy from DLV-101, or
+reviewer-owned documents.
+
+**Visible outcome:** Game Launcher opens normally instead of showing
+`Unsupported view node kind 'TextEntry'`; activating Search still opens the
+host-owned text modal. The protected Network Controls entry route remains
+admissible through the same existing protocol node.
+
+**Objective:** Add the missing existing `TextEntry` role to the singular bridge
+computed-style resolver and prove that protocol-v15 text entry completes the
+SDK -> worker -> bridge style -> native parser route. This is a shared bridge
+regression, not a Game Launcher-only workaround: SDK/protocol validation and the
+native host already support the node, while `BridgeRenderStyles.RoleFor`
+currently throws before the snapshot reaches native rendering.
+
+**In scope:** one stable distinct GBSS role for `TextEntry`; null/default and
+themed style resolution; computed-style output keyed by the node ID; a
+production-shaped Game Launcher initial Ready snapshot; the protected Network
+Controls text-entry route; retry, current-generation, and last-good behavior at
+the existing bridge boundary; exact diagnostics for a genuinely unknown future
+node kind.
+
+**Out of scope:** protocol-version changes, public `TextEntry` or modal redesign,
+Game Launcher layout changes, native modal/input implementation, DLV-025,
+DLV-101 worker-resource policy, screenshots, the canonical aggregate, or
+reopening historical Spotify/YT Music/Settings failures that did not recur in
+the current production session.
+
+**Acceptance criteria:** the current Game Launcher initial snapshot is admitted
+and its computed-style map includes the `TextEntry` ID; Search reaches the
+unchanged host-owned modal/action path; a protected Network Controls snapshot
+using `TextEntry` is also admitted; unknown enum values still fail closed; role
+selection has one canonical owner and no widget-specific branch; worker retry,
+generation, and last-good behavior do not regress.
+
+**Verification:** Tier 1 focused WidgetBridge style/worker tests plus the
+smallest directly affected Game Launcher and Network Controls fixtures. Tier 2
+uses the smallest installed generic AppContainer/production-bridge route that
+opens Game Launcher and activates its text-entry action. No screenshot or
+aggregate gate. Use the existing test framework unless a genuinely new managed
+test project is required, in which case it must use `MSTest.Sdk` 4.3.2.
+
+**Stop/escalate when:** satisfying the correction requires a public protocol or
+native modal change, or the canonical GBSS role semantics are ambiguous enough
+to require a product decision. Do not add a widget-local fallback.
+
+### DLV-101 — Remove arbitrary private-worker size ceilings
+
+**State:** Ready after DLV-100
+**Lane:** widgets, acting as the managed runtime/public-contract lead
+**Baseline:** accepted DLV-100 widgets-lane boundary
+**Dependencies:** DLV-100; current AppContainer launch, Job ownership, runtime
+admission, manifest resource request, private-state, and public authoring
+contracts
+**Owner:** managed installed-widget launch/runtime policy, manifest resource
+semantics, worker Job containment configuration, scalable widget-private data
+guidance, diagnostics, and public SDK/packaging/residency/capability documents
+**Concurrency:** May run while DLV-025 remains in the native compositor surface,
+but must stop rather than touch compositor/presentation ownership or introduce a
+cross-lane protocol change without planner serialization.
+
+**Product outcome:** An author can build a full application as a widget without
+the framework imposing the prototype's 256-MiB worker ceiling or one-process
+ceiling. The native overlay remains bounded and responsive regardless of the
+widget's private complexity.
+
+**Objective:** Implement the approved resource-boundary policy: remove
+arbitrary hard limits on widget-private application execution while preserving
+strict bounds wherever untrusted data or resource ownership crosses into the
+shared host. Compatibility with the pre-release prototype manifest/state is not
+a reason to retain an inferior design; use one explicit schema/default change
+and an atomic affected overlay-state reset if required.
+
+**In scope:** classify every relevant limit as widget-private, boundary-facing,
+or host-owned; remove the default hard per-worker memory quota and one-active-
+process quota while retaining pre-resume Job assignment, non-breakaway process-
+tree ownership, accounting, kill-on-close, integrity, desktop/UI restrictions,
+and bounded teardown; replace `resourceRequest.memoryMb` hard product sizing
+with optional advisory/reporting semantics or remove it cleanly; ensure worker
+children remain in the same owned Job; keep host session/pipe/action/render/GPU
+admission independent of claimed private memory; document and verify the
+supported scalable private-data path for databases/indexes/caches, and return a
+bounded prerequisite rather than pretending the 64-KiB host state document is
+full-application storage if no such path exists; update all public authoring,
+residency, capability, architecture, packaging, and manifest documentation that
+states or implies the old ceilings.
+
+**Bounds that remain:** IPC frame and strict JSON limits; current presentation
+node/depth/string/resource limits; native/GPU cache and surface admission;
+pending-action and host request queues; update coalescing/backpressure; exact
+capability size/time/authority limits; package acquisition/extraction and path
+safety; host worker-session concurrency needed to bound host handles/threads;
+killable cleanup; diagnostics retention. These protect the shared host and may
+not silently truncate content or cap private application state by proxy.
+
+**Out of scope:** ambient network/filesystem/device/process/credential authority,
+weakening AppContainer integrity or pipe authentication, arbitrary child-process
+breakaway, removing package-ingestion safety limits, unbounded snapshots or
+host queues, a new database implementation without evidence the existing
+private path is inadequate, DLV-025, or repo-wide compatibility shims.
+
+**Acceptance criteria:** a package requesting or consuming more than the old
+256-MiB prototype ceiling is not rejected or killed solely by that ceiling; a
+representative package can launch an owned helper child and both processes are
+accounted and terminated with the worker Job; no child can break away; the host
+still rejects oversized IPC/snapshots before native allocation, retains its
+last valid presentation where applicable, and emits a specific diagnostic;
+host session/action/cache limits remain effective; public docs clearly teach
+full-app private state plus paged/virtualized presentation and contain no claim
+that 16-256 MiB or one process defines supported widget complexity.
+
+**Verification:** Tier 1 focused manifest, runtime, AppContainer/Job, admission,
+and documentation tests with deterministic child-process and old-ceiling
+fixtures. Tier 2 launches one installed generic package with a child process,
+confirms Job/accounting/kill-on-close, and separately proves an oversized host-
+boundary payload still fails closed without harming a neighboring widget. No
+canonical aggregate and no long memory-stress soak.
+
+**Stop/escalate when:** the only available private-data path exposes arbitrary
+host/user filesystem authority, removing a quota would permit Job escape or
+unbounded host-owned allocation, or the change requires native compositor work.
+Return the exact missing scalable-storage or host-isolation prerequisite; do not
+restore the prototype quota as the product design.
 
 The widgets lane follows the non-idling and visible-outcome gates. DLV-040,
 DLV-046, DLV-047, DLV-048, DLV-050, and DLV-051 are accepted and integrated on
@@ -5528,8 +5664,9 @@ unregistered directory and the previously observed uncommitted DLV-025 files
 are not present. Do not reconstruct, reset, or otherwise act on that lost
 uncommitted state without explicit user authority.
 
-The platform queue prioritizes visible controller and surface features even
-while DLV-025 awaits a compositor choice. The preserved DLV-016 worktree must
+The platform queue prioritizes visible controller and surface features. The
+user authorized the bounded Windows-10-compatible DirectComposition surface
+gate for DLV-025 on 2026-08-11. The preserved DLV-016 worktree must
 not be reset or overwritten; its files are read-only reference material for the
 clean recovery task, not an integration source. DLV-025 retains only its
 committed branch baseline and documented evidence after its former worktree
@@ -5537,7 +5674,7 @@ disappeared. DLV-049 is accepted and integrated as `a8bcb27`; DLV-015 is
 accepted and integrated as `6d3b093`; and P0 DLV-052 is accepted through
 `56f6908`; DLV-016 is accepted and integrated as `fee1103`; DLV-011 is accepted
 and integrated as `35df08c`. DLV-033 awaits the compositor decision, and
-DLV-025 remains user-decision blocked. DLV-058 is accepted as source `e160690`
+DLV-025 is Assigned on the clean active platform-switch lane. DLV-058 is accepted as source `e160690`
 and integrated on main through `ae34f9a`, providing the first visible generic
 Pin/Unpin lifecycle. DLV-070 `c61a49d` is accepted and integrated through
 `0b21384`; one production owner now receives authenticated bounded Show
@@ -5545,11 +5682,8 @@ activation from later launches. DLV-068 `b83b3f7` is accepted and integrated
 through `9e795ac`; durable controller/pointer/UIA placement is now available.
 DLV-069 candidate `ea2691c`, corrected by DLV-073 `aaafefc`, is accepted and
 integrated through `eef3162`: Click-through keeps the current admitted widget
-visible while withholding input and actionable UIA. DLV-062 is blocked at its
-documented fixed-video material-resource gate. No later platform item is Ready
-because YouTube v1 depends on that go/no-go decision, DLV-025 requires the user's
-compositor choice, and endpoint selection still lacks a supported setter; the
-planner will not manufacture internal filler. The 2026-08-11 accepted-main
+visible while withholding input and actionable UIA. DLV-062 remains blocked at
+its documented fixed-video material-resource gate. The 2026-08-11 accepted-main
 Release build produced a narrower deterministic switch failure before reaching
 the blocked resize/compositor question: worker startup replaced the prior
 admitted content with a transient surface. DLV-078 owns that presentation-
@@ -5557,9 +5691,9 @@ ordering correction after the corrected DLV-075/DLV-076/DLV-077/DLV-079/
 DLV-080/DLV-081 prefix released the shared native input/build boundary through
 `d116f0d`. DLV-078 `6d30f5e` is accepted and integrated through `a072d6f`.
 The cold-worker ordering defect is corrected without consuming DLV-025's
-blocked compositor decision. No later platform item is Ready: DLV-025 and
-DLV-062 remain at their explicit decision gates, while endpoint selection still
-lacks a supported setter. The planner will not manufacture backend filler.
+compositor decision. DLV-025 is now the Assigned visible platform milestone;
+DLV-062 remains at its explicit material-resource gate, while endpoint selection
+still lacks a supported setter.
 
 ### DLV-078 — Retain admitted content through worker cold start
 
@@ -6173,10 +6307,11 @@ automation.
 
 ### DLV-025 — Eliminate transition tearing and UI-thread stutter
 
-**State:** Blocked at the documented compositor/window-technology stop condition;
-user architecture authority required before implementation resumes
-**Baseline:** `17e4388`, the clean reviewer control-plane commit containing the
-accepted DLV-020 integration
+**State:** Assigned; user authorized the bounded DirectComposition prototype on
+2026-08-11
+**Baseline:** current local `main` after the reviewer control-plane commit that
+records this authorization and assignment; merge it into the clean active
+`codex/impl-platform-switch` boundary before implementation
 **Owner:** OverlayHost transition scheduling, Win32/DWM window composition,
 Direct2D resize/invalidation, native bridge/UI-thread interaction, and temporal
 product evidence
@@ -6187,7 +6322,16 @@ around Games & Apps. Preserve visual continuity only when it can be delivered
 within a measured frame budget; an immediate stable switch is preferable to a
 laggy or tearing animation.
 
-**Preserved blocker evidence:** The branch remains at committed planning
+**Authorized design direction:** Use the Windows-10-compatible
+`IDCompositionSurface` path as one bounded product gate. Render the complete
+destination into an offscreen composition surface, fully cover the update
+rectangle, end the draw, commit once, and retain prior committed content until
+the destination is ready. Coordinate that visual commit with the existing HWND
+geometry and measure the real interval. Do not adopt the Windows-11-only
+composition-swapchain API, raise the Windows floor, or retain two permanent
+presentation owners in this assignment.
+
+**Preserved baseline evidence:** The branch remains at committed planning
 baseline `57aa2d5`, and the measurements below remain recorded, but the former
 Codex worktree and its uncommitted DLV-025 files are no longer registered or
 present. Reconstruction is not authorized. Real populated Spotify Queue and
@@ -6205,13 +6349,18 @@ DirectComposition/swap-chain ownership. No known-bad product commit was made.
 instrument timer cadence and per-frame duration across `SetWindowPos`, `WM_SIZE`,
 Direct2D target resize/resource recreation, invalidation, synchronous redraw,
 bridge calls, and committed presentation; identify exposed/uncommitted regions
-and UI-thread blocking; select one host-owned atomic presentation design;
+and UI-thread blocking; create one host-owned DirectComposition device/surface
+lifecycle with complete-surface updates, retained prior content, device-loss
+recovery, capability/failure fallback, and an explicit decision to integrate or
+discard the prototype as product code;
 retarget/reversal, same-identity refresh, reduced motion, compact/standard/wide,
 100-150% scale, and continuously painted tray/backdrop behavior. If a blocking
 bridge operation is measured on the transition-critical UI path, move or bound
 only the necessary request ownership without changing widget APIs or authority.
 
-**Out of scope:** per-widget backgrounds or timing branches, hiding artifacts
+**Out of scope:** the Windows-11-only composition-swapchain API, raising the
+supported Windows floor, a second permanent renderer/presentation path,
+per-widget backgrounds or timing branches, hiding artifacts
 with a longer delay, decorative motion, a general bridge rewrite without
 measured relevance, changing Games & Apps composition, new public widget
 protocol, or claiming smoothness from static synthetic captures alone.
@@ -6233,10 +6382,11 @@ sequence or video-derived capture using the real first-party product surfaces,
 including the user-reported Games & Apps size change. Record frame times and
 review every transition interval, not only endpoints. No aggregate.
 
-**Stop/escalate when:** the only credible correction requires a new compositor
-or window technology, materially changes the public protocol/threat model, or
-cannot be evaluated without a user-only physical display. Exhaust automated
-real-product temporal evidence before escalating.
+**Stop/escalate when:** the gate can pass only by adopting the Windows-11-only
+composition swapchain, retaining a second permanent presentation owner,
+materially changing the public protocol/threat model, or relying on user-only
+physical evidence. A prototype that cannot coordinate committed content with
+HWND geometry is non-integrable evidence, not permission to broaden the design.
 
 ### DLV-026 — Restore bidirectional Audio Mixer scrolling
 
@@ -6667,7 +6817,6 @@ compatibility remain separate future assignments.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
-| DLV-025 atomic widget-size presentation | Current HWND render-target resize exposes undefined content during real list-heavy first paint; the assignment's documented stop condition forbids adopting new compositor/window technology without planner/user authority. Its former dirty Codex worktree has disappeared, leaving only branch `57aa2d5` and the recorded evidence. Official API review recommends a Windows-10-compatible DirectComposition-surface gate before the Windows-11-only composition-swapchain API. | User authorizes one bounded DirectComposition offscreen-content/commit prototype and any needed clean reconstruction; planner then updates DLV-025 scope and acceptance before creating a new isolated implementation surface. |
 | Audio Mixer default input/output endpoint selection | The roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence for a supported setter plus a bounded provider design and reversible hardware plan. |
 | Live Spotify account and Web Playback completion | Account, Premium eligibility, development allowlist, OAuth, and EME interaction. | User-authorized live account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth consent/verification and a user account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth design, verification plan, and user-authorized account. |

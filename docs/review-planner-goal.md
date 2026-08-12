@@ -205,7 +205,14 @@ Check:
 - Correctness, lifecycle, cancellation, concurrency, stale-result behavior, and
   failure handling.
 - Public API/protocol compatibility and explicit authority.
-- Bounded input, state, queues, caches, pages, messages, retries, and resources.
+- Bounded untrusted inputs and every resource admitted into or owned by the
+  shared host: messages, current presentation trees, native/GPU resources,
+  queues, caches, retries, and capability payloads.
+- No arbitrary framework ceiling on a widget's private application complexity,
+  domain state, database, computation, or worker process tree. A full
+  application remains a valid widget. Require paging/virtualization and
+  backpressure only where data crosses into the shared host, and distinguish
+  host-containment limits from widget-private work in every review.
 - Accessibility, controller behavior, responsive layout, and product UX when
   affected.
 - Performance implications and measurements when relevant.
@@ -435,6 +442,26 @@ Do not approve local hacks, per-widget renderer offsets, unbounded snapshots,
 title-derived launch identity, raw paths/commands in widgets, undocumented
 Windows control APIs, in-process security-sandbox claims, or duplicated host
 authority.
+
+### Full-application widget resource policy
+
+Installed widgets are not required to fit a "small widget" execution model.
+They may own full application-scale private models, storage, indexes, caches,
+navigation, computation, and helper processes. Do not retain a hard worker
+memory ceiling, one-process ceiling, or similarly arbitrary private-execution
+limit merely for compatibility with the prototype. Job membership may still
+provide accounting, non-breakaway cleanup, kill-on-close, integrity, and UI
+restrictions; those containment properties are not product-size quotas.
+
+The trusted native host and every boundary entering it remain strictly bounded.
+Keep explicit limits on IPC frames, validated current presentation trees,
+strings and recursion, pending actions, update admission, native/GPU resources,
+host caches, capability requests, package ingestion, and concurrent host-owned
+sessions. Such limits must protect host availability, fail before unsafe
+allocation, retain the last valid presentation where appropriate, and return a
+specific author diagnostic. They must not silently truncate content or be used
+as a substitute for paging, virtualization, resource handles, or scalable
+widget-private storage.
 
 ## Stop conditions requiring the user
 
