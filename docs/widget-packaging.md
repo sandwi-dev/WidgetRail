@@ -448,14 +448,17 @@ rollback require a disabled widget, preserve that disabled state, and require a
 separate review and `gbar enable` action afterward. There is no history stack:
 use `version select` to move forward to a newer installed version.
 
+For local packages, Settings → Installed widgets exposes the implemented
+host-owned file picker through **Install local widget**. It publishes a
+successful package disabled for review without giving the widget worker a path
+or general file-picker authority.
+
 ## Deliberately deferred
 
 - Publisher signature and certificate-chain verification
 - Online catalog metadata, release discovery, automatic updates, and revocation
 - Version removal and garbage collection of old versions (Settings and CLI
   exact-version selection/rollback are implemented)
-- The visible Settings action that invokes the implemented host-owned local
-  file picker/import prerequisite
 
 Until signing is implemented, successful structural validation proves package
 shape and archive containment—not publisher authenticity or benign behavior.

@@ -286,10 +286,12 @@ gbar disable dev.example.widget --catalog .\artifacts\test-catalog
 gbar version list dev.example.widget --catalog .\artifacts\test-catalog
 ```
 
-There is no file-picker/graphical installer, automatic updater, signature
-verification, or marketplace client. The bridge watches the default
-current-user catalog without polling, validates a complete replacement, and
-publishes semantic changes live. Listing/reload never launches a worker.
+Settings → Installed widgets provides one host-owned local `.gbarwidget` file
+picker and installs the selected package disabled for review. There is no
+remote graphical acquisition, automatic updater, signature verification, or
+marketplace client. The bridge watches the default current-user catalog without
+polling, validates a complete replacement, and publishes semantic changes live.
+Listing/reload never launches a worker.
 Invalid trusted shell state retains the last-good catalog. Invalid installed
 state or package integrity publishes a trusted-only revision, removes Community
 registrations, and retires their workers; unsupported styles/capabilities on an
