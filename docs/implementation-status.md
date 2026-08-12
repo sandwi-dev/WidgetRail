@@ -3260,6 +3260,28 @@ focused Release fixture passes 17/17 and covers all-valid, all-forbidden, mixed,
 and repeated-unsafe over-limit sets with a bounded diagnostic count and an
 unvisited invalid tail.
 
+### Production computer-control targetability gate (DLV-136)
+
+The bounded product experiment reached the assignment's material-UX stop and
+was removed. The accepted main popup (`WS_EX_TOOLWINDOW |
+WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST`) is absent from supported
+computer-control window/app discovery. A non-tool popup owned by the existing
+tool/no-activate backdrop preserved shell exclusion and passed 13 focused
+identity/activation/lifecycle checks plus 152 UIA-provider and 34 host-
+accessibility checks, but the supported tool still omitted it and Windows
+reported the backdrop as the process main window.
+
+On isolated candidate PID 41748, temporarily removing only the owner made the
+exact titled main HWND appear in both supported `list_windows()` and
+`list_apps()` while `WS_EX_NOREDIRECTIONBITMAP` remained set, proving that
+DirectComposition capture identity is not the blocker. The unowned non-tool
+popup is eligible for normal taskbar/Alt-Tab shell identity. Adding
+`WS_EX_NOACTIVATE` suppressed that shell identity but again removed the surface
+from supported discovery and contradicted the required activation/focus path.
+No production source or alternate automation surface is retained. A product UX
+decision is required to permit taskbar/Alt-Tab presence or a supported control-
+tool change is required to admit the existing tool/owned overlay identity.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/
