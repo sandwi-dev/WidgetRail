@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 09:31 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 10:04 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,10 +13,12 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `6abfb60`; worktree clean when this plan was
+- Local product baseline: `523aed7`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-156 through `6abfb60`.
-- Visible accepted Release: PID 30680, launched at 09:28:32 after the accepted
+- Latest implementation integration: DLV-157 and serialized DLV-149/150 through
+  `523aed7`.
+- Visible accepted Release: PID 10784, launched at 10:01:21 after exact title
+  overrides and installed Launcher Experience activation. The first
   Launcher Experience production presentation and Game Launcher categories. Its first
   dashboard frame is
   bottom-anchored at absolute
@@ -28,9 +30,10 @@ That snapshot is historical evidence, not implementation authority.
   exposing a platform test fixture with the same title. Do not substitute that
   fixture or infer product defects from capture; user visual testing remains
   the first-page gate.
-- DLV-156 `66a34ba` was reviewed and cherry-picked as `6abfb60`; its integrated
-  Game Launcher suite passes 75/75. Platform has consumed DLV-149 privately for
-  active DLV-150; the selection remains absent from main until the pair passes.
+- DLV-157 `8b45265` was reviewed and cherry-picked as `7c8fc7f`; Game Launcher
+  passes 77/77. DLV-149 `22b5d1a` and DLV-150 `8ae94d7` were accepted as one
+  outcome and integrated as `c8e4504`/`523aed7`; integrated Settings/catalog
+  passes 18/18 and native Launcher Experience passes 1,691 checks.
 
 ## Execution protocol
 
@@ -69,10 +72,42 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-157: exact per-game title override
+### Current assignment — DLV-159: byte-budget-driven title override capacity
 
-**State:** Assigned automatically after accepted DLV-156 `66a34ba`; implementation
-is already active and is not interrupted by this review update.
+**State:** Assigned correction after accepted DLV-157 `8b45265`. The following
+DLV-158 Spotify audit completed with 49/49 and no reproducible credential-free
+gap, so it produced no code commit.
+
+**Baseline/dependencies:** widgets branch `8b45265`; accepted product `523aed7`.
+Preserve DLV-157's exact SavedId, provider-title retention, search projection,
+category behavior, CAS and launch revalidation. DLV-152 is concurrent native/
+catalog matrix work.
+
+**Owner/outcome:** widgets lane removes the arbitrary 32-title prototype ceiling.
+The existing 64-KiB encoded shared-state boundary remains authoritative; a user
+can customize a realistically large library until that byte budget is reached.
+
+**Objective/acceptance:** replace `MaximumTitleOverrides = 32` with a generous
+validation-work ceiling that does not reject ordinary states before bytes do.
+Retain at least 256 compact exact SavedId/title overrides under the byte boundary
+in focused evidence. The 257th ordinary override must succeed when encoded state
+still fits. Byte-budget rejection preserves the committed state. Malformed/
+duplicate/missing-display fields reset only title overrides, preserving
+categories/favorites/hidden/recent/variants. Rename/reset/restart/search/category/
+stale-display/CAS/exact-launch evidence remains green.
+
+**Architecture/verification:** title policy stays sole validation/projection
+owner and widget stays lifecycle/effect/CAS adapter. Tier 1 Game Launcher Release
+suite; Tier 2 extend the ordinary installed-worker title route with a large
+retained state. No provider, SDK/protocol, native, aggregate, screenshot,
+account, artwork, or reviewer-doc edit.
+
+**Stop:** practical capacity requires exceeding the shared 64-KiB state boundary
+or a new storage API; report that as a separate architecture milestone.
+
+### Accepted milestone — DLV-157: exact per-game title override
+
+**State:** Done and accepted through main `7c8fc7f`.
 
 **Baseline/dependencies:** widgets branch `66a34ba`; accepted product `6abfb60`.
 Reuse the existing action sheet, TextEntry, exact SavedId, category/private-state
@@ -289,15 +324,14 @@ for adoption.
    appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
    disclosure, and selected-version removal denial. It remains unintegrated
    until DLV-150 privately consumes it. Do not redo or expose it alone.
-2. **Ready after DLV-157 — DLV-158: Spotify credential-free regression audit.**
-   Inspect the current selected installed Spotify package/source and focused
-   suites against seek-Left routing, forward/reverse queue and playlist paging,
-   top-row/list focus, clipped Library header, transient worker/provider recovery,
-   contextual help, and first-page responsive bounds. Implement only a
-   reproducible credential-free widget/SDK gap and run its smallest focused
-   route. Do not require OAuth/Premium, screenshots, native animation work, an
-   aggregate, or speculative refactoring; if all named invariants hold, report
-   retained evidence and stop without a code commit.
+2. **Ready after DLV-159 — DLV-161: YT Music credential-free regression audit.**
+   Inspect the current selected installed package/source and focused suite for
+   disconnected/pairing/recovery truth, transport reconciliation, shortcut help,
+   artwork/progress fit, lifecycle-bound work, and current worker/package
+   admission. Implement only a reproducible credential-free widget/SDK gap; do
+   not require companion credentials, screenshots, native motion, aggregate, or
+   speculative refactoring. If all named invariants hold, report evidence and
+   stop without a code commit.
 
 ## Platform lane
 
@@ -305,9 +339,26 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-150: installed Launcher Experience selection, last-good reload, and safe start
+### Current assignment — DLV-152: custom-pack production matrix
 
-**State:** Assigned after accepted DLV-148 `34e3746`. At the clean platform
+**State:** Assigned automatically after accepted DLV-150 `8ae94d7`; implementation
+is already active and is not interrupted by this review update.
+
+**Baseline/dependencies:** platform branch `8ae94d7`; accepted product `523aed7`.
+Prove the bottom-rail and left-rail/glass reference recipes plus compact,
+standard, wide, 150% text, reduced motion/transparency, high contrast, long
+title, missing art, invalid pack, removal denial, and exact recovery through the
+ordinary installed selection/native host path.
+
+**Acceptance/verification:** every matrix cell preserves exact focus/action/UIA
+identity, valid visible bounds, one renderer/window/compositor, last-good atomic
+replacement, accessibility finality, DLV-148 timing/degradation budgets, and
+DLV-150 one-activation safe start. Tier 1 focused catalog/Settings/native suites;
+Tier 2 one deterministic ordinary-host matrix. No aggregate or capture gate.
+
+### Accepted milestone — DLV-150: installed Launcher Experience selection, last-good reload, and safe start
+
+**State:** Done and accepted with DLV-149 through main `523aed7`. At the clean platform
 boundary, cherry-pick held widgets DLV-149 `f282237` as the exact managed
 dependency; do not merge the widgets branch or consume DLV-154/156. Stop on a
 material conflict.
@@ -401,10 +452,14 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-150 — DLV-152: custom-pack production matrix.** Prove the
-   bottom-rail and left-rail/glass reference recipes plus compact/standard/wide,
-   150% text, reduced motion/transparency, high contrast, long title, missing
-   art, invalid pack, removal denial, and exact recovery in the ordinary host.
+1. **Ready after DLV-152 — DLV-160: author-to-production pack lifecycle.** In
+   one isolated deterministic route, scaffold both reference packs, validate,
+   preview, pack, install, select, activate in the ordinary host, replace with a
+   new exact version, reject a corrupted reload to last-good, safe-start once,
+   restore Hero Rail, and remove the now-unselected custom versions. Prove no
+   executable/remote content, path leakage, second renderer, or stale selection.
+   Reuse existing CLI/catalog/Settings/private bridge/native owners; no new pack
+   schema, public protocol, gallery, signing, network, aggregate, or screenshots.
 
 ## Serialized integration queue
 
@@ -431,7 +486,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 30680 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 10784 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
