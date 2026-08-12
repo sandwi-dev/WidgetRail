@@ -102,56 +102,13 @@ unrelated work; no speculative filler is authorized.
 Task identity: `platform`
 Branch: `codex/impl-platform-switch`
 
-### DLV-118 — Keep the complete icon tray reachable at small surfaces
+### DLV-121 — Restore the Audio Mixer production focus target fixture
 
-**State:** Assigned
-**Baseline:** accepted main `cff0d99`; first integrate that exact main at the
-clean DLV-116 boundary
-**Dependencies:** existing DLV-105 compact overflow and current host-owned tray
-inventory/focus authority
-**Owner:** platform lane; native shell/tray measurement, overflow projection,
-focus/UIA order, pointer hit testing, focused native tests, and affected display
-documentation
-**Concurrency:** native tray/shell only; no widget presentation trees, package
-import, renderer/compositor transition redesign, managed widget code, catalog
-policy, public SDK/protocol, or reviewer-document changes.
-
-**User-visible outcome:** opening a small/compact widget never makes installed
-widgets silently disappear from the icon tray. Every tray identity remains
-reachable through the existing explicit overflow interaction with stable
-controller, pointer, and accessibility order.
-
-**Objective/in scope:** reproduce the user's small-widget state from logical
-surface/tray metrics, then correct the smallest host-owned inventory/overflow
-projection or focus-retention seam. Preserve the selected widget and exact tray
-order across resize, compact-to-wide switching, catalog replacement, and
-rapid widget cycling. Do not infer layout failure from malformed captures.
-
-**Out of scope:** enlarging every widget, per-widget tray hints, horizontally
-unbounded icons, hiding overflow without an affordance, widget-specific native
-IDs, transition/compositor rework, visual redesign, or catalog semantics.
-
-**Acceptance:** first/middle/last and selected identities are reachable at the
-minimum documented logical surface and 100/125/150% scale; overflow is visible,
-named, keyboard/controller/pointer/UIA operable, and returns to the exact item;
-no icon vanishes merely because widget extent shrinks; resizing and catalog
-churn preserve one focus owner with no stale dispatch.
-
-**Verification:** Tier 1 tray layout/focus/overflow/accessibility/targeting;
-Tier 2 production-host semantic state across small widget, large widget, rapid
-cycling, and catalog replacement. Functional/semantic evidence only; no capture
-or aggregate.
-
-**Stop:** correction requires a new tray information architecture, public
-protocol, per-widget special case, compositor redesign, or material UX choice.
-
-### Platform ready queue
-
-#### DLV-121 — Restore the Audio Mixer production focus target fixture
-
-**State:** Ready immediately after DLV-118
-**Baseline/dependencies:** accepted main `048e0a3` plus the completed DLV-118
-boundary; begin from the exact accepted-main Release failure
+**State:** Assigned; the platform lane moved on immediately after committing
+DLV-118 and has no task-specific DLV-121 commit yet
+**Baseline/dependencies:** clean platform boundary `064a257`, containing
+accepted DLV-118 `5d86cd6` and accepted main `31ed686`; begin from the exact
+accepted-main Release failure
 `AudioMixerScrollHostTests failed: Requested production UIA focus target was
 absent.` Do not rerun the unchanged command merely to seek a pass.
 **Owner:** platform lane; production-host focus/UIA projection, scroll reveal,
@@ -173,6 +130,12 @@ unchanged rerun.
 **Stop:** evidence locates the defect in managed Audio Mixer authorship, requires
 a public protocol/layout redesign, or cannot reproduce from retained semantic/
 log state.
+
+### Platform ready queue
+
+No later platform item is authorized. DLV-121 remains active; its result must
+reach a coherent commit or an exact managed-authorship stop before the planner
+refills this queue.
 
 **Queue note:** further platform correction depends on the user's fresh verdict
 for integrated DLV-115 (black border/transition), DLV-104 (Game Launcher
@@ -206,6 +169,7 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-118 | `5d86cd6` | `4bc0baa` | Small and wide widget surfaces retain one selected tray identity, explicit reachable overflow, exact order, and synchronous catalog replacement without stale tray dispatch. |
 | DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
 | DLV-114/117 | `f285c9d` and `6a96727` | `cff0d99` | Game Launcher has an exact-ID controller details route and honest two-selection variant actions with committed feedback and deterministic return focus. |
 | DLV-112/115/116 | `1dd2dd5`, `5c66f16`, and `0e1810f` | `d6f2780` | Host-owned local package import is consumable only by exact bundled Settings, and reopened widget motion retires hidden composition work; live border/transition verdict remains. |
@@ -215,7 +179,6 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 | DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |
 | DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |
 | DLV-104/106 | `99e4932` and `f119a1f` | `1ef4666` and `dde4981` | Bounded Game Launcher collection viewport and atomic tray focus ownership. |
-| DLV-101/103 | `f27f4d7` and `f87631c` | `9c5de8e` | Full-application worker process trees and dependable Now Playing retry/last-good behavior. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

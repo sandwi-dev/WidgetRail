@@ -4740,6 +4740,24 @@ belong in the later security backlog with P2/P3 priority. This rule does not
 claim that security is permanently complete; it prevents the absence of such a
 claim from becoming an unlimited implementation program.
 
+### Accepted platform review — DLV-118
+
+DLV-118 `5d86cd6` is accepted and integrated through main `4bc0baa`. The change
+stays inside host-owned catalog-to-shell publication: catalog inventory changes
+now use the normal state-transition owner, descriptor-only replacement still
+synchronizes lifecycle and invalidates chrome, and a visible replacement is
+painted before later pointer dispatch can consume the new slot map. Open-widget
+paint and diagnostics reuse one computed `TrayLayout`, avoiding separate
+per-frame projections.
+
+The implementation did not redesign the compositor, widget protocol, package
+model, or managed widget trees. Its focused Release evidence covers 283 tray
+layout checks, state, accessibility, targeting, the installed eight-widget
+order at compact and wide extents, rapid switching, and synchronous catalog
+addition/removal with the selected identity retained. This is sufficient for
+code acceptance; GBA-080 remains Verifying until the freshly rebuilt Release
+passes the user's direct tray interaction check.
+
 ## Recommended next actions
 
 Continue enforcing EQ-024's path-ownership rule: `ddb66c2`, `7c8a5b8`,
