@@ -49,11 +49,13 @@ RecipeNode Profile(const Preset preset, const Branch branch) {
         return Overlay({
             Leaf(Slot::HeroBackground, {0, 0, 1, 1}),
             Leaf(Slot::SourceStatus, {0.05F, 0.03F, 0.35F, 0.14F}),
+            Leaf(Slot::CollectionTabs, {0.42F, 0.03F, 0.53F, 0.14F}),
             Leaf(Slot::DetailsPanel, {0.05F, 0.19F, 0.9F, 0.32F}),
             Leaf(Slot::GameRail, {0.05F, 0.54F, 0.9F, 0.27F},
                  preset == Preset::CoverWall || preset == Preset::CompactGrid
                      ? Orientation::Vertical
                      : Orientation::Horizontal),
+            Leaf(Slot::OperationStatus, {0.05F, 0.83F, 0.42F, 0.15F}),
             Leaf(Slot::ControllerHints, {0.5F, 0.83F, 0.45F, 0.15F}),
         });
     }
@@ -63,16 +65,20 @@ RecipeNode Profile(const Preset preset, const Branch branch) {
             Leaf(Slot::HeroBackground, {0, 0, 1, 1}),
             Leaf(Slot::DetailsPanel, {0.07F, 0.08F, 0.54F, 0.4F}),
             Leaf(Slot::SourceStatus, {0.68F, 0.07F, 0.26F, 0.1F}),
+            Leaf(Slot::CollectionTabs, {0.05F, 0.49F, 0.9F, 0.08F}),
             Leaf(Slot::GameRail, {0.06F, 0.58F, 0.88F, 0.28F},
                  Orientation::Horizontal),
+            Leaf(Slot::OperationStatus, {0.05F, 0.88F, 0.42F, 0.09F}),
             Leaf(Slot::ControllerHints, {0.5F, 0.88F, 0.44F, 0.09F}),
         });
     case Preset::CoverWall:
         return Overlay({
             Leaf(Slot::HeroBackground, {0, 0, 1, 1}),
+            Leaf(Slot::CollectionTabs, {0.04F, 0.03F, 0.62F, 0.09F}),
             Leaf(Slot::GameRail, {0.04F, 0.14F, 0.66F, 0.72F}, Orientation::Vertical),
             Leaf(Slot::DetailsPanel, {0.73F, 0.22F, 0.23F, 0.46F}),
             Leaf(Slot::SourceStatus, {0.73F, 0.08F, 0.23F, 0.1F}),
+            Leaf(Slot::OperationStatus, {0.73F, 0.70F, 0.23F, 0.16F}),
             Leaf(Slot::ControllerHints, {0.52F, 0.89F, 0.44F, 0.08F}),
         });
     case Preset::Carousel:
@@ -80,14 +86,18 @@ RecipeNode Profile(const Preset preset, const Branch branch) {
             Leaf(Slot::HeroBackground, {0, 0, 1, 1}),
             Leaf(Slot::DetailsPanel, {0.1F, 0.08F, 0.54F, 0.32F}),
             Leaf(Slot::SourceStatus, {0.7F, 0.08F, 0.24F, 0.1F}),
+            Leaf(Slot::CollectionTabs, {0.08F, 0.40F, 0.84F, 0.07F}),
             Leaf(Slot::GameRail, {0.07F, 0.48F, 0.86F, 0.34F}, Orientation::Horizontal),
+            Leaf(Slot::OperationStatus, {0.07F, 0.84F, 0.44F, 0.13F}),
             Leaf(Slot::ControllerHints, {0.54F, 0.89F, 0.4F, 0.08F}),
         });
     case Preset::CompactGrid:
         return Overlay({
+            Leaf(Slot::CollectionTabs, {0.04F, 0.03F, 0.62F, 0.09F}),
             Leaf(Slot::GameRail, {0.04F, 0.14F, 0.66F, 0.7F}, Orientation::Vertical),
             Leaf(Slot::DetailsPanel, {0.73F, 0.2F, 0.23F, 0.44F}),
             Leaf(Slot::SourceStatus, {0.73F, 0.07F, 0.23F, 0.09F}),
+            Leaf(Slot::OperationStatus, {0.73F, 0.66F, 0.23F, 0.18F}),
             Leaf(Slot::ControllerHints, {0.5F, 0.89F, 0.46F, 0.08F}),
         });
     }

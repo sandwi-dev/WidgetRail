@@ -134,7 +134,8 @@ $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
 $launcherExperienceTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-tests'
 $launcherExperienceHostTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-host-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory | Out-Null
+$launcherExperienceBridgeFixtureOutput = Join-Path $outputDirectory 'obj\launcher-experience-bridge-fixture'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $launcherExperienceBridgeFixtureOutput | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -824,6 +825,16 @@ function Invoke-LauncherExperienceTests {
 }
 
 function Invoke-LauncherExperienceHostTests {
+    & dotnet publish (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $launcherExperienceBridgeFixtureOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
+    }
+    $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
+    if (-not (Test-Path -LiteralPath $fixtureBridge)) {
+        throw 'LauncherExperienceBridgeFixture publish omitted its executable.'
+    }
     $arguments = $common + @(
         (Join-Path $projectDirectory 'LauncherExperienceHostTests.cpp'),
         (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
@@ -838,7 +849,7 @@ function Invoke-LauncherExperienceHostTests {
         throw "LauncherExperienceHostTests build failed with exit code $LASTEXITCODE."
     }
     & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') `
-        --installation $outputDirectory
+        --installation $outputDirectory --fixture-bridge $fixtureBridge
     if ($LASTEXITCODE -ne 0) {
         throw "LauncherExperienceHostTests failed with exit code $LASTEXITCODE."
     }
