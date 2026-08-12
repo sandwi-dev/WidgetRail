@@ -190,6 +190,20 @@ reload; LT+RT+A safe-start bypasses it for one activation without mutating the
 selection. Integrated focused evidence passes 18/18 Settings/catalog and 1,691
 native checks. DLV-152 is the active visible/accessibility production matrix.
 
+DLV-159 `445d016`, integrated as `5b93ce0`, replaces the 32-title cap with
+1,024-entry validation-work ceilings and the canonical 64-KiB byte boundary.
+Focused evidence retains 257 overrides, rejects a later over-budget mutation
+without state drift, and resets only malformed title fields. Game Launcher
+remains 77/77.
+
+DLV-152 `c2a8172`, integrated as `3a5b46a`, proves bottom-rail and left-rail/
+glass custom packs across responsive/150%-text/accessibility states, long title,
+missing/decoded art, selected-version removal denial, invalid last-good
+retention, exact recovery, safe start, and inherited timing/degradation budgets.
+Native evidence remains 1,691 checks. The implementation task's later failed
+main merge is an operational blocker only; it is not part of this accepted diff
+and requires explicit recovery authorization before DLV-160.
+
 ## Active findings
 
 | ID | Priority | Current disposition | Closing evidence required |
@@ -244,8 +258,8 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. Game Launcher now has one scoped controller action sheet. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, hardware, and recovery issues remain Verifying. | User verdict on PID 41444 and continuing visible-first assignments. |
-| Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories, title overrides, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, and deterministic ordinary-host adoption are accepted through `523aed7`. | DLV-159 corrects title capacity; DLV-152 proves the installed custom-pack visible/accessibility matrix. |
+| Visible UI and controller behavior | Spotify and cold-start dashboard corrections are accepted and live-verifying. Game Launcher now has one scoped controller action sheet. The current Audio Mixer four-session keyboard path reaches Master after reverse traversal. Earlier transition, hardware, and recovery issues remain Verifying. | User verdict on PID 24112 and continuing visible-first assignments. |
+| Launcher platform | Data-only packs, four live native responsive presets with production budgets, normalized managed presentation, Windows/Xbox, Epic, and non-launching best-effort GOG installed evidence, scalable exact categories/titles, launcher-scoped recovery, author tooling, installed exact-pack selection, last-good reload, safe start, custom-pack production matrix, and deterministic ordinary-host adoption are accepted through `3a5b46a`. | Recover the conflicted platform worktree with user authorization, then run DLV-160 end-to-end author lifecycle. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
@@ -274,13 +288,13 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review DLV-159 for byte-budget-driven title capacity and affected-field-only
-   recovery without provider/launch-authority drift.
-2. Review DLV-152 for reference-pack visible/accessibility matrix completeness,
-   atomic last-good truth, and retained presentation budgets.
+1. Review DLV-162 live Now Playing recovery evidence and any exact provider/
+   widget correction ahead of more launcher features.
+2. Keep platform stopped until the user authorizes bounded abort of the failed
+   merge; then review DLV-160 end-to-end author lifecycle.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 10784 visible for the user's dashboard, Spotify, and Game Launcher
+4. Keep PID 24112 visible for the user's dashboard, Spotify, and Game Launcher
    library verdict.
 5. Rotate the next deeper audit to live UI/UX and widget authoring. Revisit
    installed-widget security only under its explicit stabilization exception.

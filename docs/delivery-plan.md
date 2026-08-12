@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 10:04 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 10:35 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,13 +13,11 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `523aed7`; worktree clean when this plan was
+- Local product baseline: `3a5b46a`; worktree clean when this plan was
   published.
-- Latest implementation integration: DLV-157 and serialized DLV-149/150 through
-  `523aed7`.
-- Visible accepted Release: PID 10784, launched at 10:01:21 after exact title
-  overrides and installed Launcher Experience activation. The first
-  Launcher Experience production presentation and Game Launcher categories. Its first
+- Latest implementation integration: DLV-159 and DLV-152 through `3a5b46a`.
+- Visible accepted Release: PID 24112, launched at 10:31:39 after scalable title
+  overrides and the installed custom-pack production matrix. The first
   dashboard frame is
   bottom-anchored at absolute
   `1785,1164,1549,236` inside host `1785,481,1549,919`.
@@ -30,10 +28,12 @@ That snapshot is historical evidence, not implementation authority.
   exposing a platform test fixture with the same title. Do not substitute that
   fixture or infer product defects from capture; user visual testing remains
   the first-page gate.
-- DLV-157 `8b45265` was reviewed and cherry-picked as `7c8fc7f`; Game Launcher
-  passes 77/77. DLV-149 `22b5d1a` and DLV-150 `8ae94d7` were accepted as one
-  outcome and integrated as `c8e4504`/`523aed7`; integrated Settings/catalog
-  passes 18/18 and native Launcher Experience passes 1,691 checks.
+- DLV-159 `445d016` and DLV-152 `c2a8172` were reviewed and cherry-picked as
+  `5b93ce0` and `3a5b46a`; Game Launcher passes 77/77 and native Launcher
+  Experience passes 1,691 checks. The platform task then attempted an
+  unnecessary merge of current main, hit substantive conflicts in seven shared
+  files, preserved them, and stopped before DLV-160. Planner will not discard or
+  resolve that failed merge without explicit user authorization.
 
 ## Execution protocol
 
@@ -72,9 +72,39 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-159: byte-budget-driven title override capacity
+### Current assignment — DLV-162: Now Playing credential-free live recovery audit
 
-**State:** Assigned correction after accepted DLV-157 `8b45265`. The following
+**State:** Assigned after accepted DLV-159. The following DLV-161 YT Music audit
+passed 55/55 with current installed package 0.2.7 and no reproducible
+credential-free gap, so it produced no code commit.
+
+**Baseline/dependencies:** widgets branch `445d016`; accepted product `3a5b46a`.
+This assignment owns Media Sessions/Now Playing managed widget, Windows media
+provider and their focused tests/docs only. Do not touch native host, launcher,
+Spotify/YT Music, public protocol/SDK, reviewer docs, or account/hardware work.
+
+**User-visible outcome:** Now Playing either shows current sessions, retains a
+safe last-good view during a transient Windows media failure, or gives one
+truthful bounded Retry state; it must not strand the user on the previously
+reported “Media sessions could not be loaded” surface without useful recovery.
+
+**Objective/acceptance:** reproduce against current local media sessions and
+inspect the exact widget/provider log interval. Verify initial enumeration,
+subscription-open/read recurrence, no-session state, identity-less Windows
+responses, retry, deactivate/reactivate, stale completion, last-good retention,
+transport state/actions, and sanitized diagnostic codes. Implement only a
+reproducible provider/widget defect. If no gap reproduces, retain focused and
+one installed generic-worker evidence, report the exact result, and make no
+speculative code commit.
+
+**Verification/stop:** Tier 1 Media Sessions and Windows media provider Release
+suites; Tier 2 one installed generic-worker recurrence route if implementation
+changes or needed to close evidence. No aggregate, screenshots, account,
+network, native UI, broad refactor, or security hardening.
+
+### Accepted milestone — DLV-159: byte-budget-driven title override capacity
+
+**State:** Done and accepted through main `5b93ce0`. The following
 DLV-158 Spotify audit completed with 49/49 and no reproducible credential-free
 gap, so it produced no code commit.
 
@@ -324,14 +354,15 @@ for adoption.
    appearance, one-action Hero Rail recovery, last-good state, metadata/unsigned
    disclosure, and selected-version removal denial. It remains unintegrated
    until DLV-150 privately consumes it. Do not redo or expose it alone.
-2. **Ready after DLV-159 — DLV-161: YT Music credential-free regression audit.**
-   Inspect the current selected installed package/source and focused suite for
-   disconnected/pairing/recovery truth, transport reconciliation, shortcut help,
-   artwork/progress fit, lifecycle-bound work, and current worker/package
-   admission. Implement only a reproducible credential-free widget/SDK gap; do
-   not require companion credentials, screenshots, native motion, aggregate, or
-   speculative refactoring. If all named invariants hold, report evidence and
-   stop without a code commit.
+2. **Ready after DLV-162 — DLV-163: Audio Mixer exact live reverse-navigation
+   audit.** Use this machine's current multi-session state and exact keyboard/
+   controller semantic path from Master through microphone and every application
+   row to the tray, then reverse to Master without cycling the widget. Inspect
+   the exact log interval and authored/native focus links. Implement only a
+   reproducible managed-widget/provider gap; report a native-host dependency
+   rather than editing platform files. Ignore malformed captures. Run focused
+   Audio Mixer/provider plus the smallest installed route; no aggregate or
+   speculative generic scroll tests.
 
 ## Platform lane
 
@@ -339,10 +370,18 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-152: custom-pack production matrix
+### Current assignment — blocked recovery before DLV-160
 
-**State:** Assigned automatically after accepted DLV-150 `8ae94d7`; implementation
-is already active and is not interrupted by this review update.
+**State:** Blocked by an unresolved substantive merge in the isolated platform
+worktree after clean DLV-152 commit `c2a8172`. DLV-160 has not started. Do not
+edit, resolve, abort, reset, or dispatch this lane until the user authorizes
+recovery. Recommended bounded recovery is `git merge --abort` in only the
+platform worktree, verify clean `c2a8172`, then begin DLV-160 without merging
+main because its dependencies are already in branch history.
+
+### Accepted milestone — DLV-152: custom-pack production matrix
+
+**State:** Done and accepted through main `3a5b46a`.
 
 **Baseline/dependencies:** platform branch `8ae94d7`; accepted product `523aed7`.
 Prove the bottom-rail and left-rail/glass reference recipes plus compact,
@@ -452,7 +491,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-152 — DLV-160: author-to-production pack lifecycle.** In
+1. **Ready after approved platform-worktree recovery — DLV-160: author-to-production pack lifecycle.** In
    one isolated deterministic route, scaffold both reference packs, validate,
    preview, pack, install, select, activate in the ordinary host, replace with a
    new exact version, reject a corrupted reload to last-good, safe-start once,
@@ -486,7 +525,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ## Verification queue
 
-1. User visual verdict on PID 10784 for cold dashboard position, Spotify first-
+1. User visual verdict on PID 24112 for cold dashboard position, Spotify first-
    page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
