@@ -35,6 +35,8 @@ internal enum GameLauncherRoute
     AddGames,
     Running,
     Hidden,
+    Categories,
+    Category,
 }
 
 internal enum GameLauncherExperience

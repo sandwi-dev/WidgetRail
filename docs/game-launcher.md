@@ -210,7 +210,7 @@ complete library.
 
 X toggles the focused current game as a favorite. Y opens the controller-complete
 action sheet with the current favorite toggle, hide action, variant step,
-preferred-variant state, and source refresh. It does not duplicate View's full
+preferred-variant state, exact category membership, and source refresh. It does not duplicate View's full
 details route or expose a content operation. LB starts an explicit variant
 selection and a second LB on another current tile creates the group; repeating
 the same pair removes the second tile from that group. RB marks a member of an
@@ -221,6 +221,21 @@ Preference never redirects a different tile's launch or merges titles: every
 tile continues to resolve and launch its own exact SavedId. A disabled retained
 row preserves organization while its source is missing, and reappearance of the
 same SavedId restores the choice. A replacement SavedId is independent.
+
+**Categories** provides All Games plus up to four local named collections. Names
+normalize whitespace and Unicode compatibility form, are limited to 32
+characters, and must be unique ignoring case. At most eight exact SavedId
+memberships are retained in total, with at most four per category. Create,
+rename, open, and delete remain in one bounded controller route; deleting a
+category removes only that category and never hides, removes, launches, or
+merges a game. The Y action sheet adds or removes the exact focused game.
+
+Category views reuse the bounded app-library query/cursor owner and retain only
+sanitized last-good display rows for temporarily missing members. Those rows are
+disabled and cannot launch; every Play still resolves the exact current SavedId
+through the host capability. Structurally invalid, duplicate, over-bound, or
+aggregate-over-64-KiB category fields reset together while unrelated favorites,
+variants, recent order, manual membership, hidden games, and experience remain.
 
 Organization mutations use one bounded two-attempt compare-and-swap store. On a
 conflict, only the requested favorite/group/preference delta is reapplied to the

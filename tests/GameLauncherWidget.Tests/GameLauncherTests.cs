@@ -11,6 +11,186 @@ namespace GameBarAlternative.Tests.GameLauncher;
 public sealed class GameLauncherTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task CategoriesCreateAssignBrowseRestartRenameDeleteAndRevalidate()
+    {
+        var state = new WidgetTestPrivateState();
+        var host = new FakeHost(3, state);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tiles = Nodes(Snapshot(widget, 10).Root).Where(node =>
+            node.ActionId == "game-launcher.launch").ToArray();
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, tiles[1].Id));
+        await widget.OnActionAsync(new(GameLauncherActionSheet.ManageCategoriesAction,
+            "game-launcher.actions.categories"));
+        var categories = Snapshot(widget, 11);
+        Assert.AreEqual(ViewNodeKind.TextEntry, Nodes(categories.Root).Single(node =>
+            node.Id == "game-launcher.category.create").Kind);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.category.create", "game-launcher.category.create")
+            { CommittedText = "  Co-op   Night  " });
+        var created = widget.Organization.Categories.Single();
+        Assert.AreEqual("Co-op Night", created.Name);
+
+        await widget.OnActionAsync(new("game-launcher.categories.back",
+            "game-launcher.categories.all-games"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "category return reload");
+        var current = Nodes(Snapshot(widget, 12).Root).Single(node =>
+            node.Id == tiles[1].Id);
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, current.Id));
+        var membershipAction = GameLauncherActionSheet.CategoryActionPrefix + created.Id;
+        Assert.AreEqual("Add to Co-op Night", Nodes(Snapshot(widget, 13).Root).Single(node =>
+            node.Id == membershipAction).Text);
+        await widget.OnActionAsync(new(membershipAction, membershipAction));
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            widget.Organization.Categories.Single().SavedIds.ToArray());
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+        await widget.OnActionAsync(new("game-launcher.categories.open",
+            "game-launcher.categories.open"));
+        await widget.OnActionAsync(new("game-launcher.category.open." + created.Id,
+            "game-launcher.category.open-button." + created.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "category browse load");
+        var category = Snapshot(widget, 14);
+        var categoryNodes = Nodes(category.Root).ToArray();
+        Assert.IsTrue(categoryNodes.Any(node => node.ActionId == "game-launcher.launch"),
+            "Category route omitted its exact member: " + string.Join(" | ",
+                categoryNodes.Select(node => node.Text).Where(text => text is not null)));
+        var categoryTile = categoryNodes.Single(node =>
+            node.ActionId == "game-launcher.launch");
+        StringAssert.Contains(categoryTile.AccessibilityLabel!, "Game 00001");
+        await widget.OnActionAsync(new("game-launcher.launch", categoryTile.Id));
+        CollectionAssert.AreEqual(new[] { "saved-00001" }, host.ResolveRequests[^1].ToArray());
+        CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
+
+        await Background(widget);
+        var restartedHost = new FakeHost(3, state);
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        Assert.AreEqual("Co-op Night", restarted.Organization.Categories.Single().Name);
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            restarted.Organization.Categories.Single().SavedIds.ToArray());
+        await restarted.OnActionAsync(new("game-launcher.categories.open",
+            "game-launcher.categories.open"));
+        await restarted.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.category.rename." + created.Id,
+            "game-launcher.category.name." + created.Id)
+            { CommittedText = "Favorites Two" });
+        Assert.AreEqual("Favorites Two", restarted.Organization.Categories.Single().Name);
+        await restarted.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.category.create", "game-launcher.category.create")
+            { CommittedText = " favorites two " });
+        Assert.AreEqual(1, restarted.Organization.Categories.Count);
+        StringAssert.Contains(Nodes(Snapshot(restarted, 15).Root).Single(node =>
+            node.Id == "game-launcher.status").Text!, "already exists");
+        await restarted.OnActionAsync(new("game-launcher.category.delete." + created.Id,
+            "game-launcher.category.delete-button." + created.Id));
+        Assert.AreEqual(0, restarted.Organization.Categories.Count);
+        Assert.AreEqual(3, restarted.Collection.Items.Count);
+        await Background(restarted);
+    }
+
+    [TestMethod]
+    public void CategoryPolicyBoundsResetOnlyCategoriesAndCasReplayExactDelta()
+    {
+        var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");
+        var b = new GameLauncherDisplayItem("saved-b", "B", "Windows");
+        var favorite = new[] { a.SavedId };
+        var state = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [a, b])
+        {
+            FavoriteSavedIds = favorite,
+            Categories = Enumerable.Range(0, GameLauncherPrivateState.MaximumCategories + 1)
+                .Select(_ => new GameLauncherCategory(
+                    GameLauncherCategoryPolicy.NewId(), "Category " + Guid.NewGuid().ToString("N")[..8],
+                    Array.Empty<string>()))
+                .ToArray(),
+        };
+        var normalized = GameLauncherOrganizationPolicy.Normalize(state);
+        Assert.AreEqual(0, normalized.Categories.Count);
+        CollectionAssert.AreEqual(favorite, normalized.FavoriteSavedIds.ToArray());
+        Assert.AreEqual(2, normalized.Items.Count);
+
+        var valid = GameLauncherOrganizationPolicy.Normalize(state with
+        {
+            Categories = [new(GameLauncherCategoryPolicy.NewId(), "Arcade", [a.SavedId])],
+        });
+        var json = JsonSerializer.Serialize(valid);
+        Assert.IsTrue(json.Length < 64 * 1024,
+            "Bounded category state exceeded the private-state limit.");
+
+        var baseline = GameLauncherPrivateState.Empty with
+        {
+            Items = [a, b],
+            FavoriteSavedIds = [a.SavedId],
+            Categories = [new(GameLauncherCategoryPolicy.NewId(), "Arcade", [a.SavedId])],
+        };
+        var concurrent = baseline with
+        {
+            FavoriteSavedIds = [a.SavedId, b.SavedId],
+        };
+        GameLauncherPrivateState? written = null;
+        var writes = 0;
+        var result = GameLauncherStateStore.SaveAsync(
+            candidate => GameLauncherCategoryPolicy.SetMembership(
+                candidate, candidate.Categories[0].Id, b, included: true),
+            (candidate, _, _) =>
+            {
+                writes++;
+                if (writes == 1)
+                    return ValueTask.FromException<WidgetPrivateStateMutation>(
+                        new WidgetCapabilityException("state_conflict", "conflict"));
+                written = candidate;
+                return ValueTask.FromResult(new WidgetPrivateStateMutation(3));
+            },
+            _ => ValueTask.FromResult(new WidgetPrivateStateValue<GameLauncherPrivateState>(
+                true, concurrent, 2)),
+            baseline, 1, default).GetAwaiter().GetResult();
+        Assert.IsTrue(result.Saved);
+        CollectionAssert.AreEqual(new[] { a.SavedId, b.SavedId },
+            written!.FavoriteSavedIds.ToArray());
+        CollectionAssert.AreEqual(new[] { a.SavedId, b.SavedId },
+            written.Categories[0].SavedIds.ToArray());
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task MissingCategoryMemberRetainsDisplayWithoutLaunchAuthority()
+    {
+        var display = new GameLauncherDisplayItem(
+            "saved-00001", "Temporarily missing", "Steam");
+        var category = new GameLauncherCategory(
+            GameLauncherCategoryPolicy.NewId(), "Offline", [display.SavedId]);
+        var stored = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            Categories = [category],
+        };
+        var host = new FakeHost(0, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(stored), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await widget.OnActionAsync(new("game-launcher.categories.open",
+            "game-launcher.categories.open"));
+        await widget.OnActionAsync(new("game-launcher.category.open." + category.Id,
+            "game-launcher.category.open-button." + category.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "missing category member load");
+        var snapshot = Snapshot(widget, 20);
+        var tile = Nodes(snapshot.Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        StringAssert.Contains(tile.AccessibilityLabel!, "Temporarily missing");
+        StringAssert.Contains(tile.AccessibilityLabel!, "Play unavailable");
+        Assert.IsTrue(tile.IsDisabled);
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        Assert.AreEqual(0, host.ResolveRequests.Count);
+        Assert.AreEqual(0, host.Launches.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task UnavailableAndStaleResolvedRowsNeverAuthorizeLaunch()
     {
         foreach (var state in new[]
@@ -816,11 +996,24 @@ public sealed class GameLauncherTests
                     GameLauncherPrivateState.MaximumManualItems)
                 .Take(GameLauncherPrivateState.MaximumExcludedItems)
                 .Select(item => item.SavedId).ToArray(),
+            Categories = Enumerable.Range(0, GameLauncherPrivateState.MaximumCategories)
+                .Select(index => new GameLauncherCategory(
+                    "category." + index.ToString("x32"),
+                    new string((char)('A' + index),
+                        GameLauncherPrivateState.MaximumCategoryNameLength),
+                    items.Skip(index * 2).Take(2)
+                        .Select(item => item.SavedId).ToArray()))
+                .ToArray(),
         };
-        var json = JsonSerializer.SerializeToUtf8Bytes(state);
+        var normalizedState = GameLauncherOrganizationPolicy.Normalize(state);
+        var json = JsonSerializer.SerializeToUtf8Bytes(normalizedState);
+        var baseBytes = JsonSerializer.SerializeToUtf8Bytes(state with { Categories = [] });
 
-        Assert.IsLessThanOrEqualTo(64 * 1024, json.Length);
-        Assert.AreEqual(items.Length, GameLauncherOrganizationPolicy.Normalize(state).Items.Count);
+        Assert.IsLessThanOrEqualTo(64 * 1024, json.Length,
+            $"Base={baseBytes.Length}, categories={json.Length - baseBytes.Length}");
+        Assert.AreEqual(0, normalizedState.Categories.Count,
+            "Over-budget categories were not reset atomically.");
+        Assert.AreEqual(items.Length, normalizedState.Items.Count);
         Assert.AreEqual(0, GameLauncherOrganizationPolicy.Normalize(
             state with { Items = [.. items, items[0] with { SavedId = "saved-overflow" }] })
             .Items.Count);

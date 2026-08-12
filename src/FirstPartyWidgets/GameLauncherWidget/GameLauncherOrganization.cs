@@ -1,4 +1,5 @@
 using GameBarAlternative.WidgetSdk;
+using System.Text.Json;
 
 namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
 
@@ -6,6 +7,11 @@ internal sealed record GameLauncherVariantGroup(
     string Id,
     IReadOnlyList<string> SavedIds,
     string PreferredSavedId);
+
+internal sealed record GameLauncherCategory(
+    string Id,
+    string Name,
+    IReadOnlyList<string> SavedIds);
 
 internal sealed record GameLauncherPrivateState(
     int Version,
@@ -19,6 +25,10 @@ internal sealed record GameLauncherPrivateState(
     internal const int MaximumExcludedItems = 32;
     internal const int MaximumGroups = 16;
     internal const int MaximumVariantsPerGroup = 4;
+    internal const int MaximumCategories = 4;
+    internal const int MaximumCategoryNameLength = 32;
+    internal const int MaximumCategoryMembers = 4;
+    internal const int MaximumCategoryMemberships = 8;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
 
     public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
@@ -26,6 +36,7 @@ internal sealed record GameLauncherPrivateState(
     public IReadOnlyList<string> RecentSavedIds { get; init; } = [];
     public IReadOnlyList<string> ManualSavedIds { get; init; } = [];
     public IReadOnlyList<string> ExcludedSavedIds { get; init; } = [];
+    public IReadOnlyList<GameLauncherCategory> Categories { get; init; } = [];
     public string ExperienceId { get; init; } = GameLauncherExperienceIdentity.HeroRail;
 }
 
@@ -102,7 +113,9 @@ internal static class GameLauncherOrganizationPolicy
         var experienceId = GameLauncherExperienceIdentity.IsValid(state.ExperienceId)
             ? state.ExperienceId
             : GameLauncherExperienceIdentity.HeroRail;
-        return state with
+        var categories = GameLauncherCategoryPolicy.Normalize(
+            state.Categories, display, out _);
+        var normalized = state with
         {
             Items = state.Items.ToArray(),
             FavoriteSavedIds = state.FavoriteSavedIds.ToArray(),
@@ -113,8 +126,13 @@ internal static class GameLauncherOrganizationPolicy
             RecentSavedIds = state.RecentSavedIds.ToArray(),
             ManualSavedIds = state.ManualSavedIds.ToArray(),
             ExcludedSavedIds = state.ExcludedSavedIds.ToArray(),
+            Categories = categories,
             ExperienceId = experienceId,
         };
+        if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
+            normalized = normalized with { Categories = [] };
+        return normalized;
     }
 
     internal static GameLauncherStateMutation SelectExperience(
@@ -318,6 +336,7 @@ internal static class GameLauncherOrganizationPolicy
             .Concat(state.RecentSavedIds)
             .Concat(state.ManualSavedIds)
             .Concat(state.ExcludedSavedIds)
+            .Concat(state.Categories.SelectMany(category => category.SavedIds))
             .Distinct(StringComparer.Ordinal).ToArray();
 
     internal static GameLauncherVariantGroup? GroupFor(

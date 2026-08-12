@@ -106,6 +106,18 @@ if (args.Contains("--gog-installed-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--game-launcher-category-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await InstalledGameLauncherCategoryRunsIsolated(installed.Catalog);
+    Console.WriteLine("PASS installed Game Launcher category acceptance");
+    return 0;
+}
+
 if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
@@ -664,6 +676,110 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
 
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
     await client.StopAsync();
+}
+
+static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalog)
+{
+    var backend = CreateBackend(gameLibraryCount: 128);
+    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    using var consentRoot = new TemporaryDirectory("gba-installed-category-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    WidgetProcessClient CreateClient() => new(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await using (var client = CreateClient())
+    {
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+        var library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        var game = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Conformance Game 00001", StringComparison.Ordinal));
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.open", game.Id));
+        var sheet = await WaitForActionSnapshotAsync(
+            client, "game-launcher.actions.categories", "Manage categories");
+        var manage = Nodes(sheet.Root).Single(node =>
+            node.ActionId == "game-launcher.actions.categories");
+        await client.SendActionAsync(new WidgetActionEvent(manage.ActionId!, manage.Id));
+        var categories = await WaitForActionSnapshotAsync(
+            client, "game-launcher.category.create", "Create category");
+        var create = Nodes(categories.Root).Single(node =>
+            node.ActionId == "game-launcher.category.create");
+        await client.SendActionAsync(new WidgetActionEvent(create.ActionId!, create.Id)
+            { CommittedText = "Installed Favorites" });
+        categories = await WaitForSnapshotAsync(client, "Installed Favorites · 0 games");
+        var allGames = Nodes(categories.Root).Single(node =>
+            node.Id == "game-launcher.categories.all-games");
+        await client.SendActionAsync(new WidgetActionEvent(allGames.ActionId!, allGames.Id));
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        game = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Conformance Game 00001", StringComparison.Ordinal));
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.open", game.Id));
+        sheet = await WaitForSnapshotAsync(client, "Add to Installed Favorites");
+        var assign = Nodes(sheet.Root).Single(node =>
+            string.Equals(node.Text, "Add to Installed Favorites", StringComparison.Ordinal));
+        await client.SendActionAsync(new WidgetActionEvent(assign.ActionId!, assign.Id));
+        await WaitForSnapshotAsync(client, "Remove from Installed Favorites");
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+        await client.StopAsync();
+    }
+
+    await using (var client = CreateClient())
+    {
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+        var library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.categories.open", "Categories (1)");
+        var openCategories = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.categories.open");
+        await client.SendActionAsync(new WidgetActionEvent(
+            openCategories.ActionId!, openCategories.Id));
+        var categories = await WaitForSnapshotAsync(
+            client, "Installed Favorites · 1 games");
+        var open = Nodes(categories.Root).Single(node =>
+            node.ActionId?.StartsWith(
+                "game-launcher.category.open.", StringComparison.Ordinal) == true);
+        await client.SendActionAsync(new WidgetActionEvent(open.ActionId!, open.Id));
+        var category = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        var exact = Nodes(category.Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        var before = backend.AppLibraryLaunchCalls;
+        await client.SendActionAsync(new WidgetActionEvent(exact.ActionId!, exact.Id));
+        await WaitForSnapshotAsync(client, "Request accepted");
+        Assert.Equal(before + 1, backend.AppLibraryLaunchCalls);
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+        await client.StopAsync();
+    }
 }
 
 static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)

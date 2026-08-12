@@ -18,7 +18,10 @@ internal sealed record GameLauncherPresentationState(
     GameLauncherFixedRows FixedRows,
     IReadOnlyList<WidgetAppLibrarySource> Sources,
     string? HeroSavedId,
-    int HeroIndex);
+    int HeroIndex)
+{
+    internal string? ActiveCategoryId { get; init; }
+}
 
 internal enum GameLauncherRecentMode
 {
@@ -48,6 +51,9 @@ internal static class GameLauncherPresentation
             GameLauncherRoute.AddGames => "Add games",
             GameLauncherRoute.Running => "Add running app",
             GameLauncherRoute.Hidden => "Hidden games",
+            GameLauncherRoute.Categories => "Categories",
+            GameLauncherRoute.Category => GameLauncherCategoryPolicy.Find(
+                state.Organization, state.ActiveCategoryId)?.Name ?? "Category",
             GameLauncherRoute.Experiences => "Launcher experience",
             _ => "Game Launcher",
         };
@@ -76,6 +82,8 @@ internal static class GameLauncherPresentation
                     GameLauncherRoute.AddGames => "game-launcher.add.back",
                     GameLauncherRoute.Running => "game-launcher.running.back",
                     GameLauncherRoute.Experiences => "game-launcher.experiences.back",
+                    GameLauncherRoute.Categories => "game-launcher.categories.back",
+                    GameLauncherRoute.Category => "game-launcher.category.back",
                     _ => "game-launcher.hidden.back",
                 },
                 state.Route switch
@@ -83,6 +91,8 @@ internal static class GameLauncherPresentation
                     GameLauncherRoute.AddGames => "game-launcher.add.back",
                     GameLauncherRoute.Running => "game-launcher.running.back",
                     GameLauncherRoute.Experiences => "game-launcher.experiences.back",
+                    GameLauncherRoute.Categories => "game-launcher.categories.back",
+                    GameLauncherRoute.Category => "game-launcher.category.back",
                     _ => "game-launcher.hidden.back",
                 })
                 .Disabled(!state.Interactive));
@@ -106,6 +116,10 @@ internal static class GameLauncherPresentation
                     "game-launcher.hidden.open", "game-launcher.hidden.open")
                 .Disabled(!state.Interactive ||
                     state.Organization.ExcludedSavedIds.Count == 0));
+            filterControls.Add(UI.Button(
+                    $"Categories ({state.Organization.Categories.Count})",
+                    "game-launcher.categories.open", "game-launcher.categories.open")
+                .Disabled(!state.Interactive));
             filterControls.Add(UI.ToggleButton("Favorites", state.FavoriteFilter,
                     "game-launcher.filter.favorites", "game-launcher.filter.favorites")
                 .Disabled(!state.Interactive ||
@@ -119,7 +133,7 @@ internal static class GameLauncherPresentation
                 .Disabled(!state.Interactive ||
                     state.Organization.RecentSavedIds.Count == 0));
         }
-        if (state.Route != GameLauncherRoute.Running)
+        if (state.Route is not (GameLauncherRoute.Running or GameLauncherRoute.Categories))
         {
             filterControls.Add(UI.Button("Source: " + (state.Query.SourceAttribution ?? "All"),
                     "game-launcher.filter.source", "game-launcher.filter.source")
@@ -139,7 +153,8 @@ internal static class GameLauncherPresentation
                     state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName));
         }
 
-        WidgetElement queryControls = state.Route == GameLauncherRoute.Running
+        WidgetElement queryControls = state.Route is GameLauncherRoute.Running or
+            GameLauncherRoute.Categories
             ? UI.HorizontalScroll("game-launcher.query", filterControls.ToArray())
                 .Classes("game-launcher-query", "game-launcher-fixed")
             : UI.Stack("game-launcher.query",
@@ -162,7 +177,49 @@ internal static class GameLauncherPresentation
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
-        if (state.Route == GameLauncherRoute.Experiences)
+        if (state.Route == GameLauncherRoute.Categories)
+        {
+            var categoryRows = state.Organization.Categories.Select(category =>
+                UI.Card("game-launcher.category.card." + category.Id,
+                    UI.Text($"{category.Name} · {category.SavedIds.Count} games",
+                        "game-launcher.category.summary." + category.Id,
+                        $"{category.Name}, {category.SavedIds.Count} games"),
+                    UI.TextEntry(category.Name, "Rename category",
+                            "game-launcher.category.rename." + category.Id,
+                            "game-launcher.category.name." + category.Id,
+                            GameLauncherPrivateState.MaximumCategoryNameLength)
+                        .Disabled(!state.Interactive || state.OrganizationBusy),
+                    UI.Row("game-launcher.category.actions." + category.Id,
+                        UI.Button("Open", "game-launcher.category.open." + category.Id,
+                                "game-launcher.category.open-button." + category.Id)
+                            .Disabled(!state.Interactive),
+                        UI.Button("Delete", "game-launcher.category.delete." + category.Id,
+                                "game-launcher.category.delete-button." + category.Id)
+                            .Disabled(!state.Interactive || state.OrganizationBusy)))
+                    .Classes("game-launcher-category"))
+                .ToArray();
+            var management = new List<WidgetElement>
+            {
+                UI.TextEntry(string.Empty, "Create category",
+                        "game-launcher.category.create", "game-launcher.category.create",
+                        GameLauncherPrivateState.MaximumCategoryNameLength)
+                    .Disabled(!state.Interactive || state.OrganizationBusy ||
+                        state.Organization.Categories.Count >=
+                            GameLauncherPrivateState.MaximumCategories),
+                UI.Button("All Games", "game-launcher.categories.back",
+                    "game-launcher.categories.all-games")
+                    .Disabled(!state.Interactive),
+            };
+            management.AddRange(categoryRows);
+            content = UI.Stack("game-launcher.content",
+                    UI.Text("Create up to 4 local categories. Membership uses exact saved game identity.",
+                        "game-launcher.categories.help", "Category help"),
+                    UI.VerticalScroll("game-launcher.categories.list",
+                        management.ToArray()))
+                .Classes("game-launcher-content");
+            initialFocus = "game-launcher.category.create";
+        }
+        else if (state.Route == GameLauncherRoute.Experiences)
         {
             var selected = GameLauncherExperienceIdentity.Parse(
                 state.Organization.ExperienceId);
@@ -213,6 +270,72 @@ internal static class GameLauncherPresentation
                             .Disabled(!snapshot.HasAfter || !state.Interactive)))
                 .Classes("game-launcher-content");
             initialFocus ??= GameLauncherIdentity.FocusId("add", snapshot.Items[0].Key);
+        }
+        else if (state.Route == GameLauncherRoute.Category)
+        {
+            var category = GameLauncherCategoryPolicy.Find(
+                state.Organization, state.ActiveCategoryId);
+            var resolved = snapshot.Items.ToDictionary(
+                item => item.Value.SavedId, StringComparer.Ordinal);
+            var stored = state.Organization.Items.ToDictionary(
+                item => item.SavedId, StringComparer.Ordinal);
+            var rows = category?.SavedIds
+                .Where(savedId => !state.Organization.ExcludedSavedIds.Contains(
+                    savedId, StringComparer.Ordinal))
+                .Select(savedId => PresentedRowFor(savedId, resolved, stored))
+                .Where(row => row is not null && MatchesFixedQuery(
+                    row.Display, state.Query, favoriteFilter: false,
+                    new Dictionary<string, int>(StringComparer.Ordinal)))
+                .Select(row => row!)
+                .ToArray() ?? [];
+            if (rows.Length == 0)
+            {
+                content = UI.EmptyState(category is null ? "Category unavailable" :
+                        $"{category.Name} is empty",
+                    "Use Y on a current game and choose this category.",
+                    "game-launcher.category.empty",
+                    new ComponentAction("Back to All Games", "game-launcher.category.back",
+                        WidgetGlyph.Play), WidgetGlyph.Play);
+                initialFocus = "game-launcher.category.empty.action";
+            }
+            else
+            {
+                var tiles = rows.Select(row =>
+                {
+                    var current = row.Current;
+                    var group = GameLauncherOrganizationPolicy.GroupFor(
+                        state.Organization, row.Display.SavedId);
+                    return Tile(row.Display.DisplayName, row.Display.SourceAttribution,
+                        row.Display.SavedId,
+                        current?.Presentation.Artwork.Find(
+                            WidgetAppLibraryArtworkRole.Tile)?.Handle,
+                        state.LaunchingSavedId,
+                        LaunchStateFor(state.LaunchStates, row.Display.SavedId),
+                        current is not null,
+                        CanLaunch(current),
+                        state.Organization.FavoriteSavedIds.Contains(
+                            row.Display.SavedId, StringComparer.Ordinal),
+                        group?.PreferredSavedId == row.Display.SavedId,
+                        group?.SavedIds.Count ?? 0,
+                        state.Interactive && !state.OrganizationBusy,
+                        GameLauncherIdentity.Key(row.Display.SavedId),
+                        pageBumpers: false);
+                }).ToArray();
+                var scroll = UI.VerticalScroll(ScrollId,
+                        UI.ResponsiveGrid("game-launcher.category.grid", 170, 5, tiles)
+                            .Classes("game-launcher-grid"))
+                    .Classes("game-launcher-scroll") with
+                {
+                    CollectionAnchorKey = GameLauncherIdentity.Key(
+                        rows[0].Display.SavedId).Value,
+                };
+                content = UI.Stack("game-launcher.content", scroll,
+                        UI.ControllerHint(ControllerButton.Y, "Game actions",
+                            "game-launcher.category.hint.actions"))
+                    .Classes("game-launcher-content");
+                initialFocus ??= GameLauncherIdentity.FocusId(
+                    "grid", GameLauncherIdentity.Key(rows[0].Display.SavedId));
+            }
         }
         else if (state.Route == GameLauncherRoute.Hidden)
         {

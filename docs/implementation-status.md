@@ -3720,3 +3720,24 @@ B returns to the existing Library or details owner, while View remains the sole
 full-details route. The sheet adds no launch, content, or provider authority.
 
 Focused Release coverage passes Game Launcher 70/70.
+
+### Game Launcher exact categories (DLV-154)
+
+Game Launcher private organization now contains a bounded category slice: four
+opaque local category IDs, normalized unique names of at most 32 characters,
+four members per category, eight exact SavedId memberships total, and an exact
+64 KiB serialized-state admission check. Invalid or aggregate-over-budget
+category fields reset atomically without clearing unrelated organization state.
+
+Responsibility changed as follows:
+
+| Concern | Before | After |
+|---|---|---|
+| Category validation/mutation | No owner. | `GameLauncherCategoryPolicy` alone validates bounds/names/identities and owns create, rename, delete, and exact membership mutations. |
+| Category projection | No category route. | Game Launcher presentation projects All Games, management, and one exact-member category view from immutable organization/current-window state. |
+| Lifecycle, effects, and persistence | `GameLauncherWidget` owned one lifecycle, cursor, navigation, and two-attempt CAS adapter. | The same root remains the sole lifecycle/effect/committed-state adapter and invokes category policy through the existing CAS owner. |
+| Launch authority | Every tile required fresh exact SavedId resolution. | Unchanged; missing category members are display-only and a current category tile reuses the same exact resolution/launch path. |
+
+Focused Release evidence passes Game Launcher 73/73. One ordinary generic
+AppContainer worker route creates and assigns a category, restarts the worker,
+browses the retained exact member, and observes one exact launch revalidation.

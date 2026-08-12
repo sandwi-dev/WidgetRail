@@ -60,6 +60,12 @@ actions, routes them through the same organization and cursor owners, and uses B
 to return to the originating Library or details scope. It contains no launch or
 duplicate details action and adds no provider or content authority.
 
+The same sheet projects exact category membership. A separate bounded route owns
+create, rename, browse, and delete for up to four 32-character names and eight
+total SavedId memberships. Category policy/projection is immutable and separate
+from the widget lifecycle adapter. Missing members retain sanitized display only;
+Play always requires fresh exact provider resolution.
+
 Variant organization remains the existing explicit two-game policy. Details
 labels the first step **Choose another variant**, returns to the Library with the
 first identity named in status, and labels a valid second step **Group with
