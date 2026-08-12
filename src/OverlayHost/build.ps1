@@ -788,6 +788,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
     (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
     (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
+    (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),

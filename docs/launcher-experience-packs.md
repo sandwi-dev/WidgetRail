@@ -2,9 +2,10 @@
 
 Launcher Experience Packs are launcher-only, presentation-only data packages.
 They are separate from global `.gbartheme` packages and never change the shell,
-Settings, or another widget. The production schema/catalog foundation validates
-an expanded package directory; authoring, archive installation, selection, and
-native rendering arrive through later milestones.
+Settings, or another widget. The production schema/catalog validates an
+expanded package directory, and the native host maps validated recipes to
+host-owned semantic slots. Authoring, archive installation, selection, and
+Game Launcher state projection arrive through later milestones.
 
 ## Package boundary
 
@@ -122,3 +123,17 @@ match its catalog directories. Invalid, deleted, or incompatible selections can
 resolve to one of four code-owned recovery descriptors (`hero-rail`,
 `cover-wall`, `carousel`, or `compact-grid`) without trusting rejected package
 content. Packs do not receive action or provider authority through recovery.
+
+## Native host contract
+
+The host resolves each recipe against the live work area and chooses its
+compact, standard, or wide branch before paint. The same resolved slot bounds
+drive pointer targets, controller and keyboard focus, accessibility bounds, and
+canonical UIA order. Paint z-order cannot reorder semantics. A vertical or
+horizontal game-rail declaration changes only host layout orientation; stable
+game identities and action routes remain host-owned.
+
+The four built-in recovery presets and the reference left-rail/glass recipe are
+covered across compact, 720p, 1080p, taskbar-reserved, and 150%-scale profiles.
+An incompatible recipe is replaced atomically by the matching built-in preset;
+rejected content never supplies fallback actions or semantics.

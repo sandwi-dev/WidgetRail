@@ -3232,6 +3232,25 @@ focused PlatformSettings Release fixture passes 17/17, including the named
 schema, layout, authority, image, boundary, reparse, catalog, digest, and
 built-in recovery cases.
 
+### Launcher Experience production-host geometry proof (DLV-140)
+
+Launcher Experience layout now applies the validated rail orientation to a
+host-owned snapshot before both paint and semantic aggregation. The existing
+`DeclarativeRenderer` remains the only paint, hit-target, focus-geometry, and
+accessibility-geometry producer.
+
+| Responsibility | Before | After |
+| --- | --- | --- |
+| Responsive layout | `LauncherExperienceLayout` resolved every built-in profile, but only layout rectangles were checked across the matrix. | The same owner resolves every built-in and the reference left rail across compact, standard, wide, 720p, 1080p, taskbar-reserved, and 150%-scale work areas. |
+| Slot adaptation | `LauncherExperienceAdapter` rendered host snapshots and canonical semantics, but did not apply recipe rail orientation. | The adapter creates one oriented snapshot used identically by renderer and semantic aggregation; it does not own launcher state or actions. |
+| Production evidence | The adapter compiled into `OverlayHost.exe` but only a standalone one-profile WIC test invoked it. | A separate sealed `LauncherExperienceHostProof` owner is dispatched by the production host entry point and verifies the real adapter, pointer, focus, UIA, exact action, and Back route without creating domain or compositor authority. |
+
+Focused Release evidence passes 1,307 native layout/renderer/focus/pointer/UIA
+checks. The freshly rebuilt production `OverlayHost.exe` semantic route exits
+zero after verifying host-owned launch and Back actions on the same admitted
+surface geometry. No capture, pack catalog, Game Launcher domain, window,
+composition, or motion behavior changed.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

@@ -12,6 +12,15 @@ const SlotContent* FindContent(const std::vector<SlotContent>& contents, const S
     return found == contents.end() ? nullptr : &*found;
 }
 
+WidgetSnapshot AdaptSnapshot(
+    const SlotContent& content,
+    const SlotPlacement& placement) {
+    auto snapshot = content.snapshot;
+    if (placement.slot == Slot::GameRail && placement.orientation)
+        snapshot.root.kind = *placement.orientation == Orientation::Vertical ? L"column" : L"row";
+    return snapshot;
+}
+
 void Append(RenderResult& destination, RenderResult source) {
     destination.succeeded = destination.succeeded && source.succeeded;
     destination.animationActive = destination.animationActive || source.animationActive;
@@ -60,7 +69,7 @@ WidgetSnapshot AggregateSnapshot(
     aggregate.root.inputScopeId = aggregate.activeInputScopeId;
     for (const auto& placement : layout.semanticPlacements) {
         if (const auto* content = FindContent(contents, placement.slot)) {
-            auto root = content->snapshot.root;
+            auto root = AdaptSnapshot(*content, placement).root;
             if (root.inputScopeId.empty()) root.inputScopeId = aggregate.activeInputScopeId;
             aggregate.root.children.push_back(std::move(root));
         }
@@ -105,6 +114,7 @@ RenderedExperience RenderExperience(
     for (const auto& placement : result.layout.paintPlacements) {
         const auto* content = FindContent(contents, placement.slot);
         if (!content) continue;
+        auto snapshot = AdaptSnapshot(*content, placement);
         options.responsiveViewport = declarative::Size{
             placement.bounds.width, placement.bounds.height};
         bool duplicateIdentity{};
@@ -113,7 +123,7 @@ RenderedExperience RenderExperience(
                 duplicateIdentity = true;
             for (const auto& child : node.children) self(self, child);
         };
-        collect(collect, content->snapshot.root);
+        collect(collect, snapshot.root);
         if (duplicateIdentity) {
             result.render.succeeded = false;
             result.render.diagnostics.push_back({
@@ -122,7 +132,7 @@ RenderedExperience RenderExperience(
             continue;
         }
         auto slotResult = renderer.Render(
-            target, content->snapshot, focusedElementId, placement.bounds, options);
+            target, snapshot, focusedElementId, placement.bounds, options);
         Append(result.render, std::move(slotResult));
     }
     return result;

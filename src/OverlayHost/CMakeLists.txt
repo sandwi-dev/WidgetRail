@@ -40,6 +40,7 @@ add_executable(OverlayHost WIN32
     DeclarativeRenderer.cpp
     LauncherExperienceLayout.cpp
     LauncherExperienceAdapter.cpp
+    LauncherExperienceHostProof.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
     SliderInteraction.cpp
