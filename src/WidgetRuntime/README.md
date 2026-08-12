@@ -150,9 +150,9 @@ the returned task and must be observed. Work exclusive to one state should use
 its state token. A widget with a legitimate background capability may own
 widget-lifetime work, but permission and residency-policy enforcement are not
 implied by the lifecycle API. The current audio/network broker denies all
-capabilities in Background. On Windows, trusted host policy separately applies
-a Job Object memory ceiling, one-active-process limit, and kill-on-close cleanup
-to every worker.
+capabilities in Background. On Windows, trusted host policy separately assigns
+the complete worker process tree to one accounting Job before resume and keeps
+kill-on-close cleanup for every worker generation.
 
 The planned policy choices are `keep-alive` (default),
 `suspend-when-hidden`, and `unload-after-idle`. The latter two must be explicit
@@ -163,8 +163,9 @@ validated metadata rather than enforcement of these final policy names.
 `WidgetBridge` is the narrow native-facing sidecar around
 `WidgetProcessClient`. Windows workers are created suspended. Their token is
 verified, they are assigned to a Job Object, and only then are they resumed.
-The job enforces the trusted memory limit, one active process, kill-on-close,
-die-on-unhandled-exception, and basic UI restrictions. Win32k system-call
+The job admits child processes while preserving process-tree accounting,
+kill-on-close, die-on-unhandled-exception, and basic UI restrictions. It does
+not impose an arbitrary private-memory or one-process ceiling. Win32k system-call
 disable was tested but is not enabled because CoreCLR failed DLL initialization
 with `0xC0000142`. CPU quotas, disk/profile quotas and profile cleanup,
 publisher verification/revocation, audit UI, and lifecycle residency-policy

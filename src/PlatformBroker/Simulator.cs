@@ -70,6 +70,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         CancellationToken, Task<LoopbackJsonResponse>>? LoopbackHandler { get; set; }
     public Func<string, CancellationToken, Task<AppLibraryIconSummary>>?
         AppLibraryIconHandler { get; set; }
+    internal Func<CancellationToken, Task<IReadOnlyList<MediaSessionSummary>>>?
+        MediaSessionsHandler { get; set; }
     internal IReadOnlyList<AppLibrarySourceSummary> AppLibrarySources { get; set; } = [];
     public string? LastLaunchedAppId { get; private set; }
     public string? LastControlledMediaSessionId { get; private set; }
@@ -484,7 +486,8 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult<IReadOnlyList<MediaSessionSummary>>(_mediaSessions.ToArray());
+        return MediaSessionsHandler?.Invoke(cancellationToken) ??
+            Task.FromResult<IReadOnlyList<MediaSessionSummary>>(_mediaSessions.ToArray());
     }
 
     public Task ControlMediaSessionAsync(

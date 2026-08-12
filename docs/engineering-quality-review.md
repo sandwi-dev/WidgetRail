@@ -12,29 +12,46 @@ verification credibility, UI/UX foundations, and product readiness
 The quality trajectory is **improving, but the repository is not yet at the
 standard of a cohesive senior platform team**.
 
-### Current review delta — accepted complete-surface compositor
+### Current review delta — compact tray reachability accepted
 
-DLV-025 `16f9f47`, integrated through `5b8556a`, replaces visible HWND-target
-extent interpolation with one cohesive 213-line DirectComposition surface
-owner. A complete detached destination update is ended and committed before
-changed HWND geometry is exposed; same-size repaints reuse the surface and the
-legacy HWND render target is retained only as an initialization/device/failure
-fallback. The design stays on the Windows-10-compatible surface API, adds no
-public protocol, widget special case, timer, or second permanent renderer, and
-makes reduced-motion behavior immediate rather than maintaining a separate
-animation branch.
+DLV-105 `42bcf9c`, integrated through `d23db8b`, replaces silent catalog
+truncation with one `TrayLayout`-owned visible window and explicit previous/next
+overflow controls. Paint, pointer targeting, and host accessibility consume the
+same bounds; normal Left/Right retains stable full-catalog order, while pointer
+or UIA overflow selects the exact adjacent hidden stable ID without entering
+widget content. Visible ListItems publish full-set position/size and overflow
+Buttons announce direction plus hidden count. The diff does not alter managed
+catalog/persistence, public widget APIs, preferred extents, or compositor
+ownership. Retained focused Release evidence covers exact-fit, N+1, large
+catalogs, first/middle/last selection, compact scaling, pointer, keyboard,
+controller, and native UIA projection. User confirmation in the freshly
+launched compact and wide overlay remains the final visual check. The clean
+main native-only Release refresh passed and exact planner tip `c836960` is
+visibly running as responsive PID 9228.
 
-Independent review covered all nine changed files and found one explicit
-surface lifecycle, bounded resource/failure handling, and no whitespace,
-generated, reviewer-document, or cross-lane contamination. Retained focused
-evidence covers targeting, transition policy, delayed startup, rapid reversal,
-reload, and production-shaped Audio Mixer, Network Controls, Spotify, and Games
-& Apps handoffs. The fresh accepted-main Release build succeeded and PID 25164
-activated DirectComposition without fallback or immediate error. Its first live
-complete-content handoffs measured draw <= 5.921 ms, commit <= 16.017 ms, and
-coordinated geometry <= 18.437 ms. This closes the implementation decision but
-not the user's visual acceptance: GBA-004 remains Verifying until live cycling
-shows that the former black/gray bands, flicker, and stutter are gone.
+### Current review delta — complete-surface compositor rejected live
+
+DLV-025 `16f9f47`, integrated through `5b8556a`, proved that one cohesive
+Windows-10-compatible DirectComposition owner can render and commit a complete
+destination before final HWND geometry. It did not prove a correct packaged
+transparency or motion result. The user's recording from exact accepted-main
+PID 25164 shows the unused client area as an opaque near-black rectangle around
+the overlay and shows visibly poor different-size widget transitions.
+
+The implementation clears the premultiplied-alpha composition surface to
+opaque RGB(1,2,3) while retaining `WS_EX_LAYERED` color-key/global-alpha state
+on the HWND. Automated fixtures established update ordering but never
+established that color-key transparency applies to composed visual content.
+Session diagnostics also expose a cadence problem: equivalent size changes run
+several waited composition/geometry commits over about 100-150 ms, and populated
+Game Launcher frames take roughly 49-63 ms to draw. The recording timestamp has
+no typed transition event, so exact frame correlation remains an observability
+gap rather than an inferred error code. Provisional acceptance is revoked;
+GBA-004 is Open and DLV-107 follows already-active DLV-106 at its next clean
+boundary. The correction must own one alpha model and one nonblocking
+composition motion policy, retaining the good complete-destination ordering
+without per-widget masks, delayed concealment, per-tick blocking HWND resize,
+or a second permanent renderer.
 
 ### Current review delta — Game Launcher `TextEntry` regression
 
@@ -63,10 +80,9 @@ Release was fully repackaged and launched as PID 26556 for live confirmation.
 The user has explicitly rejected a product model in which installed widgets are
 required to remain small. A widget may be a full application with application-
 scale private state, databases, indexes, caches, computation, navigation, and
-an owned helper process tree. The prototype's 16-256 MiB worker memory range and
-one-process Job ceiling are therefore unreasonable product constraints and are
-assigned for removal in DLV-101. Pre-release compatibility is not a reason to
-retain them.
+an owned helper process tree. Accepted DLV-101 `f27f4d7`, integrated through
+`9c5de8e`, removes the prototype's 16-256 MiB worker memory range and one-process
+Job ceiling. Pre-release compatibility was not used to retain them.
 
 This does not make the shared native host unbounded. IPC frames, validated
 current render trees, recursion and strings, pending actions, publication
@@ -78,6 +94,31 @@ allocation, retains the last valid view when possible, and returns a precise
 diagnostic rather than truncating content. Job accounting, non-breakaway
 process-tree ownership, kill-on-close, integrity, UI restrictions, and bounded
 teardown also remain containment requirements, not product-size quotas.
+
+The accepted implementation preserves pre-resume Job assignment and complete
+process-tree accounting while making manifest memory guidance optional advisory
+metadata. Its installed AppContainer fixture proves private data, an owned
+helper, and kill-on-close; a separate oversized-presentation fixture proves the
+shared host still fails closed without harming a neighboring widget. Focused
+Release evidence passes Runtime 74/74, Bridge 78/78, SDK 87/87, worker host
+10/10, and Catalog 35/35.
+
+### Current review delta — dependable Media Sessions recovery
+
+Accepted DLV-103 `f87631c`, integrated through `9c5de8e`, replaces the Now
+Playing widget's detached reload ownership with one SDK-owned Active
+SingleFlight generation. Subscription admission precedes the current snapshot,
+zero sessions is a successful empty state, Retry performs one real current-
+generation attempt, last-good sessions survive transient refresh/channel
+failure, and cancellation-ignoring stale completions cannot publish.
+
+The broker records only bounded transition-deduplicated Media Sessions stage and
+safe error code; player/session identity, metadata, provider bodies, process
+details, and credentials remain excluded. Retained focused Release evidence
+passes SDK 87/87, PlatformBroker 55/55, Windows Media 13/13, Now Playing 20/20,
+WidgetBridge 79/79, documentation 57/57, and the installed AppContainer
+lifecycle/retry route. The fully packaged Release is visibly running as PID
+32140 for live recurrence testing.
 
 ### Current review delta — trusted artwork failure presentation
 

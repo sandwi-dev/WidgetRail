@@ -55,6 +55,8 @@ internal static class Program
             };
             catalogMonitor.Start();
             var settingsStore = new PlatformSettingsStore(settingsPaths);
+            await using var mediaDiagnostics = new MediaSessionsDiagnosticLog(
+                Path.Combine(settingsPaths.RootDirectory, "overlay.log"));
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,
                 new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
@@ -78,7 +80,7 @@ internal static class Program
                         new WidgetConfigurationStore(settingsPaths))));
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
-                catalogMonitor, residencyBudget);
+                catalogMonitor, residencyBudget, mediaDiagnostics.Record);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;
@@ -134,6 +136,9 @@ internal static class Program
     internal static WorkerResidencyBudgetOptions ResolveWorkerResidencyBudget(string[] args)
     {
         ArgumentNullException.ThrowIfNull(args);
+        if (args.Contains("--max-resident-memory-mb", StringComparer.Ordinal))
+            throw new ArgumentException(
+                "--max-resident-memory-mb is no longer supported; worker memory is reported, not capped.");
         return new WorkerResidencyBudgetOptions
         {
             MaximumApplicationWorkers = OptionalInt(
@@ -142,12 +147,6 @@ internal static class Program
                 WorkerResidencyBudgetOptions.DefaultMaximumApplicationWorkers,
                 1,
                 256),
-            MaximumApplicationMemoryMb = OptionalInt(
-                args,
-                "--max-resident-memory-mb",
-                WorkerResidencyBudgetOptions.DefaultMaximumApplicationMemoryMb,
-                16,
-                16_384),
         };
     }
 }

@@ -22,7 +22,8 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
         IPlatformBrokerBackend backend,
         WidgetProcessCompanionContext context,
         AppLibraryArtworkRegistry? artworkRegistry = null,
-        Action<BrokerHostEffect>? hostEffectSink = null)
+        Action<BrokerHostEffect>? hostEffectSink = null,
+        Action<BrokerCapabilityDiagnostic>? diagnosticSink = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
@@ -40,7 +41,8 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
             artworkRegistry ?? new AppLibraryArtworkRegistry(),
             isolatedClientAppContainerSid: context.AppContainerSid,
             hostGrantedCapabilities: [PlatformCapabilities.PrivateStateV1],
-            hostEffectSink: hostEffectSink);
+            hostEffectSink: hostEffectSink,
+            diagnosticSink: diagnosticSink);
         WorkerArguments =
         [
             "--broker-pipe", pipeName,

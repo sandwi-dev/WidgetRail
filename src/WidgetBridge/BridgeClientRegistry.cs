@@ -886,7 +886,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             () => _residentBudget.Reserve(
                 reservationOwner,
                 configured.Id,
-                configured.MemoryLimitMb,
+                configured.MemoryRequestMb,
                 WidgetBridgeServer.IsTrustedSettings(configured)));
         var registration = new ClientRegistration(configured, client, RecordTerminalFailure);
         var runtimeGeneration = configured.PublicDescriptor().RuntimeGeneration;

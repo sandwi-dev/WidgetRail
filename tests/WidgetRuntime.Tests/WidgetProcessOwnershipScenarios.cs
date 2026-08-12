@@ -380,7 +380,6 @@ internal static class WidgetProcessOwnershipScenarios
             RequestTimeout = TimeSpan.FromSeconds(2),
             MaximumRestartAttempts = 2,
             MaximumMessageBytes = 64 * 1024,
-            MemoryLimitBytes = 64L * 1024 * 1024,
             CompanionSessionFactory = companion is null
                 ? null
                 : _ => Interlocked.Increment(ref companionGeneration) == 1 ||

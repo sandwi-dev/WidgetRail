@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using GameBarAlternative.FirstPartyWidgets.AudioMixer;
 using GameBarAlternative.FirstPartyWidgets.GamesApps;
@@ -7,6 +8,7 @@ using GameBarAlternative.FirstPartyWidgets.GameLauncher;
 using GameBarAlternative.FirstPartyWidgets.MediaSessions;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
 using GameBarAlternative.FirstPartyWidgets.Settings;
+using GameBarAlternative.Tests.FullApplicationWidgetFixture;
 using GameBarAlternative.Samples.SpotifyWidget;
 using GameBarAlternative.Samples.YtMusicWidget;
 using GameBarAlternative.GbarCli;
@@ -127,6 +129,38 @@ if (args.Contains("--text-entry-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--full-application-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        fullApplicationOnly: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await FullApplicationPackageRunsIsolated(
+        installed.Catalog,
+        deployment.Packages.Single());
+    Console.WriteLine("PASS installed full-application process-tree acceptance");
+    return 0;
+}
+
+if (args.Contains("--media-sessions-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        mediaSessionsOnly: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await MediaSessionsPackageRunsIsolated(
+        installed.Catalog,
+        deployment.Packages.Single());
+    Console.WriteLine("PASS installed Media Sessions lifecycle and retry acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -173,7 +207,7 @@ static async Task BundledCatalogUsesManifests()
             $"{package.Manifest.Name} must be AppContainer isolated.");
         Assert.Equal(deployment.BundledWorkerHostPath, configured.WorkerExecutable);
         Assert.SequenceEqual(package.DeclaredCapabilities, configured.DeclaredCapabilities);
-        Assert.Equal(package.Manifest.ResourceRequest.MemoryMb, configured.MemoryLimitMb);
+        Assert.Equal(package.Manifest.ResourceRequest.MemoryMb, configured.MemoryRequestMb);
         AssertResidency(package.Manifest, configured.ResidencyPolicy);
         Assert.True(configured.ReadOnlyPaths.Count == 1 &&
             Path.GetFullPath(configured.ReadOnlyPaths[0]) == Path.GetFullPath(package.BundleRoot),
@@ -323,6 +357,54 @@ static async Task PackagesRunIsolated()
         "bundled");
 }
 
+static async Task FullApplicationPackageRunsIsolated(
+    BridgeCatalog catalog,
+    PackageFixture package)
+{
+    var configured = catalog.GetConfigured(package.Manifest.Id);
+    Assert.True(configured.RequiresAppContainer,
+        "Full-application fixture did not use the mandatory AppContainer route.");
+    Assert.Equal(1_024, configured.MemoryRequestMb);
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var snapshot = await WaitForSnapshotAsync(client, "helper-ready:");
+    Assert.Equal("private-bytes:131072", Nodes(snapshot.Root).Single(node =>
+        node.Id == "full-app.private").Text);
+    var helperText = Nodes(snapshot.Root).Single(node =>
+        node.Id == "full-app.helper").Text ?? string.Empty;
+    var helperPid = int.Parse(helperText["helper-ready:".Length..], CultureInfo.InvariantCulture);
+    var workerPid = client.WorkerProcessId ??
+        throw new InvalidOperationException("Full-application worker PID is unavailable.");
+    using var worker = Process.GetProcessById(workerPid);
+    using var helper = Process.GetProcessById(helperPid);
+    Assert.True(!worker.HasExited && !helper.HasExited,
+        "Full-application process tree was not live after first render.");
+    Assert.True(client.AppliedJobAccounting?.ActiveProcesses >= 2,
+        "Worker Job accounting omitted the owned helper process.");
+    Assert.Equal(null, client.AppliedJobMemoryLimitBytes);
+    Assert.Equal(null, client.AppliedJobActiveProcessLimit);
+
+    await client.StopAsync();
+    await Task.WhenAll(
+        worker.WaitForExitAsync(),
+        helper.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(4));
+    Assert.True(worker.HasExited && helper.HasExited,
+        "Kill-on-close left a full-application process-tree member alive.");
+}
+
 static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
 {
     using var steam = new InstalledSteamArtworkFixture();
@@ -360,7 +442,6 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         ConnectTimeout = TimeSpan.FromSeconds(10),
         RequestTimeout = TimeSpan.FromSeconds(4),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = configured.IsolationKey,
         ReadOnlyPaths = configured.ReadOnlyPaths,
@@ -494,7 +575,6 @@ static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
         ConnectTimeout = TimeSpan.FromSeconds(10),
         RequestTimeout = TimeSpan.FromSeconds(4),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = configured.IsolationKey,
         ReadOnlyPaths = configured.ReadOnlyPaths,
@@ -732,7 +812,6 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
         ConnectTimeout = TimeSpan.FromSeconds(10),
         RequestTimeout = TimeSpan.FromSeconds(45),
         MaximumRestartAttempts = maximumRestarts,
-        MemoryLimitBytes = source.MemoryLimitMb * 1024L * 1024L,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = source.IsolationKey,
         ReadOnlyPaths = source.ReadOnlyPaths,
@@ -1090,7 +1169,6 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
             ConnectTimeout = TimeSpan.FromSeconds(10),
             RequestTimeout = TimeSpan.FromSeconds(5),
             MaximumRestartAttempts = 0,
-            MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
             StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
             IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
             IsolationKey = configured.IsolationKey,
@@ -1225,7 +1303,6 @@ static async Task SpotifyInstalledPackageRunsIsolated(
         ConnectTimeout = TimeSpan.FromSeconds(10),
         RequestTimeout = TimeSpan.FromSeconds(5),
         MaximumRestartAttempts = 0,
-        MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
         StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = configured.IsolationKey,
@@ -1366,7 +1443,6 @@ static async Task ExportEvidenceAsync(string outputDirectory)
             ConnectTimeout = TimeSpan.FromSeconds(10),
             RequestTimeout = TimeSpan.FromSeconds(8),
             MaximumRestartAttempts = 0,
-            MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
             IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
             IsolationKey = configured.IsolationKey,
             ReadOnlyPaths = configured.ReadOnlyPaths,
@@ -1684,7 +1760,6 @@ static async Task RunCatalogAsync(
                 ConnectTimeout = TimeSpan.FromSeconds(10),
                 RequestTimeout = TimeSpan.FromSeconds(4),
                 MaximumRestartAttempts = 0,
-                MemoryLimitBytes = configured.MemoryLimitMb * 1024L * 1024L,
                 IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
                 IsolationKey = configured.IsolationKey,
                 ReadOnlyPaths = configured.ReadOnlyPaths,
@@ -1763,6 +1838,114 @@ static async Task RunCatalogAsync(
                 exception);
         }
     }
+}
+
+static async Task MediaSessionsPackageRunsIsolated(
+    BridgeCatalog catalog,
+    PackageFixture package)
+{
+    var configured = catalog.GetConfigured(package.Manifest.Id);
+    var backend = CreateBackend();
+    using var consentRoot = new TemporaryDirectory("gba-media-installed-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId,
+        configured.PublisherId,
+        configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+
+    backend.SetMediaSessions([]);
+    backend.Publish(new BrokerPlatformEvent(
+        PlatformCapabilities.MediaSessionsReadV1,
+        PlatformCapabilities.MediaSessionsChanged,
+        new MediaSessionsChangedEvent([])));
+    _ = await WaitForSnapshotAsync(client, "Nothing is playing");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    backend.MediaSessionsHandler = _ => Task.FromException<IReadOnlyList<MediaSessionSummary>>(
+        new BrokerException("platform_unavailable", "controlled transient failure"));
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var unavailable = await WaitForSnapshotAsync(client, "Windows media controls unavailable");
+    var retry = Nodes(unavailable.Root).Single(node => node.ActionId == "media.retry");
+
+    backend.MediaSessionsHandler = null;
+    backend.SetMediaSessions([
+        new MediaSessionSummary(
+            "media-recovered", "Conformance Player", "Recovered Song",
+            "Conformance Artist", MediaPlaybackStatus.Playing, 5_000, 180_000,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+            true, true, true, true, true),
+    ]);
+    await client.SendActionAsync(new WidgetActionEvent("media.retry", retry.Id));
+    _ = await WaitForSnapshotAsync(client, "Recovered Song");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    var readStarted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var readCanceled = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var staleRead = new TaskCompletionSource<IReadOnlyList<MediaSessionSummary>>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.MediaSessionsHandler = token =>
+    {
+        readStarted.TrySetResult();
+        token.Register(() => readCanceled.TrySetResult());
+        return staleRead.Task;
+    };
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var background = client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await readCanceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    staleRead.SetResult([
+        new MediaSessionSummary(
+            "media-stale", "Conformance Player", "Stale Song", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, true,
+            true, true, true, true, true),
+    ]);
+    await background.WaitAsync(TimeSpan.FromSeconds(2));
+
+    backend.MediaSessionsHandler = null;
+    backend.SetMediaSessions([
+        new MediaSessionSummary(
+            "media-current", "Conformance Player", "Current Song", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, true,
+            true, true, true, true, true),
+    ]);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var current = await WaitForSnapshotAsync(client, "Current Song");
+    Assert.True(!Nodes(current.Root).Any(node =>
+            (node.Text ?? string.Empty).Contains("Stale Song", StringComparison.Ordinal)),
+        "A cancellation-ignoring stale Media Sessions read reached the replacement generation.");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
+    Assert.True(!client.IsRunning, "The installed Media Sessions worker did not stop cleanly.");
 }
 
 static async Task ExerciseTextEntryAsync(
@@ -2455,7 +2638,9 @@ file sealed class Deployment : IDisposable
         bool installAsCommunity,
         bool includeEvidencePackages = false,
         bool ytMusicOnly = false,
-        bool communityRecoveryOnly = false)
+        bool communityRecoveryOnly = false,
+        bool fullApplicationOnly = false,
+        bool mediaSessionsOnly = false)
     {
         var temporary = new TemporaryDirectory("gba-firstparty-conformance");
         try
@@ -2469,8 +2654,30 @@ file sealed class Deployment : IDisposable
             CopyWorkerHostDeployment(AppContext.BaseDirectory, workerDirectory);
             var workerHost = Path.Combine(workerDirectory, "WidgetWorkerHost.exe");
 
-            var packageSpecs = new List<PackageSpec>
-            {
+            var packageSpecs = fullApplicationOnly
+                ? new List<PackageSpec>
+                {
+                    new PackageSpec(
+                        "full-application",
+                        "tests/FullApplicationWidgetFixture",
+                        "FullApplication",
+                        WidgetGlyph.Play,
+                        typeof(FullApplicationWidget),
+                        "helper-ready:"),
+                }
+                : mediaSessionsOnly
+                    ? new List<PackageSpec>
+                    {
+                        new PackageSpec(
+                            "media-sessions",
+                            "src/FirstPartyWidgets/MediaSessionsWidget",
+                            "MediaSessions",
+                            WidgetGlyph.Music,
+                            typeof(MediaSessionsWidget),
+                            "Conformance Song"),
+                    }
+                    : new List<PackageSpec>
+                {
                 new PackageSpec("media-sessions", "src/FirstPartyWidgets/MediaSessionsWidget", "MediaSessions", WidgetGlyph.Music,
                     typeof(MediaSessionsWidget), "Conformance Song"),
                 new PackageSpec("games-apps", "src/FirstPartyWidgets/GamesAppsWidget", "GamesApps", WidgetGlyph.Play,
@@ -2483,7 +2690,7 @@ file sealed class Deployment : IDisposable
                     typeof(NetworkControlsWidget), "Conformance Wi-Fi"),
                 new PackageSpec("spotify", "samples/SpotifyWidget", "Spotify",
                     WidgetGlyph.Music, typeof(SpotifyWidget), "Conformance Spotify Song"),
-            };
+                };
             if (includeEvidencePackages)
             {
                 packageSpecs.Add(new PackageSpec(
@@ -2507,6 +2714,18 @@ file sealed class Deployment : IDisposable
                     Path.Combine(bundleRoot, "styles", "default.gbss"));
                 File.Copy(spec.WidgetType.Assembly.Location,
                     Path.Combine(bundleRoot, manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar)));
+                if (spec.WidgetType == typeof(FullApplicationWidget))
+                {
+                    var outputDirectory = Path.GetDirectoryName(spec.WidgetType.Assembly.Location)
+                        ?? throw new InvalidOperationException("Full-application fixture output is unavailable.");
+                    foreach (var extension in new[] { ".exe", ".deps.json", ".runtimeconfig.json" })
+                    {
+                        var name = "FullApplicationWidgetFixture" + extension;
+                        File.Copy(
+                            Path.Combine(outputDirectory, name),
+                            Path.Combine(bundleRoot, "payload", name));
+                    }
+                }
                 var packagePath = Path.Combine(temporary.Path, $"{manifest.Id}.gbarwidget");
                 ZipFile.CreateFromDirectory(bundleRoot, packagePath, CompressionLevel.NoCompression, false);
                 fixtures.Add(new PackageFixture(

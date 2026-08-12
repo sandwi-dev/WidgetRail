@@ -21,6 +21,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("A live channel failure after loading preserves the last valid snapshot", ChannelFailurePreservesSnapshot),
     ("Try again starts a fresh read and subscription attempt", RetryStartsFreshAttempt),
     ("Try again cannot cancel its own in-flight native reload", RetryDoesNotRestartWhileLoading),
+    ("A failed refresh preserves last-good sessions and offers reconnect", RefreshFailurePreservesLastGood),
+    ("Active cancellation rejects a cancellation-ignoring stale snapshot", StaleSnapshotCannotPublishAfterDeactivation),
+    ("A successful empty snapshot remains an empty state without live updates", EmptySnapshotIsSuccessful),
     ("Capability and channel failures render recoverable states", FailureStates),
     ("Manifest permissions and GBSS package validate", PackageValidates),
 };
@@ -430,13 +433,89 @@ static async Task RetryDoesNotRestartWhileLoading()
     // Even a stale action already queued by the host must not cancel and
     // replace the native request currently making progress.
     await widget.OnActionAsync(new("media.retry", "media.retry"));
-    await Task.Delay(50);
     Assert.Equal(2, fake.GetCalls);
     Assert.Equal(2, fake.SubscriptionCalls);
 
     fake.PendingRead.SetResult([Session("recovered", current: true)]);
     await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
     Assert.Equal("recovered", widget.Sessions.Single().SessionId);
+    await Background(widget);
+}
+
+static async Task RefreshFailurePreservesLastGood()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("one", current: true)],
+        SubscriptionReadException = new WidgetCapabilityException(
+            "channel_closed", "initial channel closed"),
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready &&
+        !widget.LiveUpdatesAvailable);
+
+    fake.SubscriptionReadException = null;
+    fake.ReadException = new WidgetCapabilityException(
+        "platform_unavailable", "refresh failed");
+    fake.SubscriptionOpenException = new WidgetCapabilityException(
+        "channel_closed", "replacement channel failed");
+    await widget.OnActionAsync(new("media.retry", "media.retry.live"));
+    await WaitUntil(() => fake.GetCalls == 2 &&
+        widget.Status.Contains("unavailable", StringComparison.Ordinal));
+
+    Assert.Equal(MediaSessionsViewState.Ready, widget.ViewState);
+    Assert.Equal("one", widget.Sessions.Single().SessionId);
+    Assert.False(widget.LiveUpdatesAvailable);
+    Assert.True(widget.Status.Contains("unavailable", StringComparison.Ordinal));
+    var snapshot = widget.RenderSnapshot("media.refresh", 1);
+    Assert.True(Nodes(snapshot.Root).Any(node => node.Id == "media.retry.live"));
+    Assert.True(Nodes(snapshot.Root).Any(node => node.Id == "media.play-toggle"));
+    await Background(widget);
+}
+
+static async Task StaleSnapshotCannotPublishAfterDeactivation()
+{
+    var pending = new TaskCompletionSource<IReadOnlyList<WidgetMediaSession>>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeMediaHost
+    {
+        PendingRead = pending,
+        IgnoreReadCancellation = true,
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await fake.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    var background = Background(widget);
+    await fake.ReadCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    pending.SetResult([Session("stale", current: true)]);
+    await background.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.False(widget.Sessions.Any(item => item.SessionId == "stale"));
+
+    fake.PendingRead = null;
+    fake.IgnoreReadCancellation = false;
+    fake.Sessions = [Session("fresh", current: true)];
+    await Visible(widget);
+    await WaitUntil(() => widget.Sessions.Any(item => item.SessionId == "fresh"));
+    Assert.False(widget.Sessions.Any(item => item.SessionId == "stale"));
+    await Background(widget);
+}
+
+static async Task EmptySnapshotIsSuccessful()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [],
+        SubscriptionOpenException = new WidgetCapabilityException(
+            "channel_closed", "subscription failed"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Empty);
+    Assert.Equal(0, widget.Sessions.Count);
+    Assert.True(widget.Status.Contains("No active Windows media sessions", StringComparison.Ordinal));
+    Assert.False(widget.LiveUpdatesAvailable);
     await Background(widget);
 }
 
@@ -534,6 +613,11 @@ file sealed class FakeMediaHost
     internal Exception? SubscriptionReadException { get; set; }
     internal TaskCompletionSource<IReadOnlyList<WidgetMediaSession>>? PendingRead { get; set; }
     internal TaskCompletionSource<WidgetCapabilityAcknowledgement>? PendingControl { get; set; }
+    internal TaskCompletionSource<bool> ReadStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal TaskCompletionSource<bool> ReadCancellationObserved { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal bool IgnoreReadCancellation { get; set; }
     internal List<string> CallOrder { get; } = [];
     internal List<ControlWidgetMediaSessionRequest> Commands { get; } = [];
     internal int GetCalls { get; private set; }
@@ -554,11 +638,15 @@ file sealed class FakeMediaHost
     {
         CallOrder.Add("get");
         GetCalls++;
+        ReadStarted.TrySetResult(true);
+        cancellationToken.Register(() => ReadCancellationObserved.TrySetResult(true));
         if (ReadException is not null)
             return ValueTask.FromException<IReadOnlyList<WidgetMediaSession>>(ReadException);
         if (PendingRead is not null)
             return new ValueTask<IReadOnlyList<WidgetMediaSession>>(
-                PendingRead.Task.WaitAsync(cancellationToken));
+                IgnoreReadCancellation
+                    ? PendingRead.Task
+                    : PendingRead.Task.WaitAsync(cancellationToken));
         return ValueTask.FromResult(Sessions);
     }
 

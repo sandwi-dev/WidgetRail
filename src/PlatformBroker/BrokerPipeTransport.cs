@@ -222,6 +222,12 @@ internal static class BrokerPipeJson
         JsonSerializer.SerializeToElement(value, Options);
 }
 
+internal readonly record struct BrokerCapabilityDiagnostic(
+    string CapabilityId,
+    string OperationId,
+    string Stage,
+    string? Code);
+
 public sealed class BrokerPipeServer : IAsyncDisposable
 {
     private readonly string _pipeName;
@@ -233,6 +239,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private readonly PlatformCapabilityBroker _broker;
     private readonly ConsentChangeMonitor _consentMonitor;
     private readonly Action<BrokerHostEffect>? _hostEffectSink;
+    private readonly Action<BrokerCapabilityDiagnostic>? _diagnosticSink;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, CancellationTokenSource> _requests = new();
@@ -267,7 +274,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             channelNonce,
             isolatedClientAppContainerSid,
             hostGrantedCapabilities,
-            hostEffectSink)
+            hostEffectSink,
+            diagnosticSink: null)
     {
     }
 
@@ -282,7 +290,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         string? channelNonce = null,
         string? isolatedClientAppContainerSid = null,
         IEnumerable<string>? hostGrantedCapabilities = null,
-        Action<BrokerHostEffect>? hostEffectSink = null)
+        Action<BrokerHostEffect>? hostEffectSink = null,
+        Action<BrokerCapabilityDiagnostic>? diagnosticSink = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -295,6 +304,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         _hostGrantedCapabilities = new HashSet<string>(
             hostGrantedCapabilities ?? [], StringComparer.Ordinal);
         _hostEffectSink = hostEffectSink;
+        _diagnosticSink = diagnosticSink;
         _options = options ?? new BrokerPipeTransportOptions();
         _options.Validate();
         ChannelNonce = channelNonce ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
@@ -521,10 +531,16 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         byte[] requestBytes,
         CancellationTokenSource requestCancellation)
     {
+        var request = BrokerJson.ParseRequest(requestBytes);
         try
         {
             var response = await _broker.HandleAsync(requestBytes, requestCancellation.Token)
                 .ConfigureAwait(false);
+            ReportDiagnostic(
+                request.CapabilityId,
+                request.Operation,
+                "request",
+                response.Succeeded ? null : response.ErrorCode ?? "broker_rejected");
             _ = BrokerJson.SerializeResponse(response);
             await SendAsync(BrokerPipeMessageTypes.Response, correlationId, response, _lifetime.Token)
                 .ConfigureAwait(false);
@@ -532,6 +548,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
+            ReportDiagnostic(
+                request.CapabilityId, request.Operation, "request", "request_canceled");
             await SendErrorSafeAsync(correlationId, "request_canceled", _lifetime.Token)
                 .ConfigureAwait(false);
         }
@@ -580,9 +598,25 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         }
         var request = BrokerPipeJson.Payload<BrokerPipeSubscriptionRequest>(message.Payload);
         ValidateSubscriptionId(request.SubscriptionId);
-        var subscription = await _broker.SubscribeAsync(
-            request.CapabilityId, request.EventType, cancellationToken).ConfigureAwait(false);
-        var remote = new RemoteSubscription(request.SubscriptionId, subscription,
+        BrokerEventSubscription subscription;
+        try
+        {
+            subscription = await _broker.SubscribeAsync(
+                request.CapabilityId, request.EventType, cancellationToken).ConfigureAwait(false);
+            ReportDiagnostic(
+                request.CapabilityId, request.EventType, "subscription-open", code: null);
+        }
+        catch (BrokerException exception)
+        {
+            ReportDiagnostic(
+                request.CapabilityId, request.EventType, "subscription-open", exception.Code);
+            throw;
+        }
+        var remote = new RemoteSubscription(
+            request.SubscriptionId,
+            request.CapabilityId,
+            request.EventType,
+            subscription,
             CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
         if (!_subscriptions.TryAdd(request.SubscriptionId, remote))
         {
@@ -614,6 +648,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             {
                 var brokerEvent = await remote.Subscription.ReadAsync(remote.Cancellation.Token)
                     .ConfigureAwait(false);
+                ReportDiagnostic(
+                    remote.CapabilityId, remote.EventType, "subscription-read", code: null);
                 // The watcher provides prompt cross-process revocation. Recheck
                 // again at the event boundary so a dropped filesystem signal
                 // cannot preserve a stale subscription grant indefinitely.
@@ -628,6 +664,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         }
         catch (BrokerException exception) when (exception.Code == "capability_revoked")
         {
+            ReportDiagnostic(
+                remote.CapabilityId, remote.EventType, "subscription-read", exception.Code);
             if (_subscriptions.TryRemove(remote.Id, out _))
             {
                 try
@@ -644,7 +682,35 @@ public sealed class BrokerPipeServer : IAsyncDisposable
                 remote.Cancellation.Dispose();
             }
         }
-        catch (Exception exception) when (exception is OperationCanceledException or BrokerException or IOException) { }
+        catch (BrokerException exception)
+        {
+            ReportDiagnostic(
+                remote.CapabilityId, remote.EventType, "subscription-read", exception.Code);
+        }
+        catch (IOException)
+        {
+            ReportDiagnostic(
+                remote.CapabilityId, remote.EventType, "subscription-read", "channel_closed");
+        }
+        catch (OperationCanceledException) when (remote.Cancellation.IsCancellationRequested) { }
+    }
+
+    private void ReportDiagnostic(
+        string capabilityId,
+        string operationId,
+        string stage,
+        string? code)
+    {
+        if (_diagnosticSink is null) return;
+        try
+        {
+            _diagnosticSink(new BrokerCapabilityDiagnostic(
+                capabilityId, operationId, stage, code));
+        }
+        catch
+        {
+            // Diagnostics are advisory and cannot poison capability transport.
+        }
     }
 
     private async Task SendErrorSafeAsync(long correlationId, string code, CancellationToken cancellationToken)
@@ -716,10 +782,14 @@ public sealed class BrokerPipeServer : IAsyncDisposable
 
     private sealed class RemoteSubscription(
         string id,
+        string capabilityId,
+        string eventType,
         BrokerEventSubscription subscription,
         CancellationTokenSource cancellation) : IAsyncDisposable
     {
         public string Id { get; } = id;
+        public string CapabilityId { get; } = capabilityId;
+        public string EventType { get; } = eventType;
         public BrokerEventSubscription Subscription { get; } = subscription;
         public CancellationTokenSource Cancellation { get; } = cancellation;
         public Task ForwardTask { get; set; } = Task.CompletedTask;

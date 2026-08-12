@@ -25,6 +25,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly BridgeWidgetLocalDataService _localData;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
+    private readonly Action<string, BrokerCapabilityDiagnostic>? _capabilityDiagnosticSink;
     private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
@@ -40,6 +41,29 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         IPlatformBrokerBackend? platformBackend = null,
         BridgeCatalogMonitor? catalogMonitor = null,
         WorkerResidencyBudgetOptions? residencyBudget = null)
+        : this(
+            pipeName,
+            catalog,
+            maximumMessageBytes,
+            appearance,
+            consentStore,
+            platformBackend,
+            catalogMonitor,
+            residencyBudget,
+            capabilityDiagnosticSink: null)
+    {
+    }
+
+    internal WidgetBridgeServer(
+        string pipeName,
+        BridgeCatalog catalog,
+        int maximumMessageBytes,
+        PlatformAppearanceService? appearance,
+        ConsentStore? consentStore,
+        IPlatformBrokerBackend? platformBackend,
+        BridgeCatalogMonitor? catalogMonitor,
+        WorkerResidencyBudgetOptions? residencyBudget,
+        Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -51,6 +75,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _platformBackend = platformBackend;
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
         _catalogMonitor = catalogMonitor;
+        _capabilityDiagnosticSink = capabilityDiagnosticSink;
         _registry = new BridgeClientRegistry(
             catalog ?? throw new ArgumentNullException(nameof(catalog)),
             residencyBudget ?? new WorkerResidencyBudgetOptions(),
@@ -529,7 +554,6 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             RequestTimeout = TimeSpan.FromSeconds(2),
             MaximumMessageBytes = _maximumMessageBytes,
             MaximumRestartAttempts = 2,
-            MemoryLimitBytes = checked((long)configured.MemoryLimitMb * 1024 * 1024),
             StartupExitDiagnostics = configured.UsesGenericWorkerHost
                 ? WidgetWorkerStartupDiagnostics.LoaderExitCodes
                 : new Dictionary<int, string>(),
@@ -639,7 +663,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             context,
             artworkRegistry: _appLibraryArtwork!,
             hostEffectSink: effect => PublishHostEffect(
-                configured.Id, configured.WorkerFingerprint, effect));
+                configured.Id, configured.WorkerFingerprint, effect),
+            diagnosticSink: diagnostic =>
+                _capabilityDiagnosticSink?.Invoke(configured.Id, diagnostic));
     }
 
     private void PublishHostEffect(

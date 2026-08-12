@@ -9,6 +9,24 @@ selected tab, stable library IDs, sort mode, filter choices, or the last
 controller focus key. Authentication material belongs in
 `HostServices.PrivateSecrets`, never in readable state.
 
+## Full-application local data
+
+`HostServices.PrivateState` remains intentionally small: it is the right home
+for bounded preferences, selection, and controller presentation state. A full
+application that needs databases, indexes, or caches may use ordinary files in
+its package-specific AppContainer local-data profile. That storage does not
+grant a host path, desktop-user filesystem authority, or a way to pass paths
+over widget IPC. Package, capability, snapshot, frame, string, and private-state
+bounds remain unchanged.
+
+For an unsigned Community package, the AppContainer profile identity includes
+the verified content digest. Changed package bytes therefore receive a new
+local-data namespace; exact reviewed bytes recover only their own namespace.
+Uninstall/profile cleanup, disk quotas, backup, migration between content
+generations, and a user-facing clear-local-data workflow are not implemented
+contracts. Applications must tolerate absent local data and keep their own file
+formats bounded and recoverable.
+
 ## No manifest permission
 
 Private state is a host-provided service, not a permission. Do **not** put
