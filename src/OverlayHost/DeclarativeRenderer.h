@@ -189,6 +189,12 @@ public:
 private:
     struct PreparedNode;
     struct RenderPass;
+    enum class ImagePresentationState {
+        Pending,
+        Ready,
+        Failed,
+        TrustedArtworkUnavailable,
+    };
     struct ScrollStateEntry final {
         float offset{};
         std::uint64_t lastAccess{};
@@ -201,7 +207,8 @@ private:
         ID2D1RenderTarget* renderTarget,
         const WidgetNode& node,
         RenderPass& pass,
-        std::wstring_view artworkWidgetId);
+        std::wstring_view artworkWidgetId,
+        ImagePresentationState& presentationState);
     [[nodiscard]] bool EnsureSurfaceClip(
         ID2D1RenderTarget* renderTarget,
         declarative::Rect viewport,

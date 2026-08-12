@@ -463,7 +463,22 @@ public:
 
         imageCache_ = std::make_unique<gba::RemoteImageCache>(
             gba::RemoteImageLimits{},
-            [this](std::wstring_view, gba::RemoteImageState) {
+            [this](const std::wstring_view source, const gba::RemoteImageState state) {
+                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+                if (state == gba::RemoteImageState::Failed && source.starts_with(prefix)) {
+                    const auto widgetEnd = source.find(L'\x1f', prefix.size());
+                    const auto handleStart = source.rfind(L'\x1f');
+                    if (widgetEnd != std::wstring_view::npos &&
+                        handleStart != std::wstring_view::npos &&
+                        handleStart > widgetEnd) {
+                        AppendDiagnostic(
+                            L"Trusted artwork unavailable widget=" +
+                            std::wstring(source.substr(
+                                prefix.size(), widgetEnd - prefix.size())) +
+                            L" handle=" + std::wstring(source.substr(handleStart + 1)) +
+                            L" state=terminal");
+                    }
+                }
                 if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
             },
             gba::RemoteImageCache::FetchFunction{},

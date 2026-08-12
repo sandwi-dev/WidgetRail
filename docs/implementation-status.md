@@ -2886,6 +2886,23 @@ with C++ installed:
   files, 803,117 bytes). No native layout semantics, preferred-height increase,
   provider behavior, or screenshot acceptance was introduced.
 
+- DLV-102 gives trusted app artwork an explicit bounded terminal-unavailable
+  state in the existing native image cache. One bridge result moves every
+  matching widget/handle entry once, posts one invalidation, and emits one
+  sanitized `widget`/opaque-`handle` transition diagnostic; later paints,
+  focus changes, and same-snapshot republishes do not report `image_failed`.
+  Shared Image/AppTile rendering keeps pending artwork neutral, uses the same
+  closed Play glyph as the authored no-artwork tile when resolution is
+  terminal, and preserves the tile's layout, focus, hit-test, action, and UIA
+  geometry. A new opaque revision evicts the prior node revision and supplied
+  pixels replace the fallback; stale results cannot do so. Focused Release
+  evidence passes RemoteImageCache and DeclarativeRenderer (4,839 checks),
+  including production-shaped Game Launcher and Games & Apps available,
+  pending, unavailable, repaint, republish, stale-result, recovery, raster,
+  semantics, and cache-bound cases, plus the OverlayHost Release build. No
+  provider discovery, public protocol, compositor, screenshot, live Steam, or
+  aggregate verification was used.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:

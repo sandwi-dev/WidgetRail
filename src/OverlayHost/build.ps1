@@ -12,6 +12,7 @@ param(
     [switch]$ProcessOwnerTestsOnly,
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
+    [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$WidgetSurfaceTestsOnly
 )
@@ -548,11 +549,64 @@ if ($ProcessOwnerTestsOnly) {
     return
 }
 
+function Invoke-TrustedArtworkTests {
+    $imageArguments = $common + @(
+        (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$imageTestObjectDirectory\",
+        "/Fe:$outputDirectory\RemoteImageCacheTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'd2d1.lib'
+    )
+    & $cl $imageArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "RemoteImageCacheTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'RemoteImageCacheTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "RemoteImageCacheTests failed with exit code $LASTEXITCODE."
+    }
+
+    $rendererArguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$rendererTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $rendererArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
+    }
+}
+
 if ($CompositionTestsOnly) {
     if ($SkipTests) {
         throw 'CompositionTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-CompositionTests
+    return
+}
+
+if ($TrustedArtworkTestsOnly) {
+    if ($SkipTests) {
+        throw 'TrustedArtworkTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-TrustedArtworkTests
     return
 }
 

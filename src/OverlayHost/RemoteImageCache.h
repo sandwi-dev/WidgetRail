@@ -74,6 +74,9 @@ struct RemoteImageCacheStats {
 /// the callback and call CreateBitmap only on their render thread.
 class RemoteImageCache final {
 public:
+    /// Receives the canonical cache key whose visible state changed. Trusted
+    /// artwork failures publish one representative full key for the matching
+    /// widget/opaque-handle transition, even when several nodes were pending.
     using CompletionCallback =
         std::function<void(std::wstring_view url, RemoteImageState state)>;
     using FetchFunction = std::function<RemoteImageFetchResult(
