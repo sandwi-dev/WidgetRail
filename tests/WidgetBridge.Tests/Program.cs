@@ -12,6 +12,7 @@ using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WidgetStyling;
 using GameBarAlternative.WindowsCommunityProvider;
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
@@ -90,6 +91,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
+    ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
     ("Late action failures retain worker generation", ActionFailureIsGenerationOwned),
     ("Worker failures surface without killing bridge", WorkerFailureIsSurfaced),
@@ -2421,6 +2423,37 @@ static Task ActionSurfaceRenderRole()
     Assert.True(styles.ContainsKey("library.grid"),
         "Grid role was omitted from bridge styles.");
     Assert.Equal(ProtocolConstants.ResponsiveGridVersion, snapshot.ProtocolVersion);
+    return Task.CompletedTask;
+}
+
+static Task TextEntryRenderRole()
+{
+    var snapshot = new WidgetView(
+        UI.TextEntry("", "Search games", "game-launcher.search.commit", "game-launcher.search", 96),
+        InitialFocusId: "game-launcher.search")
+        .CreateSnapshot("bridge.text-entry", 1);
+
+    var unthemed = BridgeRenderStyleResolver.Resolve(snapshot, theme: null);
+    Assert.True(unthemed.ContainsKey("game-launcher.search"),
+        "TextEntry node ID was omitted from the unthemed bridge style map.");
+    Assert.Equal(0, unthemed["game-launcher.search"].Base.Count);
+
+    var parsed = GbssParser.Parse("textEntry { color: #2468ac; }", "text-entry.gbss");
+    Assert.Equal(0, parsed.Diagnostics.Count(diagnostic =>
+        diagnostic.Severity == GbssDiagnosticSeverity.Error));
+    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    Assert.True(compiled.IsValid, "TextEntry GBSS fixture did not compile.");
+    var themed = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    Assert.Equal("#2468ac", themed["game-launcher.search"].Base["color"].Text);
+
+    var unknown = snapshot with
+    {
+        Root = snapshot.Root with { Kind = (ViewNodeKind)999 },
+    };
+    var exception = Assert.Throws<BridgeProtocolException>(() =>
+        BridgeRenderStyleResolver.Resolve(unknown, compiled.Theme));
+    Assert.Equal("Unsupported view node kind '999'.", exception.Message);
+    Assert.Equal(ProtocolConstants.TextEntryVersion, snapshot.ProtocolVersion);
     return Task.CompletedTask;
 }
 

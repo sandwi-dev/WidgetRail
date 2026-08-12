@@ -104,6 +104,29 @@ if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--text-entry-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    var packages = deployment.Packages
+        .Where(package => package.Manifest.Id is
+            "org.gbar.firstparty.game-launcher" or
+            "org.gbar.firstparty.network-controls")
+        .ToArray();
+    Assert.Equal(2, packages.Length);
+    await RunCatalogAsync(
+        installed.Catalog,
+        packages,
+        package => package.Manifest.Id,
+        "installed-text-entry",
+        textEntryOnly: true);
+    Console.WriteLine("PASS exact installed TextEntry bridge acceptance");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Bundled catalog derives runtime policy from real manifests", BundledCatalogUsesManifests),
@@ -1632,7 +1655,8 @@ static async Task RunCatalogAsync(
     IReadOnlyList<PackageFixture> packages,
     Func<PackageFixture, string> widgetId,
     string route,
-    Action<TimeSpan>? firstRenderObserved = null)
+    Action<TimeSpan>? firstRenderObserved = null,
+    bool textEntryOnly = false)
 {
     foreach (var package in packages)
     {
@@ -1679,6 +1703,18 @@ static async Task RunCatalogAsync(
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
             var snapshot = await WaitForSnapshotAsync(client, package.ExpectedText);
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            if (package.Manifest.Id is
+                "org.gbar.firstparty.game-launcher" or
+                "org.gbar.firstparty.network-controls")
+            {
+                var entry = Nodes(snapshot.Root).Single(node =>
+                    node.Kind == ViewNodeKind.TextEntry);
+                var styles = BridgeRenderStyleResolver.Resolve(
+                    snapshot, configured.CompiledTheme);
+                Assert.True(styles.ContainsKey(entry.Id),
+                    $"{package.Manifest.Name} TextEntry was omitted from bridge computed styles.");
+                Assert.Equal(Nodes(snapshot.Root).Count(), styles.Count);
+            }
             activationStopwatch.Stop();
             firstRenderObserved?.Invoke(activationStopwatch.Elapsed);
             Assert.True(client.IsRunning,
@@ -1694,7 +1730,10 @@ static async Task RunCatalogAsync(
             }
 
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-            await ExerciseControlAsync(package, client, snapshot, backend, route);
+            if (textEntryOnly)
+                await ExerciseTextEntryAsync(package, client, snapshot);
+            else
+                await ExerciseControlAsync(package, client, snapshot, backend, route);
             if (package.Manifest.Id == "org.gbar.samples.spotify")
             {
                 await consent.SetDecisionAsync(
@@ -1724,6 +1763,35 @@ static async Task RunCatalogAsync(
                 exception);
         }
     }
+}
+
+static async Task ExerciseTextEntryAsync(
+    PackageFixture package,
+    WidgetProcessClient client,
+    ViewSnapshot snapshot)
+{
+    if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+    {
+        Assert.True(Nodes(snapshot.Root).Any(node =>
+                node.Kind == ViewNodeKind.TextEntry &&
+                node.ActionId == "wifi.connect.protected"),
+            "Protected Network Controls TextEntry was not admitted.");
+        return;
+    }
+
+    Assert.Equal("org.gbar.firstparty.game-launcher", package.Manifest.Id);
+    var search = Nodes(snapshot.Root).Single(node =>
+        node.Kind == ViewNodeKind.TextEntry &&
+        node.ActionId == "game-launcher.search.commit");
+    const string query = "Conformance Game 09999";
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.search.commit", search.Id)
+        { CommittedText = query });
+    var filtered = await WaitForActionSnapshotAsync(
+        client, "game-launcher.search.commit", query);
+    Assert.Equal(query, Nodes(filtered.Root).Single(node =>
+        node.Kind == ViewNodeKind.TextEntry &&
+        node.ActionId == "game-launcher.search.commit").TextEntryValue);
 }
 
 static async Task ExerciseControlAsync(
