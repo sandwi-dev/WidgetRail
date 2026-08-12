@@ -3143,6 +3143,34 @@ project passes 9/9 both directly and through the manifest-selected runner. The
 required single clean exact-commit aggregate is closing-commit evidence rather
 than a dirty-worktree run.
 
+### Work-area-fitted shared widget shell (DLV-127)
+
+Widget-to-widget presentation now keeps one host-owned shell and tray rectangle
+fitted to the selected monitor's live `rcWork`, effective DPI, and interface
+scale. Compact, adaptive, standard, wide, and explicit dimensions remain
+logical body hints: width and height are clamped inside the shell above the
+stationary guide/tray, and declarative Scroll remains the overflow contract.
+Retained cold-start content and admitted destination content therefore share
+exact shell/tray/selected-tile bounds without a six-to-eight capacity change or
+a whole-shell composition transform.
+
+Responsibility remains singular across the changed boundary:
+
+| Concern | Before | After |
+| --- | --- | --- |
+| Monitor and HWND placement | `ShowOverlay` fitted a fixed 1180×700 DirectComposition container to `rcWork`, but separately placed a widget-selected source extent that could exceed that container/work area. | `ShowOverlay` remains the only monitor/work-area/DPI owner and fits one shared widget shell. The existing DirectComposition surface remains the only complete-content presentation owner. |
+| Widget sizing | `DesiredPresentationExtentDip` promoted per-widget surface hints into shell/HWND extent and composition-motion authority. | `DesiredPresentationExtentDip` supplies the shared shell; `DesiredWidgetSurfaceTarget` supplies only preferred body width/height to `ComputeOverlaySurfaceGeometry`, which clamps the body before the stationary tray. |
+| Tray paint, input, and semantics | All three consumed one `TrayLayout`, but widget-selected shell width/height changed that layout and its visible capacity during a switch. | All three still consume one `TrayLayout`; retained and admitted frames now have identical shell/tray/selected bounds, while catalog mutations remain the only reason total/visible identities can change. |
+
+Focused Release evidence passes 111,253 placement checks, 64 targeting checks,
+63 transition checks, 45 chrome checks, 152 accessibility-provider checks, 49
+focus checks, 34 host-accessibility checks, 4,839 renderer checks, and 54 tray-
+layout checks. The production `WidgetSwitchHostTests` fixture passes eight real
+OverlayHost transitions across compact, Game Launcher wide, and Spotify
+adaptive bodies; it records zero widget-shell motion commits, live placement
+re-resolution, contained `rcWork` bounds, and maxima of 3,023 us draw, 1,339 us
+commit, and 1,510 us coordinated geometry.
+
 ### Deterministic Gbar dev cancellation fixture (DLV-129)
 
 The retained clean aggregate `20260812T074036Z-37ce8dc0` passed 57/58 Gbar CLI

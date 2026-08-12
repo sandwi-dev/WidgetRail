@@ -228,6 +228,17 @@ std::uint64_t TimingField(
     return std::stoull(std::string(record.substr(valueStart, valueEnd - valueStart)));
 }
 
+std::string TextField(
+    const std::string_view record, const std::string_view field) {
+    const auto start = record.find(field);
+    Require(start != std::string_view::npos,
+            "Production geometry record omitted " + std::string(field));
+    const auto valueStart = start + field.size();
+    const auto valueEnd = record.find(' ', valueStart);
+    Require(valueEnd != valueStart, "Production geometry field was empty");
+    return std::string(record.substr(valueStart, valueEnd - valueStart));
+}
+
 void RunRetentionScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker);
@@ -392,6 +403,12 @@ void RunRetentionScenario(const Arguments& arguments) {
                 }), "Production paint trace omitted " + std::string(authority) +
                         " content for " + WideToUtf8(target.label) + " after=" +
                         ReadUtf8(logPath).substr(after));
+        const auto log = ReadUtf8(logPath);
+        const auto recordAt = log.find(needle, after);
+        const auto lineEnd = log.find('\n', recordAt);
+        return log.substr(
+            recordAt,
+            lineEnd == std::string::npos ? std::string::npos : lineEnd - recordAt);
     };
     const auto switchTo = [&](const Target& target, const Target& previous) {
         const auto before = ReadUtf8(logPath).size();
@@ -407,7 +424,8 @@ void RunRetentionScenario(const Arguments& arguments) {
                     return fs::exists(signal, signalError);
                 }), "Worker did not enter its first snapshot request for " +
                         WideToUtf8(target.label) + "; log=" + ReadUtf8(logPath));
-        waitForPaint(before, target, previous.id, "retained");
+        const auto retainedRecord = waitForPaint(
+            before, target, previous.id, "retained");
         const auto duringStartup = ReadUtf8(logPath);
         const std::string admittedNeedle =
             "Widget presentation paint target=" + WideToUtf8(target.id) +
@@ -416,7 +434,16 @@ void RunRetentionScenario(const Arguments& arguments) {
             Require(duringStartup.find(admittedNeedle, before) == std::string::npos,
                     "Destination content was admitted before its delayed snapshot completed.");
         }
-        waitForPaint(before, target, target.id, "admitted");
+        const auto destinationRecord = waitForPaint(
+            before, target, target.id, "admitted");
+        Require(TextField(retainedRecord, "shell-bounds=") ==
+                    TextField(destinationRecord, "shell-bounds=") &&
+                    TextField(retainedRecord, "tray-bounds=") ==
+                    TextField(destinationRecord, "tray-bounds=") &&
+                    TextField(retainedRecord, "tray-selected-bounds=") ==
+                    TextField(destinationRecord, "tray-selected-bounds="),
+                "Retained and admitted content used different shell/tray geometry for " +
+                    WideToUtf8(target.label));
         const auto log = ReadUtf8(logPath);
         const auto admittedAt = log.find(admittedNeedle, before);
         Require(admittedAt != std::string::npos,
@@ -436,13 +463,11 @@ void RunRetentionScenario(const Arguments& arguments) {
                         std::string::npos,
                 "Admitted destination did not preserve ordered tray focus authority for " +
                     WideToUtf8(target.label));
-        if (std::wstring_view(target.id) == L"game-launcher") {
-            Require(admittedRecord.find("tray-selected-visible=true") !=
-                        std::string::npos &&
-                        admittedRecord.find("tray-next=true") != std::string::npos,
-                    "The large destination's transition retained neither its selected identity nor explicit overflow; record=" +
-                        admittedRecord);
-        }
+        Require(admittedRecord.find("tray-visible=8") != std::string::npos &&
+                    admittedRecord.find("tray-previous=false") != std::string::npos &&
+                    admittedRecord.find("tray-next=false") != std::string::npos,
+                "Widget switching changed shared tray capacity for " +
+                    WideToUtf8(target.label) + "; record=" + admittedRecord);
         const auto transition = log.find(TransitionNeedle(target.id), before);
         Require(transition != std::string::npos,
                 "Transition diagnostics omitted the destination identity for " +
@@ -473,12 +498,12 @@ void RunRetentionScenario(const Arguments& arguments) {
             ? std::string::npos
             : audioAdmittedEnd - audioAdmittedAt);
     Require(audioAdmittedRecord.find("tray-total=8") != std::string::npos &&
-                audioAdmittedRecord.find("tray-visible=6") != std::string::npos &&
+                audioAdmittedRecord.find("tray-visible=8") != std::string::npos &&
                 audioAdmittedRecord.find("tray-previous=false") != std::string::npos &&
-                audioAdmittedRecord.find("tray-next=true") != std::string::npos &&
+                audioAdmittedRecord.find("tray-next=false") != std::string::npos &&
                 audioAdmittedRecord.find("tray-selected-visible=true") !=
                     std::string::npos,
-            "Compact production tray did not retain the selected first identity and explicit overflow");
+            "Shared production tray did not retain every identity at its stable capacity");
     recordComposition(audioAdmittedAt, kTargets[0].label);
 
     const auto addedCatalogBefore = ReadUtf8(logPath).size();
@@ -493,10 +518,11 @@ void RunRetentionScenario(const Arguments& arguments) {
                 const auto record = current.substr(
                     paint, end == std::string::npos ? std::string::npos : end - paint);
                 return record.find("tray-total=9") != std::string::npos &&
+                    record.find("tray-visible=9") != std::string::npos &&
                     record.find("selected=audio-mixer") != std::string::npos &&
                     record.find("tray-selected-visible=true") != std::string::npos &&
-                    record.find("tray-next=true") != std::string::npos;
-            }), "Production catalog addition did not synchronously republish the compact tray; log=" +
+                    record.find("tray-next=false") != std::string::npos;
+            }), "Production catalog addition did not synchronously republish the shared tray; log=" +
                     ReadUtf8(logPath).substr(addedCatalogBefore));
 
     const auto removedCatalogBefore = ReadUtf8(logPath).size();
@@ -511,6 +537,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 const auto record = current.substr(
                     paint, end == std::string::npos ? std::string::npos : end - paint);
                 return record.find("tray-total=8") != std::string::npos &&
+                    record.find("tray-visible=8") != std::string::npos &&
                     record.find("selected=audio-mixer") != std::string::npos &&
                     record.find("tray-selected-visible=true") != std::string::npos;
             }), "Production catalog removal did not preserve exact compact tray focus; log=" +
@@ -547,6 +574,39 @@ void RunRetentionScenario(const Arguments& arguments) {
     RECT hostBounds{};
     Require(GetWindowRect(window, &hostBounds) != FALSE,
             Win32Error("GetWindowRect(composition host)"));
+    const HMONITOR hostMonitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO hostMonitorInfo{sizeof(hostMonitorInfo)};
+    Require(hostMonitor && GetMonitorInfoW(hostMonitor, &hostMonitorInfo) != FALSE,
+            Win32Error("GetMonitorInfoW(composition host)"));
+    Require(hostBounds.left >= hostMonitorInfo.rcWork.left &&
+                hostBounds.top >= hostMonitorInfo.rcWork.top &&
+                hostBounds.right <= hostMonitorInfo.rcWork.right &&
+                hostBounds.bottom <= hostMonitorInfo.rcWork.bottom,
+            "Production composition host escaped the selected monitor work area");
+
+    const auto displayRefreshBefore = ReadUtf8(logPath).size();
+    // System display messages are not a fixture protocol and may be rejected
+    // across process boundaries. Use the host's existing private coalesced
+    // placement refresh to force a fresh live rcWork/DPI resolve. The pure
+    // placement group supplies changed taskbar, monitor, and DPI profiles.
+    constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
+    Require(PostMessageW(window, kPlacementRefreshMessage, 0, 0) != FALSE,
+            Win32Error("PostMessageW(private placement refresh)"));
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current = ReadUtf8(logPath);
+                const auto placement = current.find(
+                    "Overlay work-area placement work=", displayRefreshBefore);
+                return placement != std::string::npos &&
+                    current.find(" surface=widget shell=shared ", placement) !=
+                        std::string::npos;
+            }), "Runtime placement refresh did not re-resolve live rcWork/DPI for the shared production shell");
+    Require(GetWindowRect(window, &hostBounds) != FALSE,
+            Win32Error("GetWindowRect(refreshed composition host)"));
+    Require(hostBounds.left >= hostMonitorInfo.rcWork.left &&
+                hostBounds.top >= hostMonitorInfo.rcWork.top &&
+                hostBounds.right <= hostMonitorInfo.rcWork.right &&
+                hostBounds.bottom <= hostMonitorInfo.rcWork.bottom,
+            "Runtime display reconciliation moved the host outside rcWork");
     const auto packPoint = [](const LONG x, const LONG y) {
         return MAKELPARAM(
             static_cast<WORD>(static_cast<short>(x)),
@@ -566,9 +626,9 @@ void RunRetentionScenario(const Arguments& arguments) {
             "Composition HWND retained an opaque class background owner");
 
     const auto reopenBefore = ReadUtf8(logPath).size();
-    // Queue the switch and close in order on the host thread. Waiting for a
-    // flushed diagnostic here can consume the complete 140 ms transition and
-    // would no longer exercise the interrupted close/reopen contract.
+    // Queue a same-shell switch and close in order on the host thread. DLV-127
+    // deliberately removes widget-to-widget shell motion, so hiding may retire
+    // no in-flight transform; it must still discard geometry and future work.
     PostKey(window, VK_RIGHT);
     Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
             Win32Error("PostMessageW(close hotkey)"));
@@ -576,9 +636,6 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return IsWindowVisible(window) == FALSE;
             }), "Composition host did not complete the bounded close");
     const auto hiddenLog = ReadUtf8(logPath);
-    Require(hiddenLog.find("Composition motion start", reopenBefore) !=
-                std::string::npos,
-            "Reopen scenario did not begin an interruptible composition motion");
     const auto retiredAt = hiddenLog.find(
         "Composition motion retired state=hidden", reopenBefore);
     Require(retiredAt != std::string::npos,
@@ -587,8 +644,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto retiredRecord = hiddenLog.substr(
         retiredAt, retiredEnd == std::string::npos
             ? std::string::npos : retiredEnd - retiredAt);
-    Require(retiredRecord.find("in-flight=true") != std::string::npos &&
-                retiredRecord.find(
+    Require(retiredRecord.find(
                     "future-work=false geometry=discarded") != std::string::npos,
             "Hidden host retained stale composition geometry or frame work; record=" +
                 retiredRecord);
@@ -627,8 +683,10 @@ void RunRetentionScenario(const Arguments& arguments) {
                 "alpha=premultiplied-clear hwnd=no-redirection "
                 "opacity=composition-effect hwnd-background=none") !=
                 std::string::npos &&
-                log.find("target=composition-motion") != std::string::npos,
-            "Production extent diagnostics omitted the alpha or motion decision.");
+                log.find(" surface=widget shell=shared ") != std::string::npos,
+            "Production diagnostics omitted the alpha or shared-shell decision.");
+    Require(log.find("Composition motion start") == std::string::npos,
+            "A widget switch still transformed the host-owned shell/tray.");
     Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                 log.find("Overlay render target resized in place") == std::string::npos,
             "Production transition fell back to direct HWND presentation.");
@@ -646,10 +704,10 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(*std::max_element(geometryTimings.begin(), geometryTimings.end()) <=
                 kTransitionBudgetMicroseconds,
             "Coordinated commit and HWND geometry exceeded the bounded transition budget.");
-    Require(!motionCommitTimings.empty(),
-            "Production matrix omitted composition motion samples.");
-    const auto maximumMotionCommit =
-        *std::max_element(motionCommitTimings.begin(), motionCommitTimings.end());
+    const auto maximumMotionCommit = motionCommitTimings.empty()
+        ? 0ULL
+        : *std::max_element(
+            motionCommitTimings.begin(), motionCommitTimings.end());
     Require(maximumMotionCommit <= kTransitionBudgetMicroseconds,
             "Nonblocking composition motion commits exceeded the transition budget; max-us=" +
                 std::to_string(maximumMotionCommit));
