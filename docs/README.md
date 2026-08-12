@@ -20,10 +20,11 @@ evidence:
   authoring, reference, operations, and research pages will move only in
   complete validated groups rather than through piecemeal path churn.
 
-The active [delivery plan](delivery-plan.md) is intentionally compact. Its
-timestamped predecessors live under
-[`history/delivery-plan/`](history/delivery-plan/), so routine planner and
-implementation turns do not spend context on completed hourly work.
+The active [delivery plan](delivery-plan.md), [engineering review](engineering-quality-review.md),
+[widget-authoring review](widget-authoring-experience-review.md), and
+[roadmap](roadmap.md) are intentionally operational. Timestamped predecessors
+live in their matching [`history/`](history/README.md) directories so routine
+planner and implementation turns do not spend context on closed evidence.
 
 ## Start here
 
@@ -106,6 +107,9 @@ implementation turns do not spend context on completed hourly work.
   — proposed console-home expansion informed by Heroic and One Game Launcher,
   including trusted multi-source adapters, optional content operations, and
   data-only per-launcher experience packs with safe custom layouts and media.
+- [Launcher Experience Pack format](launcher-experience-packs.md) — implemented
+  launcher-only manifest, responsive recipe, parameter, package-boundary,
+  digest/catalog, and built-in recovery contracts for static data-only packs.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.
@@ -158,7 +162,7 @@ implementation turns do not spend context on completed hourly work.
 - [Plugin-platform research](plugin-platform.md)
 - [PS5 control-center interaction research](ps5-control-center-research.md)
 - [Visual design system](visual-design-system.md)
-- [Prototype roadmap](roadmap.md)
+- [Product roadmap](roadmap.md)
 
 The source of truth wins if a document and code disagree. Protocol types live
 under `src/WidgetProtocol`, the author-facing SDK under `src/WidgetSdk`, GBSS

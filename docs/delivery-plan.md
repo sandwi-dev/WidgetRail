@@ -261,13 +261,19 @@ command and proves Ready, retained-last-good, cancellation, temporary-catalog
 cleanup, and child-host exit. No unrelated Gbar tests, verifier schema changes,
 aggregate rerun, product feature work, or broad test migration.
 
-### Widgets current assignment
+### Widgets held prefix
 
 ### DLV-130 — Publish the normalized launcher presentation contract
 
-**State:** Assigned after the widgets lane merges exact accepted main `d792e30`;
-shared managed contract work is serialized to this lane and must merge before
-DLV-134 consumes it
+**State:** Implemented as `da08c44` but not accepted or integrated. The
+normalized broker/Bridge/SDK/provider/widget migration is coherent and the
+focused suites are green, but the SDK still validates source, availability,
+artwork, metadata, capabilities, and operations through one catch-all
+`IsValidPresentation` method. This misses the assignment's explicit separate-
+validation-owner boundary and permits under-specified availability/capability
+combinations. DLV-142 is the current correction after committed DLV-138 and
+DLV-139; DLV-130 and its dependent widgets history remain unintegrated until
+then.
 **Baseline/dependencies:** exact accepted main `d792e30`, including DLV-128 and
 DLV-129, plus
 `docs/game-launcher-requirements.md` delivery step 1. This is the smallest
@@ -310,12 +316,13 @@ network, external fixtures, or speculative provider implementation.
 the contract would grant content-management capability, or its final shape
 depends on an unselected external provider or destructive-operation UX.
 
-### Widgets planned queue
+### Widgets completed dependency
 
 ### DLV-138 — Import supported Windows and Xbox installed games
 
-**State:** Ready immediately after the widgets lane commits DLV-130; execute on
-that clean same-lane boundary without waiting for platform integration
+**State:** Implemented as `c82f111` and awaiting independent review. It remains
+unintegrated with DLV-130 and DLV-139 until DLV-142 closes the normalized-
+contract validation gap.
 **Baseline/dependencies:** committed DLV-130 normalized launcher presentation
 contract and the existing trusted Windows app-library provider/opaque launch
 authority
@@ -346,9 +353,53 @@ external helper.
 or launch requires a new credential, undocumented setter/database, raw public
 identifier, or product choice about license/account ownership.
 
+### Widgets current assignment
+
+### DLV-142 — Separate normalized launcher validation ownership
+
+**State:** Assigned next. This is the DLV-130 review correction after the
+already-completed DLV-138 and DLV-139 milestones; no later widgets work may
+start before it is committed and independently accepted.
+**Baseline/dependencies:** committed DLV-130 `da08c44` plus the completed
+DLV-138 `c82f111` and DLV-139 `2281548` commits; do not broaden Windows/Xbox or
+Epic discovery or add another provider
+**Owner/outcome:** widgets lane for the smallest public Widget SDK/broker test
+correction that gives source state, item availability, artwork set, metadata
+provenance, capability set, and active-operation summary focused validation
+owners instead of one catch-all presentation validator. The normalized model
+remains the sole representation and malformed cross-field combinations fail
+closed with stable diagnostics.
+**Acceptance:** each focused value validator owns its enum, size/count,
+duplicate, identifier, status, and timestamp rules and can be tested without
+constructing an unrelated rich presentation. A presentation-level composer
+checks only relationships between already-valid values. `Installed`,
+`Unavailable`, and `StaleSource` fixtures prove that only current launchable
+availability paired with explicit `Launch` capability can authorize launch;
+unavailable/stale/retained-last-good entries never do. Artwork roles remain
+unique and revision-bound, metadata attribution remains bounded, operation
+kind/state/capability combinations are coherent, unknown versions/enums fail as
+`malformed_response`, and broker-to-Bridge-to-SDK round trips remain exact.
+Current Games & Apps and Game Launcher behavior, DLV-138/DLV-139 source
+projections, opaque IDs, and the no-legacy-scalar contract do not change.
+**Architecture/verification:** focused immutable values may expose internal
+validators or use equally narrow policy types; do not create a generic
+validation framework, another public model, flag bag, compatibility facade, or
+root-widget responsibility. Tier 1 SDK/broker/Bridge/provider/Game Launcher/
+Games & Apps Release tests only for the corrected contract; Tier 2 installed-
+worker compatibility because this remains a public cross-process schema. No
+aggregate, native work, external provider, capture, network, or credentials.
+**Stop:** enforcing a relationship requires choosing new public product
+semantics beyond the documented closed vocabulary, or DLV-138 has already
+published a conflicting contract that cannot be corrected without a material
+provider/API decision.
+
+### Widgets held dependent milestone
+
 ### DLV-139 — Add opt-in Epic installed-game discovery
 
-**State:** Ready after DLV-138
+**State:** Implemented as `2281548` and awaiting independent review. It remains
+unintegrated with DLV-130 and DLV-138 until DLV-142 closes the normalized-
+contract validation gap.
 **Baseline/dependencies:** accepted-shape DLV-130 source model and the source-
 adapter/provider ownership proven by DLV-138
 **Owner/outcome:** widgets lane for one explicitly enabled trusted Epic
@@ -375,10 +426,11 @@ helper binary.
 revalidated without relying on account secrets, arbitrary executable/protocol
 input, or an undocumented mutable Epic database.
 
-**Queue depth note:** DLV-138 and DLV-139 are the current safe independent
-visible successors to DLV-130. GOG/Amazon adapters are not Ready until a stable
-bounded local installed-record and launch-revalidation contract is evidenced;
-DLV-135/134 remain dependency-ordered behind the platform experience work.
+**Queue depth note:** DLV-142 is the current widgets assignment. DLV-138 and
+DLV-139 are complete but held as one unaccepted prefix with DLV-130. GOG/Amazon
+adapters are not Ready until that prefix is accepted and a stable bounded local
+installed-record and launch-revalidation contract is evidenced; DLV-135/134
+remain dependency-ordered behind the platform experience work.
 
 ### DLV-135 — Add the deterministic Launcher Experience authoring toolchain
 
@@ -472,7 +524,7 @@ renderer ownership model, a substantial DirectComposition redesign, or a UX
 choice about whether large content shrinks versus scrolls that is not already
 fixed above.
 
-### Platform current assignment
+### Platform stopped history
 
 ### DLV-124 — Reconcile native session, tray, and UIA state after uninstall
 
@@ -493,16 +545,14 @@ or aggregate.
 **Stop:** the defect belongs to managed catalog state or post-uninstall
 selection requires a material UX choice.
 
-### Platform ready queue
+### Platform completed dependencies
 
 ### DLV-131 — Freeze the data-only Launcher Experience Pack schema
 
-**State:** Implemented as `100c646` but not accepted or integrated. Review found
-the advertised WebP contract rejects ordinary `VP8`/`VP8L` files, package and
-catalog limits are reached only after unbounded enumeration/sorting work, and
-the deterministic malformed-package fixtures do not cover several named
-assignment boundaries. DLV-137 is the queued correction after already-active
-DLV-132.
+**State:** Accepted as `100c646` with corrections `41da5b7` and `878b484`,
+integrated through `2f766fe`. Standard WebP parsing, fail-fast catalog/package
+budgets, stable malformed-package diagnostics, and all-entry admission are now
+covered by the focused 17/17 Release fixture.
 **Baseline/dependencies:** `docs/game-launcher-requirements.md` experience
 architecture, GL-THEME-001 through GL-THEME-012, GL-SEC-004, and delivery step
 1. It does not depend on DLV-130 because packs bind semantic slot names, never
@@ -539,8 +589,10 @@ network, or implementation of CLI commands owned by DLV-135.
 
 ### DLV-132 — Render host-owned launcher slots with validated responsive layout
 
-**State:** Assigned from clean `100c646` before the DLV-131 review completed;
-finish and commit this coherent in-progress milestone, then take DLV-137
+**State:** Accepted as `874f778` with correction `5e3c69c`, integrated through
+`2f766fe`. The corrected matrix retains 1,307 responsive semantic checks across
+all four presets and the left-rail/glass recipe, and the actual production
+`OverlayHost.exe` semantic route exits 0.
 **Owner/outcome:** platform lane for the native recipe adapter and declarative
 layout/paint/focus/pointer/UIA support needed by validated launcher slots. A
 fixed semantic fixture must render the bottom hero rail and the left vertical
@@ -560,9 +612,16 @@ paint, and accessibility as separate testable concerns. Tier 1 native layout,
 renderer, focus, pointer, and UIA groups; Tier 2 one production-host semantic
 fixture. No aggregate, capture, pack CLI, Game Launcher domain code, or motion.
 
+### Platform current assignment
+
 ### DLV-133 — Add launcher-scoped style, artwork, and recovery ownership
 
-**State:** Ready after DLV-136
+**State:** Assigned next. DLV-136 no longer blocks visible platform work because
+the planner proved direct coordinate input plus UI-Automation inspection against
+the exact visible Release without changing the product window identity.
+**Baseline/dependencies:** exact accepted main `2f766fe`, including the accepted
+DLV-131/132/137/140/141 Launcher Experience catalog and production-host semantic
+foundation. DLV-136 `83edb39` is evidence only and is not a product dependency.
 **Owner/outcome:** platform lane for the launcher-only cascade after global user
 appearance, sealed static pack assets, revision-bound selected-game background,
 decode-before-crossfade, bounded focus effects, user parameter overrides,
@@ -581,8 +640,9 @@ remote assets, gallery, network, screenshot, or aggregate.
 
 ### DLV-137 — Close the Launcher Experience package-validation gaps
 
-**State:** Ready immediately after the already-active DLV-132; this is the
-DLV-131 review correction and precedes DLV-136 and DLV-133
+**State:** Accepted as `41da5b7` with DLV-141 correction `878b484`, integrated
+through `2f766fe`. Every encountered file now consumes the package budget
+before any path, extension, duplicate, role, or diagnostic admission.
 **Baseline/dependencies:** committed DLV-131 `100c646` plus the completed
 DLV-132 commit; do not change DLV-132 renderer behavior
 **Owner/outcome:** platform lane for the smallest catalog/file-guard/parser and
@@ -608,9 +668,71 @@ work, capture, network, new media dependency, or unrelated hardening.
 the correction needs a public schema/budget change rather than validation of
 the already documented format.
 
+### DLV-140 — Prove Launcher Experience geometry through the production host
+
+**State:** Accepted as `5e3c69c`, integrated through `2f766fe`; 1,307 focused
+responsive/semantic checks pass and the rebuilt exact-main production-host
+proof exits 0
+**Baseline/dependencies:** committed DLV-132 `874f778` plus committed DLV-137;
+do not broaden the recipe schema/catalog or Game Launcher domain contract
+**Owner/outcome:** platform lane for the smallest adapter/fixture correction
+needed to make the documented native Launcher Experience support truthful
+across every required responsive profile and through the real OverlayHost
+semantic rendering path.
+**Acceptance:** fixed host-owned slot content renders bottom `hero-rail`, left
+vertical rail with independent glass details panel, `cover-wall`, `carousel`,
+and `compact-grid` through compact/standard/wide profiles, 720p, 1080p,
+taskbar-reserved work areas, 150% text scale, long titles, and missing artwork.
+For every profile, painted focus, pointer hit target, controller/keyboard focus,
+semantic focus, UIA bounds/order, exact host action routes, and Back agree and
+remain inside the live work area. Changing paint z-order does not alter semantic
+geometry/order. Invalid or incompatible recipes atomically render the matching
+built-in fallback. Add one bounded production-host semantic fixture that
+actually invokes the adapter from the host path; merely compiling otherwise
+unreferenced adapter objects into `OverlayHost.exe` or using only an offscreen
+WIC unit executable is insufficient. Existing widget flex/grid/scroll behavior
+must remain unchanged.
+**Verification:** Tier 1 Launcher Experience layout/renderer/focus/pointer/UIA
+Release group plus the named Tier 2 production-host semantic fixture. No
+aggregate, capture, pack CLI/catalog change, launcher domain work, motion, or
+unrelated renderer refactor.
+**Stop:** satisfying the production fixture requires projecting live Game
+Launcher domain state before DLV-134, changing the window/compositor ownership
+model, or weakening the existing semantic/action authority boundary.
+
+### DLV-141 — Enforce package entry budgets before diagnostics or admission
+
+**State:** Accepted as `878b484`, integrated through `2f766fe`; the focused
+Release catalog fixture passes 17/17 for all-valid, all-forbidden, mixed, and
+repeated-invalid over-limit sets with an unvisited tail
+**Baseline/dependencies:** committed DLV-137 `41da5b7` plus the completed
+DLV-140 commit; do not change DLV-140 renderer/host-semantic behavior
+**Owner/outcome:** platform lane for the smallest Launcher Experience file-
+enumeration and focused-fixture correction that makes the documented package
+entry budget apply to every encountered file before path, extension, duplicate,
+or role diagnostics can allocate or continue traversal.
+**Acceptance:** package discovery stops on the 65th encountered file regardless
+of whether earlier entries are valid, forbidden, unsafe, duplicate, unreferenced,
+or otherwise rejected. It never enumerates the rest of that directory/tree and
+never accumulates more than a bounded diagnostic set. Existing 64-file,
+64-directory, expanded-byte, per-file, reparse, path, content, image, digest,
+and valid-package behavior remains unchanged. Deterministic fixtures prove
+over-limit all-valid, all-forbidden, mixed valid/forbidden, and repeated-invalid
+entry sets fail with the stable package-count diagnostic without materializing
+or sorting an unbounded collection.
+**Verification:** Tier 1 Launcher Experience catalog Release fixture only. No
+aggregate, native renderer/adapter change, launcher domain work, schema/budget
+change, capture, network, or unrelated hardening.
+**Stop:** the correction requires changing the documented 64-file contract,
+filesystem-wide pre-enumeration, or a new package/archive ingestion design.
+
 ### DLV-136 — Make the production overlay reachable by the planner UI smoke
 
-**State:** Ready immediately after DLV-137; take this before DLV-133
+**State:** Stopped at evidence-only commit `83edb39`; no product change is
+accepted or integrated. The direct-discovery requirement conflicts with the
+required no-taskbar/Alt-Tab identity, but it is no longer a planner-smoke
+blocker because the exact visible Release is controllable through current UIA
+bounds and ordinary coordinate mouse/keyboard input.
 **Owner/outcome:** platform lane for the smallest production-host change that
 lets the supported Windows computer-control surface discover, activate, and
 capture the exact visible `Game Bar Alternative` main window after `--show`.
@@ -635,11 +757,13 @@ first-page smoke, not only a synthetic enumeration test.
 and lifecycle groups plus one bounded production-host discovery proof. No
 aggregate, launcher experience implementation, renderer refactor, or unrelated
 capture work.
-**Stop:** computer-control reachability requires removing
+**Stop/result:** computer-control reachability requires removing
 `WS_EX_NOREDIRECTIONBITMAP`, exposing the backdrop, adding taskbar/Alt-Tab
 presence, weakening composition/security, or making another material product
-UX choice. Preserve evidence and ask the planner instead of shipping that
-tradeoff.
+UX choice. `83edb39` proves that an unowned main window becomes discoverable
+but shell-eligible, while restoring tool/no-activate ownership suppresses it
+again. Preserve that evidence; do not ship the tradeoff or resume this item
+unless the user changes product window identity requirements.
 
 **Queue note:** the user's fresh verdict confirms the moving-tray/work-area
 regression and is now DLV-127. DLV-104 Game Launcher content clipping and
@@ -649,12 +773,13 @@ manufacture adjacent work.
 
 ## Serialized integration queue
 
-1. DLV-130 owns the normalized public launcher data contract; no other lane
-   edits that broker/bridge/SDK boundary until it is accepted.
-2. DLV-131 owns the separate experience manifest/recipe/parameter schema and
-   catalog. Already-active DLV-132 finishes first; DLV-137 closes the bounded
-   package-validation review gaps, then DLV-136 restores required planner
-   UI-smoke reachability before DLV-133 continues platform presentation work.
+1. DLV-130 owns the normalized public launcher data contract. DLV-138 may
+   and DLV-139 are committed on that shape, but DLV-142 must close validation
+   ownership before the complete widgets prefix is accepted or later work
+   begins.
+2. DLV-131/132 plus DLV-137/140/141 are accepted and integrated through
+   `2f766fe`. DLV-136 stopped without product change; DLV-133 may now continue
+   visible platform presentation work independently.
 3. DLV-135 may consume accepted DLV-131 for author tooling while DLV-132 runs,
    provided the planner rebases at a clean boundary and confirms exclusive
    files. DLV-134 waits for accepted DLV-130/132/133.
@@ -665,6 +790,7 @@ manufacture adjacent work.
 
 | Item | Blocker | Unblocking evidence |
 | --- | --- | --- |
+| Direct computer-control discovery of the production overlay | Tool/owned no-taskbar OverlayHost windows are omitted; making the main popup discoverable adds normal taskbar/Alt-Tab eligibility. This no longer blocks planner smoke because coordinate mouse/keyboard plus current UIA bounds works. | User explicitly accepts shell presence, or the supported control tool gains discovery for tool/owned windows. |
 | DLV-124 native uninstall reconciliation | The production-host synthetic catalog removal never emitted a managed revision or native event, so native retirement could not be accepted and its experiment remains off the implementation lane. | A bounded managed catalog-monitor assignment that reproduces exact disabled/nonresident removal and supplies a deterministic event to the native fixture; then re-review the retained native cache correction. |
 | DLV-062 trusted fixed-video surface | One visible paused WebView2 surface measured about 348.7 MiB private memory and 4% CPU against the current 128-MiB gate; supported suspension controls require invisibility and do not solve visible cost. | User changes the budget or authorizes a content/process-specific bounded experiment with a hard stop and no account work. |
 | Audio Mixer default input/output selection | No documented supported Windows setter is established; roadmap forbids undocumented `PolicyConfig`, registry writes, or Shell automation. | Primary Microsoft API evidence plus a reversible provider/hardware plan. |
@@ -684,17 +810,24 @@ manufacture adjacent work.
 7. Packaged widget-switch transparency and temporal continuity after DLV-115.
 8. Games & Apps cold-restart, trusted artwork, and running-app live checks.
 9. Audio Mixer LB/RB/X physical dashboard controls.
-10. Planner first-page computer-control smoke. The 2026-08-12 01:42 local
-    attempt left accepted PID 32952 visibly running and its exact Show interval
-    contained no new worker, protocol, provider, or presentation failure, but
-    the native surface was absent from computer-control discovery. No widget
-    received a visual pass or failure verdict from that attempt; DLV-136 owns
-    the targetability prerequisite.
+10. Planner first-page live smoke. Exact accepted main `2f766fe` was rebuilt in
+    44.7 seconds, its production-host semantic proof exited 0, and Release PID
+    17576 launched at 02:43:32. At 03:02-03:04, direct mouse input selected
+    Settings, Now Playing, Games & Apps, Game Launcher, and Audio Mixer; current
+    UIA bounds reported every first-page element inside the host root. Re-read
+    tray bounds plus keyboard cycling admitted Network Controls, YT Music, and
+    Spotify. No worker/protocol/provider/presentation failure appeared in the
+    exact interval. Known terminal trusted-artwork-unavailable records remain
+    for Games & Apps/Game Launcher. The inspection shell taking foreground hid
+    the overlay normally after Spotify admission; it did not crash. Mouse hit
+    coordinates after Audio Mixer exposed the already-tracked moving-tray/
+    stale-bounds behavior rather than blocking the pass.
 
 ## Recent acceptance delta
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-131/132/137/140/141 | `100c646`, `874f778`, `41da5b7`, `5e3c69c`, and `878b484` | `2f766fe` | A strict data-only Launcher Experience catalog and four native host-owned responsive presets are accepted. Standard WebP and every package/catalog admission boundary are bounded; 17/17 catalog fixtures and 1,307 native semantic checks pass, and the rebuilt production-host proof exits 0. Production Game Launcher projection is still later work. PID 17576 completed a live first-page smoke through UIA-guided direct input; no new worker/protocol/provider/presentation failure appeared. |
 | DLV-128/129 | `344caa0` and `7f7d9d5` | `67c557d` and `d792e30`; packaged through planner main `d8c803a` | Game Launcher now presents the bounded selected-game hero and horizontal cover rail while retaining exact SavedId actions and current installed-only authority. The dev cancellation fixture is deterministic without changing product behavior. One full Release package refresh passed and PID 32952 is visibly running; its startup/admission log contains no new worker or protocol failure. |
 | DLV-127 | `df07d7c` | `2ac0a5a` | Widget switches retain one work-area-fitted shared shell and tray while preferred width/height remain bounded inner-body hints. Eight real host transitions retain exact shell/tray/selection geometry with zero widget-shell motion commits and bounded draw/commit/geometry timings; the prior PID 18392 was gracefully replaced by current accepted PID 32952. |
 | DLV-125 | `ccabb0e` | `418d11f` | The existing MSTest.Sdk 4.3.2 WidgetScenario project now has one bounded manifest step and exact-once discovery enforcement; direct/manifest execution passes 9/9. The one clean aggregate stopped later at Gbar CLI 57/58, isolated as DLV-129 rather than rerun or allowed to block visible work. |
@@ -704,11 +837,6 @@ manufacture adjacent work.
 | DLV-118 | `5d86cd6` | `4bc0baa` | Small and wide widget surfaces retain one selected tray identity, explicit reachable overflow, exact order, and synchronous catalog replacement without stale tray dispatch. |
 | DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
 | DLV-114/117 | `f285c9d` and `6a96727` | `cff0d99` | Game Launcher has an exact-ID controller details route and honest two-selection variant actions with committed feedback and deterministic return focus. |
-| DLV-112/115/116 | `1dd2dd5`, `5c66f16`, and `0e1810f` | `d6f2780` | Host-owned local package import is consumable only by exact bundled Settings, and reopened widget motion retires hidden composition work; live border/transition verdict remains. |
-| DLV-111 | `a1f008b` | `83c5c1f` | Settings now groups exact installed theme versions, protects built-in/current selections, selects older valid versions, and confirms atomic inactive-version retirement with CLI parity. |
-| DLV-033 | `1ec2b70` | `4fa8f63` | Bridge-facing catalog, snapshot, failure, lifecycle, retry, and request policy now has one off-UI-thread coordinator; the host retains renderer/input/presentation authority. |
-| DLV-110 | `e90e729` | `4e02184` | Basic, data, media, and multipage starters now generate atomically outside the checkout with MSTest.Sdk 4.3.2 scenarios, isolated preview, validation, and deterministic packaging. |
-| DLV-107/102 | `b662e9a` and `e4f9880` | `0e0bf77` | Transparent unused client pixels, transform-only widget motion, and stable deduplicated trusted-artwork fallback. Rebuilt Release awaits live verification. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

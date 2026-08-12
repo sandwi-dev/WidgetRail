@@ -16,7 +16,8 @@ param(
     [switch]$WidgetSessionTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$LocalPackageImportTestsOnly,
-    [switch]$WidgetSurfaceTestsOnly
+    [switch]$WidgetSurfaceTestsOnly,
+    [switch]$LauncherExperienceTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -128,7 +129,8 @@ $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surfa
 $widgetSessionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-session-coordinator-tests'
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory | Out-Null
+$launcherExperienceTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-tests'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -697,6 +699,46 @@ function Invoke-WidgetSessionTests {
     }
 }
 
+function Invoke-LauncherExperienceTests {
+    $arguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'LauncherExperienceTests.cpp'),
+        (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
+        (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
+        (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$launcherExperienceTestObjectDirectory\",
+        "/Fe:$outputDirectory\LauncherExperienceTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "LauncherExperienceTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'LauncherExperienceTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "LauncherExperienceTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+if ($LauncherExperienceTestsOnly) {
+    if ($SkipTests) {
+        throw 'LauncherExperienceTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-LauncherExperienceTests
+    return
+}
+
 if ($CompositionTestsOnly) {
     if ($SkipTests) {
         throw 'CompositionTestsOnly cannot be combined with SkipTests.'
@@ -744,6 +786,9 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
     (Join-Path $projectDirectory 'OverlayTransition.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+    (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
+    (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
+    (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
     (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),

@@ -6,6 +6,34 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-131 adds a launcher-only `LauncherExperienceCatalog` without changing global
+`ThemeCatalog` semantics. Its strict schema accepts only the eight documented
+host-owned launcher slots, bounded region/grid/stack/overlay/inset recipes,
+closed host parameters, launcher-scoped GBSS, and sealed local static images.
+Duplicate/unknown fields, slot reuse, missing critical slots, overlap, geometry
+and focus/Back failures, remote or executable/archive content, unsafe paths,
+reparse points, excessive files/bytes/dimensions, and cross-widget selectors
+fail with stable path-specific diagnostics. Four code-owned recovery descriptors
+cover hero rail, cover wall, carousel, and compact grid; the bottom-rail and
+left-rail/glass-panel reference structures validate through the same recipe
+rules. Focused Platform Settings Release evidence passes 17/17, including the
+separate catalog, deterministic content digest, and invalid-selection recovery.
+
+DLV-132 adds a focused native launcher recipe resolver and adapter without
+changing `OverlayApp`, existing widget layout, or renderer ownership. The pure
+resolver selects compact/standard/wide against the live logical work area,
+keeps the eight slot types bounded, validates critical focus/Back extents, and
+atomically falls back to the matching built-in hero rail, cover wall, carousel,
+or compact grid. The adapter accepts only host-created slot snapshots and sends
+them through the existing `DeclarativeRenderer`; its exact result continues to
+own paint, pointer, controller-focus, and UIA geometry. Paint order and canonical
+semantic order remain separate. The focused Release fixture passes 257 checks
+covering the two reference structures, all four built-ins, compact/720p/1080p/
+taskbar-reserved/monitor-offset/150%-scale profiles, invalid-recipe recovery,
+long-title/missing-art rendering, exact actions/Back, and a real offscreen D2D/
+focus/pointer/accessibility projection. The affected production host Release
+also compiles without packaging.
+
 DLV-101 removes the arbitrary private-worker 256 MiB and one-active-process
 ceilings while preserving the security and transport boundary. Every Windows
 worker is still created suspended, assigned before resume to one non-breakaway
@@ -3279,6 +3307,49 @@ disabled/no-read, valid, duplicate, unknown-schema, unsafe-path, changed-during-
 read, add/remove, stale launch, unavailable last-good display, exact status, and
 constrained URI cases. The normalized cross-process DTO did not change, so no
 installed-worker rerun was required.
+
+### Launcher Experience catalog boundary correction (DLV-137)
+
+The Launcher Experience file guard now reads standard lossy `VP8`, lossless
+`VP8L`, and extended `VP8X` WebP dimensions from bounded RIFF chunks without a
+decoder or runtime dependency. Truncated, malformed, zero-dimension, and
+oversized assets fail with stable file diagnostics.
+
+Package discovery stops at 64 files, 64 subdirectories, 32 MiB expanded bytes,
+or 16 MiB per file while enumeration is still lazy. Catalog discovery likewise
+admits at most 128 ID directories and 128 installed versions before sorting its
+bounded result. Duplicate JSON fields retain their exact property path. The
+focused PlatformSettings Release fixture passes 17/17, including the named
+schema, layout, authority, image, boundary, reparse, catalog, digest, and
+built-in recovery cases.
+
+### Launcher Experience production-host geometry proof (DLV-140)
+
+Launcher Experience layout now applies the validated rail orientation to a
+host-owned snapshot before both paint and semantic aggregation. The existing
+`DeclarativeRenderer` remains the only paint, hit-target, focus-geometry, and
+accessibility-geometry producer.
+
+| Responsibility | Before | After |
+| --- | --- | --- |
+| Responsive layout | `LauncherExperienceLayout` resolved every built-in profile, but only layout rectangles were checked across the matrix. | The same owner resolves every built-in and the reference left rail across compact, standard, wide, 720p, 1080p, taskbar-reserved, and 150%-scale work areas. |
+| Slot adaptation | `LauncherExperienceAdapter` rendered host snapshots and canonical semantics, but did not apply recipe rail orientation. | The adapter creates one oriented snapshot used identically by renderer and semantic aggregation; it does not own launcher state or actions. |
+| Production evidence | The adapter compiled into `OverlayHost.exe` but only a standalone one-profile WIC test invoked it. | A separate sealed `LauncherExperienceHostProof` owner is dispatched by the production host entry point and verifies the real adapter, pointer, focus, UIA, exact action, and Back route without creating domain or compositor authority. |
+
+Focused Release evidence passes 1,307 native layout/renderer/focus/pointer/UIA
+checks. The freshly rebuilt production `OverlayHost.exe` semantic route exits
+zero after verifying host-owned launch and Back actions on the same admitted
+surface geometry. No capture, pack catalog, Game Launcher domain, window,
+composition, or motion behavior changed.
+
+### Launcher Experience encountered-entry bound (DLV-141)
+
+Package traversal now increments the 64-file budget before reparse, path,
+extension, duplicate, role, or dictionary admission work. Encountering file 65
+stops the current enumerator and leaves queued directories untouched. The
+focused Release fixture passes 17/17 and covers all-valid, all-forbidden, mixed,
+and repeated-unsafe over-limit sets with a bounded diagnostic count and an
+unvisited invalid tail.
 
 ## Next vertical slices
 

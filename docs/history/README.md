@@ -17,6 +17,13 @@ Current implementation selection always comes from
 [`../delivery-plan.md`](../delivery-plan.md). Current public guidance remains
 linked from [the documentation index](../README.md).
 
+Current snapshot groups:
+
+- [`delivery-plan/`](delivery-plan/)
+- [`engineering-quality-review/`](engineering-quality-review/)
+- [`widget-authoring-experience-review/`](widget-authoring-experience-review/)
+- [`roadmap/`](roadmap/)
+
 Do not append unrelated hours of work to one historical file. Create another
 timestamped snapshot at the next compaction boundary so Git and the directory
 name preserve chronology without inflating current context.
