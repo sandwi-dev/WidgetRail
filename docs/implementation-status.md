@@ -3335,6 +3335,29 @@ Game Launcher 65/65, the installed Games & Apps normalized app-library
 acceptance route, and the 65-document contract. No canonical aggregate, native,
 network, external-provider, credential, or capture suite was run.
 
+### Spotify responsive player fit correction (DLV-144)
+
+Spotify's pure `SpotifyPresentation` remains the only responsive-composition
+owner; `SpotifyWidget` retains lifecycle, provider, and committed-state
+ownership without growing. The compact branch now retains the established
+controller-first rail and gives its one destination pane all remaining width.
+Player uses one bounded vertical Scroll with an intrinsic non-shrinking card,
+compact artwork/metadata, seek/times, complete transport, and attribution.
+Focus-persistence identities connect the mutually exclusive rail and player
+controls while the existing exact actions and route-owned scroll IDs remain.
+
+| Responsibility | Before | After |
+| --- | --- | --- |
+| Responsive branch composition | Expanded used a rail, while every height-constrained surface switched to horizontal tabs even when the player no longer fit beneath them. | Expanded and compact both preserve the rail hierarchy; compact renders one route in the remaining pane. |
+| Player overflow | The compact card was allowed to shrink and clip its transport inside a Scroll whose child no longer had an intrinsic extent. | The compact card keeps a finite intrinsic extent; the one existing vertical Scroll owns overflow and focus reveal. |
+| Responsive evidence | Tests asserted that compact/expanded nodes existed. | The focused presenter/style fixture executes the host's 960x540 branch rule over 620x400, 760x440, 978x466, 980x560, and 1280x720 logical bodies at 100%, 125%, and 150% scale, checks selected-branch containment budgets, and proves shared focus identities and seek-to-navigation edges. |
+
+No provider, account, public SDK/protocol, native layout, package, or authority
+contract changed. Focused Release evidence passes Spotify 49/49, Widget SDK
+89/89, and the 65-file documentation contract. No
+Tier-2 production-host run was required because the shared responsive and
+scroll contracts did not change.
+
 ### Launcher Experience catalog boundary correction (DLV-137)
 
 The Launcher Experience file guard now reads standard lossy `VP8`, lossless

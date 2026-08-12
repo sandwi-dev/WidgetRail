@@ -23,8 +23,11 @@ authority and preserve the package's authored IDs and controller graph.
 
 Wide surfaces use a navigation rail with a persistent player. Left from the
 inactive seek control returns to the currently selected rail destination;
-compact Player uses the corresponding selected tab. Compact surfaces use tabs
-and one content pane. Playlist detail is a nested navigation entry: B returns
+compact surfaces retain the corresponding selected rail destination and show
+one route in the remaining pane. The compact Player uses one focus-revealing
+vertical viewport so artwork, metadata, seek/times, the complete transport row,
+and attribution remain reachable at the documented 620x400 minimum. Playlist
+detail is a nested navigation entry: B returns
 to the exact playlist tile; B at a root destination remains available to the
 overlay shell. Search is intentionally absent until the SDK has a controller-
 appropriate text-entry contract.
