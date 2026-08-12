@@ -4,7 +4,9 @@ namespace GameBarAlternative.LauncherExperienceCatalog;
 
 internal static class LauncherExperienceJson
 {
-    public const int MaximumDepth = 32;
+    // The JSON reader must admit enough structural object/array layers for the
+    // recipe parser to issue the more useful public 16-node-depth diagnostic.
+    public const int MaximumDepth = 64;
 
     public static JsonDocument ParseStrict(ReadOnlyMemory<byte> utf8)
     {
@@ -58,7 +60,8 @@ internal static class LauncherExperienceJson
             foreach (var property in value.EnumerateObject())
             {
                 if (!names.Add(property.Name))
-                    throw new JsonException($"Duplicate property '{property.Name}' at {path}.");
+                    throw new LauncherExperienceDuplicateFieldException(
+                        $"{path}.{property.Name}", $"Duplicate property '{property.Name}'.");
                 RejectDuplicates(property.Value, $"{path}.{property.Name}", depth + 1);
             }
         }
@@ -69,4 +72,10 @@ internal static class LauncherExperienceJson
                 RejectDuplicates(item, $"{path}[{index++}]", depth + 1);
         }
     }
+}
+
+internal sealed class LauncherExperienceDuplicateFieldException(string diagnosticPath, string message)
+    : Exception(message)
+{
+    public string DiagnosticPath { get; } = diagnosticPath;
 }

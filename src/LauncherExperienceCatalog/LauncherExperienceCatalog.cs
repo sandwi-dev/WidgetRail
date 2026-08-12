@@ -27,16 +27,18 @@ public sealed class LauncherExperienceCatalog
         if (!Directory.Exists(_root)) return new(entries);
         LauncherExperienceFileGuard.RejectReparsePoint(_root);
         var count = 0;
-        foreach (var idDirectory in Directory.EnumerateDirectories(_root).Order(StringComparer.Ordinal))
+        foreach (var idDirectory in EnumerateBoundedDirectories(
+                     _root, MaximumInstalledVersions, "too_many_experience_ids",
+                     $"Launcher experience catalog may contain at most {MaximumInstalledVersions} ID directories."))
         {
             LauncherExperienceFileGuard.RejectReparsePoint(idDirectory);
             var id = Path.GetFileName(idDirectory);
-            foreach (var versionDirectory in Directory.EnumerateDirectories(idDirectory).Order(StringComparer.Ordinal))
+            foreach (var versionDirectory in EnumerateBoundedDirectories(
+                         idDirectory, MaximumInstalledVersions - count, "too_many_experiences",
+                         $"Launcher experience catalog may contain at most {MaximumInstalledVersions} installed versions."))
             {
                 LauncherExperienceFileGuard.RejectReparsePoint(versionDirectory);
-                if (++count > MaximumInstalledVersions)
-                    throw new LauncherExperiencePackageException("too_many_experiences",
-                        $"Launcher experience catalog may contain at most {MaximumInstalledVersions} installed versions.");
+                count++;
                 var version = Path.GetFileName(versionDirectory);
                 var validated = _validator.ValidateDirectory(versionDirectory, id, version);
                 entries.Add(validated.Package is { } package
@@ -81,4 +83,22 @@ public sealed class LauncherExperienceCatalog
             LauncherLayoutPreset.CompactGrid,
             false,
             string.Empty);
+
+    private static IReadOnlyList<string> EnumerateBoundedDirectories(
+        string root,
+        int maximum,
+        string code,
+        string message)
+    {
+        var directories = new List<string>(Math.Min(maximum, MaximumInstalledVersions));
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            if (directories.Count == maximum)
+                throw new LauncherExperiencePackageException(code, message);
+            LauncherExperienceFileGuard.RejectReparsePoint(directory);
+            directories.Add(directory);
+        }
+        directories.Sort(StringComparer.Ordinal);
+        return directories;
+    }
 }

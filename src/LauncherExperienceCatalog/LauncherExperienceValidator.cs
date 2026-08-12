@@ -8,6 +8,7 @@ namespace GameBarAlternative.LauncherExperienceCatalog;
 public sealed class LauncherExperienceValidator
 {
     public const int MaximumFiles = 64;
+    public const int MaximumDirectories = 64;
     public const long MaximumExpandedBytes = 32L * 1024 * 1024;
     public const long MaximumAssetBytes = 16L * 1024 * 1024;
     public const int MaximumImageDimension = 4096;
@@ -79,7 +80,7 @@ public sealed class LauncherExperienceValidator
         }
         catch (LauncherExperiencePackageException exception)
         {
-            errors.Add(new("$", exception.Code, exception.Message));
+            errors.Add(new(exception.DiagnosticPath, exception.Code, exception.Message));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -108,6 +109,7 @@ public sealed class LauncherExperienceValidator
     {
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
         long total = 0;
+        var directoryCount = 0;
         var directories = new Stack<string>();
         directories.Push(root);
         while (directories.Count != 0)
@@ -116,15 +118,24 @@ public sealed class LauncherExperienceValidator
             LauncherExperienceFileGuard.RejectReparsePoint(directory);
             foreach (var child in Directory.EnumerateDirectories(directory))
             {
-                LauncherExperienceFileGuard.RejectReparsePoint(child);
+                var relative = Path.GetRelativePath(root, child).Replace(Path.DirectorySeparatorChar, '/');
+                if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0)
+                    throw new LauncherExperiencePackageException(
+                        "reparse_point", "Package paths cannot contain reparse points.", diagnosticPath: relative);
                 if (!LauncherExperienceFileGuard.IsWithin(root, child))
-                    throw new LauncherExperiencePackageException("path_escape", "Package directory escapes its root.");
+                    throw new LauncherExperiencePackageException(
+                        "path_escape", "Package directory escapes its root.", diagnosticPath: relative);
+                if (++directoryCount > MaximumDirectories)
+                    throw new LauncherExperiencePackageException(
+                        "too_many_directories", $"Package may contain at most {MaximumDirectories} directories.");
                 directories.Push(child);
             }
             foreach (var file in Directory.EnumerateFiles(directory))
             {
-                LauncherExperienceFileGuard.RejectReparsePoint(file);
                 var relative = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                    throw new LauncherExperiencePackageException(
+                        "reparse_point", "Package paths cannot contain reparse points.", diagnosticPath: relative);
                 if (!LauncherExperienceFileGuard.IsSafePackagePath(relative))
                 {
                     errors.Add(new(relative, "unsafe_path", "Package path is not normalized or bounded."));
@@ -141,13 +152,16 @@ public sealed class LauncherExperienceValidator
                     continue;
                 }
                 if (files.Count > MaximumFiles)
-                    errors.Add(new("$", "too_many_files", $"Package may contain at most {MaximumFiles} files."));
+                    throw new LauncherExperiencePackageException(
+                        "too_many_files", $"Package may contain at most {MaximumFiles} files.");
                 var length = new FileInfo(file).Length;
                 if (length > MaximumAssetBytes)
-                    errors.Add(new(relative, "file_too_large", $"Package file exceeds {MaximumAssetBytes} bytes."));
+                    throw new LauncherExperiencePackageException(
+                        "file_too_large", $"Package file exceeds {MaximumAssetBytes} bytes.", diagnosticPath: relative);
                 total = checked(total + length);
                 if (total > MaximumExpandedBytes)
-                    errors.Add(new("$", "package_too_large", $"Expanded package exceeds {MaximumExpandedBytes} bytes."));
+                    throw new LauncherExperiencePackageException(
+                        "package_too_large", $"Expanded package exceeds {MaximumExpandedBytes} bytes.");
             }
         }
         return files;

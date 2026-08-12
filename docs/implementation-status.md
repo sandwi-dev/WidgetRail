@@ -3217,6 +3217,21 @@ temporary catalog cleanup, and child-host Job exit. Persistent build-server
 arguments remain covered by their existing separate test. No production dev
 session, timeout, verifier schema, or aggregate behavior changed.
 
+### Launcher Experience catalog boundary correction (DLV-137)
+
+The Launcher Experience file guard now reads standard lossy `VP8`, lossless
+`VP8L`, and extended `VP8X` WebP dimensions from bounded RIFF chunks without a
+decoder or runtime dependency. Truncated, malformed, zero-dimension, and
+oversized assets fail with stable file diagnostics.
+
+Package discovery stops at 64 files, 64 subdirectories, 32 MiB expanded bytes,
+or 16 MiB per file while enumeration is still lazy. Catalog discovery likewise
+admits at most 128 ID directories and 128 installed versions before sorting its
+bounded result. Duplicate JSON fields retain their exact property path. The
+focused PlatformSettings Release fixture passes 17/17, including the named
+schema, layout, authority, image, boundary, reparse, catalog, digest, and
+built-in recovery cases.
+
 ## Next vertical slices
 
 1. Continue packaged GBA-036 through GBA-042 plus physical mixed-DPI/

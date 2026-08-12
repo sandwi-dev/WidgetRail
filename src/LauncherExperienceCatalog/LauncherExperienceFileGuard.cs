@@ -63,12 +63,48 @@ internal static class LauncherExperienceFileGuard
         }
         if (extension.Equals(".webp", StringComparison.OrdinalIgnoreCase))
         {
-            if (bytes.Length < 30 || !bytes[..4].SequenceEqual("RIFF"u8) || !bytes.Slice(8, 4).SequenceEqual("WEBP"u8)) return false;
-            if (bytes.Slice(12, 4).SequenceEqual("VP8X"u8))
+            if (bytes.Length < 20 || !bytes[..4].SequenceEqual("RIFF"u8) ||
+                !bytes.Slice(8, 4).SequenceEqual("WEBP"u8)) return false;
+            var riffSize = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(4, 4));
+            var riffEnd = (long)riffSize + 8;
+            if (riffEnd < 20 || riffEnd > bytes.Length) return false;
+            var webpOffset = 12;
+            while (webpOffset + 8 <= riffEnd)
             {
-                width = 1 + bytes[24] + (bytes[25] << 8) + (bytes[26] << 16);
-                height = 1 + bytes[27] + (bytes[28] << 8) + (bytes[29] << 16);
-                return true;
+                var chunkSize = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(webpOffset + 4, 4));
+                var dataStart = webpOffset + 8L;
+                var dataEnd = dataStart + chunkSize;
+                if (dataEnd > riffEnd) return false;
+                var chunk = bytes.Slice(webpOffset, 4);
+                if (chunk.SequenceEqual("VP8 "u8))
+                {
+                    if (chunkSize < 10 || !bytes.Slice((int)dataStart + 3, 3).SequenceEqual(new byte[] { 0x9d, 0x01, 0x2a }))
+                        return false;
+                    width = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice((int)dataStart + 6, 2)) & 0x3fff;
+                    height = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice((int)dataStart + 8, 2)) & 0x3fff;
+                    return width > 0 && height > 0;
+                }
+                if (chunk.SequenceEqual("VP8L"u8))
+                {
+                    if (chunkSize < 5 || bytes[(int)dataStart] != 0x2f) return false;
+                    var bits = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice((int)dataStart + 1, 4));
+                    width = (int)(bits & 0x3fff) + 1;
+                    height = (int)((bits >> 14) & 0x3fff) + 1;
+                    return true;
+                }
+                if (chunk.SequenceEqual("VP8X"u8))
+                {
+                    if (chunkSize < 10) return false;
+                    width = 1 + bytes[(int)dataStart + 4] + (bytes[(int)dataStart + 5] << 8) +
+                            (bytes[(int)dataStart + 6] << 16);
+                    height = 1 + bytes[(int)dataStart + 7] + (bytes[(int)dataStart + 8] << 8) +
+                             (bytes[(int)dataStart + 9] << 16);
+                    return true;
+                }
+                var paddedSize = (long)chunkSize + (chunkSize & 1);
+                var next = dataStart + paddedSize;
+                if (next > riffEnd || next > int.MaxValue) return false;
+                webpOffset = (int)next;
             }
             return false;
         }
@@ -99,8 +135,13 @@ internal static class LauncherExperienceFileGuard
     }
 }
 
-public sealed class LauncherExperiencePackageException(string code, string message, Exception? innerException = null)
+public sealed class LauncherExperiencePackageException(
+    string code,
+    string message,
+    Exception? innerException = null,
+    string diagnosticPath = "$")
     : Exception(message, innerException)
 {
     public string Code { get; } = code;
+    public string DiagnosticPath { get; } = diagnosticPath;
 }

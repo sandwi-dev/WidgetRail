@@ -10,6 +10,8 @@ internal static class LauncherExperienceCatalogTests
         StrictManifestAndParametersFailClosed();
         RecipeSafetyFailsWithExactPaths();
         ContentAndStyleAuthorityFailClosed();
+        WebPVariantsReportExactDimensions();
+        PackageAndCatalogBudgetsFailFast();
         InvalidSelectionUsesBuiltInRecovery();
         return Task.CompletedTask;
     }
@@ -60,7 +62,7 @@ internal static class LauncherExperienceCatalogTests
         var baseline = File.ReadAllText(manifestPath);
 
         File.WriteAllText(manifestPath, baseline.Replace("\"name\":\"Strict\"", "\"name\":\"Strict\",\"name\":\"Duplicate\"", StringComparison.Ordinal));
-        HasCode(validator.ValidateDirectory(package).Diagnostics, "invalid_json");
+        HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$.name", "duplicate_field");
 
         File.WriteAllText(manifestPath, baseline.Replace("\"parameters\":{}", "\"parameters\":{\"action\":\"launch\"}", StringComparison.Ordinal));
         HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$.parameters.action", "unknown_field");
@@ -103,6 +105,29 @@ internal static class LauncherExperienceCatalogTests
         File.WriteAllText(recipePath, baseline.Replace("\"slot\":\"source-status\"", "\"slot\":\"provider-binding\"", StringComparison.Ordinal));
         HasPathCode(validator.ValidateDirectory(package).Diagnostics,
             "$.branches.compact.root.children[2].slot", "invalid_slot");
+
+        File.WriteAllText(recipePath, baseline.Replace(
+            "{\"type\":\"region\",\"slot\":\"source-status\",\"region\":{\"x\":0.68,\"y\":0.08,\"width\":0.24,\"height\":0.1}}",
+            "{\"type\":\"region\",\"slot\":\"collection-tabs\",\"region\":{\"x\":0.68,\"y\":0.08,\"width\":0.24,\"height\":0.1}}",
+            StringComparison.Ordinal));
+        HasCode(validator.ValidateDirectory(package).Diagnostics, "missing_critical_slot");
+
+        File.WriteAllText(recipePath, baseline.Replace(
+            "\"x\":0.68,\"y\":0.08,\"width\":0.24,\"height\":0.1",
+            "\"x\":0.1,\"y\":0.1,\"width\":0.24,\"height\":0.1", StringComparison.Ordinal));
+        HasCode(validator.ValidateDirectory(package).Diagnostics, "invalid_overlap");
+
+        File.WriteAllText(recipePath, baseline.Replace(
+            "{\"type\":\"overlay\",\"children\"",
+            "{\"type\":\"grid\",\"rows\":13,\"columns\":1,\"children\"", StringComparison.Ordinal));
+        HasPathCode(validator.ValidateDirectory(package).Diagnostics,
+            "$.branches.compact.root.rows", "grid_out_of_range");
+
+        File.WriteAllText(recipePath, NodeLimitRecipe());
+        HasCode(validator.ValidateDirectory(package).Diagnostics, "too_many_nodes");
+
+        File.WriteAllText(recipePath, DepthLimitRecipe());
+        HasCode(validator.ValidateDirectory(package).Diagnostics, "layout_depth");
     }
 
     private static void ContentAndStyleAuthorityFailClosed()
@@ -122,6 +147,137 @@ internal static class LauncherExperienceCatalogTests
 
         File.WriteAllBytes(Path.Combine(package, "assets", "preview.png"), Png(5000, 32));
         HasPathCode(validator.ValidateDirectory(package).Diagnostics, "assets/preview.png", "image_dimensions");
+
+        File.WriteAllText(Path.Combine(package, "launcher.json"),
+            Manifest("dev.example.content", "1.0.0").Replace(
+                "assets/preview.png", "../outside.png", StringComparison.Ordinal));
+        HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$.previewFile", "unsafe_asset_path");
+
+        File.WriteAllText(Path.Combine(package, "launcher.json"), Manifest("dev.example.content", "1.0.0"));
+        foreach (var forbidden in new[] { "payload.exe", "payload.zip", "payload.html" })
+        {
+            File.WriteAllText(Path.Combine(package, forbidden), "not trusted package data");
+            HasPathCode(validator.ValidateDirectory(package).Diagnostics, forbidden, "forbidden_content");
+            File.Delete(Path.Combine(package, forbidden));
+        }
+    }
+
+    private static void WebPVariantsReportExactDimensions()
+    {
+        var variants = new[]
+        {
+            (Name: "VP8", Bytes: Vp8(640, 360), Width: 640, Height: 360),
+            (Name: "VP8L", Bytes: Vp8L(321, 177), Width: 321, Height: 177),
+            (Name: "VP8X", Bytes: Vp8X(1920, 1080), Width: 1920, Height: 1080),
+        };
+        foreach (var variant in variants)
+        {
+            True(LauncherExperienceFileGuard.TryReadImageDimensions(
+                variant.Bytes, ".webp", out var width, out var height), $"{variant.Name} WebP was rejected.");
+            Equal(variant.Width, width);
+            Equal(variant.Height, height);
+
+            using var temp = new TempDirectory();
+            var package = WritePackage(temp.Path, $"dev.example.{variant.Name.ToLowerInvariant()}", "1.0.0", BottomRecipe());
+            File.Delete(Path.Combine(package, "assets", "preview.png"));
+            File.WriteAllBytes(Path.Combine(package, "assets", "preview.webp"), variant.Bytes);
+            var manifest = File.ReadAllText(Path.Combine(package, "launcher.json"))
+                .Replace("assets/preview.png", "assets/preview.webp", StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(package, "launcher.json"), manifest);
+            True(new LauncherExperienceValidator().ValidateDirectory(package).IsValid,
+                $"{variant.Name} package validation failed.");
+        }
+
+        var truncated = Vp8X(64, 36)[..^1];
+        True(!LauncherExperienceFileGuard.TryReadImageDimensions(truncated, ".webp", out _, out _),
+            "Truncated WebP was accepted.");
+        var malformed = Vp8X(64, 36);
+        malformed[8] = (byte)'X';
+        True(!LauncherExperienceFileGuard.TryReadImageDimensions(malformed, ".webp", out _, out _),
+            "Malformed WebP was accepted.");
+        True(!LauncherExperienceFileGuard.TryReadImageDimensions(Vp8(0, 36), ".webp", out _, out _),
+            "Zero-dimension VP8 WebP was accepted.");
+
+        ValidateWebPFailure("truncated", truncated);
+        ValidateWebPFailure("malformed", malformed);
+        ValidateWebPFailure("zero", Vp8(0, 36));
+
+        using var oversizedTemp = new TempDirectory();
+        var oversizedPackage = WritePackage(
+            oversizedTemp.Path, "dev.example.oversized-webp", "1.0.0", BottomRecipe());
+        File.Delete(Path.Combine(oversizedPackage, "assets", "preview.png"));
+        File.WriteAllBytes(Path.Combine(oversizedPackage, "assets", "preview.webp"), Vp8X(4097, 32));
+        File.WriteAllText(Path.Combine(oversizedPackage, "launcher.json"),
+            File.ReadAllText(Path.Combine(oversizedPackage, "launcher.json"))
+                .Replace("assets/preview.png", "assets/preview.webp", StringComparison.Ordinal));
+        HasPathCode(new LauncherExperienceValidator().ValidateDirectory(oversizedPackage).Diagnostics,
+            "assets/preview.webp", "image_dimensions");
+
+        static void ValidateWebPFailure(string suffix, byte[] bytes)
+        {
+            using var temp = new TempDirectory();
+            var package = WritePackage(temp.Path, $"dev.example.{suffix}-webp", "1.0.0", BottomRecipe());
+            File.Delete(Path.Combine(package, "assets", "preview.png"));
+            File.WriteAllBytes(Path.Combine(package, "assets", "preview.webp"), bytes);
+            File.WriteAllText(Path.Combine(package, "launcher.json"),
+                File.ReadAllText(Path.Combine(package, "launcher.json"))
+                    .Replace("assets/preview.png", "assets/preview.webp", StringComparison.Ordinal));
+            HasPathCode(new LauncherExperienceValidator().ValidateDirectory(package).Diagnostics,
+                "assets/preview.webp", "invalid_image");
+        }
+    }
+
+    private static void PackageAndCatalogBudgetsFailFast()
+    {
+        var validator = new LauncherExperienceValidator();
+        using (var temp = new TempDirectory())
+        {
+            var package = WritePackage(temp.Path, "dev.example.files", "1.0.0", BottomRecipe());
+            for (var index = 0; index < 61; index++)
+                File.WriteAllText(Path.Combine(package, $"extra-{index:D2}.json"), "{}");
+            HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$", "too_many_files");
+        }
+        using (var temp = new TempDirectory())
+        {
+            var package = WritePackage(temp.Path, "dev.example.directories", "1.0.0", BottomRecipe());
+            for (var index = 0; index < 62; index++)
+                Directory.CreateDirectory(Path.Combine(package, $"extra-{index:D2}"));
+            HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$", "too_many_directories");
+        }
+        using (var temp = new TempDirectory())
+        {
+            var package = WritePackage(temp.Path, "dev.example.file-size", "1.0.0", BottomRecipe());
+            SetLength(Path.Combine(package, "assets", "oversized.webp"), LauncherExperienceValidator.MaximumAssetBytes + 1);
+            HasPathCode(validator.ValidateDirectory(package).Diagnostics, "assets/oversized.webp", "file_too_large");
+        }
+        using (var temp = new TempDirectory())
+        {
+            var package = WritePackage(temp.Path, "dev.example.expanded", "1.0.0", BottomRecipe());
+            SetLength(Path.Combine(package, "assets", "large-a.webp"), LauncherExperienceValidator.MaximumAssetBytes);
+            SetLength(Path.Combine(package, "assets", "large-b.webp"), LauncherExperienceValidator.MaximumAssetBytes);
+            HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$", "package_too_large");
+        }
+        using (var temp = new TempDirectory())
+        {
+            var package = WritePackage(temp.Path, "dev.example.reparse", "1.0.0", BottomRecipe());
+            var outside = Path.Combine(temp.Path, "outside");
+            Directory.CreateDirectory(outside);
+            Directory.CreateSymbolicLink(Path.Combine(package, "linked"), outside);
+            HasPathCode(validator.ValidateDirectory(package).Diagnostics, "linked", "reparse_point");
+        }
+        using (var temp = new TempDirectory())
+        {
+            for (var index = 0; index <= LauncherExperienceCatalog.MaximumInstalledVersions; index++)
+                Directory.CreateDirectory(Path.Combine(temp.Path, $"dev.example.id-{index:D3}"));
+            ThrowsCode(() => new LauncherExperienceCatalog(temp.Path).Discover(), "too_many_experience_ids");
+        }
+        using (var temp = new TempDirectory())
+        {
+            var id = Path.Combine(temp.Path, "dev.example.versions");
+            for (var index = 0; index <= LauncherExperienceCatalog.MaximumInstalledVersions; index++)
+                Directory.CreateDirectory(Path.Combine(id, $"1.0.{index}"));
+            ThrowsCode(() => new LauncherExperienceCatalog(temp.Path).Discover(), "too_many_experiences");
+        }
     }
 
     private static void InvalidSelectionUsesBuiltInRecovery()
@@ -177,6 +333,76 @@ internal static class LauncherExperienceCatalogTests
         return bytes;
     }
 
+    private static byte[] Vp8(int width, int height)
+    {
+        var payload = new byte[10];
+        payload[3] = 0x9d;
+        payload[4] = 0x01;
+        payload[5] = 0x2a;
+        BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(6, 2), checked((ushort)width));
+        BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(8, 2), checked((ushort)height));
+        return WebP("VP8 ", payload);
+    }
+
+    private static byte[] Vp8L(int width, int height)
+    {
+        var payload = new byte[5];
+        payload[0] = 0x2f;
+        var bits = checked((uint)(width - 1)) | (checked((uint)(height - 1)) << 14);
+        BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(1, 4), bits);
+        return WebP("VP8L", payload);
+    }
+
+    private static byte[] Vp8X(int width, int height)
+    {
+        var payload = new byte[10];
+        WriteUInt24(payload.AsSpan(4, 3), width - 1);
+        WriteUInt24(payload.AsSpan(7, 3), height - 1);
+        return WebP("VP8X", payload);
+    }
+
+    private static byte[] WebP(string fourCc, byte[] payload)
+    {
+        var paddedLength = payload.Length + (payload.Length & 1);
+        var bytes = new byte[20 + paddedLength];
+        "RIFF"u8.CopyTo(bytes);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(4, 4), checked((uint)(bytes.Length - 8)));
+        "WEBP"u8.CopyTo(bytes.AsSpan(8, 4));
+        System.Text.Encoding.ASCII.GetBytes(fourCc).CopyTo(bytes, 12);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(16, 4), checked((uint)payload.Length));
+        payload.CopyTo(bytes, 20);
+        return bytes;
+    }
+
+    private static void WriteUInt24(Span<byte> destination, int value)
+    {
+        destination[0] = (byte)value;
+        destination[1] = (byte)(value >> 8);
+        destination[2] = (byte)(value >> 16);
+    }
+
+    private static string NodeLimitRecipe()
+    {
+        var leaf = "{\"type\":\"region\",\"slot\":\"hero-background\"}";
+        var group = "{\"type\":\"overlay\",\"children\":[" + string.Join(',', Enumerable.Repeat(leaf, 4)) + "]}";
+        var root = "{\"type\":\"overlay\",\"children\":[" + string.Join(',', Enumerable.Repeat(group, 32)) + "]}";
+        return "{\"schemaVersion\":1,\"branches\":{\"compact\":{\"root\":" + root + "}}}";
+    }
+
+    private static string DepthLimitRecipe()
+    {
+        var node = "{\"type\":\"region\",\"slot\":\"game-rail\"}";
+        for (var index = 0; index < 18; index++)
+            node = "{\"type\":\"inset\",\"children\":[" + node + "]}";
+        return "{\"schemaVersion\":1,\"branches\":{\"compact\":{\"root\":" + node + "}}}";
+    }
+
+    private static void SetLength(string path, long length)
+    {
+        using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        stream.SetLength(length);
+    }
+
     private static string Describe(LauncherExperienceValidationResult result) =>
         string.Join(Environment.NewLine, result.Diagnostics.Select(item => $"{item.Path}: {item.Code}: {item.Message}"));
 
@@ -190,6 +416,19 @@ internal static class LauncherExperienceCatalogTests
     {
         if (!diagnostics.Any(item => item.Path == path && item.Code == code))
             throw new InvalidOperationException($"Expected {path} {code}; actual: {string.Join("; ", diagnostics)}");
+    }
+
+    private static void ThrowsCode(Action action, string code)
+    {
+        try
+        {
+            action();
+        }
+        catch (LauncherExperiencePackageException exception) when (exception.Code == code)
+        {
+            return;
+        }
+        throw new InvalidOperationException($"Expected LauncherExperiencePackageException '{code}'.");
     }
 
     private static void True(bool condition, string message)

@@ -9,11 +9,14 @@ native rendering arrive through later milestones.
 ## Package boundary
 
 An expanded package uses an immutable lowercase ID and canonical dotted version
-directory and contains at most 64 files and 32 MiB. Each file is at most 16 MiB;
+directory and contains at most 64 files, 64 subdirectories, and 32 MiB. Each
+file is at most 16 MiB;
 static PNG, JPEG, and WebP dimensions are at most 4096 by 4096. Paths are
 normalized, package-relative, case-exact, at most 240 characters, and contain no
 reparse point. Executables, libraries, scripts, HTML, archives, remote content,
-and unknown file types are rejected.
+and unknown file types are rejected. Catalog discovery admits at most 128
+installed ID/version directories and stops at the first excess entry before
+sorting or validating package content.
 
 The initial shape is:
 

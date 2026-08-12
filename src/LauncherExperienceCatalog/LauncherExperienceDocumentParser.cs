@@ -118,6 +118,11 @@ internal static class LauncherExperienceDocumentParser
         {
             return LauncherExperienceJson.ParseStrict(bytes);
         }
+        catch (LauncherExperienceDuplicateFieldException exception)
+        {
+            errors.Add(new(exception.DiagnosticPath, "duplicate_field", "JSON contains a duplicate field."));
+            return null;
+        }
         catch (JsonException exception)
         {
             errors.Add(new(
