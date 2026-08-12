@@ -8,7 +8,8 @@ namespace gba::accessibility {
 namespace {
 
 std::optional<Role> ResolveRole(const WidgetNode& node) noexcept {
-    if (node.kind == L"button" || node.kind == L"actionSurface") return Role::Button;
+    if (node.kind == L"button" || node.kind == L"actionSurface" ||
+        node.kind == L"textEntry") return Role::Button;
     if (node.kind == L"slider") return Role::Slider;
     if (node.kind == L"text") return Role::Text;
     if (node.kind == L"image" || node.kind == L"icon") return Role::Image;

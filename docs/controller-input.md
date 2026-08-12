@@ -71,6 +71,14 @@ control. The host scales and centers the complete keyboard inside the active
 monitor work area, including compact and 150% DPI layouts. Closing the modal
 restores a valid current host focus target.
 
+On the ordinary widget surface, `TextEntry` is one actionable UI Automation
+button with its existing stable node/action identity. Focus and Invoke pass
+through the same current widget, runtime, snapshot, scope, enabled-state, and
+action checks as controller A before opening the one host modal. Failed open,
+cancel, window close, and commit remain distinct sanitized outcomes. Cancel and
+close dispatch no action, preserve the committed snapshot value, and restore
+the exact current semantic/UIA focus target.
+
 Only one final bounded committed value is sent with the semantic widget action.
 Raw key events, HWNDs, insertion history, and canceled text never enter the
 snapshot or worker. The host rejects values beyond the authored maximum (at

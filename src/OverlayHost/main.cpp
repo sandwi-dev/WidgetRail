@@ -4353,7 +4353,7 @@ private:
                 state_.focusRegion() != gba::FocusRegion::Widget ||
                 state_.activeWidget() != request.widgetId) continue;
 
-            if (resolved->protocolButton == L"a" &&
+            if (resolved->protocolButton == L"A" &&
                 OpenTextEntryModal(request.widgetId, *snapshot, resolved->nodeId))
                 continue;
             if (const auto* node = gba::input::FindNodeInInputScope(
@@ -5147,10 +5147,12 @@ private:
         const auto modalTitle = protectedWifi
             ? std::wstring(L"Password for ") + request->placeholder
             : request->placeholder;
-        auto committed = textEntryModal_.Show(
+        auto modalResult = textEntryModal_.Show(
             instance_, window_, request->value,
             modalTitle, request->maximumLength, protectedWifi);
-        if (committed) {
+        bool actionDispatched{};
+        if (modalResult.outcome == gba::input::TextEntryModalOutcome::Committed &&
+            modalResult.committedText) {
             const auto* currentDescriptor = sessions_.FindDescriptor(request->widgetId);
             const auto* currentSnapshot = InteractionSnapshotFor(request->widgetId);
             const auto target = currentDescriptor && currentSnapshot
@@ -5168,7 +5170,7 @@ private:
                         request->widgetId,
                         request->runtimeGeneration,
                         target->sourceElementId,
-                        committed->view());
+                        modalResult.committedText->view());
                     handled = result.has_value();
                     lastActionWidgetId_ = request->widgetId;
                     lastActionMessage_ = result && *result == L"connecting"
@@ -5179,18 +5181,48 @@ private:
                     handled = bridge_.SendAction(
                         request->widgetId, target->actionId, target->sourceElementId,
                         target->activeInputScopeId,
-                        std::wstring_view(committed->view().data(), committed->view().size()));
+                        std::wstring_view(
+                            modalResult.committedText->view().data(),
+                            modalResult.committedText->view().size()));
                 }
+                actionDispatched = handled && *handled;
                 if (handled && *handled) {
                     RefreshAndApplyPresentation([&] {
                         RefreshWidgetSnapshot(request->widgetId);
                     });
                 }
             }
-            committed->clear();
+            modalResult.committedText->clear();
         }
         if (state_.surface() == gba::Surface::Widget)
             RestoreFocusForActiveSurface(state_.activeWidget());
+        const auto outcome = [&] {
+            switch (modalResult.outcome) {
+            case gba::input::TextEntryModalOutcome::Failed: return L"failed";
+            case gba::input::TextEntryModalOutcome::Cancelled: return L"cancel";
+            case gba::input::TextEntryModalOutcome::Closed: return L"close";
+            case gba::input::TextEntryModalOutcome::Committed: return L"commit";
+            }
+            return L"unknown";
+        }();
+        std::wstring preservation{L"not-applicable"};
+        if (modalResult.outcome != gba::input::TextEntryModalOutcome::Committed) {
+            const auto* currentSnapshot = InteractionSnapshotFor(request->widgetId);
+            const auto* currentNode = currentSnapshot
+                ? gba::input::FindNodeInInputScope(
+                    *currentSnapshot, request->nodeId,
+                    currentSnapshot->activeInputScopeId)
+                : nullptr;
+            preservation = !currentNode || !currentNode->isTextEntry
+                ? L"unavailable"
+                : currentNode->textEntryValue == request->value
+                    ? L"preserved" : L"changed";
+        }
+        AppendDiagnostic(
+            L"Text entry modal outcome=" + std::wstring(outcome) +
+            L" action-dispatched=" + (actionDispatched ? L"true" : L"false") +
+            L" committed-value=" + preservation +
+            L" focus=" + (focusedElementId_.empty() ? L"none" : focusedElementId_));
         (void)SetFocus(window_);
         InvalidateRect(window_, nullptr, FALSE);
         return true;

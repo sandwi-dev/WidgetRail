@@ -102,7 +102,7 @@ TextEntryModalLayout CalculateTextEntryModalLayout(
     return result;
 }
 
-std::optional<SecureTextBuffer> TextEntryModal::Show(
+TextEntryModalResult TextEntryModal::Show(
     HINSTANCE instance,
     HWND owner,
     const std::wstring_view value,
@@ -112,7 +112,7 @@ std::optional<SecureTextBuffer> TextEntryModal::Show(
     if (active() || !instance || !owner || maximumLength == 0 ||
         maximumLength > MaximumLength || value.size() > maximumLength ||
         placeholder.size() > MaximumLength || (password && !value.empty()))
-        return std::nullopt;
+        return {};
 
     WNDCLASSEXW type{sizeof(type)};
     type.hInstance = instance;
@@ -121,7 +121,7 @@ std::optional<SecureTextBuffer> TextEntryModal::Show(
     type.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     type.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
     if (!RegisterClassExW(&type) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-        return std::nullopt;
+        return {};
 
     instance_ = instance;
     owner_ = owner;
@@ -132,6 +132,7 @@ std::optional<SecureTextBuffer> TextEntryModal::Show(
     const auto ownerDpi = GetDpiForWindow(owner);
     dpi_ = ownerDpi == 0 ? 96U : ownerDpi;
     result_.reset();
+    outcome_ = TextEntryModalOutcome::Failed;
     completed_ = false;
     focusTargets_.clear();
     focusIndex_ = 0;
@@ -154,7 +155,9 @@ std::optional<SecureTextBuffer> TextEntryModal::Show(
         WS_POPUP | WS_CAPTION | WS_SYSMENU,
         layout_.windowBounds.left, layout_.windowBounds.top,
         width, height, owner, nullptr, instance, this);
-    if (!window_) return std::nullopt;
+    if (!window_) return {};
+
+    outcome_ = TextEntryModalOutcome::Closed;
 
     EnableWindow(owner, FALSE);
     ShowWindow(window_, SW_SHOW);
@@ -179,7 +182,7 @@ std::optional<SecureTextBuffer> TextEntryModal::Show(
     edit_ = nullptr;
     focusTargets_.clear();
     priorEditWindowProc_ = nullptr;
-    auto result = std::move(result_);
+    TextEntryModalResult result{outcome_, std::move(result_)};
     result_.reset();
     if (!initialValue_.empty())
         SecureZeroMemory(initialValue_.data(), initialValue_.size() * sizeof(wchar_t));
@@ -254,10 +257,11 @@ void TextEntryModal::Backspace() {
     SendMessageW(edit_, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(L""));
 }
 
-void TextEntryModal::Complete(const bool commit) {
+void TextEntryModal::Complete(const TextEntryModalOutcome outcome) {
     if (completed_) return;
     completed_ = true;
-    if (commit) {
+    outcome_ = outcome;
+    if (outcome == TextEntryModalOutcome::Committed) {
         const int length = std::clamp(GetWindowTextLengthW(edit_), 0,
             static_cast<int>(maximumLength_));
         std::vector<wchar_t> value(static_cast<std::size_t>(length) + 1, L'\0');
@@ -329,7 +333,7 @@ void TextEntryModal::MoveFocus(const Direction direction) {
 
 void TextEntryModal::HandleController(const std::wstring_view button) noexcept {
     if (!window_) return;
-    if (button == L"B") Complete(false);
+    if (button == L"B") Complete(TextEntryModalOutcome::Cancelled);
     else if (button == L"A") {
         HWND focused = GetFocus();
         if (focused == edit_) MoveFocus(Direction::Down);
@@ -382,7 +386,7 @@ LRESULT TextEntryModal::HandleMessage(
             wParam == 5 ? L"DPadRight" : wParam == 6 ? L"DPadUp" : L"DPadDown");
         return 0;
     case WM_CREATE: CreateControls(); return 0;
-    case WM_CLOSE: Complete(false); return 0;
+    case WM_CLOSE: Complete(TextEntryModalOutcome::Closed); return 0;
     case WM_COMMAND: {
         const int id = LOWORD(wParam);
         if (id >= kCharacterBase &&
@@ -390,12 +394,12 @@ LRESULT TextEntryModal::HandleMessage(
             Append(kCharacters[static_cast<std::size_t>(id - kCharacterBase)]);
         else if (id == kBackspaceId) Backspace();
         else if (id == kClearId) SetWindowTextW(edit_, L"");
-        else if (id == kCancelId) Complete(false);
-        else if (id == kCommitId) Complete(true);
+        else if (id == kCancelId) Complete(TextEntryModalOutcome::Cancelled);
+        else if (id == kCommitId) Complete(TextEntryModalOutcome::Committed);
         return 0;
     }
     case WM_KEYDOWN:
-        if (wParam == VK_ESCAPE) Complete(false);
+        if (wParam == VK_ESCAPE) Complete(TextEntryModalOutcome::Cancelled);
         else if (wParam == VK_RETURN && GetFocus() != edit_) {
             HWND focused = GetFocus();
             if (focused) SendMessageW(focused, BM_CLICK, 0, 0);

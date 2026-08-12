@@ -67,6 +67,13 @@ int main() {
     tile.children.push_back(Text(L"album-title", L"Duplicate visual title"));
     snapshot.root.children.push_back(tile);
 
+    gba::WidgetNode textEntry;
+    textEntry.id = L"search";
+    textEntry.kind = L"textEntry";
+    textEntry.accessibilityLabel = L"Search installed games";
+    textEntry.actionId = L"search.commit";
+    snapshot.root.children.push_back(textEntry);
+
     gba::WidgetNode modal;
     modal.id = L"modal";
     modal.kind = L"stack";
@@ -77,7 +84,8 @@ int main() {
     gba::RenderResult render;
     render.accessibilityRegions = {
         Region(L"heading", 10), Region(L"next", 50), Region(L"progress", 90),
-        Region(L"album", 130), Region(L"album-title", 135), Region(L"modal-text", 170),
+        Region(L"album", 130), Region(L"album-title", 135), Region(L"search", 170),
+        Region(L"modal-text", 210),
     };
 
     auto tree = gba::accessibility::BuildWidgetTree(
@@ -86,7 +94,7 @@ int main() {
           "tree retains exact widget runtime identity");
     Check(tree.snapshotSequence == 9, "tree retains snapshot authority");
     Check(tree.activeInputScopeId == L"root", "tree retains active input scope authority");
-    Check(tree.nodes.size() == 4, "active semantic nodes are exposed exactly once");
+    Check(tree.nodes.size() == 5, "active semantic nodes are exposed exactly once");
     Check(gba::accessibility::HasUniqueElementKeys(tree) &&
           tree.nodes[0].domain == gba::accessibility::ElementDomain::Widget &&
           gba::accessibility::AutomationId(tree.nodes[1]) == L"widget:next",
@@ -111,6 +119,10 @@ int main() {
           "accessibility range uses the same optimistic value as rendered pixels");
     Check(tree.nodes[3].name == L"Open album" && tree.nodes[3].children.empty(),
           "action-surface descendants remain presentation-only");
+    Check(tree.nodes[4].role == gba::accessibility::Role::Button &&
+          tree.nodes[4].id == L"search" &&
+          tree.nodes[4].actionId == L"search.commit",
+          "text entry exposes one exact modal-opening Invoke action");
     Check(std::none_of(tree.nodes.begin(), tree.nodes.end(), [](const auto& node) {
         return node.id == L"modal-text";
     }), "inactive input scopes are absent from the accessibility tree");

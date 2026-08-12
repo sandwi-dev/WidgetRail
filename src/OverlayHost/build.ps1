@@ -19,7 +19,8 @@ param(
     [switch]$WidgetSurfaceTestsOnly,
     [switch]$ColdDashboardTestsOnly,
     [switch]$LauncherExperienceTestsOnly,
-    [switch]$LauncherExperienceHostTestsOnly
+    [switch]$LauncherExperienceHostTestsOnly,
+    [switch]$TextEntryHostTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -290,6 +291,8 @@ function Invoke-TextEntryModalTests {
         (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
         (Join-Path $projectDirectory 'TextEntryModal.cpp'),
         (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
         "/Fo:$textEntryModalTestObjectDirectory\",
         "/Fe:$outputDirectory\TextEntryModalTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -302,6 +305,24 @@ function Invoke-TextEntryModalTests {
     & (Join-Path $outputDirectory 'TextEntryModalTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "TextEntryModalTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-AccessibilityTreeTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'AccessibilityTreeTests.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
+        "/Fo:$accessibilityTreeTestObjectDirectory\",
+        "/Fe:$outputDirectory\AccessibilityTreeTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityTreeTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'AccessibilityTreeTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "AccessibilityTreeTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -825,6 +846,7 @@ function Invoke-LauncherExperienceTests {
 }
 
 function Invoke-LauncherExperienceHostTests {
+    param([switch]$TextEntryOnly)
     & dotnet publish (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
         --output $launcherExperienceBridgeFixtureOutput
@@ -848,8 +870,14 @@ function Invoke-LauncherExperienceHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "LauncherExperienceHostTests build failed with exit code $LASTEXITCODE."
     }
-    & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') `
-        --installation $outputDirectory --fixture-bridge $fixtureBridge
+    $testArguments = @(
+        '--installation', $outputDirectory,
+        '--fixture-bridge', $fixtureBridge
+    )
+    if ($TextEntryOnly) {
+        $testArguments += '--text-entry-only'
+    }
+    & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') $testArguments
     if ($LASTEXITCODE -ne 0) {
         throw "LauncherExperienceHostTests failed with exit code $LASTEXITCODE."
     }
@@ -1141,6 +1169,16 @@ if ($LauncherExperienceHostTestsOnly) {
         throw 'LauncherExperienceHostTestsOnly requires tests and packaging.'
     }
     Invoke-LauncherExperienceHostTests
+    return
+}
+
+if ($TextEntryHostTestsOnly) {
+    if ($SkipTests -or $SkipPackaging) {
+        throw 'TextEntryHostTestsOnly requires tests and packaging.'
+    }
+    Invoke-TextEntryModalTests
+    Invoke-AccessibilityTreeTests
+    Invoke-LauncherExperienceHostTests -TextEntryOnly
     return
 }
 
@@ -1492,21 +1530,7 @@ if (-not $SkipTests) {
         throw "WidgetActionFeedbackTests failed with exit code $LASTEXITCODE."
     }
 
-    $accessibilityTreeTestArguments = $common + @(
-        (Join-Path $projectDirectory 'AccessibilityTreeTests.cpp'),
-        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
-        "/Fo:$accessibilityTreeTestObjectDirectory\",
-        "/Fe:$outputDirectory\AccessibilityTreeTests.exe",
-        '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments
-    & $cl $accessibilityTreeTestArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "AccessibilityTreeTests build failed with exit code $LASTEXITCODE."
-    }
-    & (Join-Path $outputDirectory 'AccessibilityTreeTests.exe')
-    if ($LASTEXITCODE -ne 0) {
-        throw "AccessibilityTreeTests failed with exit code $LASTEXITCODE."
-    }
+    Invoke-AccessibilityTreeTests
 
     $accessibilityProjectionTestArguments = $common + @(
         (Join-Path $projectDirectory 'AccessibilityProjectionTests.cpp'),

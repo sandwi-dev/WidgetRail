@@ -1,5 +1,6 @@
 #include "TextEntryActionAdmission.h"
 #include "TextEntryModal.h"
+#include "AccessibilityProvider.h"
 
 #include <Windows.h>
 #include <Unknwn.h>
@@ -48,7 +49,7 @@ bool WaitUntil(const auto& predicate) {
 gba::WidgetSnapshot TextEntrySnapshot() {
     gba::WidgetNode entry{};
     entry.id = L"search";
-    entry.kind = L"button";
+    entry.kind = L"textEntry";
     entry.actionId = L"search.commit";
     entry.textEntryValue = L"game";
     entry.textEntryPlaceholder = L"Search installed games";
@@ -75,6 +76,25 @@ void CheckAdmission() {
         current->sourceElementId == L"search" &&
         current->activeInputScopeId == L"root",
         "unchanged current request re-resolves one exact action");
+    const gba::accessibility::ActionRequest focusRequest{
+        gba::accessibility::ActionKind::Focus,
+        L"game-launcher", L"generation-a", snapshot.sequence,
+        snapshot.activeInputScopeId,
+        gba::accessibility::ElementDomain::Widget,
+        L"search", L"search.commit",
+    };
+    const auto focused = gba::accessibility::ResolveActionRequest(
+        focusRequest, L"game-launcher", L"generation-a", snapshot);
+    Check(focused && focused->kind == gba::accessibility::ActionKind::Focus &&
+        focused->nodeId == L"search",
+        "current TextEntry admits exact UIA focus through the existing action owner");
+    auto invokeRequest = focusRequest;
+    invokeRequest.kind = gba::accessibility::ActionKind::Invoke;
+    const auto invoked = gba::accessibility::ResolveActionRequest(
+        invokeRequest, L"game-launcher", L"generation-a", snapshot);
+    Check(invoked && invoked->protocolButton == L"A" &&
+        invoked->nodeId == L"search",
+        "current TextEntry Invoke resolves to the existing modal-opening A action");
     Check(!gba::input::ResolveTextEntryActionTarget(
         *request, false, L"game-launcher", L"generation-a", snapshot),
         "hidden or inactive widget rejects modal commit");
@@ -150,9 +170,11 @@ int wmain() {
 
     gba::input::TextEntryModal modal;
     Check(!modal.active(), "modal starts inactive");
-    Check(!modal.Show(GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96),
+    Check(modal.Show(GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96).outcome ==
+            gba::input::TextEntryModalOutcome::Failed,
         "missing owner fails closed without entering a modal loop");
-    Check(!modal.Show(GetModuleHandleW(nullptr), GetDesktopWindow(), L"", L"Search", 97),
+    Check(modal.Show(GetModuleHandleW(nullptr), GetDesktopWindow(), L"", L"Search", 97)
+            .outcome == gba::input::TextEntryModalOutcome::Failed,
         "oversized maximum fails closed");
 
     const auto owner = CreateWindowExW(
@@ -226,8 +248,9 @@ int wmain() {
         GetModuleHandleW(nullptr), owner, L"A", L"Search installed games", 8);
     driver.join();
     const auto expectedCommitted = std::wstring_view(L"AI");
-    Check(committed && std::equal(
-        committed->view().begin(), committed->view().end(),
+    Check(committed.outcome == gba::input::TextEntryModalOutcome::Committed &&
+        committed.committedText && std::equal(
+        committed.committedText->view().begin(), committed.committedText->view().end(),
         expectedCommitted.begin(), expectedCommitted.end()),
         "on-screen key and commit publish one bounded final value");
     Check(!modal.active(), "committed modal releases its window");
@@ -272,7 +295,9 @@ int wmain() {
     const auto cleared = modal.Show(
         GetModuleHandleW(nullptr), owner, L"retained", L"Edit installed games", 8);
     actionDriver.join();
-    Check(cleared && cleared->empty(), "Clear and Commit produce one empty value");
+    Check(cleared.outcome == gba::input::TextEntryModalOutcome::Committed &&
+        cleared.committedText && cleared.committedText->empty(),
+        "Clear and Commit produce one empty value");
 
     std::thread cancelDriver([&] {
         Check(WaitUntil([&] { return modal.active(); }), "cancel modal becomes active");
@@ -281,9 +306,30 @@ int wmain() {
     const auto cancelled = modal.Show(
         GetModuleHandleW(nullptr), owner, L"retained", L"Search installed games", 8);
     cancelDriver.join();
-    Check(!cancelled, "cancel returns no committed text");
+    Check(cancelled.outcome == gba::input::TextEntryModalOutcome::Cancelled &&
+        !cancelled.committedText,
+        "controller cancel returns one typed outcome and no committed text");
     Check(GetFocus() == owner, "modal restores focus to its owner after cancellation");
     Check(!modal.active(), "cancelled modal releases its window");
+
+    std::thread closeDriver([&] {
+        Check(WaitUntil([&] { return modal.active(); }), "close modal becomes active");
+        HWND window{};
+        Check(WaitUntil([&] {
+            window = FindWindowW(
+                L"GameBarAlternative.TextEntryModal", L"Search installed games");
+            return window != nullptr;
+        }), "close modal window completes creation");
+        Check(PostMessageW(window, WM_CLOSE, 0, 0) != FALSE,
+            "native window close enters the modal terminal path");
+    });
+    const auto closed = modal.Show(
+        GetModuleHandleW(nullptr), owner, L"retained", L"Search installed games", 8);
+    closeDriver.join();
+    Check(closed.outcome == gba::input::TextEntryModalOutcome::Closed &&
+        !closed.committedText,
+        "window close remains distinct from controller cancel and commit");
+    Check(GetFocus() == owner, "window close restores focus to its owner");
 
     std::thread passwordDriver([&] {
         const auto comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -324,7 +370,9 @@ int wmain() {
     const auto protectedCancelled = modal.Show(
         GetModuleHandleW(nullptr), owner, L"", L"Password for test network", 63, true);
     passwordDriver.join();
-    Check(!protectedCancelled, "cancelled protected input publishes no secret");
+    Check(protectedCancelled.outcome == gba::input::TextEntryModalOutcome::Cancelled &&
+        !protectedCancelled.committedText,
+        "cancelled protected input publishes no secret");
     Check(!modal.active(), "protected modal releases its window");
     if (owner) DestroyWindow(owner);
     if (failures == 0) std::cout << "TextEntryModalTests passed\n";

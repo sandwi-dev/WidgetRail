@@ -124,6 +124,35 @@ ComPtr<IUIAutomationElement> FindByAutomationIdPrefix(
     return {};
 }
 
+std::wstring WindowText(const HWND window) {
+    const int length = window ? GetWindowTextLengthW(window) : 0;
+    std::wstring result(static_cast<std::size_t>(std::max(0, length)) + 1, L'\0');
+    if (length > 0) GetWindowTextW(window, result.data(), length + 1);
+    result.resize(static_cast<std::size_t>(std::max(0, length)));
+    return result;
+}
+
+void SendModalCancelKey(const HWND modal) {
+    DWORD_PTR ignored{};
+    Require(SendMessageTimeoutW(
+                modal, WM_KEYDOWN, VK_ESCAPE, 1,
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &ignored) != 0,
+        Win32Error("SendMessageTimeoutW(TextEntry Escape)"));
+}
+
+std::size_t CountOccurrences(
+    const std::string_view text,
+    const std::string_view value) {
+    if (value.empty()) return 0;
+    std::size_t count{};
+    std::size_t cursor{};
+    while ((cursor = text.find(value, cursor)) != std::string_view::npos) {
+        ++count;
+        cursor += value.size();
+    }
+    return count;
+}
+
 ComPtr<IUIAutomationElement> WaitForElement(
     IUIAutomation* automation,
     const HWND window,
@@ -1019,7 +1048,86 @@ void RunCustomPackMatrix(
                  "removal denial, invalid retention, and exact recovery passed\n";
 }
 
-void Run(const fs::path& installationPath, const fs::path& fixtureBridge) {
+void RunTextEntryCancel(
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge) {
+    RunningHost running(installationPath, fixtureBridge, "adoption\n");
+    ComPtr<IUIAutomation> automation;
+    Require(SUCCEEDED(CoCreateInstance(
+                CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
+        "Windows UI Automation client is unavailable for TextEntry proof.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        return ReadUtf8(running.installation.BackendDiagnosticPath()).find(
+            "items=2") != std::string::npos;
+    }), "The installed Game Launcher did not receive its stable app-library page.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        return !ProjectionRecords(running.installation.LogPath()).empty();
+    }), "The installed Game Launcher did not reach its stable production projection.");
+
+    const auto openModal = [&] {
+        auto search = WaitForElement(
+            automation.Get(), running.window, L"widget:game-launcher.search");
+        RequireInsideWindow(search.Get(), running.window);
+        FocusAndActivate(search.Get(), running.window, "game-launcher.search");
+        HWND modal{};
+        Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+            modal = LocateHostWindow(
+                running.host.Id(), L"GameBarAlternative.TextEntryModal");
+            return modal && IsWindowVisible(modal) &&
+                FindWindowExW(modal, nullptr, L"EDIT", nullptr);
+        }), "The focused installed Game Launcher search did not open the production modal.");
+        return modal;
+    };
+    const auto typeText = [](const HWND edit, const std::wstring_view text) {
+        auto value = WindowText(edit);
+        value.append(text);
+        Require(SetWindowTextW(edit, value.c_str()) != FALSE,
+            "The production native edit rejected the fixture text value.");
+    };
+
+    auto modal = openModal();
+    auto edit = FindWindowExW(modal, nullptr, L"EDIT", nullptr);
+    Require(edit && WindowText(edit).empty(),
+        "The initial production search modal did not start from its committed empty query.");
+    const auto queryCountBeforeCancel = CountOccurrences(
+        ReadUtf8(running.installation.BackendDiagnosticPath()), "query limit=");
+    constexpr std::wstring_view uncommittedQuery = L"UNCOMMITTED";
+    typeText(edit, uncommittedQuery);
+    Require(WindowText(edit) == uncommittedQuery,
+        "The production modal did not retain the uncommitted edit before cancellation.");
+    SendModalCancelKey(modal);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        ComPtr<IUIAutomationElement> focused;
+        return !IsWindow(modal) &&
+            CountOccurrences(log, "Text entry modal outcome=cancel ") == 1 &&
+            log.find(
+                "Text entry modal outcome=cancel action-dispatched=false "
+                "committed-value=preserved focus=game-launcher.search") !=
+                std::string::npos &&
+            SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+            focused && StringProperty(
+                focused.Get(), UIA_AutomationIdPropertyId) ==
+                L"widget:game-launcher.search";
+    }), "Cancel did not preserve the committed query and restore exact search focus once.");
+    Require(CountOccurrences(
+                ReadUtf8(running.installation.BackendDiagnosticPath()), "query limit=") ==
+            queryCountBeforeCancel,
+        "Cancel dispatched a Game Launcher search commit to the installed worker.");
+    running.Stop();
+    std::cout << "LauncherExperienceHostTests: installed TextEntry open/type/cancel, "
+                 "committed-query preservation, and exact focus restoration passed\n";
+}
+
+void Run(
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge,
+    const bool textEntryOnly) {
+    if (textEntryOnly) {
+        RunTextEntryCancel(installationPath, fixtureBridge);
+        return;
+    }
     ComPtr<IUIAutomation> automation;
     Require(SUCCEEDED(CoCreateInstance(
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
@@ -1035,10 +1143,13 @@ void Run(const fs::path& installationPath, const fs::path& fixtureBridge) {
 } // namespace
 
 int wmain(const int argc, wchar_t** argv) {
-    if (argc != 5 || std::wstring_view(argv[1]) != L"--installation" ||
+    const bool textEntryOnly = argc == 6 &&
+        std::wstring_view(argv[5]) == L"--text-entry-only";
+    if ((argc != 5 && !textEntryOnly) ||
+        std::wstring_view(argv[1]) != L"--installation" ||
         std::wstring_view(argv[3]) != L"--fixture-bridge") {
         std::cerr << "Usage: LauncherExperienceHostTests --installation <dir> "
-                     "--fixture-bridge <exe>\n";
+                     "--fixture-bridge <exe> [--text-entry-only]\n";
         return 1;
     }
     const auto initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -1047,7 +1158,7 @@ int wmain(const int argc, wchar_t** argv) {
         return 1;
     }
     try {
-        Run(fs::path(argv[2]), fs::path(argv[4]));
+        Run(fs::path(argv[2]), fs::path(argv[4]), textEntryOnly);
         std::cout << "LauncherExperienceHostTests: production host passed\n";
         CoUninitialize();
         return 0;

@@ -3986,3 +3986,23 @@ exist, and a terminal page exposes no continuation loop or footer substitution.
 Focused Release evidence passes Game Launcher 77/77. The dedicated installed
 generic-AppContainer exact-launch acceptance also passes with current SavedId
 resolution and launch revalidation.
+
+### Production TextEntry cancel and focus evidence (DLV-180)
+
+The native accessibility tree now projects an authored `TextEntry` as the same
+single stable actionable control used by controller A. UI Automation Focus and
+Invoke retain exact widget/runtime/snapshot/scope/action admission and open the
+existing host-owned modal; no managed widget or public protocol surface was
+added. Modal results distinguish failed open, cancel, window close, and commit.
+The host records only the sanitized outcome, whether an action was dispatched,
+whether the committed snapshot value remained unchanged, and the restored
+focus identity.
+
+Focused Release evidence passes `TextEntryModalTests`, `AccessibilityTreeTests`
+(17 checks), and the installed generic-worker `LauncherExperienceHostTests`
+TextEntry route. That production route focuses and invokes
+`widget:game-launcher.search`, types an uncommitted value into the native edit,
+cancels through Escape (the keyboard/controller-B modal path), observes exactly
+one cancel with `action-dispatched=false` and `committed-value=preserved`, sends
+no additional app-library query, and restores exact UIA focus to
+`widget:game-launcher.search`.

@@ -32,7 +32,10 @@ last-good rows cannot reach launch even if malformed input claims otherwise.
   controller input remains inside the host; the widget receives only one
   normalized committed value of at most 96 characters. A commits, B cancels
   without changing the query, X/backspace edits, Clear removes the query, and
-  focus returns to the search control after the modal closes.
+  focus returns to the exact `game-launcher.search` control after the modal
+  closes. The installed generic-worker host route also exposes that stable
+  search action through UI Automation; Escape/B cancel emits no commit or
+  provider query and keeps the prior committed query.
 - Favorites, recent-only, source, and the closed A–Z/Z–A/source sorts are provider queries,
   not filters over the retained widget window. Favorite filtering sends at
   most 128 opaque SavedIds; the broker resolves them against exact current

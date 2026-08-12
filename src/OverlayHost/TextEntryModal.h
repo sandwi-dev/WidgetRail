@@ -33,6 +33,18 @@ private:
 inline constexpr std::size_t TextEntryCharacterCount = 39;
 inline constexpr std::size_t TextEntryActionCount = 4;
 
+enum class TextEntryModalOutcome {
+    Failed,
+    Cancelled,
+    Closed,
+    Committed,
+};
+
+struct TextEntryModalResult final {
+    TextEntryModalOutcome outcome{TextEntryModalOutcome::Failed};
+    std::optional<SecureTextBuffer> committedText;
+};
+
 struct TextEntryModalLayout final {
     RECT windowBounds{};
     RECT editBounds{};
@@ -53,7 +65,7 @@ public:
     TextEntryModal(const TextEntryModal&) = delete;
     TextEntryModal& operator=(const TextEntryModal&) = delete;
 
-    [[nodiscard]] std::optional<SecureTextBuffer> Show(
+    [[nodiscard]] TextEntryModalResult Show(
         HINSTANCE instance,
         HWND owner,
         std::wstring_view value,
@@ -75,7 +87,7 @@ private:
     void CreateControls();
     void Append(wchar_t value);
     void Backspace();
-    void Complete(bool commit);
+    void Complete(TextEntryModalOutcome outcome);
     void MoveFocus(Direction direction);
 
     HINSTANCE instance_{};
@@ -91,6 +103,7 @@ private:
     UINT dpi_{96};
     TextEntryModalLayout layout_{};
     std::size_t focusIndex_{};
+    TextEntryModalOutcome outcome_{TextEntryModalOutcome::Failed};
     bool completed_{};
     bool password_{};
 };

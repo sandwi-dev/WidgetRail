@@ -1082,11 +1082,13 @@ std::optional<ResolvedAction> ResolveActionRequest(
     ResolvedAction resolved{request.kind, request.nodeId};
     if (request.kind == ActionKind::Focus) {
         if (node->kind != L"button" && node->kind != L"slider" &&
-            node->kind != L"actionSurface") return std::nullopt;
+            node->kind != L"actionSurface" && node->kind != L"textEntry")
+            return std::nullopt;
         return resolved;
     }
     if (request.kind == ActionKind::Invoke &&
-        (node->kind == L"button" || node->kind == L"actionSurface") &&
+        (node->kind == L"button" || node->kind == L"actionSurface" ||
+         node->kind == L"textEntry") &&
         !request.actionId.empty() && request.actionId == node->actionId) {
         resolved.protocolButton = L"A";
         return resolved;
