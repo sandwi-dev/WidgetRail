@@ -423,8 +423,10 @@ revalidates the exact current `Interactive` bundled Settings generation before
 publication. Success remains disabled and produces a semantic catalog reload.
 Cancel, stale origin, duplicate selection/version, changing or reparse-point
 source, and installer failure leave no newly admitted catalog state and return
-only a bounded path-free status. The visible Settings action is a separate
-consumer milestone.
+only a bounded path-free status. Settings → Installed widgets exposes that
+closed operation as **Install local widget**; the worker receives neither the
+selected path nor package-install authority, and the published package appears
+disabled for explicit review.
 
 ## Version selection and rollback
 
@@ -446,14 +448,17 @@ rollback require a disabled widget, preserve that disabled state, and require a
 separate review and `gbar enable` action afterward. There is no history stack:
 use `version select` to move forward to a newer installed version.
 
+For local packages, Settings → Installed widgets exposes the implemented
+host-owned file picker through **Install local widget**. It publishes a
+successful package disabled for review without giving the widget worker a path
+or general file-picker authority.
+
 ## Deliberately deferred
 
 - Publisher signature and certificate-chain verification
 - Online catalog metadata, release discovery, automatic updates, and revocation
 - Version removal and garbage collection of old versions (Settings and CLI
   exact-version selection/rollback are implemented)
-- The visible Settings action that invokes the implemented host-owned local
-  file picker/import prerequisite
 
 Until signing is implemented, successful structural validation proves package
 shape and archive containment—not publisher authenticity or benign behavior.

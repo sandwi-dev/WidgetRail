@@ -2898,6 +2898,19 @@ with C++ installed:
   implementation. This is scoped dirty-worktree evidence, not a canonical
   aggregate or a substitute for the user's next packaged visual check.
 
+- DLV-119 traces the accepted-Release **Media sessions could not be loaded**
+  recurrence to the widget's untyped exception fallback: the host recorded
+  current Now Playing snapshots but no transition-only broker/provider
+  diagnostic, so provider authority and transport protocol remain unchanged.
+  Now Playing projects a bounded `snapshot-read`, `subscription-open`, or
+  `subscription-read` stage plus a sanitized typed code, including safe
+  `request_timeout`, `request_canceled`, and `unexpected_failure` fallbacks.
+  Retry still owns one fresh Active generation; transient failure preserves
+  last-good rows and controls, and exception messages, paths, response bodies,
+  player identity, and process details remain excluded. Focused Release evidence
+  passes Now Playing 23/23, Widget SDK 88/88, Windows Media 13/13 (including one
+  sanitized live GSMTC probe), and the documentation contract across 59 files.
+
 - DLV-107 corrects the accepted DLV-025 composition alpha and motion contract.
   The overlay HWND is now one `WS_EX_NOREDIRECTIONBITMAP` transparent container;
   the existing Windows-10-compatible DirectComposition owner clears its
@@ -3013,9 +3026,14 @@ with C++ installed:
   | Package publication | Local installation was available only through CLI flows. | The bridge opens one locked non-reparse regular-file stream and uses the existing `WidgetCatalog` installer and catalog lock; successful publication remains disabled and emits one catalog revision. No worker receives the selected path. |
   | Verification | Native completion assertions added with DLV-112 used `assert` and disappeared under Release `/DNDEBUG`; no production caller seam was exercised. | Release-hard checks cover exact action admission, forged identities, generations, scope/action/source, lifecycle, repeat/cancel/stale operation handling, malformed/wrong-operation/path-bearing completion frames, and path-free results. Managed import-prefix and catalog scenarios cover invalid, duplicate, stale, cancellation, locked-source, reparse, disabled publication, and revision behavior. |
 
-  The visible **Install local widget** Settings control remains a subsequent
-  widgets-lane consumer; these milestones do not change Settings presentation,
-  auto-enable packages, add remote acquisition, or create a public capability.
+  DLV-113 adds the visible **Install local widget** consumer to Installed
+  Widgets. Its exact action/source/scope tuple is host-owned; direct or forged
+  worker actions remain inert. The controller-scroll presentation keeps B and
+  stable focus, explains disabled review and path isolation, and reloads a
+  host-published package through the existing activation boundary. The control
+  does not auto-enable packages, add remote acquisition, or create a public
+  capability. Focused Release evidence passes Settings 56/56, WidgetBridge
+  82/82, and the documentation contract across 59 Markdown files.
 
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`

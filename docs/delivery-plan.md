@@ -81,70 +81,21 @@ evidence plus the freshly launched accepted Release are the normal gate.
 Task identity: `widgets`
 Branch: `codex/impl-widgets`
 
-### DLV-113 — Add local widget installation to Settings
+### Current widgets assignment
 
-**State:** Assigned
-**Baseline:** accepted main `cff0d99`; first integrate that exact main at the
-clean DLV-117 boundary
-**Dependencies:** accepted DLV-112/116 private host-owned Settings import
-operation integrated through `d6f2780`
-**Owner:** widgets lane; Settings Installed Widgets presentation/state, focused
-managed tests, and directly affected Settings/package documentation
-**Concurrency:** managed Settings code only; no native picker/import/bridge,
-catalog installer, package policy, public community capability, renderer,
-compositor, or reviewer-document changes.
-
-**User-visible outcome:** Installed Widgets exposes one controller-accessible
-**Install local widget** action. A chosen `.gbarwidget` is installed disabled for
-review, while cancellation, busy, invalid, duplicate, stale, and failure results
-are understandable and never expose the selected path.
-
-**Objective/in scope:** render the exact action/source/input-scope contract
-owned by DLV-116; project busy and bounded path-free host feedback; refresh the
-installed inventory after a successful disabled publication; restore exact
-focus after cancel/failure/success; keep B and existing version-management
-behavior deterministic.
-
-**Out of scope:** native changes, generic file or package authority, worker-
-visible paths, auto-enable/consent, remote acquisition, signing, updates,
-rollback redesign, theme import, or package-policy duplication.
-
-**Acceptance:** cancel is quiet; repeated activation cannot open a second
-picker; one valid package appears disabled for review; duplicate/invalid/stale/
-transport failures are actionable and path-free; forged or ordinary Settings
-actions remain ordinary worker input; B, exact focus return, built-in/current
-version protection, and compact/standard/150% reachability remain correct.
-
-**Verification:** Tier 1 Settings action/state/navigation/layout and docs;
-Tier 2 production-shaped exact action to host operation to disabled inventory
-refresh, including cancel/repeat/stale/failure/path-free outcomes. No aggregate
-or capture.
-
-**Stop:** any native change, worker path/filesystem authority, auto-enable,
-generic picker capability, package-policy redesign, or conflicting public API.
+**State:** No Assigned item. Accepted DLV-113/119/122 is integrated through
+`4949f6e` and awaits the freshly packaged user's Settings picker and Now Playing
+recovery verdict. The remaining named widgets features require fresh live
+evidence, unsupported audio-endpoint authority, store APIs not established as
+supported consumer contracts, or authentication. Do not invent backend work to
+keep the lane busy.
 
 ### Widgets ready queue
 
-#### DLV-119 — Diagnose and correct the Now Playing load recurrence
-
-**State:** Ready after DLV-113
-**Owner/dependencies:** widgets lane; Now Playing/Media Sessions managed widget,
-existing typed provider/resource seams, focused tests, and affected docs.
-**Outcome/scope:** begin from the user's accepted-Release **Media sessions could
-not be loaded** recurrence. Correlate the newest accepted host and worker/provider
-logs before choosing the smallest owning seam. Preserve last-good sessions and
-Retry; distinguish no sessions from provider/transport/lifecycle failure; reject
-stale completion and avoid a parallel retry/task owner.
-**Acceptance/verification:** activation and Retry recover from the reproduced
-stage without restarting the overlay; safe visible state identifies a typed
-stage/code; healthy last-good rows remain usable during transient failure; no
-provider body/path leaks; focused resource, retry, lifecycle, transport-failure,
-and empty-state suites pass. No aggregate or capture. Stop for native protocol,
-provider authority, credentials, or an unreproduced root-cause guess.
-
-**Queue note:** further widgets work waits on fresh live results for the newly
-packaged Game Launcher details/clipping and media-session surfaces. Do not
-manufacture internal filler merely to reach three Ready items.
+**Queue note:** widgets work waits on fresh live results for the newly packaged
+Settings local install, Game Launcher details/clipping, and Now Playing stage/
+code recovery surfaces. The planner will insert any live correction before
+unrelated work; no speculative filler is authorized.
 
 ## Platform lane
 
@@ -255,6 +206,7 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 
 | Assignment | Accepted implementation | Integrated main | Visible/product result |
 | --- | --- | --- | --- |
+| DLV-113/119/122 | `0994809`, `670e01d`, and `6f604b8` | `4949f6e` | Settings exposes the exact host-owned local package picker with disabled review, while Now Playing adds safe stage/code diagnostics, Retry/activation recovery, and last-good retention; stale public install claims are removed. |
 | DLV-114/117 | `f285c9d` and `6a96727` | `cff0d99` | Game Launcher has an exact-ID controller details route and honest two-selection variant actions with committed feedback and deterministic return focus. |
 | DLV-112/115/116 | `1dd2dd5`, `5c66f16`, and `0e1810f` | `d6f2780` | Host-owned local package import is consumable only by exact bundled Settings, and reopened widget motion retires hidden composition work; live border/transition verdict remains. |
 | DLV-111 | `a1f008b` | `83c5c1f` | Settings now groups exact installed theme versions, protects built-in/current selections, selects older valid versions, and confirms atomic inactive-version retirement with CLI parity. |
@@ -264,7 +216,6 @@ gates, not permission to repeat backend work. Do not manufacture filler.
 | DLV-108/109 | `f51a983` and `5db3426` | `bc484f0` | Isolated named semantic scenarios and an optional deterministic lifecycle/action/fake-service test API. Coherent managed/runtime Release repackaged and relaunched. |
 | DLV-104/106 | `99e4932` and `f119a1f` | `1ef4666` and `dde4981` | Bounded Game Launcher collection viewport and atomic tray focus ownership. |
 | DLV-101/103 | `f27f4d7` and `f87631c` | `9c5de8e` | Full-application worker process trees and dependable Now Playing retry/last-good behavior. |
-| DLV-105 | `42bcf9c` | `d23db8b` | Explicit compact-tray overflow with shared controller/pointer/UIA order. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. After it exceeds 1,000, create one complete timestamped snapshot and

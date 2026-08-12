@@ -24,6 +24,19 @@ public enum MediaSessionsViewState
 /// </summary>
 public sealed class MediaSessionsWidget : Widget
 {
+    private enum FailureStage
+    {
+        SnapshotRead,
+        SubscriptionOpen,
+        SubscriptionRead,
+    }
+
+    private sealed record FailureProjection(
+        MediaSessionsViewState State,
+        string Code,
+        string LoadStatus,
+        string RetainedStatus);
+
     private static readonly WidgetQuickActionCapability DashboardMediaControl = new(
         WidgetMediaCapabilities.Control.CapabilityId,
         WidgetMediaCapabilities.Control.OperationId);
@@ -519,15 +532,16 @@ public sealed class MediaSessionsWidget : Widget
                 }
                 SetLiveUpdateFailure(
                     new WidgetCapabilityException("channel_closed", "Media service disconnected."),
-                    generation);
+                    generation,
+                    FailureStage.SubscriptionRead);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception exception)
             {
                 if (hasCurrentSnapshot)
-                    SetLiveUpdateFailure(exception, generation);
+                    SetLiveUpdateFailure(exception, generation, FailureStage.SubscriptionRead);
                 else
-                    SetLoadFailure(exception, generation);
+                    SetLoadFailure(exception, generation, FailureStage.SnapshotRead);
             }
         }
     }
@@ -543,10 +557,13 @@ public sealed class MediaSessionsWidget : Widget
                 .ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             Apply(sessions, generation, liveUpdatesAvailable: false);
-            SetLiveUpdateFailure(subscriptionError, generation);
+            SetLiveUpdateFailure(subscriptionError, generation, FailureStage.SubscriptionOpen);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (Exception readError) { SetLoadFailure(readError, generation); }
+        catch (Exception readError)
+        {
+            SetLoadFailure(readError, generation, FailureStage.SnapshotRead);
+        }
     }
 
     private void Apply(
@@ -699,10 +716,12 @@ public sealed class MediaSessionsWidget : Widget
         return new WidgetView(root, "media.retry", Surface: CompactSurface);
     }
 
-    private void SetLoadFailure(Exception exception, long generation)
+    private void SetLoadFailure(
+        Exception exception,
+        long generation,
+        FailureStage stage)
     {
-        var (state, status) = ClassifyFailure(exception, liveUpdatesOnly: false);
-        var (_, retainedStatus) = ClassifyFailure(exception, liveUpdatesOnly: true);
+        var failure = ClassifyFailure(exception);
         _model.Update(current =>
         {
             if (Interlocked.Read(ref _runGeneration) != generation) return current;
@@ -710,15 +729,15 @@ public sealed class MediaSessionsWidget : Widget
                 return current with
                 {
                     ViewState = MediaSessionsViewState.Ready,
-                    Status = retainedStatus,
+                    Status = FormatFailure(failure.RetainedStatus, stage, failure.Code),
                     PendingCommand = null,
                     LiveUpdatesAvailable = false,
                     ReloadInFlight = false,
                 };
             return current with
             {
-                ViewState = state,
-                Status = status,
+                ViewState = failure.State,
+                Status = FormatFailure(failure.LoadStatus, stage, failure.Code),
                 Sessions = [],
                 PendingCommand = null,
                 LiveUpdatesAvailable = false,
@@ -727,9 +746,12 @@ public sealed class MediaSessionsWidget : Widget
         });
     }
 
-    private void SetLiveUpdateFailure(Exception exception, long generation)
+    private void SetLiveUpdateFailure(
+        Exception exception,
+        long generation,
+        FailureStage stage)
     {
-        var (_, status) = ClassifyFailure(exception, liveUpdatesOnly: true);
+        var failure = ClassifyFailure(exception);
         _model.Update(state =>
         {
             if (Interlocked.Read(ref _runGeneration) != generation) return state;
@@ -737,50 +759,78 @@ public sealed class MediaSessionsWidget : Widget
             {
                 LiveUpdatesAvailable = false,
                 Status = state.Sessions.Count == 0
-                    ? "No active Windows media sessions · live updates unavailable"
-                    : status,
+                    ? FormatFailure(
+                        "No active Windows media sessions · live updates unavailable",
+                        stage,
+                        failure.Code)
+                    : FormatFailure(failure.RetainedStatus, stage, failure.Code),
             };
         });
     }
 
-    private static (MediaSessionsViewState State, string Status) ClassifyFailure(
-        Exception exception,
-        bool liveUpdatesOnly)
+    private static FailureProjection ClassifyFailure(Exception exception)
     {
         if (exception is WidgetCapabilityUnavailableException)
-            return (MediaSessionsViewState.ServiceUnavailable,
-                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
-                    "Media service unavailable");
+            return new(
+                MediaSessionsViewState.ServiceUnavailable,
+                "capability_unavailable",
+                "Media service unavailable",
+                "Current media shown · live updates unavailable");
+        if (exception is TimeoutException)
+            return new(
+                MediaSessionsViewState.ChannelClosed,
+                "request_timeout",
+                "Media request timed out",
+                "Current media shown · refresh timed out");
+        if (exception is OperationCanceledException)
+            return new(
+                MediaSessionsViewState.ChannelClosed,
+                "request_canceled",
+                "Media request was canceled",
+                "Current media shown · refresh was canceled");
         if (exception is not WidgetCapabilityException capability)
-            return (MediaSessionsViewState.Error,
-                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
-                    "Media sessions could not be loaded");
+            return new(
+                MediaSessionsViewState.Error,
+                "unexpected_failure",
+                "Media sessions could not be loaded",
+                "Current media shown · live updates unavailable");
         return capability.ErrorCode switch
         {
             "permission_denied" or "capability_not_declared" or "capability_revoked" =>
-                (MediaSessionsViewState.PermissionDenied,
-                    liveUpdatesOnly ? "Current media shown · live update access is off" :
-                        "Media access is off"),
-            "lifecycle_denied" => (MediaSessionsViewState.LifecycleDenied,
-                liveUpdatesOnly ? "Current media shown · live updates are paused" :
-                    "Media access is paused"),
+                new(MediaSessionsViewState.PermissionDenied, capability.ErrorCode,
+                    "Media access is off", "Current media shown · live update access is off"),
+            "lifecycle_denied" => new(MediaSessionsViewState.LifecycleDenied,
+                "lifecycle_denied", "Media access is paused",
+                "Current media shown · live updates are paused"),
             "channel_closed" or "request_canceled" or "request_limit" =>
-                (MediaSessionsViewState.ChannelClosed,
-                liveUpdatesOnly ? "Current media shown · live updates disconnected" :
-                    "Media service disconnected"),
-            "platform_unavailable" => (MediaSessionsViewState.ServiceUnavailable,
-                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
-                    "Windows media controls unavailable"),
+                new(MediaSessionsViewState.ChannelClosed, capability.ErrorCode,
+                    "Media service disconnected",
+                    "Current media shown · live updates disconnected"),
+            "platform_unavailable" => new(MediaSessionsViewState.ServiceUnavailable,
+                "platform_unavailable", "Windows media controls unavailable",
+                "Current media shown · live updates unavailable"),
             "malformed_event" or "malformed_response" or "unsupported_protocol" or
                 "protocol_violation" or "invalid_backend_data" or "response_too_large" =>
-                (MediaSessionsViewState.Error,
-                    liveUpdatesOnly ? "Current media shown · live update response was invalid" :
-                        "Media response was invalid"),
-            _ => (MediaSessionsViewState.Error,
-                liveUpdatesOnly ? "Current media shown · live updates unavailable" :
-                    "Media sessions could not be loaded"),
+                new(MediaSessionsViewState.Error, capability.ErrorCode,
+                    "Media response was invalid",
+                    "Current media shown · live update response was invalid"),
+            _ => new(MediaSessionsViewState.Error, "capability_failure",
+                "Media sessions could not be loaded",
+                "Current media shown · live updates unavailable"),
         };
     }
+
+    private static string FormatFailure(
+        string message,
+        FailureStage stage,
+        string code) =>
+        $"{message} · {stage switch
+        {
+            FailureStage.SnapshotRead => "snapshot-read",
+            FailureStage.SubscriptionOpen => "subscription-open",
+            FailureStage.SubscriptionRead => "subscription-read",
+            _ => "unknown-stage",
+        }}/{code}";
 
     private static string SessionElementId(string opaqueId)
     {

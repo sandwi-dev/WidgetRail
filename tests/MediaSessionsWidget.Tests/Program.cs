@@ -22,6 +22,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Try again starts a fresh read and subscription attempt", RetryStartsFreshAttempt),
     ("Try again cannot cancel its own in-flight native reload", RetryDoesNotRestartWhileLoading),
     ("A failed refresh preserves last-good sessions and offers reconnect", RefreshFailurePreservesLastGood),
+    ("A new active lifetime recovers an untyped snapshot failure", ActivationRecoversUntypedFailure),
+    ("Untyped request failures expose a safe stage and recover through Retry", UntypedFailureIsDiagnosableAndRecoverable),
+    ("Untyped refresh failure retains last-good media with a safe stage", UntypedRefreshFailureRetainsLastGood),
     ("Active cancellation rejects a cancellation-ignoring stale snapshot", StaleSnapshotCannotPublishAfterDeactivation),
     ("A successful empty snapshot remains an empty state without live updates", EmptySnapshotIsSuccessful),
     ("Capability and channel failures render recoverable states", FailureStates),
@@ -357,6 +360,8 @@ static async Task SubscriptionFailurePreservesSnapshot()
     Assert.Equal(1, fake.SubscriptionCalls);
     Assert.False(widget.LiveUpdatesAvailable);
     Assert.True(widget.Status.Contains("live updates disconnected", StringComparison.Ordinal));
+    Assert.True(widget.Status.Contains(
+        "subscription-open/channel_closed", StringComparison.Ordinal));
     await Background(widget);
 }
 
@@ -374,6 +379,8 @@ static async Task ChannelFailurePreservesSnapshot()
     Assert.Equal(MediaSessionsViewState.Ready, widget.ViewState);
     Assert.Equal("one", widget.Sessions.Single().SessionId);
     Assert.False(widget.LiveUpdatesAvailable);
+    Assert.True(widget.Status.Contains(
+        "subscription-read/malformed_event", StringComparison.Ordinal));
     await Background(widget);
 }
 
@@ -474,6 +481,78 @@ static async Task RefreshFailurePreservesLastGood()
     await Background(widget);
 }
 
+static async Task ActivationRecoversUntypedFailure()
+{
+    var fake = new FakeMediaHost
+    {
+        ReadException = new InvalidOperationException("first active lifetime failed"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Error);
+    await Background(widget);
+
+    fake.ReadException = null;
+    fake.Sessions = [Session("activation-recovered", current: true)];
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    Assert.Equal("activation-recovered", widget.Sessions.Single().SessionId);
+    Assert.Equal(2, fake.GetCalls);
+    Assert.Equal(2, fake.SubscriptionCalls);
+    await Background(widget);
+}
+
+static async Task UntypedFailureIsDiagnosableAndRecoverable()
+{
+    var fake = new FakeMediaHost
+    {
+        ReadException = new InvalidOperationException("provider body C:\\private\\session.json"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Error);
+    Assert.True(widget.Status.Contains(
+        "snapshot-read/unexpected_failure", StringComparison.Ordinal));
+    Assert.False(widget.Status.Contains("private", StringComparison.OrdinalIgnoreCase));
+    Assert.False(widget.Status.Contains('\\'));
+
+    fake.ReadException = null;
+    fake.Sessions = [Session("recovered", current: true)];
+    await widget.OnActionAsync(new("media.retry", "media.retry"));
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+    Assert.Equal("recovered", widget.Sessions.Single().SessionId);
+    Assert.Equal(2, fake.GetCalls);
+    Assert.Equal(2, fake.SubscriptionCalls);
+    await Background(widget);
+}
+
+static async Task UntypedRefreshFailureRetainsLastGood()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("healthy", current: true)],
+        SubscriptionReadException = new WidgetCapabilityException(
+            "channel_closed", "initial channel closed"),
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready &&
+        !widget.LiveUpdatesAvailable);
+
+    fake.SubscriptionReadException = null;
+    fake.SubscriptionOpenException = new TimeoutException("C:\\private\\provider.log");
+    fake.ReadException = new TimeoutException("C:\\private\\provider.log");
+    await widget.OnActionAsync(new("media.retry", "media.retry.live"));
+    await WaitUntil(() => fake.GetCalls == 2 &&
+        widget.Status.Contains("snapshot-read/request_timeout", StringComparison.Ordinal));
+    Assert.Equal(MediaSessionsViewState.Ready, widget.ViewState);
+    Assert.Equal("healthy", widget.Sessions.Single().SessionId);
+    Assert.False(widget.Status.Contains("private", StringComparison.OrdinalIgnoreCase));
+    Assert.True(Nodes(widget.RenderSnapshot("media.untyped-refresh", 1).Root)
+        .Any(node => node.Id == "media.play-toggle"));
+    await Background(widget);
+}
+
 static async Task StaleSnapshotCannotPublishAfterDeactivation()
 {
     var pending = new TaskCompletionSource<IReadOnlyList<WidgetMediaSession>>(
@@ -533,6 +612,8 @@ static async Task FailureStates()
         var widget = Create(fake);
         await Visible(widget);
         await WaitUntil(() => widget.ViewState == state);
+        Assert.True(widget.Status.Contains(
+            $"snapshot-read/{error}", StringComparison.Ordinal));
         Assert.True(Nodes(widget.RenderSnapshot("media.failure", 1).Root)
             .Any(node => node.ActionId == "media.retry"));
         await Background(widget);

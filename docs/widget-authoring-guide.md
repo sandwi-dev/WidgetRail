@@ -1027,6 +1027,13 @@ commands, immediately projects Play/Pause, retains sibling control presentation,
 and rolls back the affected session only when the provider snapshot revision
 still matches.
 
+Its Active-lifetime read/subscription owner also keeps failure provenance at the
+consumer boundary. Safe status distinguishes `snapshot-read`,
+`subscription-open`, and `subscription-read`, followed by a bounded typed code.
+Provider text, filesystem paths, media identities, and response bodies are
+never projected. Retry starts a fresh generation, while a transient refresh
+keeps last-good sessions and their controls available.
+
 ### Non-paged resources
 
 Create a `WidgetResource<TValue>` once when one provider read produces one

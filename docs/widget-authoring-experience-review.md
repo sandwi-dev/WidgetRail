@@ -799,6 +799,14 @@ package, share, install, update, roll back, and remove are supported manual
 operations. The remaining ecosystem gaps are automated discovery and verified
 publisher trust, not the absence of a GitHub lifecycle.
 
+Accepted DLV-113/122 closes one user-side local-install friction point without
+expanding ordinary widget authority. Settings → Installed widgets now invokes
+one host-owned `.gbarwidget` picker, publishes a validated package disabled for
+review, and never sends the selected path or generic file authority to the
+worker. This does not solve author discovery, remote graphical acquisition,
+publisher signing, automatic updates, or marketplace trust, but recipients no
+longer need the CLI merely to choose and stage a local package.
+
 The workflow still asks too much of both authors and users. Authors have no
 supported public SDK package/template feed or signing command. They must arrange
 an independent authenticated channel for the digest and explain why a GitHub
