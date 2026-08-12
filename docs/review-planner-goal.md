@@ -151,15 +151,22 @@ Every snapshot states that it is historical evidence, links back to the active
 document, and is not implementation authority.
 
 At every heartbeat and accepted integration, inspect active reviewer-document
-size and relevance:
+size and relevance, but do not manufacture small history files:
 
-- Keep `docs/delivery-plan.md` below roughly 1,500 lines and normally below
-  1,000. It contains only the live execution protocol, current Assigned/Ready
-  work, integration dependencies, blockers, verification debt, and a small
-  recent-acceptance table.
-- Before the delivery plan exceeds that budget, move its complete current state
-  to `docs/history/delivery-plan/<timestamp>.md`, then compact the live file.
-  Preserve active assignment wording and dependencies exactly.
+- `docs/delivery-plan.md` contains only the live execution protocol, current
+  Assigned/Ready work, integration dependencies, blockers, verification debt,
+  and a small recent-acceptance table.
+- Compact an active operational reviewer document only after it exceeds 1,000
+  physical lines. Crossing 1,000 lines is the trigger, not a soft target and
+  not permission to create an hourly or per-integration snapshot below the
+  threshold.
+- When triggered, create one complete timestamped snapshot under the matching
+  `docs/history/<document-name>/` directory and compact the active file to no
+  more than 500 physical lines when practical. Preserve active assignment
+  wording and dependencies exactly.
+- Do not create incremental, delta-only, or micro-snapshots merely because a
+  heartbeat ran, an integration completed, or the file grew modestly while it
+  remains at or below 1,000 lines.
 - Keep no more than ten recent accepted milestones in the live delivery plan.
   Older closing commits and detailed evidence belong in the timestamp snapshot.
 - Apply the same pattern to reviewer-owned issue/review/roadmap documents when
@@ -239,6 +246,12 @@ On every continuation, perform the following loop in order:
 - Inspect both implementation task statuses with compact waits/snapshots.
 - Inspect each branch tip, recent DLV commits, worktree cleanliness, and current
   assignment.
+- For every user-reported regression, inspect the latest accepted OverlayHost
+  session log and directly affected worker/provider logs when that surface can
+  emit relevant lifecycle, input, transition, capability, or failure evidence.
+  Correlate the exact PID/session and timestamp when possible. If the visible
+  failure has no typed diagnostic, record that observability gap in the
+  assignment instead of inventing a root cause from the screenshot.
 - Detect whether a task is active, completed, awaiting review, blocked, or has
   incorrectly crossed a lane/scope boundary.
 - Confirm that at least one active or next executable assignment has a named

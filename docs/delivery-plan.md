@@ -203,9 +203,129 @@ authority, removing a quota permits Job escape or host allocation growth, or
 the change requires native compositor work. Report the exact prerequisite
 instead of restoring the prototype quota.
 
-**Queue note:** No later widgets item is Ready because DLV-101 may reveal a
-separate scalable-storage prerequisite. Do not manufacture speculative
-successors before that evidence exists.
+### DLV-103 — Restore dependable Media Sessions loading and retry
+
+**State:** Ready after DLV-101 and the planner control-plane merge
+**Baseline:** accepted DLV-101 widgets boundary plus the planner commit that
+introduces this assignment
+**Dependencies:** current `MediaSessionsWidget`, `WidgetMediaService`, managed
+PlatformBroker, and WindowsMediaProvider contracts
+**Owner:** widgets lane; managed Media Sessions lifecycle/retry policy, typed
+capability failure propagation, Windows media-provider boundary, diagnostics,
+and directly affected public documentation
+**Concurrency:** Begins only after DLV-101 commits. May run while platform work
+continues. Do not change native rendering, tray/navigation, DLV-025 compositor
+ownership, or public capability authority.
+
+**Visible outcome:** Now Playing loads current Windows media sessions again, or
+shows the specific actionable empty/unavailable state. `Try again` performs one
+real current-generation reload instead of leaving the generic
+`Media sessions could not be loaded` regression.
+
+**Reproduction evidence:** The accepted packaged Release displayed the generic
+error card while its presentation remained admitted and repainting. The current
+OverlayHost log records Media Sessions presentation and retry paints but does
+not record the typed underlying provider/capability error, so the screenshot
+cannot be correlated to a diagnosable failure code.
+
+**Objective:** Reproduce the installed/package path, identify and fix the
+managed load or provider lifecycle regression, preserve last-good sessions on a
+transient refresh failure, and make every terminal failure diagnosable without
+exposing app identity, process details, provider bodies, or credentials.
+
+**In scope:** initial activation, worker/provider readiness, query and changed-
+event subscription ordering, retry single-flight, generation/cancellation,
+channel replacement, service unavailable, permission/lifecycle denial,
+malformed response, transient provider failure, zero-session success, last-good
+refresh, one bounded typed diagnostic per failure transition, and the installed
+Release package route. Inspect whether failure classification currently loses
+the originating error before changing user copy.
+
+**Out of scope:** Spotify/YT Music authentication, native media rendering,
+ambient process inspection, exposing player identity on failures, periodic
+polling as a retry substitute, broad capability redesign, screenshots, or the
+canonical aggregate.
+
+**Acceptance:** an available provider returns and updates sessions; no sessions
+is a successful empty state rather than an error; retry starts exactly one
+current-generation load and recovers after a transient/channel failure; stale
+loads/events cannot replace the current generation; a refresh failure retains
+last-good sessions with an accurate status; terminal failures map to their
+specific safe state; the log records a bounded correlation-safe error code and
+owning stage; deactivation/disposal drains subscription and retry work.
+
+**Verification:** Tier 1 MediaSessionsWidget, WidgetSdk media service,
+PlatformBroker/WindowsMediaProvider, and documentation suites. Tier 2 uses the
+smallest installed worker/provider fixture for success, empty, transient fail ->
+retry success, channel replacement, stale completion, and teardown. Build the
+affected Release package; no live account, screenshot, or aggregate.
+
+**Stop:** root cause is native input/rendering, requires new OS authority or
+player/process enumeration, or needs a public capability/protocol change. Report
+the exact failing stage and preserve the safe error state for a serialized
+planner assignment.
+
+### DLV-104 — Make Game Launcher content fit and scroll without clipping
+
+**State:** Ready after DLV-103
+**Baseline:** accepted DLV-103 widgets boundary
+**Dependencies:** current Game Launcher wide surface, responsive grid,
+`game-launcher.library.scroll`, shared SDK layout components, and accepted
+DLV-100 TextEntry route
+**Owner:** widgets lane lead; Game Launcher presentation hierarchy, responsive
+composition, scroll ownership/identity, styles, semantic fixtures, and only the
+smallest shared managed SDK correction proved necessary by a second consumer
+**Concurrency:** Do not touch native compositor, native tray layout, trusted
+artwork loading, or DLV-105/DLV-106. If the emitted tree and bounds are correct
+but the native layout clips them, stop with evidence for a platform correction
+instead of adding widget-specific offsets.
+
+**Visible outcome:** Game Launcher shows its complete header, source status,
+search/filter controls, grid viewport, actions, and footer at supported sizes;
+no top labels, tile rows, or help text are cut off or overlap the tray.
+
+**Reproduction evidence:** The user-reported live wide Game Launcher clipped
+the top title/source region, cut the lower grid row, and placed guidance outside
+the content panel. The current presentation composes header, source status,
+query controls, and a nested library scroll as one root stack with a fixed
+980x700 preferred surface, so both managed measure intent and native viewport
+evidence must be separated before choosing a fix.
+
+**Objective:** Give fixed chrome and the collection viewport explicit bounded
+ownership across runtime size/scale changes without increasing preferred height
+until everything happens to fit and without wrapping the entire app in a second
+ambiguous scroll surface.
+
+**In scope:** library/add/running/hidden/loading/error/warm routes; compact,
+standard, wide, minimum, and accessibility-scale envelopes; fixed header/query/
+source regions; grid viewport and page controls; root versus nested scroll
+identity; initial/restored focus visibility; route change, refresh, resize, and
+widget-cycle behavior; text wrapping; bottom guidance/tray separation; emitted
+semantic bounds and native-consumed layout evidence for the same snapshot.
+
+**Out of scope:** artwork availability (DLV-102), provider discovery, launch or
+persistence policy, decorative redesign, per-widget native offsets, unbounded
+preferred height, capture-harness work, or aggregate verification.
+
+**Acceptance:** every essential region is visible or predictably reachable at
+the documented surface matrix; fixed chrome does not scroll away accidentally;
+the collection alone owns bounded vertical scrolling; no clipped text/tiles or
+footer/tray overlap occurs at top, middle, or end; focus remains on-screen and
+stable across paging/resize/route changes; content does not auto-offset on
+reopen; no duplicate responsive tree or special native Game Launcher branch is
+introduced.
+
+**Verification:** Tier 1 GameLauncherWidget and directly affected WidgetSdk
+layout/semantic tests. Tier 2 uses production-shaped large library snapshots at
+minimum/standard/wide sizes and 100/125/150% scale, exercising first/middle/
+last focus, paging, route changes, resize, and reopen. Assert semantic bounds,
+reachability, scroll ownership, and footer/tray separation; build the affected
+Release package. Live visual confirmation remains with the user.
+
+**Stop:** correct behavior requires changing native layout semantics or surface
+placement, shared component semantics would break another consumer, or the
+only passing approach is a larger fixed surface. Return the exact emitted-tree
+and native-bounds discrepancy to the planner.
 
 ## Platform lane
 
@@ -275,10 +395,128 @@ presentation owner, public protocol/threat-model change, or user-only physical
 evidence. A surface that cannot coordinate committed content with HWND geometry
 is non-integrable evidence.
 
+### DLV-105 — Keep every widget reachable in a narrow icon tray
+
+**State:** Ready after DLV-025; first platform follow-up
+**Baseline:** accepted DLV-025 platform boundary plus the planner commit that
+introduces this assignment
+**Dependencies:** host-owned tray catalog/order/selection, `TrayLayout`, host
+accessibility tree, focus/navigation, placement bands, and runtime extent
+changes
+**Owner:** platform lane; native tray measurement/overflow policy, controller
+navigation, hit testing, UIA semantics, theme/scale adaptation, and directly
+affected native documentation
+**Concurrency:** Begins only after DLV-025 commits. Do not change managed widget
+catalog persistence/order, widget surface hints, Game Launcher layout, or public
+widget APIs.
+
+**Visible outcome:** Switching to a small widget no longer makes installed
+widgets silently disappear from the icon tray. Every enabled widget remains
+visibly represented or has an explicit, controller-reachable overflow page.
+
+**Reproduction evidence:** The user-reported live Audio Mixer surface displayed
+fewer tray icons than the larger Game Launcher surface. Current `TrayLayout`
+computes `maximumVisible` from the active surface width, takes only that many
+items, and exposes no visible overflow affordance; the catalog itself remains
+larger.
+
+**Objective:** Make tray capacity a deliberate responsive navigation policy,
+not silent catalog truncation tied to the active widget's preferred width.
+
+**In scope:** compact/standard/wide widths; 100/125/150% scale; add/remove/
+reorder; selected-item visibility; deterministic window/page movement; explicit
+previous/next or count/overflow affordance when all tiles cannot fit; wrap
+policy decision; controller/keyboard/hit-test equivalence; UIA set size,
+position, ordering, selection, and off-page reachability; runtime widget-size
+transitions; tray/footer bounds and theme spacing.
+
+**Out of scope:** forcing every widget panel to a larger minimum width, deleting
+or disabling widgets, icon artwork changes, managed catalog policy, per-widget
+width exceptions, decorative animation, DLV-102 image fallback, screenshots,
+or aggregate verification.
+
+**Acceptance:** changing the active widget width never removes a catalog item
+without an explicit overflow representation; Left/Right reaches every enabled
+widget in stable catalog order; the selected item is always visible; moving
+between overflow windows/pages is announced and does not activate content;
+reorder/add/remove preserve valid selection; pointer hit testing and UIA match
+the visible window; no tile/footer overlap or sub-minimum unreadable scaling;
+no per-widget special case.
+
+**Verification:** Tier 1 TrayLayout, OverlayState/controller, HostAccessibility,
+placement, and affected host Release suites. Exercise 1, exact-fit, exact-fit+1,
+large catalog, first/middle/last selection, compact-to-wide-to-compact,
+100/125/150% scale, add/remove/reorder, pointer, keyboard, and controller paths.
+Build OverlayHost Release; no aggregate or capture harness.
+
+**Stop:** a correct accessible overflow model requires changing persistent
+catalog/order semantics, the product must choose between materially different
+wrap/page interaction models not resolved by existing controller principles,
+or DLV-025 leaves tray geometry without one stable committed width.
+
+### DLV-106 — Keep tray cycling out of outgoing widget focus
+
+**State:** Conditional Ready after DLV-105; execute only if the accepted
+DLV-025 packaged path still reproduces, otherwise report passing evidence and
+continue directly to DLV-102 without task-specific edits
+**Baseline:** accepted DLV-105 platform boundary
+**Dependencies:** accepted DLV-025 presentation semantics, OverlayState tray
+focus region, controller/keyboard routing, retained-content transition path,
+declarative focus state, and accessibility publication
+**Owner:** platform lane; native input authority and focus-state commit ordering
+during tray selection/identity transitions
+**Concurrency:** Do not change Audio Mixer widget links/actions, Game Launcher
+focus graph, managed snapshots, tray overflow semantics, or compositor design.
+
+**Visible outcome:** Pressing Left while Audio Mixer is selected in the icon
+tray changes directly to the previous tray widget. The outgoing master-volume
+slider never receives or briefly paints focus.
+
+**Reproduction evidence:** The user observed the master slider focus for less
+than a second before Game Launcher became active. Recent logs show tray-driven
+identity changes retaining and painting outgoing Audio Mixer content as
+`semantics=inert` until the destination snapshot arrives, but they do not record
+the transient visual focus owner; the correction must prove render focus,
+input authority, and UIA focus agree throughout the interval.
+
+**Objective:** Commit tray selection and focus-region authority atomically
+before any outgoing widget navigation/focus mutation, and keep retained visual
+content inert and unfocused until replacement without introducing a blank
+transition.
+
+**In scope:** held/repeated Left and Right; D-pad, keyboard, and analog edge;
+tray focus versus widget focus; outgoing selected/focused style invalidation;
+retained-content presentation; destination pending/admitted/failure; rapid
+reversal; same-extent and changed-extent switches; UIA focus events; logging of
+input owner, selected tray ID, rendered content ID, and semantic focus owner in
+the bounded transition fixture.
+
+**Out of scope:** changing Audio Mixer navigation graph, disabling retained
+content, introducing delays, changing tray order/wrap, compositor replacement,
+per-widget focus exceptions, screenshots, or aggregate verification.
+
+**Acceptance:** one tray Left/Right input changes exactly one tray selection and
+never dispatches widget navigation; outgoing content may remain visible but
+shows no widget focus and emits no widget UIA focus; destination receives focus
+only after explicit entry with Up/A; repeat/reversal remains deterministic;
+keyboard/controller paths match; failure or slow startup leaves focus on the
+selected tray item; no blank frame or stale interactive semantics.
+
+**Verification:** Tier 1 OverlayState, ControllerNavigation/InputRouter,
+declarative focus, HostAccessibility, transition-targeting, and host Release
+suites. Tier 2 uses a production-shaped Audio Mixer -> Game Launcher slow-
+destination fixture and asserts every time-ordered selection, render, semantic,
+and UIA focus state. Build OverlayHost Release; live visual confirmation remains
+with the user.
+
+**Stop:** the regression is absent on the accepted DLV-025 package, correction
+requires changing managed widget focus links, or presentation/input authority
+cannot be made atomic within the accepted single-owner compositor design.
+
 ### DLV-102 — Fall back cleanly when trusted app artwork is unavailable
 
-**State:** Ready after DLV-025
-**Baseline:** accepted DLV-025 platform boundary plus integrated DLV-100 main
+**State:** Ready after DLV-105 and the conditional DLV-106 gate
+**Baseline:** accepted DLV-105 platform boundary plus integrated DLV-100 main
 **Dependencies:** accepted DLV-094/096/098/099 lazy-artwork ownership and the
 existing trusted-artwork cache/renderer contract
 **Owner:** native trusted-artwork result/cache state, shared Image/AppTile
@@ -341,10 +579,11 @@ contract change, failure identity is not available without crossing provider
 authority, or the change would add unbounded host state. Preserve evidence for
 a serialized contract assignment rather than adding widget-specific behavior.
 
-**Queue note:** DLV-102 is the first Ready platform item after DLV-025 because it
-is a reproduced visible regression. DLV-033 remains dependency-blocked on the
-accepted compositor result and is internal; DLV-062 remains blocked by its
-material resource gate.
+**Queue note:** DLV-105 is first after DLV-025 because silent tray omission can
+make widgets unreachable. DLV-106 then closes or disproves the exact tray-focus
+regression on the accepted compositor path. DLV-102 remains the next visible
+platform correction. DLV-033 is dependency-blocked and internal; DLV-062
+remains blocked by its material resource gate.
 
 ## Integration queue
 
@@ -405,5 +644,6 @@ Keep only the latest meaningful integrated delta here.
 | DLV-078 | `6d30f5e` | `a072d6f` | Prior admitted content remains visible through a cold destination start while stale authority is revoked. |
 
 After each accepted integration, retain only enough current evidence to select
-and review the next work. Create a new timestamped snapshot before this live
-file exceeds the context budget in the planner goal.
+and review the next work. Do not create another snapshot while this live file
+has 1,000 or fewer physical lines; after it exceeds 1,000, create one complete
+timestamped snapshot and compact it according to the planner goal.
