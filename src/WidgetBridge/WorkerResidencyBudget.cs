@@ -5,30 +5,26 @@ namespace GameBarAlternative.WidgetBridge;
 public sealed record WorkerResidencyBudgetOptions
 {
     public const int DefaultMaximumApplicationWorkers = 8;
-    public const int DefaultMaximumApplicationMemoryMb = 512;
 
     public int MaximumApplicationWorkers { get; init; } = DefaultMaximumApplicationWorkers;
-    public int MaximumApplicationMemoryMb { get; init; } = DefaultMaximumApplicationMemoryMb;
 
     internal void Validate()
     {
         if (MaximumApplicationWorkers is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumApplicationWorkers));
-        if (MaximumApplicationMemoryMb is < 16 or > 16_384)
-            throw new ArgumentOutOfRangeException(nameof(MaximumApplicationMemoryMb));
     }
 }
 
 public readonly record struct WorkerResidencyBudgetSnapshot(
     int ApplicationWorkers,
-    int ApplicationMemoryMb,
+    long ApplicationAdvisoryMemoryMb,
     int MaximumApplicationWorkers,
-    int MaximumApplicationMemoryMb,
     int ControlPlaneWorkers,
-    int ControlPlaneMemoryMb)
+    long ControlPlaneAdvisoryMemoryMb)
 {
     public int TotalWorkers => ApplicationWorkers + ControlPlaneWorkers;
-    public int TotalMemoryMb => ApplicationMemoryMb + ControlPlaneMemoryMb;
+    public long TotalAdvisoryMemoryMb =>
+        ApplicationAdvisoryMemoryMb + ControlPlaneAdvisoryMemoryMb;
 }
 
 internal sealed class WorkerResidencyBudget
@@ -38,9 +34,9 @@ internal sealed class WorkerResidencyBudget
     private readonly Dictionary<object, Reservation> _reservations =
         new(ReferenceEqualityComparer.Instance);
     private int _applicationWorkers;
-    private int _applicationMemoryMb;
+    private long _applicationAdvisoryMemoryMb;
     private int _controlPlaneWorkers;
-    private int _controlPlaneMemoryMb;
+    private long _controlPlaneAdvisoryMemoryMb;
 
     public WorkerResidencyBudget(WorkerResidencyBudgetOptions options)
     {
@@ -56,20 +52,25 @@ internal sealed class WorkerResidencyBudget
             {
                 return new WorkerResidencyBudgetSnapshot(
                     _applicationWorkers,
-                    _applicationMemoryMb,
+                    _applicationAdvisoryMemoryMb,
                     _options.MaximumApplicationWorkers,
-                    _options.MaximumApplicationMemoryMb,
                     _controlPlaneWorkers,
-                    _controlPlaneMemoryMb);
+                    _controlPlaneAdvisoryMemoryMb);
             }
         }
     }
 
-    public IDisposable Reserve(object owner, string widgetId, int memoryMb, bool isControlPlane)
+    public IDisposable Reserve(
+        object owner,
+        string widgetId,
+        int? advisoryMemoryMb,
+        bool isControlPlane)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
-        if (memoryMb is < 16 or > 256) throw new ArgumentOutOfRangeException(nameof(memoryMb));
+        if (advisoryMemoryMb is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(advisoryMemoryMb));
+        var reportedMemoryMb = advisoryMemoryMb.GetValueOrDefault();
 
         lock (_gate)
         {
@@ -80,23 +81,18 @@ internal sealed class WorkerResidencyBudget
                 if (_controlPlaneWorkers != 0)
                     throw new WidgetProcessAdmissionException(
                         "The trusted Settings control-plane worker is already resident.");
-                _reservations.Add(owner, new Reservation(memoryMb, IsControlPlane: true));
+                _reservations.Add(owner, new Reservation(reportedMemoryMb, IsControlPlane: true));
                 _controlPlaneWorkers++;
-                _controlPlaneMemoryMb += memoryMb;
+                _controlPlaneAdvisoryMemoryMb += reportedMemoryMb;
                 return new ReservationLease(this, owner);
             }
 
             if (_applicationWorkers >= _options.MaximumApplicationWorkers)
                 throw CapacityException(widgetId,
                     $"the application worker limit ({_applicationWorkers}/{_options.MaximumApplicationWorkers})");
-            if (_applicationMemoryMb > _options.MaximumApplicationMemoryMb - memoryMb)
-                throw CapacityException(widgetId,
-                    $"the application memory limit ({_applicationMemoryMb}+{memoryMb}/" +
-                    $"{_options.MaximumApplicationMemoryMb} MiB)");
-
-            _reservations.Add(owner, new Reservation(memoryMb, IsControlPlane: false));
+            _reservations.Add(owner, new Reservation(reportedMemoryMb, IsControlPlane: false));
             _applicationWorkers++;
-            _applicationMemoryMb += memoryMb;
+            _applicationAdvisoryMemoryMb += reportedMemoryMb;
             return new ReservationLease(this, owner);
         }
     }
@@ -110,12 +106,12 @@ internal sealed class WorkerResidencyBudget
             if (reservation.IsControlPlane)
             {
                 _controlPlaneWorkers--;
-                _controlPlaneMemoryMb -= reservation.MemoryMb;
+                _controlPlaneAdvisoryMemoryMb -= reservation.AdvisoryMemoryMb;
             }
             else
             {
                 _applicationWorkers--;
-                _applicationMemoryMb -= reservation.MemoryMb;
+                _applicationAdvisoryMemoryMb -= reservation.AdvisoryMemoryMb;
             }
         }
     }
@@ -124,7 +120,7 @@ internal sealed class WorkerResidencyBudget
         new($"Worker residency budget is full. Launching widget '{widgetId}' would exceed {limit}. " +
             "Disable a resident widget or wait for an unload-after-idle worker before retrying.");
 
-    private sealed record Reservation(int MemoryMb, bool IsControlPlane);
+    private sealed record Reservation(int AdvisoryMemoryMb, bool IsControlPlane);
 
     private sealed class ReservationLease(WorkerResidencyBudget owner, object reservation) : IDisposable
     {

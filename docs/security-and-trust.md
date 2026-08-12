@@ -27,9 +27,10 @@ planned. A structurally valid package is not necessarily trustworthy.
   desktop host and the exact AppContainer SID and whose mandatory label permits
   Low-integrity access.
 - On Windows, each worker is created suspended, assigned to a per-worker Job
-  Object, and only then resumed. Trusted bridge policy applies a bounded job-
-  memory ceiling, one-active-process limit, kill-on-close, die-on-unhandled-
-  exception behavior, and the complete basic UI-restriction set. Timeout,
+  Object, and only then resumed. The non-breakaway Job accounts the complete
+  worker process tree and applies kill-on-close, die-on-unhandled-exception
+  behavior, and the complete basic UI-restriction set. It does not grant new OS
+  authority or impose an arbitrary private-memory/one-process ceiling. Timeout,
   restart, failure, and disposal paths release the job and its process.
 - Every installed/community worker must start in a stable host-derived,
   exact-content-specific, capability-free AppContainer at Low integrity. For

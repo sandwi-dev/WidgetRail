@@ -509,8 +509,9 @@ rollback to the exact reviewed bytes restores only that content identity. The to
 is Low integrity and has zero capability SIDs, including no network capability;
 the process receives a stripped environment and explicit read/execute access
 only to its generic runtime and exact package roots. Job Object policy adds
-bounded memory, one active process, kill-on-close,
-die-on-unhandled-exception, and UI restrictions. Isolation establishment and
+non-breakaway process-tree accounting, kill-on-close,
+die-on-unhandled-exception, and UI restrictions without adding ambient OS
+authority. Isolation establishment and
 token verification fail closed with no desktop-token fallback.
 
 The main widget and capability-broker endpoints are separate random global

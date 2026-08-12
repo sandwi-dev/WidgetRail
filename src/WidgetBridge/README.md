@@ -147,10 +147,11 @@ recreates the worker lazily when it becomes visible. Intentional unload does not
 consume crash budget. The capability broker denies normal operations and every
 subscription in Background.
 
-Process launch is additionally gated by a supervisor-owned aggregate envelope:
-eight application workers and 512 MiB of declared Job memory by default.
-`--max-resident-workers` and `--max-resident-memory-mb` provide bounded trusted
-launch-time overrides. Admission is serialized before launch; capacity refusal
+Process launch is additionally gated by a supervisor-owned aggregate envelope
+of eight application worker sessions by default. `--max-resident-workers`
+provides the bounded trusted launch-time override. Optional manifest memory
+guidance is reported in diagnostics but is neither reserved nor enforced as a
+private-memory ceiling. Admission is serialized before launch; capacity refusal
 does not evict an existing `keep-alive` worker. Reservations are released by
 failed launch/crash, idle unload, restart retirement, catalog removal, and
 shutdown. The exact trusted Settings identity uses one separate control-plane
@@ -322,8 +323,8 @@ execution.
 
 At startup the bridge also discovers the current-user `WidgetCatalog` and joins
 enabled, host/architecture-compatible packages in persisted order. It assigns
-each installed package a fixed host-owned 64 MiB cap, exact read-only package
-root, package-specific AppContainer identity, and the packaged
+each installed package an exact read-only package root, package-specific
+AppContainer identity, and the packaged
 `WidgetWorkerHost`. Listing remains lazy and does not launch workers. Disabled
 packages stay inert. Invalid installed state or package integrity publishes a
 trusted-only catalog revision; Community registrations are removed
@@ -338,7 +339,8 @@ root, rejects path escape/reparse points, requires a public concrete SDK
 `Widget` type, and resolves dependencies inside the package. Installed package
 workers run in a package-specific, capability-free Low-integrity AppContainer
 with a stripped environment, explicit read/execute runtime and package grants,
-and Job Object memory/process/UI/cleanup restrictions. Main and
+and Job Object process-tree accounting/UI/cleanup restrictions. Child processes
+remain in the same non-breakaway Job and are terminated with it. Main and
 broker pipes verify the exact worker PID in addition to their protocol
 authentication. Isolation setup is fail-closed; there is no Job-only fallback.
 The native host and bridge never load the widget assembly.

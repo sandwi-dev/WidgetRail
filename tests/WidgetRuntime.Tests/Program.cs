@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -18,6 +19,30 @@ if (args.Contains("--containment-sleeper", StringComparer.Ordinal))
 {
     await Task.Delay(Timeout.InfiniteTimeSpan);
     return 0;
+}
+
+if (args.Contains("--containment-parent", StringComparer.Ordinal))
+{
+    var childPath = RequiredValue(args, "--child-pid-file");
+    try
+    {
+        var startInfo = new ProcessStartInfo(Environment.ProcessPath!)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("--containment-sleeper");
+        using var child = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Contained helper did not start.");
+        await File.WriteAllTextAsync(childPath, child.Id.ToString(CultureInfo.InvariantCulture));
+        await Task.Delay(Timeout.InfiniteTimeSpan);
+        return 0;
+    }
+    catch (Exception exception)
+    {
+        await File.WriteAllTextAsync(childPath, $"error:{exception.GetType().Name}:{exception.HResult}");
+        return 97;
+    }
 }
 
 if (args.Contains("--authority-crash-probe", StringComparer.Ordinal))
@@ -65,10 +90,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Content leases require exact object identity evidence", ContentLeaseRequiresObjectIdentity),
     ("Catalog identity mismatch rejects before authority mutation", ContentLeaseIdentityMismatchFailsClosed),
     ("Verified content leases follow exact worker sessions", ContentLeaseFollowsSession),
-    ("Worker memory policy rejects unsafe bounds", MemoryPolicyIsBounded),
-    ("Windows worker Job Object applies trusted limits", WindowsJobAppliesLimits),
+    ("Private worker memory exceeds the prototype ceiling without Job refusal", PrivateMemoryExceedsPrototypeCeiling),
+    ("Windows worker Job Object preserves containment without size ceilings", WindowsJobPreservesContainment),
     ("Windows Job Object kill-on-close cleans up its process", WindowsJobCleansUpProcess),
-    ("Windows worker Job Object allows only one active process", WindowsJobIsSingleProcess),
+    ("Windows worker Job Object owns and kills a helper process tree", WindowsJobOwnsProcessTree),
     ("Community workers have package-specific AppContainer authority", AppContainerIsolation),
     ("AppContainer content authority excludes late unverified files", ExactContentAuthority),
     ("Content-generation identities do not inherit stale root grants", StaleContentRootIsIsolated),
@@ -155,7 +180,13 @@ static async Task<int> RunWorkerAsync(string[] arguments)
                 OptionalValue(arguments, "--probe-other-profile-path"),
                 int.Parse(RequiredValue(arguments, "--probe-network-port"), CultureInfo.InvariantCulture),
                 RequiredValue(arguments, "--probe-secret-name"))
-            : new TestWidget();
+            : new TestWidget(int.TryParse(
+                OptionalValue(arguments, "--private-memory-probe-mb"),
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var privateMemoryMb)
+                ? privateMemoryMb
+                : 0);
     IWidgetCapabilityClient? capabilityClient = gestureProbe;
     await new WidgetWorkerServer(
         widget, instance, pipe, maximumBytes, capabilityClient).RunAsync();
@@ -1232,40 +1263,31 @@ static async Task SendCrashingActionAsync(WidgetProcessClient client)
     }
 }
 
-static Task MemoryPolicyIsBounded()
-{
-    var executable = Environment.ProcessPath
-        ?? throw new InvalidOperationException("Test process path is unavailable.");
-    _ = Assert.Throws<ArgumentOutOfRangeException>(() => new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = executable,
-        WidgetInstanceId = "runtime.test",
-        MemoryLimitBytes = 15L * 1024 * 1024,
-    }));
-    _ = Assert.Throws<ArgumentOutOfRangeException>(() => new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = executable,
-        WidgetInstanceId = "runtime.test",
-        MemoryLimitBytes = 513L * 1024 * 1024,
-    }));
-    return Task.CompletedTask;
-}
-
-static async Task WindowsJobAppliesLimits()
+static async Task PrivateMemoryExceedsPrototypeCeiling()
 {
     if (!OperatingSystem.IsWindows()) return;
-    const long limit = 72L * 1024 * 1024;
-    await using var client = CreateClient(memoryLimitBytes: limit);
+    await using var client = CreateClient(extraArguments: ["--private-memory-probe-mb", "272"]);
+    var snapshot = await client.GetSnapshotAsync();
+    Assert.Equal("private-memory:272", Find(snapshot.Root, "private-memory").Text);
+    Assert.Equal(null, client.AppliedJobMemoryLimitBytes);
+}
+
+static async Task WindowsJobPreservesContainment()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    await using var client = CreateClient();
     _ = await client.GetSnapshotAsync();
-    Assert.Equal(limit, client.AppliedJobMemoryLimitBytes);
-    Assert.Equal((uint)1, client.AppliedJobActiveProcessLimit);
+    Assert.Equal(null, client.AppliedJobMemoryLimitBytes);
+    Assert.Equal(null, client.AppliedJobActiveProcessLimit);
+    Assert.True(client.AppliedJobAccounting?.ActiveProcesses >= 1,
+        "The running worker was absent from Job accounting.");
 }
 
 static async Task WindowsJobCleansUpProcess()
 {
     if (!OperatingSystem.IsWindows()) return;
     var startInfo = SleeperStartInfo();
-    var job = WindowsWorkerJob.Create(64L * 1024 * 1024);
+    var job = WindowsWorkerJob.Create();
     using var process = job.StartProcess(startInfo);
     try
     {
@@ -1285,22 +1307,47 @@ static async Task WindowsJobCleansUpProcess()
     }
 }
 
-static async Task WindowsJobIsSingleProcess()
+static async Task WindowsJobOwnsProcessTree()
 {
     if (!OperatingSystem.IsWindows()) return;
-    using var job = WindowsWorkerJob.Create(64L * 1024 * 1024);
-    using var first = job.StartProcess(SleeperStartInfo());
+    using var temporary = new TemporaryDirectory();
+    var childPidFile = Path.Combine(temporary.Path, "child.pid");
+    var parentStart = SleeperStartInfo();
+    parentStart.ArgumentList.Clear();
+    parentStart.ArgumentList.Add("--containment-parent");
+    parentStart.ArgumentList.Add("--child-pid-file");
+    parentStart.ArgumentList.Add(childPidFile);
+    var job = WindowsWorkerJob.Create();
+    using var parent = job.StartProcess(parentStart);
+    Process? child = null;
     try
     {
-        _ = Assert.Throws<System.ComponentModel.Win32Exception>(() =>
-        {
-            using var unexpected = job.StartProcess(SleeperStartInfo());
-        });
+        await WaitUntilAsync(() => File.Exists(childPidFile), TimeSpan.FromSeconds(3));
+        var childPid = int.Parse(await File.ReadAllTextAsync(childPidFile), CultureInfo.InvariantCulture);
+        child = Process.GetProcessById(childPid);
+        await WaitUntilAsync(
+            () => job.Accounting.ActiveProcesses >= 2,
+            TimeSpan.FromSeconds(3));
+        Assert.True(!parent.HasExited && !child.HasExited,
+            "The owned helper tree exited before containment was observed.");
+        Assert.Equal(null, job.MemoryLimitBytes);
+        Assert.Equal(null, job.ActiveProcessLimit);
+        job.Dispose();
+        await Task.WhenAll(
+            parent.WaitForExitAsync(),
+            child.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.True(parent.HasExited && child.HasExited,
+            "Closing the Job Object left an owned process-tree member alive.");
     }
     finally
     {
-        job.Terminate();
-        await first.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        job.Dispose();
+        if (!parent.HasExited)
+        {
+            parent.Kill(entireProcessTree: true);
+            await parent.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        child?.Dispose();
     }
 }
 
@@ -1538,7 +1585,6 @@ static WidgetProcessClient CreateIsolatedClient(
         ConnectTimeout = TimeSpan.FromSeconds(8),
         RequestTimeout = TimeSpan.FromSeconds(3),
         MaximumMessageBytes = 64 * 1024,
-        MemoryLimitBytes = 96L * 1024 * 1024,
         IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
         IsolationKey = isolationKey,
         ReadOnlyPaths = contentLeaseFactory is null ? [packageRoot] : [],
@@ -2302,7 +2348,8 @@ static async Task CrashRecovery()
     Assert.Equal(2, client.Starts);
     Assert.True(client.WorkerProcessId != firstProcess, "Restart reused the terminated worker process.");
     if (OperatingSystem.IsWindows())
-        Assert.Equal((uint)1, client.AppliedJobActiveProcessLimit);
+        Assert.True(client.AppliedJobAccounting?.ActiveProcesses >= 1,
+            "The recovered worker was absent from Job accounting.");
 }
 
 static async Task CompanionSessionsFollowWorkerRestarts()
@@ -2494,7 +2541,6 @@ static WidgetProcessClient CreateClient(
     int maximumRestarts = 2,
     TimeSpan? requestTimeout = null,
     IReadOnlyList<string>? extraArguments = null,
-    long memoryLimitBytes = 64L * 1024 * 1024,
     Func<WidgetProcessCompanionContext, IWidgetProcessCompanionSession>? companionFactory = null,
     Func<IDisposable>? processLeaseFactory = null,
     Func<CancellationToken, IWidgetProcessContentLease>? contentLeaseFactory = null,
@@ -2514,7 +2560,6 @@ static WidgetProcessClient CreateClient(
         RequestTimeout = requestTimeout ?? TimeSpan.FromSeconds(2),
         MaximumRestartAttempts = maximumRestarts,
         MaximumMessageBytes = 64 * 1024,
-        MemoryLimitBytes = memoryLimitBytes,
         CompanionSessionFactory = companionFactory,
         ProcessLeaseFactory = processLeaseFactory,
         ContentLeaseFactory = contentLeaseFactory,
@@ -2563,10 +2608,22 @@ file sealed class TestWidget : Widget
     private readonly List<long> _controllerHistory = [];
     private string _scopedAction = "none";
     private string _activeScope = "root";
+    private readonly byte[]? _privateMemory;
+
+    internal TestWidget(int privateMemoryMb = 0)
+    {
+        if (privateMemoryMb <= 0) return;
+        _privateMemory = GC.AllocateUninitializedArray<byte>(
+            checked(privateMemoryMb * 1024 * 1024));
+        _privateMemory[0] = 1;
+        _privateMemory[^1] = 1;
+    }
 
     public override WidgetView Render() => new(
         UI.Stack("root",
+        [
             UI.Text(IsActive ? "active" : "inactive", "activity"),
+            .. PrivateMemoryNodes(),
             UI.Text(ControllerHistory(), "controller-history"),
             UI.Text(_scopedAction, "scoped-action"),
             UI.Button("Test", "invalidate", "button")
@@ -2581,7 +2638,8 @@ file sealed class TestWidget : Widget
                 .Shortcut(ControllerButton.B, "nested-close"),
             UI.Stack("empty-window",
                 UI.Button("Empty focus", "empty-focus", "empty-focus"))
-                .InputScope("empty-window-scope")),
+                .InputScope("empty-window-scope"),
+        ]),
         _activeScope switch
         {
             "nested-window-scope" => "nested-focus",
@@ -2590,6 +2648,12 @@ file sealed class TestWidget : Widget
         },
         [new WidgetQuickAction(ControllerButton.X, "invalidate", "Refresh")],
         _activeScope);
+
+    private WidgetElement[] PrivateMemoryNodes() => _privateMemory is null
+        ? []
+        : [UI.Text(
+            $"private-memory:{_privateMemory.Length / (1024 * 1024)}",
+            "private-memory")];
 
     public override async ValueTask OnActionAsync(
         WidgetActionEvent action, CancellationToken cancellationToken = default)

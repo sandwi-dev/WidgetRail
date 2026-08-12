@@ -39,10 +39,11 @@ unbounded caches, or unnecessary helper processes.
 - Widget workers start lazily; listing the catalog, rendering dashboard
   metadata, changing themes, or reviewing permissions does not start them.
 - Each worker receives a host-owned Job Object before it resumes. Trusted
-  policy bounds that process tree to 16–256 MiB, limits the job to one active
-  process, and terminates it on job close.
+  policy accounts the complete non-breakaway process tree and terminates it on
+  job close. It does not impose an arbitrary private-memory or one-process cap.
 - Before launch, the bridge atomically reserves against a default aggregate
-  application envelope of eight workers and 512 MiB of declared Job memory.
+  application envelope of eight worker sessions. Optional manifest memory
+  guidance is diagnostic metadata, not reserved capacity.
   Capacity refusal is deterministic; `keep-alive` workers are not heuristically
   evicted. The trusted Settings control plane has one separate reported slot.
 - IPC frames, snapshots, strings, images, update rates, subscriptions, and

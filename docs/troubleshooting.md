@@ -117,13 +117,22 @@ verifiers, access/refresh tokens, or credential-vault contents into logs or an
 issue. A successful local Client-ID write is public configuration; it is not
 evidence that the package version or running provider was refreshed.
 
+For Now Playing load failures, `overlay.log` may contain a bounded
+`Media Sessions diagnostic` line with `stage=snapshot-read`,
+`subscription-open`, or `subscription-read` and a sanitized broker `code`.
+The line deliberately omits player/session identity, media metadata, process
+details, and provider bodies. `platform_unavailable`, `permission_denied`,
+`lifecycle_denied`, and `channel_closed` therefore identify the owning boundary
+without exposing which application is playing media.
+
 ## Manifest validation fails
 
 - JSON property names and casing are strict; unknown members fail.
 - Use reverse-DNS lowercase `id` and `publisher` values.
 - The only supported runtime is `dotnet-worker`.
 - Entrypoint assembly paths use forward slashes and cannot contain `.` or `..`.
-- Resource requests are 16–256 MB and 1–60 Hz.
+- `resourceRequest.memoryMb`, when present, is a positive advisory estimate;
+  `updateHz` is 1–60 Hz metadata.
 - Architectures are `x64` and/or `arm64`.
 
 Run `gbar validate <manifest.json>` for the precise JSON path and diagnostic.

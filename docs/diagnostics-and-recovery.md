@@ -125,6 +125,17 @@ response bodies, credentials, and private fixture sentinels are never logged.
 Painted and accessibility-visible feedback uses separate fixed host copy rather
 than replaying diagnostic fields.
 
+## Media Sessions failure transitions
+
+For the bundled Now Playing widget, `overlay.log` records one bounded line when
+a Media Sessions snapshot read, subscription open, or subscription read enters
+a new typed failure code. Repeated identical failures are suppressed until that
+stage succeeds or changes code. The record contains only the public widget ID,
+the owning stage, and the broker code; it never contains the player/session
+identity, media metadata, process details, provider response, or credentials.
+The diagnostic lane retains at most 256 stage transitions and 32 pending log
+lines, and logging failure cannot affect capability transport.
+
 ## Verification
 
 Run the focused suites from the repository root:

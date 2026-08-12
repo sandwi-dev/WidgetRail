@@ -72,8 +72,12 @@ internal sealed record ConfiguredWidget
     /// </summary>
     [JsonIgnore]
     public bool UsesGenericWorkerHost { get; init; }
-    /// <summary>Trusted host policy; worker manifests and IPC cannot override it.</summary>
-    public int MemoryLimitMb { get; init; } = 64;
+    /// <summary>
+    /// Optional author guidance used only for bounded diagnostics. It never
+    /// configures Job containment or host admission.
+    /// </summary>
+    [JsonPropertyName("memoryLimitMb")]
+    public int? MemoryRequestMb { get; init; }
     /// <summary>
     /// Validated residency policy. For installed packages this is copied from
     /// the immutable manifest; a worker cannot alter it through IPC.
@@ -209,9 +213,9 @@ public sealed class BridgeCatalog
                     source.DeclaredCapabilities.Count)
                 throw new BridgeCatalogException(
                     $"Widget '{source.Id}' has invalid declared capabilities.");
-            if (source.MemoryLimitMb is < 16 or > 256)
+            if (source.MemoryRequestMb is <= 0)
                 throw new BridgeCatalogException(
-                    $"Widget '{source.Id}' memoryLimitMb must be between 16 and 256.");
+                    $"Widget '{source.Id}' memoryLimitMb must be a positive advisory value.");
             if (source.ResidencyPolicy is null)
                 throw new BridgeCatalogException(
                     $"Widget '{source.Id}' residencyPolicy cannot be null.");
@@ -392,9 +396,7 @@ public sealed class BridgeCatalog
                     cancellationToken),
                 UsesGenericWorkerHost = true,
                 StyleFile = styleFile,
-                // Community manifests describe expected usage but do not set
-                // enforcement policy. The trusted host owns this fixed cap.
-                MemoryLimitMb = 64,
+                MemoryRequestMb = manifest.ResourceRequest.MemoryMb,
                 ResidencyPolicy = manifest.ResidencyPolicy ??
                     (manifest.BackgroundPolicy == "suspend"
                         ? new WidgetResidencyPolicy
@@ -450,7 +452,8 @@ public sealed class BridgeCatalog
                 ? "broad-read-authority"
                 : "verified-content-lease-v1",
             .. source.ReadOnlyPaths,
-            source.MemoryLimitMb.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            source.MemoryRequestMb?.ToString(
+                System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
             source.ResidencyPolicy.SchemaVersion.ToString(
                 System.Globalization.CultureInfo.InvariantCulture),
             source.ResidencyPolicy.Mode,
@@ -644,7 +647,7 @@ public sealed class BridgeCatalog
             ReadOnlyPaths = [packageRoot],
             UsesGenericWorkerHost = true,
             StyleFile = styleFile,
-            MemoryLimitMb = manifest.ResourceRequest.MemoryMb,
+            MemoryRequestMb = manifest.ResourceRequest.MemoryMb,
             ResidencyPolicy = residency,
             QuickActions = source.QuickActions,
             CompiledTheme = style.Theme,

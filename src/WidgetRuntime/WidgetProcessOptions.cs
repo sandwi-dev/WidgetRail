@@ -227,12 +227,6 @@ public sealed record WidgetProcessOptions
     /// worker. The executable directory is granted separately by the runtime.
     /// </summary>
     public IReadOnlyList<string> ReadOnlyPaths { get; init; } = [];
-    /// <summary>
-    /// Trusted host policy applied to the Windows Job Object. This value is
-    /// never accepted from the worker process or its protocol messages.
-    /// </summary>
-    public long MemoryLimitBytes { get; init; } = 64L * 1024 * 1024;
-
     internal void Validate()
     {
         if (string.IsNullOrWhiteSpace(ExecutablePath))
@@ -262,8 +256,6 @@ public sealed record WidgetProcessOptions
                 nameof(StartupExitDiagnostics));
         if (ContentLeaseTimeout <= TimeSpan.Zero || ContentLeaseTimeout > TimeSpan.FromMinutes(1))
             throw new ArgumentOutOfRangeException(nameof(ContentLeaseTimeout));
-        if (MemoryLimitBytes is < 16L * 1024 * 1024 or > 512L * 1024 * 1024)
-            throw new ArgumentOutOfRangeException(nameof(MemoryLimitBytes));
         if (Arguments.Any(argument => argument is null))
             throw new ArgumentException("Worker arguments cannot contain null entries.", nameof(Arguments));
         if (!Enum.IsDefined(IsolationPolicy))
