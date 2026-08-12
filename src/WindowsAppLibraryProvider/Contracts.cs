@@ -200,10 +200,6 @@ internal sealed record GogGameRegistration(
     string IdentityKey,
     string DisplayName,
     string ProductId,
-    string RegistryView,
-    string RegistryKeyName,
-    string InstallLocation,
-    string InfoPath,
     string RevalidationKey);
 
 internal sealed record GogApplicationSourceCandidate(
@@ -213,19 +209,6 @@ internal sealed record GogApplicationSourceCandidate(
 internal interface IGogApplicationSource
 {
     GogApplicationSourceCandidate Enumerate(CancellationToken cancellationToken);
-    GogGameRegistration? ReadExact(
-        string registryView,
-        string registryKeyName,
-        string productId,
-        CancellationToken cancellationToken);
-}
-
-internal interface IWindowsGogLauncher
-{
-    void Launch(
-        string productId,
-        string installLocation,
-        CancellationToken cancellationToken);
 }
 
 internal interface IWindowsPackageRegistrationCatalog

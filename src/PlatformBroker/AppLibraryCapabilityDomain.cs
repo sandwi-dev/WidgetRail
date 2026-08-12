@@ -306,7 +306,7 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                 publicId = "app-" + Guid.NewGuid().ToString("N");
                 _publicIdsByBackendId[item.ProviderAppId] = publicId;
             }
-            TouchLaunch(publicId, item.ProviderAppId);
+            if (item.IsLaunchable) TouchLaunch(publicId, item.ProviderAppId);
             projected[index] = new AppLibraryItemSummary(
                 publicId,
                 _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
@@ -356,10 +356,14 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             new AppLibrarySourceReference(
                 sourceId, exactSource?.DisplayName ?? item.SourceAttribution),
             new AppLibraryAvailabilitySummary(
-                AppLibraryAvailabilityState.Installed, true, "installed"),
+                AppLibraryAvailabilityState.Installed,
+                item.IsLaunchable,
+                item.IsLaunchable ? "installed" : "play_unavailable"),
             new AppLibraryArtworkSet(artwork),
             Metadata: null,
-            new AppLibraryCapabilitySet([AppLibraryAction.Launch]),
+            new AppLibraryCapabilitySet(item.IsLaunchable
+                ? [AppLibraryAction.Launch]
+                : []),
             ActiveOperation: null);
     }
 

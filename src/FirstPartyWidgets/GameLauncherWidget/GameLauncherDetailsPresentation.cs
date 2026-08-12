@@ -25,6 +25,7 @@ internal sealed record GameLauncherDetailsState(
     bool VariantActionEnabled,
     bool Interactive,
     bool Resolved,
+    bool Launchable,
     bool Busy);
 
 internal static class GameLauncherDetailsPolicy
@@ -64,17 +65,24 @@ internal static class GameLauncherDetailsPolicy
             item.Key == selection.Key && string.Equals(item.Value.SavedId,
                 selection.SavedId, StringComparison.Ordinal));
         var resolved = current is not null;
+        var launchable = current is not null &&
+            current.Value.Presentation.Availability.State ==
+                WidgetAppLibraryAvailabilityState.Installed &&
+            current.Value.Presentation.Availability.IsLaunchable &&
+            current.Value.Presentation.Capabilities.Supports(
+                WidgetAppLibraryAction.Launch);
         var launching = string.Equals(selection.SavedId, launchingSavedId,
             StringComparison.Ordinal);
-        var launchStatus = launching ? "Pending" : launchStates.GetValueOrDefault(
-            selection.SavedId) switch
+        var launchState = launchStates.TryGetValue(
+            selection.SavedId, out var recorded) ? recorded : (GameLauncherLaunchState?)null;
+        var launchStatus = launching ? "Pending" : launchState switch
         {
             GameLauncherLaunchState.RequestAccepted => "Request accepted",
             GameLauncherLaunchState.LauncherStarted => "Launcher started",
             GameLauncherLaunchState.Running => "Running",
             GameLauncherLaunchState.Failed => "Failed",
             GameLauncherLaunchState.Ended => "Ended",
-            _ => resolved ? interactive ? "Ready" : "Paused" : "Unavailable",
+            _ => launchable ? interactive ? "Ready" : "Paused" : "Play unavailable",
         };
         var group = GameLauncherOrganizationPolicy.GroupFor(
             organization, selection.SavedId);
@@ -92,7 +100,9 @@ internal static class GameLauncherDetailsPolicy
             selection,
             current?.Presentation.DisplayName ?? selection.DisplayName,
             current?.Presentation.Source.DisplayName ?? selection.SourceAttribution,
-            resolved ? interactive ? "Available" : "Paused" : "Unavailable",
+            resolved
+                ? launchable ? interactive ? "Available" : "Paused" : "Play unavailable"
+                : "Unavailable",
             launchStatus,
             organization.FavoriteSavedIds.Contains(
                 selection.SavedId, StringComparer.Ordinal),
@@ -103,6 +113,7 @@ internal static class GameLauncherDetailsPolicy
             !sameSeed,
             interactive,
             resolved,
+            launchable,
             launching || organizationBusy);
     }
 
@@ -163,7 +174,7 @@ internal static class GameLauncherDetailsPresentation
                         UI.Button("Launch", "game-launcher.launch",
                                 GameLauncherDetailsPolicy.ActionSourceId)
                             .Busy(state.Busy)
-                            .Disabled(!enabled),
+                            .Disabled(!enabled || !state.Launchable),
                         UI.Button(state.Favorite ? "Remove favorite" : "Add favorite",
                                 "game-launcher.favorite", "game-launcher.details.favorite")
                             .Disabled(!enabled),

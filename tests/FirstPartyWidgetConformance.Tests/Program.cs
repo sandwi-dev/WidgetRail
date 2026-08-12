@@ -586,20 +586,19 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
     using var fixture = new InstalledGogFixture();
     var enabled = false;
     var registry = new InstalledGogRegistry(fixture.Records);
-    var launcher = new InstalledGogLauncher();
     await using var provider = new WindowsAppLibraryProvider(
         [new GogGameLibrarySource(
             new GogInstalledGameApplicationSource(
-                registry, _ => enabled, fixture.ClientPath),
-            launcher)],
+                registry, _ => enabled))],
         ShellStaExecutor.Shared);
+    var appLibrary = new InstalledGogBoundaryBackend(provider);
     var simulator = CreateBackend();
     await using var backend = new CompositePlatformBrokerBackend(
         simulator, simulator,
         activity: simulator,
         bluetooth: simulator,
         media: simulator,
-        appLibrary: provider,
+        appLibrary: appLibrary,
         privateSecrets: simulator,
         loopbackHttp: simulator,
         privateState: simulator,
@@ -654,11 +653,14 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
         node.ActionId == "game-launcher.launch" &&
         Nodes(node).Any(descendant => string.Equals(
             descendant.Text, fixture.DisplayName, StringComparison.Ordinal)));
-    registry.Records.Clear();
+    Assert.True(launch.IsDisabled is true,
+        "Installed GOG evidence exposed an enabled Play action.");
+    Assert.True(launch.AccessibilityLabel?.Contains(
+        "Play unavailable", StringComparison.Ordinal) == true,
+        "Installed GOG evidence did not expose truthful unavailable action copy.");
     await client.SendActionAsync(new WidgetActionEvent(
         "game-launcher.launch", launch.Id));
-    await WaitForSnapshotAsync(client, "The selected game is no longer installed");
-    Assert.Equal(0, launcher.Count);
+    Assert.Equal(0, appLibrary.LaunchCount);
 
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
     await client.StopAsync();
@@ -3279,9 +3281,6 @@ file sealed class InstalledGogFixture : IDisposable
 
     internal InstalledGogFixture()
     {
-        ClientPath = Path.Combine(_directory.Path, "GOG Galaxy", "GalaxyClient.exe");
-        Directory.CreateDirectory(Path.GetDirectoryName(ClientPath)!);
-        File.WriteAllBytes(ClientPath, [1, 2, 3]);
         var install = Path.Combine(_directory.Path, "Installed GOG Game");
         Directory.CreateDirectory(install);
         File.WriteAllText(Path.Combine(install, "goggame-100.info"),
@@ -3297,7 +3296,6 @@ file sealed class InstalledGogFixture : IDisposable
             "100", "100", DisplayName, install));
     }
 
-    internal string ClientPath { get; }
     internal string DisplayName => "Installed GOG Game";
     internal List<GogRegistryRecord> Records { get; } = [];
 
@@ -3330,18 +3328,36 @@ file sealed class InstalledGogRegistry(
     }
 }
 
-file sealed class InstalledGogLauncher : IWindowsGogLauncher
+file sealed class InstalledGogBoundaryBackend(
+    IAppLibraryPlatformBrokerBackend inner) : IAppLibraryPlatformBrokerBackend
 {
-    internal int Count { get; private set; }
+    internal int LaunchCount { get; private set; }
 
-    public void Launch(
-        string productId,
-        string installLocation,
+    public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+        AppLibraryBackendCursorRequest request,
+        CancellationToken cancellationToken) =>
+        inner.QueryAppLibraryAsync(request, cancellationToken);
+
+    public Task LaunchAppLibraryItemAsync(
+        string appId,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        Count++;
+        LaunchCount++;
+        return inner.LaunchAppLibraryItemAsync(appId, cancellationToken);
     }
+
+    public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        string appId,
+        CancellationToken cancellationToken)
+    {
+        LaunchCount++;
+        return inner.LaunchAppLibraryItemObservedAsync(appId, cancellationToken);
+    }
+
+    public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
+        string appId,
+        CancellationToken cancellationToken) =>
+        inner.GetAppLibraryIconAsync(appId, cancellationToken);
 }
 
 file sealed class TemporaryDirectory : IDisposable

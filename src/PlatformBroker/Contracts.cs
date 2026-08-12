@@ -489,6 +489,13 @@ public sealed record AppLibraryBackendItemSummary(
 {
     [JsonIgnore]
     public string SourceIdentity { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Trusted backend-only launch admission. False rows remain useful installed
+    /// evidence but receive no public launch registration or capability.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsLaunchable { get; init; } = true;
 }
 
 public enum AppLibrarySortOrder

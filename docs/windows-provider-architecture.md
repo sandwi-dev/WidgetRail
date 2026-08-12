@@ -459,10 +459,12 @@ AUMID, and bounded `MicrosoftGame.config` evidence. Epic and GOG are separately
 opt-in host sources. Epic reads only its fixed ProgramData installed-manifest
 root. GOG reads only the fixed machine-wide GOG game registry in the 32-bit and
 64-bit Windows views, then validates the matching bounded
-`goggame-<product-id>.info` file and fixed Galaxy client. Both sources keep
-provider identifiers, paths, file evidence, and launch components inside the
-trusted provider, publish explicit per-source health, and require an exact
-fresh generation before their constrained launcher adapter can run.
+`goggame-<product-id>.info` file. Both sources keep provider identifiers, paths,
+and file evidence inside the trusted provider and publish explicit per-source
+health. Epic requires a fresh exact generation before its constrained launcher
+adapter can run. GOG discovery is best-effort installed evidence only: it is
+not an official GOG API or exhaustive catalog, exposes no Launch capability,
+and never invokes a Galaxy process.
 
 The present source does not enumerate other launcher or account libraries.
 Start Menu and AppsFolder entries remain conservatively classified as Application.

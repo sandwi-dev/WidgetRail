@@ -323,9 +323,10 @@ libraries, plus separately enabled local Epic and GOG installed registrations. I
 - when separately enabled on the same page, reads at most 4,096 machine-wide
   registrations from GOG's fixed 32-bit and 64-bit registry roots and requires
   the matching bounded `goggame-<product-id>.info` file under an existing,
-  non-reparse install root; a missing Galaxy client, malformed or duplicate
-  product ID, unsafe path, partial file read, or mismatched product/name is
-  isolated as unavailable or degraded without publishing launch authority;
+  non-reparse install root; a malformed or duplicate product ID, unsafe path,
+  partial file read, or mismatched product/name is isolated as unavailable or
+  degraded without publishing launch authority; this is best-effort installed
+  evidence rather than an official GOG API or exhaustive catalog;
 - sanitizes display names, deduplicates the same trusted target identity, and
   serves the normalized catalog through revision-bound pages of at most 64;
 - assigns random opaque IDs that stay stable only while that registration
@@ -361,10 +362,11 @@ Epic launch likewise re-reads the exact current manifest and executable
 evidence, then constructs the fixed Epic launcher URI from validated
 provider-private catalog components. Widget code never supplies a URI, path,
 argument, or Epic identifier.
-GOG launch similarly re-reads the exact registry view/key and matching info-file
-revision, then invokes only the provider-owned Galaxy client route with the
-validated product ID and install root. Registry keys, product IDs, paths, client
-arguments, and info-file bytes never enter widget IPC or private state.
+GOG rows deliberately expose no Launch capability. GOG does not document a
+supported external launch contract for this fixed registry/info evidence, so
+both first-party widgets render the provider-agnostic **Play unavailable** state
+and no Play request crosses the widget/broker/provider boundary. Registry keys,
+product IDs, paths, and info-file bytes never enter widget IPC or private state.
 
 ## Honest limitations
 

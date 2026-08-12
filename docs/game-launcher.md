@@ -133,11 +133,13 @@ executable match before the host constructs its constrained Epic launcher URI.
 GOG installed-game discovery has its own opt-in on that page. Disabled mode
 performs no GOG registration or file I/O. Enabled mode reads only the fixed
 machine-wide GOG game registry views, requires the corresponding bounded local
-`goggame-<product-id>.info` record and the fixed Galaxy client, and reports
+`goggame-<product-id>.info` record, and reports
 disabled, unavailable, degraded, or healthy status independently. Product IDs,
-registry keys, install paths, info bytes, and launcher arguments remain trusted
-host state. A tile is launchable only after the source rereads the exact current
-registry/info generation; retained or replaced display rows cannot launch.
+registry keys, install paths, and info bytes remain trusted host state. This is
+bounded best-effort installed evidence, not an official GOG integration API or
+an exhaustive catalog. Because GOG does not document a supported external
+launch contract for this evidence, GOG rows expose **Play unavailable** and no
+Play request crosses the widget/broker/provider boundary.
 
 Private schema v5 contains at most 128 sanitized SavedId, display-name, and source
 rows; display names are capped at 96 characters so the worst valid state remains

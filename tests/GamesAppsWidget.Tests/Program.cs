@@ -295,6 +295,16 @@ static async Task GogGameProjectsTruthfully()
     var game = InstalledItem(
         "app-gog", "saved-gog", "GOG Game", WidgetAppLibraryKind.Game,
         "source-gog-installed", "GOG");
+    game = game with
+    {
+        Presentation = game.Presentation with
+        {
+            Availability = new(
+                WidgetAppLibraryAvailabilityState.Installed,
+                false, "play_unavailable"),
+            Capabilities = new([]),
+        },
+    };
     var fake = new FakeAppLibraryHost
     {
         Pages = { [0] = Page([game], null) },
@@ -306,8 +316,11 @@ static async Task GogGameProjectsTruthfully()
 
     var current = widget.CuratedItems.Single(item => item.SavedId == game.SavedId);
     Assert.Equal("GOG", current.Presentation.Source.DisplayName);
-    Assert.True(ActionSurfaces(Snapshot(widget, 912).Root).Any(node =>
-        node.AccessibilityLabel?.Contains("GOG", StringComparison.Ordinal) == true));
+    var tile = ActionSurfaces(Snapshot(widget, 912).Root).Single(node =>
+        node.AccessibilityLabel?.Contains("GOG", StringComparison.Ordinal) == true);
+    Assert.True(tile.IsDisabled is true, "Non-launchable GOG row exposed Play.");
+    await widget.OnActionAsync(new("games.launch", tile.Id));
+    Assert.Equal(0, fake.LaunchedIds.Count);
     await Background(widget);
 }
 

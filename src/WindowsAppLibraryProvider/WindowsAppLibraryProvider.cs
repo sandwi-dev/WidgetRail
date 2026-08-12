@@ -86,9 +86,7 @@ public sealed class WindowsAppLibraryProvider :
             new GogGameLibrarySource(
                 new GogInstalledGameApplicationSource(
                     new WindowsGogRegistryReader(),
-                    gogEnabled,
-                    WindowsGogLauncher.DefaultClientPath),
-                new WindowsGogLauncher()),
+                    gogEnabled)),
         ];
     }
 
@@ -362,6 +360,8 @@ public sealed class WindowsAppLibraryProvider :
                 entry.registration.Attribution)
             {
                 SourceIdentity = entry.registration.SourceIdentity,
+                IsLaunchable = entry.registration.SupportedActions.HasFlag(
+                    GameLibrarySourceActions.Launch),
             }).ToArray();
             var before = offset > 0
                 ? CreateCursor(Math.Max(0, offset - request.Limit),
@@ -483,6 +483,7 @@ public sealed class WindowsAppLibraryProvider :
             lock (_stateGate)
                 _registrationsByOpaqueId.TryGetValue(appId, out registered);
             if (registered is null || !IsStructurallyValid(registered) ||
+                !registered.SupportedActions.HasFlag(GameLibrarySourceActions.Launch) ||
                 !_sourcesByIdentity.TryGetValue(
                     registered.SourceIdentity, out var source))
                 throw AppUnavailable();
@@ -733,7 +734,6 @@ public sealed class WindowsAppLibraryProvider :
         !string.IsNullOrWhiteSpace(registration.ArtworkRevision) &&
         registration.ArtworkRevision.Length <= 128 &&
         registration.Installed && registration.Available &&
-        registration.SupportedActions.HasFlag(GameLibrarySourceActions.Launch) &&
         (registration.SupportedActions &
             ~(GameLibrarySourceActions.Launch | GameLibrarySourceActions.Artwork)) == 0 &&
         !string.IsNullOrWhiteSpace(registration.SourceItemIdentity) &&

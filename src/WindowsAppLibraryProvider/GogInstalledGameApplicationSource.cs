@@ -7,27 +7,23 @@ namespace GameBarAlternative.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Converts GOG's fixed machine registration plus its bounded per-install info
-/// file into exact, provider-internal launch authority. Disabled discovery exits
-/// before any registry or filesystem access.
+/// file into best-effort installed evidence. Disabled discovery exits before
+/// any registry or filesystem access. This source grants no launch authority.
 /// </summary>
 internal sealed class GogInstalledGameApplicationSource : IGogApplicationSource
 {
     internal const int MaximumInfoBytes = 256 * 1024;
     private readonly IGogRegistryReader _registry;
     private readonly Func<CancellationToken, bool> _isEnabled;
-    private readonly string _galaxyClientPath;
     private readonly Action<string>? _afterInfoRead;
 
     internal GogInstalledGameApplicationSource(
         IGogRegistryReader registry,
         Func<CancellationToken, bool> isEnabled,
-        string galaxyClientPath,
         Action<string>? afterInfoRead = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _isEnabled = isEnabled ?? throw new ArgumentNullException(nameof(isEnabled));
-        ArgumentException.ThrowIfNullOrWhiteSpace(galaxyClientPath);
-        _galaxyClientPath = Path.GetFullPath(galaxyClientPath);
         _afterInfoRead = afterInfoRead;
     }
 
@@ -44,9 +40,6 @@ internal sealed class GogInstalledGameApplicationSource : IGogApplicationSource
         {
             return new(GameLibrarySourceHealth.Unavailable, []);
         }
-
-        if (!IsSafeExistingFile(_galaxyClientPath))
-            return new(GameLibrarySourceHealth.Unavailable, []);
 
         var snapshot = _registry.Enumerate(cancellationToken);
         if (!snapshot.IsAvailable ||
@@ -72,32 +65,6 @@ internal sealed class GogInstalledGameApplicationSource : IGogApplicationSource
             registrations.OrderBy(item => item.ProductId, StringComparer.Ordinal).ToArray());
     }
 
-    public GogGameRegistration? ReadExact(
-        string registryView,
-        string registryKeyName,
-        string productId,
-        CancellationToken cancellationToken)
-    {
-        if (!ValidProductId(productId)) return null;
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!_isEnabled(cancellationToken) || !IsSafeExistingFile(_galaxyClientPath))
-                return null;
-            var record = _registry.ReadExact(
-                registryView, registryKeyName, cancellationToken);
-            var current = record is null ? null : TryCreate(record, cancellationToken);
-            return current is not null && string.Equals(
-                current.ProductId, productId, StringComparison.Ordinal)
-                ? current : null;
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception exception) when (IsSourceFailure(exception))
-        {
-            return null;
-        }
-    }
-
     private GogGameRegistration? TryCreate(
         GogRegistryRecord record,
         CancellationToken cancellationToken)
@@ -121,8 +88,7 @@ internal sealed class GogInstalledGameApplicationSource : IGogApplicationSource
                 "\0" + productId + "\0" + displayName + "\0" + installLocation +
                 "\0" + infoHash + "\0" + infoLength.ToString(CultureInfo.InvariantCulture) +
                 "\0" + infoWrite.Ticks.ToString(CultureInfo.InvariantCulture))));
-        return new(identity, displayName, productId, record.RegistryView,
-            record.KeyName, installLocation, infoPath, revision);
+        return new(identity, displayName, productId, revision);
     }
 
     private bool TryReadInfo(

@@ -4,27 +4,21 @@ using GameBarAlternative.WindowsAppLibraryProvider;
 
 internal static class GogInstalledGameScenarios
 {
-    internal static Task DisabledClientMissingEmptyAndCancellationAreExplicit()
+    internal static Task DisabledEmptyAndCancellationAreExplicit()
     {
         using var fixture = new GogFixture();
         fixture.Add("100", "Alpha");
         var disabledReads = 0;
         var disabled = new GogInstalledGameApplicationSource(
             new FakeRegistry(fixture.Records, () => disabledReads++),
-            _ => false, fixture.Client);
+            _ => false);
         var disabledResult = disabled.Enumerate(default);
         Equal(GameLibrarySourceHealth.Disabled, disabledResult.Health,
             "Disabled GOG source did not report its explicit state.");
         Equal(0, disabledReads, "Disabled GOG source opened its registration surface.");
 
-        var missingClient = new GogInstalledGameApplicationSource(
-            new FakeRegistry(fixture.Records), _ => true,
-            Path.Combine(fixture.Root, "missing-client.exe")).Enumerate(default);
-        Equal(GameLibrarySourceHealth.Unavailable, missingClient.Health,
-            "Missing GOG Galaxy client was not isolated as unavailable.");
-
         var empty = new GogInstalledGameApplicationSource(
-            new FakeRegistry([]), _ => true, fixture.Client).Enumerate(default);
+            new FakeRegistry([]), _ => true).Enumerate(default);
         Equal(GameLibrarySourceHealth.Healthy, empty.Health,
             "Empty current GOG registration was not healthy.");
         Equal(0, empty.Registrations.Count, "Empty GOG registration emitted a row.");
@@ -36,13 +30,13 @@ internal static class GogInstalledGameScenarios
         return Task.CompletedTask;
     }
 
-    internal static Task ValidRegistrationsAreOpaqueDistinctAndLaunchable()
+    internal static async Task ValidRegistrationsAreOpaqueDistinctAndNonLaunchable()
     {
         using var fixture = new GogFixture();
         fixture.Add("100", "Same title", WindowsGogRegistryReader.Registry32);
         fixture.Add("200", "Same title", WindowsGogRegistryReader.Registry64);
         var source = new GogInstalledGameApplicationSource(
-            new FakeRegistry(fixture.Records), _ => true, fixture.Client);
+            new FakeRegistry(fixture.Records), _ => true);
         var candidate = source.Enumerate(default);
         Equal(GameLibrarySourceHealth.Healthy, candidate.Health,
             "Valid GOG registrations were not healthy.");
@@ -56,17 +50,19 @@ internal static class GogInstalledGameScenarios
             !serialized.Contains("100", StringComparison.Ordinal),
             "Projected GOG identity exposed trusted registration evidence.");
 
-        var start = WindowsGogLauncher.CreateStartInfo(
-            fixture.Client, "100", fixture.Install("100"));
-        Equal(fixture.Client, start.FileName,
-            "GOG launch did not target the fixed Galaxy client.");
-        Equal("/command=runGame", start.ArgumentList[0],
-            "GOG launch command was not fixed.");
-        Equal("/gameId=100", start.ArgumentList[1],
-            "GOG launch omitted the exact product identity.");
-        Equal($"/path={fixture.Install("100")}", start.ArgumentList[2],
-            "GOG launch omitted the exact registered install root.");
-        return Task.CompletedTask;
+        var registry = new FakeRegistry(fixture.Records);
+        await using var provider = new WindowsAppLibraryProvider(
+            [new GogGameLibrarySource(new GogInstalledGameApplicationSource(
+                registry, _ => true))], ImmediateSta.Instance);
+        var page = await Query(provider, refresh: true);
+        True(page.Items.All(item => !item.IsLaunchable),
+            "GOG installed evidence received backend launch admission.");
+        var reads = registry.ReadCount;
+        await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
+                page.Items[0].ProviderAppId, default),
+            "GOG installed evidence crossed the provider launch boundary.");
+        Equal(reads, registry.ReadCount,
+            "Denied GOG launch re-read trusted registration evidence.");
     }
 
     internal static Task MalformedDuplicateAndMixedRegistrationsFailClosed()
@@ -76,7 +72,7 @@ internal static class GogInstalledGameScenarios
         fixture.Records.Add(new(WindowsGogRegistryReader.Registry32,
             "bad", "bad", "Bad", fixture.Root));
         var mixed = new GogInstalledGameApplicationSource(
-            new FakeRegistry(fixture.Records), _ => true, fixture.Client)
+            new FakeRegistry(fixture.Records), _ => true)
             .Enumerate(default);
         Equal(GameLibrarySourceHealth.Degraded, mixed.Health,
             "Mixed valid and malformed GOG registrations were not degraded.");
@@ -87,7 +83,7 @@ internal static class GogInstalledGameScenarios
         fixture.Add("100", "Same", WindowsGogRegistryReader.Registry32);
         fixture.Add("100", "Same", WindowsGogRegistryReader.Registry64);
         var duplicate = new GogInstalledGameApplicationSource(
-            new FakeRegistry(fixture.Records), _ => true, fixture.Client)
+            new FakeRegistry(fixture.Records), _ => true)
             .Enumerate(default);
         Equal(GameLibrarySourceHealth.Degraded, duplicate.Health,
             "Duplicate GOG product identity was not degraded.");
@@ -97,7 +93,7 @@ internal static class GogInstalledGameScenarios
         fixture.Records.Clear();
         fixture.Add("300", "Changed");
         var changed = new GogInstalledGameApplicationSource(
-            new FakeRegistry(fixture.Records), _ => true, fixture.Client,
+            new FakeRegistry(fixture.Records), _ => true,
             path => File.AppendAllText(path, " ")).Enumerate(default);
         Equal(GameLibrarySourceHealth.Degraded, changed.Health,
             "Changed-during-read GOG info was not rejected.");
@@ -106,39 +102,40 @@ internal static class GogInstalledGameScenarios
         return Task.CompletedTask;
     }
 
-    internal static async Task RefreshAndLaunchAreGenerationExact()
+    internal static async Task RefreshAndLaunchAreDenied()
     {
         using var fixture = new GogFixture();
         fixture.Add("100", "Alpha");
         var registry = new FakeRegistry(fixture.Records);
         var adapter = new GogInstalledGameApplicationSource(
-            registry, _ => true, fixture.Client);
-        var launcher = new RecordingGogLauncher();
+            registry, _ => true);
         await using var provider = new WindowsAppLibraryProvider(
-            [new GogGameLibrarySource(adapter, launcher)], ImmediateSta.Instance);
+            [new GogGameLibrarySource(adapter)], ImmediateSta.Instance);
         var first = await Query(provider, refresh: true);
         var alpha = first.Items.Single();
         Equal("GOG", alpha.SourceAttribution,
             "GOG attribution was not normalized.");
+        True(!alpha.IsLaunchable, "GOG row unexpectedly exposed launch admission.");
 
-        fixture.Records.Clear();
+        var reads = registry.ReadCount;
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
                 alpha.ProviderAppId, default),
-            "Removed GOG registration still authorized launch.");
-        Equal(0, launcher.Count, "Stale GOG authority reached the launcher.");
+            "GOG installed evidence unexpectedly authorized launch.");
+        Equal(reads, registry.ReadCount,
+            "Denied GOG launch crossed into exact registration reading.");
 
+        fixture.Records.Clear();
         fixture.Add("200", "Beta");
         var second = await Query(provider, refresh: true);
         var beta = second.Items.Single();
         Equal("Beta", beta.DisplayName,
             "Refreshed GOG registration was not published.");
-        await provider.LaunchAppLibraryItemAsync(beta.ProviderAppId, default);
-        Equal(1, launcher.Count, "Current exact GOG registration did not launch.");
+        True(!beta.IsLaunchable, "Refreshed GOG evidence became launchable.");
 
         fixture.Rewrite("200", "Beta replacement");
         await ThrowsBroker(() => provider.LaunchAppLibraryItemAsync(
                 beta.ProviderAppId, default),
-            "Replaced GOG registration retained old launch authority.");
+            "Replaced GOG registration unexpectedly gained launch authority.");
 
         registry.Available = false;
         var unavailable = await Query(provider, refresh: true);
@@ -186,10 +183,12 @@ internal static class GogInstalledGameScenarios
         Action? onRead = null) : IGogRegistryReader
     {
         internal bool Available { get; set; } = true;
+        internal int ReadCount { get; private set; }
 
         public GogRegistrySnapshot Enumerate(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ReadCount++;
             onRead?.Invoke();
             return new(Available, Available ? records.ToArray() : []);
         }
@@ -200,19 +199,13 @@ internal static class GogInstalledGameScenarios
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ReadCount++;
             onRead?.Invoke();
             if (!Available) return null;
             return records.SingleOrDefault(record =>
                 string.Equals(record.RegistryView, registryView, StringComparison.Ordinal) &&
                 string.Equals(record.KeyName, keyName, StringComparison.Ordinal));
         }
-    }
-
-    private sealed class RecordingGogLauncher : IWindowsGogLauncher
-    {
-        internal int Count { get; private set; }
-        public void Launch(string productId, string installLocation,
-            CancellationToken cancellationToken) => Count++;
     }
 
     private sealed class ImmediateSta : IShellStaExecutor
@@ -229,13 +222,9 @@ internal static class GogInstalledGameScenarios
         {
             Root = Path.Combine(Path.GetTempPath(), "gbar-gog-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
-            Client = Path.Combine(Root, "GOG Galaxy", "GalaxyClient.exe");
-            Directory.CreateDirectory(Path.GetDirectoryName(Client)!);
-            File.WriteAllBytes(Client, [1, 2, 3]);
         }
 
         internal string Root { get; }
-        internal string Client { get; }
         internal List<GogRegistryRecord> Records { get; } = [];
 
         internal string Install(string id) => Path.Combine(Root, "install-" + id);

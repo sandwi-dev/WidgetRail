@@ -273,8 +273,9 @@ internal static class GameLauncherPresentation
                     row.Current?.Presentation.Artwork.Find(
                         WidgetAppLibraryArtworkRole.Tile)?.Handle,
                     state.LaunchingSavedId,
-                    state.LaunchStates.GetValueOrDefault(row.Display.SavedId),
+                    LaunchStateFor(state.LaunchStates, row.Display.SavedId),
                     resolved: row.Current is not null,
+                    launchable: CanLaunch(row.Current),
                     row.Favorite,
                     row.Preferred,
                     row.GroupSize,
@@ -384,6 +385,7 @@ internal static class GameLauncherPresentation
             var warm = warmRows.Select(item => Tile(
                 item.DisplayName, item.SourceAttribution, item.SavedId, null,
                 null, resolved: false,
+                launchable: false,
                 launchState: null,
                 favorite: state.Organization.FavoriteSavedIds.Contains(
                     item.SavedId, StringComparer.Ordinal),
@@ -646,6 +648,7 @@ internal static class GameLauncherPresentation
         string? launchingSavedId,
         GameLauncherLaunchState? launchState,
         bool resolved,
+        bool launchable,
         bool favorite,
         bool preferred,
         int groupSize,
@@ -666,7 +669,7 @@ internal static class GameLauncherPresentation
             GameLauncherLaunchState.Running => "Running",
             GameLauncherLaunchState.Failed => "Failed",
             GameLauncherLaunchState.Ended => "Ended",
-            _ => resolved ? interactive ? "Ready" : "Paused" : "Unavailable",
+            _ => launchable ? interactive ? "Ready" : "Paused" : "Play unavailable",
         };
         var traits = new List<string>(3);
         if (favorite) traits.Add("Favorite");
@@ -678,7 +681,7 @@ internal static class GameLauncherPresentation
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)
             .Busy(launching)
-            .Disabled(!interactive || !resolved)
+            .Disabled(!interactive || !launchable)
             .Classes("game-launcher-tile");
         if (interactive && resolved && !launching)
             tile = tile
@@ -691,4 +694,14 @@ internal static class GameLauncherPresentation
                 .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer");
         return collectionItem ? tile.CollectionItem(key) : tile;
     }
+
+    private static bool CanLaunch(GameLauncherItem? item) => item is not null &&
+        item.Value.Presentation.Availability.State ==
+            WidgetAppLibraryAvailabilityState.Installed &&
+        item.Value.Presentation.Availability.IsLaunchable &&
+        item.Value.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch);
+
+    private static GameLauncherLaunchState? LaunchStateFor(
+        IReadOnlyDictionary<string, GameLauncherLaunchState> states,
+        string savedId) => states.TryGetValue(savedId, out var state) ? state : null;
 }

@@ -220,11 +220,17 @@ internal static class GameLauncherHeroRailPresentation
             return Fallback("Choose a game", "Installed games will appear in the rail.");
 
         var title = selected.Display.DisplayName;
-        var available = selected.Current is not null;
+        var available = selected.Current is { } current &&
+            current.Value.Presentation.Availability.State ==
+                WidgetAppLibraryAvailabilityState.Installed &&
+            current.Value.Presentation.Availability.IsLaunchable &&
+            current.Value.Presentation.Capabilities.Supports(
+                WidgetAppLibraryAction.Launch);
         var launching = string.Equals(selected.Display.SavedId, launchingSavedId,
             StringComparison.Ordinal);
-        var state = launching ? "Pending" : launchStates.GetValueOrDefault(
-            selected.Display.SavedId) switch
+        var launchState = launchStates.TryGetValue(
+            selected.Display.SavedId, out var recorded) ? recorded : (GameLauncherLaunchState?)null;
+        var state = launching ? "Pending" : launchState switch
         {
             GameLauncherLaunchState.RequestAccepted => "Request accepted",
             GameLauncherLaunchState.LauncherStarted => "Launcher started",

@@ -73,14 +73,26 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task GogGameProjectsExactSourceAndLaunchIdentity()
+    public async Task GogGameProjectsExactSourceWithoutLaunchAuthority()
     {
         var host = new FakeHost(1)
         {
             ItemFactory = _ => InstalledItem(
                 "app-gog", "saved-gog", "GOG Game",
                 WidgetAppLibraryKind.Game,
-                "source-gog-installed", "GOG"),
+                "source-gog-installed", "GOG") with
+            {
+                Presentation = InstalledItem(
+                    "app-gog", "saved-gog", "GOG Game",
+                    WidgetAppLibraryKind.Game,
+                    "source-gog-installed", "GOG").Presentation with
+                {
+                    Availability = new(
+                        WidgetAppLibraryAvailabilityState.Installed,
+                        false, "play_unavailable"),
+                    Capabilities = new([]),
+                },
+            },
         };
         host.ResolveHandler = _ => [host.ItemFactory(0)];
         var widget = Create(host);
@@ -92,8 +104,10 @@ public sealed class GameLauncherTests
         var tile = Nodes(Snapshot(widget, 3).Root).Single(node =>
             node.ActionId == "game-launcher.launch");
         StringAssert.Contains(tile.AccessibilityLabel!, "GOG");
+        StringAssert.Contains(tile.AccessibilityLabel!, "Play unavailable");
+        Assert.IsTrue(tile.IsDisabled);
         await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
-        Assert.AreEqual("app-gog", host.Launches.Single());
+        Assert.AreEqual(0, host.Launches.Count);
         await Background(widget);
     }
 
