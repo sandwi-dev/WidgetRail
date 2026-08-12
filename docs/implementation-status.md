@@ -1954,7 +1954,10 @@ is recorded in GBA-015 and GBA-016.
 
 The first-party Settings widget controls text/interface scale, backdrop
 opacity, System/Full/Reduced motion, System/Standard/High contrast, bold text,
-reduced transparency, exact theme ID/version selection, and confirmed reset.
+reduced transparency, exact theme ID/version selection, confirmed inactive
+user-theme version removal, and confirmed reset. Theme versions are grouped by
+ID; invalid versions remain reviewable/removable, while built-in and selected
+versions are protected.
 `PlatformAppearanceService` watches settings and theme files
 with event notifications plus a 200 ms debounce—there is no polling loop.
 Valid reloads increment an immutable revision, clear per-widget layered-theme
@@ -1992,13 +1995,23 @@ accessibility evidence remain open. The embedded selectable
 Cool Slate theme exercises the same token and renderer pipeline with a visibly
 distinct palette rather than a hard-coded widget skin.
 
-The CLI provides `gbar theme new|validate|preview|pack|inspect|install|list`.
+The CLI provides `gbar theme new|validate|preview|pack|inspect|install|list|remove`.
 Schema-version-2 `.gbartheme` packages are data-only, deterministic, bounded,
 publisher-namespaced, digest-addressable, revalidated through the production
 compiler, and installed as immutable ID/version directories through staged
 atomic moves. Remote HTTPS/GitHub release installs require a pinned SHA-256.
-Preview is computed terminal output, not native pixels; signing, revocation,
-remove/update/rollback, asset support, and graphical preview remain open.
+Settings and CLI removal share one exact-version catalog mutation policy and
+cross-process lock; atomic retirement never rewrites the appearance record or
+sibling versions. Preview is computed terminal output, not native pixels;
+signing, revocation, automatic update/rollback, asset support, and graphical
+preview remain open.
+
+Focused DLV-111 Release evidence covers PlatformSettings theme mutation
+(16/16), controller Settings version review/selection/confirmed removal
+(55/55), CLI parity (58/58), and documentation contracts. The bounded cases
+include multiple IDs/versions, invalid exact identity, built-in/current
+protection, cancellation before commit, sibling preservation, deterministic
+post-removal focus, and the existing no-poll watcher path.
 
 ### Live package catalog
 
@@ -2982,7 +2995,7 @@ and repeated byte-identical package creation.
    opaque exact launch identities.
 5. Extend the bounded process sampler with ETW/PresentMon automation, stored
    comparable baselines, latency scenarios, and per-widget resource diagnostics.
-6. Add native graphical theme preview, package remove/update discovery,
+6. Add native graphical theme preview, package update discovery,
    editor schemas, controller/focus inspection, and scenario-based Gallery
    preview/capture coverage. The public SDK Gallery is implemented. Complete
    packaged author-workflow evidence for the implemented `gbar dev` loop.

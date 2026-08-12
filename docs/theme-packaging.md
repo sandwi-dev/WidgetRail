@@ -27,6 +27,7 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar theme inspect .\scratch\dev.example.ocean-night-1.0.0.gbartheme
 & $gbar theme install .\scratch\dev.example.ocean-night-1.0.0.gbartheme
 & $gbar theme list
+& $gbar theme remove dev.example.ocean-night 1.0.0
 ```
 
 | Command | Contract |
@@ -38,6 +39,14 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 | `theme inspect <package>` | Reports identity, publisher claim, entry, counts/sizes, SHA-256, and trust caveat without executing content. |
 | `theme install <source>` | Revalidates and atomically installs a local or pinned remote package. Optional: `--sha256`, `--settings-root`. |
 | `theme list` | Lists built-in and installed versions, publisher claims, validity, and a bounded error diagnostic. Optional: `--settings-root`. |
+| `theme remove <exact-id> <exact-version>` | Atomically retires one confirmed inactive user-installed version. Built-in and selected versions are protected. Optional: `--settings-root`. |
+
+Settings → Appearance presents the same version-management policy grouped by
+theme ID. Invalid packages remain reviewable and removable by their exact
+catalog directory identity, but never selectable. Selection and removal
+revalidate beneath the catalog lock; cancellation or catalog replacement before
+the atomic rename leaves the selected appearance record and unrelated versions
+unchanged.
 
 The computed preview is suitable for terminals and CI. It is not a native
 graphical preview and does not simulate accessibility policy, resolution, DPI,

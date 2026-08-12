@@ -37,11 +37,12 @@ Accessibility policy remains host-owned and wins after every theme layer.
 | Controller toggle and stepper composites | Implemented | Use `UI.ToggleButton` and `UI.Stepper`; state and persistence remain the caller's responsibility. |
 | Strict appearance settings store | Implemented | The first-party Settings worker persists through it and the shell consumes its bounded appearance revision. |
 | Versioned theme discovery and immutable install | Implemented | Use `gbar theme install`; an existing ID/version is never overwritten. |
+| Exact installed-version management | Implemented | Settings groups versions by theme ID; select a valid exact version or confirm removal of an inactive user version. `gbar theme remove <id> <version>` uses the same policy. |
 | Platform → widget → user cascade | Implemented in bridge snapshots | Explicit user-layer priority beats widget selector specificity. |
 | No-poll reload and last-good revision | Implemented in bridge | `FileSystemWatcher` events are debounced; invalid reloads retain the prior snapshot. |
 | Controller Settings widget | Implemented | Open the first-party Settings card; it uses the generic worker/SDK/renderer path. |
 | Installed widget review/enablement | Implemented | Review read-only Built-in widgets separately from CLI-installed Community packages; only Community packages expose enablement and version management, and enablement remains separate from consent. |
-| Scaffold, validate, preview, pack, inspect, install, and list themes | Implemented | Use the `gbar theme` command group and the data-only `.gbartheme` format. |
+| Scaffold, validate, preview, pack, inspect, install, list, and remove themes | Implemented | Use the `gbar theme` command group and the data-only `.gbartheme` format. |
 | Select a discovered theme | Implemented | Settings pins an exact valid ID/version after controller review. |
 | Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. Stable declarative nodes interpolate bounded opacity/scale changes only. |
 | Declarative widget text scale | Implemented | The host applies bounded text scale after GBSS resolution and remeasures/reflows generic widget content without compounding inherited `em` sizes. |
@@ -161,8 +162,9 @@ authority.
 
 The implemented root categories are:
 
-- **Appearance:** current theme and a versioned theme picker. Valid themes can
-  be selected; invalid themes remain visible but disabled with a diagnostic.
+- **Appearance:** current theme and controller-first version management grouped
+  by theme ID. Valid exact versions can be selected. Invalid versions remain
+  reviewable and removable, but cannot be selected.
 - **Accessibility:** text scale in 5% steps, Follow Windows motion, Reduced
   motion, and a nested **Contrast and visibility** page. With neither motion
   toggle selected, the explicit preference is `full`.
@@ -188,11 +190,12 @@ The implemented root categories are:
 - **Reset:** a confirmation surface that atomically restores built-in theme,
   sizing, backdrop, motion, contrast, bold-text, and transparency defaults.
 
-The theme picker uses the public single-select `UI.Picker` contract. Every
-installed entry appears in one bounded host-owned vertical Scroll; invalid
-themes remain focusable but unavailable, B returns one level, and LB/RB remain
-free for widget actions instead of private pagination. Opening the picker
-focuses the current selection. The selected theme persists both ID and
+Every installed entry appears in one bounded host-owned vertical Scroll under
+its theme-ID heading. Opening an entry shows its exact ID/version, selection,
+and removal policy. Removal requires a second confirmation page; the built-in
+and currently selected versions never expose an enabled removal action. B
+returns one level, LB/RB remain free for widget actions, and successful removal
+focuses the adjacent surviving row. The selected theme persists both ID and
 canonical version.
 
 The Settings root uses the public protocol-v8 `UI.ResponsiveGrid` contract for
@@ -321,6 +324,7 @@ gbar theme pack .\Slate --output .\dev.example.slate-1.2.3.gbartheme
 gbar theme inspect .\dev.example.slate-1.2.3.gbartheme
 gbar theme install .\dev.example.slate-1.2.3.gbartheme
 gbar theme list
+gbar theme remove dev.example.slate 1.2.3
 ```
 
 A public package has exact-case root `theme.json` plus only the UTF-8 `.gbss`
@@ -358,7 +362,12 @@ An existing version is never overwritten. Remote installation accepts absolute
 HTTPS or `github:owner/repository@tag/asset.gbartheme` and requires a pinned
 SHA-256 digest; the GitHub shorthand names one exact release asset and never
 uses `latest`, clones source, or builds a repository. Select the installed
-version through Settings → Appearance.
+version through Settings → Appearance. Settings and `theme remove` share the
+same bounded cross-process catalog lock and exact-version retirement policy.
+Only inactive user-installed versions can be retired; built-in and selected
+versions are protected. Retirement atomically removes the exact version from
+discovery before bounded no-reparse cleanup, without rewriting sibling theme
+content or the appearance record.
 
 The package boundary rejects traversal, unsafe Windows names, backslashes,
 non-NFC or case-colliding paths, explicit directory and symlink entries,
@@ -370,8 +379,8 @@ archive; tighter GBSS compiler limits still apply.
 
 Validation establishes bounded data and a digest establishes exact bytes.
 Neither authenticates the publisher. There is no signature, revocation,
-automatic update, remove command, theme gallery, graphical preview, or asset
-broker yet. Read the complete command, format, security, and GitHub workflow in
+automatic update, theme gallery, graphical preview, or asset broker yet. Read
+the complete command, format, security, and GitHub workflow in
 [theme packaging and distribution](theme-packaging.md).
 
 ## Current global cascade and ownership

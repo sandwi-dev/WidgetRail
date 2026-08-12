@@ -79,6 +79,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme validation rejects unsafe content and unreachable styles", ThemeValidationSafety),
     ("Theme archives reject traversal collisions and executable content", ThemeArchiveSafety),
     ("Theme installation is immutable and catalog-compatible", ThemeInstallIsImmutable),
+    ("Theme removal is exact protected and shares catalog policy", ThemeRemovalIsExact),
     ("Remote theme installation requires and verifies a pinned release asset", ThemeRemoteInstall),
     ("Validate accepts a scaffolded widget", ValidateScaffold),
     ("Validate rejects unsafe GBSS", ValidateRejectsUnsafeGbss),
@@ -792,6 +793,49 @@ static async Task ThemeRemoteInstall()
     Assert.Contains($"Downloaded SHA-256: {hash.ToLowerInvariant()}", installed.Output);
     Assert.Equal("https://github.com/sample-org/themes/releases/download/v1.2.0/remote.gbartheme", requestedUri);
     Assert.Equal(1, requests);
+}
+
+static async Task ThemeRemovalIsExact()
+{
+    using var temp = new TemporaryDirectory();
+    var settingsRoot = Path.Combine(temp.Path, "settings");
+    var sourceOne = await CreateThemeSourceAsync(temp.Path, "dev.test.removable", "dev.test", "1.0.0");
+    var sourceTwo = await CreateThemeSourceAsync(temp.Path, "dev.test.removable", "dev.test", "2.0.0");
+    var firstPackage = Path.Combine(temp.Path, "remove-one.gbartheme");
+    var secondPackage = Path.Combine(temp.Path, "remove-two.gbartheme");
+    Assert.Equal(0, (await RunCli("theme", "pack", sourceOne, "--output", firstPackage)).Code);
+    Assert.Equal(0, (await RunCli("theme", "pack", sourceTwo, "--output", secondPackage)).Code);
+    Assert.Equal(0, (await RunCli("theme", "install", firstPackage, "--settings-root", settingsRoot)).Code);
+    Assert.Equal(0, (await RunCli("theme", "install", secondPackage, "--settings-root", settingsRoot)).Code);
+
+    var removed = await RunCli(
+        "theme", "remove", "dev.test.removable", "1.0.0", "--settings-root", settingsRoot);
+    Assert.Equal(0, removed.Code);
+    Assert.Contains("Removed dev.test.removable 1.0.0", removed.Output);
+    Assert.True(!Directory.Exists(Path.Combine(settingsRoot, "themes", "dev.test.removable", "1.0.0")),
+        "CLI removal retained the exact inactive version.");
+    Assert.True(Directory.Exists(Path.Combine(settingsRoot, "themes", "dev.test.removable", "2.0.0")),
+        "CLI removal changed a sibling version.");
+
+    var store = new PlatformSettingsStore(new PlatformSettingsPaths(settingsRoot));
+    await store.UpdateAsync(current => current with
+    {
+        Appearance = current.Appearance with
+        {
+            ThemeId = "dev.test.removable",
+            ThemeVersion = "2.0.0",
+        },
+    });
+    var selected = await RunCli(
+        "theme", "remove", "dev.test.removable", "2.0.0", "--settings-root", settingsRoot);
+    Assert.Equal(1, selected.Code);
+    Assert.Contains("selected_theme_protected", selected.Error);
+    var builtIn = await RunCli(
+        "theme", "remove", ThemeIdentity.BuiltInDefault, ThemeIdentity.BuiltInDefaultVersion,
+        "--settings-root", settingsRoot);
+    Assert.Equal(1, builtIn.Code);
+    Assert.Contains("builtin_theme_protected", builtIn.Error);
+    Assert.Equal("dev.test.removable", (await store.LoadAsync()).Appearance.ThemeId);
 }
 
 static async Task ValidateScaffold()
