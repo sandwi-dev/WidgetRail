@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 14:34 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 15:03 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -79,6 +79,14 @@ That snapshot is historical evidence, not implementation authority.
   a later Active generation. DLV-174 rejects stale successes but still lets a
   stale failed command overwrite replacement-session status. DLV-175/176/177
   own bounded corrections before this prefix can be reconsidered.
+- DLV-176 `01fdef1` and DLV-177 `585dade` are accepted but held unintegrated:
+  explicit YT Music Refresh now has exact Active-generation ownership, and Now
+  Playing stale failures return current replacement state wholesale. DLV-175
+  `d13c5e9` and dependent DLV-178 `20ca347` remain rejected: Favorites/Recent
+  can still combine while the strip reports only one selection, source options
+  disappear as the current filtered/page slice changes, and the search test
+  simulates cancel without exercising host TextEntry cancel/focus. DLV-179/180
+  own those corrections before the full branch prefix can integrate.
 
 ## Execution protocol
 
@@ -117,41 +125,41 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-175: correct Game Launcher M1 collection truth and ownership
+### Current assignment — DLV-179: make Game Launcher collection identity exclusive and stable
 
-**State:** Assigned correction after rejected DLV-172/173/174. The widgets task
-must begin immediately from clean branch `251152d`; rejected commits remain
-unintegrated until the complete correction prefix is accepted.
+**State:** Assigned correction after rejected DLV-175 and dependent DLV-178.
+The widgets task must begin immediately from clean branch `20ca347`; the whole
+Launcher/media prefix remains held until its remaining corrections are accepted.
 
-**Baseline/dependencies:** widgets branch `251152d`; accepted product `d58e50e`.
-This correction owns only DLV-172's managed Game Launcher collection state,
-source-option admission, metadata formatting, focused tests, and directly
-affected implementation/public docs. Preserve the remainder of DLV-172 and do
-not edit YT Music, Media Sessions, native host, provider authority, public
-protocol, reviewer docs, or Launcher Experience pack schemas.
+**Baseline/dependencies:** widgets branch `20ca347`; accepted product `d58e50e`.
+This correction owns only Game Launcher collection selection/source-option
+state, focused tests, and directly affected implementation/public docs. DLV-176
+and DLV-177 are accepted held dependencies and must not be changed. Do not edit
+YT Music, Media Sessions, native host, provider authority, public protocol,
+reviewer docs, or Launcher Experience pack schemas.
 
-**User-visible outcome:** the new collection strip shows only collections with
-known matching games, never opens an advertised source into an unexplained
-empty page, and details remain usable for every SDK-valid metadata value.
+**User-visible outcome:** exactly one collection is visibly selected and its
+query matches that label; switching or paging never makes other known non-empty
+source collections disappear from the strip.
 
-**Objective/acceptance:** gate source options on bounded proven membership, not
-the provider's global source-observation list; add an installed empty-source
-case. Safely omit or render any nonnegative last-played value admitted by the
-current SDK without throwing, including `long.MaxValue`. Replace `_query`,
-`_favoriteFilter`, `_recentMode`, and `_manualFilter` as competing collection
-identity with one cohesive private selection owner/state while preserving
-legacy filter actions and exact query semantics. Tests must prove displayed
-selection always matches the actual intersection/query and hide/details return
-focus remains valid. Supply the before/after responsibility map required for
-the 1,990-line `GameLauncherWidget` hotspot; material root growth is not
-acceptable unless it demonstrably removes more coordination than it adds.
+**Objective/acceptance:** model All/Recent/Favorites/Manual/Source as one
+mutually exclusive selection; legacy Favorite/Recent/Source actions must either
+select one truthful mode or represent a combination explicitly, never apply a
+hidden intersection. Preserve a bounded stable catalog of sources proven to
+contain at least one current game across selection and cursor-page changes;
+remove a source only after authoritative refresh proves it empty or absent, and
+never admit observation-only empty sources. Tests must traverse Recent→Favorite,
+Favorite→Recent, Source→other Source, paging, refresh removal, Clear, and restart
+while comparing selected label to the exact outgoing query. Keep collection
+policy in the extracted immutable owner and do not regrow the Launcher root.
 
 **Verification/stop:** Tier 1 Game Launcher and directly affected managed suite;
-Tier 2 extend the existing installed generic-worker organization route with an
-empty observed source and maximum timestamp. No aggregate, capture, remote
-service, credential, native/provider authority change, broad fixture rewrite,
-or security hardening. Stop and report if truthful non-empty membership needs a
-new provider/public SDK seam rather than guessing from incomplete rows.
+Tier 2 extend the installed generic-worker organization route through two
+non-empty sources, one empty observed source, selection, page change, and
+refresh removal. No aggregate, capture, remote service, credential, native/
+provider authority change, broad fixture rewrite, or security hardening. Stop
+and report if stable authoritative membership needs a new provider/public SDK
+seam rather than guessing from incomplete rows.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -456,33 +464,34 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-175 — DLV-176: correct YT Music explicit-refresh generation ownership.**
-   Preserve DLV-173's connected-idle and last-good UI, but bind every explicit
-   Refresh success, ordinary failure, and authorization failure to the exact
-   current Active operation generation. A cancellation-ignoring completion
-   after deactivate/reactivate must not change presentation, status, pairing,
-   or authority. Add direct late ordinary-failure and authorization-failure
-   cases plus the existing installed fake-companion route. Tier 1 YT Music and
-   that one Tier-2 route only; no real account/network, native, package bump,
-   capture, aggregate, or framework expansion.
-2. **Ready after DLV-176 — DLV-177: correct Now Playing stale command failure.**
-   Preserve DLV-174's identity validation and stale-success behavior, but make
-   the failure reducer return current state wholesale when run generation,
-   snapshot revision, or admitted session is no longer current. A late failure
-   cannot overwrite replacement-session status, metadata, pending state, or
-   quick actions. Add late-failure coverage after session replacement and
-   Active-generation replacement. Tier 1 Media Sessions plus the existing
-   installed recovery route; no native, account, capture, aggregate, provider
-   protocol, or broad fixture work.
-3. **Ready after DLV-177 — DLV-178: Game Launcher controller search and scope restoration outcome.**
-   Complete the visible M1 search route using the existing host-owned TextEntry:
-   committed query survives cancel, clearing restores the selected collection,
-   and Back/details/action-sheet transitions return to the exact search action
-   or originating game without leaking collection shortcuts. Implement only a
-   reproduced managed widget/SDK gap; report native-only focus ownership. Tier
-   1 Game Launcher plus one installed generic-worker search/cancel/return route;
-   no provider, remote metadata, native, public protocol, capture, aggregate,
-   or security work.
+1. **Ready after DLV-179 — DLV-180: prove host TextEntry cancel and collection restoration.**
+   Preserve DLV-178's search behavior, but exercise the existing installed host
+   TextEntry open/type/cancel route rather than injecting a null action. Cancel
+   must retain committed query and restore focus to the exact search action.
+   Clear must restore Recent, Manual, and a non-default Source selection as well
+   as Favorites/All, with the exact outgoing query matching the selected label.
+   Details/action-sheet Back returns to the originating result without leaking
+   collection shortcuts. Tier 1 Game Launcher plus one installed generic-worker
+   host-TextEntry route; no native change, provider, remote metadata, public
+   protocol, capture, aggregate, or security work. Stop if real cancel/focus is
+   native-only and report the exact missing evidence seam.
+2. **Ready after DLV-180 — DLV-181: Game Launcher distinct unavailable and degraded states.**
+   Deliver GL-UX-006 for the current installed library: loading, empty, offline,
+   stale/degraded source, permission denied, busy, disabled, and retry states
+   remain distinct, controller reachable, and preserve last-good games when
+   safe. Disabled/busy tiles stay navigable with visible and accessible reason;
+   no generic failure may erase healthy-source content. Tier 1 Launcher plus one
+   installed mixed-source failure/recovery route; no provider authority, native,
+   account, remote service, capture, aggregate, or security work.
+3. **Ready after DLV-181 — DLV-182: Game Launcher launch-progress and return outcome.**
+   Make exact focused launch visibly progress only through Pending, Request
+   accepted, Launcher started, Running, Ended, or Failed; late results from a
+   replaced source, newer launch, or deactivated worker cannot reorder Recent
+   or change the current tile. Overlay-close eligibility begins only at Launcher
+   started or stronger, while failure returns focus to the same game with a
+   truthful retry path. Tier 1 Launcher/Broker plus the smallest installed exact-
+   launch route; no new source authority, raw command, native layout, capture,
+   aggregate, account, or security work.
 
 ## Platform lane
 
