@@ -22,6 +22,7 @@
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetLifecycle.h"
+#include "WidgetSessionCoordinator.h"
 #include "WidgetSurfaceCoordinator.h"
 #include "WidgetSurfaceFocus.h"
 #include "SliderInteraction.h"
@@ -79,6 +80,7 @@ constexpr UINT kGuideMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
 constexpr UINT kCatalogRefreshMessage = WM_APP + 3;
 constexpr UINT kSnapshotRefreshMessage = WM_APP + 4;
+constexpr UINT kWidgetSessionCompletionMessage = WM_APP + 13;
 constexpr UINT kForegroundChangedMessage = WM_APP + 5;
 constexpr UINT kPlacementRefreshMessage = WM_APP + 6;
 constexpr UINT kDisplayRefreshMessage = WM_APP + 7;
@@ -308,7 +310,72 @@ public:
               },
               [this] {
                   if (window_) InvalidateRect(window_, nullptr, FALSE);
-              }}) {}
+              }}),
+          sessions_(
+              gba::WidgetSessionOperations{
+                  [this](std::stop_token) {
+                      return bridge_.EnsureStarted(
+                                 installationDirectory_,
+                                 developmentCatalogRoot_.value_or(L""))
+                          ? gba::WidgetSessionOperationResult<bool>::Success(true)
+                          : gba::WidgetSessionOperationResult<bool>::Failure(
+                                gba::WidgetSessionFailureStage::Start,
+                                bridge_.lastError());
+                  },
+                  [this](std::stop_token) {
+                      auto value = bridge_.ListWidgets();
+                      return value
+                          ? gba::WidgetSessionOperationResult<
+                                std::vector<gba::WidgetDescriptor>>::Success(
+                                    std::move(*value))
+                          : gba::WidgetSessionOperationResult<
+                                std::vector<gba::WidgetDescriptor>>::Failure(
+                                    gba::WidgetSessionFailureStage::Catalog,
+                                    bridge_.lastError());
+                  },
+                  [this](std::stop_token, const std::wstring_view widgetId,
+                         const gba::WidgetLifecycleState state) {
+                      auto value = bridge_.EstablishWidgetPresentation(
+                          widgetId, gba::WidgetLifecycleProtocolValue(state));
+                      return value
+                          ? gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Success(
+                                std::move(*value))
+                          : gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Failure(
+                                gba::WidgetSessionFailureStage::Snapshot,
+                                bridge_.lastError());
+                  },
+                  [this](std::stop_token, const std::wstring_view widgetId,
+                         const gba::WidgetLifecycleState state) {
+                      auto value = bridge_.SetWidgetLifecycle(
+                          widgetId, gba::WidgetLifecycleProtocolValue(state));
+                      return value
+                          ? gba::WidgetSessionOperationResult<bool>::Success(*value)
+                          : gba::WidgetSessionOperationResult<bool>::Failure(
+                                gba::WidgetSessionFailureStage::Lifecycle,
+                                bridge_.lastError());
+                  },
+                  [this](std::stop_token, const std::wstring_view widgetId) {
+                      auto value = bridge_.GetSnapshot(widgetId);
+                      return value
+                          ? gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Success(
+                                std::move(*value))
+                          : gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Failure(
+                                gba::WidgetSessionFailureStage::Snapshot,
+                                bridge_.lastError());
+                  },
+                  [this](std::stop_token, const std::wstring_view widgetId) {
+                      auto value = bridge_.RestartWidget(widgetId);
+                      return value
+                          ? gba::WidgetSessionOperationResult<bool>::Success(*value)
+                          : gba::WidgetSessionOperationResult<bool>::Failure(
+                                gba::WidgetSessionFailureStage::Restart,
+                                bridge_.lastError());
+                  },
+              },
+              [this] {
+                  if (window_)
+                      PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
+              }) {}
     ~OverlayApp() { Shutdown(); }
 
     [[nodiscard]] const std::wstring& initializationError() const noexcept {
@@ -528,7 +595,10 @@ public:
         if (bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             RefreshPlatformAppearance();
-            developmentCatalogReady = RefreshWidgetCatalog();
+            if (auto change = sessions_.EstablishCatalog()) {
+                ApplyWidgetCatalogChange(*change);
+                developmentCatalogReady = true;
+            }
         } else {
             AppendDiagnostic(L"Platform appearance unavailable at startup: " +
                              bridge_.lastError());
@@ -772,8 +842,8 @@ private:
         const auto expected = *performanceState_ == L"interactive"
             ? gba::WidgetLifecycleState::Interactive
             : gba::WidgetLifecycleState::Visible;
-        const auto lifecycle = lifecycleBridgeStates_.find(*performanceWidgetId_);
-        if (lifecycle == lifecycleBridgeStates_.end() || lifecycle->second != expected) {
+        const auto lifecycle = sessions_.Lifecycle(*performanceWidgetId_);
+        if (!lifecycle || *lifecycle != expected) {
             initializationError_ =
                 L"The requested performance lifecycle could not be established.";
             return false;
@@ -854,7 +924,7 @@ private:
 
     bool ExpectedDevelopmentWidgetPresent() const noexcept {
         if (!developmentWidgetId_ || !developmentWidgetInstance_) return false;
-        return std::any_of(widgetDescriptors_.begin(), widgetDescriptors_.end(),
+        return std::any_of(sessions_.descriptors().begin(), sessions_.descriptors().end(),
                            [&](const gba::WidgetDescriptor& descriptor) {
                                return descriptor.id == *developmentWidgetId_ &&
                                       descriptor.instanceId == *developmentWidgetInstance_;
@@ -863,32 +933,16 @@ private:
 
     bool ProbeExpectedDevelopmentWidget() {
         if (!developmentWidgetId_ || !developmentWidgetInstance_) return false;
-        if (!bridge_.SetWidgetLifecycle(*developmentWidgetId_, L"visible")) {
-            initializationError_ = L"Development widget worker could not become visible: " +
-                                   bridge_.lastError();
-            return false;
-        }
-
-        auto snapshot = bridge_.GetSnapshot(*developmentWidgetId_);
-        const std::wstring snapshotError = bridge_.lastError();
-        const bool returnedToBackground = bridge_.SetWidgetLifecycle(
-                                                *developmentWidgetId_, L"background")
-                                                .value_or(false);
-        const std::wstring backgroundError = bridge_.lastError();
-
+        auto snapshot = sessions_.EstablishPresentationForProbe(
+            *developmentWidgetId_, gba::WidgetLifecycleState::Visible);
         if (!snapshot) {
-            initializationError_ = L"Development widget worker did not produce a valid snapshot: " +
-                                   snapshotError;
+            initializationError_ =
+                L"Development widget worker did not complete the visible snapshot probe.";
             return false;
         }
         if (snapshot->instanceId != *developmentWidgetInstance_) {
             initializationError_ =
                 L"Development widget worker returned a snapshot for the wrong package generation.";
-            return false;
-        }
-        if (!returnedToBackground) {
-            initializationError_ = L"Development widget worker could not return to background: " +
-                                   backgroundError;
             return false;
         }
         return true;
@@ -902,14 +956,12 @@ private:
                 L"Development overlay did not complete its visible window transition.";
             return false;
         }
-        const auto descriptors = bridge_.ListWidgets();
-        if (!descriptors) {
+        if (!sessions_.EstablishCatalog()) {
             initializationError_ =
-                L"Development bridge did not remain responsive after showing the overlay: " +
-                bridge_.lastError();
+                L"Development bridge did not remain responsive after showing the overlay.";
             return false;
         }
-        if (!std::any_of(descriptors->begin(), descriptors->end(),
+        if (!std::any_of(sessions_.descriptors().begin(), sessions_.descriptors().end(),
                          [&](const gba::WidgetDescriptor& descriptor) {
                              return descriptor.id == *developmentWidgetId_ &&
                                     descriptor.instanceId == *developmentWidgetInstance_;
@@ -1143,30 +1195,18 @@ private:
                 !pinnedSurfaceCoordinator_.pinned()) {
                 KillTimer(window_, kCatalogRetryTimer);
                 bridge_.AbandonWidgetCatalogChangedRevision();
-                catalogRetryAttempts_ = 0;
+                sessions_.ResetCatalogRetry();
                 return 0;
             }
-            bool refreshed = false;
-            RefreshAndApplyPresentation([&] {
-                refreshed = RefreshWidgetCatalog();
-                if (refreshed) {
-                    KillTimer(window_, kCatalogRetryTimer);
-                    catalogRetryAttempts_ = 0;
-                    RefreshCurrentBridgeSnapshot();
-                }
-            });
-            if (!refreshed && bridge_.HasWidgetCatalogChangedRevisionInFlight() &&
-                       (state_.surface() != gba::Surface::Hidden ||
-                        pinnedSurfaceCoordinator_.pinned()) &&
-                       catalogRetryAttempts_ < 3) {
-                const UINT delay = 250U << catalogRetryAttempts_++;
-                SetTimer(window_, kCatalogRetryTimer, delay, nullptr);
-            } else if (!refreshed) {
+            if (!sessions_.RequestCatalog()) {
                 bridge_.AbandonWidgetCatalogChangedRevision();
-                catalogRetryAttempts_ = 0;
+                sessions_.ResetCatalogRetry();
             }
             return 0;
         }
+        case kWidgetSessionCompletionMessage:
+            ProcessWidgetSessionEvents();
+            return 0;
         case kSnapshotRefreshMessage:
             if (state_.surface() == gba::Surface::Hidden &&
                 !pinnedSurfaceCoordinator_.pinned()) return 0;
@@ -1351,7 +1391,7 @@ private:
                     }
                 }
                 if (const auto revision = bridge_.TakeWidgetCatalogChangedRevision()) {
-                    catalogRetryAttempts_ = 0;
+                    sessions_.ResetCatalogRetry();
                     AppendDiagnostic(L"Reconciling widget catalog revision " +
                                      std::to_wstring(*revision));
                     PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
@@ -1371,7 +1411,7 @@ private:
                     } else {
                         // Preserve the event's widget identity. An offscreen
                         // cache is invalidated and will be fetched on selection.
-                        widgetSnapshots_.erase(invalidatedWidget);
+                        sessions_.RemoveSnapshot(invalidatedWidget);
                         renderedSnapshotSequences_.erase(invalidatedWidget);
                     }
                 }
@@ -1401,16 +1441,12 @@ private:
                         L" source=" + failure.sourceElementId);
                 }
                 for (const auto& effect : bridge_.TakeHostEffects()) {
-                    const auto descriptor = std::find_if(
-                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                        [&](const gba::WidgetDescriptor& candidate) {
-                            return candidate.id == effect.widgetId;
-                        });
+                    const auto* descriptor = sessions_.FindDescriptor(effect.widgetId);
                     const bool currentInteractiveWidget =
                         state_.surface() == gba::Surface::Widget &&
                         state_.focusRegion() == gba::FocusRegion::Widget &&
                         state_.activeWidget() == effect.widgetId &&
-                        descriptor != widgetDescriptors_.end() &&
+                        descriptor &&
                         descriptor->runtimeGeneration == effect.runtimeGeneration;
                     if (!currentInteractiveWidget) {
                         AppendDiagnostic(
@@ -1622,13 +1658,8 @@ private:
             imageCache_->Shutdown();
             imageCache_.reset();
         }
-        for (const auto& [widgetId, state] : lifecycleBridgeStates_) {
-            (void)state;
-            (void)bridge_.SetWidgetLifecycle(
-                widgetId,
-                gba::WidgetLifecycleProtocolValue(gba::WidgetLifecycleState::Background));
-        }
-        lifecycleBridgeStates_.clear();
+        (void)sessions_.DrainLifecycle(std::chrono::milliseconds(1000));
+        sessions_.Shutdown();
         actionFailureFeedback_.Stop();
         bridge_.Stop();
         if (window_) {
@@ -1773,10 +1804,8 @@ private:
                 state_.surface() == gba::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
                 (priorSurface != gba::Surface::Dashboard || priorSelected != state_.selectedWidget());
             const bool startupFailureBlocksSnapshot =
-                (enteredBridgeWidget && widgetStartupFailures_.contains(
-                    std::wstring(state_.activeWidget()))) ||
-                (hoveredBridgeWidget && widgetStartupFailures_.contains(
-                    std::wstring(state_.selectedWidget())));
+                (enteredBridgeWidget && sessions_.Failure(state_.activeWidget())) ||
+                (hoveredBridgeWidget && sessions_.Failure(state_.selectedWidget()));
             if (priorSurface == gba::Surface::Hidden) {
                 PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
             }
@@ -2030,8 +2059,8 @@ private:
             const std::wstring visibleWidget = state_.surface() == gba::Surface::Widget
                 ? std::wstring(state_.activeWidget())
                 : std::wstring(state_.selectedWidget());
-            const bool hadVisibleSnapshot = widgetSnapshots_.contains(visibleWidget);
-            widgetSnapshots_.clear();
+            const bool hadVisibleSnapshot = SnapshotFor(visibleWidget) != nullptr;
+            sessions_.ClearSnapshots();
             renderedSnapshotSequences_.clear();
             if (state_.surface() != gba::Surface::Hidden && hadVisibleSnapshot &&
                 IsBridgeWidget(visibleWidget)) {
@@ -2100,108 +2129,43 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
-    bool RefreshWidgetCatalog() {
-        if (!bridge_.EnsureStarted(
-                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
-            AppendDiagnostic(L"Widget catalog unavailable: " + bridge_.lastError());
-            return false;
-        }
-        auto descriptors = bridge_.ListWidgets();
-        if (!descriptors) {
-            AppendDiagnostic(L"Widget catalog failed: " + bridge_.lastError());
-            return false;
-        }
-        auto previousDescriptors = std::exchange(widgetDescriptors_, std::move(*descriptors));
-        pinnedSurfaceCoordinator_.ReconcileCatalog(widgetDescriptors_);
-        if (!actionFailureFeedback_.ReconcileCatalog(widgetDescriptors_)) {
+    void ApplyWidgetCatalogChange(const gba::WidgetSessionCatalogChange& change) {
+        const auto& descriptors = sessions_.descriptors();
+        pinnedSurfaceCoordinator_.ReconcileCatalog(descriptors);
+        if (!actionFailureFeedback_.ReconcileCatalog(descriptors)) {
             AppendDiagnostic(L"Widget action feedback rejected an invalid catalog projection");
         }
-        const auto runtimeChanged = [&](const std::wstring_view id) {
-            const auto before = std::find_if(
-                previousDescriptors.begin(), previousDescriptors.end(),
-                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
-            const auto after = std::find_if(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
-            return before == previousDescriptors.end() || after == widgetDescriptors_.end() ||
-                   before->instanceId != after->instanceId ||
-                   before->runtimeGeneration != after->runtimeGeneration;
-        };
-        const auto presentationChanged = [&](const std::wstring_view id) {
-            const auto before = std::find_if(
-                previousDescriptors.begin(), previousDescriptors.end(),
-                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
-            const auto after = std::find_if(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
-            return before == previousDescriptors.end() || after == widgetDescriptors_.end() ||
-                   before->presentationGeneration != after->presentationGeneration;
-        };
-        std::unordered_set<std::wstring> bridgeIds;
-        bridgeIds.reserve(widgetDescriptors_.size());
-        for (const auto& descriptor : widgetDescriptors_) bridgeIds.emplace(descriptor.id);
         // Runtime identity owns focus memory independently of snapshot cache
         // residency. Clear every replaced/removed runtime even when its
         // offscreen snapshot was evicted earlier.
-        for (const auto& id : gba::ChangedWidgetRuntimeIds(
-                 previousDescriptors, widgetDescriptors_)) {
-            focusMemory_.Forget(id);
-            const auto previous = std::find_if(
-                previousDescriptors.begin(), previousDescriptors.end(),
-                [&](const gba::WidgetDescriptor& candidate) {
-                    return candidate.id == id;
-                });
-            if (declarativeRenderer_ && previous != previousDescriptors.end() &&
-                !previous->instanceId.empty()) {
+        for (const auto& runtime : change.runtimeChanges) {
+            focusMemory_.Forget(runtime.widgetId);
+            if (declarativeRenderer_ && !runtime.previousInstanceId.empty()) {
                 // Scroll offsets belong to the exact worker runtime, just like
                 // focus memory. Never let a replacement package inherit native
                 // renderer state merely because it reused public node IDs.
-                declarativeRenderer_->ForgetWidgetState(previous->instanceId);
-                sliderInteraction_.ForgetWidget(previous->instanceId);
+                declarativeRenderer_->ForgetWidgetState(runtime.previousInstanceId);
+                sliderInteraction_.ForgetWidget(runtime.previousInstanceId);
             }
         }
-        std::erase_if(widgetSnapshots_, [&](const auto& entry) {
-            const auto descriptor = std::find_if(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [&](const gba::WidgetDescriptor& candidate) {
-                    return candidate.id == entry.first;
-                });
-            const bool changed = descriptor == widgetDescriptors_.end() ||
-                                 descriptor->instanceId != entry.second.instanceId ||
-                                 presentationChanged(entry.first);
-            return changed;
-        });
-        std::erase_if(widgetStartupFailures_, [&](const auto& entry) {
-            return std::none_of(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [&](const gba::WidgetDescriptor& descriptor) {
-                    return descriptor.id == entry.first;
-                });
-        });
         std::erase_if(renderedSnapshotSequences_, [&](const auto& entry) {
-            return !bridgeIds.contains(entry.first);
+            return !sessions_.Contains(entry.first);
         });
-        std::vector<std::wstring> ids;
-        ids.reserve(widgetDescriptors_.size());
-        for (const auto& descriptor : widgetDescriptors_) {
-            if (std::find(ids.begin(), ids.end(), descriptor.id) == ids.end()) {
-                ids.push_back(descriptor.id);
-            }
-        }
         const std::wstring runtimeRevealWidget =
             state_.surface() == gba::Surface::Widget &&
-                    runtimeChanged(state_.activeWidget())
+                    std::any_of(
+                        change.runtimeChanges.begin(), change.runtimeChanges.end(),
+                        [&](const gba::WidgetSessionRuntimeChange& runtime) {
+                            return runtime.widgetId == state_.activeWidget();
+                        })
                 ? std::wstring(state_.activeWidget())
                 : std::wstring{};
-        std::erase_if(lifecycleBridgeStates_, [&](const auto& entry) {
-            return runtimeChanged(entry.first);
-        });
-        if (runtimeChanged(state_.activeWidget())) {
+        if (!runtimeRevealWidget.empty()) {
             focusedElementId_.clear();
             lastWidgetRenderResult_ = {};
         }
         const auto before = state_.persistent();
-        if (state_.SetAvailableWidgets(std::move(ids)) &&
+        if (state_.SetAvailableWidgets(change.availableWidgetIds) &&
             before != state_.persistent() && !performanceState_) {
             SavePersistentState(state_.persistent());
         }
@@ -2215,55 +2179,28 @@ private:
                 L" cause=runtime-replaced target=retained content=reveal");
             RequestWidgetContentReveal(runtimeRevealWidget);
         }
-        return true;
     }
 
     [[nodiscard]] bool IsBridgeWidget(const std::wstring_view id) const noexcept {
-        return std::any_of(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [id](const gba::WidgetDescriptor& descriptor) { return descriptor.id == id; });
+        return sessions_.Contains(id);
     }
 
     void RecordWidgetStartupFailure(
         const std::wstring_view widgetId,
-        const std::wstring_view safeFailure) {
+        const std::wstring_view safeFailure,
+        const gba::WidgetSessionFailureStage stage =
+            gba::WidgetSessionFailureStage::Snapshot) {
         std::wstring message = std::wstring(DisplayWidgetName(widgetId)) +
             L" failed: " + std::wstring(safeFailure) + L" Press A to retry.";
         if (message.size() > 640) message.resize(640);
-        widgetStartupFailures_.insert_or_assign(
-            std::wstring(widgetId), std::move(message));
-        AppendDiagnostic(widgetStartupFailures_.at(std::wstring(widgetId)));
+        sessions_.RecordFailure(
+            widgetId, stage, message);
+        AppendDiagnostic(message);
         InvalidateRect(window_, nullptr, FALSE);
     }
 
-    [[nodiscard]] bool StoreEstablishedWidgetSnapshot(
-        const std::wstring_view widgetId,
-        gba::WidgetSnapshot snapshot) {
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [widgetId](const gba::WidgetDescriptor& candidate) {
-                return candidate.id == widgetId;
-            });
-        if (descriptor == widgetDescriptors_.end() ||
-            snapshot.instanceId != descriptor->instanceId) {
-            RecordWidgetStartupFailure(
-                widgetId, L"The worker returned a mismatched widget instance.");
-            return false;
-        }
-        widgetSnapshots_.insert_or_assign(
-            std::wstring(widgetId), std::move(snapshot));
-        widgetStartupFailures_.erase(std::wstring(widgetId));
-        if (const auto* current = SnapshotFor(widgetId);
-            current && pinnedSurfaceCoordinator_.pinned() &&
-            pinnedSurfaceCoordinator_.widgetId() == widgetId) {
-            (void)pinnedSurfaceCoordinator_.UpdateSnapshot(
-                widgetId, pinnedSurfaceCoordinator_.runtimeGeneration(), *current);
-        }
-        return true;
-    }
-
     void SyncWidgetActivity(const bool deferColdWidgetStart = false) {
-        std::unordered_map<std::wstring, gba::WidgetLifecycleState> desiredStates;
+        std::map<std::wstring, gba::WidgetLifecycleState, std::less<>> desiredStates;
         const auto overlayDesired = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
@@ -2287,84 +2224,93 @@ private:
             }
         }
 
-        for (auto current = lifecycleBridgeStates_.begin();
-             current != lifecycleBridgeStates_.end();) {
-            if (desiredStates.contains(current->first)) {
-                ++current;
+        sessions_.SetLifecycleTargets(desiredStates, deferColdWidgetStart);
+    }
+
+    void ProcessWidgetSessionEvents() {
+        for (auto& event : sessions_.TakeEvents()) {
+            if (event.kind == gba::WidgetSessionEventKind::CatalogChanged && event.catalog) {
+                KillTimer(window_, kCatalogRetryTimer);
+                sessions_.ResetCatalogRetry();
+                ApplyWidgetCatalogChange(*event.catalog);
+                RefreshCurrentBridgeSnapshot();
                 continue;
             }
-            // Never restart the bridge or an unselected worker merely to send
-            // Background. A tracked widget has already crossed the lazy-start
-            // boundary, so this is best-effort cleanup on the existing pipe.
-            if (!bridge_.SetWidgetLifecycle(
-                    current->first,
-                    gba::WidgetLifecycleProtocolValue(gba::WidgetLifecycleState::Background))) {
-                AppendDiagnostic(L"Widget background transition failed for " + current->first +
-                                 L": " + bridge_.lastError());
-            }
-            current = lifecycleBridgeStates_.erase(current);
-        }
-        for (const auto& [widgetId, desiredState] : desiredStates) {
-            const auto current = lifecycleBridgeStates_.find(widgetId);
-            if (current != lifecycleBridgeStates_.end() &&
-                current->second == desiredState) {
-                continue;
-            }
-            if (deferColdWidgetStart && current == lifecycleBridgeStates_.end() &&
-                SnapshotFor(widgetId) == nullptr) {
-                continue;
-            }
-            const auto failPinned = [&] {
+            if (event.kind == gba::WidgetSessionEventKind::Failed) {
+                if (event.widgetId.empty()) {
+                    AppendDiagnostic(L"Widget catalog failed: " + event.failure.safeMessage);
+                    const bool active = state_.surface() != gba::Surface::Hidden ||
+                                        pinnedSurfaceCoordinator_.pinned();
+                    const auto delay = sessions_.NextCatalogRetryDelay(
+                        false, bridge_.HasWidgetCatalogChangedRevisionInFlight(), active);
+                    if (delay) {
+                        SetTimer(window_, kCatalogRetryTimer, *delay, nullptr);
+                    } else {
+                        bridge_.AbandonWidgetCatalogChangedRevision();
+                    }
+                    continue;
+                }
+                RecordWidgetStartupFailure(
+                    event.widgetId, event.failure.safeMessage, event.failure.stage);
                 if (pinnedSurfaceCoordinator_.pinned() &&
-                    pinnedSurfaceCoordinator_.widgetId() == widgetId) {
+                    pinnedSurfaceCoordinator_.widgetId() == event.widgetId) {
                     (void)pinnedSurfaceCoordinator_.Unpin(
                         gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
                 }
-            };
-            if (!bridge_.EnsureStarted(
-                    installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
-                AppendDiagnostic(L"Widget lifecycle bridge unavailable: " + bridge_.lastError());
-                RecordWidgetStartupFailure(widgetId, bridge_.lastError());
-                failPinned();
                 continue;
             }
-            if (!SnapshotFor(widgetId)) {
-                auto snapshot = bridge_.EstablishWidgetPresentation(
-                    widgetId, gba::WidgetLifecycleProtocolValue(desiredState));
-                if (!snapshot) {
-                    RecordWidgetStartupFailure(widgetId, bridge_.lastError());
-                    failPinned();
-                    continue;
-                }
-                if (!StoreEstablishedWidgetSnapshot(widgetId, std::move(*snapshot))) {
-                    failPinned();
-                    continue;
-                }
-            } else if (!bridge_.SetWidgetLifecycle(
-                           widgetId, gba::WidgetLifecycleProtocolValue(desiredState))) {
-                AppendDiagnostic(L"Widget lifecycle transition failed for " + widgetId +
-                                 L": " + bridge_.lastError());
-                RecordWidgetStartupFailure(widgetId, bridge_.lastError());
-                failPinned();
+            if (event.kind == gba::WidgetSessionEventKind::StaleCompletionRejected) {
+                AppendDiagnostic(
+                    L"Dropped stale widget session completion for " + event.widgetId);
                 continue;
             }
-            widgetStartupFailures_.erase(widgetId);
-            lifecycleBridgeStates_.insert_or_assign(widgetId, desiredState);
+            if (event.kind == gba::WidgetSessionEventKind::Restarted) {
+                RefreshAndApplyPresentation([&] { SyncWidgetActivity(); });
+                continue;
+            }
+            if (event.kind != gba::WidgetSessionEventKind::SnapshotAdmitted) continue;
+            const auto* current = SnapshotFor(event.widgetId);
+            if (!current) continue;
+            if (event.completedRestart) {
+                lastActionWidgetId_ = event.widgetId;
+                lastActionMessage_ =
+                    std::wstring(DisplayWidgetName(event.widgetId)) + L" reloaded";
+                lastActionExpiresAt_ = GetTickCount64() + 1800;
+                AppendDiagnostic(lastActionMessage_);
+            }
+            if (pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == event.widgetId) {
+                (void)pinnedSurfaceCoordinator_.UpdateSnapshot(
+                    event.widgetId,
+                    pinnedSurfaceCoordinator_.runtimeGeneration(),
+                    *current);
+            }
+            const auto currentWidget = state_.surface() == gba::Surface::Widget
+                ? state_.activeWidget()
+                : state_.selectedWidget();
+            if (currentWidget != event.widgetId) continue;
+            CommitAdmittedWidgetPresentation(event.widgetId);
+            if (pendingContentRevealWidget_ == event.widgetId) {
+                pendingContentRevealWidget_.clear();
+                overlayTransition_.BeginContentReveal(
+                    GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
+                AdvanceOverlayTransition(GetTickCount64());
+            }
+            RestoreFocusForActiveSurface(event.widgetId);
+            if (pressedInteraction_.Reconcile(*current, focusedElementId_))
+                InvalidateRect(window_, nullptr, FALSE);
+            RefreshAndApplyPresentation([] {});
         }
     }
 
     std::wstring_view DisplayWidgetName(const std::wstring_view id) const noexcept {
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
-        return descriptor == widgetDescriptors_.end() ? WidgetName(id) : descriptor->name;
+        const auto* descriptor = sessions_.FindDescriptor(id);
+        return descriptor ? descriptor->name : WidgetName(id);
     }
 
     gba::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [id](const gba::WidgetDescriptor& candidate) { return candidate.id == id; });
-        if (descriptor != widgetDescriptors_.end()) {
+        const auto* descriptor = sessions_.FindDescriptor(id);
+        if (descriptor) {
             gba::icons::NativeIcon icon{};
             if (gba::icons::TryParseNativeIcon(descriptor->icon, icon)) return icon;
         }
@@ -2821,7 +2767,7 @@ private:
         KillTimer(window_, kCatalogRetryTimer);
         KillTimer(window_, kForegroundLossTimer);
         bridge_.AbandonWidgetCatalogChangedRevision();
-        catalogRetryAttempts_ = 0;
+        sessions_.ResetCatalogRetry();
         ShowWindow(window_, SW_HIDE);
         ShowWindow(backdropWindow_, SW_HIDE);
         SetWindowPos(window_, HWND_NOTOPMOST, 0, 0, 0, 0,
@@ -3276,16 +3222,12 @@ private:
             return;
         }
         const std::wstring widgetId(state_.activeWidget());
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [&](const gba::WidgetDescriptor& candidate) {
-                return candidate.id == widgetId;
-            });
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
         const auto* snapshot = SnapshotFor(widgetId);
-        if (descriptor == widgetDescriptors_.end() ||
+        if (!descriptor ||
             !descriptor->pinningSupported || !snapshot) {
             lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = descriptor != widgetDescriptors_.end() &&
+            lastActionMessage_ = descriptor &&
                     descriptor->pinningSupported
                 ? L"Pinned surface unavailable until the widget has loaded"
                 : L"This widget does not support pinned surfaces";
@@ -3321,11 +3263,7 @@ private:
     void DrainPinnedSurfaceInputs() {
         for (const auto& request : pinnedSurfaceCoordinator_.TakeInputRequests()) {
             const auto* snapshot = SnapshotFor(request.widgetId);
-            const auto descriptor = std::find_if(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [&](const gba::WidgetDescriptor& candidate) {
-                    return candidate.id == request.widgetId;
-                });
+            const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
             const auto* node = snapshot
                 ? gba::input::FindNodeInInputScope(
                       *snapshot, request.nodeId, request.activeInputScopeId)
@@ -3334,7 +3272,7 @@ private:
                 state_.surface() == gba::Surface::Hidden ||
                 pinnedSurfaceCoordinator_.interactionMode() !=
                     gba::pinned::InteractionMode::Focusable ||
-                descriptor == widgetDescriptors_.end() || !snapshot || !node ||
+                !descriptor || !snapshot || !node ||
                 node->isDisabled || node->isBusy ||
                 descriptor->runtimeGeneration != request.runtimeGeneration ||
                 snapshot->sequence != request.snapshotSequence ||
@@ -3995,8 +3933,7 @@ private:
     }
 
     const gba::WidgetSnapshot* SnapshotFor(const std::wstring_view widgetId) const noexcept {
-        const auto snapshot = widgetSnapshots_.find(std::wstring(widgetId));
-        return snapshot == widgetSnapshots_.end() ? nullptr : &snapshot->second;
+        return sessions_.Snapshot(widgetId);
     }
 
     void RememberCurrentFocus(const std::wstring_view widgetId) {
@@ -4065,13 +4002,9 @@ private:
                         state_.activeWidget() != request.widgetId ||
                         !IsBridgeWidget(request.widgetId))
                         continue;
-                    const auto descriptor = std::find_if(
-                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                        [&](const gba::WidgetDescriptor& candidate) {
-                            return candidate.id == request.widgetId;
-                        });
+                    const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
                     const auto* snapshot = SnapshotFor(request.widgetId);
-                    if (descriptor == widgetDescriptors_.end() || !snapshot ||
+                    if (!descriptor || !snapshot ||
                         descriptor->runtimeGeneration != request.runtimeGeneration ||
                         snapshot->sequence != request.snapshotSequence ||
                         snapshot->activeInputScopeId != request.hostTargetId) {
@@ -4121,13 +4054,9 @@ private:
                 AppendDiagnostic(L"Dropped accessibility action outside the active widget");
                 continue;
             }
-            const auto descriptor = std::find_if(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [&](const gba::WidgetDescriptor& candidate) {
-                    return candidate.id == request.widgetId;
-                });
+            const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
             const auto* snapshot = SnapshotFor(request.widgetId);
-            if (descriptor == widgetDescriptors_.end() || !snapshot) {
+            if (!descriptor || !snapshot) {
                 AppendDiagnostic(L"Dropped stale accessibility action for " + request.widgetId);
                 continue;
             }
@@ -4257,11 +4186,8 @@ private:
             if (!currentWidgetSemantics) {
                 semanticTree.widgetId = state_.activeWidget();
                 semanticTree.activeInputScopeId = L"host.tray";
-                if (const auto descriptor = std::find_if(
-                        widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                        [&](const gba::WidgetDescriptor& candidate) {
-                            return candidate.id == state_.activeWidget();
-                        }); descriptor != widgetDescriptors_.end()) {
+                if (const auto* descriptor = sessions_.FindDescriptor(
+                        state_.activeWidget())) {
                     semanticTree.runtimeGeneration = descriptor->runtimeGeneration;
                 }
             }
@@ -4534,17 +4460,9 @@ private:
             (void)pinnedSurfaceCoordinator_.Unpin(
                 gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
         }
-        if (!bridge_.EnsureStarted(
-                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
-            RecordWidgetStartupFailure(widgetId, bridge_.lastError());
-            return;
-        }
-
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [&](const gba::WidgetDescriptor& candidate) { return candidate.id == widgetId; });
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
         CommitAdmittedWidgetPresentation(widgetId);
-        if (descriptor != widgetDescriptors_.end()) {
+        if (descriptor) {
             if (declarativeRenderer_ && !descriptor->instanceId.empty())
                 declarativeRenderer_->ForgetWidgetState(descriptor->instanceId);
             sliderInteraction_.ForgetWidget(descriptor->instanceId);
@@ -4552,7 +4470,7 @@ private:
         (void)pressedInteraction_.Clear();
         focusMemory_.Forget(widgetId);
         focusedElementId_.clear();
-        widgetSnapshots_.erase(widgetId);
+        sessions_.RemoveSnapshot(widgetId);
         renderedSnapshotSequences_.erase(widgetId);
         pendingContentRevealWidget_ = widgetId;
         overlayTransition_.SnapContentVisible();
@@ -4563,23 +4481,14 @@ private:
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
         }
 
-        const auto restarted = bridge_.RestartWidget(widgetId);
-        if (!restarted || !*restarted) {
+        if (!sessions_.RequestRestart(widgetId)) {
             pendingContentRevealWidget_.clear();
-            RecordWidgetStartupFailure(widgetId, bridge_.lastError());
-            return;
-        }
-
-        lifecycleBridgeStates_.erase(widgetId);
-        RefreshAndApplyPresentation([&] { SyncWidgetActivity(); });
-        if (!SnapshotFor(widgetId)) {
-            pendingContentRevealWidget_.clear();
-            InvalidateRect(window_, nullptr, FALSE);
+            RecordWidgetStartupFailure(widgetId, L"The restart request queue is full.");
             return;
         }
 
         lastActionWidgetId_ = widgetId;
-        lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) + L" reloaded";
+        lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) + L" reloading";
         lastActionExpiresAt_ = GetTickCount64() + 1800;
         AppendDiagnostic(lastActionMessage_);
         InvalidateRect(window_, nullptr, FALSE);
@@ -4587,74 +4496,16 @@ private:
 
     void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
         if (!IsBridgeWidget(widgetId)) return;
-        const auto stopPinned = [&](const gba::pinned::WidgetSurfaceStopReason reason) {
-            if (pinnedSurfaceCoordinator_.pinned() &&
-                pinnedSurfaceCoordinator_.widgetId() == widgetId) {
-                (void)pinnedSurfaceCoordinator_.Unpin(reason);
-            }
-        };
         // A failed admission owns the presentation until an explicit retry.
         // Fetching a snapshot from the still-background registration would
         // replace the actionable startup diagnostic with a missing-cache error.
-        if (widgetStartupFailures_.contains(std::wstring(widgetId))) return;
-        if (!bridge_.EnsureStarted(
-                installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                                 L" unavailable: " + bridge_.lastError();
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(lastActionMessage_);
-            stopPinned(gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
-            return;
-        }
-        auto snapshot = bridge_.GetSnapshot(widgetId);
-        if (!snapshot) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                                 L" failed: " + bridge_.lastError();
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(lastActionMessage_);
-            stopPinned(gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
-            return;
-        }
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [widgetId](const gba::WidgetDescriptor& candidate) {
-                return candidate.id == widgetId;
-            });
-        if (descriptor == widgetDescriptors_.end() || snapshot->instanceId != descriptor->instanceId) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                                 L" returned a mismatched widget instance";
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(lastActionMessage_);
-            stopPinned(gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
-            return;
-        }
+        if (sessions_.Failure(widgetId)) return;
         const auto currentWidget = state_.surface() == gba::Surface::Widget
             ? state_.activeWidget()
             : state_.selectedWidget();
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
-        widgetSnapshots_.insert_or_assign(std::wstring(widgetId), std::move(*snapshot));
-        if (const auto* current = SnapshotFor(widgetId);
-            current && pinnedSurfaceCoordinator_.pinned() &&
-            pinnedSurfaceCoordinator_.widgetId() == widgetId) {
-            (void)pinnedSurfaceCoordinator_.UpdateSnapshot(
-                widgetId, pinnedSurfaceCoordinator_.runtimeGeneration(), *current);
-        }
-        if (currentWidget == widgetId) CommitAdmittedWidgetPresentation(widgetId);
-        if (currentWidget == widgetId &&
-            pendingContentRevealWidget_ == widgetId) {
-            pendingContentRevealWidget_.clear();
-            overlayTransition_.BeginContentReveal(
-                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
-            AdvanceOverlayTransition(GetTickCount64());
-        }
-        if (currentWidget == widgetId) RestoreFocusForActiveSurface(widgetId);
-        if (const auto* current = SnapshotFor(widgetId);
-            currentWidget == widgetId && current &&
-            pressedInteraction_.Reconcile(*current, focusedElementId_)) {
-            InvalidateRect(window_, nullptr, FALSE);
+        if (!sessions_.RequestSnapshot(widgetId)) {
+            RecordWidgetStartupFailure(widgetId, L"The snapshot request queue is full.");
         }
     }
 
@@ -4867,7 +4718,7 @@ private:
         if (IsBridgeWidget(widget)) {
             if (phase == gba::input::NavigationEventPhase::Pressed &&
                 button == L"A" &&
-                widgetStartupFailures_.contains(std::wstring(widget))) {
+                sessions_.Failure(widget)) {
                 RestartCurrentWidget();
                 return;
             }
@@ -4967,12 +4818,8 @@ private:
         const auto* node = gba::input::FindNodeInInputScope(
             snapshot, nodeId, snapshot.activeInputScopeId);
         if (!node || !node->isTextEntry) return false;
-        const auto descriptor = std::find_if(
-            widgetDescriptors_.begin(), widgetDescriptors_.end(),
-            [&](const gba::WidgetDescriptor& candidate) {
-                return candidate.id == widget;
-            });
-        if (descriptor == widgetDescriptors_.end()) return true;
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        if (!descriptor) return true;
         const auto request = gba::input::CaptureTextEntryActionRequest(
             widget, descriptor->runtimeGeneration, snapshot, nodeId);
         if (!request) return true;
@@ -4990,13 +4837,9 @@ private:
             instance_, window_, request->value,
             modalTitle, request->maximumLength, protectedWifi);
         if (committed) {
-            const auto currentDescriptor = std::find_if(
-                widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                [&](const gba::WidgetDescriptor& candidate) {
-                    return candidate.id == request->widgetId;
-                });
+            const auto* currentDescriptor = sessions_.FindDescriptor(request->widgetId);
             const auto* currentSnapshot = SnapshotFor(request->widgetId);
-            const auto target = currentDescriptor != widgetDescriptors_.end() && currentSnapshot
+            const auto target = currentDescriptor && currentSnapshot
                 ? gba::input::ResolveTextEntryActionTarget(
                     *request,
                     state_.surface() == gba::Surface::Widget &&
@@ -5588,9 +5431,8 @@ private:
 
     std::optional<std::wstring> DashboardStatus() const {
         const auto now = GetTickCount64();
-        if (const auto startup = widgetStartupFailures_.find(
-                std::wstring(state_.selectedWidget()));
-            startup != widgetStartupFailures_.end()) return startup->second;
+        if (const auto* startup = sessions_.Failure(state_.selectedWidget()))
+            return startup->safeMessage;
         if (const auto failure = actionFailureFeedback_.MessageForSurface(
                 gba::WidgetActionFeedbackSurface::Dashboard,
                 state_.selectedWidget(),
@@ -5694,9 +5536,8 @@ private:
 
     std::optional<std::wstring> OpenWidgetStatus() const {
         const auto now = GetTickCount64();
-        if (const auto startup = widgetStartupFailures_.find(
-                std::wstring(state_.activeWidget()));
-            startup != widgetStartupFailures_.end()) return startup->second;
+        if (const auto* startup = sessions_.Failure(state_.activeWidget()))
+            return startup->safeMessage;
         if (const auto failure = actionFailureFeedback_.MessageForSurface(
                 gba::WidgetActionFeedbackSurface::OpenWidget,
                 state_.selectedWidget(),
@@ -5709,7 +5550,7 @@ private:
     }
 
     std::wstring OpenWidgetPrompt() const {
-        if (widgetStartupFailures_.contains(std::wstring(state_.activeWidget())))
+        if (sessions_.Failure(state_.activeWidget()))
             return L"A  Retry    B  Back";
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         if (!snapshot) return L"A  Select";
@@ -5919,11 +5760,7 @@ private:
                     geometry->widgetViewportWidth,
                     geometry->widgetViewportHeight,
                 };
-                const auto descriptor = std::find_if(
-                    widgetDescriptors_.begin(), widgetDescriptors_.end(),
-                    [renderedWidget](const gba::WidgetDescriptor& candidate) {
-                        return candidate.id == renderedWidget;
-                    });
+                const auto* descriptor = sessions_.FindDescriptor(renderedWidget);
                 const auto accessibilityPolicy = appearanceState_.current()
                     ? CurrentAccessibilityPolicy()
                     : gba::NativeAccessibilityPolicy{};
@@ -5942,7 +5779,7 @@ private:
                 collectSliderOverrides(collectSliderOverrides, snapshot->root);
                 const gba::accessibility::ProjectionKey projectionKey{
                     std::wstring{renderedWidget},
-                    descriptor != widgetDescriptors_.end()
+                    descriptor
                         ? descriptor->runtimeGeneration
                         : std::wstring{},
                     snapshot->activeInputScopeId,
@@ -5964,7 +5801,7 @@ private:
                 };
                 const bool collectAccessibility = !retainedCommittedSnapshot &&
                     accessibilityActive_ &&
-                    descriptor != widgetDescriptors_.end() &&
+                    descriptor &&
                     widgetAccessibilityProjection_.ShouldCollect(projectionKey);
                 gba::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
@@ -6188,10 +6025,8 @@ private:
     gba::input::SliderInteractionState sliderInteraction_;
     gba::input::PressedInteractionState pressedInteraction_;
     gba::input::TextEntryModal textEntryModal_;
-    std::unordered_map<std::wstring, gba::WidgetSnapshot> widgetSnapshots_;
-    std::unordered_map<std::wstring, std::wstring> widgetStartupFailures_;
     gba::WidgetBridgeClient bridge_;
-    unsigned int catalogRetryAttempts_{};
+    gba::WidgetSessionCoordinator sessions_;
     gba::PlatformAppearanceState appearanceState_;
     gba::NativeRenderStyle canvasStyle_;
     gba::NativeRenderStyle backdropStyle_;
@@ -6214,8 +6049,6 @@ private:
     float trayCornerRadius_{22.0F};
     float trayItemCornerRadius_{16.0F};
     float focusOutlineWidth_{2.0F};
-    std::vector<gba::WidgetDescriptor> widgetDescriptors_;
-    std::unordered_map<std::wstring, gba::WidgetLifecycleState> lifecycleBridgeStates_;
     std::unique_ptr<gba::RemoteImageCache> imageCache_;
     std::unique_ptr<gba::DeclarativeRenderer> declarativeRenderer_;
     gba::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;

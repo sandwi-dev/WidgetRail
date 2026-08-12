@@ -21,6 +21,7 @@ add_executable(OverlayHost WIN32
     OverlayProcessOwner.cpp
     OverlayState.cpp
     WidgetBridgeClient.cpp
+    WidgetSessionCoordinator.cpp
     RemoteImageCache.cpp
     ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
@@ -86,6 +87,15 @@ target_link_libraries(OverlayHost PRIVATE
 
 if(GBA_BUILD_TESTS)
     enable_testing()
+    add_executable(WidgetSessionCoordinatorTests
+        WidgetSessionCoordinatorTests.cpp WidgetSessionCoordinator.cpp)
+    target_compile_features(WidgetSessionCoordinatorTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetSessionCoordinatorTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetSessionCoordinatorTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WidgetSessionCoordinatorTests PRIVATE user32)
+    add_test(NAME WidgetSessionCoordinatorTests COMMAND WidgetSessionCoordinatorTests)
+
     add_executable(OverlayProcessOwnerTests
         OverlayProcessOwnerTests.cpp OverlayProcessOwner.cpp)
     target_compile_features(OverlayProcessOwnerTests PRIVATE cxx_std_20)

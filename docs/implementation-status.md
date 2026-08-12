@@ -2923,6 +2923,30 @@ with C++ installed:
   provider discovery, public protocol, compositor, screenshot, live Steam, or
   aggregate verification was used.
 
+- DLV-033 extracts the bridge-facing widget-session policy from `OverlayApp`
+  into one directly tested native `WidgetSessionCoordinator`. The logical
+  responsibility map is:
+
+  | Concern | Before DLV-033 | After DLV-033 |
+  | --- | --- | --- |
+  | Catalog identity and generation | `OverlayApp` owned descriptors plus inline runtime/presentation-generation reconciliation. | `WidgetSessionCoordinator` owns descriptor replacement/removal and rejects completions outside the current instance/runtime/presentation generation. |
+  | Snapshot and session status | `OverlayApp` owned snapshot and startup-failure maps and performed synchronous bridge admission. | `WidgetSessionCoordinator` owns last-good snapshots and typed start, snapshot, protocol, lifecycle, and restart status; `OverlayApp` consumes narrow value events. |
+  | Lifecycle and retry policy | `OverlayApp` owned lifecycle state, catalog retry attempts, and direct lifecycle calls. | `WidgetSessionCoordinator` owns targets, bounded drain, retry policy, restart retirement, and late-completion rejection. |
+  | Request execution | The UI thread issued catalog, presentation, lifecycle, snapshot, and restart requests directly through `WidgetBridgeClient`. | One bounded 32-request coordinator queue serializes bridge work off the UI thread, supports cancellation, and posts typed completions; bridge event polling remains nonblocking while a request is stalled. |
+  | Host authority | Session policy and Win32 presentation effects were interleaved in `OverlayApp`. | `OverlayApp` remains the sole HWND, focus, input, renderer, D2D/DWrite, accessibility, and presentation adapter; `WidgetBridgeClient` remains the pipe/protocol transport. |
+
+  `OverlayApp` falls from 6,333 to 6,166 physical lines and no longer declares
+  the descriptor, snapshot, startup-failure, lifecycle-state, or catalog-retry
+  collections. Focused Release evidence passes the coordinator's six
+  deterministic scenarios, OverlayState, lifecycle, WidgetBridgeClient catalog
+  revision, and 305 failure-feedback checks, plus the native Release host. The
+  production-host retained-content matrix passes all eight widget identities
+  with draw max 2,712 us, commit max 1,391 us, coordinated geometry max 1,516
+  us, and nonblocking motion commit max 57 us. The two-session fixture retains
+  a responsive session and host-owned Close/Guide intent while its neighbor is
+  stalled. No public protocol, renderer, compositor, focus graph, UI behavior,
+  screenshot, or aggregate work was added.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:
