@@ -1,5 +1,7 @@
-.game-launcher-widget { padding: 18px; gap: 14px; background: #11151b; color: #f4f7fa; }
+.game-launcher-widget { padding: 18px; gap: 14px; min-height: 0; background: #11151b; color: #f4f7fa; }
+.game-launcher-fixed { flex-shrink: 0; }
 .game-launcher-header { gap: 4px; }
+.game-launcher-header-expanded { gap: 4px; }
 .game-launcher-eyebrow { color: #75b9ff; font-size: 12px; }
 .game-launcher-title { font-size: 26px; font-weight: 700; }
 .game-launcher-status { color: #aeb9c6; }
@@ -7,9 +9,14 @@
 .game-launcher-source-rows { gap: 3px; }
 .game-launcher-source-row { color: #d6dee8; font-size: 13px; }
 .game-launcher-source-summary { color: #aeb9c6; font-size: 13px; }
-.game-launcher-content { gap: 12px; }
-.game-launcher-scroll { gap: 12px; }
+.game-launcher-query { gap: 10px; }
+.game-launcher-search { flex-shrink: 0; }
+.game-launcher-filters { flex-shrink: 0; gap: 10px; }
+.game-launcher-main { flex-grow: 1; min-height: 0; }
+.game-launcher-content { flex-grow: 1; min-height: 0; gap: 12px; }
+.game-launcher-scroll { flex-grow: 1; min-height: 0; gap: 12px; }
 .game-launcher-grid { gap: 12px; }
 .game-launcher-tile { min-height: 150px; }
-.game-launcher-actions { gap: 10px; }
-.game-launcher-warning { margin: 8px 0 0; }
+.game-launcher-actions { flex-shrink: 0; gap: 10px; }
+.game-launcher-footer { flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
+.game-launcher-warning { flex-shrink: 0; margin: 8px 0 0; }

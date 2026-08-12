@@ -2827,6 +2827,22 @@ with C++ installed:
   implementation. This is scoped dirty-worktree evidence, not a canonical
   aggregate or a substitute for the user's next packaged visual check.
 
+- DLV-104 gives Game Launcher one explicit vertical-layout contract without
+  increasing its preferred surface. Header, source status, query controls, and
+  footer actions are fixed chrome; `game-launcher.library.scroll` alone owns
+  the remaining vertical extent and stable collection offset. Narrow or short
+  surfaces use local compact title/source-summary branches, while query and
+  action strips remain horizontally reachable. The Library, Add games, Add
+  running app, Hidden, warm, loading, error, and empty routes retain one
+  semantic tree and the existing collection/focus identities. Focused Release
+  coverage passes Game Launcher 46/46 across minimum/standard/wide profiles at
+  100/125/150 percent, including first/middle/last collection reachability and
+  deterministic reopen. The unchanged native renderer and shared-component
+  geometry dependencies pass 4,777 and 589 checks respectively. The public
+  `gbar pack` path also produced the unchanged Game Launcher 0.6.0 package (10
+  files, 803,117 bytes). No native layout semantics, preferred-height increase,
+  provider behavior, or screenshot acceptance was introduced.
+
 - Latest overlay initialization error:
   `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
 - Overlay order/last-widget state:
