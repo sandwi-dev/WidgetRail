@@ -2176,12 +2176,19 @@ static async Task LauncherExperienceManagement()
     var list = Snapshot(widget);
     Assert.Equal("launcher-experience.page", list.ActiveInputScopeId);
     Assert.Equal("launcher-experience.global", list.InitialFocusId);
+    Assert.HasShortcut(list.Root, "launcher-experience.page", ControllerButton.B, "back");
+    Assert.Equal("back", Button(list.Root, "launcher-experience.back").ActionId);
     var custom = Buttons(list.Root).Last(button =>
         button.ActionId is not null &&
         button.ActionId.StartsWith("launcher-experience.open.", StringComparison.Ordinal));
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+    await Action(widget, "open.launcher-experiences");
     await Action(widget, custom.ActionId!);
 
     var details = Snapshot(widget);
+    Assert.HasShortcut(details.Root, "launcher-experience.page", ControllerButton.B, "back");
+    Assert.Equal("back", Button(details.Root, "launcher-experience.version.back").ActionId);
     Assert.Contains("dev.test.launcher", Text(details.Root, "launcher-experience.version.id").Text!);
     Assert.Contains("1.0.0", Text(details.Root, "launcher-experience.version.version").Text!);
     Assert.Contains("dev.test", Text(details.Root, "launcher-experience.version.publisher").Text!);
@@ -2190,6 +2197,11 @@ static async Task LauncherExperienceManagement()
         .Split(':', 2)[1].Trim().Length);
     Assert.True(Button(details.Root, "launcher-experience.version.select").IsDisabled is not true,
         "Valid inactive exact version was not selectable.");
+    await Action(widget, "back");
+    var returnedList = Snapshot(widget);
+    Assert.Equal(SettingsPage.LauncherExperiences, widget.CurrentPage);
+    Assert.Equal(custom.Id, returnedList.InitialFocusId);
+    await Action(widget, custom.ActionId!);
     await Action(widget, "launcher-experience.select");
 
     var selected = await Store(temp.Path).LoadAsync();
@@ -2203,7 +2215,21 @@ static async Task LauncherExperienceManagement()
     var selectedDetails = Snapshot(widget);
     Assert.True(Button(selectedDetails.Root, "launcher-experience.version.remove").IsDisabled is true,
         "Selected exact version exposed removal.");
+
+    var versionDirectory = Path.Combine(
+        new PlatformSettingsPaths(temp.Path).LauncherExperiencesDirectory,
+        "dev.test.launcher", "1.0.0");
+    var unavailableDirectory = Path.Combine(temp.Path, "temporarily-unavailable-launcher");
+    Directory.Move(versionDirectory, unavailableDirectory);
+    await Action(widget, "refresh");
+    var missing = Snapshot(widget);
+    Assert.HasShortcut(missing.Root, "launcher-experience.page", ControllerButton.B, "back");
+    Assert.Equal("back", Button(missing.Root, "launcher-experience.version.back").ActionId);
     await Action(widget, "back");
+    Assert.Equal(SettingsPage.LauncherExperiences, widget.CurrentPage);
+    Directory.Move(unavailableDirectory, versionDirectory);
+    await Action(widget, "refresh");
+
     await Action(widget, "launcher-experience.global");
     var global = await Store(temp.Path).LoadAsync();
     Assert.Equal(true, global.LauncherExperience.UseGlobalAppearance);
@@ -2224,7 +2250,18 @@ static async Task LauncherExperienceManagement()
     Assert.True(Button(removable.Root, "launcher-experience.version.remove").IsDisabled is not true,
         "Inactive unsigned exact version was not removable.");
     await Action(widget, "launcher-experience.remove.request");
-    Assert.Equal("launcher-experience.removal.cancel", Snapshot(widget).InitialFocusId);
+    var confirmation = Snapshot(widget);
+    Assert.Equal("launcher-experience.removal.cancel", confirmation.InitialFocusId);
+    Assert.HasShortcut(confirmation.Root, "launcher-experience.page", ControllerButton.B, "back");
+    Assert.Equal("launcher-experience.remove.cancel",
+        Button(confirmation.Root, "launcher-experience.removal.cancel").ActionId);
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.LauncherExperienceVersion, widget.CurrentPage);
+    Assert.Equal("launcher-experience.version.select", Snapshot(widget).InitialFocusId);
+    await Action(widget, "launcher-experience.remove.request");
+    await Action(widget, "launcher-experience.remove.cancel");
+    Assert.Equal(SettingsPage.LauncherExperienceVersion, widget.CurrentPage);
+    await Action(widget, "launcher-experience.remove.request");
     await Action(widget, "launcher-experience.remove.confirm");
     Assert.True(!Directory.Exists(Path.Combine(
         new PlatformSettingsPaths(temp.Path).LauncherExperiencesDirectory,

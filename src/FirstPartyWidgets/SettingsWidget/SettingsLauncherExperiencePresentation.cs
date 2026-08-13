@@ -182,19 +182,22 @@ internal static class SettingsLauncherExperiencePresentation
     private static WidgetView View(
         StackElement header,
         IEnumerable<WidgetElement> children,
-        string? initialFocus) => new(
-        UI.Stack("settings-root",
-            header,
-            UI.VerticalScroll("launcher-experience.page", children.ToArray())
-                .InputScope("launcher-experience.page")),
-        initialFocus,
-        ActiveInputScopeId: "launcher-experience.page",
-        Surface: new WidgetSurfaceHints
-        {
-            Mode = WidgetSurfaceMode.Standard,
-            PreferredWidth = 880,
-            PreferredHeight = 520,
-            MinimumWidth = 520,
-            MinimumHeight = 360,
-        });
+        string? initialFocus)
+    {
+        var page = UI.VerticalScroll("launcher-experience.page", children.ToArray())
+            .InputScope("launcher-experience.page")
+            .Shortcut(ControllerButton.B, "back");
+        return new WidgetView(
+            UI.Stack("settings-root", header, page),
+            initialFocus,
+            ActiveInputScopeId: "launcher-experience.page",
+            Surface: new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Standard,
+                PreferredWidth = 880,
+                PreferredHeight = 520,
+                MinimumWidth = 520,
+                MinimumHeight = 360,
+            });
+    }
 }
