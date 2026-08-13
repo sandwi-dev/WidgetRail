@@ -1157,6 +1157,14 @@ Use `WidgetCursorResource<TItem>` when transport pages must compose into one
 continuous controller collection. Cursors and item keys are typed opaque
 values; never derive keys from a title or visible ordinal.
 
+The [Full Application reference](../samples/FullApplicationWidget/README.md)
+shows the scale boundary end to end: its worker owns 10,000 deterministic
+private records, while `WidgetCursorResource<TItem>` exposes 32-record pages and
+retains at most 96 render-facing records. It combines that projection with
+`WidgetNavigator<T>`, safe retry, and Active-lifetime cancellation without
+provider authority or a database dependency. The sample is optional and is not
+part of the production tray catalog.
+
 ```csharp
 _items = CreateCursorResource<Item>("library.items", new()
 {

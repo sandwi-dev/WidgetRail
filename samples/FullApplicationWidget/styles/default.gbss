@@ -1,0 +1,2 @@
+.full-app-root { gap: 12px; padding: 16px; }
+.full-app-document { min-height: 44px; }

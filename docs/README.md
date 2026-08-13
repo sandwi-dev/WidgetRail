@@ -118,6 +118,10 @@ planner and implementation turns do not spend context on closed evidence.
 - [SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md) — a
   capability-free, separately installable reference for modern public SDK
   composites, responsive layout, nested B scopes, themes, and local packaging.
+- [Full Application reference](../samples/FullApplicationWidget/README.md) — an
+  optional capability-free sample with a 10,000-record private model, a bounded
+  cursor projection, nested navigation, lifecycle drain, retry, and generic
+  AppContainer packaging without adding another built-in tray widget.
 - [Recent Apps reference](recent-apps.md) — retained reference for the read-only
   foreground-activity API; it is no longer in the bundled dashboard catalog.
 - [Discord integration research](discord-integration.md) — official API/SDK

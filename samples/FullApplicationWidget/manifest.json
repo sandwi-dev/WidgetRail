@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "id": "org.gbar.samples.full-application",
+  "publisher": "org.gbar.samples",
+  "name": "Full Application Reference",
+  "version": "0.1.0",
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/FullApplicationWidget.dll",
+    "type": "GameBarAlternative.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
+  },
+  "presentation": { "icon": "settings" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 300 },
+  "resourceRequest": { "updateHz": 4 },
+  "architectures": ["x64", "arm64"]
+}

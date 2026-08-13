@@ -4158,3 +4158,19 @@ Focused Release evidence passes 111,381 placement, 66 targeting, 63 transition,
 maximum draw 3,298 us, commit 1,190 us, coordinated geometry 1,303 us, and zero
 shell-motion commit time. This semantic/timing/log result does not replace the
 separate user physical-display verdict.
+
+### Full application-scale public SDK reference (DLV-195)
+
+The optional Full Application sample keeps a deterministic 10,000-record model
+inside its isolated worker and projects only 32-record cursor pages with a
+96-record retained host window. It uses only public `WidgetCursorResource<T>`
+and `WidgetNavigator<T>` surfaces for bounded virtualization, Library/Details
+navigation, exact Back focus, safe failure/retry, refresh, and Active-lifetime
+cancellation and drain. It requests no capabilities and is deliberately absent
+from the built-in tray catalog.
+
+Focused Release evidence passes the four-case MSTest.Sdk reference suite and
+the dedicated generic AppContainer package route. The latter validates and
+installs the checked-in manifest and assembly into an isolated catalog, renders
+the 10,000-record summary through the ordinary worker, and leaves the worker
+contained and running after its first valid snapshot.

@@ -11,6 +11,7 @@ using GameBarAlternative.FirstPartyWidgets.Settings;
 using GameBarAlternative.Tests.FullApplicationWidgetFixture;
 using GameBarAlternative.Samples.SpotifyWidget;
 using GameBarAlternative.Samples.YtMusicWidget;
+using GameBarAlternative.Samples.FullApplicationWidget;
 using GameBarAlternative.GbarCli;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetBridge;
@@ -208,6 +209,31 @@ if (args.Contains("--full-application-acceptance", StringComparer.Ordinal))
         installed.Catalog,
         deployment.Packages.Single());
     Console.WriteLine("PASS installed full-application process-tree acceptance");
+    return 0;
+}
+
+if (args.Contains("--full-application-reference-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(
+        installAsCommunity: true,
+        fullApplicationReferenceOnly: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    Assert.True(installed.InstalledCatalogValid,
+        "Full Application reference installed catalog was rejected: " +
+        string.Join(" | ", installed.Warnings));
+    Assert.True(installed.Catalog.Widgets.Any(widget =>
+            string.Equals(widget.Id, "org.gbar.samples.full-application", StringComparison.Ordinal)),
+        "Full Application reference was not admitted: " +
+        string.Join(" | ", installed.Warnings));
+    await RunCatalogAsync(
+        installed.Catalog,
+        deployment.Packages,
+        package => package.Manifest.Id,
+        "installed-full-application-reference");
+    Console.WriteLine("PASS installed full-application reference generic-worker acceptance");
     return 0;
 }
 
@@ -3010,6 +3036,25 @@ static async Task ExerciseControlAsync(
     SimulatedPlatformBrokerBackend backend,
     string route)
 {
+    if (package.Manifest.Id == "org.gbar.samples.full-application")
+    {
+        var first = Nodes(snapshot.Root).First(node => node.ActionId == "full-app.open");
+        await client.SendActionAsync(new WidgetActionEvent(first.ActionId!, first.Id));
+        var details = await WaitForNodeTextSnapshotAsync(
+            client, "full-app.details.title", "Document 00000");
+        var handled = await client.SendControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.B,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "full-app.details.back",
+            Sequence: 1,
+            ActiveInputScopeId: details.ActiveInputScopeId,
+            SnapshotSequence: details.Sequence));
+        Assert.True(handled, "Full Application reference did not consume scoped Back.");
+        var returned = await WaitForSnapshotAsync(client, "10,000 private records");
+        Assert.Equal(first.Id, returned.InitialFocusId);
+        return;
+    }
     if (package.Manifest.Id == "org.gbar.firstparty.audio-mixer")
     {
         await ExerciseAudioDashboardControlsAsync(client, snapshot, backend);
@@ -3682,6 +3727,7 @@ file sealed class Deployment : IDisposable
         bool ytMusicOnly = false,
         bool communityRecoveryOnly = false,
         bool fullApplicationOnly = false,
+        bool fullApplicationReferenceOnly = false,
         bool mediaSessionsOnly = false)
     {
         var temporary = new TemporaryDirectory("gba-firstparty-conformance");
@@ -3696,7 +3742,18 @@ file sealed class Deployment : IDisposable
             CopyWorkerHostDeployment(AppContext.BaseDirectory, workerDirectory);
             var workerHost = Path.Combine(workerDirectory, "WidgetWorkerHost.exe");
 
-            var packageSpecs = fullApplicationOnly
+            var packageSpecs = fullApplicationReferenceOnly
+                ? new List<PackageSpec>
+                {
+                    new PackageSpec(
+                        "full-application-reference",
+                        "samples/FullApplicationWidget",
+                        "FullApplicationReference",
+                        WidgetGlyph.Settings,
+                        typeof(FullApplicationReferenceWidget),
+                        "10,000 private records"),
+                }
+                : fullApplicationOnly
                 ? new List<PackageSpec>
                 {
                     new PackageSpec(
