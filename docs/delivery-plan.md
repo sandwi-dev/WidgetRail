@@ -237,6 +237,10 @@ catalog replacement/removal, or newer snapshot. The correction must make
 failure publication an exact-authority compare-and-commit, discard stale
 failures, add deterministic races for all three cases, and retain focused
 session plus ordinary bridge provenance. Do not integrate the rejected commit.
+Correction `c8d6907` remains rejected: it attaches a sequence-1 failure to a
+newer sequence-2 frame and can emit that stale failure event after a concurrent
+restart/replacement publish. The next correction requires exact snapshot and
+input-scope authority plus serialized or monotonic observable publication.
 
 Exclusive files:
 
