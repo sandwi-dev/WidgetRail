@@ -33,6 +33,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private readonly Border pageHost;
     private readonly Grid shellGrid;
     private readonly StackPanel trayPanel;
+    private readonly ScrollViewer trayScroll;
     private readonly Border trayLayer;
     private readonly Border statusLayer;
     private readonly Border controllerGuideLayer;
@@ -90,21 +91,22 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(pageHost, "avp.integrated.content");
         AutomationProperties.SetName(pageHost, "Current widget content");
 
-        trayPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var trayScroll = new ScrollViewer
+        trayPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        trayScroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalContentAlignment = HorizontalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
             VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Content = trayPanel,
         };
         trayLayer = new Border
         {
-            HorizontalAlignment = HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             MaxWidth = 1180,
-            Padding = new Thickness(5),
-            CornerRadius = new CornerRadius(14),
+            Padding = new Thickness(4),
+            CornerRadius = new CornerRadius(12),
             Background = Brush.Parse("#F21A2432"),
             BorderBrush = Brush.Parse("#7898BCE9"),
             BorderThickness = new Thickness(1),
@@ -130,7 +132,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
         controllerGuideText = new TextBlock
         {
-            Text = "D-pad / stick Navigate   A Open / activate   B Back   Hold Y Restart",
+            Text = "D-pad / stick  Navigate    A  Open    B  Back    Hold Y  Restart",
             TextWrapping = TextWrapping.Wrap,
             TextAlignment = TextAlignment.Center,
             IsHitTestVisible = false,
@@ -140,9 +142,9 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             IsHitTestVisible = false,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 8, 0, 0),
-            Padding = new Thickness(12, 6),
-            CornerRadius = new CornerRadius(9),
+            Margin = new Thickness(0, 4, 0, 0),
+            Padding = new Thickness(10, 3),
+            CornerRadius = new CornerRadius(8),
             Background = Brush.Parse("#EA111923"),
             Child = controllerGuideText,
         };
@@ -177,7 +179,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
         shellGrid = new Grid
         {
-            Margin = new Thickness(16),
+            Margin = new Thickness(12),
             RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
         };
         Grid.SetRow(pageHost, 1);
@@ -187,7 +189,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         Grid.SetRow(controllerGuideLayer, 2);
         shellGrid.Children.Add(controllerGuideLayer);
         Grid.SetRow(trayLayer, 3);
-        trayLayer.Margin = new Thickness(0, 8, 0, 0);
+        trayLayer.Margin = new Thickness(0, 4, 0, 0);
         shellGrid.Children.Add(trayLayer);
         shellGrid.Children.Add(modalLayer);
         Grid.SetRowSpan(modalLayer, 4);
@@ -210,6 +212,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     internal Border PageHostElement => pageHost;
     internal Border ControllerGuideElement => controllerGuideLayer;
     internal Border TrayElement => trayLayer;
+    internal ScrollViewer TrayScrollElement => trayScroll;
     public int RealizedSemanticControls => admittedPresentation is null
         ? 0
         : renderer.GetRealizedControlCount(admittedPresentation.SemanticRoot);
@@ -392,15 +395,37 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         trayButtons.Clear();
         foreach (var widget in coordinator.ViewModel.Widgets)
         {
+            var glyph = new TextBlock
+            {
+                Text = Glyph(widget.Icon),
+                FontSize = 16,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+            };
+            var label = new TextBlock
+            {
+                Text = widget.Name,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.None,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+            };
+            var content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            content.Children.Add(glyph);
+            content.Children.Add(label);
             var button = new Button
             {
-                Content = $"{Glyph(widget.Icon)}  {widget.Name}",
+                Content = content,
                 Tag = widget.Id,
-                MinWidth = 86,
-                MaxWidth = 126,
-                Height = 48,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
             };
+            ApplyTrayButtonSizing(button, IsCompact);
             button.Classes.Add("tray-button");
             AutomationProperties.SetAutomationId(button, $"tray.{Encode(widget.Id)}");
             AutomationProperties.SetName(button, $"Open {widget.Name}");
@@ -571,6 +596,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     {
         foreach (var (id, button) in trayButtons)
             button.Classes.Set("selected", string.Equals(id, coordinator.ViewModel.SelectedWidgetId, StringComparison.Ordinal));
+        if (SelectedTrayButton() is { } selected)
+            Dispatcher.UIThread.Post(selected.BringIntoView, DispatcherPriority.Loaded);
     }
 
     private void OnSizeChanged(object? sender, SizeChangedEventArgs args)
@@ -590,14 +617,25 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private void UpdateChromeSizing()
     {
         var compact = IsCompact;
-        shellGrid.Margin = compact ? new Thickness(8) : new Thickness(16);
-        pageHost.Padding = compact ? new Thickness(11) : new Thickness(18);
-        pageHost.CornerRadius = compact ? new CornerRadius(12) : new CornerRadius(18);
-        trayLayer.Padding = compact ? new Thickness(3) : new Thickness(5);
-        trayLayer.Margin = new Thickness(0, compact ? 5 : 8, 0, 0);
-        controllerGuideLayer.Margin = new Thickness(0, compact ? 5 : 8, 0, 0);
-        controllerGuideLayer.Padding = compact ? new Thickness(8, 4) : new Thickness(12, 6);
-        controllerGuideText.FontSize = compact ? 11 : 12;
+        shellGrid.Margin = compact ? new Thickness(7) : new Thickness(12);
+        pageHost.Padding = compact ? new Thickness(10) : new Thickness(16);
+        pageHost.CornerRadius = compact ? new CornerRadius(11) : new CornerRadius(16);
+        trayPanel.Spacing = compact ? 4 : 6;
+        trayLayer.Padding = compact ? new Thickness(2) : new Thickness(4);
+        trayLayer.Margin = new Thickness(0, compact ? 3 : 4, 0, 0);
+        controllerGuideLayer.Margin = new Thickness(0, compact ? 3 : 4, 0, 0);
+        controllerGuideLayer.Padding = compact ? new Thickness(7, 2) : new Thickness(10, 3);
+        controllerGuideText.FontSize = compact ? 10 : 11;
+        foreach (var button in trayButtons.Values) ApplyTrayButtonSizing(button, compact);
+    }
+
+    private static void ApplyTrayButtonSizing(Button button, bool compact)
+    {
+        button.MinWidth = compact ? 100 : 112;
+        button.MaxWidth = compact ? 158 : 184;
+        button.Height = compact ? 38 : 42;
+        button.Padding = compact ? new Thickness(8, 4) : new Thickness(10, 5);
+        button.FontSize = compact ? 11 : 12;
     }
 
     private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs args)

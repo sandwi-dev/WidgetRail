@@ -60,6 +60,13 @@ Content, controller guide, and compact stationary tray occupy separate grid
 rows. The reusable semantic theme supplies consistent surface, typography,
 tile, button, slider, list, focus, selection, artwork, and status treatment
 without a GBSS renderer or widget-identity branch.
+The tray sizes labels to their ordinary text, scrolls horizontally when eight
+items do not fit, and brings the exact selected item fully into view instead of
+clipping it. Compact chrome leaves more vertical space to the admitted page.
+Transparent semantic buttons fall back to the reusable Avalonia action-surface
+treatment, while generic heading, card, primary/secondary/danger action,
+loading/empty, list-selection, and focus styles establish hierarchy without
+changing widget identity, data, or action authority.
 
 The executable holds a named prototype-only single-instance mutex. Normal close
 has an eight-second outer bound, records the exact WidgetBridge/worker descendant
@@ -72,7 +79,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (20 tests):
+MSTest.Sdk 4.3.2 suite (21 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -91,6 +98,9 @@ mode-identity restoration with one render tree. Geometry coverage asserts useful
 page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
+The direct tray regression uses all eight representative long/short labels and
+asserts that the selected final item is fully inside the scroll viewport, label
+content is not truncated, and guide plus tray chrome remains bounded.
 The suite retains an ignored exact-commit focused proof consumed by
 the final measurement.
 
@@ -117,6 +127,8 @@ The input artifact separately records actual native lease/controller observation
 and an exact-commit deterministic shared-router proof for Guide, D-pad/stick,
 A/B, tray/content, slider/scroll, repeat, reconnect, focus-loss, and hide/show.
 It does not convert that deterministic proof into a physical-controller claim.
+Any red effective-visibility or geometry record keeps AVP-004 blocked; the
+renderer-capture polish does not weaken or substitute for those assertions.
 Ownership checkpoints separate managed live/heap bytes, decoded
 bitmap count/bytes, tracked render trees, pending artwork, and remaining
 native/Skia/render-target/other unattributed candidate memory. The ignored exact runtime and JSON are under

@@ -498,6 +498,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         {
             if (control is Border border) border.Background = backgroundBrush;
             else if (control is Panel panel) panel.Background = backgroundBrush;
+            else if (control is Button && backgroundBrush is ISolidColorBrush { Color.A: 0 })
+                control.ClearValue(TemplatedControl.BackgroundProperty);
             else if (control is TemplatedControl backgroundControl) backgroundControl.Background = backgroundBrush;
         }
         if (values.TryGetValue("color", out var foreground) && TryBrush(foreground.Text) is { } foregroundBrush)
@@ -508,6 +510,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         if (values.TryGetValue("border-color", out var borderColor) && TryBrush(borderColor.Text) is { } borderBrush)
         {
             if (control is Border border) border.BorderBrush = borderBrush;
+            else if (control is Button && borderBrush is ISolidColorBrush { Color.A: 0 })
+                control.ClearValue(TemplatedControl.BorderBrushProperty);
             else if (control is TemplatedControl borderControl) borderControl.BorderBrush = borderBrush;
         }
         if (TryNumber(values, "border-width") is { } borderWidth)

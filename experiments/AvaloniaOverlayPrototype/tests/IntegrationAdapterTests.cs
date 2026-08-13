@@ -369,6 +369,56 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
+    public async Task Adaptive_tray_scrolls_long_selected_item_fully_into_view_without_dominating_the_shell()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var names = new[]
+            {
+                "Settings", "Game Launcher", "Audio Mixer", "Network Controls",
+                "Spotify", "Media Sessions", "YouTube Music", "Community Hub",
+            };
+            var frames = names.Select((name, index) =>
+                Frame($"tray.widget.{index}", 1, ButtonTree("open"), displayName: name)).ToArray();
+            var fake = new FakePresentationSession(frames);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => shell.AdmittedWidgetId == frames[0].Authority.WidgetId);
+
+            await coordinator.SelectWidgetAsync(frames[^1].Authority.WidgetId);
+            await WaitForAsync(() => shell.AdmittedWidgetId == frames[^1].Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var viewport = BoundsInShell(shell.TrayScrollElement, shell);
+            var selected = shell.TrayButtons[^1];
+            var selectedBounds = BoundsInShell(selected, shell);
+            Assert.IsGreaterThanOrEqualTo(viewport.Left - 1, selectedBounds.Left,
+                "The selected tray item must be scrolled fully into the viewport.");
+            Assert.IsLessThanOrEqualTo(viewport.Right + 1, selectedBounds.Right,
+                "The selected tray item must not remain clipped at the right edge.");
+
+            foreach (var button in shell.TrayButtons)
+            {
+                var label = button.GetVisualDescendants().OfType<TextBlock>().Last();
+                Assert.IsGreaterThanOrEqualTo(label.DesiredSize.Width - 1, label.Bounds.Width,
+                    $"Tray label '{label.Text}' must not be truncated inside its button.");
+            }
+
+            var guide = BoundsInShell(shell.ControllerGuideElement, shell);
+            var tray = BoundsInShell(shell.TrayElement, shell);
+            Assert.IsFalse(Overlaps(guide, tray));
+            Assert.IsLessThanOrEqualTo(104, guide.Height + tray.Height,
+                "The controller guide and tray must leave the majority of the work area to content.");
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
     public async Task Generic_shell_translates_viewport_units_and_keeps_outer_root_allocation_host_owned()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -389,6 +439,8 @@ public sealed class IntegrationAdapterTests
             {
                 ["width"] = Length(40, "px"),
                 ["min-width"] = Length(0, "px"),
+                ["background"] = Color("transparent"),
+                ["border-color"] = Color("transparent"),
             };
             var styles = new Dictionary<string, BridgeNodeRenderStyles>
             {
@@ -414,6 +466,11 @@ public sealed class IntegrationAdapterTests
             Assert.IsGreaterThan(100, semantic.Height, "100vh must not become a literal 100-DIP root height.");
             Assert.IsGreaterThanOrEqualTo(44, action.Bounds.Width,
                 "GBSS min-width:0 must not erase the host interactive readability minimum.");
+            Assert.IsTrue(action is Button
+            {
+                Background: ISolidColorBrush { Color.A: > 0 },
+                BorderBrush: ISolidColorBrush { Color.A: > 0 },
+            }, "Transparent semantic buttons must retain the reusable Avalonia action-surface treatment.");
             window.Close();
         });
     }
@@ -742,9 +799,10 @@ public sealed class IntegrationAdapterTests
         string widgetId,
         long sequence,
         ViewNode root,
-        IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null)
+        IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null,
+        string? displayName = null)
     {
-        var descriptor = Descriptor(widgetId);
+        var descriptor = Descriptor(widgetId, displayName);
         var authority = new WidgetPresentationAuthority(
             widgetId, descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
             1, descriptor.InstanceId, sequence, "root-scope");
@@ -770,6 +828,12 @@ public sealed class IntegrationAdapterTests
         Unit = unit,
     };
 
+    private static BridgeComputedStyleValue Color(string text) => new()
+    {
+        Kind = GbssValueKind.Color,
+        Text = text,
+    };
+
     private static BridgeNodeRenderStyles Style(IReadOnlyDictionary<string, BridgeComputedStyleValue> values) => new()
     {
         Base = values,
@@ -777,10 +841,10 @@ public sealed class IntegrationAdapterTests
         Pressed = values,
     };
 
-    private static BridgeWidgetDescriptor Descriptor(string id) => new()
+    private static BridgeWidgetDescriptor Descriptor(string id, string? displayName = null) => new()
     {
         Id = id,
-        Name = "Generic fixture",
+        Name = displayName ?? "Generic fixture",
         InstanceId = $"{id}.instance",
         RuntimeGeneration = "11111111111111111111111111111111",
         PresentationGeneration = "22222222222222222222222222222222",

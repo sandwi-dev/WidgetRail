@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 18-test focused Avalonia integration suite. Its ignored exact-commit
+only the 21-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -16,6 +16,10 @@ useful page/root width, readable and effectively visible controls, bounded
 unintended horizontal empty area, and non-overlapping content/guide/tray regions
 at every supported size/scale. A prototype-only mutex regression rejects a
 competing second owner.
+The shared-shell polish regression additionally uses all eight representative
+tray labels and requires the selected final item to be fully scrolled into view,
+untruncated label content, and bounded guide/tray height. Transparent semantic
+buttons are also proven to retain a visible reusable Avalonia surface and border.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
@@ -37,6 +41,8 @@ render scale, and SHA-256. It does not change taskbar behavior or use a targetab
 walkthrough mode.
 Ordinary lifecycle node kinds remain separate from the focused generic mapping
 proof; the retained final assertion combines both without overstating ordinary emission.
+Effective-visibility and geometry rows remain hard assertions: a red row rejects
+the retained exact run even when offscreen captures show visual improvement.
 
 The responsive traversal retains one 1440 x 810 compositor backing surface and
 applies 420 x 340, 978 x 466, 1180 x 680, and 1440 x 810 as real Avalonia shell
