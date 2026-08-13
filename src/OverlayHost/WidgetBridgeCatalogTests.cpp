@@ -105,6 +105,9 @@ int main() {
     assert((*valid)[0].quickActions.size() == 2);
     assert((*valid)[0].quickActions[0].controllerButton == L"x");
     assert(!(*valid)[0].quickActions[1].controllerButton);
+    assert(gba::FindDescriptorQuickAction((*valid)[0], L"refresh") ==
+           &(*valid)[0].quickActions[0]);
+    assert(gba::FindDescriptorQuickAction((*valid)[0], L"missing") == nullptr);
 
     error.clear();
     const auto defaultPinning = gba::testing::ParseWidgetDescriptors(R"json({

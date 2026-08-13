@@ -17,7 +17,7 @@ intercept, remap, or suppress it.
 | Context | Host-owned input | Widget input |
 | --- | --- | --- |
 | Hidden | Guide/Home opens the overlay. | No widget controller input. Ordinary polling is stopped. |
-| Tray / dashboard focus | D-pad or left-stick Left/Right selects the adjacent widget and swaps the visible panel automatically; A moves focus into that panel; B closes; tapping Y enters/exits reorder, while holding Y for 700 ms refreshes the selected worker widget once. | The selected panel is Visible and may expose up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Y remains host-owned and is never forwarded from tray focus. Other undeclared input is unhandled. |
+| Tray / dashboard focus | D-pad or left-stick Left/Right selects the adjacent widget and swaps the visible panel automatically; A moves focus into that panel; B closes; tapping Y enters/exits reorder. When the selected widget advertises the private contextual `refresh` action, holding Y for 700 ms invokes it once. | The selected panel is Visible and may expose up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Y remains host-owned and is never forwarded from tray focus. Other undeclared input is unhandled. |
 | Widget-panel focus | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus; focused Sliders own horizontal adjustment. Unhandled root-scope B and a root Down boundary return focus to the still-visible tray. | A activates the focused Button or an optional Slider activation. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
 
 The protocol names the contexts `DashboardQuickAction` and `OpenWidget`.
@@ -34,18 +34,21 @@ or `Repeated` shortcut bindings until those phases are transported end to end.
 The visible host's existing 16 ms controller cadence drives a fixed 700 ms Y
 hold; no gesture timer or controller polling remains active while hidden. Before
 the threshold, release performs the ordinary reorder tap. At or after the
-threshold, the host revalidates tray focus, non-reorder state, and the exact
-selected widget ID, then requests one refresh through the same host-owned reload
-function used by F5 and the recovery chord. The winning hold consumes release
-and cannot become reorder or widget Y even if the reload reports failure.
+threshold, the host revalidates tray focus, non-reorder state, the exact selected
+widget ID, its current admitted snapshot, and an exact private catalog quick
+action whose ID is `refresh`. It sends that action's declared action/source pair
+once through the ordinary bridge action path. Widgets without that opt-in retain
+tap-only reorder and receive no hold guidance. The winning hold consumes release
+and cannot become reorder or widget Y even if the action reports failure.
 
 Any accepted shell transition—including selection, focus, open-widget, reorder,
 overlay, or lifecycle change—cancels pending progress. Window focus loss and
 controller loss also cancel it. A canceled capture suppresses its stale physical
 release; overlay hide resets it after visible polling has stopped. The tray hint
-shows live percentage progress and its UI Automation help states both tap and
-hold meanings. F5 remains the desktop fallback and resolves the selected widget
-at tray focus or the active widget at widget-panel focus.
+shows live percentage progress and its UI Automation help states both meanings
+only for an opted-in widget. F5 remains a separate worker-restart fallback and
+resolves the selected widget at tray focus or the active widget at widget-panel
+focus.
 
 ### Desktop test fallbacks
 

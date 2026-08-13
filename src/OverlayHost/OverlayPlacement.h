@@ -135,6 +135,7 @@ struct ControllerGuideAction final {
 [[nodiscard]] std::wstring BuildTrayControllerGuide(
     ControllerGuideDensity density,
     bool reorderMode,
+    bool contextualRefreshAvailable,
     std::span<const ControllerGuideAction> quickActions = {});
 
 /// Computes a bottom-centered physical-pixel window rectangle that is fully

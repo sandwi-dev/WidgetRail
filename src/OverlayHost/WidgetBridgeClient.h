@@ -57,6 +57,13 @@ struct WidgetDescriptor final {
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
 
+/// Resolves one exact private catalog quick-action advertisement. Identifiers
+/// remain opaque to the bridge; the native shell assigns meaning only to the
+/// IDs it owns (for example, the tray contextual-refresh opt-in).
+[[nodiscard]] const WidgetDescriptorQuickAction* FindDescriptorQuickAction(
+    const WidgetDescriptor& descriptor,
+    std::wstring_view quickActionId) noexcept;
+
 /// Returns prior widget IDs whose runtime identity was removed or replaced,
 /// independent of any snapshot/focus cache residency.
 [[nodiscard]] std::vector<std::wstring> ChangedWidgetRuntimeIds(

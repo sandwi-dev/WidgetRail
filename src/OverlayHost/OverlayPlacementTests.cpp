@@ -195,7 +195,7 @@ int main() {
         ControllerGuideAction{L"RB", L"Next track"},
     };
     const auto contextualGuide = BuildTrayControllerGuide(
-        ControllerGuideDensity::Compact, false, quickActions);
+        ControllerGuideDensity::Compact, false, true, quickActions);
     Check(contextualGuide.find(L"LB ") != std::wstring::npos &&
               contextualGuide.find(L"X ") != std::wstring::npos &&
               contextualGuide.find(L"RB ") != std::wstring::npos,
@@ -211,18 +211,26 @@ int main() {
         ControllerGuideAction{L"LB\nRB", L"A deliberately enormous\nwidget supplied label"},
     };
     const auto hostileGuide = BuildTrayControllerGuide(
-        ControllerGuideDensity::Minimal, false, hostileAction);
+        ControllerGuideDensity::Minimal, false, true, hostileAction);
     Check(hostileGuide.size() <= 28U &&
               hostileGuide.find_first_of(L"\r\n") == std::wstring::npos,
           "untrusted widget hint text cannot wrap or overflow minimal chrome");
     Check(BuildTrayControllerGuide(
-              ControllerGuideDensity::Full, false).find(
+              ControllerGuideDensity::Full, false, true).find(
                   L"Y Tap reorder / Hold refresh") != std::wstring::npos,
           "full tray guide explains both sides of the Y gesture");
     Check(BuildTrayControllerGuide(
-              ControllerGuideDensity::Minimal, false) ==
+              ControllerGuideDensity::Minimal, false, true) ==
               L"Y Tap/Hold   B Close",
           "minimal tray guide keeps the gesture and escape discoverable");
+    Check(BuildTrayControllerGuide(
+              ControllerGuideDensity::Full, false, false).find(L"Hold") ==
+              std::wstring::npos,
+          "tray guide does not advertise hold refresh without widget opt-in");
+    Check(BuildTrayControllerGuide(
+              ControllerGuideDensity::Full, true, true).find(L"Y Done") !=
+              std::wstring::npos,
+          "reorder mode keeps tap-Y completion for refresh-capable widgets");
 
     const auto legacySurface = ResolveWidgetSurfaceTarget(std::nullopt, 1.0F);
     CheckNear(legacySurface.windowWidthDip, 1180.0F,

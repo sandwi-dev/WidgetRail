@@ -21,6 +21,17 @@
 
 namespace gba {
 
+const WidgetDescriptorQuickAction* FindDescriptorQuickAction(
+    const WidgetDescriptor& descriptor,
+    const std::wstring_view quickActionId) noexcept {
+    const auto found = std::find_if(
+        descriptor.quickActions.begin(), descriptor.quickActions.end(),
+        [&](const WidgetDescriptorQuickAction& action) {
+            return action.id == quickActionId;
+        });
+    return found == descriptor.quickActions.end() ? nullptr : &*found;
+}
+
 ProtectedWifiSecretFrame::ProtectedWifiSecretFrame(
     std::vector<unsigned char>&& bytes) noexcept : bytes_(std::move(bytes)) {}
 

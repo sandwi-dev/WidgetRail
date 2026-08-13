@@ -25,12 +25,12 @@ Visible controls:
 - Open-widget D-pad or two-dimensional left stick: move focus
 - A: open a card or confirm reorder mode
 - B: return from the sample widget; it never closes the overlay
-- Tray Y: tap to enter/leave reorder mode; hold for 700 ms to refresh the
-  selected worker widget once
+- Tray Y: tap to enter/leave reorder mode; when the selected widget advertises
+  the private contextual `refresh` action, hold for 700 ms to invoke it once
 - X, LB, RB, triggers, or stick clicks: run a selected card's declared quick action, when present
 - Guide: show/hide from any state
 - Keyboard fallback: arrows navigate, Enter selects, Escape goes Back; F1
-  toggles and F5 refreshes the current tray/open widget through the same path
+  toggles and F5 restarts the current tray/open widget through its recovery path
 
 The widget order and last activated widget are atomically persisted under
 `%LOCALAPPDATA%\GameBarAlternative`. B returning from the placeholder widget is

@@ -16,6 +16,7 @@ internal static class Program
             NumberStyles.None,
             CultureInfo.InvariantCulture);
         var firstSnapshotSignal = OptionalValue(args, "--first-snapshot-signal");
+        var refreshSignal = OptionalValue(args, "--refresh-signal");
 
         using var shutdown = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
@@ -27,7 +28,7 @@ internal static class Program
         try
         {
             await new WidgetWorkerServer(
-                    new SwitchFixtureWidget(instanceId, firstSnapshotSignal),
+                    new SwitchFixtureWidget(instanceId, firstSnapshotSignal, refreshSignal),
                     instanceId,
                     pipeName,
                     maximumBytes)
@@ -64,7 +65,8 @@ internal static class Program
 
     private sealed class SwitchFixtureWidget(
         string instanceId,
-        string? firstSnapshotSignal) : Widget
+        string? firstSnapshotSignal,
+        string? refreshSignal) : Widget
     {
         private readonly SurfaceDefinition _surface = ResolveSurface(instanceId);
         private bool _firstSnapshotDelayed;
@@ -95,6 +97,19 @@ internal static class Program
                     .Classes("switch-surface", _surface.ClassName),
                 InitialFocusId: $"{_surface.Id}-ready",
                 Surface: _surface.Hints);
+        }
+
+        public override ValueTask OnActionAsync(
+            WidgetActionEvent action,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (action.ActionId == "refresh" && refreshSignal is not null)
+            {
+                File.AppendAllText(refreshSignal, "refresh\n");
+                return ValueTask.CompletedTask;
+            }
+            return base.OnActionAsync(action, cancellationToken);
         }
 
         private static SurfaceDefinition ResolveSurface(string value)

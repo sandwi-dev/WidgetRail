@@ -107,10 +107,10 @@ int main() {
     using gba::input::ResolveCurrentWidgetReloadTarget;
     Check(ResolveCurrentWidgetReloadTarget(
               true, true, L"selected", L"active") == L"selected",
-          "tray F5 and hold resolve the selected widget");
+          "tray F5 resolves the selected widget");
     Check(ResolveCurrentWidgetReloadTarget(
               true, false, L"selected", L"active") == L"active",
-          "open-widget F5 and recovery retain active-widget parity");
+          "open-widget F5 and recovery resolve the active widget");
     Check(ResolveCurrentWidgetReloadTarget(
               false, true, L"selected", L"active").empty(),
           "hidden overlay has no reload target");

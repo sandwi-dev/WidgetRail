@@ -92,6 +92,8 @@ constexpr UINT kGuideCompatibilityDeviceMessage = WM_APP + 9;
 constexpr UINT kAccessibilityActionMessage = WM_APP + 10;
 constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
 constexpr UINT kProcessActivationMessage = WM_APP + 12;
+constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
+constexpr std::wstring_view kContextualRefreshQuickActionId = L"refresh";
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
@@ -1320,6 +1322,33 @@ private:
                 (void)AcquireOverlayForegroundInput();
                 InvalidateRect(window_, nullptr, FALSE);
             }
+            return 0;
+        case kDevelopmentTrayYHoldMessage:
+            // Authenticated development fixtures exercise the same host-owned
+            // recognizer/action route as GameInput without adding a production
+            // controller remapping or public bridge message.
+            if (!developmentReadyNonce_ || !developmentCatalogRoot_) return 0;
+            AppendDiagnostic(
+                L"Development tray Y phase=" + std::to_wstring(wParam) +
+                L" eligible=" + (TrayYRefreshEligible() ? L"true" : L"false"));
+            if (wParam == 1) {
+                trayYGesture_.Press(
+                    state_.selectedWidget(), TrayYRefreshEligible(), GetTickCount64());
+            } else if (wParam == 2) {
+                ApplyTrayYGestureAction(trayYGesture_.Update(
+                    state_.selectedWidget(), TrayYRefreshEligible(), GetTickCount64()));
+            } else if (wParam == 3) {
+                ApplyTrayYGestureAction(trayYGesture_.Release(
+                    state_.selectedWidget(), TrayYRefreshEligible(), GetTickCount64()));
+            } else if (wParam == 4) {
+                const auto now = GetTickCount64();
+                trayYGesture_.Press(
+                    state_.selectedWidget(), TrayYRefreshEligible(),
+                    now - gba::input::kTrayWidgetRefreshHoldMilliseconds);
+                ApplyTrayYGestureAction(trayYGesture_.Update(
+                    state_.selectedWidget(), TrayYRefreshEligible(), now));
+            }
+            InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case WM_SETFOCUS:
             accessibilityProvider_.SetWindowFocused(true);
@@ -4710,11 +4739,20 @@ private:
         if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
     }
 
+    [[nodiscard]] const gba::WidgetDescriptorQuickAction*
+        TrayYRefreshAction() const noexcept {
+        const auto* descriptor = sessions_.FindDescriptor(state_.selectedWidget());
+        if (!descriptor || !InteractionSnapshotFor(state_.selectedWidget())) return nullptr;
+        return gba::FindDescriptorQuickAction(
+            *descriptor, kContextualRefreshQuickActionId);
+    }
+
     [[nodiscard]] bool TrayYRefreshEligible() const noexcept {
         return state_.surface() != gba::Surface::Hidden &&
                state_.focusRegion() == gba::FocusRegion::Tray &&
                !state_.reorderMode() &&
-               IsBridgeWidget(state_.selectedWidget());
+               IsBridgeWidget(state_.selectedWidget()) &&
+               TrayYRefreshAction() != nullptr;
     }
 
     void ApplyTrayYGestureAction(const gba::input::TrayYGestureAction action) {
@@ -4723,9 +4761,35 @@ private:
             Dispatch(gba::Command::ToggleReorder);
             break;
         case gba::input::TrayYGestureAction::RefreshSelectedWidget:
-            // Update() revalidated the selected ID and tray context on this UI
-            // thread. Resolve it once more inside the shared F5 authority.
-            RestartCurrentWidget();
+            if (const auto* refresh = TrayYRefreshAction()) {
+                const std::wstring widgetId(state_.selectedWidget());
+                const auto* snapshot = InteractionSnapshotFor(widgetId);
+                if (!snapshot) break;
+                const std::wstring actionId(refresh->actionId);
+                const std::wstring sourceElementId(refresh->sourceElementId);
+                const auto handled = bridge_.SendAction(
+                    widgetId, actionId, sourceElementId,
+                    snapshot->activeInputScopeId);
+                lastActionWidgetId_ = widgetId;
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+                if (!handled) {
+                    lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                        L" refresh failed: " + bridge_.lastError();
+                } else if (*handled) {
+                    lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                        L" refreshed";
+                    RefreshAndApplyPresentation([&] {
+                        RefreshWidgetSnapshot(widgetId);
+                    });
+                } else {
+                    lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
+                        L" refresh was not handled";
+                }
+                AppendDiagnostic(
+                    L"Tray Y contextual refresh widget=" + widgetId +
+                    L" action=" + actionId +
+                    L" handled=" + (handled && *handled ? L"true" : L"false"));
+            }
             break;
         case gba::input::TrayYGestureAction::None:
             break;
@@ -5819,12 +5883,12 @@ private:
         return gba::BuildTrayControllerGuide(
             gba::ResolveControllerGuideDensity(
                 availableWidth, CurrentTextScale()),
-            state_.reorderMode(), quickActions);
+            state_.reorderMode(), TrayYRefreshEligible(), quickActions);
     }
 
     std::wstring DashboardAccessibilityHint(const std::wstring_view visualHint) const {
         if (trayYGesture_.pendingRefresh()) return std::wstring{visualHint};
-        if (state_.reorderMode() || !IsBridgeWidget(state_.selectedWidget()))
+        if (state_.reorderMode() || !TrayYRefreshEligible())
             return std::wstring{visualHint};
         return std::wstring{visualHint} +
             L". Tap Y to reorder. Hold Y to refresh the selected widget.";

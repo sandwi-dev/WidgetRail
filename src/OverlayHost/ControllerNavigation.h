@@ -19,9 +19,9 @@ enum class TrayYGestureAction {
     RefreshSelectedWidget,
 };
 
-/// Resolves the widget owned by the current host surface. Both F5/recovery and
-/// a successfully revalidated tray hold pass through this resolver before the
-/// single restart implementation.
+/// Resolves the widget owned by the current host surface for F5 and the
+/// recovery chord. Tray hold refresh instead uses a widget-advertised
+/// contextual action.
 [[nodiscard]] constexpr std::wstring_view ResolveCurrentWidgetReloadTarget(
     const bool overlayVisible,
     const bool trayFocused,
