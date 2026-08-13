@@ -9,9 +9,8 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `4f502c4`, which integrates DLV-215, DLV-210,
-  and corrected DLV-220. Reviewer control-plane commits `e132b86` and
-  `436d890` follow it without product code.
+- Production code: local main `b5c4c6c`, including accepted DLV-216 plus the
+  behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries.
 - Accepted Avalonia experiment: `2a3c722` on
   `codex/avalonia-prototype`, integrated previously through main `9d3ad8e`.
 - Latest packaged production Release:
@@ -76,9 +75,9 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 Assigned from accepted main `47d8ffe` |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Clean and held at `2a3c722` |
-| AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Correction active after rejected `36ea053` |
-| AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Correction active after rejected `c46f6192` |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004-INTEGRATION Assigned from `b5c4c6c` + `2a3c722` |
+| AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
+| AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
 The two temporary AVP tasks are authorized concurrently because their files and
 owners are disjoint. The standing Avalonia lead remains idle until both
@@ -252,7 +251,8 @@ GBSS deletion, or native-host retirement is authorized.
 
 Owner: temporary task on `codex/avp004-session`.
 
-State: correction assigned after rejecting `705e4e9`. An invalidation refresh
+State: Accepted at `7de4269` and integrated first through merge `7ec8253`.
+Earlier rejected corrections are retained below as review provenance. An invalidation refresh
 may currently publish failure with an obsolete last-good frame after a restart,
 catalog replacement/removal, or newer snapshot. The correction must make
 failure publication an exact-authority compare-and-commit, discard stale
@@ -304,7 +304,8 @@ Verification: focused bridge/session suites only. Commit one
 
 Owner: temporary task on `codex/avp004-platform`.
 
-State: correction assigned after rejecting `8fa9fc9`. A rapid Guide reopen
+State: Accepted at `849e970` and integrated second through merge `b5c4c6c`.
+Earlier rejected corrections are retained below as review provenance. A rapid Guide reopen
 during close motion can leave the extracted platform marked invisible because
 the successful show path restores its visible lease only when the HWND was
 previously hidden. The correction must restore that lease after every
@@ -353,8 +354,8 @@ build needed by the extraction. No aggregate. Commit one
 
 ### AVP-004-INTEGRATION — generic Avalonia candidate
 
-State: blocked until both extraction commits are independently accepted and
-integrated.
+State: Assigned. Both extraction commits were independently accepted and
+integrated in SESSION then PLATFORM order through main `b5c4c6c`.
 
 Owner after unblock: standing `avalonia-prototype` task. Integration order is
 SESSION, PLATFORM, then candidate wiring. Substantial conflicts stop.
