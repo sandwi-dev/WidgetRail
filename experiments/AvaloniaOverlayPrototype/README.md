@@ -1,105 +1,80 @@
-# Avalonia Overlay Prototype — AVP-003
+# Avalonia Overlay Prototype — AVP-004-INTEGRATION
 
-This remains an isolated .NET 10/Avalonia 12.1.1 feasibility process, not a
-production migration. AVP-003 shapes one representative vertical slice around
-CommunityToolkit.Mvvm 8.4.2, compiled AXAML bindings, ordinary Avalonia
-virtualization/UIA, and an experiment-owned semantic remote boundary. It does
-not import the production Widget SDK, renderer, GBSS, catalog, or package
-runtime.
+This .NET 10/Avalonia 12.1.1 candidate replaces only the production
+presentation boundary. It is not a production cutover. The default executable
+contains no representative domain pages, fake remote endpoint, experiment-owned
+XInput reader, widget-specific renderer, transport, schema, GameInput owner, or
+second HWND.
 
-## Production-shaped responsibility split
+The candidate launches the existing packaged `WidgetBridge`, connects through
+`WidgetPresentationSession`, and admits the ordinary bundled and installed
+Community catalog. One `SemanticTreeRenderer` maps every current
+`WidgetProtocol.ViewNodeKind` to standard Avalonia controls. It preserves raw
+widget/runtime/presentation/session/snapshot/input-scope/node/action/collection/
+focus identity and revalidates the latest node/action tuple before the managed
+session performs its exact authority check. Large Scroll and Grid collections
+use a recycling `ListBox`; no custom accessibility tree or container cache is
+present.
 
-`PrototypeComposition` is a small manual composition root. Immutable shell and
-page state plus commands live in CommunityToolkit view models. `MainWindow`,
-`PrototypeShellView`, `SemanticInputRouter`, `FocusNavigator`, and
-`PageTransitionPresenter` retain window lifecycle, controller input, focus,
-navigation policy, and native transition ownership. The complete before/after
-map and measured DI decision are in
-[`architecture-decision.md`](architecture-decision.md).
+`OverlayPlatformClient` consumes accepted `OverlayPlatformInterop` ABI v1. The
+native component remains the sole GameInput/Guide/device/repeat/neutral/
+foreground/placement owner, while Avalonia supplies its one HWND and one focus
+tree. Controller directions, A/B, contextual actions, tray Y short/hold,
+keyboard input, tray navigation, sliders, and Back converge on the shared shell
+and managed presentation session. The old AVP-002 Vortice dependency is retired.
 
-AXAML bindings are compiled project-wide with typed view/data-template scopes.
-The deliberately separate
-`tests/fixtures/InvalidCompiledBinding` project binds a missing property and
-must fail with `AVLN2000`; it is excluded from the real solution so the
-production-shaped slice remains buildable.
+The shell retains a stationary scrolling tray, page focus memory, Avalonia
+FocusManager/XYFocus spatial movement, same-HWND text-entry modal, status and
+controller-guide layers, native `TransitioningContentControl`/`CrossFade`, and
+reduced motion. Responsive visibility uses the current logical surface;
+non-Scroll roots receive a host ScrollViewer so compact content stays reachable.
+Advanced presentation uses only the closed protocol kind/preset/slot enums and
+never package, widget, element, provider, or tree-shape identity.
 
-The visual base remains Avalonia's built-in Fluent theme with project-owned
-styles. AVP-003 adds no ReactiveUI, DynamicData, generic host, Serilog, EF,
-FluentAvalonia, SukiUI, or other navigation/theme framework. Page changes use
-Avalonia's native `TransitioningContentControl` with `CrossFade`; retained
-start/midpoint/completion samples remain an Avalonia-surface diagnostic rather
-than a physical-compositor claim.
+See [architecture-decision.md](architecture-decision.md) for the responsibility
+map and retained manual-composition decision.
 
-## Virtualized launcher and remote projection
+## Focused verification
 
-Game Launcher is an ordinary selectable `ListBox` backed by a
-`VirtualizingStackPanel` and 10,000 typed items. No manual container cache or
-custom accessibility tree exists. Prepared standard `ListBoxItem` containers
-receive stable AutomationIds derived reversibly from the exact raw
-`RemoteWidgetItemId` using bounded base64url encoding, never list position. The
-presentation page scrolls/realizes only the requested item and the shared
-keyboard/controller semantic router moves or invokes that focused container.
-Latest-wins insertion/reordering, page replacement, and container recycling
-retain the same raw item ID, AutomationId, focus, and scroll position.
-
-`RemoteWidgetContract.cs`, `FakeRemoteWidgetEndpoint`, and
-`RemoteWidgetProjection` contain no Avalonia, XAML, control, view-model, or UI
-thread types. The projection owns one active generation, latest-wins request
-cancellation, last-good retention on failure, exact typed actions declared per
-item by the latest good snapshot, and deactivation cancellation. Unknown items
-and undeclared actions are rejected before reaching the endpoint.
-`GameLauncherViewModel` adapts that state into typed immutable presentation
-records. Its presentation-owned `AvaloniaUiScheduler` explicitly marshals every
-remote-driven bound-state mutation to Avalonia's UI thread; the remote contract
-remains UI-framework-neutral.
-
-The accepted AVP-002 input behavior remains: XInput is still a deliberately
-narrow Windows prototype adapter because it gave maintained deployment and
-deterministic reconnect/repeat semantics without creating another focus
-system. Its legacy limitations remain explicit: four compatible slots, no
-durable device identity, and incomplete coverage of non-XInput controllers. It
-is not the production GameInput decision.
-
-## Focused verification and evidence
-
-From the repository root, run the bounded final Release build, invalid-binding
-proof, and 23-test MSTest.Sdk 4.3.2 unit/headless/UIA suite once:
+From the repository root, run the one bounded final Release/compiled-binding/
+MSTest.Sdk 4.3.2 suite (12 tests):
 
 ```powershell
-powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp003.ps1 -TimeoutSeconds 180
+powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
 ```
 
-The suite covers immutable commands, UI-neutral remote types, delayed/latest-
-wins/failure/action/deactivation behavior, bounded 10,000-item realization,
-semantic ID/AutomationId restoration through latest-wins reorder and recycling,
-snapshot-owned action rejection, worker-to-UI publication scheduling, shared
-controller movement, accepted tray/slider/lifecycle behavior, real render-scale
-fixtures, native transition samples, and standard Windows UIA
-List/ListItem/Scroll/Selection semantics.
+The focused suite covers every node kind, latest-frame exact action authority,
+explicit worker-to-UI publication, 10,000-item bounded realization, stable
+collection/UIA identity, compact/standard/wide layouts at actual Avalonia
+100/125/150-percent render scales, lifecycle switch/hide/show, exact controller
+authority, stationary dynamic tray, content entry/Back focus restoration,
+start/mid/end transition surface diagnostics, slider quantization, ABI layout,
+and the absence of Vortice.
 
-After the clean AVP-003 commit, run exactly one ordinary Windows measurement:
+After the coherent commit, run exactly one ordinary exact-commit measurement:
 
 ```powershell
-powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Measure-Avp003.ps1 -TimeoutSeconds 90
+powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Measure-Avp004.ps1 -TimeoutSeconds 240
 ```
 
-The ignored exact-commit runtime and measurement are retained under
-`experiments/AvaloniaOverlayPrototype/artifacts/avp003`. The measurement records
-source commit, executable ProductVersion/SHA-256, package versions, startup,
-visible/hidden private memory and CPU, page-switch latency, native transition
-samples, total/realized items, raw semantic and encoded Automation identity
-before/after reorder and recycling, focus/scroll return, unknown/undeclared
-action rejection, exact valid action identity, and worker/UI scheduler threads.
+It rebuilds the retained product package without tests, publishes a copied
+candidate, cycles every currently installed catalog widget through the ordinary
+bridge/runtime/domain path and same adapter, exercises 420x340, 978x466,
+standard, and wide logical surfaces, records UIA/containment/scroll clipping and
+transition phases, then samples the candidate/bridge/worker process tree visible
+and hidden. The ignored exact runtime and JSON are under
+`artifacts/avp004`; see [evidence/README.md](evidence/README.md).
 
 ## Visible planner/user launch
 
 ```powershell
-& .\experiments\AvaloniaOverlayPrototype\artifacts\avp003\runtime-win-x64\AvaloniaOverlayPrototype.exe
+& .\experiments\AvaloniaOverlayPrototype\artifacts\avp004\runtime-win-x64\AvaloniaOverlayPrototype.exe `
+  --installation .\experiments\AvaloniaOverlayPrototype\artifacts\avp004\runtime-win-x64
 ```
 
-Physical controller compatibility/feel, focus rings, transparency,
-mixed-monitor behavior, and the Windows compositor verdict remain planner/user
-checks. GPU timing remains unavailable without an authorized ETW/PresentMon
-lane. The 250 MiB value remains an initial comparison target rather than an
-acceptance gate; evidence also states whether memory remains below the user's
-roughly 500 MiB unacceptable region. AVP-004 is not included.
+Close the production OverlayHost before physical evaluation so only one process
+owns the extracted platform service. Physical Guide/controller feel, compositor
+transparency, mixed-monitor DPI/clipping, and credential-gated Community behavior
+remain planner/user verdicts. The candidate records whether the visible process
+tree is below 350 MiB and enforces the user's 500 MiB ceiling; GPU cost remains
+unavailable without an authorized ETW/PresentMon lane.

@@ -3,9 +3,11 @@ namespace GameBarAlternative.AvaloniaPrototype;
 internal sealed record PrototypeArguments(
     string? EvidencePath,
     string? SourceCommit,
-    int ExitAfterSeconds)
+    int ExitAfterSeconds,
+    string? InstallationPath,
+    bool ReducedMotion)
 {
-    private static PrototypeArguments current = new(null, null, 0);
+    private static PrototypeArguments current = new(null, null, 0, null, false);
 
     public static PrototypeArguments Current => current;
 
@@ -14,6 +16,8 @@ internal sealed record PrototypeArguments(
         string? evidencePath = null;
         string? sourceCommit = null;
         var exitAfterSeconds = 0;
+        string? installationPath = null;
+        var reducedMotion = false;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -32,9 +36,15 @@ internal sealed record PrototypeArguments(
                     }
 
                     break;
+                case "--installation" when index + 1 < args.Count:
+                    installationPath = Path.GetFullPath(args[++index]);
+                    break;
+                case "--reduced-motion":
+                    reducedMotion = true;
+                    break;
             }
         }
 
-        current = new(evidencePath, sourceCommit, exitAfterSeconds);
+        current = new(evidencePath, sourceCommit, exitAfterSeconds, installationPath, reducedMotion);
     }
 }

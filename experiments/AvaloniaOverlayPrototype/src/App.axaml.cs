@@ -26,11 +26,10 @@ public sealed partial class App : Application
             else
             {
                 window.Show();
-                _ = window.NavigateAsync(PrototypeRoute.Settings);
 
                 if (arguments.ExitAfterSeconds > 0)
                 {
-                    _ = ExitAfterAsync(desktop, arguments.ExitAfterSeconds);
+                    _ = ExitAfterAsync(window, desktop, arguments.ExitAfterSeconds);
                 }
             }
         }
@@ -38,9 +37,13 @@ public sealed partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    private static async Task ExitAfterAsync(IClassicDesktopStyleApplicationLifetime desktop, int seconds)
+    private static async Task ExitAfterAsync(
+        MainWindow window,
+        IClassicDesktopStyleApplicationLifetime desktop,
+        int seconds)
     {
         await Task.Delay(TimeSpan.FromSeconds(seconds));
+        await window.ShutdownAsync();
         desktop.Shutdown();
     }
 }

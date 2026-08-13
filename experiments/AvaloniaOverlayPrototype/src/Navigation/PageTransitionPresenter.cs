@@ -25,6 +25,8 @@ public sealed class PageTransitionPresenter : TransitioningContentControl, IDisp
 
     public Control? AdmittedPage => admittedPage;
 
+    public bool ReducedMotion { get; set; }
+
     public async Task PresentAsync(
         Control destination,
         Action<TransitionPhase>? sample = null,
@@ -39,6 +41,14 @@ public sealed class PageTransitionPresenter : TransitioningContentControl, IDisp
         Content = destination;
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         sample?.Invoke(TransitionPhase.Start);
+
+        if (ReducedMotion)
+        {
+            admittedPage = destination;
+            sample?.Invoke(TransitionPhase.Midpoint);
+            sample?.Invoke(TransitionPhase.Completion);
+            return;
+        }
 
         try
         {

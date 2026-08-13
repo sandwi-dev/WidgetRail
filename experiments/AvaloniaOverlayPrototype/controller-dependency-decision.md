@@ -1,18 +1,17 @@
-# AVP-002 controller dependency decision
+# AVP-004 controller/platform dependency decision
 
-Compared on 2026-08-13 for this isolated .NET 10 feasibility process.
+AVP-002's `Vortice.XInput` experiment is retired from the candidate and project
+dependencies. AVP-004 consumes the accepted production extraction,
+`OverlayPlatformInterop` ABI v1.
 
-| Candidate | Maintenance/deployment fit | Prototype cost and limits | Decision |
-|---|---|---|---|
-| `Vortice.XInput` 3.8.3 | Current stable MIT managed wrapper; targets .NET 10; about 46 KiB; no package dependencies | Simple polling and reconnect handling; limited to four XInput-compatible slots, weak identity, legacy controller coverage | Selected behind one replaceable adapter for AVP-002 |
-| Microsoft GameInput 3.5.262 | Microsoft-owned modern input API with richer device identity and broad device semantics | NuGet exposes native COM rather than a managed API; PC deployment must own the GameInput redistributable installation; a correct narrow COM adapter plus deployment proof expands this prototype lane | Preferred future production evaluation, not selected for this bounded prototype |
+The native component owns the existing Microsoft GameInput Guide callback,
+background/exclusive visibility policy, legacy Guide compatibility quarantine,
+controller device/sample lifecycle, dead-zone/repeat/neutral gating, foreground
+targeting, and safe placement. It creates no window, renderer, transport, or
+focus tree. Avalonia provides one HWND, drains typed events, and routes semantics
+through one focus/action state.
 
-Sources: [Vortice.XInput package](https://www.nuget.org/packages/Vortice.XInput),
-[Vortice.Windows changelog](https://github.com/amerkoleci/Vortice.Windows/blob/main/CHANGELOG.md),
-[Microsoft.GameInput package](https://www.nuget.org/packages/Microsoft.GameInput),
-[GameInput versioning and redistributable](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-versioning),
-and [GameInput NuGet deployment](https://learn.microsoft.com/en-us/gaming/gdk/docs/features/common/input/overviews/input-nuget).
-
-This choice validates one physical-controller path; it is not an endorsement of
-legacy XInput as the production architecture. The adapter exposes only semantic
-input and can be replaced without changing router, focus, tray, or page state.
+This avoids a second C# GameInput package/COM owner, avoids copying production
+platform policy, and preserves the already reviewed native behavior. The
+managed ABI layout is asserted against the native header; physical device and
+Guide behavior remain mandatory planner/user evidence.

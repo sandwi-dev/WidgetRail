@@ -1,15 +1,20 @@
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
-using GameBarAlternative.AvaloniaPrototype.Remote;
-using GameBarAlternative.AvaloniaPrototype.ViewModels;
-using GameBarAlternative.AvaloniaPrototype.Views;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Media;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using CommunityToolkit.Mvvm.ComponentModel;
+using GameBarAlternative.AvaloniaPrototype.Integration;
+using GameBarAlternative.AvaloniaPrototype.Views;
+using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.AvaloniaPrototype.Diagnostics;
 
@@ -30,211 +35,307 @@ internal static class EvidenceScenario
         ArgumentException.ThrowIfNullOrWhiteSpace(arguments.EvidencePath);
         try
         {
-            FrameDiagnostics.Reset();
             var process = Process.GetCurrentProcess();
             var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unavailable.");
             var startedAtUtc = process.StartTime.ToUniversalTime();
             window.Show();
-            var initial = await window.NavigateAsync(PrototypeRoute.Settings);
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await WaitUntilAsync(() =>
+                window.IntegratedShell?.Coordinator.ViewModel.Widgets.Count > 0 &&
+                window.IntegratedShell.Coordinator.CurrentFrame is not null,
+                TimeSpan.FromSeconds(20),
+                "The real widget catalog did not publish an initial frame.");
+            var shell = window.IntegratedShell!;
             var firstCompleteFrameMilliseconds = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
-            var visibleIdle = await SampleAsync(process, TimeSpan.FromMilliseconds(1_250));
 
-            var switchSamples = new List<SwitchSample>();
-            foreach (var route in new[]
-                     {
-                         PrototypeRoute.AudioMixer,
-                         PrototypeRoute.SpotifyPlayer,
-                         PrototypeRoute.GameLauncher,
-                         PrototypeRoute.Settings,
-                     })
+            var widgetSamples = new List<WidgetEvidence>();
+            var responsiveSamples = new List<ResponsiveEvidence>();
+            var allNodeKinds = new HashSet<ViewNodeKind>();
+            foreach (var widget in shell.Coordinator.ViewModel.Widgets.ToArray())
             {
                 var stopwatch = Stopwatch.StartNew();
-                var result = await window.NavigateAsync(route);
+                await shell.Coordinator.SelectWidgetAsync(widget.Id);
+                await WaitUntilAsync(() =>
+                    shell.Coordinator.CurrentFrame?.Authority.WidgetId == widget.Id &&
+                    shell.AdmittedWidgetId == widget.Id &&
+                    !shell.Coordinator.ViewModel.IsBusy,
+                    TimeSpan.FromSeconds(20),
+                    $"Widget '{widget.Id}' did not admit a complete frame.");
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-                switchSamples.Add(new SwitchSample(route.ToString(), result.Outcome.ToString(), stopwatch.Elapsed.TotalMilliseconds));
+                var frame = shell.Coordinator.CurrentFrame!;
+                var nodes = Flatten(frame.Snapshot.Root).ToArray();
+                foreach (var kind in nodes.Select(node => node.Kind)) allNodeKinds.Add(kind);
+                var semanticControls = CaptureSemanticControls(shell, frame.Snapshot.Root);
+                widgetSamples.Add(new WidgetEvidence(
+                    widget.Id,
+                    widget.Name,
+                    frame.Authority.RuntimeGeneration,
+                    frame.Authority.PresentationGeneration,
+                    frame.Authority.SessionGeneration,
+                    frame.Authority.WidgetInstanceId,
+                    frame.Authority.SnapshotSequence,
+                    frame.Authority.ActiveInputScopeId,
+                    nodes.Length,
+                    nodes.Count(node => node.IsFocusable),
+                    nodes.Select(node => node.Kind).Distinct().Order().ToArray(),
+                    shell.RealizedSemanticControls,
+                    semanticControls.Count,
+                    semanticControls.Count(control => control.StandardUiaIdentity),
+                    semanticControls.All(control => control.BoundsHaveArea &&
+                        (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
+                    frame.Snapshot.AdvancedPresentation?.Kind.ToString(),
+                    frame.Snapshot.AdvancedPresentation?.Preset.ToString(),
+                    stopwatch.Elapsed.TotalMilliseconds,
+                    shell.Coordinator.ViewModel.HasFailure,
+                    shell.Coordinator.ViewModel.StatusText));
+
+                foreach (var fixture in new[]
+                         {
+                             new Size(420, 340),
+                             new Size(978, 466),
+                             new Size(1180, 680),
+                             new Size(1440, 810),
+                         })
+                {
+                    window.Width = fixture.Width;
+                    window.Height = fixture.Height;
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                    var controls = CaptureSemanticControls(shell, frame.Snapshot.Root);
+                    responsiveSamples.Add(new ResponsiveEvidence(
+                        widget.Id,
+                        fixture.Width,
+                        fixture.Height,
+                        window.RenderScaling,
+                        shell.Bounds.Width,
+                        shell.Bounds.Height,
+                        shell.IsCompact,
+                        controls.Count,
+                        controls.Count(control => control.HonestlyScrollClipped),
+                        controls.All(control => control.BoundsHaveArea &&
+                            (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity)));
+                }
             }
 
-            var virtualization = await MeasureVirtualizedLauncherAsync(window);
+            // The responsive traversal deliberately ends at the largest evidence fixture and creates
+            // short-lived Avalonia visual trees. Return to the representative visible shell before
+            // sampling, then collect only unreachable evidence churn; every live bridge/worker process
+            // remains included in the process-tree total below.
+            window.Width = 1180;
+            window.Height = 680;
+            var representativeWidget = shell.Coordinator.ViewModel.Widgets[0];
+            await shell.Coordinator.SelectWidgetAsync(representativeWidget.Id);
+            await WaitUntilAsync(() =>
+                shell.Coordinator.CurrentFrame?.Authority.WidgetId == representativeWidget.Id &&
+                shell.AdmittedWidgetId == representativeWidget.Id &&
+                !shell.Coordinator.ViewModel.IsBusy,
+                TimeSpan.FromSeconds(20),
+                "The representative visible frame did not settle before resource sampling.");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Task.Delay(TimeSpan.FromMilliseconds(250));
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-            var visiblePrivateMemoryBytes = process.PrivateMemorySize64;
+            var visibleProcesses = FindCandidateProcesses(process, window.BridgeProcessId);
+            var visibleIdle = await SampleAsync(visibleProcesses, TimeSpan.FromMilliseconds(1500));
             window.Hide();
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            var hiddenAfterUse = await SampleAsync(process, TimeSpan.FromMilliseconds(2_000));
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            var hiddenProcesses = FindCandidateProcesses(process, window.BridgeProcessId);
+            var hiddenAfterUse = await SampleAsync(hiddenProcesses, TimeSpan.FromMilliseconds(2000));
 
-            var frames = FrameDiagnostics.RecordedFrames;
-            var transitions = FrameDiagnostics.RecordedTransitions;
             await using var executableStream = File.OpenRead(executable);
             var executableHash = Convert.ToHexString(await SHA256.HashDataAsync(executableStream));
+            var transitions = shell.TransitionSamples;
+            var transitionPassed = shell.Coordinator.ViewModel.Widgets.All(widget =>
+                transitions.Where(sample => sample.WidgetId == widget.Id)
+                    .TakeLast(3)
+                    .Select(sample => sample.Phase)
+                    .SequenceEqual(Enum.GetValues<Navigation.TransitionPhase>())) &&
+                transitions.All(sample => sample.TransparentShellRoot &&
+                    sample.OpaqueBlackFallbackAbsent && sample.AvaloniaSurfaceCoveragePresent &&
+                    sample.VisualChildCount > 0);
+            var responsivePassed = responsiveSamples.All(sample => sample.ReachableOrScrollClipped);
+            var allWidgetsPassed = widgetSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
+                widgetSamples.All(sample => !sample.HasFailure && sample.RequiredSemanticControlsPassed);
+            var totalVisibleMiB = visibleIdle.TotalPrivateMemoryBytes / 1024d / 1024d;
+
             var artifact = new MeasurementArtifact(
-                "AVP-003",
+                "AVP-004-INTEGRATION",
                 arguments.SourceCommit ?? "unavailable",
                 startedAtUtc,
                 Environment.OSVersion.VersionString,
                 Environment.Version.ToString(),
-                Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unavailable",
                 FileVersionInfo.GetVersionInfo(executable).ProductVersion ?? "unavailable",
                 typeof(Avalonia.Application).Assembly.GetName().Version?.ToString() ?? "unavailable",
                 typeof(ObservableObject).Assembly.GetName().Version?.ToString() ?? "unavailable",
                 RuntimeInformation.ProcessArchitecture.ToString(),
                 executableHash,
                 firstCompleteFrameMilliseconds,
-                initial.Outcome.ToString(),
-                visiblePrivateMemoryBytes,
-                visiblePrivateMemoryBytes / 1024d / 1024d < 250,
-                visiblePrivateMemoryBytes / 1024d / 1024d < 500,
+                window.NativeGameInputAvailable,
+                window.NativeLegacyGuidePollingRequired,
+                shell.Coordinator.ViewModel.Widgets.Count,
+                widgetSamples,
+                allWidgetsPassed,
+                allNodeKinds.Order().ToArray(),
+                allNodeKinds.SetEquals(Enum.GetValues<ViewNodeKind>()),
+                responsiveSamples,
+                responsivePassed,
+                transitions,
+                transitionPassed,
+                shell.TransitionPresenter.PageTransition?.GetType().Name ??
+                    (arguments.ReducedMotion ? "ReducedMotion" : "unavailable"),
                 visibleIdle,
                 hiddenAfterUse,
+                totalVisibleMiB,
+                totalVisibleMiB < 350,
+                totalVisibleMiB < 500,
                 hiddenAfterUse.NormalizedCpuPercent < 0.5,
-                switchSamples,
-                virtualization,
-                frames,
-                frames.All(frame =>
-                    frame.TransparentRoot &&
-                    frame.OpaqueBlackFallbackAbsent &&
-                    frame.RequiredElementsContained &&
-                    frame.AllVisibleRequiredElementsValid),
-                transitions,
-                Enum.GetValues<PrototypeRoute>().All(route =>
-                    transitions.Where(sample => sample.Route == route)
-                        .TakeLast(3)
-                        .Select(sample => sample.Phase)
-                        .SequenceEqual(Enum.GetValues<Navigation.TransitionPhase>())) &&
-                transitions.All(sample =>
-                    sample.TransparentRoot &&
-                    sample.OpaqueBlackBrushAbsent &&
-                    sample.AvaloniaSurfaceCoveragePresent),
-                "Vortice.XInput 3.8.3",
-                "Manual composition retained; Microsoft.Extensions.DependencyInjection 10.0.10 was measured separately and not retained.",
-                window.ShellView.TransitionPresenterControl.PageTransition?.GetType().Name ?? "unavailable",
+                "OverlayPlatformInterop ABI v1 (production GameInput Guide/controller/placement owner; no Avalonia-owned XInput reader)",
+                "WidgetPresentationSession over the existing authenticated WidgetBridge transport",
                 new[]
                 {
-                    "Transition samples inspect Avalonia visual/composition-surface brushes and coverage; the physical Windows compositor verdict remains manual.",
-                    "Controller automation drives the real adapter, processor, MainWindow, and semantic router through a deterministic state source; physical controller compatibility and feel remain planner/user checks.",
-                    "XInput is limited to four XInput-compatible slots and does not provide durable device identity.",
-                    "GPU frame cost unavailable in AVP-003 without an authorized ETW/PresentMon capture lane.",
-                    "Hidden-before-first-frame was not sampled because delaying initial show would invalidate cold-start timing; hidden-after-use is retained instead.",
-                    "Physical visual quality remains a planner launch and user verdict.",
+                    "Physical Guide, controller feel, compositor transparency, and display clipping remain planner/user verdicts.",
+                    "The retained transition samples inspect Avalonia visual-surface coverage at start/mid/end; they do not claim a physical compositor verdict.",
+                    "The exact-commit run records the active monitor's real RenderScaling; 100/125/150-percent synthetic Windows-scale coverage is retained by focused headless tests.",
+                    "GPU presentation cost remains unavailable without an authorized ETW/PresentMon capture lane.",
+                    "Credential-gated Spotify and artwork/enrichment behavior remains dependent on the user's configured package state.",
                 });
 
             var evidencePath = Path.GetFullPath(arguments.EvidencePath);
             Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
             await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(artifact, JsonOptions));
-            desktop.Shutdown();
+            await window.ShutdownAsync();
+            desktop.Shutdown(allWidgetsPassed && responsivePassed && transitionPassed && totalVisibleMiB < 500 ? 0 : 1);
         }
         catch (Exception exception)
         {
             var failurePath = Path.GetFullPath(arguments.EvidencePath!);
             Directory.CreateDirectory(Path.GetDirectoryName(failurePath)!);
-            await File.WriteAllTextAsync(
-                failurePath,
-                JsonSerializer.Serialize(
-                    new
-                    {
-                        assignment = "AVP-003",
-                        errorType = exception.GetType().Name,
-                        error = "Evidence lifecycle failed; inspect the local process trace.",
-                    },
-                    JsonOptions));
+            await File.WriteAllTextAsync(failurePath, JsonSerializer.Serialize(new
+            {
+                assignment = "AVP-004-INTEGRATION",
+                sourceCommit = arguments.SourceCommit ?? "unavailable",
+                errorType = exception.GetType().Name,
+                error = exception.Message,
+            }, JsonOptions));
+            await window.ShutdownAsync();
             desktop.Shutdown(1);
         }
     }
 
-    private static async Task<VirtualizedCollectionEvidence> MeasureVirtualizedLauncherAsync(MainWindow window)
+    private static List<SemanticControlEvidence> CaptureSemanticControls(
+        IntegratedShellView shell,
+        ViewNode root)
     {
-        await window.NavigateAsync(PrototypeRoute.GameLauncher);
-        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-        var firstPage = (GameLauncherPage)window.ShellView.ActivePage!;
-        firstPage.FocusIndex(9_000);
-        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-        var focusedBefore = firstPage.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
-        var automationBefore = firstPage.FocusedAutomationId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
-        var focusedIndexBefore = firstPage.ViewModel.State.Items.ToList().FindIndex(item => item.Id.Value == focusedBefore);
-        var farOffset = firstPage.ApplicationScrollControl?.Offset.Y ?? 0;
-        var maximumRealized = firstPage.RealizedContainerCount;
-
-        await window.NavigateAsync(PrototypeRoute.Settings);
-        await window.NavigateAsync(PrototypeRoute.GameLauncher);
-        window.ShellView.TryEnterContent(window.ShellView.SelectedTrayButton);
-        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-        var returnedPage = (GameLauncherPage)window.ShellView.ActivePage!;
-        var focusedAfter = returnedPage.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
-        var automationAfter = returnedPage.FocusedAutomationId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
-        var focusedIndexAfter = returnedPage.ViewModel.State.Items.ToList().FindIndex(item => item.Id.Value == focusedAfter);
-        var restoredOffset = returnedPage.ApplicationScrollControl?.Offset.Y ?? 0;
-        maximumRealized = Math.Max(maximumRealized, returnedPage.RealizedContainerCount);
-
-        var selected = returnedPage.ViewModel.SelectedItem ?? throw new InvalidOperationException("Launcher selection was not restored.");
-        await returnedPage.ViewModel.InvokeItemAsync(selected);
-        var exactAction = window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint fake &&
-            fake.Actions.LastOrDefault() == new RemoteWidgetAction(selected.Id, GameLauncherViewModel.OpenActionId);
-        var unknownItemRejected = await IsRejectedAsync(() => window.Composition.RemoteProjection.InvokeAsync(
-            new RemoteWidgetAction(new RemoteWidgetItemId("measurement-unknown"), GameLauncherViewModel.OpenActionId)));
-        var undeclaredActionRejected = await IsRejectedAsync(() => window.Composition.RemoteProjection.InvokeAsync(
-            new RemoteWidgetAction(selected.Id, new RemoteWidgetActionId("measurement-wrong-action"))));
-        var scheduler = window.Composition.PresentationScheduler;
-        var workerPublicationMarshalled = window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint scheduledFake &&
-            scheduledFake.LastSnapshotCompletionThreadId != 0 &&
-            scheduledFake.LastSnapshotCompletionThreadId != scheduler.LastExecutionThreadId &&
-            scheduler.MarshalledInvocationCount > 0;
-
-        returnedPage.FocusIndex(0);
-        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-        var returnedToTop = Math.Abs(returnedPage.ApplicationScrollControl?.Offset.Y ?? double.MaxValue) < 0.01;
-
-        return new VirtualizedCollectionEvidence(
-            returnedPage.ViewModel.State.Items.Count,
-            maximumRealized,
-            focusedBefore ?? "unavailable",
-            focusedAfter ?? "unavailable",
-            focusedBefore is not null && focusedBefore == focusedAfter,
-            automationBefore ?? "unavailable",
-            automationAfter ?? "unavailable",
-            automationBefore is not null && automationBefore == automationAfter,
-            focusedIndexBefore,
-            focusedIndexAfter,
-            focusedIndexBefore >= 0 && focusedIndexAfter >= 0 && focusedIndexBefore != focusedIndexAfter,
-            farOffset,
-            restoredOffset,
-            restoredOffset > 0,
-            returnedToTop,
-            exactAction,
-            unknownItemRejected,
-            undeclaredActionRejected,
-            window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint workerFake ? workerFake.LastSnapshotCompletionThreadId : 0,
-            scheduler.LastExecutionThreadId,
-            scheduler.MarshalledInvocationCount,
-            workerPublicationMarshalled);
+        var nodes = Flatten(root).ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var shellBounds = new Rect(shell.Bounds.Size);
+        return shell.GetVisualDescendants().OfType<Control>()
+            .Where(control => control.IsVisible &&
+                control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is { } id &&
+                nodes.TryGetValue(id, out var node) &&
+                node.Kind is ViewNodeKind.Text or ViewNodeKind.Button or ViewNodeKind.Slider or
+                    ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry)
+            .Select(control =>
+            {
+                var nodeId = control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty)!;
+                var origin = control.TranslatePoint(default, shell);
+                var bounds = origin is null ? default : new Rect(origin.Value, control.Bounds.Size);
+                var area = bounds.Width > 0 && bounds.Height > 0;
+                var contained = area && shellBounds.Contains(bounds.TopLeft) && shellBounds.Contains(bounds.BottomRight);
+                var hasScrollAncestor = control.GetVisualAncestors().OfType<ScrollViewer>().Any();
+                var automationId = AutomationProperties.GetAutomationId(control);
+                var automationName = AutomationProperties.GetName(control);
+                return new SemanticControlEvidence(
+                    nodeId,
+                    control.GetType().Name,
+                    bounds.X,
+                    bounds.Y,
+                    bounds.Width,
+                    bounds.Height,
+                    area,
+                    contained,
+                    area && !contained && hasScrollAncestor,
+                    !string.IsNullOrWhiteSpace(automationId) && !string.IsNullOrWhiteSpace(automationName),
+                    automationId ?? string.Empty);
+            }).ToList();
     }
 
-    private static async Task<bool> IsRejectedAsync(Func<Task> action)
+    private static Process[] FindCandidateProcesses(Process root, int? bridgeProcessId)
     {
-        try
+        var ids = new HashSet<int> { root.Id };
+        if (bridgeProcessId is { } bridge) ids.Add(bridge);
+        var started = root.StartTime.ToUniversalTime() - TimeSpan.FromSeconds(1);
+        foreach (var process in Process.GetProcesses())
         {
-            await action();
-            return false;
+            try
+            {
+                if (process.StartTime.ToUniversalTime() >= started &&
+                    (process.ProcessName.Contains("Widget", StringComparison.OrdinalIgnoreCase) ||
+                     process.ProcessName.Contains("Spotify", StringComparison.OrdinalIgnoreCase)))
+                    ids.Add(process.Id);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+            }
+            finally
+            {
+                if (!ids.Contains(process.Id)) process.Dispose();
+            }
         }
-        catch (ArgumentException)
-        {
-            return true;
-        }
+        return ids.Select(id => id == root.Id ? root : Process.GetProcessById(id)).ToArray();
     }
 
-    private static async Task<ResourceSample> SampleAsync(Process process, TimeSpan duration)
+    private static async Task<ResourceSample> SampleAsync(Process[] processes, TimeSpan duration)
     {
-        process.Refresh();
-        var cpuStart = process.TotalProcessorTime;
+        var starts = new Dictionary<int, TimeSpan>();
+        foreach (var process in processes)
+        {
+            try { process.Refresh(); starts[process.Id] = process.TotalProcessorTime; }
+            catch (InvalidOperationException) { }
+        }
         var elapsed = Stopwatch.StartNew();
         await Task.Delay(duration);
         elapsed.Stop();
-        process.Refresh();
-        var cpuDelta = process.TotalProcessorTime - cpuStart;
-        var cpuPercent = cpuDelta.TotalMilliseconds / elapsed.Elapsed.TotalMilliseconds / Environment.ProcessorCount * 100d;
+        var entries = new List<ProcessResource>();
+        var cpu = TimeSpan.Zero;
+        foreach (var process in processes)
+        {
+            try
+            {
+                process.Refresh();
+                if (starts.TryGetValue(process.Id, out var start)) cpu += process.TotalProcessorTime - start;
+                entries.Add(new ProcessResource(
+                    process.ProcessName, process.Id, process.PrivateMemorySize64,
+                    process.PrivateMemorySize64 / 1024d / 1024d));
+            }
+            catch (InvalidOperationException) { }
+            if (process.Id != Environment.ProcessId) process.Dispose();
+        }
         return new ResourceSample(
             elapsed.Elapsed.TotalMilliseconds,
-            cpuPercent,
-            process.PrivateMemorySize64,
-            process.PrivateMemorySize64 / 1024d / 1024d);
+            cpu.TotalMilliseconds / elapsed.Elapsed.TotalMilliseconds / Environment.ProcessorCount * 100,
+            entries.Sum(entry => entry.PrivateMemoryBytes),
+            entries);
+    }
+
+    private static async Task WaitUntilAsync(
+        Func<bool> predicate,
+        TimeSpan timeout,
+        string failure)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (!predicate())
+        {
+            if (deadline.Elapsed >= timeout) throw new TimeoutException(failure);
+            await Task.Delay(25);
+        }
+    }
+
+    private static IEnumerable<ViewNode> Flatten(ViewNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+            foreach (var descendant in Flatten(child)) yield return descendant;
     }
 
     private sealed record MeasurementArtifact(
@@ -243,60 +344,90 @@ internal static class EvidenceScenario
         DateTime ProcessStartedAtUtc,
         string OperatingSystem,
         string DotNetRuntime,
-        string PrototypeAssemblyVersion,
         string ExecutableProductVersion,
         string AvaloniaVersion,
         string CommunityToolkitMvvmVersion,
         string ProcessArchitecture,
         string ExecutableSha256,
         double ColdStartToFirstCompleteFrameMilliseconds,
-        string InitialNavigationOutcome,
-        long VisiblePrivateMemoryBytes,
-        bool VisiblePrivateMemoryUnder250MiB,
-        bool VisiblePrivateMemoryUnder500MiB,
+        bool NativeGameInputAvailable,
+        bool NativeLegacyGuidePollingRequired,
+        int InstalledWidgetCount,
+        IReadOnlyList<WidgetEvidence> Widgets,
+        bool AllInstalledWidgetsPassed,
+        IReadOnlyList<ViewNodeKind> ObservedNodeKinds,
+        bool EveryCurrentNodeKindObserved,
+        IReadOnlyList<ResponsiveEvidence> ResponsiveFixtures,
+        bool ResponsiveEvidencePassed,
+        IReadOnlyList<IntegratedTransitionSample> TransitionSurfaceSamples,
+        bool TransitionSurfaceDiagnosticsPassed,
+        string PageTransition,
         ResourceSample VisibleIdleSample,
         ResourceSample HiddenAfterUseSample,
+        double VisibleCandidateProcessTreePrivateMemoryMiB,
+        bool VisiblePrivateMemoryUnder350MiB,
+        bool VisiblePrivateMemoryUnder500MiB,
         bool HiddenRenderingEffectivelyIdle,
-        IReadOnlyList<SwitchSample> SwitchToCompleteFrameSamples,
-        VirtualizedCollectionEvidence VirtualizedCollection,
-        IReadOnlyList<FrameSnapshot> CompleteFrames,
-        bool CompleteFrameDiagnosticsPassed,
-        IReadOnlyList<TransitionDiagnosticSample> TransitionSurfaceSamples,
-        bool TransitionSurfaceDiagnosticsPassed,
         string ControllerDependency,
-        string CompositionDecision,
-        string PageTransition,
+        string SessionDependency,
         IReadOnlyList<string> UnavailableOrManualEvidence);
+
+    private sealed record WidgetEvidence(
+        string WidgetId,
+        string Name,
+        string RuntimeGeneration,
+        string PresentationGeneration,
+        long SessionGeneration,
+        string WidgetInstanceId,
+        long SnapshotSequence,
+        string ActiveInputScopeId,
+        int SemanticNodeCount,
+        int FocusableNodeCount,
+        IReadOnlyList<ViewNodeKind> NodeKinds,
+        int MaximumRealizedSemanticControls,
+        int VisibleRequiredSemanticControlCount,
+        int StandardUiaIdentityCount,
+        bool RequiredSemanticControlsPassed,
+        string? AdvancedPresentationKind,
+        string? AdvancedPresentationPreset,
+        double SwitchToCompleteFrameMilliseconds,
+        bool HasFailure,
+        string Status);
+
+    private sealed record ResponsiveEvidence(
+        string WidgetId,
+        double RequestedWidthDip,
+        double RequestedHeightDip,
+        double ActualRenderScaling,
+        double ActualShellWidthDip,
+        double ActualShellHeightDip,
+        bool CompactBranch,
+        int VisibleRequiredSemanticControls,
+        int HonestlyScrollClippedControls,
+        bool ReachableOrScrollClipped);
+
+    private sealed record SemanticControlEvidence(
+        string NodeId,
+        string ControlType,
+        double X,
+        double Y,
+        double Width,
+        double Height,
+        bool BoundsHaveArea,
+        bool Contained,
+        bool HonestlyScrollClipped,
+        bool StandardUiaIdentity,
+        string AutomationId);
+
+    private sealed record ProcessResource(
+        string Role,
+        int ProcessId,
+        long PrivateMemoryBytes,
+        double PrivateMemoryMiB);
 
     private sealed record ResourceSample(
         double IntervalMilliseconds,
         double NormalizedCpuPercent,
-        long PrivateMemoryBytes,
-        double PrivateMemoryMiB);
-
-    private sealed record SwitchSample(string Route, string Outcome, double Milliseconds);
-
-    private sealed record VirtualizedCollectionEvidence(
-        int TotalItems,
-        int MaximumRealizedContainers,
-        string FocusedSemanticIdBeforeRecycling,
-        string FocusedSemanticIdAfterReturn,
-        bool SemanticIdentityPreserved,
-        string FocusedAutomationIdBeforeReorder,
-        string FocusedAutomationIdAfterReorder,
-        bool AutomationIdentityPreserved,
-        int FocusedIndexBeforeReorder,
-        int FocusedIndexAfterReorder,
-        bool StableIdReorderPassed,
-        double FarScrollOffset,
-        double RestoredScrollOffset,
-        bool FocusAndScrollReturnPassed,
-        bool ReturnedToTop,
-        bool ExactRemoteActionDispatched,
-        bool UnknownItemActionRejected,
-        bool UndeclaredItemActionRejected,
-        int RemoteCompletionThreadId,
-        int PresentationPublicationThreadId,
-        int MarshalledPublicationCount,
-        bool WorkerPublicationMarshalled);
+        long TotalPrivateMemoryBytes,
+        IReadOnlyList<ProcessResource> Processes);
 }
