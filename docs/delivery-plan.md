@@ -25,10 +25,13 @@ evidence, not implementation authority.
 - Spotify 0.2.15 is installed, selected, and enabled through the supported
   Community package path. Its new unsigned content identity has no inherited
   capability grant, so live account behavior remains behind explicit consent.
-- No accepted Release is currently known to be running after the machine
-  restart. After each newly accepted visible milestone, rebuild/copy the exact
-  Release artifacts into main, visibly launch OverlayHost.exe --show, exercise
-  every first page when controllable, and inspect the exact startup/test log.
+- The accepted b73eaa5 Release is visibly running from the main output as PID
+  23556, launched 2026-08-12 22:15 -07:00 with `OverlayHost.exe --show` after
+  coherent packaging. After each newly accepted visible milestone,
+  rebuild/copy the exact Release artifacts into main, replace that exact
+  planner-owned process gracefully, visibly launch `OverlayHost.exe --show`,
+  exercise every first page when controllable, and inspect the exact
+  startup/test log.
 - Physical appearance remains the user's verdict. Semantic, UIA, log, timing,
   and geometry evidence must not be described as a screenshot or clipping proof.
 
@@ -99,7 +102,7 @@ Branch: codex/impl-widgets
 
 ### Current assignment — none
 
-State: waiting at a clean boundary for accepted/integrated DLV-213 and DLV-215.
+State: waiting at a clean boundary for accepted/integrated DLV-215.
 Do not begin Spotify or Game Launcher migration against the AppContainer-only
 model. Do not perform legacy Spotify rollback work.
 
@@ -270,16 +273,15 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
 
 ## Serialized integration queue
 
-1. Finish, review, and integrate DLV-213.
-2. Implement, review, and integrate DLV-215.
-3. DLV-216 and DLV-217 may start only from accepted DLV-215. Keep their domain
+1. Implement, review, and integrate DLV-215.
+2. DLV-216 and DLV-217 may start only from accepted DLV-215. Keep their domain
    ownership disjoint; integrate Spotify autonomy before Game Launcher cutover.
-4. Only after DLV-216 and DLV-217 are accepted may DLV-218 delete retired core
+3. Only after DLV-216 and DLV-217 are accepted may DLV-218 delete retired core
    contracts.
-5. DLV-210 is the next visible generic presentation correction after DLV-215.
+4. DLV-210 is the next visible generic presentation correction after DLV-215.
    It must not reintroduce Game Launcher identity recognition.
-6. DLV-206 remains evidence-only and follows DLV-218.
-7. Live metadata/artwork and account verification remain credential-gated, but
+5. DLV-206 remains evidence-only and follows DLV-218.
+6. Live metadata/artwork and account verification remain credential-gated, but
    adapter implementation belongs to the Community package.
 
 ## Blocked work
