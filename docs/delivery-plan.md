@@ -452,6 +452,21 @@ scroll affordance, balanced responsive typography/spacing/content widths,
 reusable section/card/action/loading themes, and strong visible focus. Do not
 create widget-specific Avalonia pages or identity/tree-shape branches.
 
+Independent review confirms the eight red geometry rows are most likely an
+evidence race rather than a return of the narrow-column defect: the harness
+captures one semantic frame, then provider-backed Media Sessions, Audio Mixer,
+and Network Controls publish newer frames while four sizes are measured. The
+oracle then compares stale required IDs with the current visual tree. Correct
+the harness by taking one coherent admitted authority/root/control set per
+fixture, or retry boundedly until authority is identical before and after the
+capture. Do not weaken effective-visibility checks. The same review rejects the
+claimed fourteen-category controller proof because the categories are stamped
+after a general suite pass and blindly recorded, rather than derived from named
+assertions. Map each deterministic category to a real focused test result or
+remove the claim; continue to report that no physical connected controller was
+observed. After those narrow evidence fixes and the generic polish correction,
+run one exact green changed-tip measurement and stop for review.
+
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
 children. The obsolete AVP-002 process ignored two graceful close paths and was
