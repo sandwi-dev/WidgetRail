@@ -4354,8 +4354,9 @@ DLV-220 preserves the accepted DLV-215 runtime architecture and corrects only
 the cancellation-ignoring retired gesture-grant fixture. Session retirement may
 issue one best-effort revoke while the input request unwinds and a second revoke
 after a cancellation-ignoring grant actually completes. Both target the same
-input sequence and are intentionally idempotent; the fixture now requires the
-matching revocation without inventing an exact transport-call count.
+input sequence and are intentionally idempotent; the fixture accepts only one
+or two observed revocations and requires every observed sequence to be the
+exact retired input sequence 92.
 
 Focused Release evidence passes Widget Runtime 75/75 and the packaged ordinary
 full-trust lifecycle 1/1. The latter installs and runs two unrelated package

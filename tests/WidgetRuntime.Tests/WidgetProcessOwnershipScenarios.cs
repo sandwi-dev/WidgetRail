@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
@@ -306,8 +307,11 @@ internal static class WidgetProcessOwnershipScenarios
         await companion.Revoked.Task;
         await ThrowsAnyAsync(async () => await input);
         Equal(1, companion.GrantedAuthorities.Count);
-        True(companion.RevokedInputSequences.Contains(92L),
-            "The cancellation-ignoring retired gesture grant was not revoked.");
+        var revokedInputSequences = companion.RevokedInputSequences.ToArray();
+        True(revokedInputSequences.Length is >= 1 and <= 2,
+            "Retired gesture cleanup emitted an unexpected number of revocations.");
+        True(revokedInputSequences.All(sequence => sequence == 92L),
+            "Retired gesture cleanup revoked authority for an unrelated input sequence.");
     }
 
     private static async Task AssertStalePublicationSuppressedAsync(
@@ -507,7 +511,7 @@ internal static class WidgetProcessOwnershipScenarios
         internal int RunCount { get; private set; }
         internal int DisposeCount { get; private set; }
         internal List<WidgetDashboardGestureAuthority> GrantedAuthorities { get; } = [];
-        internal List<long> RevokedInputSequences { get; } = [];
+        internal ConcurrentQueue<long> RevokedInputSequences { get; } = [];
         internal bool HoldGestureGrant { get; init; }
         internal TaskCompletionSource GrantStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -538,7 +542,7 @@ internal static class WidgetProcessOwnershipScenarios
             long inputSequence,
             CancellationToken cancellationToken = default)
         {
-            RevokedInputSequences.Add(inputSequence);
+            RevokedInputSequences.Enqueue(inputSequence);
             Revoked.TrySetResult();
             return Task.CompletedTask;
         }
