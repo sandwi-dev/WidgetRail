@@ -16,10 +16,10 @@ evidence, not implementation authority.
 ## Current accepted baseline
 
 - Local accepted product baseline: 01af13c.
-- Local accepted Avalonia experiment baseline: AVP-002 through main `09b40da`.
-  The exact-main copied runtime is visibly running as PID 6868 for the user's
-  physical controller verdict. This does not change the production overlay
-  baseline or authorize a production migration.
+- Local accepted Avalonia experiment baseline: corrected AVP-003 through main
+  `9d3ad8e` (branch commit `2a3c722`).
+  This does not change the production overlay baseline or authorize a
+  production migration.
 - DLV-219 is accepted and integrated through main 01af13c; its focused
   Release Settings suite passed 60/60.
 - DLV-213 is accepted and integrated through main b73eaa5 (implementation
@@ -266,13 +266,15 @@ controller and visual verdict. Its production-host, privilege, credential, and
 undocumented-window-manipulation prohibitions remain in force for later AVP
 experiments.
 
-### Current assignment — AVP-003: production-stack architecture slice
+### Recently completed — AVP-003: production-stack architecture slice
 
-State: Correction assigned. Candidate `f076622` was independently rejected on
-2026-08-13 for three bounded semantic-contract defects; its overall Avalonia
-architecture and experiment-only scope remain accepted as the correction base.
-Lane baseline: exact Avalonia branch commit `93e6e70`; accepted main equivalent
-`09b40da`.
+State: Accepted and integrated through main `9d3ad8e` (`f6d0e2e`, `9d3ad8e`;
+branch commits `f076622`, `2a3c722`). The correction binds UIA/focus identity
+to exact `RemoteWidgetItemId`, admits only snapshot-declared exact item/action
+tuples, and schedules bound publication explicitly onto the Avalonia UI thread.
+The focused suite passed 23/23. Exact evidence recorded 10,000 items with 17
+realized containers, stable identity through reorder, 162.54 MiB visible and
+231.29 MiB hidden private memory, and 0% hidden CPU.
 Dependencies: AVP-001 and AVP-002 accepted. Concurrency: isolated experiment
 only; it may run while production lanes continue because it owns no production
 file. Correct `f076622`, stop at one reviewable child commit, and do not start
@@ -361,15 +363,14 @@ increase with no clear owner.
 
 ### Avalonia Ready queue
 
-### Ready after corrected AVP-003 — AVP-004: complete polished overlay prototype
+### Current assignment — AVP-004: complete polished overlay prototype
 
-State: Pre-authorized as one integrated prototype milestone at the user's
-request; implementation starts only after the corrected AVP-003 commit is
-independently accepted. The planner then assigns the foundation to the standing
-Avalonia integration lead, creates up to three temporary Codex worktree tasks
-from the accepted foundation commit, reviews their file-exclusive commits, and
-returns accepted commits to the lead for final integration. Do not start
-AVP-005 automatically.
+State: `AVP-004-FOUNDATION` Assigned to the standing Avalonia integration lead
+from exact accepted branch commit `2a3c722` / main `9d3ad8e`. The planner then
+reviews the foundation, creates up to three temporary Codex worktree tasks
+from that exact accepted foundation commit, reviews their file-exclusive
+commits, and returns accepted commits to the lead for final integration. Do not
+start AVP-005 automatically.
 
 Objective: turn the isolated Avalonia experiment into a cohesive, polished,
 controller-first prototype of the complete current overlay rather than another
