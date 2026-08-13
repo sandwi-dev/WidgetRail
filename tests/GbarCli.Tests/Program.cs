@@ -75,7 +75,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Built gbar artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
-    ("External repository completes full application onboarding", ExternalFullApplicationOnboarding),
+    ("External repository completes full application onboarding and author loop", ExternalFullApplicationOnboarding),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -764,8 +764,65 @@ static async Task ExternalFullApplicationOnboarding()
     Assert.True(!Directory.Exists(Path.Combine(
             catalog, "packages", "dev.external.full-application")),
         "External removal retained the isolated package directory.");
+
+    var presentationEdit = await RunProcessAsync(
+        "pwsh",
+        ["-NoProfile", "-Command", """
+            $source = '.\ExternalFullApplication\src\FullApplicationReferenceWidget.cs'
+            $text = Get-Content -LiteralPath $source -Raw
+            $updated = $text.Replace(
+              'UI.Text("Reference Library", "full-app.heading")',
+              'UI.Text("Reference Library · Edited", "full-app.heading")')
+            if ($updated -eq $text) { throw 'The documented presentation edit target was absent.' }
+            Set-Content -LiteralPath $source -Value $updated -NoNewline -Encoding utf8
+            """],
+        TimeSpan.FromSeconds(15), repository, environment);
+    Assert.True(presentationEdit.Code == 0,
+        "external edit: " + presentationEdit.Output + presentationEdit.Error);
+    var editedBuild = await RunProcessAsync(
+        "dotnet", ["build", project, "-c", "Release", "--no-restore", "--nologo"],
+        TimeSpan.FromSeconds(90), widget, environment);
+    Assert.True(editedBuild.Code == 0,
+        "external edited build: " + editedBuild.Output + editedBuild.Error);
+    var editedValidation = await RunProcessAsync(
+        gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(editedValidation.Code == 0,
+        "external edited validate: " + editedValidation.Output + editedValidation.Error);
+    var declarationPreview = await RunProcessAsync(
+        gbar, ["preview", widget], TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(declarationPreview.Code == 0,
+        "external declaration preview: " + declarationPreview.Output + declarationPreview.Error);
+    Assert.Contains("ready", declarationPreview.Output);
+    var editedScenarioOutput = Path.Combine(repository, "ready.edited.scenario.json");
+    var editedScenario = await RunProcessAsync(
+        gbar,
+        ["preview", widget, "--scenario", "ready", "--output", editedScenarioOutput],
+        TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(editedScenario.Code == 0,
+        "external edited scenario: " + editedScenario.Output + editedScenario.Error);
+    var scenarioAssertion = await RunProcessAsync(
+        "pwsh",
+        ["-NoProfile", "-Command", """
+            $result = Get-Content -LiteralPath '.\ready.edited.scenario.json' -Raw |
+              ConvertFrom-Json
+            if ($result.snapshot.root.children[0].text -ne 'Reference Library · Edited') {
+              throw 'The isolated scenario did not contain the edited heading.'
+            }
+            """],
+        TimeSpan.FromSeconds(15), repository, environment);
+    Assert.True(scenarioAssertion.Code == 0,
+        "external scenario assertion: " + scenarioAssertion.Output + scenarioAssertion.Error);
+    var editedArchive = Path.Combine(repository, "ExternalFullApplication-edited.gbarwidget");
+    var editedPack = await RunProcessAsync(
+        gbar,
+        ["pack", widget, "--configuration", "Release", "--output", editedArchive],
+        TimeSpan.FromSeconds(120), repository, environment);
+    Assert.True(editedPack.Code == 0,
+        "external edited pack: " + editedPack.Output + editedPack.Error);
     await AssertArchiveHasNoPathsAsync(
         archive, repositorySource, distribution, repository, packages, catalog);
+    await AssertArchiveHasNoPathsAsync(
+        editedArchive, repositorySource, distribution, repository, packages, catalog);
     foreach (var input in Directory.EnumerateFiles(widget, "*", SearchOption.AllDirectories)
                  .Where(path => !path.Contains(
                      $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",

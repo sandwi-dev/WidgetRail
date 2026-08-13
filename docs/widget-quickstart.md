@@ -136,6 +136,41 @@ user catalog. This route performs no publication, signing, account, or network
 operation. The automated onboarding fixture executes the same exporter and
 command sequence; it does not reproduce hidden checkout-copy steps.
 
+### Shortest presentation-only author loop
+
+From the same external repository, this credential-free loop changes one heading
+and proves the rebuilt semantic presentation before packaging it:
+
+```powershell
+$source = '.\ExternalFullApplication\src\FullApplicationReferenceWidget.cs'
+$text = Get-Content -LiteralPath $source -Raw
+$updated = $text.Replace(
+  'UI.Text("Reference Library", "full-app.heading")',
+  'UI.Text("Reference Library · Edited", "full-app.heading")')
+if ($updated -eq $text) { throw 'The documented presentation edit target was absent.' }
+Set-Content -LiteralPath $source -Value $updated -NoNewline -Encoding utf8
+
+dotnet build .\ExternalFullApplication\ExternalFullApplication.csproj -c Release --no-restore
+& $gbar validate .\ExternalFullApplication
+& $gbar preview .\ExternalFullApplication
+& $gbar preview .\ExternalFullApplication --scenario ready `
+  --output .\ready.edited.scenario.json
+$result = Get-Content -LiteralPath .\ready.edited.scenario.json -Raw |
+  ConvertFrom-Json
+if ($result.snapshot.root.children[0].text -ne 'Reference Library · Edited') {
+  throw 'The isolated scenario did not contain the edited heading.'
+}
+& $gbar pack .\ExternalFullApplication --configuration Release `
+  --output .\ExternalFullApplication-edited.gbarwidget
+```
+
+The first preview validates and lists the bounded declaration without loading
+author code. The selected preview then uses the forcibly terminable isolated
+worker and must contain the edited heading before `pack` is accepted. The same
+external fixture executes this exact edit/build/validate/preview/scenario/pack
+sequence. It uses the already-restored offline feed and does not install,
+publish, sign, access an account, or contact a remote service.
+
 For the normal edit/build/overlay loop, replace the manual build with:
 
 ```powershell

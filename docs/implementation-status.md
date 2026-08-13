@@ -4212,3 +4212,11 @@ and gbar SHA-256 is
 The focused release-unit run passes WidgetSdk 89/89 and compatibility 12/12.
 These milestones change no API baseline, protocol, template, version, resolver,
 publication, signing, or compatibility policy.
+
+DLV-204 proves the shortest supported presentation-only author loop in the same
+self-contained external repository. One documented heading edit is followed by
+Release build, validation, declaration preview, isolated scenario execution, and
+packaging; the fixture requires the edited heading in the scenario result before
+accepting the archive. It reuses the restored offline SDK and isolated CLI paths
+and adds no install, publication, signing, account, network, native, or renderer
+behavior.
