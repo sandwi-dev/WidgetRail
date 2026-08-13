@@ -499,6 +499,18 @@ boundary, not widget-specific defects and not evidence that Avalonia itself is
 incapable. Source `b998d62` remains integrated evidence, but AVP-004 is reopened
 and AVP-005/cutover remain blocked.
 
+Correction `dea77b1c` closes the native `Primed` interpretation defect, generic
+intrinsic sizing/allocation, shell-region separation, tray-edge visibility,
+normal shutdown, and live atomic trace persistence. Its exact evidence is green
+for 25 focused tests, all eight widgets and 32 responsive fixtures, 24
+transition phases, 420.14 MiB candidate memory, and bounded no-force shutdown.
+It remains rejected on one trace-truth defect: the Y route records
+`handled=true` unconditionally even when the actual quick-action or widget route
+returns false. The bounded correction must return and retain the real handling
+result for every Y press/release/hold branch, prove handled and unhandled Y
+through the shared route into the atomic trace, then run the changed-tip focused
+suite and one exact measurement. Do not integrate or launch `dea77b1c`.
+
 Next correction is visible-first and root-cause bounded:
 
 - Add one bounded manual-session trace output that atomically retains native
