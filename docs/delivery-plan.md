@@ -365,12 +365,37 @@ increase with no clear owner.
 
 ### Current assignment — AVP-004: complete polished overlay prototype
 
-State: `AVP-004-FOUNDATION` Assigned to the standing Avalonia integration lead
-from exact accepted branch commit `2a3c722` / main `9d3ad8e`. The planner then
-reviews the foundation, creates up to three temporary Codex worktree tasks
-from that exact accepted foundation commit, reviews their file-exclusive
-commits, and returns accepted commits to the lead for final integration. Do not
-start AVP-005 automatically.
+State: Replanning; no AVP-004 implementation is currently authorized. The
+standing Avalonia task was paused with its uncommitted foundation work
+preserved. The initial page-rebuild plan below is superseded because it would
+recreate working platform and widget behavior instead of proving a migration.
+Do not create temporary AVP-004 tasks or continue the foundation until this
+section is replaced by a reuse-first integration assignment.
+
+Binding migration direction:
+
+- retain the existing Widget SDK/protocol, package/catalog/runtime/bridge,
+  lifecycle, trust, persistence, provider, built-in widget, and Community
+  process/domain implementations;
+- retain or extract the existing native controller platform owner, including
+  the supported GameInput Guide callback, background/exclusive focus policy,
+  window-thread debounce/toggle, device lifecycle, and separately quarantined
+  legacy compatibility path; do not implement a second C# GameInput owner;
+- replace the presentation boundary: native declarative renderer/compositor,
+  shell/tray visuals, layout, animation, GBSS rendering, focus projection, and
+  accessibility projection move behind Avalonia;
+- implement one generic adapter from the current semantic widget presentation
+  and action/focus identities into standard Avalonia controls. Do not rewrite
+  eight domain pages or fork widget business logic merely to obtain Avalonia
+  visuals; and
+- use narrow platform interop or an extracted reusable native service where
+  existing C++ ownership cannot be consumed directly. Extraction must preserve
+  the current production behavior and tests rather than copy its implementation
+  into the experiment.
+
+The planner must replace the remaining historical AVP-004 work-package detail
+below before execution. It is retained temporarily only as a feature-parity
+inventory, not implementation authority.
 
 Objective: turn the isolated Avalonia experiment into a cohesive, polished,
 controller-first prototype of the complete current overlay rather than another
