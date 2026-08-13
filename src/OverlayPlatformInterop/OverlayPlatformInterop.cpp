@@ -15,6 +15,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -42,6 +43,12 @@ struct RawEvent final {
     gba::input::GuideCompatibilityActivation::DeviceId deviceId{};
     bool value{};
 };
+
+constexpr std::uint32_t ToAbiBoolean(const bool value) noexcept {
+    return value
+        ? GBA_OVERLAY_PLATFORM_TRUE
+        : GBA_OVERLAY_PLATFORM_FALSE;
+}
 
 [[nodiscard]] GbaOverlayPlatformReadPath ConvertReadPath(
     const gba::input::ControllerReadPath path) noexcept {
@@ -92,6 +99,9 @@ struct GbaOverlayPlatformHandle final {
 
     GbaOverlayPlatformCreateOptions options{};
     mutable std::mutex mutex;
+    mutable std::mutex callbackDrainMutex;
+    std::condition_variable callbackDrain;
+    std::atomic_uint32_t callbacksInFlight{};
     std::deque<RawEvent> events;
     bool initialized{};
     std::atomic_bool shutDown{};
@@ -109,16 +119,16 @@ struct GbaOverlayPlatformHandle final {
     std::optional<gba::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
 
-    void Diagnostic(const std::wstring& message) const noexcept {
-        if (options.diagnostic) {
-            options.diagnostic(options.callbackContext, message.c_str());
-        }
+    void Diagnostic(const std::wstring& message) noexcept {
+        if (!options.diagnostic || !TryEnterCallback()) return;
+        options.diagnostic(options.callbackContext, message.c_str());
+        LeaveCallback();
     }
 
-    void Signal() const noexcept {
-        if (options.eventAvailable) {
-            options.eventAvailable(options.callbackContext);
-        }
+    void Signal() noexcept {
+        if (!options.eventAvailable || !TryEnterCallback()) return;
+        options.eventAvailable(options.callbackContext);
+        LeaveCallback();
     }
 
     void Queue(RawEvent event) noexcept {
@@ -131,6 +141,27 @@ struct GbaOverlayPlatformHandle final {
             }
         }
         if (queued) Signal();
+    }
+
+    [[nodiscard]] bool TryEnterCallback() noexcept {
+        if (shutDown.load(std::memory_order_acquire)) return false;
+        callbacksInFlight.fetch_add(1, std::memory_order_acq_rel);
+        if (!shutDown.load(std::memory_order_acquire)) return true;
+        LeaveCallback();
+        return false;
+    }
+
+    void LeaveCallback() noexcept {
+        if (callbacksInFlight.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            callbackDrain.notify_all();
+        }
+    }
+
+    void WaitForCallbacks() noexcept {
+        std::unique_lock lock(callbackDrainMutex);
+        callbackDrain.wait(lock, [this] {
+            return callbacksInFlight.load(std::memory_order_acquire) == 0;
+        });
     }
 
     [[nodiscard]] bool RequiresLegacyPolling() const noexcept {
@@ -245,6 +276,23 @@ struct GbaOverlayPlatformHandle final {
 
 namespace {
 
+class CallbackLease final {
+public:
+    explicit CallbackLease(GbaOverlayPlatformHandle* handle) noexcept
+        : handle_(handle && handle->TryEnterCallback() ? handle : nullptr) {}
+
+    ~CallbackLease() {
+        if (handle_) handle_->LeaveCallback();
+    }
+
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return handle_ != nullptr;
+    }
+
+private:
+    GbaOverlayPlatformHandle* handle_{};
+};
+
 void CALLBACK OnSystemButton(
     GameInputCallbackToken,
     void* context,
@@ -252,18 +300,18 @@ void CALLBACK OnSystemButton(
     std::uint64_t,
     GameInputSystemButtons current,
     GameInputSystemButtons previous) {
+    auto* handle = static_cast<GbaOverlayPlatformHandle*>(context);
+    CallbackLease callbackLease(handle);
+    if (!callbackLease) return;
     const auto pressed = [](const GameInputSystemButtons buttons) {
         return (static_cast<unsigned>(buttons) &
                 static_cast<unsigned>(GameInputSystemButtonGuide)) != 0;
     };
     if (pressed(current) && !pressed(previous)) {
-        auto* handle = static_cast<GbaOverlayPlatformHandle*>(context);
-        if (handle) {
-            handle->Diagnostic(L"GameInput Guide press callback received");
-            handle->Queue(RawEvent{
-                RawEventKind::GuidePressed,
-                GbaOverlayPlatformGuideSource::GameInput});
-        }
+        handle->Diagnostic(L"GameInput Guide press callback received");
+        handle->Queue(RawEvent{
+            RawEventKind::GuidePressed,
+            GbaOverlayPlatformGuideSource::GameInput});
     }
 }
 
@@ -274,6 +322,9 @@ void CALLBACK OnGameInputDevice(
     std::uint64_t,
     GameInputDeviceStatus current,
     GameInputDeviceStatus previous) {
+    auto* handle = static_cast<GbaOverlayPlatformHandle*>(context);
+    CallbackLease callbackLease(handle);
+    if (!callbackLease) return;
     const bool connected =
         (current & GameInputDeviceConnected) != GameInputDeviceNoStatus;
     const bool wasConnected =
@@ -292,8 +343,7 @@ void CALLBACK OnGameInputDevice(
         std::begin(info->deviceId.value),
         std::end(info->deviceId.value),
         event.deviceId.begin());
-    auto* handle = static_cast<GbaOverlayPlatformHandle*>(context);
-    if (handle) handle->Queue(std::move(event));
+    handle->Queue(std::move(event));
 }
 
 [[nodiscard]] GbaOverlayPlatformStatus ValidateHandle(
@@ -404,8 +454,8 @@ GbaOverlayPlatformInitialize(GbaOverlayPlatformHandle* handle) noexcept {
 
 void GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformShutdown(
     GbaOverlayPlatformHandle* handle) noexcept {
-    if (!handle || handle->shutDown) return;
-    handle->shutDown = true;
+    if (!handle || handle->shutDown.exchange(
+            true, std::memory_order_acq_rel)) return;
     if (handle->gameInput && handle->guideCallback != 0) {
         handle->gameInput->StopCallback(handle->guideCallback);
         handle->gameInput->UnregisterCallback(handle->guideCallback);
@@ -417,6 +467,7 @@ void GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformShutdown(
             handle->compatibilityDeviceCallback);
         handle->compatibilityDeviceCallback = 0;
     }
+    handle->WaitForCallbacks();
     handle->guideCompatibility.Shutdown();
     handle->gameInput.Reset();
     handle->controllerTracker.Reset();
@@ -437,24 +488,28 @@ void GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformDestroy(
     delete handle;
 }
 
-bool GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformHasGameInput(
+std::uint32_t GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformHasGameInput(
     const GbaOverlayPlatformHandle* handle) noexcept {
-    return handle && !handle->shutDown && handle->gameInput;
+    return ToAbiBoolean(
+        handle && !handle->shutDown && handle->gameInput);
 }
 
-bool GBA_OVERLAY_PLATFORM_CALL
+std::uint32_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformRequiresLegacyGuidePolling(
     const GbaOverlayPlatformHandle* handle) noexcept {
-    return handle && !handle->shutDown && handle->RequiresLegacyPolling();
+    return ToAbiBoolean(
+        handle && !handle->shutDown && handle->RequiresLegacyPolling());
 }
 
 GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformSetWindowState(
     GbaOverlayPlatformHandle* handle,
-    const bool visible,
-    const bool focused) noexcept {
+    const std::uint32_t visibleValue,
+    const std::uint32_t focusedValue) noexcept {
     const auto status = ValidateHandle(handle);
     if (status != GbaOverlayPlatformStatus::Ok) return status;
+    const bool visible = visibleValue != GBA_OVERLAY_PLATFORM_FALSE;
+    const bool focused = focusedValue != GBA_OVERLAY_PLATFORM_FALSE;
     if (handle->visible != visible) {
         handle->visible = visible;
         RawEvent event;
@@ -478,11 +533,11 @@ GbaOverlayPlatformDrainEvent(
     GbaOverlayPlatformHandle* handle,
     const std::uint64_t nowMilliseconds,
     GbaOverlayPlatformEvent* event,
-    bool* hasEvent) noexcept {
+    std::uint32_t* hasEvent) noexcept {
     if (!hasEvent || !ValidOutput(event)) {
         return GbaOverlayPlatformStatus::InvalidArgument;
     }
-    *hasEvent = false;
+    *hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
     const auto status = ValidateHandle(handle);
     if (status != GbaOverlayPlatformStatus::Ok) return status;
 
@@ -503,7 +558,7 @@ GbaOverlayPlatformDrainEvent(
                 nowMilliseconds,
                 0,
                 raw.guideSource);
-            *hasEvent = true;
+            *hasEvent = GBA_OVERLAY_PLATFORM_TRUE;
             return GbaOverlayPlatformStatus::Ok;
         case RawEventKind::LegacyDeviceChanged: {
             bool changed = false;
@@ -520,7 +575,7 @@ GbaOverlayPlatformDrainEvent(
                 GbaOverlayPlatformEventKind::LegacyGuidePollingChanged,
                 nowMilliseconds,
                 active ? 1U : 0U);
-            *hasEvent = true;
+            *hasEvent = GBA_OVERLAY_PLATFORM_TRUE;
             return GbaOverlayPlatformStatus::Ok;
         }
         case RawEventKind::VisibilityChanged:
@@ -529,7 +584,7 @@ GbaOverlayPlatformDrainEvent(
                 GbaOverlayPlatformEventKind::VisibilityChanged,
                 nowMilliseconds,
                 raw.value ? 1U : 0U);
-            *hasEvent = true;
+            *hasEvent = GBA_OVERLAY_PLATFORM_TRUE;
             return GbaOverlayPlatformStatus::Ok;
         case RawEventKind::FocusChanged:
             PublishEvent(
@@ -537,7 +592,7 @@ GbaOverlayPlatformDrainEvent(
                 GbaOverlayPlatformEventKind::FocusChanged,
                 nowMilliseconds,
                 raw.value ? 1U : 0U);
-            *hasEvent = true;
+            *hasEvent = GBA_OVERLAY_PLATFORM_TRUE;
             return GbaOverlayPlatformStatus::Ok;
         }
     }
@@ -548,11 +603,11 @@ GbaOverlayPlatformPollLegacyGuide(
     GbaOverlayPlatformHandle* handle,
     const std::uint64_t nowMilliseconds,
     GbaOverlayPlatformEvent* event,
-    bool* hasEvent) noexcept {
+    std::uint32_t* hasEvent) noexcept {
     if (!hasEvent || !ValidOutput(event)) {
         return GbaOverlayPlatformStatus::InvalidArgument;
     }
-    *hasEvent = false;
+    *hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
     const auto status = ValidateHandle(handle);
     if (status != GbaOverlayPlatformStatus::Ok) return status;
     if (!handle->RequiresLegacyPolling()) return GbaOverlayPlatformStatus::Ok;
@@ -566,14 +621,14 @@ GbaOverlayPlatformPollLegacyGuide(
         nowMilliseconds,
         slots,
         GbaOverlayPlatformGuideSource::LegacyCompatibility);
-    *hasEvent = true;
+    *hasEvent = GBA_OVERLAY_PLATFORM_TRUE;
     return GbaOverlayPlatformStatus::Ok;
 }
 
 GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformPrimeController(
     GbaOverlayPlatformHandle* handle,
-    const bool foregroundConfirmed,
+    const std::uint32_t foregroundConfirmed,
     const std::uint64_t nowMilliseconds) noexcept {
     const auto status = ValidateHandle(handle);
     if (status != GbaOverlayPlatformStatus::Ok) return status;
@@ -581,7 +636,10 @@ GbaOverlayPlatformPrimeController(
     bool connected = false;
     gba::input::ControllerInputOwnershipDecision decision;
     (void)handle->TryReadRaw(
-        foregroundConfirmed, state, connected, decision);
+        foregroundConfirmed != GBA_OVERLAY_PLATFORM_FALSE,
+        state,
+        connected,
+        decision);
     handle->controllerTracker.Prime(
         connected, state, nowMilliseconds);
     return GbaOverlayPlatformStatus::Ok;
@@ -590,7 +648,7 @@ GbaOverlayPlatformPrimeController(
 GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformReadController(
     GbaOverlayPlatformHandle* handle,
-    const bool foregroundConfirmed,
+    const std::uint32_t foregroundConfirmed,
     const std::uint64_t nowMilliseconds,
     GbaOverlayPlatformControllerFrame* frame) noexcept {
     if (!ValidOutput(frame)) {
@@ -602,14 +660,18 @@ GbaOverlayPlatformReadController(
     bool connected = false;
     gba::input::ControllerInputOwnershipDecision decision;
     (void)handle->TryReadRaw(
-        foregroundConfirmed, state, connected, decision);
+        foregroundConfirmed != GBA_OVERLAY_PLATFORM_FALSE,
+        state,
+        connected,
+        decision);
     const auto structSize = frame->structSize;
     const auto abiVersion = frame->abiVersion;
     *frame = handle->controllerTracker.Update(
         connected, state, nowMilliseconds);
     frame->structSize = structSize;
     frame->abiVersion = abiVersion;
-    frame->foregroundExclusive = decision.foregroundExclusive;
+    frame->foregroundExclusive = ToAbiBoolean(
+        decision.foregroundExclusive);
     frame->readPath = ConvertReadPath(decision.readPath);
     return GbaOverlayPlatformStatus::Ok;
 }
@@ -628,12 +690,16 @@ GbaOverlayPlatformSetOwnedWindows(
     return GbaOverlayPlatformStatus::Ok;
 }
 
-bool GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformObserveForegroundTarget(
+std::uint32_t GBA_OVERLAY_PLATFORM_CALL
+GbaOverlayPlatformObserveForegroundTarget(
     GbaOverlayPlatformHandle* handle,
     const std::uintptr_t candidate,
-    const bool candidateIsValid) noexcept {
-    return handle && !handle->shutDown &&
-        handle->foregroundTarget.Observe(candidate, candidateIsValid);
+    const std::uint32_t candidateIsValid) noexcept {
+    return ToAbiBoolean(
+        handle && !handle->shutDown &&
+        handle->foregroundTarget.Observe(
+            candidate,
+            candidateIsValid != GBA_OVERLAY_PLATFORM_FALSE));
 }
 
 std::uintptr_t GBA_OVERLAY_PLATFORM_CALL
@@ -648,9 +714,11 @@ std::uintptr_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformResolveForegroundTarget(
     const GbaOverlayPlatformHandle* handle,
     const std::uintptr_t fallback,
-    const bool rememberedTargetIsValid) noexcept {
+    const std::uint32_t rememberedTargetIsValid) noexcept {
     return handle && !handle->shutDown
-        ? handle->foregroundTarget.Resolve(fallback, rememberedTargetIsValid)
+        ? handle->foregroundTarget.Resolve(
+              fallback,
+              rememberedTargetIsValid != GBA_OVERLAY_PLATFORM_FALSE)
         : fallback;
 }
 
@@ -658,7 +726,7 @@ GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformComputePlacement(
     const GbaOverlayPlatformPlacementInput* input,
     GbaOverlayPlatformPlacement* placement,
-    bool* hasPlacement) noexcept {
+    std::uint32_t* hasPlacement) noexcept {
     if (!input || !placement || !hasPlacement ||
         input->structSize < sizeof(GbaOverlayPlatformPlacementInput) ||
         placement->structSize < sizeof(GbaOverlayPlatformPlacement)) {
@@ -668,7 +736,7 @@ GbaOverlayPlatformComputePlacement(
         placement->abiVersion != GBA_OVERLAY_PLATFORM_ABI_VERSION) {
         return GbaOverlayPlatformStatus::InvalidVersion;
     }
-    *hasPlacement = false;
+    *hasPlacement = GBA_OVERLAY_PLATFORM_FALSE;
     const auto resolved = gba::ComputeOverlayPlacement(
         {input->workLeft, input->workTop, input->workRight, input->workBottom},
         input->dpi,
@@ -680,7 +748,7 @@ GbaOverlayPlatformComputePlacement(
     placement->y = resolved->y;
     placement->width = resolved->width;
     placement->height = resolved->height;
-    *hasPlacement = true;
+    *hasPlacement = GBA_OVERLAY_PLATFORM_TRUE;
     return GbaOverlayPlatformStatus::Ok;
 }
 

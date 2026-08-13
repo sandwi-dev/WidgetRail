@@ -9,6 +9,12 @@
 
 namespace {
 
+constexpr std::uint32_t ToAbiBoolean(const bool value) noexcept {
+    return value
+        ? GBA_OVERLAY_PLATFORM_TRUE
+        : GBA_OVERLAY_PLATFORM_FALSE;
+}
+
 int Magnitude(const short value) noexcept {
     return std::abs(static_cast<int>(value));
 }
@@ -200,11 +206,11 @@ GbaOverlayPlatformControllerFrame ControllerFrameTracker::Update(
     const GbaOverlayPlatformRawControllerState& state,
     const std::uint64_t nowMilliseconds) noexcept {
     GbaOverlayPlatformControllerFrame frame;
-    frame.connected = connected;
+    frame.connected = ToAbiBoolean(connected);
     frame.state = connected ? state : GbaOverlayPlatformRawControllerState{};
     if (!primed_) {
         Prime(connected, state, nowMilliseconds);
-        frame.primed = true;
+        frame.primed = GBA_OVERLAY_PLATFORM_TRUE;
         return frame;
     }
 
@@ -216,10 +222,14 @@ GbaOverlayPlatformControllerFrame ControllerFrameTracker::Update(
 
     const bool leftTrigger = connected && frame.state.leftTrigger >= 30;
     const bool rightTrigger = connected && frame.state.rightTrigger >= 30;
-    frame.leftTriggerPressed = leftTrigger && !leftTriggerPressed_;
-    frame.leftTriggerReleased = !leftTrigger && leftTriggerPressed_;
-    frame.rightTriggerPressed = rightTrigger && !rightTriggerPressed_;
-    frame.rightTriggerReleased = !rightTrigger && rightTriggerPressed_;
+    frame.leftTriggerPressed = ToAbiBoolean(
+        leftTrigger && !leftTriggerPressed_);
+    frame.leftTriggerReleased = ToAbiBoolean(
+        !leftTrigger && leftTriggerPressed_);
+    frame.rightTriggerPressed = ToAbiBoolean(
+        rightTrigger && !rightTriggerPressed_);
+    frame.rightTriggerReleased = ToAbiBoolean(
+        !rightTrigger && rightTriggerPressed_);
     leftTriggerPressed_ = leftTrigger;
     rightTriggerPressed_ = rightTrigger;
 
@@ -227,7 +237,8 @@ GbaOverlayPlatformControllerFrame ControllerFrameTracker::Update(
         XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
     const bool recoveryChordDown = connected &&
         (frame.state.buttons & recoveryChord) == recoveryChord;
-    frame.recoveryChordPressed = recoveryChordDown && !recoveryChordHeld_;
+    frame.recoveryChordPressed = ToAbiBoolean(
+        recoveryChordDown && !recoveryChordHeld_);
     recoveryChordHeld_ = recoveryChordDown;
 
     frame.stickNavigation = ConvertNavigation(stickNavigator_.UpdateEvent(

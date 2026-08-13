@@ -4,8 +4,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 inline constexpr std::uint32_t GBA_OVERLAY_PLATFORM_ABI_VERSION = 1;
+inline constexpr std::uint32_t GBA_OVERLAY_PLATFORM_FALSE = 0;
+inline constexpr std::uint32_t GBA_OVERLAY_PLATFORM_TRUE = 1;
 
 enum class GbaOverlayPlatformStatus : std::uint32_t {
     Ok = 0,
@@ -80,18 +83,18 @@ struct GbaOverlayPlatformNavigationEvent final {
 struct GbaOverlayPlatformControllerFrame final {
     std::uint32_t structSize{sizeof(GbaOverlayPlatformControllerFrame)};
     std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
-    bool connected{};
-    bool foregroundExclusive{};
+    std::uint32_t connected{};
+    std::uint32_t foregroundExclusive{};
     GbaOverlayPlatformReadPath readPath{GbaOverlayPlatformReadPath::None};
     GbaOverlayPlatformRawControllerState state{};
     std::uint16_t pressedButtons{};
     std::uint16_t releasedButtons{};
-    bool leftTriggerPressed{};
-    bool leftTriggerReleased{};
-    bool rightTriggerPressed{};
-    bool rightTriggerReleased{};
-    bool recoveryChordPressed{};
-    bool primed{};
+    std::uint32_t leftTriggerPressed{};
+    std::uint32_t leftTriggerReleased{};
+    std::uint32_t rightTriggerPressed{};
+    std::uint32_t rightTriggerReleased{};
+    std::uint32_t recoveryChordPressed{};
+    std::uint32_t primed{};
     GbaOverlayPlatformNavigationEvent stickNavigation{};
     GbaOverlayPlatformNavigationEvent dpadNavigation{};
 };
@@ -99,10 +102,10 @@ struct GbaOverlayPlatformControllerFrame final {
 struct GbaOverlayPlatformPlacementInput final {
     std::uint32_t structSize{sizeof(GbaOverlayPlatformPlacementInput)};
     std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
-    int workLeft{};
-    int workTop{};
-    int workRight{};
-    int workBottom{};
+    std::int32_t workLeft{};
+    std::int32_t workTop{};
+    std::int32_t workRight{};
+    std::int32_t workBottom{};
     std::uint32_t dpi{96};
     float desiredWidthDip{};
     float desiredHeightDip{};
@@ -114,10 +117,10 @@ struct GbaOverlayPlatformPlacementInput final {
 struct GbaOverlayPlatformPlacement final {
     std::uint32_t structSize{sizeof(GbaOverlayPlatformPlacement)};
     std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
-    int x{};
-    int y{};
-    int width{};
-    int height{};
+    std::int32_t x{};
+    std::int32_t y{};
+    std::int32_t width{};
+    std::int32_t height{};
 };
 
 using GbaOverlayPlatformEventAvailable = void(GBA_OVERLAY_PLATFORM_CALL*)(
@@ -155,43 +158,43 @@ GbaOverlayPlatformShutdown(GbaOverlayPlatformHandle* handle) noexcept;
 GBA_OVERLAY_PLATFORM_API void GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformDestroy(GbaOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API bool GBA_OVERLAY_PLATFORM_CALL
+GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformHasGameInput(const GbaOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API bool GBA_OVERLAY_PLATFORM_CALL
+GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformRequiresLegacyGuidePolling(
     const GbaOverlayPlatformHandle* handle) noexcept;
 
 GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformSetWindowState(
     GbaOverlayPlatformHandle* handle,
-    bool visible,
-    bool focused) noexcept;
+    std::uint32_t visible,
+    std::uint32_t focused) noexcept;
 
 GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformDrainEvent(
     GbaOverlayPlatformHandle* handle,
     std::uint64_t nowMilliseconds,
     GbaOverlayPlatformEvent* event,
-    bool* hasEvent) noexcept;
+    std::uint32_t* hasEvent) noexcept;
 
 GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformPollLegacyGuide(
     GbaOverlayPlatformHandle* handle,
     std::uint64_t nowMilliseconds,
     GbaOverlayPlatformEvent* event,
-    bool* hasEvent) noexcept;
+    std::uint32_t* hasEvent) noexcept;
 
 GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformPrimeController(
     GbaOverlayPlatformHandle* handle,
-    bool foregroundConfirmed,
+    std::uint32_t foregroundConfirmed,
     std::uint64_t nowMilliseconds) noexcept;
 
 GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformReadController(
     GbaOverlayPlatformHandle* handle,
-    bool foregroundConfirmed,
+    std::uint32_t foregroundConfirmed,
     std::uint64_t nowMilliseconds,
     GbaOverlayPlatformControllerFrame* frame) noexcept;
 
@@ -201,11 +204,11 @@ GbaOverlayPlatformSetOwnedWindows(
     std::uintptr_t overlay,
     std::uintptr_t backdrop) noexcept;
 
-GBA_OVERLAY_PLATFORM_API bool GBA_OVERLAY_PLATFORM_CALL
+GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformObserveForegroundTarget(
     GbaOverlayPlatformHandle* handle,
     std::uintptr_t candidate,
-    bool candidateIsValid) noexcept;
+    std::uint32_t candidateIsValid) noexcept;
 
 GBA_OVERLAY_PLATFORM_API std::uintptr_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformRememberedForegroundTarget(
@@ -215,12 +218,31 @@ GBA_OVERLAY_PLATFORM_API std::uintptr_t GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformResolveForegroundTarget(
     const GbaOverlayPlatformHandle* handle,
     std::uintptr_t fallback,
-    bool rememberedTargetIsValid) noexcept;
+    std::uint32_t rememberedTargetIsValid) noexcept;
 
 GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
 GbaOverlayPlatformComputePlacement(
     const GbaOverlayPlatformPlacementInput* input,
     GbaOverlayPlatformPlacement* placement,
-    bool* hasPlacement) noexcept;
+    std::uint32_t* hasPlacement) noexcept;
 
 }
+
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformEvent>);
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformRawControllerState>);
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformNavigationEvent>);
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformControllerFrame>);
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformPlacementInput>);
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformPlacement>);
+static_assert(std::is_standard_layout_v<GbaOverlayPlatformCreateOptions>);
+static_assert(sizeof(GbaOverlayPlatformEvent) == 32);
+static_assert(sizeof(GbaOverlayPlatformRawControllerState) == 12);
+static_assert(sizeof(GbaOverlayPlatformNavigationEvent) == 8);
+static_assert(sizeof(GbaOverlayPlatformControllerFrame) == 76);
+static_assert(sizeof(GbaOverlayPlatformPlacementInput) == 48);
+static_assert(sizeof(GbaOverlayPlatformPlacement) == 24);
+static_assert(sizeof(GbaOverlayPlatformCreateOptions) == 32);
+static_assert(offsetof(GbaOverlayPlatformEvent, timestampMilliseconds) == 16);
+static_assert(offsetof(GbaOverlayPlatformControllerFrame, state) == 20);
+static_assert(offsetof(GbaOverlayPlatformControllerFrame, stickNavigation) == 60);
+static_assert(offsetof(GbaOverlayPlatformCreateOptions, callbackContext) == 8);

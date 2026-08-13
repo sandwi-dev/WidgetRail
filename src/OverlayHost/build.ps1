@@ -197,19 +197,16 @@ function Invoke-OverlayPlatformInteropBuild {
 
 function Invoke-OverlayPlatformInteropTests {
     $arguments = $common + @(
-        '/DGBA_OVERLAY_PLATFORM_TESTING',
+        '/DGBA_OVERLAY_PLATFORM_IMPORTS',
         (Join-Path $platformTestDirectory 'OverlayPlatformInteropTests.cpp'),
-        (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
-        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
-        (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
-        (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
         (Join-Path $projectDirectory 'OverlayState.cpp'),
         "/Fo:$platformTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayPlatformInteropTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
     ) + $libraryArguments + @(
-        'gameinput.lib', 'user32.lib', 'xinput9_1_0.lib'
+        (Join-Path $outputDirectory 'OverlayPlatformInterop.lib'),
+        'user32.lib'
     )
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
@@ -1281,6 +1278,7 @@ if ($PlatformInteropTestsOnly) {
     if ($SkipTests) {
         throw 'PlatformInteropTestsOnly cannot be combined with SkipTests.'
     }
+    Invoke-OverlayPlatformInteropBuild
     Invoke-OverlayPlatformInteropTests
     Invoke-OverlayPlatformParityTests
     return

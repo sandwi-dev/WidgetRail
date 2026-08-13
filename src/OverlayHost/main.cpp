@@ -110,6 +110,12 @@ enum class OverlayShowResult {
     Failed,
 };
 
+constexpr std::uint32_t PlatformBoolean(const bool value) noexcept {
+    return value
+        ? GBA_OVERLAY_PLATFORM_TRUE
+        : GBA_OVERLAY_PLATFORM_FALSE;
+}
+
 [[nodiscard]] std::optional<gba::OverlayPlacement> ComputePlatformPlacement(
     const RECT& workArea,
     const UINT dpi,
@@ -124,11 +130,11 @@ enum class OverlayShowResult {
     input.desiredWidthDip = desiredWidthDip;
     input.desiredHeightDip = desiredHeightDip;
     GbaOverlayPlatformPlacement placement;
-    bool hasPlacement = false;
+    std::uint32_t hasPlacement = GBA_OVERLAY_PLATFORM_FALSE;
     if (GbaOverlayPlatformComputePlacement(
             &input, &placement, &hasPlacement) !=
             GbaOverlayPlatformStatus::Ok ||
-        !hasPlacement) {
+        hasPlacement == GBA_OVERLAY_PLATFORM_FALSE) {
         return std::nullopt;
     }
     return gba::OverlayPlacement{
@@ -634,7 +640,8 @@ public:
                     L"Unable to initialize the native platform boundary.";
                 return false;
             }
-            if (GbaOverlayPlatformRequiresLegacyGuidePolling(platform_)) {
+            if (GbaOverlayPlatformRequiresLegacyGuidePolling(platform_) !=
+                GBA_OVERLAY_PLATFORM_FALSE) {
                 SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
             }
         }
@@ -1187,11 +1194,11 @@ private:
         if (!platform_) return;
         for (;;) {
             GbaOverlayPlatformEvent event;
-            bool hasEvent = false;
+            std::uint32_t hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
             if (GbaOverlayPlatformDrainEvent(
                     platform_, GetTickCount64(), &event, &hasEvent) !=
                     GbaOverlayPlatformStatus::Ok ||
-                !hasEvent) {
+                hasEvent == GBA_OVERLAY_PLATFORM_FALSE) {
                 return;
             }
             HandlePlatformEvent(event);
@@ -1287,7 +1294,8 @@ private:
                     gba::input::VisibleForegroundTransition::CloseOverlay) {
                     (void)GbaOverlayPlatformObserveForegroundTarget(
                         platform_,
-                        reinterpret_cast<std::uintptr_t>(foreground), true);
+                        reinterpret_cast<std::uintptr_t>(foreground),
+                        GBA_OVERLAY_PLATFORM_TRUE);
                     AppendDiagnostic(
                         L"External foreground activation closed the overlay");
                     Dispatch(gba::Command::CloseOverlay);
@@ -1361,7 +1369,10 @@ private:
             accessibilityProvider_.SetWindowFocused(true);
             if (platform_) {
                 (void)GbaOverlayPlatformSetWindowState(
-                    platform_, state_.surface() != gba::Surface::Hidden, true);
+                    platform_,
+                    PlatformBoolean(
+                        state_.surface() != gba::Surface::Hidden),
+                    GBA_OVERLAY_PLATFORM_TRUE);
             }
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_KILLFOCUS:
@@ -1369,7 +1380,10 @@ private:
             trayYGesture_.Cancel();
             if (platform_) {
                 (void)GbaOverlayPlatformSetWindowState(
-                    platform_, state_.surface() != gba::Surface::Hidden, false);
+                    platform_,
+                    PlatformBoolean(
+                        state_.surface() != gba::Surface::Hidden),
+                    GBA_OVERLAY_PLATFORM_FALSE);
             }
             InvalidateRect(window_, nullptr, FALSE);
             return DefWindowProcW(window_, message, wParam, lParam);
@@ -1378,7 +1392,9 @@ private:
             if (wParam == FALSE) trayYGesture_.Reset();
             if (platform_) {
                 (void)GbaOverlayPlatformSetWindowState(
-                    platform_, wParam != FALSE, GetFocus() == window_);
+                    platform_,
+                    PlatformBoolean(wParam != FALSE),
+                    PlatformBoolean(GetFocus() == window_));
             }
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_GETOBJECT:
@@ -1566,11 +1582,11 @@ private:
                 }
             } else if (wParam == kGuideCompatibilityTimer) {
                 GbaOverlayPlatformEvent event;
-                bool hasEvent = false;
+                std::uint32_t hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
                 if (GbaOverlayPlatformPollLegacyGuide(
                         platform_, GetTickCount64(), &event, &hasEvent) ==
                         GbaOverlayPlatformStatus::Ok &&
-                    hasEvent) {
+                    hasEvent != GBA_OVERLAY_PLATFORM_FALSE) {
                     HandlePlatformEvent(event);
                 }
             } else if (wParam == kZOrderSettleTimer) {
@@ -1594,7 +1610,8 @@ private:
                         gba::input::VisibleForegroundTransition::CloseOverlay) {
                         (void)GbaOverlayPlatformObserveForegroundTarget(
                             platform_,
-                            reinterpret_cast<std::uintptr_t>(foreground), true);
+                            reinterpret_cast<std::uintptr_t>(foreground),
+                            GBA_OVERLAY_PLATFORM_TRUE);
                         AppendDiagnostic(
                             L"Application deactivation closed the overlay");
                         Dispatch(gba::Command::CloseOverlay);
@@ -2890,7 +2907,7 @@ private:
             (void)GbaOverlayPlatformObserveForegroundTarget(
                 platform_,
                 reinterpret_cast<std::uintptr_t>(foreground),
-                foreground && IsWindow(foreground));
+                PlatformBoolean(foreground && IsWindow(foreground)));
         }
 
         const HWND remembered = reinterpret_cast<HWND>(
@@ -2899,7 +2916,7 @@ private:
             GbaOverlayPlatformResolveForegroundTarget(
                 platform_,
                 reinterpret_cast<std::uintptr_t>(window_),
-                remembered && IsWindow(remembered)));
+                PlatformBoolean(remembered && IsWindow(remembered))));
         const HMONITOR monitor = MonitorFromWindow(targetWindow, MONITOR_DEFAULTTONEAREST);
         if (!monitor) {
             AppendDiagnostic(L"Unable to resolve target monitor for overlay");
@@ -3003,8 +3020,16 @@ private:
             // reliability comes from the visible GameInput lease, not a
             // repeated foreground-steal loop.
             (void)AcquireOverlayForegroundInput();
-            (void)GbaOverlayPlatformSetWindowState(
-                platform_, true, IsOverlayProcessForeground());
+        }
+        // A rapid Guide reopen can arrive while the closing HWND remains
+        // visible. Successful placement always reacquires the platform's
+        // visible input lease; only first-show presentation work is gated by
+        // the HWND's prior visibility.
+        (void)GbaOverlayPlatformSetWindowState(
+            platform_,
+            GBA_OVERLAY_PLATFORM_TRUE,
+            PlatformBoolean(IsOverlayProcessForeground()));
+        if (!wasVisible) {
             actionFailureFeedback_.Show();
             KillTimer(window_, kPinnedSurfaceTimer);
             SetTimer(window_, kControllerTimer, 16, nullptr);
@@ -3028,7 +3053,10 @@ private:
             SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
         trayYGesture_.Reset();
         if (platform_) {
-            (void)GbaOverlayPlatformSetWindowState(platform_, false, false);
+            (void)GbaOverlayPlatformSetWindowState(
+                platform_,
+                GBA_OVERLAY_PLATFORM_FALSE,
+                GBA_OVERLAY_PLATFORM_FALSE);
         }
         actionFailureFeedback_.Hide();
         ClearAccessibilityTree();
@@ -3223,7 +3251,9 @@ private:
             // hiding, resource discard, and foreground restoration.
             if (platform_) {
                 (void)GbaOverlayPlatformSetWindowState(
-                    platform_, false, false);
+                    platform_,
+                    GBA_OVERLAY_PLATFORM_FALSE,
+                    GBA_OVERLAY_PLATFORM_FALSE);
             }
             lastForegroundOwnership_.reset();
             RetireCompositionMotionForHiddenState();
@@ -3792,7 +3822,8 @@ private:
             lastForegroundOwnership_ = confirmed;
             if (confirmed) {
                 AppendDiagnostic(
-                    GbaOverlayPlatformHasGameInput(platform_)
+                    GbaOverlayPlatformHasGameInput(platform_) !=
+                            GBA_OVERLAY_PLATFORM_FALSE
                         ? L"Overlay foreground confirmed; ordinary controller input is "
                           L"GameInput foreground-exclusive"
                         : L"Overlay foreground confirmed; GameInput unavailable, ordinary "
@@ -3809,7 +3840,9 @@ private:
     void PrimeControllerState() {
         if (!platform_) return;
         (void)GbaOverlayPlatformPrimeController(
-            platform_, IsOverlayProcessForeground(), GetTickCount64());
+            platform_,
+            PlatformBoolean(IsOverlayProcessForeground()),
+            GetTickCount64());
     }
 
     [[nodiscard]] static std::optional<gba::input::StickNavigationEvent>
@@ -3871,11 +3904,15 @@ private:
         const ULONGLONG now = GetTickCount64();
         GbaOverlayPlatformControllerFrame frame;
         if (GbaOverlayPlatformReadController(
-                platform_, IsOverlayProcessForeground(), now, &frame) !=
+                platform_,
+                PlatformBoolean(IsOverlayProcessForeground()),
+                now,
+                &frame) !=
             GbaOverlayPlatformStatus::Ok) {
             return;
         }
-        const bool connected = frame.connected;
+        const bool connected =
+            frame.connected != GBA_OVERLAY_PLATFORM_FALSE;
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
@@ -3901,7 +3938,9 @@ private:
         }
         constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
-        if (frame.recoveryChordPressed) RestartCurrentWidget();
+        if (frame.recoveryChordPressed != GBA_OVERLAY_PLATFORM_FALSE) {
+            RestartCurrentWidget();
+        }
 
         const auto stepPinnedPlacement = [&](const gba::input::StickNavigationEvent& event) {
             using gba::input::NavigationDirection;
@@ -4082,16 +4121,18 @@ private:
         if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_START)) {
             DispatchControllerAction(L"Menu", true);
         }
-        if (!launcherSafeStartGesture && frame.leftTriggerPressed) {
+        if (!launcherSafeStartGesture &&
+            frame.leftTriggerPressed != GBA_OVERLAY_PLATFORM_FALSE) {
             DispatchControllerAction(L"LT", true);
         }
-        if (!launcherSafeStartGesture && frame.rightTriggerPressed) {
+        if (!launcherSafeStartGesture &&
+            frame.rightTriggerPressed != GBA_OVERLAY_PLATFORM_FALSE) {
             DispatchControllerAction(L"RT", true);
         }
-        if (frame.leftTriggerReleased &&
+        if (frame.leftTriggerReleased != GBA_OVERLAY_PLATFORM_FALSE &&
             pressedInteraction_.Release(L"leftTrigger"))
             InvalidateRect(window_, nullptr, FALSE);
-        if (frame.rightTriggerReleased &&
+        if (frame.rightTriggerReleased != GBA_OVERLAY_PLATFORM_FALSE &&
             pressedInteraction_.Release(L"rightTrigger"))
             InvalidateRect(window_, nullptr, FALSE);
 

@@ -5,12 +5,39 @@
 #include <Windows.h>
 #include <Xinput.h>
 
+#include <atomic>
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 
 namespace {
 
 int checks{};
+
+struct CallbackProbe final {
+    std::atomic_uint32_t eventSignals{};
+    std::atomic_uint32_t diagnosticSignals{};
+    std::atomic_uint32_t postShutdownSignals{};
+    std::atomic_bool shutdownStarted{};
+};
+
+void GBA_OVERLAY_PLATFORM_CALL OnEventAvailable(void* context) noexcept {
+    auto& probe = *static_cast<CallbackProbe*>(context);
+    if (probe.shutdownStarted.load(std::memory_order_acquire)) {
+        probe.postShutdownSignals.fetch_add(1, std::memory_order_relaxed);
+    }
+    probe.eventSignals.fetch_add(1, std::memory_order_relaxed);
+}
+
+void GBA_OVERLAY_PLATFORM_CALL OnDiagnostic(
+    void* context,
+    const wchar_t*) noexcept {
+    auto& probe = *static_cast<CallbackProbe*>(context);
+    if (probe.shutdownStarted.load(std::memory_order_acquire)) {
+        probe.postShutdownSignals.fetch_add(1, std::memory_order_relaxed);
+    }
+    probe.diagnosticSignals.fetch_add(1, std::memory_order_relaxed);
+}
 
 void Check(const bool condition, const char* message) {
     ++checks;
@@ -26,6 +53,19 @@ int main() {
     Check(GbaOverlayPlatformGetAbiVersion() ==
               GBA_OVERLAY_PLATFORM_ABI_VERSION,
           "the exported ABI reports the version compiled into the caller");
+    const HMODULE importedModule =
+        GetModuleHandleW(L"OverlayPlatformInterop.dll");
+    Check(importedModule != nullptr &&
+              GetProcAddress(importedModule,
+                  "GbaOverlayPlatformGetAbiVersion") != nullptr,
+          "the focused executable imports the built public DLL ABI");
+    Check(sizeof(GbaOverlayPlatformControllerFrame) == 76 &&
+              offsetof(GbaOverlayPlatformControllerFrame, state) == 20 &&
+              offsetof(
+                  GbaOverlayPlatformControllerFrame,
+                  stickNavigation) == 60 &&
+              sizeof(GbaOverlayPlatformCreateOptions) == 32,
+          "the managed-facing version-1 layouts match the fixed-width contract");
 
     GbaOverlayPlatformCreateOptions invalidOptions;
     invalidOptions.abiVersion = GBA_OVERLAY_PLATFORM_ABI_VERSION + 1;
@@ -129,11 +169,11 @@ int main() {
     placementInput.desiredWidthDip = 1'180.0F;
     placementInput.desiredHeightDip = 700.0F;
     GbaOverlayPlatformPlacement placement;
-    bool hasPlacement = false;
+    std::uint32_t hasPlacement = GBA_OVERLAY_PLATFORM_FALSE;
     Check(GbaOverlayPlatformComputePlacement(
               &placementInput, &placement, &hasPlacement) ==
               GbaOverlayPlatformStatus::Ok &&
-              hasPlacement,
+              hasPlacement != GBA_OVERLAY_PLATFORM_FALSE,
           "the versioned placement entrypoint resolves a valid PMv2 work area");
     Check(placement.x >= placementInput.workLeft &&
               placement.y >= placementInput.workTop &&
@@ -141,7 +181,11 @@ int main() {
               placement.y + placement.height <= placementInput.workBottom,
           "resolved placement is contained by a negative-origin monitor work area");
 
+    CallbackProbe callbackProbe;
     GbaOverlayPlatformCreateOptions options;
+    options.callbackContext = &callbackProbe;
+    options.eventAvailable = OnEventAvailable;
+    options.diagnostic = OnDiagnostic;
     GbaOverlayPlatformHandle* handle{};
     Check(GbaOverlayPlatformCreate(&options, &handle) ==
               GbaOverlayPlatformStatus::Ok &&
@@ -149,23 +193,108 @@ int main() {
           "a version-matched caller creates one opaque platform owner");
     Check(GbaOverlayPlatformSetOwnedWindows(handle, 10, 20) ==
               GbaOverlayPlatformStatus::Ok &&
-              !GbaOverlayPlatformObserveForegroundTarget(handle, 10, true) &&
-              GbaOverlayPlatformObserveForegroundTarget(handle, 30, true) &&
+              GbaOverlayPlatformObserveForegroundTarget(
+                  handle, 10, GBA_OVERLAY_PLATFORM_TRUE) ==
+                  GBA_OVERLAY_PLATFORM_FALSE &&
+              GbaOverlayPlatformObserveForegroundTarget(
+                  handle, 30, GBA_OVERLAY_PLATFORM_TRUE) ==
+                  GBA_OVERLAY_PLATFORM_TRUE &&
               GbaOverlayPlatformRememberedForegroundTarget(handle) == 30,
           "foreground targeting rejects owned windows and remembers one external target");
-    Check(GbaOverlayPlatformResolveForegroundTarget(handle, 10, true) == 30 &&
-              GbaOverlayPlatformResolveForegroundTarget(handle, 10, false) == 10,
+    Check(GbaOverlayPlatformResolveForegroundTarget(
+              handle, 10, GBA_OVERLAY_PLATFORM_TRUE) == 30 &&
+              GbaOverlayPlatformResolveForegroundTarget(
+                  handle, 10, GBA_OVERLAY_PLATFORM_FALSE) == 10,
           "target resolution uses valid remembered authority and bounded fallback");
 
     Check(GbaOverlayPlatformInitialize(handle) ==
               GbaOverlayPlatformStatus::Ok,
           "native initialization remains usable with GameInput or its existing fallback");
+    Check(callbackProbe.diagnosticSignals.load(std::memory_order_acquire) > 0,
+          "the imported DLL invokes the registered diagnostic callback");
+
+    Check(GbaOverlayPlatformSetWindowState(
+              handle,
+              GBA_OVERLAY_PLATFORM_TRUE,
+              GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::Ok &&
+              callbackProbe.eventSignals.load(std::memory_order_acquire) >= 2,
+          "visibility and focus changes signal the registered event callback");
+    GbaOverlayPlatformControllerFrame visibleFrame;
+    Check(GbaOverlayPlatformReadController(
+              handle,
+              GBA_OVERLAY_PLATFORM_TRUE,
+              1'000,
+              &visibleFrame) == GbaOverlayPlatformStatus::Ok &&
+              visibleFrame.readPath != GbaOverlayPlatformReadPath::None,
+          "a visible platform lease owns a controller read path");
+
+    Check(GbaOverlayPlatformSetWindowState(
+              handle,
+              GBA_OVERLAY_PLATFORM_FALSE,
+              GBA_OVERLAY_PLATFORM_FALSE) == GbaOverlayPlatformStatus::Ok,
+          "close-animation begin retires the visible platform lease immediately");
+    GbaOverlayPlatformControllerFrame closingFrame;
+    Check(GbaOverlayPlatformReadController(
+              handle,
+              GBA_OVERLAY_PLATFORM_FALSE,
+              1'010,
+              &closingFrame) == GbaOverlayPlatformStatus::Ok &&
+              closingFrame.readPath == GbaOverlayPlatformReadPath::None,
+          "controller ownership is dormant during the closing interval");
+
+    Check(GbaOverlayPlatformSetWindowState(
+              handle,
+              GBA_OVERLAY_PLATFORM_TRUE,
+              GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::Ok,
+          "rapid reopen restores the platform lease while the HWND is still visible");
+    GbaOverlayPlatformControllerFrame reopenedFrame;
+    Check(GbaOverlayPlatformReadController(
+              handle,
+              GBA_OVERLAY_PLATFORM_TRUE,
+              1'011,
+              &reopenedFrame) == GbaOverlayPlatformStatus::Ok &&
+              reopenedFrame.readPath != GbaOverlayPlatformReadPath::None,
+          "rapid reopen returns controller read ownership on the next deterministic sample");
+
+    GbaOverlayPlatformEvent event;
+    std::uint32_t hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
+    Check(GbaOverlayPlatformDrainEvent(handle, 1'020, &event, &hasEvent) ==
+              GbaOverlayPlatformStatus::Ok &&
+              hasEvent == GBA_OVERLAY_PLATFORM_TRUE,
+          "the callback signal corresponds to a drainable public-ABI event");
+
+    callbackProbe.shutdownStarted.store(true, std::memory_order_release);
+    const auto eventSignalsBeforeShutdown =
+        callbackProbe.eventSignals.load(std::memory_order_acquire);
+    const auto diagnosticSignalsBeforeShutdown =
+        callbackProbe.diagnosticSignals.load(std::memory_order_acquire);
     GbaOverlayPlatformShutdown(handle);
     GbaOverlayPlatformShutdown(handle);
     Check(GbaOverlayPlatformInitialize(handle) ==
               GbaOverlayPlatformStatus::ShutDown,
           "clean shutdown is idempotent and cannot resurrect callback ownership");
+    Check(GbaOverlayPlatformSetWindowState(
+              handle,
+              GBA_OVERLAY_PLATFORM_TRUE,
+              GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::ShutDown &&
+              GbaOverlayPlatformDrainEvent(
+                  handle, 1'030, &event, &hasEvent) ==
+                  GbaOverlayPlatformStatus::ShutDown &&
+              callbackProbe.eventSignals.load(std::memory_order_acquire) ==
+                  eventSignalsBeforeShutdown &&
+              callbackProbe.diagnosticSignals.load(std::memory_order_acquire) ==
+                  diagnosticSignalsBeforeShutdown &&
+              callbackProbe.postShutdownSignals.load(
+                  std::memory_order_acquire) == 0,
+          "shutdown drains callback ownership and rejects post-shutdown signaling");
     GbaOverlayPlatformDestroy(handle);
+    Check(callbackProbe.eventSignals.load(std::memory_order_acquire) ==
+              eventSignalsBeforeShutdown &&
+              callbackProbe.diagnosticSignals.load(std::memory_order_acquire) ==
+                  diagnosticSignalsBeforeShutdown &&
+              callbackProbe.postShutdownSignals.load(
+                  std::memory_order_acquire) == 0,
+          "destroy after idempotent shutdown produces no callback or freed-context use");
 
     std::cout << "OverlayPlatformInteropTests passed (" << checks
               << " checks)\n";
