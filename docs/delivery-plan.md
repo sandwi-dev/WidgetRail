@@ -72,6 +72,25 @@ evidence, not implementation authority.
   Evaluation happens only under `experiments/AvaloniaOverlayPrototype`. No
   production renderer migration, GBSS removal, or widget cutover is implied
   until the user accepts retained AVP evidence and a migration architecture.
+- The candidate production presentation stack is intentionally bounded:
+  .NET 10/C#, stable Avalonia Desktop 12 with its Skia renderer, AXAML and
+  Avalonia styles/control themes, compiled XAML bindings, CommunityToolkit.Mvvm
+  for shell/page state and commands, direct Microsoft dependency injection and
+  logging abstractions only where lifecycle ownership benefits, Avalonia
+  `XYFocus`/`FocusManager`, composition animations for performance-sensitive
+  shell motion, and virtualized `ListBox`/`ItemsRepeater` collections. The host
+  does not adopt ReactiveUI, DynamicData, a generic-host bootstrap, Serilog,
+  EF Core, FluentAvalonia, SukiUI, or another navigation/theme framework by
+  default. A specific measured requirement may add one later. Community
+  applications remain free to choose their own ordinary .NET application
+  stack; the public widget contract stays semantic and UI-framework-neutral.
+- Testing for the candidate stack uses the repository-required MSTest.Sdk
+  4.3.2, ordinary unit tests for state/services, manually configured
+  Avalonia.Headless/Skia tests for layout, focus and rendered frames, and a
+  small Windows UIA/Appium-class packaged suite for critical real-window flows.
+  Headless evidence never replaces controller, compositor, DPI, or physical
+  display testing. Windows-only input/window/media integration remains behind
+  narrow adapters; the XInput AVP is not yet a production GameInput decision.
 - Hold DLV-216, DLV-217, and DLV-218 during AVP-001 and the architecture
   decision. Those milestones assume the current declarative presentation path
   and would create avoidable migration or deletion work.
@@ -226,8 +245,36 @@ automatically; the planner and user test AVP-002 first.
 
 ### Avalonia Ready queue
 
-None. AVP-003 through AVP-006 remain planned architecture experiments and will
-be assigned only after AVP-002 establishes controller-first viability.
+1. **Held until corrected AVP-002 is accepted — AVP-003: production-stack
+   architecture slice.**
+
+   Refactor only the isolated experiment into one representative production-
+   shaped vertical slice. Use CommunityToolkit.Mvvm with compiled bindings for
+   typed immutable shell/page state and commands; keep focus and input in
+   presentation services rather than view models. Use direct Microsoft DI for
+   explicit singleton/scoped/transient ownership only if a measured comparison
+   shows acceptable startup/memory cost versus manual composition. Keep the
+   current custom visual language on Avalonia styles/control themes over the
+   built-in Fluent control base; do not adopt FluentAvalonia or SukiUI unless a
+   named missing control has a better measured result. Replace the prototype
+   page transition with an Avalonia page/composition transition and compare
+   UI-thread versus composition-thread timing. Replace the 16-item fixture with
+   a virtualized, selectable 10,000-item list/grid and prove focus identity,
+   recycling, scroll return, memory, and accessibility. Keep the semantic
+   widget snapshot/action contract UI-framework-neutral and demonstrate one
+   fake remote projection mapping into typed Avalonia view models without
+   exposing Avalonia types to a Community application.
+
+   Acceptance must include bounded Release build, focused MSTest.Sdk 4.3.2
+   unit/headless/UIA evidence, compiled-binding build failures for an invalid
+   fixture, dependency/startup/memory/process provenance, hidden-idle behavior,
+   transition timing, virtualized realized-item counts, and a planner/user live
+   launch. No production edits, GBSS adapter, Community package migration,
+   ReactiveUI/DynamicData, database, web surface, NativeAOT, installer change,
+   or AVP-004 work. Do not start automatically.
+
+AVP-004 through AVP-006 remain planned architecture experiments and will be
+assigned only after AVP-003 proves the bounded production-shaped stack.
 
 ## Widgets lane
 
