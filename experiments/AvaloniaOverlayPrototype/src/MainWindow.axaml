@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:GameBarAlternative.AvaloniaPrototype.Views"
+        x:Class="GameBarAlternative.AvaloniaPrototype.MainWindow"
+        Title="Game Bar Alternative — Avalonia Prototype"
+        Width="1180"
+        Height="680"
+        MinWidth="760"
+        MinHeight="520"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        WindowDecorations="None"
+        CanResize="False"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        AutomationProperties.AutomationId="avp.window"
+        AutomationProperties.Name="Game Bar Alternative Avalonia prototype overlay">
+  <local:PrototypeShellView x:Name="Shell" />
+</Window>

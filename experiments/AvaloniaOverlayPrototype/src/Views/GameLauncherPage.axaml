@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GameBarAlternative.AvaloniaPrototype.Views.GameLauncherPage"
+             AutomationProperties.AutomationId="page.launcher"
+             AutomationProperties.Name="Game Launcher page">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <TextBlock x:Name="PageTitle"
+               Grid.Row="0"
+               Classes="page-title"
+               Text="Game Launcher"
+               AutomationProperties.AutomationId="launcher.title"
+               AutomationProperties.Name="Game Launcher" />
+    <WrapPanel Grid.Row="1" Margin="0,0,0,12">
+      <Button x:Name="PrimaryAction" Classes="prototype-action" Content="Search library"
+              AutomationProperties.AutomationId="launcher.search" AutomationProperties.Name="Search game library" />
+      <Button Classes="prototype-action" Content="All games"
+              AutomationProperties.AutomationId="launcher.collection.all" AutomationProperties.Name="Show all games" />
+      <Button Classes="prototype-action" Content="Favorites"
+              AutomationProperties.AutomationId="launcher.collection.favorites" AutomationProperties.Name="Show favorite games" />
+    </WrapPanel>
+    <ScrollViewer x:Name="ApplicationScroll"
+                  Grid.Row="2"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Visible"
+                  AutomationProperties.AutomationId="launcher.applications.scroll"
+                  AutomationProperties.Name="Scrollable application list">
+      <StackPanel x:Name="ApplicationList" Spacing="8" Margin="0,0,12,0" />
+    </ScrollViewer>
+    <TextBlock x:Name="ControllerHelp"
+               Grid.Row="3"
+               Classes="controller-help"
+               Text="Up / Down  Browse    Enter / A  Open    Escape / B  Back"
+               AutomationProperties.AutomationId="launcher.help"
+               AutomationProperties.Name="Game Launcher controller help" />
+  </Grid>
+</UserControl>

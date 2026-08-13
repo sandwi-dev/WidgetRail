@@ -1,0 +1,72 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GameBarAlternative.AvaloniaPrototype.Views.SpotifyPlayerPage"
+             AutomationProperties.AutomationId="page.spotify"
+             AutomationProperties.Name="Spotify Player page">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <TextBlock x:Name="PageTitle"
+               Grid.Row="0"
+               Classes="page-title"
+               Text="Spotify Player"
+               AutomationProperties.AutomationId="spotify.title"
+               AutomationProperties.Name="Spotify Player" />
+    <ScrollViewer x:Name="PrimaryContent" Grid.Row="1"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.AutomationId="spotify.scroll"
+                  AutomationProperties.Name="Spotify player content">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="24">
+        <Border Grid.Column="0"
+                Width="170"
+                Height="170"
+                CornerRadius="12"
+                Background="#34465C"
+                BorderBrush="#7898BCE9"
+                BorderThickness="1"
+                AutomationProperties.AutomationId="spotify.artwork.missing"
+                AutomationProperties.Name="Artwork unavailable">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <TextBlock HorizontalAlignment="Center" FontSize="34" Text="♪" />
+            <TextBlock HorizontalAlignment="Center" Text="Artwork unavailable" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+        <StackPanel Grid.Column="1" Spacing="10">
+          <TextBlock FontSize="22"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"
+                     Text="A Very Long Track Title Designed to Exercise Responsive Containment Without Ellipsis Hiding the Important State"
+                     AutomationProperties.AutomationId="spotify.track"
+                     AutomationProperties.Name="Current track title" />
+          <TextBlock Text="The Fixture Artists • Prototype Sessions" TextWrapping="Wrap"
+                     AutomationProperties.AutomationId="spotify.artist" AutomationProperties.Name="Current artist and album" />
+          <Slider x:Name="PlaybackPositionSlider"
+                  Minimum="0"
+                  Maximum="312"
+                  Value="94"
+                  AutomationProperties.AutomationId="spotify.position"
+                  AutomationProperties.Name="Playback position seconds" />
+          <WrapPanel>
+            <Button Classes="prototype-action" Content="Previous"
+                    AutomationProperties.AutomationId="spotify.previous" AutomationProperties.Name="Previous track" />
+            <Button x:Name="PrimaryAction" Classes="prototype-action" Content="Play / Pause"
+                    AutomationProperties.AutomationId="spotify.play" AutomationProperties.Name="Play or pause" />
+            <Button Classes="prototype-action" Content="Next"
+                    AutomationProperties.AutomationId="spotify.next" AutomationProperties.Name="Next track" />
+            <Button Classes="prototype-action" Content="Open queue"
+                    AutomationProperties.AutomationId="spotify.queue" AutomationProperties.Name="Open queue" />
+          </WrapPanel>
+          <TextBlock Text="Destination state: ready from an asynchronous credential-free fixture."
+                     TextWrapping="Wrap"
+                     AutomationProperties.AutomationId="spotify.readiness"
+                     AutomationProperties.Name="Spotify destination ready" />
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
+    <TextBlock x:Name="ControllerHelp"
+               Grid.Row="2"
+               Classes="controller-help"
+               Text="Arrows / D-pad  Navigate    Enter / A  Activate    Left / Right  Seek    Escape / B  Back"
+               AutomationProperties.AutomationId="spotify.help"
+               AutomationProperties.Name="Spotify Player controller help" />
+  </Grid>
+</UserControl>

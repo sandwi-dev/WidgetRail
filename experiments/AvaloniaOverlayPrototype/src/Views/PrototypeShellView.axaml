@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:navigation="using:GameBarAlternative.AvaloniaPrototype.Navigation"
+             x:Class="GameBarAlternative.AvaloniaPrototype.Views.PrototypeShellView"
+             Background="Transparent"
+             AutomationProperties.AutomationId="avp.shell"
+             AutomationProperties.Name="Prototype overlay shell">
+  <Grid Margin="24" RowDefinitions="*,Auto">
+    <Border x:Name="ContentRegion"
+            Grid.Row="0"
+            Margin="0,0,0,14"
+            Padding="24"
+            CornerRadius="18"
+            Background="#E8172230"
+            BorderBrush="#6E92B7E8"
+            BorderThickness="1"
+            ClipToBounds="True"
+            AutomationProperties.AutomationId="avp.content"
+            AutomationProperties.Name="Active prototype page">
+      <Grid>
+        <navigation:PageTransitionPresenter x:Name="TransitionPresenter" />
+        <Border x:Name="LoadingStatus"
+                IsVisible="False"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="12"
+                Padding="12,7"
+                CornerRadius="8"
+                Background="#E82B3D55"
+                AutomationProperties.AutomationId="avp.loading"
+                AutomationProperties.Name="Destination loading">
+          <TextBlock x:Name="LoadingText" />
+        </Border>
+      </Grid>
+    </Border>
+
+    <Border x:Name="TrayRegion"
+            Grid.Row="1"
+            HorizontalAlignment="Center"
+            Padding="10"
+            CornerRadius="18"
+            Background="#F01A2432"
+            BorderBrush="#7898BCE9"
+            BorderThickness="1"
+            AutomationProperties.AutomationId="avp.tray"
+            AutomationProperties.Name="Stationary widget tray">
+      <StackPanel Orientation="Horizontal">
+        <Button x:Name="SettingsTrayButton"
+                Classes="tray-button"
+                Content="⚙  Settings"
+                Click="SettingsClicked"
+                AutomationProperties.AutomationId="tray.settings"
+                AutomationProperties.Name="Open Settings" />
+        <Button x:Name="AudioTrayButton"
+                Classes="tray-button"
+                Content="◉  Audio"
+                Click="AudioClicked"
+                AutomationProperties.AutomationId="tray.audio"
+                AutomationProperties.Name="Open Audio Mixer" />
+        <Button x:Name="SpotifyTrayButton"
+                Classes="tray-button"
+                Content="♪  Spotify"
+                Click="SpotifyClicked"
+                AutomationProperties.AutomationId="tray.spotify"
+                AutomationProperties.Name="Open Spotify Player" />
+        <Button x:Name="LauncherTrayButton"
+                Classes="tray-button"
+                Content="▦  Launcher"
+                Click="LauncherClicked"
+                AutomationProperties.AutomationId="tray.launcher"
+                AutomationProperties.Name="Open Game Launcher" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

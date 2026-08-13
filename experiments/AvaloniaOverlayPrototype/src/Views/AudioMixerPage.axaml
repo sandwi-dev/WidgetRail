@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GameBarAlternative.AvaloniaPrototype.Views.AudioMixerPage"
+             AutomationProperties.AutomationId="page.audio"
+             AutomationProperties.Name="Audio Mixer page">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <TextBlock x:Name="PageTitle"
+               Grid.Row="0"
+               Classes="page-title"
+               Text="Audio Mixer"
+               AutomationProperties.AutomationId="audio.title"
+               AutomationProperties.Name="Audio Mixer" />
+    <ScrollViewer x:Name="PrimaryContent" Grid.Row="1"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.AutomationId="audio.scroll"
+                  AutomationProperties.Name="Audio sessions">
+      <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
+          <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="System Sounds — primary communications output" TextWrapping="Wrap" />
+          <Slider x:Name="MasterVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="78"
+                  AutomationProperties.AutomationId="audio.master.volume" AutomationProperties.Name="System Sounds volume" />
+          <Button x:Name="PrimaryAction" Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  AutomationProperties.AutomationId="audio.master.mute" AutomationProperties.Name="Mute System Sounds" />
+        </Grid>
+        <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
+          <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Cooperative game with an intentionally long executable display name" TextWrapping="Wrap" />
+          <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="64"
+                  AutomationProperties.AutomationId="audio.game.volume" AutomationProperties.Name="Cooperative game volume" />
+          <Button Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  AutomationProperties.AutomationId="audio.game.mute" AutomationProperties.Name="Mute cooperative game" />
+        </Grid>
+        <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
+          <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Spotify" />
+          <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="52"
+                  AutomationProperties.AutomationId="audio.spotify.volume" AutomationProperties.Name="Spotify volume" />
+          <Button Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  AutomationProperties.AutomationId="audio.spotify.mute" AutomationProperties.Name="Mute Spotify" />
+        </Grid>
+        <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
+          <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Voice chat — USB headset microphone monitor" TextWrapping="Wrap" />
+          <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="35"
+                  AutomationProperties.AutomationId="audio.voice.volume" AutomationProperties.Name="Voice chat volume" />
+          <Button Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  AutomationProperties.AutomationId="audio.voice.mute" AutomationProperties.Name="Mute voice chat" />
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+    <TextBlock x:Name="ControllerHelp"
+               Grid.Row="2"
+               Classes="controller-help"
+               Text="Up / Down  Session    Left / Right  Adjust    Enter / A  Mute    Escape / B  Back"
+               AutomationProperties.AutomationId="audio.help"
+               AutomationProperties.Name="Audio Mixer controller help" />
+  </Grid>
+</UserControl>

@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="GameBarAlternative.AvaloniaPrototype.Views.SettingsPage"
+             AutomationProperties.AutomationId="page.settings"
+             AutomationProperties.Name="Settings page">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <TextBlock x:Name="PageTitle"
+               Grid.Row="0"
+               Classes="page-title"
+               Text="Settings"
+               AutomationProperties.AutomationId="settings.title"
+               AutomationProperties.Name="Settings" />
+    <ScrollViewer x:Name="SettingsScroll"
+                  Grid.Row="1"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto"
+                  AutomationProperties.AutomationId="settings.scroll"
+                  AutomationProperties.Name="Settings options">
+      <StackPanel Spacing="14">
+        <TextBlock Text="Overlay appearance and behavior"
+                   FontSize="19"
+                   FontWeight="SemiBold"
+                   AutomationProperties.AutomationId="settings.section.overlay"
+                   AutomationProperties.Name="Overlay appearance and behavior" />
+        <TextBlock MaxWidth="760"
+                   HorizontalAlignment="Left"
+                   TextWrapping="Wrap"
+                   Text="This deliberately long label verifies that a controller-first overlay can preserve readable hierarchy when descriptive settings text spans multiple lines at compact logical sizes."
+                   AutomationProperties.AutomationId="settings.description"
+                   AutomationProperties.Name="Long responsive settings description" />
+        <WrapPanel>
+          <Button x:Name="PrimaryAction" Classes="prototype-action"
+                  Content="Keep overlay above games"
+                  AutomationProperties.AutomationId="settings.topmost"
+                  AutomationProperties.Name="Keep overlay above games" />
+          <Button Classes="prototype-action"
+                  Content="Start with last widget"
+                  AutomationProperties.AutomationId="settings.start-last"
+                  AutomationProperties.Name="Start with last widget" />
+          <Button Classes="prototype-action"
+                  Content="Reduce motion"
+                  AutomationProperties.AutomationId="settings.reduce-motion"
+                  AutomationProperties.Name="Reduce motion" />
+        </WrapPanel>
+        <TextBlock Text="Interface scale" AutomationProperties.AutomationId="settings.scale.label" AutomationProperties.Name="Interface scale" />
+        <Slider x:Name="InterfaceScaleSlider"
+                Minimum="100"
+                Maximum="150"
+                Value="125"
+                TickFrequency="25"
+                AutomationProperties.AutomationId="settings.scale"
+                AutomationProperties.Name="Interface scale percentage" />
+        <TextBlock Text="Accessibility" FontSize="19" FontWeight="SemiBold" />
+        <WrapPanel>
+          <Button Classes="prototype-action"
+                  Content="High contrast focus"
+                  AutomationProperties.AutomationId="settings.high-contrast"
+                  AutomationProperties.Name="High contrast focus" />
+          <Button Classes="prototype-action"
+                  Content="Read controller hints"
+                  AutomationProperties.AutomationId="settings.read-hints"
+                  AutomationProperties.Name="Read controller hints" />
+        </WrapPanel>
+      </StackPanel>
+    </ScrollViewer>
+    <TextBlock x:Name="ControllerHelp"
+               Grid.Row="2"
+               Classes="controller-help"
+               Text="Arrows / D-pad  Navigate    Enter / A  Select    Escape / B  Back"
+               AutomationProperties.AutomationId="settings.help"
+               AutomationProperties.Name="Settings controller help" />
+  </Grid>
+</UserControl>
