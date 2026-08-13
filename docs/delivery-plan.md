@@ -268,11 +268,31 @@ experiments.
 
 ### Current assignment — AVP-003: production-stack architecture slice
 
-State: Assigned after the user's accepted AVP-002 live verdict. Lane baseline:
-exact Avalonia branch commit `93e6e70`; accepted main equivalent `09b40da`.
+State: Correction assigned. Candidate `f076622` was independently rejected on
+2026-08-13 for three bounded semantic-contract defects; its overall Avalonia
+architecture and experiment-only scope remain accepted as the correction base.
+Lane baseline: exact Avalonia branch commit `93e6e70`; accepted main equivalent
+`09b40da`.
 Dependencies: AVP-001 and AVP-002 accepted. Concurrency: isolated experiment
 only; it may run while production lanes continue because it owns no production
-file. Stop at one reviewable commit and do not start AVP-004 automatically.
+file. Correct `f076622`, stop at one reviewable child commit, and do not start
+AVP-004 automatically.
+
+Required correction:
+
+- derive presentation, UIA, and focus-restoration identity from the exact
+  safely encoded `RemoteWidgetItemId`, not list position, and prove the same
+  item and AutomationId survive a latest-wins insertion/reorder;
+- make the current semantic snapshot declare a bounded typed action set per
+  item and admit only an exact current item/action tuple, with unknown-item and
+  undeclared-action rejection evidence; and
+- keep the remote contract UI-framework-neutral while a presentation-owned
+  scheduler explicitly marshals bound view-model mutation to Avalonia's UI
+  thread, including a worker-thread completion test.
+
+Reuse the existing architecture and run only affected tests while correcting,
+one final focused suite after the correction commit, and one fresh exact-commit
+measurement. The planner must not launch the rejected `f076622` candidate.
 
 Refactor only the isolated experiment into one representative production-shaped
 vertical slice. Use CommunityToolkit.Mvvm with compiled bindings for typed
@@ -343,7 +363,11 @@ increase with no clear owner.
 
 AVP-004 through AVP-006 remain held architecture experiments. The planner will
 define and assign the next experiment only after AVP-003 is independently
-reviewed and the user tests its copied runtime.
+reviewed and the user tests its copied runtime. AVP-004 is reserved as the
+Guide-button/window-lifecycle integration gate: it must evaluate a supported
+background-capable GameInput path for Guide-driven show/hide while preserving
+the accepted Avalonia navigation, focus, and controller behavior; no production
+migration is implied by that reservation.
 
 ## Widgets lane
 
