@@ -119,15 +119,9 @@ $inputTrace = Get-Content -Raw -LiteralPath $inputTracePath | ConvertFrom-Json
 if ($inputTrace.sourceCommit -ne $sourceCommit -or -not $inputTrace.nativeVisibleLeaseObserved) {
     throw 'Native GameInput visible-lease trace provenance is missing or stale.'
 }
-$requiredControllerCategories = @(
-    'connected-visible-lease', 'guide', 'dpad', 'left-stick', 'a', 'b',
-    'tray', 'content', 'slider', 'scroll', 'repeat', 'reconnect',
-    'focus-loss', 'hide-show')
-if (-not $inputTrace.routedSemanticInputObserved -or
-    -not $inputTrace.deterministicSharedRouterProofObserved -or
-    $inputTrace.handledCategories.Count -ne $requiredControllerCategories.Count -or
-    ($requiredControllerCategories | Where-Object { $_ -notin $inputTrace.handledCategories }).Count -ne 0) {
-    throw 'Exact-commit shared-router controller categories were not all retained as handled.'
+if ($inputTrace.deterministicSharedRouterProofObserved -or $inputTrace.handledCategories.Count -ne 0 -or
+    $inputTrace.routedSemanticInputObserved -ne $inputTrace.nativeRoutedSemanticInputObserved) {
+    throw 'Input trace contains a controller route/category claim not derived from observed native input.'
 }
 if ($inputTrace.nativeRoutedSemanticInputObserved -and -not $inputTrace.nativeConnectedVisibleLeaseObserved) {
     throw 'Native routed input was recorded without a connected visible GameInput lease.'

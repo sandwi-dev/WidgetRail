@@ -79,7 +79,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (21 tests):
+MSTest.Sdk 4.3.2 suite (22 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -98,6 +98,10 @@ mode-identity restoration with one render tree. Geometry coverage asserts useful
 page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
+Each responsive row captures its admitted authority, semantic root, expected
+IDs, controls, and geometry atomically on the Avalonia UI thread; a direct race
+test publishes a replacement during resize and requires the replacement frame,
+root, and controls to match before evidence is accepted.
 The direct tray regression uses all eight representative long/short labels and
 asserts that the selected final item is fully inside the scroll viewport, label
 content is not truncated, and guide plus tray chrome remains bounded.
@@ -123,10 +127,10 @@ process-tree normal-shutdown verdict and native visible-lease trace. The same
 ordinary traversal renders one 978x466 offscreen PNG per installed widget with
 logical/pixel size, render scale, and SHA-256 provenance; no taskbar or
 targetability mode is used.
-The input artifact separately records actual native lease/controller observations
-and an exact-commit deterministic shared-router proof for Guide, D-pad/stick,
-A/B, tray/content, slider/scroll, repeat, reconnect, focus-loss, and hide/show.
-It does not convert that deterministic proof into a physical-controller claim.
+The input artifact records only actual native lease/controller observations.
+It does not stamp focused-suite success into synthetic handled categories, and
+it does not convert a visible lease into a physical-controller or routed-input
+claim. Named focused regressions remain test evidence, not native trace events.
 Any red effective-visibility or geometry record keeps AVP-004 blocked; the
 renderer-capture polish does not weaken or substitute for those assertions.
 Ownership checkpoints separate managed live/heap bytes, decoded

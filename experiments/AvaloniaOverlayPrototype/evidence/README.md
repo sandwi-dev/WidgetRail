@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 21-test focused Avalonia integration suite. Its ignored exact-commit
+only the 22-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -20,6 +20,9 @@ The shared-shell polish regression additionally uses all eight representative
 tray labels and requires the selected final item to be fully scrolled into view,
 untruncated label content, and bounded guide/tray height. Transparent semantic
 buttons are also proven to retain a visible reusable Avalonia surface and border.
+Responsive evidence captures authority, semantic root, expected IDs, rendered
+controls, and geometry as one UI-thread transaction. A replacement published
+during resize must settle to one exact authority/root before that row is kept.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
@@ -70,3 +73,6 @@ Transition evidence detects an Avalonia-side opaque-black fallback but cannot
 prove the physical compositor. Physical controller/Guide behavior, mixed-monitor
 quality, credential-gated services, and GPU timing remain explicit manual or
 unavailable evidence rather than automated claims.
+The native input trace likewise contains only observed platform events. Focused
+suite completion does not manufacture handled controller categories; an absent
+physical connection remains explicitly absent.

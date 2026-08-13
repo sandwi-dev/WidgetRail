@@ -15,6 +15,7 @@ using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GameBarAlternative.AvaloniaPrototype.Integration;
 using GameBarAlternative.AvaloniaPrototype.Views;
+using GameBarAlternative.WidgetPresentationSession;
 using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.AvaloniaPrototype.Diagnostics;
@@ -81,11 +82,16 @@ internal static class EvidenceScenario
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
                 memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                     $"widget:{widget.Id}:after-crossfade", process, window, shell));
-                var frame = shell.Coordinator.CurrentFrame!;
+                var admitted = await CaptureResponsiveFixtureAsync(
+                    shell,
+                    new Size(1440, 810),
+                    widget.Id,
+                    TimeSpan.FromSeconds(5));
+                var frame = admitted.Frame;
                 var nodes = Flatten(frame.Snapshot.Root).ToArray();
                 foreach (var kind in nodes.Select(node => node.Kind)) allNodeKinds.Add(kind);
-                var semanticControls = CaptureSemanticControls(shell, frame.Snapshot.Root, shell.IsCompact);
-                var requiredSemanticIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
+                var semanticControls = admitted.Controls;
+                var requiredSemanticIds = admitted.ExpectedIds;
                 var allRequiredObserved = requiredSemanticIds.All(requiredId =>
                     semanticControls.Any(control => string.Equals(control.NodeId, requiredId, StringComparison.Ordinal)));
                 widgetSamples.Add(new WidgetEvidence(
@@ -119,15 +125,20 @@ internal static class EvidenceScenario
                              new Size(1440, 810),
                          })
                 {
-                    shell.SetEvidenceViewport(fixture);
-                    await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                    var fixtureCapture = await CaptureResponsiveFixtureAsync(
+                        shell,
+                        fixture,
+                        widget.Id,
+                        TimeSpan.FromSeconds(5));
                     memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                         $"widget:{widget.Id}:logical-size:{fixture.Width}x{fixture.Height}", process, window, shell));
-                    var controls = CaptureSemanticControls(shell, frame.Snapshot.Root, shell.IsCompact);
-                    var expectedIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
-                    var geometry = CaptureGeometry(shell, controls, expectedIds);
+                    var fixtureFrame = fixtureCapture.Frame;
+                    var controls = fixtureCapture.Controls;
+                    var geometry = fixtureCapture.Geometry;
                     responsiveSamples.Add(new ResponsiveEvidence(
                         widget.Id,
+                        fixtureFrame.Authority.SnapshotSequence,
+                        fixtureFrame.Authority.ActiveInputScopeId,
                         fixture.Width,
                         fixture.Height,
                         window.RenderScaling,
@@ -135,7 +146,7 @@ internal static class EvidenceScenario
                         shell.Bounds.Height,
                         window.Bounds.Width,
                         window.Bounds.Height,
-                        shell.IsCompact,
+                        fixtureCapture.Compact,
                         controls.Count,
                         controls.Count(control => control.HonestlyScrollClipped),
                         controls.All(control => control.BoundsHaveArea &&
@@ -251,8 +262,6 @@ internal static class EvidenceScenario
             var installedWidgetCount = shell.Coordinator.ViewModel.Widgets.Count;
             var pageTransition = shell.TransitionPresenter.PageTransition?.GetType().Name ??
                 (arguments.ReducedMotion ? "ReducedMotion" : "unavailable");
-            if (focusedMappingProofPassed)
-                window.RecordFocusedControllerProof(ControllerEvidenceCategories);
             await window.ShutdownAsync();
             var shutdownEvidence = window.LastShutdownEvidence ?? new CandidateShutdownEvidence(
                 false,
@@ -330,15 +339,56 @@ internal static class EvidenceScenario
         }
     }
 
+    internal static async Task<ResponsiveFixtureCapture> CaptureResponsiveFixtureAsync(
+        IntegratedShellView shell,
+        Size fixture,
+        string expectedWidgetId,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var capture = await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                shell.SetEvidenceViewport(fixture);
+                var frame = shell.Coordinator.CurrentFrame;
+                var authorityBefore = shell.AdmittedAuthority;
+                var semanticRoot = shell.ActiveSemanticRoot;
+                if (frame is null || authorityBefore is null || semanticRoot is null ||
+                    !string.Equals(frame.Authority.WidgetId, expectedWidgetId, StringComparison.Ordinal) ||
+                    !Equals(authorityBefore, frame.Authority))
+                    return null;
+
+                semanticRoot.UpdateLayout();
+                var controls = CaptureSemanticControls(
+                    shell, semanticRoot, frame.Snapshot.Root, shell.IsCompact);
+                var expectedIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
+                var geometry = CaptureGeometry(shell, controls, expectedIds);
+                return !Equals(authorityBefore, shell.AdmittedAuthority) ||
+                    !Equals(frame.Authority, shell.Coordinator.CurrentFrame?.Authority) ||
+                    !ReferenceEquals(semanticRoot, shell.ActiveSemanticRoot)
+                    ? null
+                    : new ResponsiveFixtureCapture(
+                        frame, semanticRoot, shell.IsCompact, controls, expectedIds, geometry);
+            }, DispatcherPriority.Render);
+            if (capture is not null) return capture;
+            await Task.Delay(20);
+        }
+
+        throw new TimeoutException(
+            $"Widget '{expectedWidgetId}' did not retain one admitted authority/root while sampling {fixture}.");
+    }
+
     private static List<SemanticControlEvidence> CaptureSemanticControls(
         IntegratedShellView shell,
+        Control semanticRoot,
         ViewNode root,
         bool compact)
     {
         var nodes = Flatten(root).ToDictionary(node => node.Id, StringComparer.Ordinal);
         var declaredVisible = DeclaredVisibleRequiredIds(root, compact);
         var shellBounds = new Rect(shell.Bounds.Size);
-        return shell.GetVisualDescendants().OfType<Control>()
+        return semanticRoot.GetVisualDescendants().OfType<Control>().Prepend(semanticRoot)
             .Where(control => control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is { } id &&
                 nodes.TryGetValue(id, out var node) &&
                 declaredVisible.Contains(id) &&
@@ -400,13 +450,6 @@ internal static class EvidenceScenario
             foreach (var child in node.Children) Add(child, visible);
         }
     }
-
-    private static readonly string[] ControllerEvidenceCategories =
-    [
-        "connected-visible-lease", "guide", "dpad", "left-stick", "a", "b",
-        "tray", "content", "slider", "scroll", "repeat", "reconnect",
-        "focus-loss", "hide-show",
-    ];
 
     private static GeometryEvidence CaptureGeometry(
         IntegratedShellView shell,
@@ -720,6 +763,8 @@ internal static class EvidenceScenario
 
     private sealed record ResponsiveEvidence(
         string WidgetId,
+        long SnapshotSequence,
+        string ActiveInputScopeId,
         double RequestedWidthDip,
         double RequestedHeightDip,
         double ActualRenderScaling,
@@ -742,7 +787,15 @@ internal static class EvidenceScenario
         double MaximumHorizontalEmptyAreaRatio,
         bool GeometryPassed);
 
-    private sealed record GeometryEvidence(
+    internal sealed record ResponsiveFixtureCapture(
+        WidgetPresentationFrame Frame,
+        Control SemanticRoot,
+        bool Compact,
+        IReadOnlyList<SemanticControlEvidence> Controls,
+        IReadOnlySet<string> ExpectedIds,
+        GeometryEvidence Geometry);
+
+    internal sealed record GeometryEvidence(
         double PageHostWidthDip,
         double SemanticRootWidthDip,
         double PageWidthUtilization,
@@ -765,7 +818,7 @@ internal static class EvidenceScenario
         int PixelHeight,
         string Sha256);
 
-    private sealed record SemanticControlEvidence(
+    internal sealed record SemanticControlEvidence(
         string NodeId,
         string ControlType,
         double X,

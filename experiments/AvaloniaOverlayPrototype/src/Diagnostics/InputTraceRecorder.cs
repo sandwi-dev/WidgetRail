@@ -30,9 +30,7 @@ internal sealed class InputTraceRecorder
         bool active,
         string? focusedSemanticId = null,
         string? detail = null,
-        bool? handled = null,
-        string? category = null,
-        string? proofSource = null)
+        bool? handled = null)
     {
         if (outputPath is null) return;
         lock (gate)
@@ -46,9 +44,7 @@ internal sealed class InputTraceRecorder
                 active,
                 focusedSemanticId,
                 detail,
-                handled,
-                category,
-                proofSource));
+                handled));
         }
     }
 
@@ -59,14 +55,6 @@ internal sealed class InputTraceRecorder
         lock (gate) snapshot = entries.ToArray();
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         var nativeRouted = snapshot.Any(entry => entry.EventName == "native-input-routed" && entry.Handled == true);
-        var deterministicRouted = snapshot.Any(entry =>
-            entry.EventName == "focused-controller-route-proof" && entry.Handled == true);
-        var handledCategories = snapshot
-            .Where(entry => entry.Handled == true && !string.IsNullOrWhiteSpace(entry.Category))
-            .Select(entry => entry.Category!)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
         var artifact = new InputTraceArtifact(
             "AVP-004-INTEGRATION",
             sourceCommit,
@@ -78,9 +66,9 @@ internal sealed class InputTraceRecorder
                 entry.Detail?.Contains("connected=True", StringComparison.OrdinalIgnoreCase) == true &&
                 entry.Detail?.Contains("GameInputVisibleLease", StringComparison.Ordinal) == true),
             nativeRouted,
-            deterministicRouted,
-            nativeRouted || deterministicRouted,
-            handledCategories);
+            false,
+            nativeRouted,
+            []);
         await File.WriteAllTextAsync(
             outputPath,
             JsonSerializer.Serialize(artifact, JsonOptions),
@@ -107,7 +95,5 @@ internal sealed class InputTraceRecorder
         bool Active,
         string? FocusedSemanticId,
         string? Detail,
-        bool? Handled,
-        string? Category,
-        string? ProofSource);
+        bool? Handled);
 }

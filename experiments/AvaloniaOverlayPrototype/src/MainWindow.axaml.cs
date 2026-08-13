@@ -72,20 +72,6 @@ public sealed partial class MainWindow : Window
     public PrototypeLifecycle Lifecycle => lifecycle;
     internal CandidateShutdownEvidence? LastShutdownEvidence { get; private set; }
 
-    internal void RecordFocusedControllerProof(IEnumerable<string> categories)
-    {
-        foreach (var category in categories)
-            inputTrace.Record(
-                "focused-controller-route-proof",
-                IsVisible,
-                IsActive,
-                FocusedSemanticId(),
-                "Exact-commit deterministic proof through shared router/focus/lifecycle regressions; not physical input.",
-                handled: true,
-                category,
-                proofSource: "focused-exact-commit");
-    }
-
     internal SkiaResourceCacheSnapshot CaptureSkiaResourceCache()
     {
         try

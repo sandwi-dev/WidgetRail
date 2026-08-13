@@ -419,6 +419,61 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
+    public async Task Responsive_evidence_retries_size_publication_until_authority_root_and_controls_are_coherent()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var initial = Frame("responsive-race.widget", 1, ButtonTree("old"));
+            var replacement = Frame("responsive-race.widget", 2, new ViewNode
+            {
+                Id = "replacement-root",
+                Kind = ViewNodeKind.Stack,
+                InputScopeId = "root-scope",
+                Children =
+                [
+                    new ViewNode
+                    {
+                        Id = "replacement-action",
+                        Kind = ViewNodeKind.Button,
+                        Text = "Replacement action",
+                        ActionId = "new",
+                    },
+                ],
+            });
+            var fake = new FakePresentationSession(initial);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => Equals(shell.AdmittedAuthority, initial.Authority));
+
+            var replacementPublished = false;
+            shell.SizeChanged += (_, _) =>
+            {
+                if (replacementPublished) return;
+                replacementPublished = true;
+                fake.Publish(replacement);
+            };
+            var capture = await EvidenceScenario.CaptureResponsiveFixtureAsync(
+                shell,
+                new Avalonia.Size(420, 340),
+                initial.Authority.WidgetId,
+                TimeSpan.FromSeconds(3));
+
+            Assert.IsTrue(replacementPublished, "The fixture must publish during the size transition.");
+            Assert.AreEqual(replacement.Authority, capture.Frame.Authority);
+            Assert.AreSame(shell.ActiveSemanticRoot, capture.SemanticRoot);
+            CollectionAssert.AreEquivalent(
+                new[] { "replacement-action" },
+                capture.Controls.Select(control => control.NodeId).ToArray());
+            Assert.IsTrue(capture.ExpectedIds.SetEquals(["replacement-action"]));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
     public async Task Generic_shell_translates_viewport_units_and_keeps_outer_root_allocation_host_owned()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -506,7 +561,7 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task Input_trace_separates_native_physical_observation_from_exact_shared_router_category_proof()
+    public async Task Input_trace_does_not_infer_controller_routes_or_categories_from_a_visible_native_lease()
     {
         var path = Path.Combine(Path.GetTempPath(), $"avp004-input-{Guid.NewGuid():N}.json");
         try
@@ -514,14 +569,6 @@ public sealed class IntegrationAdapterTests
             var trace = new InputTraceRecorder(path);
             trace.Record("native-controller-state", true, false,
                 detail: "connected=False;primed=False;readPath=GameInputVisibleLease;foregroundExclusive=False");
-            foreach (var category in new[]
-                     {
-                         "connected-visible-lease", "guide", "dpad", "left-stick", "a", "b",
-                         "tray", "content", "slider", "scroll", "repeat", "reconnect",
-                         "focus-loss", "hide-show",
-                     })
-                trace.Record("focused-controller-route-proof", true, false, handled: true,
-                    category: category, proofSource: "focused-exact-commit");
 
             await trace.FlushAsync("exact-commit");
             using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
@@ -529,9 +576,9 @@ public sealed class IntegrationAdapterTests
             Assert.IsTrue(root.GetProperty("NativeVisibleLeaseObserved").GetBoolean());
             Assert.IsFalse(root.GetProperty("NativeConnectedVisibleLeaseObserved").GetBoolean());
             Assert.IsFalse(root.GetProperty("NativeRoutedSemanticInputObserved").GetBoolean());
-            Assert.IsTrue(root.GetProperty("DeterministicSharedRouterProofObserved").GetBoolean());
-            Assert.IsTrue(root.GetProperty("RoutedSemanticInputObserved").GetBoolean());
-            Assert.HasCount(14, root.GetProperty("HandledCategories").EnumerateArray().ToArray());
+            Assert.IsFalse(root.GetProperty("DeterministicSharedRouterProofObserved").GetBoolean());
+            Assert.IsFalse(root.GetProperty("RoutedSemanticInputObserved").GetBoolean());
+            Assert.IsEmpty(root.GetProperty("HandledCategories").EnumerateArray().ToArray());
         }
         finally
         {
