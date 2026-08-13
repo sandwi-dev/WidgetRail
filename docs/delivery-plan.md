@@ -261,11 +261,10 @@ Windows prototype lifecycle; retained metrics and exact commit/runtime
 provenance; planner live launch and user visual verdict. No canonical product
 aggregate.
 
-Stop and report rather than working around the platform if controller access,
-transparency, topmost/no-taskbar behavior, a stationary tray, UIA, or bounded
-measurement requires production-host edits, privileged installation, external
-credentials, or undocumented window manipulation. Do not start AVP-003
-automatically; the planner and user test AVP-002 first.
+The historical AVP-002 stop condition was satisfied by the user's live
+controller and visual verdict. Its production-host, privilege, credential, and
+undocumented-window-manipulation prohibitions remain in force for later AVP
+experiments.
 
 ### Current assignment — AVP-003: production-stack architecture slice
 
