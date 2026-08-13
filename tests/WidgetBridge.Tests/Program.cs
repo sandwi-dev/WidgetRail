@@ -49,6 +49,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
     ("Two unrelated full-trust applications use one ordinary runtime", FullTrustCommunityScenarios.TwoApplicationsUseTheOrdinaryRuntime),
     ("Packaged Spotify uses the ordinary full-trust runtime", FullTrustCommunityScenarios.SpotifyUsesTheOrdinaryRuntime),
+    ("Packaged Game Launcher uses the ordinary full-trust runtime", FullTrustCommunityScenarios.GameLauncherUsesTheOrdinaryRuntime),
     ("Full-trust missing entrypoints and silent promotion fail closed", FullTrustCommunityScenarios.MissingEntrypointAndManifestPromotionFailClosed),
     ("Installed Community advanced presentation declarations are generic and generation owned", InstalledAdvancedPresentationDeclarationsAreGeneric),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),

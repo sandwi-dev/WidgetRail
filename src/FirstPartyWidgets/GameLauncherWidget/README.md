@@ -1,12 +1,12 @@
 # Game Launcher
 
-Game Launcher is the controller-first reference view over the trusted installed
-application library. Its maintained managed source can be exported as an ordinary
-Community repository that consumes only the packaged public SDK; the currently
-bundled entry remains unchanged until the generic host cutover. It can search,
-filter, organize, and launch only identities
-resolved through the app-library capability; saved display rows never grant launch
-authority.
+Game Launcher is the controller-first full-trust Community application for the
+installed game library. Its package owns Windows/Xbox and opt-in installed-store
+discovery, source health, opaque SavedId issuance, organization state, and exact
+launch revalidation. The host supplies only the generic Community application
+lifecycle and presentation channel; there is no Game Launcher capability,
+product-specific host API, or dependency on `PlatformBroker.dll` or
+`WindowsAppLibraryProvider.dll` in the package payload.
 
 Create a self-contained Community candidate from a built `gbar` distribution:
 
@@ -18,10 +18,19 @@ pwsh -NoProfile -File .\src\FirstPartyWidgets\GameLauncherWidget\Export-Communit
 
 The generated project contains no checkout `ProjectReference` or friend access.
 It restores the exact locally packaged `GameBarAlternative.WidgetSdk`, declares
-only app-library read plus optional running/launch capabilities, and packages as
-`org.gbar.community.reference.game-launcher` without changing the installed built-in entry.
+the reviewed `full-trust-application-v1` executable with no product capabilities,
+and packages as `org.gbar.community.reference.game-launcher`. Installation and
+enablement require the normal explicit full-trust disclosure.
 
-Every provider row enters the widget as one immutable normalized presentation
+Package-local files under
+`%LOCALAPPDATA%\GameBarAlternative\community-apps\org.gbar.community.reference.game-launcher`
+own the SavedId key, organization state, and source opt-ins. On first run the
+package imports only the existing Epic/GOG opt-in booleans and then owns its
+bounded `sources.json`. The retired overlay-host private-state representation is
+not reused; this is an intentional narrow pre-release organization-state reset.
+External store/account data and credentials are neither deleted nor copied.
+
+Every package source row enters the widget as one immutable normalized presentation
 containing its sanitized item/source identity, availability, role-keyed artwork,
 optional attributed metadata, closed capabilities, and optional operation. The
 widget keeps no parallel scalar model: unavailable retained rows are explicit
@@ -79,10 +88,10 @@ names its reason visibly and through accessibility. Such tiles remain reachable
 in controller navigation but Play stays disabled until a fresh current provider
 item grants exact launch capability. Retry replaces only the current failed read.
 Last-good browsing does not itself grant Play: activation always resolves the exact
-SavedId again. A local current Installed+Launch result may therefore launch while
-an unrelated catalog refresh is offline, while stale or missing exact evidence
-fails closed. Recovery preserves the selected collection, tile focus, and
-deduplicated Recent order.
+SavedId again against the package's current source catalog. A local current
+Installed+Launch result may therefore launch while an unrelated catalog refresh
+is offline, while stale or missing exact evidence fails closed. Recovery
+preserves the selected collection, tile focus, and deduplicated Recent order.
 
 An existing provider may also identify an owned game that is not installed.
 Those rows remain controller-navigable and say **Owned** rather than **Offline**.

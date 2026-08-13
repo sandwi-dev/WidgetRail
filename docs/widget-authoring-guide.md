@@ -156,6 +156,13 @@ OS APIs rather than product/domain capability contracts. Assembly/type fields
 and declared capabilities conflict with this runtime and fail manifest
 validation.
 
+The in-repository Game Launcher is the complete domain example: its Community
+package owns installed-game discovery, bounded caches and organization state,
+opaque SavedIds, source health, and exact launch revalidation while the host owns
+only generic package admission, lifecycle, IPC, and presentation. Its manifest
+declares no product capability, and its payload contains no product broker or
+app-library provider assembly.
+
 Pack the immutable application, then make the trust decision explicit on both
 installation and enablement:
 

@@ -1015,20 +1015,40 @@ static async Task ExternalGameLauncherCommunityReference()
         "dotnet", ["build", project, "-c", "Release", "--no-restore", "--nologo"],
         TimeSpan.FromSeconds(120), widget, environment);
     Assert.True(build.Code == 0, "game launcher build: " + build.Output + build.Error);
+    var applicationOutput = Path.Combine(
+        widget, "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
+    var staging = Path.Combine(repository, "game-launcher-package-root");
+    Directory.CreateDirectory(Path.Combine(staging, "payload"));
+    Directory.CreateDirectory(Path.Combine(staging, "styles"));
+    File.Copy(Path.Combine(widget, "manifest.json"), Path.Combine(staging, "manifest.json"));
+    File.Copy(Path.Combine(widget, "styles", "default.gbss"),
+        Path.Combine(staging, "styles", "default.gbss"));
+    foreach (var input in Directory.EnumerateFiles(
+                 applicationOutput, "*", SearchOption.AllDirectories)
+             .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
+                            !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
+                            !Path.GetFileName(path).Equals(
+                                "Microsoft.Windows.SDK.NET.dll", StringComparison.Ordinal)))
+    {
+        var destination = Path.Combine(
+            staging, "payload", Path.GetRelativePath(applicationOutput, input));
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        File.Copy(input, destination);
+    }
     var validation = await RunProcessAsync(
-        gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository, environment);
+        gbar, ["validate", staging], TimeSpan.FromSeconds(30), repository, environment);
     Assert.True(validation.Code == 0,
         "game launcher validate: " + validation.Output + validation.Error);
 
     var archive = Path.Combine(repository,
-        "org.gbar.community.reference.game-launcher-0.1.0.gbarwidget");
+        "org.gbar.community.reference.game-launcher-0.2.0.gbarwidget");
     var packed = await RunProcessAsync(
         gbar,
-        ["pack", widget, "--configuration", "Release", "--output", archive],
+        ["pack", staging, "--output", archive],
         TimeSpan.FromSeconds(150), repository, environment);
     Assert.True(packed.Code == 0, "game launcher pack: " + packed.Output + packed.Error);
     var installed = await RunProcessAsync(
-        gbar, ["install", archive, "--catalog", catalog],
+        gbar, ["install", archive, "--catalog", catalog, "--accept-full-trust"],
         TimeSpan.FromSeconds(60), repository, environment);
     Assert.True(installed.Code == 0,
         "game launcher install: " + installed.Output + installed.Error);
@@ -1040,11 +1060,20 @@ static async Task ExternalGameLauncherCommunityReference()
         manifest.AdvancedPresentation?.Kind);
     Assert.Equal(WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion,
         manifest.AdvancedPresentation?.SchemaVersion);
-    Assert.True(manifest.Permissions.SequenceEqual(["system.apps.library.read.v1"]),
-        "The Community reference did not declare its required app-library permission.");
-    Assert.True(manifest.OptionalPermissions.Order(StringComparer.Ordinal).SequenceEqual(
-        new[] { "system.apps.library.launch.v1", "system.apps.running.read.v1" }),
-        "The Community reference did not declare its optional launch/running permissions.");
+    Assert.Equal(WidgetEntrypointRuntimes.FullTrustApplicationV1,
+        manifest.Entrypoint.Runtime);
+    Assert.Equal("payload/GameLauncherApplication.exe", manifest.Entrypoint.Executable);
+    Assert.True(manifest.Permissions.Count == 0 && manifest.OptionalPermissions.Count == 0,
+        "The autonomous Community application retained product capability authority.");
+    Assert.True(File.Exists(Path.Combine(applicationOutput, "GameLauncherApplication.exe")),
+        "The exported Community application did not build its ordinary executable.");
+    foreach (var productAssembly in new[]
+             {
+                 "PlatformBroker.dll", "WindowsAppLibraryProvider.dll",
+                 "PlatformSettings.dll",
+             })
+        Assert.True(!File.Exists(Path.Combine(applicationOutput, productAssembly)),
+            $"The exported application retained product assembly {productAssembly}.");
     var snapshot = await new WidgetCatalog(catalog).DiscoverAsync();
     var candidate = snapshot.Widgets.Single();
     Assert.Equal(manifest.Id, candidate.Id);

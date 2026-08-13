@@ -5173,3 +5173,29 @@ No public protocol/SDK, residency policy, incremental Taffy/damage, aggregate,
 launch, capture, provider, packaging, or push work was performed. The linked
 host continuity route and physical retained-selection latency remain residual
 planner/user verification.
+### Autonomous full-trust Community Game Launcher (DLV-217)
+
+Game Launcher now ships as `org.gbar.community.reference.game-launcher` through
+the generic `full-trust-application-v1` runtime. The package executable owns its
+Windows/Xbox and opt-in installed-store source composition, source health, bounded
+cursor queries, opaque SavedId key, organization-state CAS file, running-app
+observation, and exact launch revalidation. It uses the public normalized SDK
+presentation values and generic application bootstrap; the staged payload contains
+neither `PlatformBroker.dll`, `WindowsAppLibraryProvider.dll`, nor
+`PlatformSettings.dll`, and the manifest declares no product capability.
+
+The external export produces the same autonomous executable from only the local
+public SDK package and copied package source. The ordinary catalog route requires
+explicit full-trust consent, starts the exact immutable executable without worker
+arguments or AppContainer identity, returns a valid credential-free snapshot, and
+supports disable/uninstall cleanup. Package-local organization state is a narrow
+pre-release reset from the retired overlay state; the existing Epic/GOG opt-in
+booleans are imported once, while external store/account data and credentials are
+left untouched. Game Launcher appears as Community; Games & Apps remains Built-in.
+Focused Release evidence passes Game Launcher 90/90, package-owned persistence
+3/3, Windows app-library source behavior 75/75, Gbar CLI/export/package 65/65,
+and Widget Bridge 88/88 including the ordinary full-trust application route. The
+supported package helper produced a 13-file, 1,952,494-byte immutable 0.2.0
+archive. Documentation validation reaches only the seven pre-existing broken
+links in reviewer-owned delivery-plan history; no implementation-owned document
+failure was reported.

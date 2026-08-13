@@ -204,6 +204,58 @@ internal static class FullTrustCommunityScenarios
             "The ordinary Spotify package did not disable and remove cleanly.");
     }
 
+    internal static async Task GameLauncherUsesTheOrdinaryRuntime()
+    {
+        var root = RepositoryRoot();
+        var applicationOutput = Path.Combine(
+            root, "src", "FirstPartyWidgets", "GameLauncherWidget", "Application",
+            "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
+        Check(File.Exists(Path.Combine(applicationOutput, "GameLauncherApplication.exe")),
+            "The package-owned Game Launcher application was not built.");
+        using var temporary = new ScenarioDirectory();
+        var package = CreateGameLauncherPackage(root, applicationOutput, temporary.Path);
+        var installedRoot = Path.Combine(temporary.Path, "installed");
+        var catalog = new CatalogService(installedRoot);
+        var installed = await catalog.InstallAsync(
+            package, WidgetPackageTrustApproval.FullTrustCurrentUser);
+        await catalog.SetEnabledAsync(
+            installed.Id, true, WidgetPackageTrustApproval.FullTrustCurrentUser);
+
+        var trustedCatalog = CreateTrustedCatalog(temporary.Path);
+        var load = await BridgeCatalog.LoadWithInstalledAsync(
+            trustedCatalog.CatalogPath, installedRoot, trustedCatalog.WorkerHostPath);
+        Check(load.InstalledCatalogValid && load.Warnings.Count == 0,
+            "The packaged Game Launcher application failed ordinary catalog admission.");
+        var configured = load.Catalog.GetConfigured(installed.Id);
+        AssertFullTrust(configured, "GameLauncherApplication.exe");
+        Check(configured.DeclaredCapabilities.Count == 0 &&
+              configured.WorkerArguments.Count == 0,
+            "Game Launcher retained a product capability or special host argument.");
+
+        var variable = "GBA_GAME_LAUNCHER_DATA_ROOT";
+        var previousRoot = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, Path.Combine(temporary.Path, "data"));
+        try
+        {
+            await using var client = Client(configured);
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+            var snapshot = await client.GetSnapshotAsync();
+            Check(snapshot.Root.Id == "game-launcher.root",
+                $"The ordinary full-trust route returned root '{snapshot.Root.Id}' " +
+                $"with focus '{snapshot.InitialFocusId ?? "<null>"}'.");
+            await client.StopAsync();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previousRoot);
+        }
+
+        await catalog.SetEnabledAsync(installed.Id, false);
+        var removed = await catalog.UninstallAsync(installed.Id);
+        Check(removed.RemovedVersions.Count == 1,
+            "The ordinary Game Launcher package did not disable and remove cleanly.");
+    }
+
     private static WidgetProcessClient Client(ConfiguredWidget configured) => new(new WidgetProcessOptions
     {
         ExecutablePath = configured.WorkerExecutable,
@@ -296,6 +348,36 @@ internal static class FullTrustCommunityScenarios
                 payload.Add(relative, bytes);
             }
         }
+    }
+
+    private static string CreateGameLauncherPackage(
+        string repositoryRoot,
+        string applicationOutput,
+        string destination)
+    {
+        var package = Path.Combine(
+            destination, "org.gbar.community.reference.game-launcher-0.2.0.gbarwidget");
+        using var stream = new FileStream(
+            package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+        var widgetRoot = Path.Combine(
+            repositoryRoot, "src", "FirstPartyWidgets", "GameLauncherWidget");
+        Write(archive, "manifest.json", File.ReadAllBytes(Path.Combine(
+            widgetRoot, "community-manifest.json")));
+        Write(archive, "styles/default.gbss", File.ReadAllBytes(Path.Combine(
+            widgetRoot, "styles", "default.gbss")));
+        foreach (var file in Directory.EnumerateFiles(
+                     applicationOutput, "*", SearchOption.AllDirectories)
+                 .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
+                                !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
+                                !Path.GetFileName(path).Equals(
+                                    "Microsoft.Windows.SDK.NET.dll", StringComparison.Ordinal))
+                 .Order(StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(applicationOutput, file).Replace('\\', '/');
+            Write(archive, "payload/" + relative, File.ReadAllBytes(file));
+        }
+        return package;
     }
 
     private static WidgetManifest Manifest(string id, string version, string executable) => new()

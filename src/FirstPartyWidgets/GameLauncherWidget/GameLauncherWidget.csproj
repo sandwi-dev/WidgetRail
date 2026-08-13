@@ -9,7 +9,11 @@
     <ProjectReference Include="..\..\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="Application\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="community-manifest.json" />
     <None Include="styles\default.gbss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

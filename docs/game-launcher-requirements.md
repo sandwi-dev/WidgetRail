@@ -152,17 +152,25 @@ The product has five ownership layers:
 Store/Windows state
         |
         v
-trusted source adapters ---- trusted operation queue / credential vault
+package-owned source adapters ---- package operation queue / credential vault
         |
         v
-normalized app-library broker (opaque IDs, capabilities, revisions)
+normalized package service (opaque IDs, capabilities, revisions)
         |
         v
-Game Launcher worker (view state, organization intent, no raw authority)
+Game Launcher Community application (view state, organization intent, exact launch)
         |
         v
 native host renderer + Launcher Experience Pack + accessibility policy
 ```
+
+The implemented Community package runs through the generic full-trust application
+bootstrap. The product host neither brokers Game Launcher discovery/launch nor
+ships a Game Launcher-specific capability. Windows/Xbox and opt-in installed-store
+adapters, caches, source health, organization persistence, SavedId issuance, and
+fresh launch revalidation are package-owned. This ordinary current-user authority
+is disclosed at install and enable time; it is not AppContainer isolation and does
+not grant authority to retained display rows.
 
 ### Source adapter contract
 

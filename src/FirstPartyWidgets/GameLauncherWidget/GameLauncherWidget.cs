@@ -27,6 +27,7 @@ public sealed class GameLauncherWidget : Widget
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
+    private readonly IGameLauncherApplicationService _application;
     private readonly WidgetCursorResource<GameLauncherItem> _library;
     private readonly WidgetNavigator<GameLauncherRoute> _navigation;
     private GameLauncherPrivateState _organization = GameLauncherPrivateState.Empty;
@@ -53,8 +54,13 @@ public sealed class GameLauncherWidget : Widget
     private string? _heroSavedId;
     private int _heroIndex;
 
-    public GameLauncherWidget()
+    public GameLauncherWidget() : this(null)
     {
+    }
+
+    internal GameLauncherWidget(IGameLauncherApplicationService? application)
+    {
+        _application = application ?? new HostGameLauncherApplicationService(() => HostServices);
         _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
             maximumDepth: 1, maximumRoutes: 8);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()
@@ -187,7 +193,7 @@ public sealed class GameLauncherWidget : Widget
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
         _library.Reset(invalidate: false);
-        return ValueTask.CompletedTask;
+        return _application.DisposeAsync();
     }
 
     public override async ValueTask OnActionAsync(
@@ -760,8 +766,8 @@ public sealed class GameLauncherWidget : Widget
         await _stateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var stored = await HostServices.PrivateState.ReadAsync<GameLauncherPrivateState>(
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            var stored = await _application.ReadStateAsync(cancellationToken)
+                .ConfigureAwait(false);
             var normalized = GameLauncherOrganizationPolicy.Normalize(
                 stored.Exists ? stored.Value : null);
             var revision = stored.Revision;
@@ -770,10 +776,8 @@ public sealed class GameLauncherWidget : Widget
                 GameLauncherCategoryPolicy.RequiresReset(stored.Value) ||
                 GameLauncherTitlePolicy.RequiresReset(stored.Value)))
             {
-                var reset = await HostServices.PrivateState.WriteAsync(
-                        normalized,
-                        stored.Revision,
-                        cancellationToken: cancellationToken)
+                var reset = await _application.WriteStateAsync(
+                        normalized, stored.Revision, cancellationToken)
                     .ConfigureAwait(false);
                 revision = reset.Revision;
             }
@@ -822,7 +826,7 @@ public sealed class GameLauncherWidget : Widget
         {
             if (direction is not null || cursor is not null)
                 throw new InvalidOperationException("Running apps are a single bounded page.");
-            var observed = await HostServices.AppLibrary.ObserveRunningAsync(cancellationToken)
+            var observed = await _application.ObserveRunningAsync(cancellationToken)
                 .ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             var running = observed.Items.Select(candidate => GameLauncherItem.From(
@@ -863,7 +867,7 @@ public sealed class GameLauncherWidget : Widget
             lock (_gate) _status = "Category is empty";
             return new([], null, null);
         }
-        var page = await HostServices.AppLibrary.QueryAsync(
+        var page = await _application.QueryAsync(
                 query,
                 requestCursor,
                 direction,
@@ -890,7 +894,7 @@ public sealed class GameLauncherWidget : Widget
                 .ToArray();
             IReadOnlyList<WidgetAppLibraryItem> resolved = fixedSavedIds.Length == 0
                 ? Array.Empty<WidgetAppLibraryItem>()
-                : await HostServices.AppLibrary.ResolveSavedAsync(
+                : await _application.ResolveSavedAsync(
                     fixedSavedIds, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
             var resolvedBySavedId = resolved.ToDictionary(
@@ -1058,7 +1062,7 @@ public sealed class GameLauncherWidget : Widget
             }
             collectionRevision = _library.Snapshot.Revision;
             Invalidate();
-            var resolved = await HostServices.AppLibrary.ResolveSavedAsync(
+            var resolved = await _application.ResolveSavedAsync(
                     [selected.Value.SavedId], lifetime.Token).ConfigureAwait(false);
             var current = resolved.SingleOrDefault(item => string.Equals(
                 item.SavedId, selected.Value.SavedId, StringComparison.Ordinal));
@@ -1070,7 +1074,7 @@ public sealed class GameLauncherWidget : Widget
                 !current.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch))
                 throw new WidgetCapabilityException(
                     "app_not_found", "The selected game is no longer available.");
-            var observation = await HostServices.AppLibrary.LaunchObservedAsync(
+            var observation = await _application.LaunchObservedAsync(
                     current.AppId,
                     WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
                     lifetime.Token).ConfigureAwait(false);
@@ -1271,7 +1275,7 @@ public sealed class GameLauncherWidget : Widget
             revision = _runningRevision;
         }
         if (revision is null) return;
-        var current = await HostServices.AppLibrary.ConfirmRunningAsync(
+        var current = await _application.ConfirmRunningAsync(
             candidate.Value.SavedId, revision, cancellationToken).ConfigureAwait(false);
         if (current is null)
         {
@@ -1452,10 +1456,9 @@ public sealed class GameLauncherWidget : Widget
             }
             var saved = await GameLauncherStateStore.SaveAsync(
                     apply,
-                    (state, expected, token) => HostServices.PrivateState.WriteAsync(
-                        state, expected, cancellationToken: token),
-                    token => HostServices.PrivateState.ReadAsync<GameLauncherPrivateState>(
-                        cancellationToken: token),
+                    (state, expected, token) => _application.WriteStateAsync(
+                        state, expected, token),
+                    token => _application.ReadStateAsync(token),
                     baseline,
                     revision,
                     cancellationToken)
