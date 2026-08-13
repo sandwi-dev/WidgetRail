@@ -1,9 +1,11 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Avalonia.Skia;
 using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Integration;
 using GameBarAlternative.AvaloniaPrototype.Lifecycle;
@@ -58,6 +60,26 @@ public sealed partial class MainWindow : Window
     public bool NativeLegacyGuidePollingRequired => platform?.RequiresLegacyGuidePolling == true;
     public PrototypeLifecycle Lifecycle => lifecycle;
 
+    internal SkiaResourceCacheSnapshot CaptureSkiaResourceCache()
+    {
+        try
+        {
+            var platformImpl = PlatformImpl;
+            if (platformImpl is null) return new(false, 0, 0, "Top-level platform unavailable");
+            var feature = platformImpl.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature))
+                as ISkiaSharpApiLeaseFeature;
+            if (feature is null) return new(false, 0, 0, "Skia lease feature unavailable");
+            using var lease = feature.Lease();
+            if (lease.GrContext is null) return new(false, 0, 0, "GPU GRContext unavailable");
+            lease.GrContext.GetResourceCacheUsage(out var resourceCount, out var resourceBytes);
+            return new(true, resourceCount, resourceBytes, null);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new(false, 0, 0, exception.GetType().Name);
+        }
+    }
+
     public async Task ShutdownAsync()
     {
         if (shutdownComplete) return;
@@ -74,7 +96,7 @@ public sealed partial class MainWindow : Window
         }
         if (integratedShell is not null)
         {
-            integratedShell.Coordinator.FramePublished -= OnIntegratedFramePublished;
+            integratedShell.FrameAdmitted -= OnIntegratedFrameAdmitted;
             await integratedShell.DisposeAsync();
             integratedShell = null;
         }
@@ -99,7 +121,7 @@ public sealed partial class MainWindow : Window
             bridgeHost = await BridgeProcessHost.StartAsync(installation);
             var coordinator = new WidgetIntegrationCoordinator(bridgeHost.Session, new AvaloniaUiScheduler());
             integratedShell = new IntegratedShellView(coordinator, PrototypeArguments.Current.ReducedMotion);
-            integratedShell.Coordinator.FramePublished += OnIntegratedFramePublished;
+            integratedShell.FrameAdmitted += OnIntegratedFrameAdmitted;
             Content = integratedShell;
 
             var nativePath = Path.Combine(installation, "OverlayPlatformInterop.dll");
@@ -281,7 +303,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnIntegratedFramePublished(object? sender, GameBarAlternative.WidgetPresentationSession.WidgetPresentationFrame frame)
+    private void OnIntegratedFrameAdmitted(object? sender, GameBarAlternative.WidgetPresentationSession.WidgetPresentationFrame frame)
     {
         if (platform is null || Screens.ScreenFromWindow(this) is not { } screen) return;
         if (!string.Equals(platformWidgetId, frame.Authority.WidgetId, StringComparison.Ordinal))
@@ -301,10 +323,14 @@ public sealed partial class MainWindow : Window
             desiredWidth,
             desiredHeight);
         if (placement is not { } value) return;
+        LastComputedPlacement = value;
+        if (!string.IsNullOrWhiteSpace(PrototypeArguments.Current.EvidencePath)) return;
         Position = value.Position;
         Width = value.Width / scaling;
         Height = value.Height / scaling;
     }
+
+    internal PixelRect? LastComputedPlacement { get; private set; }
 
     private static string ResolveInstallationRoot(string? requested)
     {
@@ -326,3 +352,9 @@ public sealed partial class MainWindow : Window
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }
+
+internal sealed record SkiaResourceCacheSnapshot(
+    bool Available,
+    int ResourceCount,
+    long ResourceBytes,
+    string? UnavailableReason);

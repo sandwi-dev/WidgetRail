@@ -199,10 +199,12 @@ public sealed class IntegrationAdapterTests
             ],
         };
         var frame = Frame("responsive.widget", 3, root);
-        var compact = Renderer().Render(frame, true);
-        var expanded = Renderer().Render(frame, false);
-        CollectionAssert.AreEqual(new[] { "compact" }, VisibleSemanticIds(compact));
-        CollectionAssert.AreEqual(new[] { "expanded" }, VisibleSemanticIds(expanded));
+        using var renderer = Renderer();
+        var semantic = renderer.Render(frame, true);
+        CollectionAssert.AreEqual(new[] { "compact" }, VisibleSemanticIds(semantic));
+        Assert.IsTrue(renderer.SetCompact(semantic, false));
+        CollectionAssert.AreEqual(new[] { "expanded" }, VisibleSemanticIds(semantic));
+        Assert.AreEqual(1, renderer.TrackedRenderCount);
     }
 
     [TestMethod]

@@ -72,6 +72,21 @@ public sealed class SemanticTreeRenderer : IDisposable
     public int GetRealizedControlCount(Control semanticRoot) =>
         ownedRenders.TryGetValue(semanticRoot, out var context) ? context.RealizedControlCount : 0;
 
+    public bool SetCompact(Control semanticRoot, bool compact)
+    {
+        if (!ownedRenders.TryGetValue(semanticRoot, out var context) || context.Compact == compact)
+            return false;
+        context.Compact = compact;
+        foreach (var (control, visibility) in context.ResponsiveControls)
+            control.IsVisible = visibility switch
+            {
+                ResponsiveVisibility.CompactOnly => compact,
+                ResponsiveVisibility.ExpandedOnly => !compact,
+                _ => true,
+            };
+        return true;
+    }
+
     public void Release(Control semanticRoot)
     {
         if (!ownedRenders.Remove(semanticRoot, out var context)) return;
@@ -90,8 +105,6 @@ public sealed class SemanticTreeRenderer : IDisposable
 
     private Control RenderNode(ViewNode node, RenderContext context)
     {
-        if (!IsVisible(node, context)) return new Border { IsVisible = false };
-
         Control control = node.Kind switch
         {
             ViewNodeKind.Stack => RenderStack(node, Orientation.Vertical, context),
@@ -136,6 +149,12 @@ public sealed class SemanticTreeRenderer : IDisposable
             ViewNodeKind.TextEntry => RenderTextEntry(node),
             _ => throw new ArgumentOutOfRangeException(nameof(node.Kind)),
         };
+
+        if (node.VisibleWhen is { } visibility and not ResponsiveVisibility.Always)
+        {
+            control.IsVisible = IsVisible(node, context);
+            context.ResponsiveControls.Add((control, visibility));
+        }
 
         context.RealizedControlCount++;
         ApplyIdentity(control, node, context);
@@ -567,10 +586,11 @@ public sealed class SemanticTreeRenderer : IDisposable
     private sealed class RenderContext(WidgetPresentationFrame frame, bool compact)
     {
         public WidgetPresentationFrame Frame { get; } = frame;
-        public bool Compact { get; } = compact;
+        public bool Compact { get; set; } = compact;
         public RenderResources Resources { get; } = new();
         public Dictionary<string, Control> FocusableById { get; } = new(StringComparer.Ordinal);
         public List<(Control Control, FocusNeighbors Neighbors)> PendingNeighbors { get; } = [];
+        public List<(Control Control, ResponsiveVisibility Visibility)> ResponsiveControls { get; } = [];
         public int RealizedControlCount { get; set; }
     }
 

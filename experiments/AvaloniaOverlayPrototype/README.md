@@ -68,9 +68,10 @@ powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Measu
 It rebuilds the retained product package without tests, publishes a copied
 candidate, cycles every currently installed catalog widget through the ordinary
 bridge/runtime/domain path and same adapter, exercises 420x340, 978x466,
-standard, and wide logical surfaces, records UIA/containment/scroll clipping and
-transition phases, then samples the candidate/bridge/worker process tree visible
-and hidden. Ownership checkpoints separate managed live/heap bytes, decoded
+standard, and wide logical Avalonia viewports over one backing surface, records
+UIA/containment/scroll clipping and transition phases, then separately samples
+the candidate and complete bridge/worker process tree visible and hidden.
+Ownership checkpoints separate managed live/heap bytes, decoded
 bitmap count/bytes, tracked render trees, pending artwork, and remaining
 native/Skia/render-target/other unattributed candidate memory. The ignored exact runtime and JSON are under
 `artifacts/avp004`; see [evidence/README.md](evidence/README.md).
@@ -86,8 +87,11 @@ Close the production OverlayHost before physical evaluation so only one process
 owns the extracted platform service. Physical Guide/controller feel, compositor
 transparency, mixed-monitor DPI/clipping, and credential-gated Community behavior
 remain planner/user verdicts. The candidate records whether the visible process
-tree is below 350 MiB and enforces the user's 500 MiB ceiling; GPU cost remains
-unavailable without an authorized ETW/PresentMon lane.
+is below 350 MiB and enforces the assigned 500-MiB candidate ceiling. The
+complete ordinary runtime tree remains reported separately. GPU and native
+allocation traces were unavailable because Windows system-performance profiling
+policy rejected the bounded WPR probe; the in-process top-level Skia lease was
+also unavailable, and both limits are retained rather than misattributed.
 
 The performance audit follows Avalonia's official guidance: large lists remain
 height-constrained and recycling with uniform 88-DIP rows and Avalonia 12.1.1's
@@ -97,3 +101,11 @@ decorative text/icons/images skip hit testing; superseded pages are removed
 rather than retained at opacity zero; the unnecessary page-host clip is gone;
 and compiled bindings remain enabled. No `BitmapCache` or Skia GPU-cache increase
 was added because both can increase memory and require supporting measurement.
+Phase isolation associated the private-byte jump with CrossFade overlapping
+top-level resize and with whole-tree compact/expanded reprojection—not the
+managed heap, decoded artwork, pending artwork, tracked trees, or an observable
+Skia cache. Production placement now applies after exact frame admission, while
+responsive visibility switches only protocol-declared nodes in place with
+`IsVisible`. Production launches still apply native DPI/work-area surface hints;
+the exact responsive matrix records each real logical viewport and its fixed
+backing-surface dimensions.

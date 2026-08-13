@@ -182,6 +182,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     }
 
     public WidgetIntegrationCoordinator Coordinator => coordinator;
+    public event EventHandler<WidgetPresentationFrame>? FrameAdmitted;
     public PageTransitionPresenter TransitionPresenter => transitionPresenter;
     public Control? ActivePage => transitionPresenter.AdmittedPage;
     public IReadOnlyList<Button> TrayButtons => trayButtons.Values.ToArray();
@@ -202,6 +203,15 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     internal string? LastFocusRestorationOutcome { get; private set; }
     internal string? LastRestoredSemanticId { get; private set; }
     internal string? LastRequestedFocus { get; private set; }
+
+    internal void SetEvidenceViewport(Size viewport)
+    {
+        Width = viewport.Width;
+        Height = viewport.Height;
+        HorizontalAlignment = HorizontalAlignment.Left;
+        VerticalAlignment = VerticalAlignment.Top;
+        UpdateLayout();
+    }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -495,6 +505,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             FocusRestorationPending = false;
         }
         suppressFocusMemory = false;
+        FrameAdmitted?.Invoke(this, frame);
     }
 
     private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -529,11 +540,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         var wasCompact = args.PreviousSize.Width <= 700 || args.PreviousSize.Height <= 430;
         if (wasCompact == IsCompact) return;
         RememberCurrentFocus();
-        var replacement = RenderPage(renderedFrame);
-        var prior = admittedPresentation;
-        transitionPresenter.ReplaceWithoutTransition(replacement.Page);
-        admittedPresentation = replacement;
-        renderer.Release(prior.SemanticRoot);
+        renderer.SetCompact(admittedPresentation.SemanticRoot, IsCompact);
+        admittedPresentation.Page.UpdateLayout();
     }
 
     private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs args)
@@ -656,7 +664,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private static bool IsWithin(Control child, Control root) =>
         ReferenceEquals(child, root) || child.GetVisualAncestors().Contains(root);
     private static bool IsFocusable(Control control) =>
-        control.Focusable && control.IsVisible && control.IsEffectivelyEnabled;
+        control.Focusable && control.IsEffectivelyVisible && control.IsEffectivelyEnabled;
     private static string Encode(string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value))
         .TrimEnd('=').Replace('+', '-').Replace('/', '_');
     private static string Glyph(WidgetGlyph glyph) => glyph switch

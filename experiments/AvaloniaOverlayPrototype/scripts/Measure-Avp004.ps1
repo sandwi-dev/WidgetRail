@@ -96,7 +96,7 @@ if (-not $measurement.responsiveEvidencePassed) { throw 'Responsive containment/
 if (-not $measurement.transitionSurfaceDiagnosticsPassed) { throw 'Transition start/mid/end surface evidence failed.' }
 if (-not $measurement.nodeKindCoverage.retainedFinalVerificationPassed) { throw 'Combined ordinary lifecycle and focused generic node-kind verification failed.' }
 if (-not $measurement.resourceOwnership.supersededResourcesReleased) { throw 'Superseded render or artwork resources remained owned at the visible sample.' }
-if (-not $measurement.visiblePrivateMemoryUnder500MiB) { throw 'Visible candidate process tree exceeded 500 MiB.' }
+if (-not $measurement.candidatePrivateMemoryUnder500MiB) { throw 'Visible Avalonia candidate exceeded 500 MiB.' }
 if ($measurement.pageTransition -ne 'CrossFade') { throw 'The candidate did not retain Avalonia CrossFade.' }
 
 Write-Host "Retained AVP-004 measurement: $measurementPath"

@@ -16,20 +16,26 @@ instance/snapshot/input-scope identity, semantic node kinds, standard UIA and
 bounded realization counts, compact/978/standard/wide containment or honest
 ScrollViewer clipping, native CrossFade start/mid/end surface diagnostics, the
 active monitor render scale, native GameInput/legacy-policy state, startup and
-switch timing, and visible/hidden candidate process-tree CPU/private memory.
+switch timing, and visible/hidden candidate plus complete process-tree CPU/private memory.
 Ordinary lifecycle node kinds remain separate from the focused generic mapping
 proof; the retained final assertion combines both without overstating ordinary emission.
 
-After the all-widget responsive traversal, the harness returns the visible shell
-to the representative 1180 x 680 fixture, waits for the native CrossFade to
-complete, and collects unreachable managed evidence-only visual churn before
-sampling. It still includes every live candidate, bridge, widget-worker, and
-provider/application helper in the retained process-tree total.
+The responsive traversal retains one 1440 x 810 compositor backing surface and
+applies 420 x 340, 978 x 466, 1180 x 680, and 1440 x 810 as real Avalonia shell
+viewports. This preserves layout, reflow, scrolling, UIA, and render-scaling
+evidence without repeatedly reallocating an HWND/swap-chain surface for logical
+fixtures. Production launches still apply retained native DPI/work-area
+placement after exact frame admission. The final sample separately reports the
+Avalonia candidate and every live bridge, widget-worker, and provider/application
+helper; the hard 500-MiB assignment applies to the visible candidate.
 
 Ownership checkpoints retain candidate private memory, managed live bytes and GC
 heap size, live render-tree count, decoded bitmap count/bytes, pending artwork,
-and native/Skia/render-target/other unattributed bytes at initial frame, after the
-8-widget x 4-size traversal, after visible settle, and after hide. Acceptance
+and native/Skia/render-target/other unattributed bytes around each widget
+CrossFade, logical-size change, artwork settle, traversal, hide, and show. The
+bounded WPR native/GPU/composition probe was denied by Windows performance-
+profiling policy and the top-level Skia lease feature was unavailable, so those
+owners remain explicitly unavailable rather than receiving invented byte counts. Acceptance
 requires exactly one settled render tree and no pending artwork; forced GC is
 only a settle aid, not the acceptance criterion.
 
