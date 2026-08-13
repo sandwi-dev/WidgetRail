@@ -1,10 +1,11 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 22:56 -07:00
+Status: reviewer-owned production and Avalonia-evaluation execution queue,
+2026-08-13 00:00 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
-Execution owners: widgets and platform
+Execution owners: widgets, platform, and isolated Avalonia prototype
 
 This file is the sole authority for implementation selection. The complete
 pre-compaction state is preserved in
@@ -67,6 +68,13 @@ evidence, not implementation authority.
 - Launcher Experience packs remain data-only and host-owned. A Community
   application may opt into a generic declared presentation contract, but gains
   no data/provider/launch/file/script/global-settings authority from it.
+- Avalonia is the leading replacement candidate for the custom native UI stack.
+  Evaluation happens only under `experiments/AvaloniaOverlayPrototype`. No
+  production renderer migration, GBSS removal, or widget cutover is implied
+  until the user accepts retained AVP evidence and a migration architecture.
+- Hold DLV-216, DLV-217, and DLV-218 during AVP-001 and the architecture
+  decision. Those milestones assume the current declarative presentation path
+  and would create avoidable migration or deletion work.
 
 ## Execution protocol
 
@@ -97,20 +105,100 @@ Implementation tasks follow
 - No push, external credentials, external publication, destructive recovery,
   or substantial conflict resolution.
 
+## Avalonia prototype lane
+
+Task: Implementation agent — Avalonia prototype lane
+
+Branch: codex/avalonia-prototype
+
+### Current assignment — AVP-001: transparent Avalonia overlay shell
+
+State: Assigned from the reviewer planning commit that introduces this lane.
+This is an isolated feasibility project, not a production migration.
+
+Create `experiments/AvaloniaOverlayPrototype` as a clean .NET 10 solution using
+the current stable Avalonia packages. Do not reference or copy the production
+native renderer, layout engine, GBSS implementation, focus engine,
+accessibility provider, or giant host classes. Small immutable fixture data may
+be newly authored to reproduce representative content.
+
+Build one real Windows prototype process with:
+
+- a transparent, borderless, topmost overlay window and a nonmoving icon tray;
+- internal open/close and widget-switch transitions inside a stable top-level
+  surface rather than repeated HWND resizing;
+- four Avalonia-authored representative first pages: Settings, Audio Mixer,
+  Spotify Player, and Game Launcher;
+- long labels, missing artwork, asynchronous destination readiness, a scrolling
+  application list, buttons, and sliders;
+- Avalonia styles/themes only; no GBSS adapter in AVP-001;
+- keyboard navigation through the same logical directions/actions expected
+  from a controller, with Escape/B Back semantics. GameInput/SDL and remote
+  widget surfaces belong to later AVP milestones.
+
+Acceptance criteria:
+
+1. The prototype builds Release through one bounded documented command and can
+   be launched visibly by the planner from its isolated worktree or accepted
+   integrated experiment path.
+2. At 1280x720, 1920x1080, and 2560x1440 logical work-area fixtures, plus 100%,
+   125%, and 150% scale, every representative first page keeps its title,
+   primary content, buttons, controller-help text, and tray within the client
+   bounds. Overflowing collections use an actual `ScrollViewer`.
+3. Switching between every page retains one stationary tray and never displays
+   an opaque/black fallback background in the prototype's own complete-frame
+   diagnostics. Destination loading retains the admitted previous page until a
+   complete replacement is ready.
+4. Keyboard arrows move focus, Enter activates, Escape/B returns to the prior
+   prototype surface, sliders remain adjustable, and scrolling can move down
+   and back to the first item. Focus indicators remain fully visible.
+5. Standard Avalonia controls expose nonempty stable AutomationIds, names,
+   control types, focus, Invoke, and RangeValue semantics in a focused Windows
+   UIA smoke where supported. Do not build a parallel custom accessibility
+   tree.
+6. Retain a sanitized measurement artifact separating hidden and visible
+   prototype process private memory, idle CPU over a bounded interval, cold
+   start-to-first-complete-frame, and switch-to-complete-frame samples. Report
+   unavailable metrics honestly. Initial evaluation thresholds are less than
+   250 MiB host private memory for the representative visible shell and
+   effectively idle hidden rendering; they are decision evidence, not
+   production enforcement code.
+7. Tests cover responsive containment from emitted Avalonia bounds, navigation,
+   scroll round-trip, retained-loading state, transition supersession, and
+   hidden lifecycle. Do not infer physical visual quality from malformed or
+   clipped screenshots.
+
+Required evidence: focused Release unit/component tests; one copied ordinary
+Windows prototype lifecycle; retained metrics and exact commit/runtime
+provenance; planner live launch and user visual verdict. No canonical product
+aggregate.
+
+Stop and report rather than working around the platform if transparency,
+topmost/no-taskbar behavior, a stationary tray, UIA, or bounded measurement
+requires production-host edits, privileged installation, external credentials,
+or undocumented window manipulation. Do not start AVP-002 automatically; the
+planner reviews AVP-001 and the user tests it first.
+
+### Avalonia Ready queue
+
+None. AVP-002 through AVP-006 remain planned architecture experiments and will
+be assigned only after AVP-001 evidence establishes that the host direction is
+viable.
+
 ## Widgets lane
 
 Task: Implementation agent — widgets lane
 
 Branch: codex/impl-widgets
 
-### Current assignment — none; waiting for DLV-215
+### Current assignment — none; held during Avalonia evaluation
 
 DLV-219 is accepted through main 01af13c. Every non-root Launcher Experience
 projection now advertises the ordinary B-to-`back` shortcut while retaining its
 existing Back/Cancel control, exact parent transition, and focus policy. The
 focused Release Settings suite passed 60/60. The widgets lane must remain at
 this clean boundary until DLV-215 is accepted and integrated; do not start
-DLV-216 against the AppContainer-only runtime.
+DLV-216 against the AppContainer-only runtime or current declarative renderer.
 
 ### Accepted dependency — DLV-212
 
@@ -122,7 +210,7 @@ architecture. DLV-217 replaces its framework-owned domain authority.
 
 ### Widgets Ready queue
 
-1. **Awaiting accepted and integrated DLV-215 — DLV-216: make Spotify an
+1. **Held for the Avalonia architecture decision — DLV-216: make Spotify an
    autonomous full-trust Community application.**
 
    Move Spotify OAuth, Web API, Web Playback host/protocol, token storage,
@@ -140,7 +228,7 @@ architecture. DLV-217 replaces its framework-owned domain authority.
    code yet; DLV-218 owns deletion after cutover. No native renderer work,
    publication, capture gate, or secrets.
 
-2. **After accepted DLV-213, DLV-215, and DLV-216 — DLV-217: make Game Launcher
+2. **Held for the Avalonia architecture decision — DLV-217: make Game Launcher
    the autonomous full-trust Community flagship and cut it over.**
 
    Move or export Windows/Xbox and opt-in store discovery, metadata/artwork
@@ -263,7 +351,7 @@ ancestry is accepted and integrated.
    output and provenance. No full-trust API redesign, Community-domain work,
    DLV-210 layout change, broad test migration, or unrelated flaky-test cleanup.
 
-4. **Awaiting accepted DLV-216 and DLV-217 — DLV-218: remove retired
+4. **Held until the Avalonia decision and accepted DLV-216/DLV-217 — DLV-218: remove retired
    Community-domain code from the product core.**
 
    Remove external.spotify.*, WidgetSdk/SpotifyService.cs, the PlatformBroker

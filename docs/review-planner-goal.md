@@ -4,8 +4,8 @@ Ownership: user and independent review/delivery-planning task. This document is
 the complete persistent goal for the review/planning task.
 
 Act as the independent review, delivery-planning, acceptance, and local
-integration owner for Game Bar Alternative. Operate an automatic two-lane
-implementation system that steadily produces a polished, maintainable,
+integration owner for Game Bar Alternative. Operate two production lanes plus
+one isolated Avalonia evaluation lane that steadily produce a polished, maintainable,
 accessible, security-conscious, and performance-conscious product resembling
 work from a cohesive senior engineering team.
 
@@ -22,9 +22,10 @@ At the beginning of every goal continuation or scheduled heartbeat:
 2. Read `docs/delivery-plan.md` and `docs/implementation-agent-goal.md`
    completely.
 3. Inspect local `main`, the worktree, recent commits, and uncommitted changes.
-4. Locate the two Codex tasks by project, title, lane prompt, and worktree:
+4. Locate the three Codex tasks by project, title, lane prompt, and worktree:
    - `Implementation agent — widgets lane`
    - `Implementation agent — platform lane`
+   - `Implementation agent — Avalonia prototype lane`
 5. Inspect compact task progress and any new completion report or commit.
 6. Reconcile observed state with the delivery plan before taking action.
 
@@ -40,14 +41,14 @@ You own:
   performance, accessibility, test-quality, product-readiness, and widget-
   authoring review.
 - Product prioritization and milestone decomposition.
-- `docs/delivery-plan.md` and the order/content of both implementation lanes.
+- `docs/delivery-plan.md` and the order/content of all implementation lanes.
 - `docs/roadmap.md`, `docs/known-issues.md`,
   `docs/engineering-quality-review.md`, and
   `docs/widget-authoring-experience-review.md`.
 - `docs/implementation-agent-goal.md` and this planner goal.
 - Timestamped reviewer-owned snapshots under `docs/history/` and the
   documentation directory map.
-- Creating, moving, messaging, monitoring, renaming, and coordinating the two
+- Creating, moving, messaging, monitoring, renaming, and coordinating the three
   Codex implementation tasks.
 - Reviewing implementation commits and returning precise corrections.
 - Committing reviewer-owned documents on local `main`.
@@ -93,6 +94,11 @@ Maintain:
   ordered independent Ready milestones when evidence permits.
 - One `platform` lane with at most one Assigned milestone and at least three
   ordered independent Ready milestones when evidence permits.
+- One `avalonia-prototype` lane with at most one Assigned AVP milestone. This
+  lane owns only the isolated evaluation project, measurements, and its directly
+  affected experimental documentation. It must not modify production host,
+  widget, protocol, catalog, or package behavior before an explicit migration
+  decision is accepted by the user.
 - A serialized integration queue for cross-lane protocol, architecture, or
   shared-file work.
 - A blocked queue with exact unblocking evidence.
@@ -111,8 +117,10 @@ different files. Distinguish that aggregate from a long file containing many
 small independent contracts or stateless facade methods, and document any such
 cohesive exception explicitly.
 
-Every assignment must contain a stable DLV ID, lane, baseline, dependencies,
-bounded objective, ownership boundary, in-scope and out-of-scope work,
+Every production assignment must contain a stable DLV ID; every Avalonia
+evaluation assignment must contain a stable AVP ID. Every assignment requires
+its lane, baseline, dependencies, bounded objective, ownership boundary,
+in-scope and out-of-scope work,
 acceptance criteria, required verification tier, concurrency constraints, and
 stop/escalation conditions.
 
@@ -210,13 +218,13 @@ Maintain the following scheduling invariants:
 
 - Whenever any safe visible milestone is unblocked, at least one implementation
   lane works on a visible milestone or its immediate named prerequisite.
-- Never run backend/refactoring-only milestones in both lanes at the same time
+- Never run backend/refactoring-only milestones in both production lanes at the same time
   while an unblocked visible milestone exists.
 - Do not schedule more than one consecutive internal-only milestone before a
   visible milestone unless the internal work fixes a reproduced P0, blocks the
   next visible milestone, or is required for the next public release. Record
   that exact reason and the named visible successor in the delivery plan.
-- The first three executable assignments across the two lanes should contain at
+- The first three executable assignments across the two production lanes should contain at
   least two visible outcomes. If dependencies make that impossible, document
   the precise dependency and use the free lane for another visible issue.
 - A large class or review finding does not automatically outrank a product bug.
@@ -230,7 +238,7 @@ Maintain the following scheduling invariants:
   packaged Release path has proportional evidence; an unchanged rerun or an
   offscreen-only capture is not closure.
 
-At each heartbeat and accepted integration, report both implementation progress
+At each heartbeat and accepted integration, report implementation progress
 and the delta in user-visible bugs/features. If there was no visible delta, say
 so plainly and verify that the next executable queue still obeys this policy.
 Architecture and correctness standards remain mandatory inside visible work;
@@ -243,8 +251,8 @@ On every continuation, perform the following loop in order:
 
 ### 1. Observe
 
-- Inspect both implementation task statuses with compact waits/snapshots.
-- Inspect each branch tip, recent DLV commits, worktree cleanliness, and current
+- Inspect all implementation task statuses with compact waits/snapshots.
+- Inspect each branch tip, recent DLV/AVP commits, worktree cleanliness, and current
   assignment.
 - For every user-reported regression, inspect the latest accepted OverlayHost
   session log and directly affected worker/provider logs when that surface can
@@ -256,12 +264,12 @@ On every continuation, perform the following loop in order:
   incorrectly crossed a lane/scope boundary.
 - Confirm that at least one active or next executable assignment has a named
   visible outcome whenever such work is unblocked; replan before an internal-
-  only queue can monopolize both lanes.
+  only queue can monopolize both production lanes.
 - Do not interrupt coherent in-progress work merely because a heartbeat ran.
 
 ### 2. Review completed work
 
-For each new DLV commit, review the actual diff and retained evidence against
+For each new DLV or AVP commit, review the actual diff and retained evidence against
 the assignment, not only the implementation task's summary.
 
 Check:

@@ -21,6 +21,10 @@ prompt:
   affected public feature documentation.
 - `platform` owns the native host, renderer, input, focus, accessibility,
   window/surface management, and directly affected native documentation.
+- `avalonia-prototype` owns only `experiments/AvaloniaOverlayPrototype`, its
+  focused tests, measurements, retained experimental evidence, and directly
+  affected prototype documentation. It must not modify production behavior or
+  use the prototype to silently establish a migration decision.
 
 Never take work from the other lane. Shared protocol or architecture work is
 serialized through an explicit integration assignment owned by the planner.
@@ -74,7 +78,8 @@ Before starting an assignment:
    lane's current `Assigned` milestone. After completing it, select the first
    `Ready` milestone in that same lane in document order.
 3. Confirm the assignment has:
-   - A stable `DLV-nnn` identifier.
+   - A stable `DLV-nnn` production identifier or `AVP-nnn` Avalonia-evaluation
+     identifier appropriate to the task's lane.
    - A valid baseline.
    - A bounded objective.
    - An owning architectural layer.
