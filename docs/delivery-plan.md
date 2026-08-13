@@ -668,16 +668,18 @@ M3 operations require separately reviewed trusted providers.
 
 Task: `Implementation agent — platform lane`
 
-Branch: `codex/impl-platform-community` (create from accepted main `56a09fb`;
-retain `codex/impl-platform-switch` as historical DLV-209/DLV-205 work)
+Branch: `codex/impl-platform-community` (create from current planner main, whose
+accepted product baseline is `56a09fb`; retain `codex/impl-platform-switch` as
+historical DLV-209/DLV-205 work)
 
 ### Current assignment — DLV-213: generic Community advanced presentation
 
-**State:** Assigned from accepted main `56a09fb`. DLV-209 is accepted and
-integrated; DLV-212 is accepted and integrated through `5a6ce0b`. At the clean
-platform boundary, create `codex/impl-platform-community` from exact main
-`56a09fb` so the superseded private DLV-205 ancestry does not enter this public
-contract milestone. Then execute the first Ready item below without waiting.
+**State:** Assigned from current planner main with accepted product baseline
+`56a09fb`. DLV-209 is accepted and integrated; DLV-212 is accepted and
+integrated through `5a6ce0b`. At the clean platform boundary, create
+`codex/impl-platform-community` from current main so the superseded private
+DLV-205 ancestry does not enter this public contract milestone. Then execute
+the first Ready item below without waiting.
 
 **Objective/acceptance:** implement DLV-213 exactly as the first Platform Ready
 item below. As a bounded adjacent cleanup, rename the internal tray gesture
