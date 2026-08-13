@@ -14,13 +14,14 @@ implementation work.
   the independently accepted AVP-004 source correction through `b998d62`,
   integrated as `9688455`. No production renderer cutover is implied.
 - Latest reviewed Avalonia implementation: source `b998d62` on
-  `codex/avalonia-prototype`, integrated through main `9688455`. Automated
-  source acceptance is complete; physical display/controller acceptance is
-  pending on the exact visibly launched main candidate.
+  `codex/avalonia-prototype`, integrated through main `9688455`. Its automated
+  source evidence remains accepted, but the user's second physical
+  display/controller verdict rejects AVP-004 and reopens the candidate.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
-  kept closed during the isolated physical test. The exact main AVP-004 copied
-  runtime is visibly running as PID 33332 for user testing.
+  kept closed during the isolated physical test. Rejected AVP PIDs 33332 and
+  27020 were stopped after the candidate's normal close path failed; no overlay
+  is currently visible.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -80,7 +81,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Source `b998d62` accepted and integrated as `9688455`; exact candidate PID 33332 awaits physical AVP-004 verdict; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004 physical layout/controller correction reopened from source `b998d62` / main `71926c3`; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -481,6 +482,54 @@ Controller trace truthfully records the native visible lease but no connected
 physical controller or routed input. AVP-004 therefore remains open only for
 the user's eight-widget visual, Guide, and physical controller verdict; do not
 start AVP-005 or production cutover.
+
+The user's second physical walkthrough rejects that candidate. D-pad input did
+not work at all. The manual launch omitted `--input-trace`, and the recorder
+flushes only during normal shutdown, so this run retained no trustworthy native
+connected/primed/read-path/routing evidence; this observability gap must close
+before another physical verdict. The screenshots also show systemic generic
+presentation failures across the ordinary semantic trees: Settings action rows
+overlap vertically; page text and headings are clipped; the guide and tray
+overlap or consume content space; first/last tray items are partially cut off;
+Game Launcher slots have broken allocation and clipped heading/content;
+Audio/Network content is truncated or only partially reachable; YT Music action
+buttons lose meaningful visible labels/icons; and Spotify begins with its title
+clipped. These are acceptance failures in the generic Avalonia presentation
+boundary, not widget-specific defects and not evidence that Avalonia itself is
+incapable. Source `b998d62` remains integrated evidence, but AVP-004 is reopened
+and AVP-005/cutover remain blocked.
+
+Next correction is visible-first and root-cause bounded:
+
+- Add one bounded manual-session trace output that atomically retains native
+  controller observations and routed/rejected semantic inputs while the process
+  is running, so an abnormal or failed-close verdict does not erase the trace.
+  Diagnose the actual physical path from native connected/primed/read-path/
+  foreground state through the shared router. Do not add another input reader,
+  synthesize keys, or accept a fake-only controller claim.
+- Correct the generic renderer/theme/layout owners rather than branching on
+  widget identity. Preserve intrinsic text/control height, prevent action/list
+  row overlap, keep host chrome in non-overlapping rows, and make the horizontal
+  tray expose a fully visible selected first/last item with truthful scrolling.
+  Apply root stretching only where the semantic/preset owner requests it; do
+  not turn every descendant into a full-width/full-height panel.
+- Preserve all existing semantic/action/focus identities and the generic
+  advanced-presentation preset. Fix its reusable slot allocation rather than
+  introducing a Game Launcher page or known-tree-shape special case.
+- Add only direct regressions for overlapping action rows, clipped headings,
+  selected tray-edge visibility, guide/content separation, and the physical
+  input admission state exposed by the retained native seam. Run one focused
+  suite and one final exact measurement; do not run the product aggregate.
+- Launch the corrected no-taskbar candidate with the bounded manual trace path
+  enabled. The planner/user must repeat all eight first pages and physical
+  Guide/D-pad/stick/A/B navigation before acceptance. A synthetic/offscreen
+  green result cannot close this physical rejection.
+
+The rejected candidate's `CloseMainWindow` request returned false and it did
+not exit within eight seconds. After verifying exact executable paths/PIDs, the
+planner stopped only candidate PID 33332 and its owned WidgetBridge PID 27020.
+Treat normal close/shutdown from the visible no-taskbar window as part of this
+correction; do not make force termination the normal path.
 
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
