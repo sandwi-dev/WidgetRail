@@ -452,24 +452,23 @@ scroll affordance, balanced responsive typography/spacing/content widths,
 reusable section/card/action/loading themes, and strong visible focus. Do not
 create widget-specific Avalonia pages or identity/tree-shape branches.
 
-The coherent-authority and honest-controller-evidence corrections are now in
-tip `ba25220`, but independent review still rejects it on two bounded evidence
-defects rather than a demonstrated width/layout regression. The expected-ID
-oracle classifies a vertical `Scroll` as virtualized only when it has more than
-64 children, while the generic renderer virtualizes every vertical `Scroll`;
-small Audio and Network scroll descendants are therefore falsely required in
-the realized initial tree. Classify every vertical `Scroll` as virtualized,
-apply the count threshold only to virtualized `Grid`, and add a focused
-small-scroll regression. YT Music's remaining controls are legitimately below
-the 978x466 initial viewport inside the host-owned outer `ScrollViewer`.
-Exercise each expected focusable node through a generic focus/BringIntoView
-probe, require contained bounds and UIA presence after reveal, then restore the
-original offset/focus. Do not weaken required IDs or add widget-specific layout
-branches. The existing width evidence remains strong and the deterministic
-controller claims are now honestly absent because no physical connected
-controller was observed. After these two evidence corrections, run one exact
-green changed-tip measurement and stop for independent review and the mandatory
-eight-widget physical display/controller walkthrough.
+Commits `1667e9c` and `0071dfa` correctly close the Scroll/Grid classification,
+outer-scroll reachability, and post-probe root-allocation defects. Exact-tip
+evidence is otherwise green: 24/24 focused tests, all installed/responsive rows,
+24/24 transitions, one render, no artwork retention, and normal 137-ms shutdown
+with no remaining processes. Independent review still rejects the candidate
+because its visible private-memory sample is 512.60 MiB, above the explicit
+500-MiB gate. The increase is native/Skia/unattributed residency accumulated by
+the real repeated focus/scroll/resize traversal; hiding releases it, but that
+does not waive the visible gate. The probe also ignores whether `Focus` succeeds
+or the `FocusManager` actually owns the requested identity. Probe only expected
+focusable controls absent or non-contained in the seed capture, require actual
+focus ownership for enabled targets, retain pre/post-probe native residency,
+and restore offset/focus once. Run one exact changed-tip measurement. If it is
+still above 500 MiB, release/reuse the measured Avalonia/Skia scroll/resize
+surfaces rather than moving the sample or weakening the gate. Do not launch
+until independent acceptance; the mandatory physical eight-widget display and
+controller walkthrough remains last.
 
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
