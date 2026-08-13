@@ -99,9 +99,11 @@ page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
 Each responsive row captures its admitted authority, semantic root, expected
-IDs, controls, and geometry atomically on the Avalonia UI thread; a direct race
-test publishes a replacement during resize and requires the replacement frame,
-root, and controls to match before evidence is accepted.
+IDs, controls, and geometry atomically on the Avalonia UI thread after the
+viewport receives a real Avalonia render turn; a direct race test publishes a
+replacement during resize and requires the replacement frame, root, and controls
+to match before evidence is accepted. Any missing expected IDs are retained per
+row for diagnosis rather than hidden by a summary boolean.
 The direct tray regression uses all eight representative long/short labels and
 asserts that the selected final item is fully inside the scroll viewport, label
 content is not truncated, and guide plus tray chrome remains bounded.

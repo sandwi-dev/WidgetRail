@@ -149,6 +149,7 @@ internal static class EvidenceScenario
                         fixtureCapture.Compact,
                         controls.Count,
                         controls.Count(control => control.HonestlyScrollClipped),
+                        fixtureCapture.MissingExpectedIds,
                         controls.All(control => control.BoundsHaveArea &&
                             (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
                         geometry.PageHostWidthDip,
@@ -348,9 +349,12 @@ internal static class EvidenceScenario
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
+            await Dispatcher.UIThread.InvokeAsync(
+                () => shell.SetEvidenceViewport(fixture),
+                DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             var capture = await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                shell.SetEvidenceViewport(fixture);
                 var frame = shell.Coordinator.CurrentFrame;
                 var authorityBefore = shell.AdmittedAuthority;
                 var semanticRoot = shell.ActiveSemanticRoot;
@@ -363,13 +367,18 @@ internal static class EvidenceScenario
                 var controls = CaptureSemanticControls(
                     shell, semanticRoot, frame.Snapshot.Root, shell.IsCompact);
                 var expectedIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
+                var missingExpectedIds = expectedIds
+                    .Where(expectedId => controls.All(control =>
+                        !string.Equals(control.NodeId, expectedId, StringComparison.Ordinal)))
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
                 var geometry = CaptureGeometry(shell, controls, expectedIds);
                 return !Equals(authorityBefore, shell.AdmittedAuthority) ||
                     !Equals(frame.Authority, shell.Coordinator.CurrentFrame?.Authority) ||
                     !ReferenceEquals(semanticRoot, shell.ActiveSemanticRoot)
                     ? null
                     : new ResponsiveFixtureCapture(
-                        frame, semanticRoot, shell.IsCompact, controls, expectedIds, geometry);
+                        frame, semanticRoot, shell.IsCompact, controls, expectedIds, missingExpectedIds, geometry);
             }, DispatcherPriority.Render);
             if (capture is not null) return capture;
             await Task.Delay(20);
@@ -775,6 +784,7 @@ internal static class EvidenceScenario
         bool CompactBranch,
         int VisibleRequiredSemanticControls,
         int HonestlyScrollClippedControls,
+        IReadOnlyList<string> MissingExpectedIds,
         bool ReachableOrScrollClipped,
         double PageHostWidthDip,
         double SemanticRootWidthDip,
@@ -793,6 +803,7 @@ internal static class EvidenceScenario
         bool Compact,
         IReadOnlyList<SemanticControlEvidence> Controls,
         IReadOnlySet<string> ExpectedIds,
+        IReadOnlyList<string> MissingExpectedIds,
         GeometryEvidence Geometry);
 
     internal sealed record GeometryEvidence(

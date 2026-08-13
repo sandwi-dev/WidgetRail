@@ -468,6 +468,7 @@ public sealed class IntegrationAdapterTests
                 new[] { "replacement-action" },
                 capture.Controls.Select(control => control.NodeId).ToArray());
             Assert.IsTrue(capture.ExpectedIds.SetEquals(["replacement-action"]));
+            Assert.IsEmpty(capture.MissingExpectedIds);
             window.Close();
         });
     }

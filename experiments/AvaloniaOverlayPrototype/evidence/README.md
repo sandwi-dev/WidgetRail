@@ -21,8 +21,9 @@ tray labels and requires the selected final item to be fully scrolled into view,
 untruncated label content, and bounded guide/tray height. Transparent semantic
 buttons are also proven to retain a visible reusable Avalonia surface and border.
 Responsive evidence captures authority, semantic root, expected IDs, rendered
-controls, and geometry as one UI-thread transaction. A replacement published
-during resize must settle to one exact authority/root before that row is kept.
+controls, and geometry as one UI-thread transaction after a real render turn.
+A replacement published during resize must settle to one exact authority/root
+before that row is kept, and missing expected IDs are retained explicitly.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
