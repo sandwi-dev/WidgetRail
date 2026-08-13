@@ -4203,8 +4203,12 @@ documentation contract passes over 68 Markdown files.
 
 DLV-198 records a bounded executable compatibility report for the current
 versioned SDK/gbar/template release unit and a planner-ready migration and
-deprecation proposal. The rebuilt SDK and CLI share exact
-`0.1.0-dev+51512b2e82dd0dd0758b6cc38bda7f6ebdd29478` provenance, the reviewed API
-contains 2,997 symbols, and the existing compatibility suite remains the
-executable classifier. This milestone changes no API baseline, protocol,
-template, version, resolver, publication, signing, or compatibility policy.
+deprecation proposal. DLV-203 refreshes that report from exact corrected DLV-202
+commit `5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f`: the rebuilt SDK and CLI share
+that product-version provenance, the reviewed API contains 2,997 symbols, SDK
+SHA-256 is `2392741C815C604BA29CFEABF6843EF3033907E4CC5901774E0D4C6B5AD26193`,
+and gbar SHA-256 is
+`E081DE4D0FF1D018BA3422074F68168F046B8528FBFAB950581195643BE70981`.
+The focused release-unit run passes WidgetSdk 89/89 and compatibility 12/12.
+These milestones change no API baseline, protocol, template, version, resolver,
+publication, signing, or compatibility policy.

@@ -5,8 +5,9 @@ this document
 
 ## Current executable report
 
-The report below was captured from the rebuilt DLV-196 artifact graph at commit
-`51512b2`. The follow-up DLV-198 commit changes documentation only.
+The report below was captured from the rebuilt corrected DLV-202 artifact graph
+at commit `5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f`. The follow-up DLV-203
+commit changes documentation only.
 
 | Field | Current evidence |
 |---|---|
@@ -14,10 +15,10 @@ The report below was captured from the rebuilt DLV-196 artifact graph at commit
 | Package | `GameBarAlternative.WidgetSdk` |
 | Controller template | version 2 |
 | Reviewed public API | 2,997 symbols |
-| `WidgetSdk.dll` product version | `0.1.0-dev+51512b2e82dd0dd0758b6cc38bda7f6ebdd29478` |
-| `gbar.dll` product version | `0.1.0-dev+51512b2e82dd0dd0758b6cc38bda7f6ebdd29478` |
-| `WidgetSdk.dll` SHA-256 | `FF2EE49506853214833F393B0A027013E6586F85F4F1DD9E9D0ED47416202B92` |
-| `gbar.dll` SHA-256 | `302700D7C15746E1A37A5D7D4E7F0CFB38F613147B794D5E4AC88F436C2DC9DC` |
+| `WidgetSdk.dll` product version | `0.1.0-dev+5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f` |
+| `gbar.dll` product version | `0.1.0-dev+5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f` |
+| `WidgetSdk.dll` SHA-256 | `2392741C815C604BA29CFEABF6843EF3033907E4CC5901774E0D4C6B5AD26193` |
+| `gbar.dll` SHA-256 | `E081DE4D0FF1D018BA3422074F68168F046B8528FBFAB950581195643BE70981` |
 
 Reproduce the bounded report after a Release rebuild:
 
@@ -88,4 +89,4 @@ identified.
 
 No publication, signing, remote feed, multi-version resolver, deprecation
 attribute, runtime fallback, API-baseline mutation, or protocol change is part
-of DLV-198.
+of DLV-198 or its DLV-203 provenance refresh.
