@@ -147,9 +147,21 @@ Avalonia controls through a parallel identifier registry.
 
 Also correct the interaction and evidence gaps carried from AVP-001:
 
+- Remove the prototype's visual-tree-order `FocusNavigator` algorithm. Use
+  Avalonia 12 `XYFocus`/`FocusManager` spatial navigation as the default target
+  resolver for both keyboard and controller directions. Define bounded focus
+  scopes for tray, active page, scrolling collection, and modal surfaces so
+  navigation cannot leak across unrelated regions. Declarative `XYFocus.Up`,
+  `Down`, `Left`, or `Right` overrides are permitted only for a small number of
+  genuinely ambiguous boundary transitions; do not hand-author a complete
+  per-page focus graph.
 - In tray focus, Left/Right directly admits the previous/next representative
   page with wraparound and keeps tray selection/focus consistent. It must not
-  require a second Enter/A activation.
+  require a second Enter/A activation. Cycling pages must retain focus on the
+  selected tray item; it must not automatically move focus into page content.
+  Down or A/Enter explicitly enters content, while Back restores the selected
+  tray item. Remember the last valid focus per page for re-entry, falling back
+  to the page's declared initial focus only when that element no longer exists.
 - On a focused Slider, Left/Right adjusts its value while Up/Down exits through
   deterministic directional focus. Escape, keyboard `B`, and controller B
   reach Back even when a child Button, Slider, or ScrollViewer owns focus.
@@ -180,6 +192,11 @@ Acceptance criteria:
    activation, scroll down/up, reconnect, hidden cancellation, and repeat
    ownership are covered through the shared router at focused controls. Helper-
    only tests are insufficient.
+   Spatial tests must prove Audio Mixer Up/Down remains in the aligned Slider
+   column, tray cycling retains tray focus, explicit content entry is required,
+   Back restores tray focus, and every page has no unreachable element,
+   accidental cross-scope jump, focus trap, or directionally unstable loop at
+   the supported work-area/scale matrix.
 4. Updated responsive tests exercise real Avalonia render scaling at the three
    work areas and 100/125/150 percent, including nonzero contained bounds for
    every required visible action/text element.
