@@ -145,13 +145,16 @@ public sealed class FullApplicationReferenceWidget : Widget
                 UI.Button("Back", _navigation.Value.BackActionId!, "full-app.details.back"));
     }
 
-    private string InitialFocus()
+    private string? InitialFocus()
     {
         if (_navigation.Value.Route == ReferenceRoute.Details) return "full-app.details.back";
         var snapshot = _documents.Snapshot;
         if (snapshot.RequestedFocusId is { } requested) return requested;
+        if (snapshot.Status is WidgetPagedResourceStatus.NotLoaded or WidgetPagedResourceStatus.Loading)
+            return null;
+        if (snapshot.Status == WidgetPagedResourceStatus.Error) return "full-app.retry";
         return snapshot.Items.FirstOrDefault() is { } first
             ? "full-app." + first.Id
-            : "full-app.retry";
+            : "full-app.refresh";
     }
 }

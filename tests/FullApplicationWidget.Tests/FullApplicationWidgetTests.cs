@@ -60,9 +60,15 @@ public sealed class FullApplicationWidgetTests
         await widget.WhenDocumentsIdleAsync();
         var failed = Snapshot(widget, 5);
         Assert.IsTrue(Nodes(failed.Root).Any(node => node.Id == "full-app.retry"));
+        Assert.AreEqual("full-app.retry", failed.InitialFocusId);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(failed).Count);
         await widget.OnActionAsync(new("full-app.retry", "full-app.retry"));
         await widget.WhenDocumentsIdleAsync();
-        Assert.IsTrue(Nodes(Snapshot(widget, 6).Root).Any(node => node.ActionId == "full-app.open"));
+        var ready = Snapshot(widget, 6);
+        Assert.IsTrue(Nodes(ready.Root).Any(node => node.ActionId == "full-app.open"));
+        Assert.IsNotNull(ready.InitialFocusId);
+        Assert.IsTrue(Nodes(ready.Root).Any(node => node.Id == ready.InitialFocusId));
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(ready).Count);
         await Background(widget);
     }
 
@@ -70,10 +76,13 @@ public sealed class FullApplicationWidgetTests
     public async Task ActiveLifetimeCancelsAndDrainsBlockedLoad()
     {
         var source = new ReferenceLibrary();
+        var loadStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var cancellationObserved = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         source.BeforeNextLoad(async token =>
         {
+            loadStarted.TrySetResult();
             try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -83,10 +92,17 @@ public sealed class FullApplicationWidgetTests
         });
         var widget = new FullApplicationReferenceWidget(source);
         await Interactive(widget);
+        await loadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var loading = Snapshot(widget, 7);
+        Assert.IsNull(loading.InitialFocusId);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(loading).Count);
         await Background(widget);
         await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await widget.WhenDocumentsIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(0, widget.Documents.Items.Count);
+        var reset = Snapshot(widget, 8);
+        Assert.IsNull(reset.InitialFocusId);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(reset).Count);
     }
 
     private static ValueTask Interactive(Widget widget) =>
