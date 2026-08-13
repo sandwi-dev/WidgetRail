@@ -79,7 +79,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (22 tests):
+MSTest.Sdk 4.3.2 suite (24 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -104,6 +104,12 @@ viewport receives a real Avalonia render turn; a direct race test publishes a
 replacement during resize and requires the replacement frame, root, and controls
 to match before evidence is accepted. Any missing expected IDs are retained per
 row for diagnosis rather than hidden by a summary boolean.
+Every protocol `Scroll` is classified as virtualized because the generic
+renderer realizes it through a recycling list; only a `Grid` also uses the
+greater-than-64 threshold. Expected focusable controls below the host-owned
+outer viewport are focused and brought into view generically, then required to
+have contained bounds and standard UIA before original focus and offsets are
+restored.
 The direct tray regression uses all eight representative long/short labels and
 asserts that the selected final item is fully inside the scroll viewport, label
 content is not truncated, and guide plus tray chrome remains bounded.

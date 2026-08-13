@@ -469,6 +469,94 @@ public sealed class IntegrationAdapterTests
                 capture.Controls.Select(control => control.NodeId).ToArray());
             Assert.IsTrue(capture.ExpectedIds.SetEquals(["replacement-action"]));
             Assert.IsEmpty(capture.MissingExpectedIds);
+            Assert.IsEmpty(capture.UnreachableFocusableIds);
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    public void Expected_required_ids_treat_every_vertical_scroll_as_virtualized_even_when_small()
+    {
+        var root = new ViewNode
+        {
+            Id = "root",
+            Kind = ViewNodeKind.Stack,
+            Children =
+            [
+                new ViewNode { Id = "outside", Kind = ViewNodeKind.Text, Text = "Outside" },
+                new ViewNode
+                {
+                    Id = "small-scroll",
+                    Kind = ViewNodeKind.Scroll,
+                    ScrollAxis = ScrollAxis.Vertical,
+                    Children =
+                    [
+                        new ViewNode { Id = "inside-one", Kind = ViewNodeKind.Button, Text = "One", ActionId = "one" },
+                        new ViewNode { Id = "inside-two", Kind = ViewNodeKind.Button, Text = "Two", ActionId = "two" },
+                    ],
+                },
+            ],
+        };
+
+        var expected = EvidenceScenario.ExpectedNonVirtualizedRequiredIds(root, compact: false);
+
+        Assert.IsTrue(expected.SetEquals(["outside"]));
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Responsive_evidence_reveals_outer_scroll_focusable_controls_then_restores_scroll_and_focus()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var children = Enumerable.Range(0, 24)
+                .Select(index => new ViewNode
+                {
+                    Id = $"copy-{index}",
+                    Kind = ViewNodeKind.Text,
+                    Text = $"Supporting status line {index}",
+                })
+                .Append(new ViewNode
+                {
+                    Id = "below-fold-action",
+                    Kind = ViewNodeKind.Button,
+                    Text = "Below-fold action",
+                    ActionId = "open",
+                })
+                .ToArray();
+            var frame = Frame("outer-scroll.widget", 1, new ViewNode
+            {
+                Id = "root",
+                Kind = ViewNodeKind.Stack,
+                InputScopeId = "root-scope",
+                Children = children,
+            });
+            var fake = new FakePresentationSession(frame);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 420, Height = 340, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => Equals(shell.AdmittedAuthority, frame.Authority));
+            var selectedTray = shell.TrayButtons.Single();
+            selectedTray.Focus(NavigationMethod.Directional);
+            var outer = shell.ActivePage as ScrollViewer;
+            Assert.IsNotNull(outer);
+            var originalOffset = outer.Offset;
+
+            var capture = await EvidenceScenario.CaptureResponsiveFixtureAsync(
+                shell,
+                new Avalonia.Size(420, 340),
+                frame.Authority.WidgetId,
+                TimeSpan.FromSeconds(3));
+
+            Assert.IsEmpty(capture.MissingExpectedIds);
+            Assert.IsEmpty(capture.UnreachableFocusableIds);
+            var action = capture.Controls.Single(control => control.NodeId == "below-fold-action");
+            Assert.IsTrue(action.Contained);
+            Assert.IsTrue(action.StandardUiaIdentity);
+            Assert.AreEqual(originalOffset, outer.Offset);
+            Assert.AreSame(selectedTray, window.FocusManager?.GetFocusedElement());
             window.Close();
         });
     }

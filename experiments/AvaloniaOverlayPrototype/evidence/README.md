@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 22-test focused Avalonia integration suite. Its ignored exact-commit
+only the 24-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -24,6 +24,10 @@ Responsive evidence captures authority, semantic root, expected IDs, rendered
 controls, and geometry as one UI-thread transaction after a real render turn.
 A replacement published during resize must settle to one exact authority/root
 before that row is kept, and missing expected IDs are retained explicitly.
+Small and large vertical `Scroll` nodes are both treated as virtualized; the
+size threshold applies only to `Grid`. A generic outer-ScrollViewer probe brings
+each expected focusable identity into view, verifies contained bounds and UIA,
+then restores prior focus and offsets.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,

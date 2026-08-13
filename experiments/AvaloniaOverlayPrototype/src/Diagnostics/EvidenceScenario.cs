@@ -150,6 +150,7 @@ internal static class EvidenceScenario
                         controls.Count,
                         controls.Count(control => control.HonestlyScrollClipped),
                         fixtureCapture.MissingExpectedIds,
+                        fixtureCapture.UnreachableFocusableIds,
                         controls.All(control => control.BoundsHaveArea &&
                             (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
                         geometry.PageHostWidthDip,
@@ -353,7 +354,7 @@ internal static class EvidenceScenario
                 () => shell.SetEvidenceViewport(fixture),
                 DispatcherPriority.Normal);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-            var capture = await Dispatcher.UIThread.InvokeAsync(() =>
+            var seed = await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 var frame = shell.Coordinator.CurrentFrame;
                 var authorityBefore = shell.AdmittedAuthority;
@@ -367,18 +368,58 @@ internal static class EvidenceScenario
                 var controls = CaptureSemanticControls(
                     shell, semanticRoot, frame.Snapshot.Root, shell.IsCompact);
                 var expectedIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
-                var missingExpectedIds = expectedIds
-                    .Where(expectedId => controls.All(control =>
-                        !string.Equals(control.NodeId, expectedId, StringComparison.Ordinal)))
-                    .Order(StringComparer.Ordinal)
-                    .ToArray();
-                var geometry = CaptureGeometry(shell, controls, expectedIds);
                 return !Equals(authorityBefore, shell.AdmittedAuthority) ||
                     !Equals(frame.Authority, shell.Coordinator.CurrentFrame?.Authority) ||
                     !ReferenceEquals(semanticRoot, shell.ActiveSemanticRoot)
                     ? null
-                    : new ResponsiveFixtureCapture(
-                        frame, semanticRoot, shell.IsCompact, controls, expectedIds, missingExpectedIds, geometry);
+                    : new ResponsiveFixtureSeed(
+                        frame, semanticRoot, shell.IsCompact, controls, expectedIds);
+            }, DispatcherPriority.Render);
+            if (seed is null)
+            {
+                await Task.Delay(20);
+                continue;
+            }
+
+            var reachability = await ProbeFocusableReachabilityAsync(shell, seed);
+            if (reachability is null)
+            {
+                await Task.Delay(20);
+                continue;
+            }
+
+            var capture = await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!Equals(seed.Frame.Authority, shell.AdmittedAuthority) ||
+                    !Equals(seed.Frame.Authority, shell.Coordinator.CurrentFrame?.Authority) ||
+                    !ReferenceEquals(seed.SemanticRoot, shell.ActiveSemanticRoot))
+                    return null;
+
+                var controls = CaptureSemanticControls(
+                        shell, seed.SemanticRoot, seed.Frame.Snapshot.Root, seed.Compact)
+                    .Concat(reachability.RevealedControls)
+                    .GroupBy(control => control.NodeId, StringComparer.Ordinal)
+                    .Select(group => group.OrderByDescending(control => control.Contained).First())
+                    .ToList();
+                var missingExpectedIds = seed.ExpectedIds
+                    .Where(expectedId => controls.All(control =>
+                        !string.Equals(control.NodeId, expectedId, StringComparison.Ordinal)))
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
+                var geometry = CaptureGeometry(
+                    shell,
+                    controls,
+                    seed.ExpectedIds,
+                    reachability.UnreachableFocusableIds.Count == 0);
+                return new ResponsiveFixtureCapture(
+                    seed.Frame,
+                    seed.SemanticRoot,
+                    seed.Compact,
+                    controls,
+                    seed.ExpectedIds,
+                    missingExpectedIds,
+                    reachability.UnreachableFocusableIds,
+                    geometry);
             }, DispatcherPriority.Render);
             if (capture is not null) return capture;
             await Task.Delay(20);
@@ -388,6 +429,100 @@ internal static class EvidenceScenario
             $"Widget '{expectedWidgetId}' did not retain one admitted authority/root while sampling {fixture}.");
     }
 
+    private static async Task<FocusableReachabilityResult?> ProbeFocusableReachabilityAsync(
+        IntegratedShellView shell,
+        ResponsiveFixtureSeed seed)
+    {
+        var focusableIds = Flatten(seed.Frame.Snapshot.Root)
+            .Where(node => node.IsFocusable && seed.ExpectedIds.Contains(node.Id))
+            .Select(node => node.Id)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (focusableIds.Length == 0) return new FocusableReachabilityResult([], []);
+
+        var restoration = await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (!IsCurrent(seed, shell)) return null;
+            var page = shell.ActivePage;
+            if (page is null) return null;
+            var offsets = page.GetVisualDescendants().OfType<ScrollViewer>()
+                .Prepend(page as ScrollViewer)
+                .OfType<ScrollViewer>()
+                .Distinct()
+                .Select(scroller => (Scroller: scroller, scroller.Offset))
+                .ToArray();
+            return new FocusScrollRestoration(
+                TopLevel.GetTopLevel(shell)?.FocusManager?.GetFocusedElement() as Control,
+                offsets);
+        }, DispatcherPriority.Render);
+        if (restoration is null) return null;
+
+        var revealed = new List<SemanticControlEvidence>();
+        var unreachable = new List<string>();
+        try
+        {
+            foreach (var nodeId in focusableIds)
+            {
+                var control = await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (!IsCurrent(seed, shell)) return null;
+                    var target = seed.SemanticRoot.GetVisualDescendants().OfType<Control>()
+                        .Prepend(seed.SemanticRoot)
+                        .FirstOrDefault(candidate => string.Equals(
+                            candidate.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty),
+                            nodeId,
+                            StringComparison.Ordinal));
+                    if (target is null) return null;
+                    target.Focus(Avalonia.Input.NavigationMethod.Directional);
+                    target.BringIntoView();
+                    return target;
+                }, DispatcherPriority.Input);
+                if (control is null)
+                {
+                    if (!await Dispatcher.UIThread.InvokeAsync(() => IsCurrent(seed, shell))) return null;
+                    unreachable.Add(nodeId);
+                    continue;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                var evidence = await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (!IsCurrent(seed, shell)) return null;
+                    seed.SemanticRoot.UpdateLayout();
+                    var nodes = Flatten(seed.Frame.Snapshot.Root)
+                        .ToDictionary(node => node.Id, StringComparer.Ordinal);
+                    return CreateSemanticControlEvidence(shell, control, nodes);
+                }, DispatcherPriority.Render);
+                if (evidence is null) return null;
+                revealed.Add(evidence);
+                if (!evidence.BoundsHaveArea || !evidence.Contained ||
+                    !evidence.StandardUiaIdentity || !evidence.EffectivelyVisible)
+                    unreachable.Add(nodeId);
+            }
+        }
+        finally
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (var (scroller, offset) in restoration.Offsets) scroller.Offset = offset;
+                restoration.FocusedControl?.Focus(Avalonia.Input.NavigationMethod.Unspecified);
+            }, DispatcherPriority.Input);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+        }
+
+        var stillCurrent = await Dispatcher.UIThread.InvokeAsync(() => IsCurrent(seed, shell));
+        return stillCurrent
+            ? new FocusableReachabilityResult(
+                revealed,
+                unreachable.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())
+            : null;
+    }
+
+    private static bool IsCurrent(ResponsiveFixtureSeed seed, IntegratedShellView shell) =>
+        Equals(seed.Frame.Authority, shell.AdmittedAuthority) &&
+        Equals(seed.Frame.Authority, shell.Coordinator.CurrentFrame?.Authority) &&
+        ReferenceEquals(seed.SemanticRoot, shell.ActiveSemanticRoot);
+
     private static List<SemanticControlEvidence> CaptureSemanticControls(
         IntegratedShellView shell,
         Control semanticRoot,
@@ -396,46 +531,50 @@ internal static class EvidenceScenario
     {
         var nodes = Flatten(root).ToDictionary(node => node.Id, StringComparer.Ordinal);
         var declaredVisible = DeclaredVisibleRequiredIds(root, compact);
-        var shellBounds = new Rect(shell.Bounds.Size);
         return semanticRoot.GetVisualDescendants().OfType<Control>().Prepend(semanticRoot)
             .Where(control => control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is { } id &&
                 nodes.TryGetValue(id, out var node) &&
                 declaredVisible.Contains(id) &&
                 node.Kind is ViewNodeKind.Text or ViewNodeKind.Button or ViewNodeKind.Slider or
                     ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry)
-            .Select(control =>
-            {
-                var nodeId = control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty)!;
-                var origin = control.TranslatePoint(default, shell);
-                var bounds = origin is null ? default : new Rect(origin.Value, control.Bounds.Size);
-                var area = bounds.Width > 0 && bounds.Height > 0;
-                var contained = area && shellBounds.Contains(bounds.TopLeft) && shellBounds.Contains(bounds.BottomRight);
-                var hasScrollAncestor = control.GetVisualAncestors().OfType<ScrollViewer>().Any();
-                var effectivelyReachable = control.IsEffectivelyVisible ||
-                    area && !contained && hasScrollAncestor;
-                var automationId = AutomationProperties.GetAutomationId(control);
-                var automationName = AutomationProperties.GetName(control);
-                var node = nodes[nodeId];
-                var readable = node.Kind == ViewNodeKind.Text
-                    ? bounds.Height >= 14 && bounds.Width >= ((node.Text?.Length ?? 0) >= 20 ? 120 : 8)
-                    : bounds.Width >= 44 && bounds.Height >= 36;
-                return new SemanticControlEvidence(
-                    nodeId,
-                    control.GetType().Name,
-                    bounds.X,
-                    bounds.Y,
-                    bounds.Width,
-                    bounds.Height,
-                    area,
-                    contained,
-                    area && !contained && hasScrollAncestor,
-                    !string.IsNullOrWhiteSpace(automationId) && !string.IsNullOrWhiteSpace(automationName),
-                    automationId ?? string.Empty,
-                    effectivelyReachable,
-                    readable);
-            })
+            .Select(control => CreateSemanticControlEvidence(shell, control, nodes))
             .Where(control => control.EffectivelyVisible)
             .ToList();
+    }
+
+    private static SemanticControlEvidence CreateSemanticControlEvidence(
+        IntegratedShellView shell,
+        Control control,
+        IReadOnlyDictionary<string, ViewNode> nodes)
+    {
+        var nodeId = control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty)!;
+        var origin = control.TranslatePoint(default, shell);
+        var bounds = origin is null ? default : new Rect(origin.Value, control.Bounds.Size);
+        var area = bounds.Width > 0 && bounds.Height > 0;
+        var shellBounds = new Rect(shell.Bounds.Size);
+        var contained = area && shellBounds.Contains(bounds.TopLeft) && shellBounds.Contains(bounds.BottomRight);
+        var hasScrollAncestor = control.GetVisualAncestors().OfType<ScrollViewer>().Any();
+        var effectivelyReachable = control.IsEffectivelyVisible || area && !contained && hasScrollAncestor;
+        var automationId = AutomationProperties.GetAutomationId(control);
+        var automationName = AutomationProperties.GetName(control);
+        var node = nodes[nodeId];
+        var readable = node.Kind == ViewNodeKind.Text
+            ? bounds.Height >= 14 && bounds.Width >= ((node.Text?.Length ?? 0) >= 20 ? 120 : 8)
+            : bounds.Width >= 44 && bounds.Height >= 36;
+        return new SemanticControlEvidence(
+            nodeId,
+            control.GetType().Name,
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            area,
+            contained,
+            area && !contained && hasScrollAncestor,
+            !string.IsNullOrWhiteSpace(automationId) && !string.IsNullOrWhiteSpace(automationName),
+            automationId ?? string.Empty,
+            effectivelyReachable,
+            readable);
     }
 
     private static IReadOnlySet<string> DeclaredVisibleRequiredIds(ViewNode root, bool compact)
@@ -463,7 +602,8 @@ internal static class EvidenceScenario
     private static GeometryEvidence CaptureGeometry(
         IntegratedShellView shell,
         IReadOnlyList<SemanticControlEvidence> controls,
-        IReadOnlySet<string> expectedIds)
+        IReadOnlySet<string> expectedIds,
+        bool focusableReachabilityPassed)
     {
         var page = BoundsInShell(shell.PageHostElement, shell);
         var guide = BoundsInShell(shell.ControllerGuideElement, shell);
@@ -483,7 +623,7 @@ internal static class EvidenceScenario
         var regionsDoNotOverlap = !Overlaps(page, guide) && !Overlaps(page, tray) && !Overlaps(guide, tray);
         var allExpectedObserved = expectedIds.All(expectedId =>
             controls.Any(control => string.Equals(control.NodeId, expectedId, StringComparison.Ordinal)));
-        var effectiveVisibility = semantic.IsEffectivelyVisible && allExpectedObserved &&
+        var effectiveVisibility = semantic.IsEffectivelyVisible && allExpectedObserved && focusableReachabilityPassed &&
             controls.All(control => control.EffectivelyVisible);
         var passed = pageWidthUtilization >= 0.88 && semanticWidthUtilization >= 0.92 &&
             maximumHorizontalEmptyAreaRatio <= 0.08 && readable && regionsDoNotOverlap && effectiveVisibility;
@@ -500,7 +640,7 @@ internal static class EvidenceScenario
             passed);
     }
 
-    private static IReadOnlySet<string> ExpectedNonVirtualizedRequiredIds(ViewNode root, bool compact)
+    internal static IReadOnlySet<string> ExpectedNonVirtualizedRequiredIds(ViewNode root, bool compact)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
         Add(root, ancestorVisible: true, virtualizedAncestor: false);
@@ -519,7 +659,8 @@ internal static class EvidenceScenario
                 ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry)
                 ids.Add(node.Id);
             var virtualized = virtualizedAncestor ||
-                node.Kind is ViewNodeKind.Scroll or ViewNodeKind.Grid && node.Children.Count > 64;
+                node.Kind == ViewNodeKind.Scroll ||
+                node.Kind == ViewNodeKind.Grid && node.Children.Count > 64;
             foreach (var child in node.Children) Add(child, visible, virtualized);
         }
     }
@@ -785,6 +926,7 @@ internal static class EvidenceScenario
         int VisibleRequiredSemanticControls,
         int HonestlyScrollClippedControls,
         IReadOnlyList<string> MissingExpectedIds,
+        IReadOnlyList<string> UnreachableFocusableIds,
         bool ReachableOrScrollClipped,
         double PageHostWidthDip,
         double SemanticRootWidthDip,
@@ -804,7 +946,23 @@ internal static class EvidenceScenario
         IReadOnlyList<SemanticControlEvidence> Controls,
         IReadOnlySet<string> ExpectedIds,
         IReadOnlyList<string> MissingExpectedIds,
+        IReadOnlyList<string> UnreachableFocusableIds,
         GeometryEvidence Geometry);
+
+    private sealed record ResponsiveFixtureSeed(
+        WidgetPresentationFrame Frame,
+        Control SemanticRoot,
+        bool Compact,
+        IReadOnlyList<SemanticControlEvidence> Controls,
+        IReadOnlySet<string> ExpectedIds);
+
+    private sealed record FocusScrollRestoration(
+        Control? FocusedControl,
+        IReadOnlyList<(ScrollViewer Scroller, Vector Offset)> Offsets);
+
+    private sealed record FocusableReachabilityResult(
+        IReadOnlyList<SemanticControlEvidence> RevealedControls,
+        IReadOnlyList<string> UnreachableFocusableIds);
 
     internal sealed record GeometryEvidence(
         double PageHostWidthDip,
