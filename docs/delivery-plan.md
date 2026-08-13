@@ -668,30 +668,37 @@ M3 operations require separately reviewed trusted providers.
 
 Task: `Implementation agent — platform lane`
 
-Branch: `codex/impl-platform-switch`
+Branch: `codex/impl-platform-community` (create from accepted main `56a09fb`;
+retain `codex/impl-platform-switch` as historical DLV-209/DLV-205 work)
 
-### Current assignment — DLV-209: restore generic tray hold restart
+### Current assignment — DLV-213: generic Community advanced presentation
 
-**State:** In progress on platform commit `a70b223`. The restart preserved the
-dirty assignment worktree in the documented input/placement/build/test/docs
-files plus `tests/TrayRefreshCommunityFixture`. Resume those exact changes; do
-not discard or mix them with the new Game Launcher direction. DLV-205
-`a70b223` is independently accepted, but its correction is not separately
-integrated because the private widget-facing Launcher path is superseded by
-DLV-212–214.
+**State:** Assigned from accepted main `56a09fb`. DLV-209 is accepted and
+integrated; DLV-212 is accepted and integrated through `5a6ce0b`. At the clean
+platform boundary, create `codex/impl-platform-community` from exact main
+`56a09fb` so the superseded private DLV-205 ancestry does not enter this public
+contract milestone. Then execute the first Ready item below without waiting.
 
-**Objective/acceptance:** with tray focus, tap Y toggles reorder and a 700 ms
-hold revalidates then restarts the exact selected bridge widget through the same
-worker-restart authority as F5. It works for every current bundled or installed
-bridge widget without a descriptor or widget-authored Refresh opt-in. Release
-is consumed after hold; capture cancels on selection, focus, lifecycle, device,
-or shell transition. Guidance and accessibility describe restart truthfully.
-Prove exact-once restart for Settings and one installed Community fixture plus
-ineligible/non-bridge/reorder/cancellation cases.
+**Objective/acceptance:** implement DLV-213 exactly as the first Platform Ready
+item below. As a bounded adjacent cleanup, rename the internal tray gesture
+`Refresh*` state/action identifiers to `Restart*`; DLV-209 changed their meaning
+to host-owned worker restart and misleading names must not become durable API
+debt. This rename changes no behavior, timing, input mapping, or public
+contract, and uses the existing focused gesture evidence.
 
-**Verification/stop:** Tier 1 gesture/placement/bridge checks and the smallest
-packaged host route. No input remap, public protocol/SDK, managed widget, Game
-Launcher Community conversion, aggregate, capture, or unrelated refactor.
+**Verification/stop:** the DLV-213 Ready item is authoritative. Do not restore
+the private Game Launcher path from DLV-205 or recognize known package/widget
+identity or tree shape.
+
+### Accepted milestone — DLV-209: generic tray hold restart
+
+**State:** Done and accepted through main `56a09fb`. Hold Y at tray focus now
+restarts the exact selected bundled or installed bridge worker through the same
+authority as F5, without a widget-authored Refresh action or Settings-specific
+opt-in. Tap/release/cancellation behavior remains intact; visible and UIA help
+say restart. Focused Release evidence passes bridge catalog checks, 107
+controller checks, 111,383 placement checks, and packaged exact-once worker
+replacement for both Settings and an installed Community fixture.
 
 ### Accepted milestone — DLV-160: author-to-production pack lifecycle
 
@@ -810,7 +817,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-209 and integrated DLV-212 — DLV-213: replace known
+1. **Assigned from main `56a09fb` — DLV-213: replace known
    Game Launcher projection with a generic Community presentation contract.**
    Define the smallest versioned public manifest/SDK/protocol declaration by
    which any installed Community widget can opt into a closed host-owned
@@ -878,11 +885,12 @@ missing private seam rather than adding parallel presentation authority.
    Rerun only the affected bounded measurement/temporal routes. No aggregate,
    speculative optimization, budget change, capture, or managed widget work.
 
-DLV-209 resumes first. DLV-213 is the required public-framework correction and
-must precede the final DLV-214 Community cutover; DLV-210 then fixes the same
-visible no-artwork fallback through the generic path. Evidence-only DLV-206
-remains behind those product outcomes. Do not extend the superseded private
-Game Launcher bridge or manufacture unrelated refactors.
+DLV-209 is accepted through `56a09fb`. DLV-213 is now the active required
+public-framework correction and must precede the final DLV-214 Community
+cutover; DLV-210 then fixes the same visible no-artwork fallback through the
+generic path. Evidence-only DLV-206 remains behind those product outcomes. Do
+not extend the superseded private Game Launcher bridge or manufacture unrelated
+refactors.
 
 ## Serialized integration queue
 

@@ -300,7 +300,7 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, transition verdict DLV-188, and DLV-193 are integrated through `70a33e3`; DLV-208 publishes Spotify 0.2.15. The machine restart ended the prior accepted PID, and the user proved semantic first-page admission did not validate generic tray Hold Y restart. | DLV-209 restores generic exact-worker restart. The next accepted integrated milestone must rebuild and visibly relaunch the overlay; visual appearance and physical interaction remain the user's verdict. |
+| Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, transition verdict DLV-188, and DLV-193 are integrated through `70a33e3`; DLV-208 publishes Spotify 0.2.15. Accepted DLV-209, integrated as `56a09fb`, restores generic F5-equivalent Hold-Y worker restart for bundled and installed Community widgets with exact-once packaged proof. | The refreshed main Release is visibly relaunched for the user's controller verdict. DLV-210 still owns the generic no-artwork Launcher layout after Community cutover; visual appearance and physical interaction remain the user's verdict. |
 | Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are implemented. DLV-160 proves the supported CLI-to-production lifecycle; DLV-212 proves the managed implementation is publicly portable. | The live implementation remains first-party-coupled in native admission and packaging. DLV-213–214 must establish generic native admission and ordinary Community package operation. Manual artwork/background remains blocked on a trusted selection seam. |
 | Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. The corrected DLV-194–204 chain is integrated through `04fbdc0`; accepted DLV-212 (`5a6ce0b`) adds a clean packaged-SDK Community build and generic-worker proof for the full Game Launcher implementation. | DLV-213–214 must make that sophisticated reference genuinely Community-owned in the shipped product. External publication/update governance and a separately hosted third-party repository remain later gates. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
@@ -330,18 +330,18 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Resume preserved platform DLV-209 and restore generic F5-equivalent tray
-   Hold Y restart. DLV-193's Settings-only contextual opt-in contradicts the
-   requested product behavior and the user's physical result.
-2. Run DLV-212–214 as the serialized Game Launcher trust-tier correction:
-   external public-SDK portability, generic native presentation admission, and
-   atomic Community package cutover. Games & Apps remains bundled.
+1. Run DLV-213–214 as the remaining serialized Game Launcher trust-tier
+   correction. DLV-212 public-SDK portability and DLV-209 generic Hold-Y worker
+   restart are accepted; generic native presentation admission and the atomic
+   Community package cutover remain. Games & Apps stays bundled.
+2. Require DLV-213 to prove a differently named Community consumer and remove
+   the private widget-facing selection path before the cutover.
 3. Do not integrate or extend the superseded Game Launcher private picker path;
    host-owned Settings selection may survive only behind the generic contract.
 4. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-5. Relaunch the next accepted integrated Release after the restart for the
-   user's dashboard, Spotify, Settings, Games & Apps, and Game Launcher verdict.
+5. Keep the refreshed accepted Release visibly available for the user's
+   dashboard, Spotify, Settings, Games & Apps, Hold-Y, and Game Launcher verdict.
 6. DLV-176/177 now prove cancellation-ignoring late failures cannot mutate a
    later Active generation or replacement session; keep them held until the
    contiguous Launcher prefix is accepted. Then rotate the next deeper audit to
