@@ -111,79 +111,106 @@ Task: Implementation agent — Avalonia prototype lane
 
 Branch: codex/avalonia-prototype
 
-### Current assignment — AVP-001: transparent Avalonia overlay shell
+### Recently completed — AVP-001: transparent Avalonia overlay shell
 
-State: Assigned from the reviewer planning commit that introduces this lane.
-This is an isolated feasibility project, not a production migration.
+Integrated experiment commit: `bd1ab7f`.
 
-Create `experiments/AvaloniaOverlayPrototype` as a clean .NET 10 solution using
-the current stable Avalonia packages. Do not reference or copy the production
-native renderer, layout engine, GBSS implementation, focus engine,
-accessibility provider, or giant host classes. Small immutable fixture data may
-be newly authored to reproduce representative content.
+User hands-on verdict on 2026-08-13: the transparent overlay looks good, page
+motion is smooth, and no clipping or black-transition artifact was reported.
+AVP-001 therefore establishes visual feasibility, one stable shell/tray, four
+representative Avalonia pages, standard controls/UIA, and an honest initial
+resource baseline. It does not establish controller-first interaction. The
+user explicitly directed the remaining keyboard/evidence corrections to move
+into AVP-002 rather than blocking the next experiment.
 
-Build one real Windows prototype process with:
+### Current assignment — AVP-002: controller-first Avalonia interaction
 
-- a transparent, borderless, topmost overlay window and a nonmoving icon tray;
-- internal open/close and widget-switch transitions inside a stable top-level
-  surface rather than repeated HWND resizing;
-- four Avalonia-authored representative first pages: Settings, Audio Mixer,
-  Spotify Player, and Game Launcher;
-- long labels, missing artwork, asynchronous destination readiness, a scrolling
-  application list, buttons, and sliders;
-- Avalonia styles/themes only; no GBSS adapter in AVP-001;
-- keyboard navigation through the same logical directions/actions expected
-  from a controller, with Escape/B Back semantics. GameInput/SDL and remote
-  widget surfaces belong to later AVP milestones.
+State: Assigned on the AVP-001 implementation branch after the user's hands-on
+verdict. Baseline: exact AVP-001 branch commit `0fd0d5b`. This is still an
+isolated feasibility project under `experiments/AvaloniaOverlayPrototype`, not
+a production migration.
+
+Select a maintained Windows-capable controller library/adapter only after a
+short recorded comparison against a narrow in-house Microsoft GameInput
+adapter. Consider maintenance, Windows support, native deployment, device
+identity/reconnect, analog dead zones, button press/release/repeat semantics,
+licensing, package size, and compatibility with .NET 10/Avalonia. Prefer a
+maintained library when it reduces real lifecycle/input ownership code without
+creating a second UI or focus system. Do not reuse or reference production
+Game Bar input classes.
+
+Implement one prototype-owned input adapter that translates physical D-pad or
+left-stick directions, A, and B into the same semantic navigation/action path
+as keyboard input. Keyboard and controller must share one routing policy and
+one focus/page state; neither path may synthesize OS keyboard events or invoke
+Avalonia controls through a parallel identifier registry.
+
+Also correct the interaction and evidence gaps carried from AVP-001:
+
+- In tray focus, Left/Right directly admits the previous/next representative
+  page with wraparound and keeps tray selection/focus consistent. It must not
+  require a second Enter/A activation.
+- On a focused Slider, Left/Right adjusts its value while Up/Down exits through
+  deterministic directional focus. Escape, keyboard `B`, and controller B
+  reach Back even when a child Button, Slider, or ScrollViewer owns focus.
+- Controller A invokes the focused standard Avalonia control exactly once.
+  Keyboard Enter continues to use that same semantic activation route.
+- Disconnect, reconnect, device loss, hidden lifecycle, focus loss, and route
+  replacement clear held/repeat state. Analog dead zones and repeat timing are
+  explicit, bounded, and testable. Keyboard plus controller cannot cause
+  double-dispatch.
+- Replace the tautological scale assertion with actual Avalonia render-scale
+  and work-area fixtures. Enumerate every required visible button and text
+  element, require nonzero contained bounds, and describe viewport-clipped
+  collection descendants honestly.
+- Sample the Avalonia transition surface at start, midpoint, and completion so
+  endpoint brush inspection is not presented as proof against transient
+  fallback. Preserve the user's live smooth/no-black-artifact verdict as the
+  physical compositor evidence and do not overclaim automated pixel proof.
 
 Acceptance criteria:
 
-1. The prototype builds Release through one bounded documented command and can
-   be launched visibly by the planner from its isolated worktree or accepted
-   integrated experiment path.
-2. At 1280x720, 1920x1080, and 2560x1440 logical work-area fixtures, plus 100%,
-   125%, and 150% scale, every representative first page keeps its title,
-   primary content, buttons, controller-help text, and tray within the client
-   bounds. Overflowing collections use an actual `ScrollViewer`.
-3. Switching between every page retains one stationary tray and never displays
-   an opaque/black fallback background in the prototype's own complete-frame
-   diagnostics. Destination loading retains the admitted previous page until a
-   complete replacement is ready.
-4. Keyboard arrows move focus, Enter activates, Escape/B returns to the prior
-   prototype surface, sliders remain adjustable, and scrolling can move down
-   and back to the first item. Focus indicators remain fully visible.
-5. Standard Avalonia controls expose nonempty stable AutomationIds, names,
-   control types, focus, Invoke, and RangeValue semantics in a focused Windows
-   UIA smoke where supported. Do not build a parallel custom accessibility
-   tree.
-6. Retain a sanitized measurement artifact separating hidden and visible
-   prototype process private memory, idle CPU over a bounded interval, cold
-   start-to-first-complete-frame, and switch-to-complete-frame samples. Report
-   unavailable metrics honestly. Initial evaluation thresholds are less than
-   250 MiB host private memory for the representative visible shell and
-   effectively idle hidden rendering; they are decision evidence, not
-   production enforcement code.
-7. Tests cover responsive containment from emitted Avalonia bounds, navigation,
-   scroll round-trip, retained-loading state, transition supersession, and
-   hidden lifecycle. Do not infer physical visual quality from malformed or
-   clipped screenshots.
+1. A documented dependency decision explains the chosen controller path and
+   rejected alternative without claiming cross-platform value the product does
+   not need. Restore/build stays bounded and reproducible.
+2. A real physical-controller path supports D-pad/left stick, A, and B in the
+   visible prototype. The implementation remains isolated and generic; it adds
+   no production host, Widget SDK, widget identity, or provider-specific code.
+3. Tray cycling, slider exit/adjustment, child-focused Back, standard-control
+   activation, scroll down/up, reconnect, hidden cancellation, and repeat
+   ownership are covered through the shared router at focused controls. Helper-
+   only tests are insufficient.
+4. Updated responsive tests exercise real Avalonia render scaling at the three
+   work areas and 100/125/150 percent, including nonzero contained bounds for
+   every required visible action/text element.
+5. Transition diagnostics cover start/midpoint/completion while the live user
+   verdict remains authoritative for physical smoothness and transparency.
+6. Standard Avalonia UIA remains the only accessibility tree. Controller input
+   changes focus and invokes the same controls visible to UIA.
+7. Run only the focused bounded AVP suite and one exact-commit ordinary Windows
+   measurement. Keep resource misses and unavailable GPU evidence honest. The
+   planner launches the accepted copied runtime for physical-controller review.
+
+Out of scope: production integration, remote Community widget surfaces, GBSS
+adaptation, a remapping UI, rumble, controller-specific widget APIs, more
+representative pages, publication, credentials, and an Avalonia migration
+decision.
 
 Required evidence: focused Release unit/component tests; one copied ordinary
 Windows prototype lifecycle; retained metrics and exact commit/runtime
 provenance; planner live launch and user visual verdict. No canonical product
 aggregate.
 
-Stop and report rather than working around the platform if transparency,
-topmost/no-taskbar behavior, a stationary tray, UIA, or bounded measurement
-requires production-host edits, privileged installation, external credentials,
-or undocumented window manipulation. Do not start AVP-002 automatically; the
-planner reviews AVP-001 and the user tests it first.
+Stop and report rather than working around the platform if controller access,
+transparency, topmost/no-taskbar behavior, a stationary tray, UIA, or bounded
+measurement requires production-host edits, privileged installation, external
+credentials, or undocumented window manipulation. Do not start AVP-003
+automatically; the planner and user test AVP-002 first.
 
 ### Avalonia Ready queue
 
-None. AVP-002 through AVP-006 remain planned architecture experiments and will
-be assigned only after AVP-001 evidence establishes that the host direction is
-viable.
+None. AVP-003 through AVP-006 remain planned architecture experiments and will
+be assigned only after AVP-002 establishes controller-first viability.
 
 ## Widgets lane
 
