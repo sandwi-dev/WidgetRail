@@ -549,6 +549,19 @@ nor deleted. Checkout path mapping and bounded NuGet cache reuse remain intact.
 Spotify 0.2.14 is the resulting immutable Community package; the supported
 workflow retains 0.2.11, 0.2.12, and 0.2.13 as inactive rollback generations.
 
+DLV-208 publishes the already-accepted vertical-rail responsive source and GBSS
+as new immutable Spotify Community package 0.2.15. The supported package path
+produces a three-file 153,415-byte archive with SHA-256
+`9f3735f454792a4289b7b37c31292043f4ebbb92b1f7e4c8ec0d6a9cb4d65960`.
+An isolated update disables 0.2.14, installs/selects/enables 0.2.15, retains
+0.2.14 as an inactive rollback, and independently reproduces selected content
+digest `0762775563e6e339b035a2d683cca6cb4e8d327834ee7f63220f814a3970264f`.
+The installed payload hash equals the script-owned publish output, installed
+GBSS equals the accepted source, and the generic AppContainer worker returns a
+valid first snapshot at sequence 2. Spotify's existing responsive, focus,
+navigation, configuration, consent, private-state, and provider behavior is
+unchanged; the focused widget suite passes 50/50.
+
 DLV-051 corrects Spotify's authored responsive focus graph without changing
 host navigation. The inactive seek Slider now names the stable currently
 selected `spotify.nav.wide.*` rail destination as its explicit Left neighbor;

@@ -1,14 +1,14 @@
 # Spotify Web API integration
 
 Status: **trusted provider, isolated Web Playback host orchestration, and
-Community addon 0.2.14 implemented; live WebView2 playback proof remains in
+Community addon 0.2.15 implemented; live WebView2 playback proof remains in
 progress as of 2026-08-08**.
 
 The intended product is a separately installable Community addon backed by a
 trusted, reusable Spotify provider. The current repository implements the
 typed v1 broker surface, a trusted Web API/PKCE provider, protected refresh-token
 storage, package configuration storage, local configuration CLI, production
-`WidgetBridge` composition, Spotify Community addon package 0.2.14, and a lazily
+`WidgetBridge` composition, Spotify Community addon package 0.2.15, and a lazily
 started isolated WebView2 Web Playback SDK host. The provider owns its process
 lifecycle, short-lived streaming-token handoff, safe local-device alias,
 transfer, queue, and playlist operations. It does not yet expose a
@@ -31,7 +31,7 @@ Premium eligibility, and terms remain external requirements.
 | Broker contract | Implemented capability IDs and strict DTOs for configuration, authorization, playback read/control, and playback-change events. |
 | Trusted provider | Implemented PKCE, exact loopback callback, refresh-token vault, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized errors. |
 | Native composition | `WidgetBridge` constructs the Windows Spotify provider through the same typed broker used by every widget. |
-| Community addon | Version 0.2.14 implements responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, and Devices surfaces through the same public SDK/AppContainer path as third-party addons. Wide and compact branches retain the same controller-first rail hierarchy and explicit focus-persistence identities; compact Player content lives in one focus-revealing vertical viewport at the documented 620x400 minimum. Its seek control uses the public `UI.Scrubber` contract and authors Left to the selected rail destination. |
+| Community addon | Version 0.2.15 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, and Devices surfaces through the same public SDK/AppContainer path as third-party addons. Wide and compact branches retain the same controller-first vertical-rail hierarchy and explicit focus-persistence identities; compact Player content lives in one focus-revealing vertical viewport at the documented 620x400 minimum. Its seek control uses the public `UI.Scrubber` contract and authors Left to the selected rail destination. |
 | Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll, responsive actions, and a fresh Scroll identity on every explicit setup entry; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host, lifecycle/token orchestration, sanitized local-device projection, and offline protocol/process tests implemented; live account/device proof remains. |

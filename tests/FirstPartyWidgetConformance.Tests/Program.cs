@@ -2164,8 +2164,8 @@ static async Task SpotifyInstalledPackageRunsIsolated(
     string acceptanceOutput)
 {
     const string packageId = "org.gbar.samples.spotify";
-    const string currentVersion = "0.2.14";
-    string[] rollbackVersions = ["0.2.11", "0.2.12", "0.2.13"];
+    const string currentVersion = "0.2.15";
+    string[] rollbackVersions = ["0.2.14"];
     Assert.True(File.Exists(packagePath), "The exact Spotify archive is missing.");
 
     using var validationRoot = new TemporaryDirectory("gba-spotify-dlv055-validation");
@@ -2177,7 +2177,7 @@ static async Task SpotifyInstalledPackageRunsIsolated(
     var catalog = new WidgetCatalog(catalogRoot);
     var snapshot = await catalog.DiscoverAsync();
     var selected = snapshot.Widgets.Single(widget => widget.Id == packageId);
-    Assert.True(selected.Enabled, "Spotify 0.2.14 is not enabled.");
+    Assert.True(selected.Enabled, "Spotify 0.2.15 is not enabled.");
     Assert.Equal(currentVersion, selected.ActiveVersion.Version.ToString());
     var rollbacks = rollbackVersions.Select(rollbackVersion =>
         selected.Versions.Single(version =>
@@ -2197,12 +2197,31 @@ static async Task SpotifyInstalledPackageRunsIsolated(
                 rollback.ContentDigest,
                 selected.ActiveVersion.ContentDigest,
                 StringComparison.Ordinal)),
-        "Spotify 0.2.14 must have a distinct digest from every retained rollback.");
+        "Spotify 0.2.15 must have a distinct digest from every retained rollback.");
 
     var installedManifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(
         Path.Combine(selected.ActiveVersion.InstallPath, "manifest.json")));
     Assert.Equal(currentVersion, installedManifest.Version);
     Assert.Equal(packageId, installedManifest.Id);
+
+    var packageOutputRoot = Path.GetDirectoryName(packagePath) ??
+        throw new InvalidOperationException("Spotify package output root is unavailable.");
+    var publishedPayload = Path.Combine(packageOutputRoot, "publish", "SpotifyWidget.dll");
+    var repositoryRoot = FindRepositoryRootForTest();
+    var sourceStyle = Path.Combine(
+        repositoryRoot, "samples", "SpotifyWidget", "styles", "default.gbss");
+    var installedPayload = Path.Combine(
+        selected.ActiveVersion.InstallPath, "payload", "SpotifyWidget.dll");
+    var installedStyle = Path.Combine(
+        selected.ActiveVersion.InstallPath, "styles", "default.gbss");
+    Assert.True(File.Exists(publishedPayload),
+        "The supported Spotify package path omitted its script-owned publish output.");
+    Assert.SequenceEqual(
+        SHA256.HashData(await File.ReadAllBytesAsync(publishedPayload)),
+        SHA256.HashData(await File.ReadAllBytesAsync(installedPayload)));
+    Assert.SequenceEqual(
+        SHA256.HashData(await File.ReadAllBytesAsync(sourceStyle)),
+        SHA256.HashData(await File.ReadAllBytesAsync(installedStyle)));
 
     using var bridgeRoot = new TemporaryDirectory("gba-spotify-dlv055-bridge");
     var trustedCatalog = Path.Combine(bridgeRoot.Path, "trusted-catalog.json");
@@ -2277,6 +2296,8 @@ static async Task SpotifyInstalledPackageRunsIsolated(
         selectedVersion = selected.ActiveVersion.Version.ToString(),
         selectedContentDigest = selected.ActiveVersion.ContentDigest,
         independentlyInstalledContentDigest = independentlyInstalled.ContentDigest,
+        installedPayloadMatchesSupportedPublish = true,
+        installedGbssMatchesAcceptedSource = true,
         rollbacks = rollbacks.Select(rollback => new
         {
             version = rollback.Version.ToString(),

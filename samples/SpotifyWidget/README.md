@@ -4,7 +4,8 @@ This controller-first sample consumes only `WidgetHostServices.Spotify`. It neve
 
 Configure the public Client ID for this package, register the exact redirect URI `http://127.0.0.1:43827/callback/` in Spotify's developer dashboard, then choose **Connect** in the widget. Authorization is always explicit; merely opening the widget never launches a browser.
 
-Version 0.2.14 is the current immutable Community package. It adds four
+Version 0.2.15 is the current immutable Community package. It publishes the
+accepted vertical-rail responsive layout and its four
 controller-first destinations:
 
 The project imports the shared Community-package deterministic path map, so the

@@ -105,15 +105,16 @@ tokens, playback projection/control, bounded rate-limit handling, and sanitized
 errors. Package-scoped public Client IDs can be managed locally through
 `gbar config`; they are not secrets.
 
-`WidgetBridge` composes this provider, and Spotify Community addon 0.1.6 is
+`WidgetBridge` composes this provider, and Spotify Community addon 0.2.15 is
 locally packageable through the same public SDK/AppContainer path as an
 independent addon. Its controller setup instructions and player core are
 implemented; editing the Client ID remains a local `gbar config` workflow and
 no live allowlisted-account evidence exists. Authors must not infer Spotify
 authority from `network.loopback`, add arbitrary Internet access, store OAuth
 tokens in private widget state, or bind to provider-internal wire DTOs. Device,
-queue, search, recent, library, playlist, album, artist, and local Web Playback
-SDK contracts remain planned. See [Spotify Web API
+queue, playlist, and isolated local Web Playback contracts are implemented;
+search, recent, broader library, album, and artist surfaces remain planned. See
+[Spotify Web API
 integration](spotify-integration.md).
 
 Authorization has one exact lifecycle continuation, not background authority.
