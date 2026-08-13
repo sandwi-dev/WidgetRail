@@ -555,6 +555,7 @@ public sealed class IntegrationAdapterTests
             var action = capture.Controls.Single(control => control.NodeId == "below-fold-action");
             Assert.IsTrue(action.Contained);
             Assert.IsTrue(action.StandardUiaIdentity);
+            Assert.IsGreaterThanOrEqualTo(0.92, capture.Geometry.SemanticWidthUtilization);
             Assert.AreEqual(originalOffset, outer.Offset);
             Assert.AreSame(selectedTray, window.FocusManager?.GetFocusedElement());
             window.Close();

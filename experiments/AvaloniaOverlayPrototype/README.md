@@ -109,7 +109,9 @@ renderer realizes it through a recycling list; only a `Grid` also uses the
 greater-than-64 threshold. Expected focusable controls below the host-owned
 outer viewport are focused and brought into view generically, then required to
 have contained bounds and standard UIA before original focus and offsets are
-restored.
+restored. The evidence viewport then reapplies the existing host-owned semantic
+root allocation invariant so focus probing cannot reintroduce an authored root
+max-width into the retained geometry row.
 The direct tray regression uses all eight representative long/short labels and
 asserts that the selected final item is fully inside the scroll viewport, label
 content is not truncated, and guide plus tray chrome remains bounded.

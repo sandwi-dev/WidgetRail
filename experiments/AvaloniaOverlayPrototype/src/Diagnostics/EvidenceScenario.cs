@@ -388,6 +388,11 @@ internal static class EvidenceScenario
                 continue;
             }
 
+            await Dispatcher.UIThread.InvokeAsync(
+                () => shell.SetEvidenceViewport(fixture),
+                DispatcherPriority.Normal);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
             var capture = await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 if (!Equals(seed.Frame.Authority, shell.AdmittedAuthority) ||

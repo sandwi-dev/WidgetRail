@@ -237,6 +237,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         Height = viewport.Height;
         HorizontalAlignment = HorizontalAlignment.Left;
         VerticalAlignment = VerticalAlignment.Top;
+        if (ActiveSemanticRoot is { } semanticRoot)
+            SemanticTreeRenderer.PrepareSemanticRootForHost(semanticRoot);
         UpdateLayout();
     }
 

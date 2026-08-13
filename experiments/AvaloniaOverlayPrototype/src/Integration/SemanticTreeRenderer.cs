@@ -540,7 +540,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             paddingControl.Padding = new Thickness(padding);
     }
 
-    private static void PrepareSemanticRootForHost(Control root)
+    internal static void PrepareSemanticRootForHost(Control root)
     {
         // Widget style still owns internal presentation, but the Avalonia page host owns the admitted
         // root's outer viewport. Carrying legacy renderer max-width or viewport-unit constraints into

@@ -27,7 +27,9 @@ before that row is kept, and missing expected IDs are retained explicitly.
 Small and large vertical `Scroll` nodes are both treated as virtualized; the
 size threshold applies only to `Grid`. A generic outer-ScrollViewer probe brings
 each expected focusable identity into view, verifies contained bounds and UIA,
-then restores prior focus and offsets.
+then restores prior focus and offsets. The evidence viewport reapplies the
+existing host-owned root allocation invariant afterward so probe-induced layout
+cannot retain an authored root max-width.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
