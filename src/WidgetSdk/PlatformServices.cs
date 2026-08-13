@@ -632,7 +632,8 @@ public enum WidgetAppLaunchOverlayBehavior
     CloseOnConfirmedSuccess,
 }
 
-internal enum WidgetAppLaunchObservationState
+/// <summary>Sanitized progress reported for an exact app-library launch request.</summary>
+public enum WidgetAppLaunchObservationState
 {
     RequestAccepted,
     LauncherStarted,
@@ -640,7 +641,11 @@ internal enum WidgetAppLaunchObservationState
     Ended,
 }
 
-internal sealed record WidgetAppLaunchObservation(
+/// <summary>
+/// Bounded host evidence for an app-library launch. This value contains no
+/// process, executable, provider, or operating-system identity.
+/// </summary>
+public sealed record WidgetAppLaunchObservation(
     [property: JsonRequired] WidgetAppLaunchObservationState State,
     [property: JsonRequired] bool SupportsRunning,
     [property: JsonRequired] bool SupportsEnded);
@@ -1360,7 +1365,13 @@ public sealed class WidgetAppLibraryService
                 "malformed_response", "The app library provider returned an invalid acknowledgement.");
     }
 
-    internal async ValueTask<WidgetAppLaunchObservation> LaunchObservedAsync(
+    /// <summary>
+    /// Launches a current opaque app identity and returns the strongest
+    /// sanitized evidence the provider can support. Callers must resolve a
+    /// durable SavedId immediately before invoking this method; the observation
+    /// is not reusable launch authority.
+    /// </summary>
+    public async ValueTask<WidgetAppLaunchObservation> LaunchObservedAsync(
         string appId,
         WidgetAppLaunchOverlayBehavior overlayBehavior,
         CancellationToken cancellationToken = default)

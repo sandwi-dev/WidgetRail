@@ -74,3 +74,14 @@ compatibility, WidgetSdk, and GbarCli scaffold checks. The update command does
 not edit the release-unit properties, template, package, docs, or protocol; it
 only makes the reviewed public-surface decision explicit. Tests never invoke
 this command against the checked-in baseline.
+
+## App-library launch observations
+
+The current pre-release SDK adds public `WidgetAppLaunchObservationState`,
+`WidgetAppLaunchObservation`, and
+`WidgetAppLibraryService.LaunchObservedAsync`. This additive contract replaces
+repository friend access previously used by the bundled Game Launcher. It
+returns only bounded sanitized progress and support flags; it exposes no
+process, path, launcher identity, provider authority, or durable launch token.
+Community launchers must still persist only `SavedId`, resolve it immediately
+before launch, and invoke the returned current opaque `AppId` exactly once.

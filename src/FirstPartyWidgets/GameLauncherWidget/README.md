@@ -1,9 +1,25 @@
 # Game Launcher
 
-Game Launcher is the controller-first first-party view over the trusted installed
-application library. It can search, filter, organize, and launch only identities
+Game Launcher is the controller-first reference view over the trusted installed
+application library. Its maintained managed source can be exported as an ordinary
+Community repository that consumes only the packaged public SDK; the currently
+bundled entry remains unchanged until the generic host cutover. It can search,
+filter, organize, and launch only identities
 resolved through the app-library capability; saved display rows never grant launch
 authority.
+
+Create a self-contained Community candidate from a built `gbar` distribution:
+
+```powershell
+pwsh -NoProfile -File .\src\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1 `
+  -Gbar .\artifacts\gbar\gbar.exe `
+  -Output C:\temp\GameLauncherCommunity
+```
+
+The generated project contains no checkout `ProjectReference` or friend access.
+It restores the exact locally packaged `GameBarAlternative.WidgetSdk`, declares
+only app-library read plus optional running/launch capabilities, and packages as
+`org.gbar.community.reference.game-launcher` without changing the installed built-in entry.
 
 Every provider row enters the widget as one immutable normalized presentation
 containing its sanitized item/source identity, availability, role-keyed artwork,

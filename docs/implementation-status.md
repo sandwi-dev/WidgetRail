@@ -3434,6 +3434,27 @@ Game Launcher 65/65, the installed Games & Apps normalized app-library
 acceptance route, and the 65-document contract. No canonical aggregate, native,
 network, external-provider, credential, or capture suite was run.
 
+### Game Launcher public SDK portability (DLV-212)
+
+Game Launcher no longer has an SDK `InternalsVisibleTo` exception. The smallest
+generic public addition is sanitized launch observation state/result plus
+`WidgetAppLibraryService.LaunchObservedAsync`; raw provider and OS identities
+remain unavailable. `Export-CommunityReference.ps1` copies the one maintained
+managed implementation into a self-contained non-first-party repository created
+by the supported `gbar` scaffold, retaining no checkout path, project reference,
+friend declaration, or unpublished assembly dependency. The currently bundled
+package and tray entry remain unchanged pending the generic native contract and
+atomic Community cutover.
+
+Focused Release evidence passes Widget SDK 89/89 and Game Launcher 90/90. The
+dedicated CLI path restores from a fresh NuGet cache, builds, validates, packs,
+and installs `org.gbar.community.reference.game-launcher` disabled as Community.
+The resulting four-file 222,523-byte archive then runs through the ordinary
+generic AppContainer worker with declared app-library permissions and exercises
+the 10,000-item cursor page, Search, collection navigation, details/Back,
+private-state organization, and exact opaque launch revalidation. No native,
+catalog cutover, provider, credential, or aggregate behavior changed.
+
 ### Spotify responsive player fit correction (DLV-144)
 
 Spotify's pure `SpotifyPresentation` remains the only responsive-composition

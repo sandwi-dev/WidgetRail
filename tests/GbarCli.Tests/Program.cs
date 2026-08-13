@@ -65,6 +65,13 @@ if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--game-launcher-community-reference", StringComparer.Ordinal))
+{
+    await ExternalGameLauncherCommunityReference();
+    Console.WriteLine("PASS Game Launcher public SDK Community repository");
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
@@ -76,6 +83,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Built gbar artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
     ("External repository completes full application onboarding and author loop", ExternalFullApplicationOnboarding),
+    ("Game Launcher exports as a public SDK Community repository", ExternalGameLauncherCommunityReference),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -832,6 +840,110 @@ static async Task ExternalFullApplicationOnboarding()
                          StringComparison.OrdinalIgnoreCase) &&
                      !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)))
         Assert.DoesNotContain(repositorySource, await File.ReadAllTextAsync(input));
+}
+
+static async Task ExternalGameLauncherCommunityReference()
+{
+    using var temp = new TemporaryDirectory();
+    var checkout = Environment.CurrentDirectory;
+    var distribution = Path.Combine(temp.Path, "gbar-dist");
+    var repository = Path.Combine(temp.Path, "external-game-launcher");
+    var widget = Path.Combine(repository, "GameLauncherCommunity");
+    var packages = Path.Combine(temp.Path, "nuget-packages");
+    var catalog = Path.Combine(temp.Path, "catalog");
+    Directory.CreateDirectory(distribution);
+    Directory.CreateDirectory(Path.Combine(repository, ".git"));
+    CopyGbarDistribution(AppContext.BaseDirectory, distribution);
+    var environment = new Dictionary<string, string?>
+    {
+        ["GBAR_TEMPLATE_ROOT"] = null,
+        ["NUGET_PACKAGES"] = packages,
+    };
+    var gbar = Path.Combine(distribution, "gbar.exe");
+    var exporter = Path.Combine(checkout, "src", "FirstPartyWidgets",
+        "GameLauncherWidget", "Export-CommunityReference.ps1");
+    var exported = await RunProcessAsync(
+        "pwsh",
+        ["-NoProfile", "-File", exporter, "-Gbar", gbar, "-Output", widget],
+        TimeSpan.FromSeconds(45), repository, environment);
+    Assert.True(exported.Code == 0,
+        "game launcher export: " + exported.Output + exported.Error);
+    Assert.Contains("self-contained Game Launcher Community reference", exported.Output);
+
+    var project = Path.Combine(widget, "GameLauncherCommunity.csproj");
+    var projectText = await File.ReadAllTextAsync(project);
+    Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", projectText);
+    Assert.DoesNotContain("ProjectReference", projectText);
+    Assert.DoesNotContain(checkout, projectText);
+    var sdkReference = XDocument.Load(project).Descendants("PackageReference").Single(element =>
+        string.Equals((string?)element.Attribute("Include"),
+            "GameBarAlternative.WidgetSdk", StringComparison.Ordinal));
+    var sdkVersion = (string?)sdkReference.Attribute("Version") ??
+        throw new InvalidOperationException("The Community reference omitted its exact SDK version.");
+    Assert.True(!File.Exists(Path.Combine(widget, "src", "AssemblyInfo.cs")),
+        "The external reference retained repository-only friend declarations.");
+    foreach (var input in Directory.EnumerateFiles(widget, "*", SearchOption.AllDirectories)
+                 .Where(path => !path.Contains(
+                     $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                     StringComparison.OrdinalIgnoreCase) &&
+                     !path.Contains(
+                         $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                         StringComparison.OrdinalIgnoreCase) &&
+                     !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)))
+        Assert.DoesNotContain(checkout, await File.ReadAllTextAsync(input));
+
+    var restore = await RunProcessAsync(
+        "dotnet", ["restore", project, "--force", "--no-cache", "--nologo"],
+        TimeSpan.FromSeconds(120), widget, environment);
+    Assert.True(restore.Code == 0, "game launcher restore: " + restore.Output + restore.Error);
+    var restoredSdk = Path.Combine(
+        packages,
+        "gamebaralternative.widgetsdk",
+        sdkVersion.ToLowerInvariant(),
+        "lib",
+        "net8.0");
+    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetSdk.dll")),
+        "The Community reference did not restore the exact SDK into its fresh cache.");
+    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetProtocol.dll")),
+        "The Community reference SDK package omitted WidgetProtocol.dll.");
+    var build = await RunProcessAsync(
+        "dotnet", ["build", project, "-c", "Release", "--no-restore", "--nologo"],
+        TimeSpan.FromSeconds(120), widget, environment);
+    Assert.True(build.Code == 0, "game launcher build: " + build.Output + build.Error);
+    var validation = await RunProcessAsync(
+        gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(validation.Code == 0,
+        "game launcher validate: " + validation.Output + validation.Error);
+
+    var archive = Path.Combine(repository,
+        "org.gbar.community.reference.game-launcher-0.1.0.gbarwidget");
+    var packed = await RunProcessAsync(
+        gbar,
+        ["pack", widget, "--configuration", "Release", "--output", archive],
+        TimeSpan.FromSeconds(150), repository, environment);
+    Assert.True(packed.Code == 0, "game launcher pack: " + packed.Output + packed.Error);
+    var installed = await RunProcessAsync(
+        gbar, ["install", archive, "--catalog", catalog],
+        TimeSpan.FromSeconds(60), repository, environment);
+    Assert.True(installed.Code == 0,
+        "game launcher install: " + installed.Output + installed.Error);
+    var manifest = ManifestJson.Deserialize(
+        await File.ReadAllBytesAsync(Path.Combine(widget, "manifest.json")));
+    Assert.Equal("org.gbar.community.reference.game-launcher", manifest.Id);
+    Assert.Equal("org.gbar.community.reference", manifest.Publisher);
+    Assert.True(manifest.Permissions.SequenceEqual(["system.apps.library.read.v1"]),
+        "The Community reference did not declare its required app-library permission.");
+    Assert.True(manifest.OptionalPermissions.Order(StringComparer.Ordinal).SequenceEqual(
+        new[] { "system.apps.library.launch.v1", "system.apps.running.read.v1" }),
+        "The Community reference did not declare its optional launch/running permissions.");
+    var snapshot = await new WidgetCatalog(catalog).DiscoverAsync();
+    var candidate = snapshot.Widgets.Single();
+    Assert.Equal(manifest.Id, candidate.Id);
+    Assert.Equal(manifest.Publisher, candidate.ActiveVersion.Manifest.Publisher);
+    Assert.True(!candidate.Enabled,
+        "A newly installed Community reference became visible without explicit enablement.");
+    await AssertArchiveHasNoPathsAsync(
+        archive, checkout, distribution, repository, packages, catalog);
 }
 
 static void CopyGbarDistribution(string source, string destination)

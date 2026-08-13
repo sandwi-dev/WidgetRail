@@ -33,6 +33,7 @@ ctor GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest(string De
 ctor GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
 ctor GameBarAlternative.WidgetSdk.WidgetActionEvent(string ActionId, string SourceElementId, GameBarAlternative.WidgetProtocol.ControllerButton? ControllerButton = null, GameBarAlternative.WidgetProtocol.ControllerEventPhase Phase = GameBarAlternative.WidgetProtocol.ControllerEventPhase.Pressed, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, double? RequestedValue = null, string? InputScopeId = null)
 ctor GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs(GameBarAlternative.WidgetSdk.WidgetActionEvent Action, System.Exception Exception)
+ctor GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation(GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState State, bool SupportsRunning, bool SupportsEnded)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole Role, string Handle, string Revision, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback Fallback)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet(System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork> Items)
 ctor GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability(GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailabilityState State, bool IsLaunchable, string StatusCode)
@@ -178,6 +179,10 @@ enum GameBarAlternative.WidgetSdk.ToastTone.Info = GameBarAlternative.WidgetSdk.
 enum GameBarAlternative.WidgetSdk.ToastTone.Neutral = GameBarAlternative.WidgetSdk.ToastTone.Neutral
 enum GameBarAlternative.WidgetSdk.ToastTone.Success = GameBarAlternative.WidgetSdk.ToastTone.Success
 enum GameBarAlternative.WidgetSdk.ToastTone.Warning = GameBarAlternative.WidgetSdk.ToastTone.Warning
+enum GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.Ended = GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.Ended
+enum GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.LauncherStarted = GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.LauncherStarted
+enum GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.RequestAccepted = GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.RequestAccepted
+enum GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.Running = GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState.Running
 enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess = GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess
 enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.KeepOpen = GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior.KeepOpen
 enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Cancel = GameBarAlternative.WidgetSdk.WidgetAppLibraryAction.Cancel
@@ -783,6 +788,11 @@ method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Deconstruct(out 
 method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.ToString() -> string
+method GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation
+method GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState State, out bool SupportsRunning, out bool SupportsEnded) -> void
+method GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Deconstruct(out GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole Role, out string Handle, out string Revision, out GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback Fallback) -> void
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Equals(object? obj) -> bool
@@ -848,6 +858,7 @@ method GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.ConfirmRunningAsync(string savedId, string revision, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem?>
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.LaunchAsync(string appId, GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior overlayBehavior, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.LaunchAsync(string appId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.LaunchObservedAsync(string appId, GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior overlayBehavior, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation>
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.ObserveRunningAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetRunningAppObservation>
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.QueryAsync(GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery query, GameBarAlternative.WidgetSdk.WidgetCollectionCursor? cursor = null, GameBarAlternative.WidgetSdk.WidgetCursorDirection? direction = null, int limit = 64, bool refresh = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<GameBarAlternative.WidgetSdk.WidgetAppLibraryPage>
 method GameBarAlternative.WidgetSdk.WidgetAppLibraryService.ResolveSavedAsync(System.Collections.Generic.IReadOnlyList<string> savedIds, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<GameBarAlternative.WidgetSdk.WidgetAppLibraryItem>>
@@ -1625,6 +1636,8 @@ method static GameBarAlternative.WidgetSdk.WidgetActionEvent.op_Equality(GameBar
 method static GameBarAlternative.WidgetSdk.WidgetActionEvent.op_Inequality(GameBarAlternative.WidgetSdk.WidgetActionEvent? left, GameBarAlternative.WidgetSdk.WidgetActionEvent? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.op_Equality(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? left, GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.op_Inequality(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? left, GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation? left, GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation? right) -> bool
+method static GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation? left, GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.op_Inequality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? right) -> bool
 method static GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.op_Equality(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? left, GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? right) -> bool
@@ -1921,6 +1934,7 @@ method virtual GameBarAlternative.WidgetSdk.Widget.OnControllerInputAsync(GameBa
 method virtual GameBarAlternative.WidgetSdk.WidgetActionEvent.Equals(GameBarAlternative.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs
 method virtual GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Equals(GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.Equals(GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.Equals(GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability? other) -> bool
@@ -2064,6 +2078,7 @@ property GameBarAlternative.WidgetSdk.IWidgetCapabilityClient GameBarAlternative
 property GameBarAlternative.WidgetSdk.ToastTone GameBarAlternative.WidgetSdk.ToastElement.Tone { get; }
 property GameBarAlternative.WidgetSdk.Widget GameBarAlternative.WidgetSdk.WidgetScenarioDefinition.Widget { get; }
 property GameBarAlternative.WidgetSdk.WidgetActionEvent GameBarAlternative.WidgetSdk.WidgetActionFailedEventArgs.Action { get; set; }
+property GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.State { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Fallback { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkRole GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork.Role { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet GameBarAlternative.WidgetSdk.WidgetAppLibraryPresentation.Artwork { get; set; }
@@ -2277,6 +2292,8 @@ property bool GameBarAlternative.WidgetSdk.SetWidgetWifiRadioRequest.Enabled { g
 property bool GameBarAlternative.WidgetSdk.TextEntryElement.IsDisabled { get; set; }
 property bool GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest.ContinuePlaying { get; set; }
 property bool GameBarAlternative.WidgetSdk.Widget.IsActive { get; }
+property bool GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.SupportsEnded { get; set; }
+property bool GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation.SupportsRunning { get; set; }
 property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability.IsLaunchable { get; set; }
 property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Refresh { get; set; }
 property bool GameBarAlternative.WidgetSdk.WidgetAppLibraryQuery.InstalledOnly { get; set; }
@@ -2750,6 +2767,7 @@ type enum GameBarAlternative.WidgetSdk.IconButtonSize : System.IComparable, Syst
 type enum GameBarAlternative.WidgetSdk.IconButtonVariant : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.StatusTone : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.ToastTone : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum GameBarAlternative.WidgetSdk.WidgetAppLaunchObservationState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLaunchOverlayBehavior : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryAction : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkFallback : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -2847,6 +2865,7 @@ type sealed class GameBarAlternative.WidgetSdk.ToastElement : GameBarAlternative
 type sealed class GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest : System.IEquatable<GameBarAlternative.WidgetSdk.TransferWidgetSpotifyPlaybackRequest>
 type sealed class GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest : System.IEquatable<GameBarAlternative.WidgetSdk.UnpairWidgetBluetoothDeviceRequest>
 type sealed class GameBarAlternative.WidgetSdk.WidgetActionEvent : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetActionEvent>
+type sealed class GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLaunchObservation>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtwork>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryArtworkSet>
 type sealed class GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability : System.IEquatable<GameBarAlternative.WidgetSdk.WidgetAppLibraryAvailability>

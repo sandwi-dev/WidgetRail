@@ -137,6 +137,45 @@ if (args.Contains("--game-launcher-launch-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--game-launcher-community-acceptance", StringComparer.Ordinal))
+{
+    var packageIndex = Array.IndexOf(args, "--package");
+    var packagePath = packageIndex >= 0 && packageIndex + 1 < args.Length &&
+                      !string.IsNullOrWhiteSpace(args[packageIndex + 1])
+        ? Path.GetFullPath(args[packageIndex + 1])
+        : throw new ArgumentException("--package requires a path.");
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
+    var packageCatalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
+    var installedVersion = await packageCatalog.InstallAsync(packagePath);
+    Assert.Equal("org.gbar.community.reference.game-launcher", installedVersion.Id);
+    Assert.Equal("org.gbar.community.reference", installedVersion.Manifest.Publisher);
+    await packageCatalog.SetEnabledAsync(installedVersion.Id, true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    Assert.True(installed.InstalledCatalogValid,
+        "The external Game Launcher Community package was rejected: " +
+        string.Join(" | ", installed.Warnings));
+    var package = new PackageFixture(
+        installedVersion.Id,
+        WidgetGlyph.Play,
+        "Conformance Game 00000",
+        installedVersion.Manifest,
+        installedVersion.InstallPath,
+        packagePath,
+        installedVersion.Manifest.Permissions
+            .Concat(installedVersion.Manifest.OptionalPermissions)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+    await RunCatalogAsync(
+        installed.Catalog,
+        [package],
+        candidate => candidate.Manifest.Id,
+        "external-community-game-launcher");
+    Console.WriteLine("PASS external Game Launcher Community generic-worker acceptance");
+    return 0;
+}
+
 if (args.Contains("--game-launcher-owned-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
@@ -2706,7 +2745,9 @@ static async Task RunCatalogAsync(
             var configured = catalog.GetConfigured(widgetId(package));
             backend = sharedBackend ?? CreateBackend(
                 spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify",
-                gameLibraryCount: package.Manifest.Id == "org.gbar.firstparty.game-launcher"
+                gameLibraryCount: package.Manifest.Id is
+                    "org.gbar.firstparty.game-launcher" or
+                    "org.gbar.community.reference.game-launcher"
                     ? 10_000 : 2);
             using var consentRoot = new TemporaryDirectory("gba-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
@@ -2747,6 +2788,7 @@ static async Task RunCatalogAsync(
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
             if (package.Manifest.Id is
                 "org.gbar.firstparty.game-launcher" or
+                "org.gbar.community.reference.game-launcher" or
                 "org.gbar.firstparty.network-controls")
             {
                 var entry = Nodes(snapshot.Root).Single(node =>
@@ -3114,6 +3156,7 @@ static async Task ExerciseControlAsync(
             calls = () => backend.AppLibraryLaunchCalls;
             break;
         case "org.gbar.firstparty.game-launcher":
+        case "org.gbar.community.reference.game-launcher":
             Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
                 node.ActionId == "game-launcher.launch"));
             Assert.True(Nodes(snapshot.Root).Count() < 1_024,

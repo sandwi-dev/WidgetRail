@@ -298,6 +298,13 @@ the SDK throws `WidgetCapabilityException` with `malformed_response`. Neither
 method exposes process/window/path identity or grants launch authority, and
 ordinary catalog access remains independently consented.
 
+For launchers that need truthful progress rather than a simple acknowledgement,
+`LaunchObservedAsync` returns `RequestAccepted`, `LauncherStarted`, `Running`,
+or `Ended` plus explicit support flags. It is a sanitized public SDK result: it
+contains no process, executable, window, provider, or OS identity and is not
+reusable authority. Resolve the durable `SavedId` immediately before launch and
+use the resulting current opaque `AppId` exactly once.
+
 Protocol v14 also supplies `WidgetArtworkHandle`, `UI.Artwork`, and
 `ButtonElement.LeadingArtwork`. Handles are bounded opaque identities—not URLs
 or paths—and grant no fetch, file, network, decode, or action authority. Use

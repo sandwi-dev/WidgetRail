@@ -294,6 +294,10 @@ static async Task AppLibraryPlatformService()
             WidgetAppLibraryCapabilities.Launch,
             new WidgetCapabilityAcknowledgement(true))
         .WithResponse(
+            WidgetAppLibraryCapabilities.LaunchObserved,
+            new WidgetAppLaunchObservation(
+                WidgetAppLaunchObservationState.LauncherStarted, true, true))
+        .WithResponse(
             WidgetAppLibraryCapabilities.ObserveRunning,
             new WidgetRunningAppObservation(
                 [new("saved-running", "Visible app", WidgetAppLibraryKind.Application,
@@ -437,6 +441,14 @@ static async Task AppLibraryPlatformService()
         Assert.Equal("malformed_response", malformedConfirmationError.ErrorCode);
     }
     await widget.AppLibrary.LaunchAsync("app-opaque");
+    var launchObservation = await widget.AppLibrary.LaunchObservedAsync(
+        "app-opaque", WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess);
+    Assert.Equal(WidgetAppLaunchObservationState.LauncherStarted,
+        launchObservation.State);
+    Assert.True(launchObservation.SupportsRunning,
+        "The public launch observation lost running-state support.");
+    Assert.True(launchObservation.SupportsEnded,
+        "The public launch observation lost ended-state support.");
     Assert.Throws<ArgumentException>(() =>
         widget.AppLibrary.LaunchAsync(string.Empty).GetAwaiter().GetResult());
     Assert.Throws<ArgumentException>(() =>

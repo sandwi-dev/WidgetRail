@@ -1426,7 +1426,13 @@ if (LifecycleState == WidgetLifecycleState.Interactive && restored.Count != 0)
     var item = restored[0];
     if (item.Presentation.Availability.IsLaunchable &&
         item.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch))
-        await HostServices.AppLibrary.LaunchAsync(item.AppId, cancellationToken);
+    {
+        var observation = await HostServices.AppLibrary.LaunchObservedAsync(
+            item.AppId,
+            WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess,
+            cancellationToken);
+        // Render only the sanitized observation; it is not durable authority.
+    }
 }
 ```
 
@@ -1444,6 +1450,11 @@ that are no longer available. Read is allowed only in Visible or Interactive;
 launch is separately declared/consented and Interactive-only. Treat `AppId` as
 an opaque provider-lifetime token and never persist it. `SavedId` is the
 non-reversible publisher/package-scoped value for private state. The current
+`LaunchObservedAsync` result is public to every declared Community consumer and
+reports only bounded `RequestAccepted`, `LauncherStarted`, `Running`, or `Ended`
+evidence with support flags. It exposes no process, path, launcher, or operating-
+system identity and does not replace exact SavedId re-resolution.
+The current
 Windows provider exposes bounded Start Menu `.lnk` plus current-user
 AppsFolder/AUMID registrations and conservatively reports them as Application.
 Each item has one versioned `Presentation`: sanitized title and closed kind,
