@@ -103,9 +103,10 @@ evidence, not implementation authority.
 - AVP-004 uses one generic current-`WidgetProtocol` semantic-tree adapter. It
   must not rebuild Settings, Audio Mixer, Network, media, library, Spotify,
   YT Music, or Game Launcher as domain-specific Avalonia pages.
-- Hold DLV-216, DLV-217, and DLV-218 during AVP-001 and the architecture
-  decision. Those milestones assume the current declarative presentation path
-  and would create avoidable migration or deletion work.
+- The Avalonia architecture decision is now accepted. DLV-216 and DLV-217 may
+  proceed because their package-owned domain/runtime work is retained by the
+  reuse-first migration and stays UI-framework-neutral. DLV-218 remains
+  serialized after both cutovers because it deletes their retired core paths.
 
 ## Execution protocol
 
@@ -373,16 +374,16 @@ increase with no clear owner.
 
 ### Current assignment — AVP-004: complete polished overlay prototype
 
-State: Assigned as a reuse-first migration program; implementation remains
-paused until the planner reconciles and preserves the standing task's existing
-uncommitted foundation work against this assignment. Do not discard, clean,
-commit, or silently repurpose that work. If incompatible changes cannot be
-separated without loss, stop for the user.
+State: Assigned as a reuse-first migration program. Reconciliation is complete:
+the standing Avalonia task is clean at accepted AVP-003 commit `2a3c722` and
+contains no uncommitted foundation work to preserve. Extraction implementation
+remains gated only on the exact exclusive-file assignments below.
 
 Architecture contract: [Avalonia presentation migration
 plan](avalonia-migration-plan.md).
 
-Baseline: local main `9d3ad8e`; accepted Avalonia branch commit `2a3c722`.
+Production code baseline: accepted local main `4f502c4`; accepted Avalonia
+branch commit `2a3c722`.
 The current production overlay and accepted native Release remain authoritative
 through the entire candidate build. No production cutover or renderer deletion
 is part of AVP-004.
@@ -694,16 +695,28 @@ bounded owner.
 
 Task: Implementation agent — widgets lane
 
-Branch: codex/impl-widgets
+Branch for new work: codex/impl-widgets-community, created from accepted
+production code baseline `4f502c4`. Preserve the prior
+`codex/impl-widgets`/`1dbd542` branch as completed DLV-219 history.
 
-### Current assignment — none; held during Avalonia evaluation
+### Current assignment — DLV-216: autonomous Spotify Community application
+
+State: Assigned. The accepted Avalonia architecture retains package-owned
+domain implementations behind the UI-framework-neutral semantic contract, so
+this autonomy work no longer conflicts with the presentation migration.
+
+Code baseline: accepted local main `4f502c4`. The widgets task must create the
+fresh branch above from that exact commit; it must not merge the stale widgets
+branch or replay DLV-219. The planner dispatch supplies the immutable reviewer
+assignment commit separately.
 
 DLV-219 is accepted through main 01af13c. Every non-root Launcher Experience
 projection now advertises the ordinary B-to-`back` shortcut while retaining its
 existing Back/Cancel control, exact parent transition, and focus policy. The
-focused Release Settings suite passed 60/60. The widgets lane must remain at
-this clean boundary until DLV-215 is accepted and integrated; do not start
-DLV-216 against the AppContainer-only runtime or current declarative renderer.
+focused Release Settings suite passed 60/60. DLV-215/DLV-220 are accepted and
+integrated through main `4f502c4`, providing DLV-216's generic full-trust
+runtime. Do not edit the Avalonia experiment or renderer while migrating the
+package-owned Spotify domain.
 
 ### Accepted dependency — DLV-212
 
@@ -715,7 +728,7 @@ architecture. DLV-217 replaces its framework-owned domain authority.
 
 ### Widgets Ready queue
 
-1. **Held for the Avalonia architecture decision — DLV-216: make Spotify an
+1. **Assigned as current work — DLV-216: make Spotify an
    autonomous full-trust Community application.**
 
    Move Spotify OAuth, Web API, Web Playback host/protocol, token storage,
@@ -733,7 +746,7 @@ architecture. DLV-217 replaces its framework-owned domain authority.
    code yet; DLV-218 owns deletion after cutover. No native renderer work,
    publication, capture gate, or secrets.
 
-2. **Held for the Avalonia architecture decision — DLV-217: make Game Launcher
+2. **Ready after accepted DLV-216 — DLV-217: make Game Launcher
    the autonomous full-trust Community flagship and cut it over.**
 
    Move or export Windows/Xbox and opt-in store discovery, metadata/artwork
@@ -771,21 +784,19 @@ Task: Implementation agent — platform lane
 
 Branch: codex/impl-platform-community
 
-### Current assignment — DLV-210: generic Hero Rail no-artwork layout
+### Current assignment — none; accepted platform boundary
 
-State: In progress from committed DLV-215 candidate ed39a70. Do not interrupt
-the coherent visible DLV-210 milestone. DLV-215's production architecture is
-accepted in review, but its commit is held from integration because its clean
-exact-commit verifier stopped at the directly affected Widget Runtime suite
-with 74/75 and `Sequence contains more than one element`; retained evidence is
-`artifacts/verification/20260813T063409Z-37fcbe6e/verification-result.json`.
-DLV-220 is the next Platform item and owns only that bounded verification
-correction. DLV-216 and DLV-217 remain blocked until the corrected DLV-215
-ancestry is accepted and integrated.
+State: DLV-215 `ed39a70`, DLV-210 `ebb6ad7`, and corrected DLV-220 tip
+`fcd301a` are independently accepted and integrated through local main merge
+`4f502c4`. The focused Runtime suite passes 75/75 and the ordinary packaged
+full-trust bridge route passes 86/86. The clean exact-commit Tier 3 stops only
+at the already-known reviewer-owned archived-plan links; no implementation-
+owned acceptance step is red. The refreshed packaged Release is running from
+local main for user testing.
 
 ### Platform Ready queue
 
-1. **Committed candidate; held for DLV-220 — DLV-215: add the generic full-trust
+1. **Accepted and integrated — DLV-215: add the generic full-trust
    Community application runtime.**
 
    Add one explicit versioned manifest/runtime entrypoint for an immutable
@@ -818,7 +829,7 @@ ancestry is accepted and integrated.
    design requires identity recognition or claims containment it does not
    provide.
 
-2. **Assigned as current work — DLV-210: repair the generic Hero Rail
+2. **Accepted and integrated — DLV-210: repair the generic Hero Rail
    no-artwork layout.**
 
    The user's accepted live frame exposed a disconnected header, large empty
@@ -840,7 +851,7 @@ ancestry is accepted and integrated.
    credentials, public protocol expansion, managed Launcher root, tray/work-
    area owner, or unrelated animation refactor.
 
-3. **Immediately after DLV-210 — DLV-220: correct DLV-215 exact-commit Runtime
+3. **Accepted and integrated — DLV-220: correct DLV-215 exact-commit Runtime
    verification.**
 
    Preserve the reviewed generic full-trust architecture in ed39a70. Diagnose
@@ -889,16 +900,15 @@ ancestry is accepted and integrated.
 
 ## Serialized integration queue
 
-1. Finish coherent DLV-210, then correct DLV-215 verification through DLV-220
-   and integrate the accepted corrected ancestry. DLV-219 is already accepted
-   on main; do not resolve any resulting product-code conflict in the planner.
-2. DLV-216 and DLV-217 may start only from accepted and integrated DLV-215.
-   Keep their domain ownership disjoint; integrate Spotify autonomy before Game
-   Launcher cutover.
+1. DLV-210, DLV-215, and corrected DLV-220 are accepted and integrated through
+   main `4f502c4`; DLV-219 is also already accepted on main.
+2. Execute DLV-216 now from `4f502c4`, then DLV-217 from its accepted integrated
+   result. Keep their domain ownership disjoint; integrate Spotify autonomy
+   before Game Launcher cutover.
 3. Only after DLV-216 and DLV-217 are accepted may DLV-218 delete retired core
    contracts.
-4. DLV-210 is the active visible generic presentation correction and must not
-   reintroduce Game Launcher identity recognition.
+4. DLV-210 is complete and did not reintroduce Game Launcher identity
+   recognition.
 5. DLV-206 remains evidence-only and follows DLV-218.
 6. Live metadata/artwork and account verification remain credential-gated, but
    adapter implementation belongs to the Community package.

@@ -135,7 +135,7 @@ cohesive exception explicitly.
 
 Every production assignment must contain a stable DLV ID; every Avalonia
 evaluation assignment must contain a stable AVP ID. AVP-004 temporary work
-packages use the parent ID plus a stable suffix such as `AVP-004-SYSTEM`.
+packages use the parent ID plus a stable suffix such as `AVP-004-SESSION`.
 Every assignment requires
 its lane, baseline, dependencies, bounded objective, ownership boundary,
 in-scope and out-of-scope work,

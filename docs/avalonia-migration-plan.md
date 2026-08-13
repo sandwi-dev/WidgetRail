@@ -1,6 +1,7 @@
 # Avalonia presentation migration plan
 
-Status: accepted architecture direction; implementation remains assignment-gated
+Status: accepted architecture direction; extraction implementation remains
+assignment-gated
 
 Avalonia will replace the overlay's presentation boundary without rebuilding
 the widget platform or moving Community widget code into the shell. The
@@ -188,6 +189,13 @@ AVP-004 is a reuse-first migration proof, not eight reconstructed pages.
    production launcher. Do not remove the native presentation stack until the
    user accepts the candidate and the delivery plan assigns an explicit
    cutover/deletion milestone.
+
+The accepted production baseline for this work is local main `4f502c4`. It
+includes the generic full-trust Community runtime, the corrected runtime race
+evidence, and the generic Hero Rail recovery. The standing Avalonia branch is
+clean at accepted AVP-003 commit `2a3c722`; it has no uncommitted foundation
+changes to reconcile. DLV-216 and DLV-217 may proceed independently because
+their package-owned domain implementations are retained by this architecture.
 
 ## Acceptance gates
 
