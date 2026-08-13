@@ -9,14 +9,15 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `9688455`, including accepted DLV-216, the
+- Production code: local main `09f038f`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
   the independently accepted AVP-004 source correction through `b998d62`,
   integrated as `9688455`. No production renderer cutover is implied.
-- Latest reviewed Avalonia implementation: source `b998d62` on
-  `codex/avalonia-prototype`, integrated through main `9688455`. Its automated
-  source evidence remains accepted, but the user's second physical
-  display/controller verdict rejects AVP-004 and reopens the candidate.
+- Latest reviewed Avalonia implementation: source `16b33d9` on
+  `codex/avalonia-prototype`, integrated through main `09f038f`. Its automated
+  source evidence is accepted; the exact copied runtime is visibly running as
+  PID 34756 with a live atomic manual-session input trace. Physical acceptance
+  remains open for the user's eight-page/controller verdict.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
   kept closed during the isolated physical test. Rejected AVP PIDs 33332 and
@@ -81,7 +82,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004 physical layout/controller correction reopened from source `b998d62` / main `71926c3`; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Source correction `16b33d9` accepted/integrated as main `09f038f`; physical verdict pending on PID 34756; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -510,6 +511,19 @@ returns false. The bounded correction must return and retain the real handling
 result for every Y press/release/hold branch, prove handled and unhandled Y
 through the shared route into the atomic trace, then run the changed-tip focused
 suite and one exact measurement. Do not integrate or launch `dea77b1c`.
+
+Final bounded correction `16b33d9` returns and records the real Y handling
+result for every route and proves false then true through the shared focused
+semantic route and atomically replaced trace. Independent review accepts the
+cumulative correction. Exact evidence passes 26/26 focused tests, all eight
+widgets and 32 responsive fixtures, all 24 transition phases, 474.86 MiB
+candidate memory, and normal 144.64-ms no-force shutdown with no remaining
+owned process. It is integrated through main `09f038f`. The exact reviewed
+copied executable (SHA-256 `870E4F4A0862B8C1D125D01A5A91C459ECCBFEEF097303A2F9B92C9432956B38`)
+is visibly running as PID 34756 with `--source-commit 16b33d9...` and live
+`manual-session-input-trace.json`. The trace already proves the native visible
+GameInput lease and foreground-exclusive path; connected/routed physical input
+remains deliberately false until the user exercises the controller.
 
 Next correction is visible-first and root-cause bounded:
 
