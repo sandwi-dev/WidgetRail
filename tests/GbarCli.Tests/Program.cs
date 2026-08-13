@@ -75,6 +75,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Built gbar artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
+    ("External repository completes full application onboarding", ExternalFullApplicationOnboarding),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -686,6 +687,131 @@ static async Task ExternalVersionedSdkConsumer()
     }
     await AssertArchiveHasNoPathsAsync(
         package, Environment.CurrentDirectory, distribution, repository);
+}
+
+static async Task ExternalFullApplicationOnboarding()
+{
+    using var temp = new TemporaryDirectory();
+    var repositorySource = Environment.CurrentDirectory;
+    var distribution = Path.Combine(temp.Path, "gbar-dist");
+    var repository = Path.Combine(temp.Path, "external-full-application");
+    var widget = Path.Combine(repository, "ExternalFullApplication");
+    var packages = Path.Combine(temp.Path, "nuget-packages");
+    var catalog = Path.Combine(temp.Path, "isolated-catalog");
+    Directory.CreateDirectory(distribution);
+    Directory.CreateDirectory(Path.Combine(repository, ".git"));
+    CopyGbarDistribution(AppContext.BaseDirectory, distribution);
+    var environment = new Dictionary<string, string?>
+    {
+        ["GBAR_TEMPLATE_ROOT"] = null,
+        ["NUGET_PACKAGES"] = packages,
+    };
+    var gbar = Path.Combine(distribution, "gbar.exe");
+    var created = await RunProcessAsync(
+        gbar,
+        ["new", "widget", "ExternalFullApplication", "--output", widget,
+         "--id", "dev.external.full-application", "--publisher", "dev.external",
+         "--template", "multipage"],
+        TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(created.Code == 0, "external create: " + created.Output + created.Error);
+
+    File.Delete(Path.Combine(widget, "src", "ExternalFullApplication.cs"));
+    var referenceRoot = Path.Combine(repositorySource, "samples", "FullApplicationWidget");
+    foreach (var name in new[] { "FullApplicationReferenceWidget.cs", "ReferenceLibrary.cs" })
+        File.Copy(Path.Combine(referenceRoot, name), Path.Combine(widget, "src", name));
+    File.Copy(Path.Combine(referenceRoot, "styles", "default.gbss"),
+        Path.Combine(widget, "styles", "default.gbss"), overwrite: true);
+    var manifest = (await File.ReadAllTextAsync(Path.Combine(referenceRoot, "manifest.json")))
+        .Replace("org.gbar.samples.full-application", "dev.external.full-application",
+            StringComparison.Ordinal)
+        .Replace("org.gbar.samples", "dev.external", StringComparison.Ordinal)
+        .Replace("Full Application Reference", "External Full Application",
+            StringComparison.Ordinal)
+        .Replace("payload/FullApplicationWidget.dll",
+            "payload/ExternalFullApplication.dll", StringComparison.Ordinal);
+    await File.WriteAllTextAsync(Path.Combine(widget, "manifest.json"), manifest);
+    await File.WriteAllTextAsync(Path.Combine(widget, "src", "ExternalScenarios.cs"), """
+        using GameBarAlternative.WidgetSdk;
+
+        namespace GameBarAlternative.Samples.FullApplicationWidget;
+
+        public static class ExternalScenarios
+        {
+            public static WidgetScenarioDefinition Ready() => new(
+                new FullApplicationReferenceWidget(),
+                new WidgetTestHostServicesBuilder().Build());
+        }
+        """);
+    await File.WriteAllTextAsync(Path.Combine(widget, "gbar.scenarios.json"), """
+        {
+          "version": 1,
+          "assembly": "bin/Release/net8.0/ExternalFullApplication.dll",
+          "providerType": "GameBarAlternative.Samples.FullApplicationWidget.ExternalScenarios",
+          "scenarios": [
+            { "name": "ready", "factory": "Ready", "description": "Bounded application-scale library" }
+          ]
+        }
+        """);
+
+    var project = Path.Combine(widget, "ExternalFullApplication.csproj");
+    var projectText = await File.ReadAllTextAsync(project);
+    Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", projectText);
+    Assert.DoesNotContain("ProjectReference", projectText);
+    Assert.DoesNotContain(repositorySource, projectText);
+    var restore = await RunProcessAsync(
+        "dotnet", ["restore", project, "--force", "--no-cache", "--nologo"],
+        TimeSpan.FromSeconds(90), widget, environment);
+    Assert.True(restore.Code == 0, "external restore: " + restore.Output + restore.Error);
+    var build = await RunProcessAsync(
+        "dotnet", ["build", project, "-c", "Release", "--no-restore", "--nologo"],
+        TimeSpan.FromSeconds(90), widget, environment);
+    Assert.True(build.Code == 0, "external build: " + build.Output + build.Error);
+    var validation = await RunProcessAsync(
+        gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(validation.Code == 0,
+        "external validate: " + validation.Output + validation.Error);
+
+    var archive = Path.Combine(repository, "dev.external.full-application-0.1.0.gbarwidget");
+    var packed = await RunProcessAsync(
+        gbar,
+        ["pack", widget, "--configuration", "Release", "--output", archive],
+        TimeSpan.FromSeconds(120), repository, environment);
+    Assert.True(packed.Code == 0, "external pack: " + packed.Output + packed.Error);
+    var installed = await RunProcessAsync(
+        gbar, ["install", archive, "--catalog", catalog],
+        TimeSpan.FromSeconds(60), repository, environment);
+    Assert.True(installed.Code == 0,
+        "external install: " + installed.Output + installed.Error);
+
+    var scenarioOutput = Path.Combine(repository, "ready.scenario.json");
+    var scenario = await RunProcessAsync(
+        gbar,
+        ["preview", widget, "--scenario", "ready", "--output", scenarioOutput],
+        TimeSpan.FromSeconds(30), repository, environment);
+    Assert.True(scenario.Code == 0,
+        "external scenario: " + scenario.Output + scenario.Error);
+    Assert.Contains("isolated preview worker", scenario.Output);
+    Assert.Contains("10,000 private records", await File.ReadAllTextAsync(scenarioOutput));
+
+    var removed = await RunProcessAsync(
+        gbar, ["uninstall", "dev.external.full-application", "--catalog", catalog],
+        TimeSpan.FromSeconds(60), repository, environment);
+    Assert.True(removed.Code == 0,
+        "external uninstall: " + removed.Output + removed.Error);
+    Assert.True(!Directory.Exists(Path.Combine(
+            catalog, "packages", "dev.external.full-application")),
+        "External removal retained the isolated package directory.");
+    await AssertArchiveHasNoPathsAsync(
+        archive, repositorySource, distribution, repository, packages, catalog);
+    foreach (var input in Directory.EnumerateFiles(widget, "*", SearchOption.AllDirectories)
+                 .Where(path => !path.Contains(
+                     $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                     StringComparison.OrdinalIgnoreCase) &&
+                     !path.Contains(
+                         $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                         StringComparison.OrdinalIgnoreCase) &&
+                     !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)))
+        Assert.DoesNotContain(repositorySource, await File.ReadAllTextAsync(input));
 }
 
 static void CopyGbarDistribution(string source, string destination)

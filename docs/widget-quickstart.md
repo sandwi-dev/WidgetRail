@@ -95,6 +95,31 @@ version. CLI, SDK, and template compatibility is checked before generation;
 see [Widget SDK compatibility and release unit](widget-sdk-compatibility.md)
 before intentionally changing the public SDK surface.
 
+### Prove the workflow in an isolated catalog
+
+The optional [Full Application reference](../samples/FullApplicationWidget/README.md)
+uses the same public dependency and command path at application scale. After
+placing that reference pattern in a clean repository-shaped scaffold, the
+credential-free proof runs these commands with a fresh temporary
+`NUGET_PACKAGES` directory and a catalog path owned only by the fixture:
+
+```powershell
+$env:NUGET_PACKAGES = (Join-Path $PWD '.nuget-packages')
+dotnet restore .\ExternalFullApplication\ExternalFullApplication.csproj --force --no-cache
+dotnet build .\ExternalFullApplication\ExternalFullApplication.csproj -c Release --no-restore
+& $gbar validate .\ExternalFullApplication
+& $gbar pack .\ExternalFullApplication --configuration Release --output .\ExternalFullApplication.gbarwidget
+& $gbar install .\ExternalFullApplication.gbarwidget --catalog .\.catalog
+& $gbar preview .\ExternalFullApplication --scenario ready --output .\ready.scenario.json
+& $gbar uninstall dev.external.full-application --catalog .\.catalog
+```
+
+The generated `NuGet.Config` clears all external sources, so restore consumes
+only the scaffold's relative `.gbar\packages` feed. `--catalog` is mandatory in
+this proof: it prevents test installation or removal from mutating the normal
+user catalog. This route performs no publication, signing, account, or network
+operation.
+
 For the normal edit/build/overlay loop, replace the manual build with:
 
 ```powershell

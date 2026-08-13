@@ -4174,3 +4174,12 @@ the dedicated generic AppContainer package route. The latter validates and
 installs the checked-in manifest and assembly into an isolated catalog, renders
 the 10,000-record summary through the ordinary worker, and leaves the worker
 contained and running after its first valid snapshot.
+
+DLV-196 exercises that reference pattern from a clean temporary Git-repository
+shape using the copied DLV-194 `gbar` distribution. A fresh local NuGet cache
+restores only from the generated cleared feed; the external project then builds,
+validates, packages, installs into an isolated catalog, runs its deterministic
+scenario in the AppContainer preview worker, and uninstalls every isolated
+package version. The consumer and archive contain no checkout-relative path,
+and the route performs no external network, publication, signing, credential,
+or production-catalog operation.

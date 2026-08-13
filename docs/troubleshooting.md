@@ -86,6 +86,13 @@ undeclared, unsafe, unreadable, or oversized file and the correction. The
 requested output path must not already exist, because `gbar new` never removes
 or overwrites an author-owned destination.
 
+If an external scaffold succeeds only on a previously used machine, repeat the
+documented restore with `NUGET_PACKAGES` pointed at a new empty directory. A
+successful clean restore must populate the exact content-versioned
+`GameBarAlternative.WidgetSdk` from the generated `.gbar\packages` feed. Do not
+add nuget.org or a checkout-relative source to work around a missing local
+artifact; reinstall the complete matching `gbar` distribution instead.
+
 ## Spotify Connect returns `ERR_CONNECTION_REFUSED`
 
 Register `http://127.0.0.1:43827/callback/` exactly in the Spotify Developer
