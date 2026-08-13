@@ -366,6 +366,30 @@ Required for every assignment:
 Batch coherent edits before rerunning focused suites. Do not rerun unrelated
 green suites after every line-level correction.
 
+Keep verification effort proportional to the visible change. For a bounded UI
+or interaction correction:
+
+- Implement the coherent product behavior before expanding test infrastructure.
+- During iteration, run only the smallest existing regression cases that can
+  distinguish the reported failure from the intended behavior.
+- Add only direct tests needed to protect the named acceptance criteria. Do not
+  create an exhaustive navigation/path framework, capture system, generalized
+  simulator, or large fixture matrix unless the assignment explicitly owns it.
+- Run the full affected Tier 1 suite once after the final worktree is coherent.
+  If it exposes an assignment defect, rerun only the failing case while fixing
+  it, then run one final Tier 1 suite. Do not repeatedly run the whole suite
+  after each edit.
+- Run a measurement or exact-commit evidence lifecycle once, after the coherent
+  commit exists. Never use repeated measurement runs as an implementation loop.
+- When a harness or environment failure persists after one bounded diagnosis,
+  retain and report it. Do not turn the visible correction into test-harness
+  engineering unless that harness is the assigned product surface.
+
+Physical user feedback on a freshly launched candidate is high-value evidence
+for controller feel, visual motion, clipping, and compositor behavior. Do not
+delay that candidate for speculative synthetic coverage that cannot replace the
+user verdict.
+
 ### Tier 2 — grouped integration verification
 
 Use only when an assignment changes a boundary spanning multiple components,
