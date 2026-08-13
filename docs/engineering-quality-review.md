@@ -25,6 +25,15 @@ Visible work remains the scheduling priority. Internal findings below are
 implemented only through an explicit DLV assignment and must not displace an
 unblocked user-visible correction or feature.
 
+The latest live Game Launcher frame also exposes a presentation-resilience gap,
+not merely missing enrichment: the native Hero Rail compact recipe assumes
+cover-art composition strongly enough that six terminally unavailable artwork
+handles leave a large empty hero area and a compressed, uneven text rail.
+DLV-210 owns the responsive no-artwork composition after the already-queued
+generic tray restart. The correction must preserve exact managed game/action/
+collection/focus authority and prove native containment; it must not paper over
+the gap with fake artwork, hard-coded titles, or a screenshot-derived offset.
+
 ## Current review delta
 
 ### Launcher Experience platform prefix accepted

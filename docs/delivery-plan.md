@@ -760,7 +760,31 @@ missing private seam rather than adding parallel presentation authority.
    packaged host path, plus ineligible/non-bridge/reorder/cancellation cases.
    Tier 1 gesture/placement/bridge checks and the smallest packaged host route;
    no input remap, protocol/SDK, widget edit, aggregate, or capture.
-2. **Ready after DLV-209 — DLV-206: retain truthful performance provenance.**
+2. **Ready after DLV-209 — DLV-210: repair the live Hero Rail no-artwork layout.**
+   The user's accepted PID 39636 shows the built-in Hero Rail compact branch as
+   a disconnected source/search header, a large empty hero region, compressed
+   text-only cards whose widths follow title length, clipped controls, and two
+   competing controller-help layers. The exact 19:07 live interval admits a
+   978x466 Game Launcher viewport and reports terminal unavailability for all
+   six visible trusted artwork handles; this is a real product frame, not a
+   malformed capture. Own the native Launcher Experience composition/fallback
+   path and make the code-owned Hero Rail remain professional and completely
+   usable when every visible game lacks cover artwork. Keep title, source
+   status, Search/collections, one bounded equal-width game rail, operation
+   status, and one readable non-overlapping controller-guidance hierarchy
+   inside the admitted body. Reclaim or purposefully compose the empty hero
+   region; do not silently make title length control card geometry, fabricate
+   artwork, hard-code these games, reduce the catalog, or change SavedId/action/
+   collection/focus authority. Retain the selected Hero Rail identity unless a
+   single host-owned responsive fallback within that preset is necessary.
+   Prove the exact current 978x466 compact work area plus standard/wide and
+   available/mixed/all-terminal artwork states through semantic geometry,
+   focus/action/UIA agreement, and the ordinary packaged host. All published
+   rectangles and guidance must be contained; 32-game paging and exact focus
+   must remain intact. Inspect the post-route log. No screenshot gate, provider
+   enrichment, external metadata credentials, public schema/protocol, managed
+   Launcher root, tray/work-area owner, or unrelated animation refactor.
+3. **Ready after DLV-210 — DLV-206: retain truthful performance provenance.**
    Correct rejected DLV-200 without expanding measurement scope. Retain one
    bounded sanitized committed artifact or summary containing root PID/start
    time, exact commit/executable SHA, scenario/process-profile IDs, child
@@ -806,9 +830,10 @@ not manufacture a third native refactor merely to fill queue depth.
 
 ## Verification queue
 
-1. User visual verdict on PID 39636 reopened Spotify packaging/layout and generic
-   Hold Y restart; retest the new accepted Release after DLV-208/209, alongside
-   switching borders/flicker and Game Launcher/Games & Apps layout.
+1. User visual verdict on PID 39636 reopened Spotify packaging/layout, generic
+   Hold Y restart, and the Game Launcher Hero Rail all-artwork-unavailable
+   fallback. Retest the new accepted Release after DLV-208/209/210, alongside
+   switching borders/flicker and Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
 3. Game Launcher shortcuts/top controls/last-row continuation and exact launch.
