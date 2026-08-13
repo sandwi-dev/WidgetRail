@@ -80,7 +80,7 @@ reinstall the complete `gbar` distribution so `gbar.exe`, `WidgetSdk.dll`,
 `WidgetProtocol.dll`, and the controller template come from the same build,
 then rerun `gbar new`. The command validates those bounded inputs before it
 publishes the target directory and never leaves a partial scaffold. The
-ControllerWidget `template.json` must be supported version 1 and declare every
+ControllerWidget `template.json` must be supported version 2 and declare every
 input as bounded `text` or `binary`; the error identifies a missing,
 undeclared, unsafe, unreadable, or oversized file and the correction. The
 requested output path must not already exist, because `gbar new` never removes

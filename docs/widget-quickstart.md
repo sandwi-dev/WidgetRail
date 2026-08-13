@@ -27,6 +27,14 @@ $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar help
 ```
 
+The complete `net8.0` output directory is the local versioned developer
+artifact. It can be copied to another directory or machine with the same .NET 8
+runtime and invoked from an unrelated repository; keep `gbar.exe`, its sibling
+DLL/runtime files, and `templates\ControllerWidget` together. The executable
+then scaffolds its content-addressed `GameBarAlternative.WidgetSdk` package and
+version-2 template without consulting this checkout or an unpublished package
+feed. Copying only `gbar.exe` is not a valid installation.
+
 The widget commands are `new`, `validate`, `dev`, `preview`, `render`, `replay`,
 `pack`, `install`, `list`, `enable`, `disable`, and the
 `version list|select|rollback` group. The separate `theme` group provides

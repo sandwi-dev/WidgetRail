@@ -421,6 +421,21 @@ executable 55/55 suite, and documentation validation covered 53 Markdown
 files. This was the assigned mixed-runner proof, not an aggregate; no Runtime,
 native, packaging, or unrelated suite ran.
 
+DLV-194 proves the existing pre-release SDK/template release unit as a portable
+local developer artifact. A focused fixture copies only the built `gbar`
+distribution, removes the template override, and invokes that executable from
+a fresh repository-shaped directory. The copied tool scaffolds an exact
+content-versioned `GameBarAlternative.WidgetSdk` dependency, builds the basic
+widget from its project-local cleared feed, validates its capability-free
+manifest, and creates a catalog-valid package. The SDK nupkg contains only
+`WidgetSdk.dll` and `WidgetProtocol.dll`; CLI, broker, Runtime, catalog, Settings,
+absolute checkout paths, and source-tree project references do not enter the
+consumer or widget package. This remains a local offline artifact rather than a
+NuGet.org publication, signing claim, or post-1.0 compatibility promise.
+Focused Release evidence passes GbarCli 62/62, WidgetSdk compatibility 12/12,
+the isolated external build/validate/package route, and documentation validation
+over 66 Markdown files.
+
 DLV-048 makes the marked quickstart blocks the one canonical offline author
 journey instead of maintaining an uncompiled parallel starter in the larger
 authoring guide. The exact generated `VolumeControl.cs` lifecycle/state/action/

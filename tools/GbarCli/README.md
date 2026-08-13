@@ -10,6 +10,10 @@ Launcher Experience authors should use the dedicated
 
 The prototype CLI makes the controller-widget development loop usable before
 the graphical simulator exists. It has no third-party runtime dependencies.
+The complete build output is one portable local artifact: copy `gbar.exe`, its
+sibling runtime/assembly files, and `templates\ControllerWidget` together. A
+copied output can scaffold and package an external widget without this checkout;
+copying only the executable is unsupported.
 
 ```text
 gbar new widget VolumeControl --id dev.example.volume-control --template basic
@@ -77,7 +81,9 @@ gbar launcher-theme remove dev.example.deep-space 1.0.0
   supported template version stamped into the CLI and SDK. The generated
   package adds a deterministic content suffix and the project references that
   exact package version; mismatched CLI/SDK/template release units fail before
-  publication.
+  publication. The local SDK package contains only `WidgetSdk.dll` and
+  `WidgetProtocol.dll`; CLI, broker, runtime, catalog, and Settings assemblies
+  remain tool implementation and are not bundled into the generated widget.
 - `validate` checks strict manifest JSON and every GBSS file in a widget
   directory. GBSS validation uses the shared `WidgetStyling` parser/compiler,
   enforces typed bounded properties, and blocks scripts, expressions, URLs,

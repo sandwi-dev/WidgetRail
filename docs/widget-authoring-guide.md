@@ -115,7 +115,12 @@ second getting-started command sequence.
 
 The local package is a deterministic offline scaffold dependency bundled by
 that `gbar` version; it is not an externally published feed or proof of
-publisher identity. Choose the `basic`, `data`, `media`, or `multipage`
+publisher identity. The complete built `gbar` output directory is portable as
+one local artifact: keep the executable, sibling runtime/assembly files, and
+`templates/ControllerWidget` together. A copied distribution can scaffold,
+build, validate, and package a basic widget from an unrelated repository with
+no source-tree project reference or template override. Choose the `basic`,
+`data`, `media`, or `multipage`
 profile with `--template`. They respectively demonstrate local lifecycle state,
 `WidgetResource` loading/error/retry, `WidgetOptimisticCommand` progress and
 rollback, and `WidgetNavigator` plus one responsive `NavigationShell` tree.

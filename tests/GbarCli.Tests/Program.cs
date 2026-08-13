@@ -73,6 +73,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("New ships four deterministic template profiles", AdvancedTemplateProfiles),
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
+    ("Built gbar artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -574,6 +575,122 @@ static async Task NewScaffoldsOutsideCheckout()
     {
         Environment.CurrentDirectory = originalDirectory;
         Environment.SetEnvironmentVariable("GBAR_TEMPLATE_ROOT", originalTemplateRoot);
+    }
+}
+
+static async Task ExternalVersionedSdkConsumer()
+{
+    using var temp = new TemporaryDirectory();
+    var distribution = Path.Combine(temp.Path, "gbar-dist");
+    var repository = Path.Combine(temp.Path, "external-repository");
+    var widget = Path.Combine(repository, "ExternalBasic");
+    Directory.CreateDirectory(distribution);
+    Directory.CreateDirectory(Path.Combine(repository, ".git"));
+    CopyGbarDistribution(AppContext.BaseDirectory, distribution);
+
+    var gbar = Path.Combine(distribution, "gbar.exe");
+    Assert.True(File.Exists(gbar), "The isolated gbar distribution omitted gbar.exe.");
+    var created = await RunProcessAsync(
+        gbar,
+        ["new", "widget", "ExternalBasic", "--output", widget,
+         "--id", "dev.external.basic", "--publisher", "dev.external",
+         "--template", "basic"],
+        TimeSpan.FromSeconds(30),
+        repository,
+        new Dictionary<string, string?> { ["GBAR_TEMPLATE_ROOT"] = null });
+    Assert.True(created.Code == 0, "external create: " + created.Output + created.Error);
+    Assert.Contains("local offline feed", created.Output);
+
+    var project = Path.Combine(widget, "ExternalBasic.csproj");
+    var projectText = await File.ReadAllTextAsync(project);
+    Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", projectText);
+    Assert.DoesNotContain("ProjectReference", projectText);
+    Assert.DoesNotContain(Environment.CurrentDirectory, projectText);
+    var generatedInputs = Directory.EnumerateFiles(widget, "*", SearchOption.AllDirectories)
+        .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                           StringComparison.OrdinalIgnoreCase) &&
+                       !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                           StringComparison.OrdinalIgnoreCase) &&
+                       !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase));
+    foreach (var input in generatedInputs)
+        Assert.DoesNotContain(Environment.CurrentDirectory, await File.ReadAllTextAsync(input));
+
+    var sdkPackage = Directory.EnumerateFiles(
+        Path.Combine(widget, ".gbar", "packages"), "*.nupkg").Single();
+    using (var archive = ZipFile.OpenRead(sdkPackage))
+    {
+        var entries = archive.Entries.Select(entry => entry.FullName)
+            .Order(StringComparer.Ordinal).ToArray();
+        Assert.True(entries.Contains("lib/net8.0/WidgetSdk.dll", StringComparer.Ordinal),
+            "The local SDK artifact omitted WidgetSdk.dll.");
+        Assert.True(entries.Contains("lib/net8.0/WidgetProtocol.dll", StringComparer.Ordinal),
+            "The local SDK artifact omitted WidgetProtocol.dll.");
+        foreach (var implementation in new[]
+                 {
+                     "gbar.dll", "WidgetRuntime.dll", "PlatformBroker.dll",
+                     "WidgetCatalog.dll", "PlatformSettings.dll",
+                 })
+            Assert.True(!entries.Any(entry => entry.EndsWith(
+                    implementation, StringComparison.OrdinalIgnoreCase)),
+                $"The local SDK artifact leaked bundled implementation assembly {implementation}.");
+    }
+    await AssertArchiveHasNoPathsAsync(sdkPackage, Environment.CurrentDirectory);
+
+    var build = await RunProcessAsync(
+        "dotnet", ["build", project, "-c", "Release", "--nologo"],
+        TimeSpan.FromSeconds(90), widget);
+    Assert.True(build.Code == 0, "external build: " + build.Output + build.Error);
+    var validation = await RunProcessAsync(
+        gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository);
+    Assert.True(validation.Code == 0,
+        "external validate: " + validation.Output + validation.Error);
+    Assert.Contains("Valid:", validation.Output);
+    var manifest = ManifestJson.Deserialize(
+        await File.ReadAllBytesAsync(Path.Combine(widget, "manifest.json")));
+    Assert.Equal("dev.external.basic", manifest.Id);
+    Assert.Equal(0, manifest.Permissions.Count);
+    Assert.Equal(0, manifest.OptionalPermissions.Count);
+
+    var package = Path.Combine(repository, "dev.external.basic-0.1.0.gbarwidget");
+    var packed = await RunProcessAsync(
+        gbar,
+        ["pack", widget, "--configuration", "Release", "--output", package],
+        TimeSpan.FromSeconds(120), repository);
+    Assert.True(packed.Code == 0, "external pack: " + packed.Output + packed.Error);
+    using (var archive = ZipFile.OpenRead(package))
+    {
+        var payload = archive.Entries.Where(entry => entry.FullName.StartsWith(
+                "payload/", StringComparison.Ordinal)).Select(entry => entry.FullName).ToArray();
+        Assert.SequenceEqual(
+            new[] { "payload/ExternalBasic.deps.json", "payload/ExternalBasic.dll" },
+            payload.Order(StringComparer.Ordinal));
+    }
+    await AssertArchiveHasNoPathsAsync(
+        package, Environment.CurrentDirectory, distribution, repository);
+}
+
+static void CopyGbarDistribution(string source, string destination)
+{
+    foreach (var name in new[]
+             {
+                 "gbar.exe", "gbar.dll", "gbar.deps.json", "gbar.runtimeconfig.json",
+                 "LauncherExperienceCatalog.dll", "PlatformBroker.dll",
+                 "PlatformSettings.dll", "WidgetCatalog.dll", "WidgetProtocol.dll",
+                 "WidgetRuntime.dll", "WidgetSdk.dll", "WidgetStyling.dll",
+             })
+    {
+        var sourcePath = Path.Combine(source, name);
+        Assert.True(File.Exists(sourcePath), $"Built gbar distribution omitted {name}.");
+        File.Copy(sourcePath, Path.Combine(destination, name));
+    }
+    var sourceTemplates = Path.Combine(source, "templates");
+    foreach (var sourcePath in Directory.EnumerateFiles(
+                 sourceTemplates, "*", SearchOption.AllDirectories))
+    {
+        var destinationPath = Path.Combine(
+            destination, "templates", Path.GetRelativePath(sourceTemplates, sourcePath));
+        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+        File.Copy(sourcePath, destinationPath);
     }
 }
 
@@ -2239,7 +2356,8 @@ static async Task<CliResult> RunProcessAsync(
     string executable,
     IReadOnlyList<string> arguments,
     TimeSpan timeout,
-    string? workingDirectory = null)
+    string? workingDirectory = null,
+    IReadOnlyDictionary<string, string?>? environment = null)
 {
     var start = new ProcessStartInfo(executable)
     {
@@ -2249,6 +2367,10 @@ static async Task<CliResult> RunProcessAsync(
         RedirectStandardError = true,
     };
     if (workingDirectory is not null) start.WorkingDirectory = workingDirectory;
+    if (environment is not null)
+        foreach (var item in environment)
+            if (item.Value is null) start.Environment.Remove(item.Key);
+            else start.Environment[item.Key] = item.Value;
     foreach (var argument in arguments) start.ArgumentList.Add(argument);
     using var process = Process.Start(start) ??
         throw new InvalidOperationException($"Could not start {executable}.");

@@ -5,7 +5,7 @@ Status: checked-in pre-release API baseline and discoverable local release-unit 
 `eng/WidgetSdkRelease.props` is the canonical local release-unit contract. It
 sets the pre-release SDK version, package ID, and supported ControllerWidget
 template version stamped into both `WidgetSdk.dll` and `gbar.dll`. The
-version-1 template manifest must match that metadata. `gbar new widget` writes
+version-2 template manifest must match that metadata. `gbar new widget` writes
 an exact content-addressed package version such as
 `0.1.0-dev.local.<16-hex>` into the generated project and uses that exact value
 in its `PackageReference`. A CLI, SDK assembly, template, or generated
