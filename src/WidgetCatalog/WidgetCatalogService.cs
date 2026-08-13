@@ -42,24 +42,42 @@ public sealed class WidgetCatalog
     public async Task<InstalledWidgetVersion> InstallAsync(
         string packagePath,
         CancellationToken cancellationToken = default)
+        => await InstallAsync(
+            packagePath, WidgetPackageTrustApproval.None, cancellationToken);
+
+    public async Task<InstalledWidgetVersion> InstallAsync(
+        string packagePath,
+        WidgetPackageTrustApproval trustApproval,
+        CancellationToken cancellationToken = default)
     {
+        ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         TryCleanupRetiredTrees();
         return await CreateInstaller().InstallAsync(
             packagePath,
-            (inspection, token) => PreparePackageInstallUnderLockAsync(inspection, token),
+            (inspection, token) => PreparePackageInstallUnderLockAsync(
+                inspection, trustApproval, token),
             cancellationToken);
     }
 
     public async Task<InstalledWidgetVersion> InstallAsync(
         Stream packageStream,
         CancellationToken cancellationToken = default)
+        => await InstallAsync(
+            packageStream, WidgetPackageTrustApproval.None, cancellationToken);
+
+    public async Task<InstalledWidgetVersion> InstallAsync(
+        Stream packageStream,
+        WidgetPackageTrustApproval trustApproval,
+        CancellationToken cancellationToken = default)
     {
+        ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         TryCleanupRetiredTrees();
         return await CreateInstaller().InstallAsync(
             packageStream,
-            (inspection, token) => PreparePackageInstallUnderLockAsync(inspection, token),
+            (inspection, token) => PreparePackageInstallUnderLockAsync(
+                inspection, trustApproval, token),
             cancellationToken);
     }
 
@@ -76,7 +94,8 @@ public sealed class WidgetCatalog
             packageStream,
             async (inspection, token) =>
             {
-                await PreparePackageInstallUnderLockAsync(inspection, token)
+                await PreparePackageInstallUnderLockAsync(
+                        inspection, WidgetPackageTrustApproval.None, token)
                     .ConfigureAwait(false);
                 await trustedPrePublish(inspection, token).ConfigureAwait(false);
             },
@@ -240,12 +259,23 @@ public sealed class WidgetCatalog
     }
 
     public async Task SetEnabledAsync(string widgetId, bool enabled, CancellationToken cancellationToken = default)
+        => await SetEnabledAsync(
+            widgetId, enabled, WidgetPackageTrustApproval.None, cancellationToken);
+
+    public async Task SetEnabledAsync(
+        string widgetId,
+        bool enabled,
+        WidgetPackageTrustApproval trustApproval,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         var snapshot = await DiscoverAsync(cancellationToken);
-        if (!snapshot.Widgets.Any(widget => widget.Id == widgetId))
+        var selected = snapshot.Widgets.SingleOrDefault(widget => widget.Id == widgetId);
+        if (selected is null)
             throw new KeyNotFoundException($"Widget '{widgetId}' is not installed.");
+        RequireFullTrustApproval(selected.ActiveVersion.Manifest, enabled, trustApproval);
 
         await _stateStore.MutateAsync(state =>
         {
@@ -573,8 +603,10 @@ public sealed class WidgetCatalog
 
     private async Task PreparePackageInstallUnderLockAsync(
         WidgetPackageInspection inspection,
+        WidgetPackageTrustApproval trustApproval,
         CancellationToken cancellationToken)
     {
+        RequireFullTrustApproval(inspection.Manifest, enabling: true, trustApproval);
         var allInstalled = DiscoverInstalledVersions(cancellationToken);
         var installed = allInstalled
             .Where(version => version.Id == inspection.Id)
@@ -640,6 +672,25 @@ public sealed class WidgetCatalog
             }
             return state with { Version = 2, Widgets = entries.OrderBy(entry => entry.Order).ToArray() };
         }, cancellationToken);
+    }
+
+    private static void RequireFullTrustApproval(
+        WidgetManifest manifest,
+        bool enabling,
+        WidgetPackageTrustApproval approval)
+    {
+        if (!enabling || WidgetManifestTrust.Resolve(manifest) !=
+            WidgetExecutionTrust.FullTrustCurrentUser) return;
+        if (approval != WidgetPackageTrustApproval.FullTrustCurrentUser)
+            throw new WidgetPackageException(
+                "full_trust_approval_required",
+                "This package runs as an ordinary current-user process, is not AppContainer sandboxed, and requires explicit full-trust approval.");
+    }
+
+    private static void ValidateTrustApproval(WidgetPackageTrustApproval approval)
+    {
+        if (!Enum.IsDefined(approval))
+            throw new ArgumentOutOfRangeException(nameof(approval));
     }
 
     /// <summary>Moves the listed installed IDs to the front in the supplied order and preserves the remaining relative order.</summary>
@@ -756,7 +807,8 @@ public sealed class WidgetCatalog
                     throw new WidgetPackageException("identity_mismatch", $"Manifest version '{manifest.Version}' does not match its install directory.");
                 var entrypointPath = Path.GetFullPath(Path.Combine(
                     versionDirectory,
-                    manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar)));
+                    WidgetEntrypointRuntimes.ResolvePackagePath(manifest.Entrypoint)
+                        .Replace('/', Path.DirectorySeparatorChar)));
                 if (!FileSystemSafety.IsWithin(versionDirectory, entrypointPath) || !File.Exists(entrypointPath))
                     throw new WidgetPackageException("missing_entrypoint", $"Installed widget entrypoint is missing: {entrypointPath}");
                 FileSystemSafety.EnsureNoReparsePoints(_root, entrypointPath);

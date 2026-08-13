@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -123,6 +124,32 @@ ComPtr<IUIAutomationElement> FindByAutomationIdPrefix(
             return candidate;
     }
     return {};
+}
+
+std::vector<ComPtr<IUIAutomationElement>> FindAllByAutomationIdPrefix(
+    IUIAutomation* automation,
+    IUIAutomationElement* root,
+    const std::wstring_view prefix) {
+    std::vector<ComPtr<IUIAutomationElement>> result;
+    if (!automation || !root || prefix.empty()) return result;
+    ComPtr<IUIAutomationCondition> condition;
+    if (FAILED(automation->CreateTrueCondition(condition.GetAddressOf())) || !condition)
+        return result;
+    ComPtr<IUIAutomationElementArray> descendants;
+    if (FAILED(root->FindAll(
+            TreeScope_Subtree, condition.Get(), descendants.GetAddressOf())) ||
+        !descendants)
+        return result;
+    int length{};
+    if (FAILED(descendants->get_Length(&length))) return result;
+    for (int index = 0; index < length; ++index) {
+        ComPtr<IUIAutomationElement> candidate;
+        if (SUCCEEDED(descendants->GetElement(index, candidate.GetAddressOf())) &&
+            candidate && StringProperty(candidate.Get(), UIA_AutomationIdPropertyId)
+                .starts_with(prefix))
+            result.push_back(std::move(candidate));
+    }
+    return result;
 }
 
 std::wstring WindowText(const HWND window) {
@@ -894,6 +921,92 @@ void RunFallback(
     std::cout << "LauncherExperienceHostTests: separate provider fallback passed\n";
 }
 
+void RunNoArtworkHeroRail(
+    IUIAutomation* automation,
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge) {
+    RunningHost running(installationPath, fixtureBridge, "no-artwork\n");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        return ReadUtf8(running.installation.BackendDiagnosticPath()).find(
+            "items=32") != std::string::npos;
+    }), "The no-artwork production backend did not retain all 32 games.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("preset=hero-rail") != std::string::npos &&
+            log.find("artwork=all-terminal") != std::string::npos &&
+            log.find("body=978.000000x466.000000") != std::string::npos;
+    }), "The ordinary packaged host did not commit the exact 978x466 all-terminal Hero Rail.");
+
+    auto root = RootForWindow(automation, running.window);
+    auto visibleGames = FindAllByAutomationIdPrefix(
+        automation, root.Get(), L"widget:game-launcher.item.grid.game.");
+    Require(visibleGames.size() >= 6,
+        "The all-terminal production rail exposed fewer than six visible games.");
+    std::sort(visibleGames.begin(), visibleGames.end(), [](const auto& left, const auto& right) {
+        RECT leftRect{};
+        RECT rightRect{};
+        (void)left->get_CurrentBoundingRectangle(&leftRect);
+        (void)right->get_CurrentBoundingRectangle(&rightRect);
+        return leftRect.left < rightRect.left;
+    });
+    std::optional<LONG> width;
+    for (std::size_t index = 0; index < 6; ++index) {
+        RequireInsideWindow(visibleGames[index].Get(), running.window);
+        RECT bounds{};
+        Require(SUCCEEDED(visibleGames[index]->get_CurrentBoundingRectangle(&bounds)),
+            "Visible no-artwork game omitted UIA bounds.");
+        const auto currentWidth = bounds.right - bounds.left;
+        if (!width) width = currentWidth;
+        Require(std::abs(currentWidth - *width) <= 1,
+            "Visible no-artwork game cards were not equal width.");
+    }
+    for (const auto* identity :
+         {L"widget:game-launcher.search",
+          L"widget:game-launcher.collection.select.all",
+          L"widget:game-launcher.hint.details.key"}) {
+        auto element = FindByAutomationId(
+            automation, RootForWindow(automation, running.window).Get(), identity);
+        if (!element) {
+            const auto projected = FindAllByAutomationIdPrefix(
+                automation, RootForWindow(automation, running.window).Get(),
+                L"widget:game-launcher.");
+            std::cerr << "Visible Game Launcher UIA identities:";
+            for (const auto& candidate : projected)
+                std::cerr << " " << WideToUtf8(StringProperty(
+                    candidate.Get(), UIA_AutomationIdPropertyId));
+            std::cerr << '\n';
+        }
+        Require(element != nullptr, "Production host omitted expected UIA element " +
+            WideToUtf8(identity) + ".");
+        RequireInsideWindow(element.Get(), running.window);
+    }
+
+    const auto firstId = StringProperty(
+        visibleGames.front().Get(), UIA_AutomationIdPropertyId);
+    RequireFocusedIdentity(automation, visibleGames.front().Get(), firstId);
+    std::set<std::wstring, std::less<>> traversed;
+    for (std::size_t index = 0; index < 6; ++index) {
+        const auto id = StringProperty(
+            visibleGames[index].Get(), UIA_AutomationIdPropertyId);
+        RequireFocusedIdentity(
+            automation, visibleGames[index].Get(), id);
+        Require(traversed.insert(id).second,
+            "The visible all-terminal rail repeated a focus identity.");
+    }
+
+    const auto log = ReadUtf8(running.installation.LogPath());
+    Require(CountOccurrences(
+                log, "Trusted artwork unavailable widget=game-launcher") >= 6 &&
+            log.find("projected-navigation=35") != std::string::npos &&
+            log.find("rail-next=none") == std::string::npos &&
+            log.find("launcher_projection_render_failed") == std::string::npos &&
+            log.find("launcher_projection_bitmap_unavailable") == std::string::npos,
+        "The post-route all-terminal log omitted 32-game navigation or exposed an incomplete frame.");
+    running.Stop();
+    std::cout << "LauncherExperienceHostTests: exact 978x466 all-terminal Hero Rail, "
+                 "equal-width geometry, and retained 32-game navigation passed\n";
+}
+
 void RunInstalledSelection(
     IUIAutomation* automation,
     const fs::path& installationPath,
@@ -1346,6 +1459,7 @@ void Run(
     const fs::path& fixtureBridge,
     const bool textEntryOnly,
     const bool trayInvokeOnly,
+    const bool noArtworkOnly,
     const std::optional<std::pair<fs::path, fs::path>>& lifecycle) {
     if (textEntryOnly) {
         RunTextEntryCancel(installationPath, fixtureBridge);
@@ -1360,6 +1474,10 @@ void Run(
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
         "Windows UI Automation client is unavailable.");
+    if (noArtworkOnly) {
+        RunNoArtworkHeroRail(automation.Get(), installationPath, fixtureBridge);
+        return;
+    }
     if (lifecycle) {
         RunAuthorLifecycle(
             automation.Get(), installationPath, fixtureBridge,
@@ -1371,6 +1489,7 @@ void Run(
     RunCustomPackMatrix(automation.Get(), installationPath, fixtureBridge);
     RunAdoption(automation.Get(), installationPath, fixtureBridge);
     RunFallback(automation.Get(), installationPath, fixtureBridge);
+    RunNoArtworkHeroRail(automation.Get(), installationPath, fixtureBridge);
 }
 
 } // namespace
@@ -1380,16 +1499,20 @@ int wmain(const int argc, wchar_t** argv) {
         std::wstring_view(argv[5]) == L"--text-entry-only";
     const bool trayInvokeOnly = argc == 6 &&
         std::wstring_view(argv[5]) == L"--tray-invoke-only";
+    const bool noArtworkOnly = argc == 6 &&
+        std::wstring_view(argv[5]) == L"--no-artwork-only";
     const bool lifecycleOnly = argc == 10 &&
         std::wstring_view(argv[5]) == L"--lifecycle-only" &&
         std::wstring_view(argv[6]) == L"--lifecycle-settings-root" &&
         std::wstring_view(argv[8]) == L"--lifecycle-control-root";
-    if ((argc != 5 && !textEntryOnly && !trayInvokeOnly && !lifecycleOnly) ||
+    if ((argc != 5 && !textEntryOnly && !trayInvokeOnly && !noArtworkOnly &&
+         !lifecycleOnly) ||
         std::wstring_view(argv[1]) != L"--installation" ||
         std::wstring_view(argv[3]) != L"--fixture-bridge") {
         std::cerr << "Usage: LauncherExperienceHostTests --installation <dir> "
                      "--fixture-bridge <exe> "
-                     "[--text-entry-only|--tray-invoke-only|--lifecycle-only "
+                     "[--text-entry-only|--tray-invoke-only|--no-artwork-only|"
+                     "--lifecycle-only "
                      "--lifecycle-settings-root <dir> --lifecycle-control-root <dir>]\n";
         return 1;
     }
@@ -1403,7 +1526,7 @@ int wmain(const int argc, wchar_t** argv) {
             ? std::optional{std::pair{fs::path(argv[7]), fs::path(argv[9])}}
             : std::nullopt;
         Run(fs::path(argv[2]), fs::path(argv[4]), textEntryOnly, trayInvokeOnly,
-            lifecycle);
+            noArtworkOnly, lifecycle);
         std::cout << "LauncherExperienceHostTests: production host passed\n";
         CoUninitialize();
         return 0;

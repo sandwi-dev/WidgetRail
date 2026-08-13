@@ -94,7 +94,8 @@ public static class WidgetWorkerBootstrap
                     launch.WidgetInstanceId,
                     launch.WidgetPipeName,
                     launch.MaximumMessageBytes,
-                    services)
+                    capabilityConnection.Client,
+                    launch.SessionNonce)
                 .RunAsync(shutdown.Token).ConfigureAwait(false);
             return 0;
         }
@@ -171,6 +172,7 @@ public sealed class WidgetWorkerBootstrapException : Exception
 internal sealed record WidgetWorkerLaunchArguments(
     string WidgetPipeName,
     string WidgetInstanceId,
+    string SessionNonce,
     int MaximumMessageBytes,
     WorkerBrokerConnection? Broker)
 {
@@ -179,6 +181,7 @@ internal sealed record WidgetWorkerLaunchArguments(
         ArgumentNullException.ThrowIfNull(args);
         var pipe = RequiredValue(args, "--widget-pipe", 200);
         var instance = RequiredValue(args, "--widget-instance", 128);
+        var sessionNonce = RequiredValue(args, "--widget-session-nonce", 64);
         if (!int.TryParse(
                 RequiredValue(args, "--max-message-bytes", 16),
                 NumberStyles.None,
@@ -187,7 +190,10 @@ internal sealed record WidgetWorkerLaunchArguments(
             maximumBytes is < 256 or > WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes)
             throw new ArgumentException("The maximum message size is invalid.");
         ValidatePipeName(pipe, "Widget");
-        return new(pipe, ValidateInstanceId(instance), maximumBytes, ParseBroker(args, instance));
+        if (sessionNonce.Length != 64 || !sessionNonce.All(char.IsAsciiHexDigit))
+            throw new ArgumentException("The session nonce is invalid.");
+        return new(pipe, ValidateInstanceId(instance), sessionNonce, maximumBytes,
+            ParseBroker(args, instance));
     }
 
     private static WorkerBrokerConnection? ParseBroker(string[] args, string widgetInstanceId)

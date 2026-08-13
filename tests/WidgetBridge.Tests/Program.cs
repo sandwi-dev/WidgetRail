@@ -46,6 +46,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipelined requests preserve per-widget receive order", PipelinedWidgetRequestsStayOrdered),
     ("Duplicate pending request IDs fail the bridge session closed", DuplicatePendingRequestIdsFailClosed),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Two unrelated full-trust applications use one ordinary runtime", FullTrustCommunityScenarios.TwoApplicationsUseTheOrdinaryRuntime),
+    ("Full-trust missing entrypoints and silent promotion fail closed", FullTrustCommunityScenarios.MissingEntrypointAndManifestPromotionFailClosed),
     ("Installed Community advanced presentation declarations are generic and generation owned", InstalledAdvancedPresentationDeclarationsAreGeneric),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),

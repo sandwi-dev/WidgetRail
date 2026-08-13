@@ -9,5 +9,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
+    <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
+    <ProjectReference Include="..\FullTrustAlphaFixture\FullTrustAlphaFixture.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\FullTrustBetaFixture\FullTrustBetaFixture.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

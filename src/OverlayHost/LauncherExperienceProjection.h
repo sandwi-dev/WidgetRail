@@ -36,6 +36,9 @@ struct ProductionProjectionResult final {
     std::wstring layoutBranch;
     std::wstring railOrientation;
     std::wstring detailsSurface;
+    std::wstring artworkAvailability;
+    declarative::Rect bodyBounds;
+    declarative::Rect railBounds;
     float textScale{1.0F};
     bool reducedMotion{};
     bool reducedTransparency{};
@@ -122,6 +125,13 @@ private:
         std::vector<SlotContent> contents;
     };
 
+    enum class ArtworkAvailability {
+        Pending,
+        Available,
+        Mixed,
+        AllTerminal,
+    };
+
     [[nodiscard]] static std::optional<Projection> Recognize(
         const std::optional<WidgetAdvancedPresentationDeclaration>& declaration,
         const WidgetSnapshot& snapshot,
@@ -137,6 +147,10 @@ private:
         std::wstring_view focusedElementId,
         const NativeAccessibilityPolicy& accessibility,
         std::uint64_t nowMilliseconds);
+    [[nodiscard]] static ArtworkAvailability InspectArtworkAvailability(
+        RemoteImageCache* imageCache,
+        std::wstring_view widgetId,
+        const Projection& projection);
     void RetirePresentation() noexcept;
     void RetainCanonical(
         std::wstring_view widgetId,

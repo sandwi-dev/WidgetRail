@@ -83,9 +83,11 @@ gbar launcher-theme remove dev.example.deep-space 1.0.0
   supported template version stamped into the CLI and SDK. The generated
   package adds a deterministic content suffix and the project references that
   exact package version; mismatched CLI/SDK/template release units fail before
-  publication. The local SDK package contains only `WidgetSdk.dll` and
-  `WidgetProtocol.dll`; CLI, broker, runtime, catalog, and Settings assemblies
-  remain tool implementation and are not bundled into the generated widget.
+  publication. The local SDK package contains `WidgetSdk.dll`,
+  `WidgetProtocol.dll`, and the narrow `WidgetApplicationRuntime.dll`
+  bootstrap. CLI, the host-side runtime, `PlatformBroker`, catalog, and
+  Settings assemblies remain product implementation and are not bundled into
+  the generated widget.
 - `validate` checks strict manifest JSON and every GBSS file in a widget
   directory. GBSS validation uses the shared `WidgetStyling` parser/compiler,
   enforces typed bounded properties, and blocks scripts, expressions, URLs,
@@ -125,6 +127,15 @@ gbar launcher-theme remove dev.example.deep-space 1.0.0
   snapshot tree and can write a canonical copy. DLL input fails closed before
   type resolution or output handling. Use `dev` when author code must execute;
   it retains the production AppContainer/worker boundary.
+- `install` and `enable` reject a package declaring the versioned
+  `full-trust-application-v1` entrypoint unless the same command includes
+  `--accept-full-trust`. The command then states that the exact package
+  executable runs as an ordinary current-user process, outside AppContainer,
+  with the user's ambient file, network, registry, database, and child-process
+  authority. This is an explicit trust decision, not a capability grant or a
+  publisher-verification result. See the
+  [widget authoring guide](../../docs/widget-authoring-guide.md#full-trust-community-application-runtime)
+  for the manifest and bootstrap contract.
 - `replay` walks explicit D-pad focus edges and resolves `A` actions and
   declared non-Guide shortcuts from a versioned JSON event stream.
 - `pack` accepts a source widget directory or `.csproj`, or an already-staged

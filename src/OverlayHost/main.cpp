@@ -6404,6 +6404,13 @@ private:
                                 launcherProjection.layoutBranch + L"\n" +
                                 launcherProjection.railOrientation + L"\n" +
                                 launcherProjection.detailsSurface + L"\n" +
+                                launcherProjection.artworkAvailability + L"\n" +
+                                std::to_wstring(launcherProjection.bodyBounds.width) + L"x" +
+                                std::to_wstring(launcherProjection.bodyBounds.height) + L"\n" +
+                                std::to_wstring(launcherProjection.railBounds.x) + L"," +
+                                std::to_wstring(launcherProjection.railBounds.y) + L"," +
+                                std::to_wstring(launcherProjection.railBounds.width) + L"," +
+                                std::to_wstring(launcherProjection.railBounds.height) + L"\n" +
                                 std::to_wstring(launcherProjection.textScale) + L"\n" +
                                 (launcherProjection.reducedMotion ? L"motion-reduced" : L"motion-full") + L"\n" +
                                 (launcherProjection.reducedTransparency
@@ -6453,6 +6460,15 @@ private:
                                 L" branch=" + launcherProjection.layoutBranch +
                                 L" rail=" + launcherProjection.railOrientation +
                                 L" details-surface=" + launcherProjection.detailsSurface +
+                                L" artwork=" + launcherProjection.artworkAvailability +
+                                L" body=" +
+                                std::to_wstring(launcherProjection.bodyBounds.width) + L"x" +
+                                std::to_wstring(launcherProjection.bodyBounds.height) +
+                                L" rail-bounds=" +
+                                std::to_wstring(launcherProjection.railBounds.x) + L"," +
+                                std::to_wstring(launcherProjection.railBounds.y) + L"," +
+                                std::to_wstring(launcherProjection.railBounds.width) + L"," +
+                                std::to_wstring(launcherProjection.railBounds.height) +
                                 L" text-scale=" +
                                 std::to_wstring(launcherProjection.textScale) +
                                 L" reduced-motion=" +

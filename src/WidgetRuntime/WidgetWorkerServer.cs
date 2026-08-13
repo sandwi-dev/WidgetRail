@@ -8,11 +8,12 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
 
-public sealed class WidgetWorkerServer
+internal sealed class WidgetWorkerServer
 {
     private readonly Widget _widget;
     private readonly string _widgetInstanceId;
     private readonly string _pipeName;
+    private readonly string _sessionNonce;
     private readonly int _maximumMessageBytes;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<bool>>
@@ -27,14 +28,16 @@ public sealed class WidgetWorkerServer
         string widgetInstanceId,
         string pipeName,
         int maximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes,
-        IWidgetCapabilityClient? capabilityClient = null)
+        IWidgetCapabilityClient? capabilityClient = null,
+        string sessionNonce = "")
         : this(
             widget,
             widgetInstanceId,
             pipeName,
             maximumMessageBytes,
             new WidgetHostServices(
-                capabilityClient ?? UnavailableWidgetCapabilityClient.Instance))
+                capabilityClient ?? UnavailableWidgetCapabilityClient.Instance),
+            sessionNonce)
     {
     }
 
@@ -43,11 +46,13 @@ public sealed class WidgetWorkerServer
         string widgetInstanceId,
         string pipeName,
         int maximumMessageBytes,
-        WidgetHostServices hostServices)
+        WidgetHostServices hostServices,
+        string sessionNonce)
     {
         _widget = widget ?? throw new ArgumentNullException(nameof(widget));
         _widgetInstanceId = ValidateIdentifier(widgetInstanceId);
         _pipeName = ValidatePipeName(pipeName);
+        _sessionNonce = ValidateSessionNonce(sessionNonce);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <= WidgetRuntimeProtocol.AbsoluteMaximumMessageBytes
             ? maximumMessageBytes
             : throw new ArgumentOutOfRangeException(nameof(maximumMessageBytes));
@@ -67,7 +72,7 @@ public sealed class WidgetWorkerServer
         await SendAsync(new RuntimeEnvelope
         {
             Type = MessageTypes.Hello,
-            Payload = RuntimeJson.ToElement(new HelloPayload(_widgetInstanceId)),
+            Payload = RuntimeJson.ToElement(new HelloPayload(_widgetInstanceId, _sessionNonce)),
         }, cancellationToken).ConfigureAwait(false);
         var acceptance = await _channel.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (acceptance.Type != MessageTypes.HelloAccepted || acceptance.RequestId != 0)
@@ -240,6 +245,14 @@ public sealed class WidgetWorkerServer
             _dashboardGestureActivations.Clear();
             _channel = null;
         }
+    }
+
+    private static string ValidateSessionNonce(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.Length != 64 || !value.All(char.IsAsciiHexDigit))
+            throw new ArgumentException("The session nonce is invalid.", nameof(value));
+        return value;
     }
 
     private async ValueTask<bool> ActivateDashboardGestureAuthorityAsync(

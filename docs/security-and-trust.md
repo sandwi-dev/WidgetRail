@@ -1,7 +1,9 @@
 # Security and trust
 
-Status: mandatory AppContainer isolation is implemented for installed/community
-workers; unsigned public distribution is not yet supported safely
+Status: sandboxed installed/community workers use mandatory AppContainer
+isolation; separately declared full-trust Community applications require an
+explicit current-user trust decision; unsigned public distribution is not yet
+supported safely
 
 The platform uses defense in depth, but several production boundaries remain
 planned. A structurally valid package is not necessarily trustworthy.
@@ -32,7 +34,7 @@ planned. A structurally valid package is not necessarily trustworthy.
   behavior, and the complete basic UI-restriction set. It does not grant new OS
   authority or impose an arbitrary private-memory/one-process ceiling. Timeout,
   restart, failure, and disposal paths release the job and its process.
-- Every installed/community worker must start in a stable host-derived,
+- Every sandboxed installed/community worker must start in a stable host-derived,
   exact-content-specific, capability-free AppContainer at Low integrity. For
   unsigned packages, installation seals a SHA-256 digest of the complete
   normalized content tree and the authority ID derives from that verified
@@ -238,14 +240,18 @@ OS/provider authority. This is still not publisher trust, a security audit,
 CPU/disk quota coverage, profile cleanup, or proof across the hardware/privacy
 matrix.
 
-Trusted bundled workers are a temporary exception to the community policy.
+Trusted bundled workers are a temporary exception to the sandboxed Community
+policy.
 Settings currently uses the host-trusted Job-only launch for desktop-user
 resources not yet exposed through narrow brokers. YT Music no longer uses that
 exception: its local companion and secret needs are public broker services and
 the addon runs through the normal package AppContainer. The remaining Settings
 exception is selected by host policy, never by a package manifest or worker
-argument. An installed/community package cannot opt out of AppContainer
-isolation.
+argument. A sandboxed package cannot opt out of AppContainer isolation or ask
+for a trusted Job-only launch. A distinct `full-trust-application-v1`
+entrypoint is not an opt-out or fallback: install and enable reject it unless
+the user supplies explicit full-trust approval, and the package then runs with
+ordinary current-user authority through the narrow application bootstrap.
 
 The managed theme catalog has strict manifests, version-pinned directories,
 package-relative GBSS imports, bounds, reparse/containment checks, and sanitized
@@ -264,9 +270,11 @@ distribution](theme-packaging.md).
 
 Only run widgets that you wrote, reviewed, or obtained from a developer you
 already trust. Prefer building from source. `gbar render` is now data-only and
-rejects DLL input without loading it. Use `gbar dev` for executable integration;
-it routes author code through the same generic AppContainer worker boundary as
-installed Community widgets.
+rejects DLL input without loading it. Use `gbar dev` for sandboxed executable
+integration; it routes author code through the same generic AppContainer worker
+boundary as sandboxed installed Community widgets. Full-trust application
+packages must instead be reviewed, packed, installed, and enabled with the
+explicit `--accept-full-trust` flag.
 
 Settings labels every Community package **Unsigned · publisher unverified** and
 shows its full sealed content-tree SHA-256 digest before enablement and consent.
@@ -311,7 +319,7 @@ through a separate host-only grant set after authenticating the worker; no
 worker message can add that or any other grant. Its Background availability is
 only for bounded persistence and does not relax ordinary lifecycle checks.
 
-For installed/community workers, the capability-free AppContainer constrains
+For sandboxed installed/community workers, the capability-free AppContainer constrains
 direct desktop authority while this permission system controls the separate
 trusted broker. The container receives no network or other OS capability SID
 and cannot request one through its manifest, arguments, or protocol. Audio and
@@ -319,8 +327,14 @@ network access therefore remains available only through the typed broker's
 declaration, durable consent, lifecycle, identity, and operation checks. This
 does not replace publisher signing/revocation, CPU and disk/profile quotas,
 profile cleanup, or an audit UI; do not treat unsigned public distribution as
-production-safe yet. See [widget capabilities](capabilities.md) for the exact
-developer and transport contract.
+production-safe yet. A full-trust Community application receives none of these
+AppContainer or capability-broker constraints: it may use ordinary current-user
+files, network, registry, databases, and child processes directly. The host
+still pins the immutable executable, authenticates the session nonce and PID,
+bounds protocol messages, and owns lifecycle/restart/disable/removal, but those
+controls are not a sandbox or least-authority API. See
+[widget capabilities](capabilities.md) for the sandboxed developer and
+transport contract.
 
 ## Reporting security problems
 

@@ -131,6 +131,13 @@ const WidgetNode* ArtworkNode(const WidgetNode* root) noexcept {
     return nullptr;
 }
 
+void CollectArtworkNodes(
+    const WidgetNode& root,
+    std::vector<const WidgetNode*>& result) {
+    if (!root.artworkHandle.empty()) result.push_back(&root);
+    for (const auto& child : root.children) CollectArtworkNodes(child, result);
+}
+
 std::wstring_view BranchName(const Branch branch) noexcept {
     switch (branch) {
     case Branch::Compact: return L"compact";
@@ -384,6 +391,42 @@ LauncherPresentationFrame LauncherExperienceProjection::PreparePresentation(
     return presentationOwner_.Sample(nowMilliseconds);
 }
 
+LauncherExperienceProjection::ArtworkAvailability
+LauncherExperienceProjection::InspectArtworkAvailability(
+    RemoteImageCache* imageCache,
+    const std::wstring_view widgetId,
+    const Projection& projection) {
+    if (!imageCache || widgetId.empty()) return ArtworkAvailability::Pending;
+    const auto rail = std::find_if(
+        projection.contents.begin(), projection.contents.end(),
+        [](const auto& content) { return content.slot == Slot::GameRail; });
+    if (rail == projection.contents.end()) return ArtworkAvailability::Pending;
+    std::vector<const WidgetNode*> artwork;
+    CollectArtworkNodes(rail->snapshot.root, artwork);
+    std::size_t ready{};
+    std::size_t pending{};
+    std::size_t failed{};
+    for (const auto* node : artwork) {
+        const auto key = RemoteImageCache::TrustedArtworkKey(
+            widgetId, node->id, node->artworkHandle);
+        switch (imageCache->GetState(key)) {
+        case RemoteImageState::Ready: ++ready; break;
+        case RemoteImageState::Queued:
+        case RemoteImageState::Loading: ++pending; break;
+        case RemoteImageState::Failed: ++failed; break;
+        case RemoteImageState::Missing: break;
+        }
+    }
+    // Missing entries are off-page or have not yet entered ordinary renderer
+    // admission. They do not keep a completed visible page in an empty hero
+    // layout after all tracked requests have failed.
+    if (failed > 0 && ready == 0 && pending == 0)
+        return ArtworkAvailability::AllTerminal;
+    if (failed > 0) return ArtworkAvailability::Mixed;
+    if (ready > 0) return ArtworkAvailability::Available;
+    return ArtworkAvailability::Pending;
+}
+
 void LauncherExperienceProjection::RetirePresentation() noexcept {
     presentationOwner_.FinishTransitions();
     activePresentationKey_.clear();
@@ -423,6 +466,12 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     if (selection_ && !selection_->followWidgetPreset)
         projection->preset = selection_->preset;
 
+    const auto artworkAvailability = InspectArtworkAvailability(
+        imageCache, widgetId, *projection);
+    const bool noArtworkHeroRail =
+        projection->preset == Preset::HeroRail &&
+        artworkAvailability == ArtworkAvailability::AllTerminal;
+
     if (!EnsureStagingTarget(target, viewport)) {
         ClearCanonical();
         RetirePresentation();
@@ -444,10 +493,18 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
     const Recipe* selectedRecipe = selection_ && !selection_->followWidgetPreset &&
             !safeStartActivation_
         ? &selection_->recipe : nullptr;
+    std::optional<Recipe> noArtworkRecipe;
+    if (noArtworkHeroRail) {
+        noArtworkRecipe = BuiltInNoArtworkHeroRailRecipe();
+        selectedRecipe = &*noArtworkRecipe;
+    }
     auto staged = RenderExperience(
         renderer, stagingTarget_.Get(), selectedRecipe, projection->preset,
         {0, 0, viewport.width, viewport.height}, projection->contents,
-        focusedElementId, options, &presentation, &snapshot);
+        focusedElementId, options, &presentation, &snapshot,
+        noArtworkHeroRail
+            ? GameRailPresentation::EqualWidthNoArtwork
+            : GameRailPresentation::Authored);
     const HRESULT endResult = stagingTarget_->EndDraw();
 #ifdef GBA_DECLARATIVE_RENDERER_TESTING
     const bool forcedFailure = std::exchange(failNextAdapterFrameForTesting_, false);
@@ -528,6 +585,17 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
         rail ? rail->orientation : std::optional<Orientation>{});
     result.detailsSurface = SurfaceName(
         details ? details->surface : std::optional<Surface>{});
+    result.artworkAvailability = [&] {
+        switch (artworkAvailability) {
+        case ArtworkAvailability::Pending: return std::wstring{L"pending"};
+        case ArtworkAvailability::Available: return std::wstring{L"available"};
+        case ArtworkAvailability::Mixed: return std::wstring{L"mixed"};
+        case ArtworkAvailability::AllTerminal: return std::wstring{L"all-terminal"};
+        }
+        return std::wstring{L"unknown"};
+    }();
+    result.bodyBounds = viewport;
+    if (rail) result.railBounds = rail->bounds;
     result.textScale = options.accessibility.textScale;
     result.reducedMotion = options.accessibility.reducedMotion;
     result.reducedTransparency = options.accessibility.reducedTransparency;

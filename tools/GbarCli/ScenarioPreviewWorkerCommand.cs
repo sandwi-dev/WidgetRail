@@ -19,6 +19,7 @@ internal static class ScenarioPreviewWorkerCommand
             var factoryName = Required(args, "--scenario-factory", 128);
             var pipe = Required(args, "--widget-pipe", 200);
             var instance = Required(args, "--widget-instance", 128);
+            var sessionNonce = Required(args, "--widget-session-nonce", 64);
             var maximumBytes = int.Parse(Required(args, "--max-message-bytes", 16),
                 System.Globalization.CultureInfo.InvariantCulture);
             EnsureContained(root, assemblyPath);
@@ -46,7 +47,7 @@ internal static class ScenarioPreviewWorkerCommand
                 throw new ScenarioWorkerException("factory_failed", exception.InnerException);
             }
             await new WidgetWorkerServer(definition.Widget, instance, pipe, maximumBytes,
-                    definition.HostServices.Capabilities)
+                    definition.HostServices.Capabilities, sessionNonce)
                 .RunAsync(cancellationToken).ConfigureAwait(false);
             return 0;
         }
@@ -72,7 +73,7 @@ internal static class ScenarioPreviewWorkerCommand
         [
             "--scenario-root", "--scenario-assembly", "--provider-type",
             "--scenario-factory", "--widget-pipe", "--widget-instance",
-            "--max-message-bytes",
+            "--widget-session-nonce", "--max-message-bytes",
         ];
         if (args.Length != names.Length * 2 ||
             names.Any(name => args.Count(value => value == name) != 1))

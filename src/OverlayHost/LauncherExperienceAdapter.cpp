@@ -8,6 +8,14 @@
 namespace gba::launcher {
 namespace {
 
+WidgetStyleValue Length(const double value) {
+    return {L"length", std::to_wstring(value) + L"px", value, L"px"};
+}
+
+WidgetStyleValue Number(const double value) {
+    return {L"number", std::to_wstring(value), value, {}};
+}
+
 const SlotContent* FindContent(const std::vector<SlotContent>& contents, const Slot slot) {
     const auto found = std::find_if(contents.begin(), contents.end(),
         [slot](const SlotContent& item) { return item.slot == slot; });
@@ -21,6 +29,51 @@ void CollectGameTiles(
         tiles.push_back(&node);
     }
     for (auto& child : node.children) CollectGameTiles(child, tiles);
+}
+
+bool CompactTerminalArtworkPath(WidgetNode& node) {
+    bool containsArtwork = !node.artworkHandle.empty();
+    for (auto& child : node.children)
+        containsArtwork = CompactTerminalArtworkPath(child) || containsArtwork;
+    if (!containsArtwork) return false;
+    node.baseStyle.insert_or_assign(L"min-height", Length(0));
+    node.baseStyle.insert_or_assign(L"flex-shrink", Number(1));
+    if (!node.artworkHandle.empty()) {
+        for (const auto property :
+             {L"width", L"height", L"min-width", L"min-height",
+              L"max-width", L"max-height"})
+            node.baseStyle.insert_or_assign(property, Length(44));
+        node.baseStyle.insert_or_assign(L"flex-grow", Number(0));
+        node.baseStyle.insert_or_assign(L"flex-shrink", Number(0));
+    }
+    return true;
+}
+
+void ApplyEqualWidthTerminalRail(
+    WidgetNode& root,
+    const declarative::Rect bounds) {
+    std::vector<WidgetNode*> tiles;
+    CollectGameTiles(root, tiles);
+    if (tiles.empty()) return;
+    constexpr std::size_t kTargetVisibleTiles = 6;
+    constexpr double kGap = 12.0;
+    const auto visible = std::min(tiles.size(), kTargetVisibleTiles);
+    const auto available = std::max(
+        0.0, static_cast<double>(bounds.width) -
+            kGap * static_cast<double>(visible > 0 ? visible - 1 : 0));
+    const auto width = std::clamp(
+        available / static_cast<double>(visible), 112.0, 180.0);
+    const auto height = std::max(88.0, static_cast<double>(bounds.height));
+    for (auto* tile : tiles) {
+        for (const auto property :
+             {L"width", L"min-width", L"max-width", L"flex-basis"})
+            tile->baseStyle.insert_or_assign(property, Length(width));
+        for (const auto property :
+             {L"height", L"min-height", L"max-height"})
+            tile->baseStyle.insert_or_assign(property, Length(height));
+        tile->baseStyle.insert_or_assign(L"flex-grow", Number(0));
+        tile->baseStyle.insert_or_assign(L"flex-shrink", Number(0));
+    }
 }
 
 void ApplyGameRailFocusEdges(
@@ -52,7 +105,8 @@ WidgetSnapshot AdaptSnapshot(
     const SlotContent& content,
     const SlotPlacement& placement,
     const LauncherPresentationFrame* presentation,
-    const std::wstring_view focusedElementId) {
+    const std::wstring_view focusedElementId,
+    const GameRailPresentation railPresentation) {
     auto snapshot = content.snapshot;
     if (placement.slot == Slot::GameRail && placement.orientation) {
         const auto vertical = *placement.orientation == Orientation::Vertical;
@@ -61,6 +115,12 @@ WidgetSnapshot AdaptSnapshot(
         else
             snapshot.root.kind = vertical ? L"column" : L"row";
         ApplyGameRailFocusEdges(snapshot.root, *placement.orientation);
+    }
+    if (railPresentation == GameRailPresentation::EqualWidthNoArtwork) {
+        if (placement.slot == Slot::GameRail)
+            ApplyEqualWidthTerminalRail(snapshot.root, placement.bounds);
+        else if (placement.slot == Slot::DetailsPanel)
+            (void)CompactTerminalArtworkPath(snapshot.root);
     }
     if (presentation)
         ApplyLauncherPresentationStyles(
@@ -147,7 +207,9 @@ WidgetSnapshot AggregateSnapshot(
     aggregate.root.children.clear();
     for (const auto& placement : layout.semanticPlacements) {
         if (const auto* content = FindContent(contents, placement.slot)) {
-            auto root = AdaptSnapshot(*content, placement, nullptr, focusedElementId).root;
+            auto root = AdaptSnapshot(
+                *content, placement, nullptr, focusedElementId,
+                GameRailPresentation::Authored).root;
             ApplyCanonicalInputScope(root, aggregate.activeInputScopeId);
             aggregate.root.children.push_back(std::move(root));
         }
@@ -167,7 +229,8 @@ RenderedExperience RenderExperience(
     const std::wstring_view focusedElementId,
     DeclarativeRenderOptions options,
     const LauncherPresentationFrame* presentation,
-    const WidgetSnapshot* semanticEnvelope) {
+    const WidgetSnapshot* semanticEnvelope,
+    const GameRailPresentation railPresentation) {
     RenderedExperience result;
     result.layout = ResolveLayout(recipe, preset, workArea, options.accessibility.textScale);
     result.semanticSnapshot = AggregateSnapshot(
@@ -211,7 +274,8 @@ RenderedExperience RenderExperience(
         const auto* content = FindContent(contents, placement.slot);
         if (!content) continue;
         auto snapshot = AdaptSnapshot(
-            *content, placement, presentation, focusedElementId);
+            *content, placement, presentation, focusedElementId,
+            railPresentation);
         options.responsiveViewport = declarative::Size{
             placement.bounds.width, placement.bounds.height};
         bool duplicateIdentity{};

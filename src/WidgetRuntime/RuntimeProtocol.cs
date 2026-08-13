@@ -5,9 +5,9 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
 
-public static class WidgetRuntimeProtocol
+internal static class WidgetRuntimeProtocol
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public const int DefaultMaximumMessageBytes = 1_048_576;
     public const int AbsoluteMaximumMessageBytes = 4_194_304;
 }
@@ -39,7 +39,7 @@ internal sealed record RuntimeEnvelope
     public required JsonElement Payload { get; init; }
 }
 
-internal sealed record HelloPayload(string WidgetInstanceId);
+internal sealed record HelloPayload(string WidgetInstanceId, string SessionNonce);
 internal sealed record WidgetLifecyclePayload(WidgetLifecycleState State);
 internal sealed record InvalidationPayload(long Revision);
 internal sealed record ActionAdmissionPayload(WidgetOperationAdmission Admission);
@@ -131,5 +131,5 @@ internal sealed class LengthPrefixedJsonChannel(Stream stream, int maximumMessag
     }
 }
 
-public sealed class WidgetProtocolViolationException(string message, Exception? innerException = null)
+internal sealed class WidgetProtocolViolationException(string message, Exception? innerException = null)
     : Exception(message, innerException);

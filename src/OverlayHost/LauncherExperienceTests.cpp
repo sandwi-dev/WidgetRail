@@ -258,6 +258,52 @@ WidgetSnapshot ProjectedProductionSnapshot(
     return result;
 }
 
+WidgetSnapshot ProjectedArtworkMatrixSnapshot(const std::size_t count = 32) {
+    auto result = ProjectedProductionSnapshot();
+    auto& details = result.root.children[0];
+    auto heroArtwork = Node(
+        L"matrix.hero.artwork", L"image", L"Selected artwork");
+    heroArtwork.artworkHandle =
+        L"library.art.ffffffffffffffffffffffffffffffff";
+    heroArtwork.baseStyle.emplace(L"min-width", Length(220));
+    heroArtwork.baseStyle.emplace(L"min-height", Length(128));
+    details.children.push_back(std::move(heroArtwork));
+
+    auto& rail = result.root.children[1];
+    rail.children.clear();
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto suffix = std::to_wstring(index);
+        auto game = Node(
+            (L"matrix.game." + suffix).c_str(), L"actionSurface",
+            (L"Matrix game " + suffix).c_str());
+        game.actionId = L"matrix.launch.saved." + suffix;
+        game.actionSurfaceOrientation = L"vertical";
+        game.collectionItemKey = L"matrix.saved." + suffix;
+        game.inputScopeId = result.activeInputScopeId;
+        game.baseStyle.emplace(L"min-height", Length(150));
+        auto artwork = Node(
+            (L"matrix.game." + suffix + L".artwork").c_str(),
+            L"image", L"Trusted game artwork");
+        wchar_t handle[64]{};
+        swprintf_s(
+            handle, L"library.art.%032llx",
+            static_cast<unsigned long long>(index + 1));
+        artwork.artworkHandle = handle;
+        artwork.inputScopeId = result.activeInputScopeId;
+        auto title = Node(
+            (L"matrix.game." + suffix + L".title").c_str(),
+            L"text", (L"Matrix game " + suffix).c_str());
+        title.inputScopeId = result.activeInputScopeId;
+        game.children = {std::move(artwork), std::move(title)};
+        rail.children.push_back(std::move(game));
+    }
+    result.initialFocusId = L"matrix.game.0";
+    rail.collectionAnchorKey = L"matrix.saved.0";
+    rail.scrollNearStartActionId = L"matrix.page.before";
+    rail.scrollNearEndActionId = L"matrix.page.after";
+    return result;
+}
+
 std::optional<gba::WidgetAdvancedPresentationDeclaration>
 AdvancedPresentationDeclaration(const int schemaVersion = 1) {
     return gba::WidgetAdvancedPresentationDeclaration{
@@ -1079,6 +1125,183 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
         "one-activation safe start uses code-owned recovery without mutating selection");
 }
 
+void NoArtworkHeroRailRetainsOneBoundedSemanticRail() {
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create no-artwork D2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create no-artwork DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "create no-artwork WIC factory");
+
+    constexpr std::wstring_view png =
+        L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
+    enum class State { Available, Mixed, AllTerminal };
+    const auto render = [&](const Rect viewport, const State requested) {
+        gba::RemoteImageLimits limits;
+        limits.maximumEntries = 64;
+        gba::RemoteImageCache cache(
+            limits, {}, {}, [](std::wstring_view) { return true; });
+        gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+        LauncherExperienceProjection projection;
+        const auto snapshot = ProjectedArtworkMatrixSnapshot();
+        ComPtr<IWICBitmap> canvas;
+        Check(SUCCEEDED(wic->CreateBitmap(
+            static_cast<UINT>(viewport.width), static_cast<UINT>(viewport.height),
+            GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+            canvas.ReleaseAndGetAddressOf())), "create no-artwork canvas");
+        ComPtr<ID2D1RenderTarget> target;
+        Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+            canvas.Get(), D2D1::RenderTargetProperties(),
+            target.ReleaseAndGetAddressOf())), "create no-artwork target");
+        gba::DeclarativeRenderOptions options;
+        options.collectAccessibility = true;
+        options.artworkWidgetId = L"generic-community-launcher";
+        options.accessibility.reducedMotion = true;
+        options.animationTimestampMilliseconds = 100;
+        target->BeginDraw();
+        auto first = projection.Render(
+            renderer, target.Get(), &cache, AdvancedPresentationDeclaration(),
+            L"no-artwork-generation", L"generic-community-launcher", snapshot,
+            L"matrix.game.0", viewport, options);
+        Check(SUCCEEDED(target->EndDraw()) && first.render.succeeded,
+            "initial artwork matrix requests one complete frame");
+
+        std::size_t tracked{};
+        for (const auto& game : snapshot.root.children[1].children) {
+            const auto& artwork = game.children[0];
+            const auto key = gba::RemoteImageCache::TrustedArtworkKey(
+                L"generic-community-launcher", artwork.id, artwork.artworkHandle);
+            if (cache.GetState(key) != gba::RemoteImageState::Missing) ++tracked;
+        }
+        Check(tracked >= 6, "artwork matrix admits at least six visible handles");
+        std::size_t index{};
+        for (const auto& game : snapshot.root.children[1].children) {
+            const auto& artwork = game.children[0];
+            const auto key = gba::RemoteImageCache::TrustedArtworkKey(
+                L"generic-community-launcher", artwork.id, artwork.artworkHandle);
+            if (cache.GetState(key) == gba::RemoteImageState::Missing) {
+                ++index;
+                continue;
+            }
+            const bool supply = requested == State::Available ||
+                (requested == State::Mixed && index == 0);
+            if (supply)
+                Check(cache.SupplyTrustedArtwork(
+                    L"generic-community-launcher", artwork.artworkHandle,
+                    std::wstring(png)), "supply matrix artwork");
+            else
+                Check(cache.FailTrustedArtwork(
+                    L"generic-community-launcher", artwork.artworkHandle),
+                    "fail matrix artwork");
+            ++index;
+        }
+        if (requested != State::AllTerminal) {
+            for (int attempt = 0; attempt < 200; ++attempt) {
+                const auto& artwork = snapshot.root.children[1].children[0].children[0];
+                const auto key = gba::RemoteImageCache::TrustedArtworkKey(
+                    L"generic-community-launcher", artwork.id, artwork.artworkHandle);
+                if (cache.GetState(key) == gba::RemoteImageState::Ready) break;
+                Sleep(5);
+            }
+        }
+        options.animationTimestampMilliseconds = 200;
+        target->BeginDraw();
+        auto result = projection.Render(
+            renderer, target.Get(), &cache, AdvancedPresentationDeclaration(),
+            L"no-artwork-generation", L"generic-community-launcher", snapshot,
+            L"matrix.game.0", viewport, options);
+        Check(SUCCEEDED(target->EndDraw()) && result.render.succeeded,
+            "resolved artwork matrix commits one complete frame");
+        const auto& canonical = projection.InteractionSnapshot(
+            L"generic-community-launcher", L"no-artwork-generation", snapshot);
+        const auto* canonicalFirst = FindNode(canonical.root, L"matrix.game.0");
+        const auto* canonicalSecond = FindNode(canonical.root, L"matrix.game.1");
+        const auto* canonicalRail = FindNode(canonical.root, L"launcher.game-rail");
+        Check(canonicalFirst && canonicalSecond && canonicalRail &&
+              canonicalFirst->actionId == L"matrix.launch.saved.0" &&
+              canonicalFirst->collectionItemKey == L"matrix.saved.0" &&
+              canonicalFirst->focusRight == canonicalSecond->id &&
+              canonicalRail->collectionAnchorKey == L"matrix.saved.0" &&
+              canonicalRail->scrollNearStartActionId == L"matrix.page.before" &&
+              canonicalRail->scrollNearEndActionId == L"matrix.page.after",
+            "artwork state never changes action, SavedId, paging, or focus authority");
+        for (std::size_t catalogIndex = 0; catalogIndex < 32; ++catalogIndex) {
+            const auto id = L"matrix.game." + std::to_wstring(catalogIndex);
+            const auto* game = FindNode(canonical.root, id);
+            Check(game && game->actionId ==
+                      L"matrix.launch.saved." + std::to_wstring(catalogIndex) &&
+                  game->collectionItemKey ==
+                      L"matrix.saved." + std::to_wstring(catalogIndex),
+                "32-game catalog retains exact action and SavedId authority");
+            Check(catalogIndex == 0 || game->focusLeft ==
+                      L"matrix.game." + std::to_wstring(catalogIndex - 1),
+                "32-game catalog retains exact previous focus edge");
+            Check(catalogIndex + 1 == 32 || game->focusRight ==
+                      L"matrix.game." + std::to_wstring(catalogIndex + 1),
+                "32-game catalog retains exact next focus edge");
+        }
+        return result;
+    };
+
+    for (const auto& [viewport, branch] :
+         std::array<std::pair<Rect, std::wstring_view>, 3>{{
+             {{0, 0, 978, 466}, L"compact"},
+             {{0, 0, 1100, 650}, L"standard"},
+             {{0, 0, 1400, 900}, L"wide"},
+         }}) {
+        const auto available = render(viewport, State::Available);
+        Check(available.artworkAvailability == L"available" &&
+              available.layoutBranch == branch,
+            "available artwork retains the ordinary profile branch");
+        const auto mixed = render(viewport, State::Mixed);
+        Check(mixed.artworkAvailability == L"mixed" &&
+              mixed.layoutBranch == branch,
+            "mixed artwork retains the ordinary profile branch");
+        const auto terminal = render(viewport, State::AllTerminal);
+        Check(terminal.artworkAvailability == L"all-terminal" &&
+              terminal.layoutBranch == branch,
+            "all-terminal artwork selects bounded no-artwork composition");
+        Check(Contains(viewport, terminal.railBounds) &&
+              terminal.railBounds.height >= 150.0F,
+            "all-terminal equal-width rail remains inside the body");
+        for (const auto& region : terminal.render.accessibilityRegions)
+            Check(Contains(viewport, region.rect),
+                "all-terminal visible UIA geometry stays inside the body");
+        for (const auto& region : terminal.render.hitRegions)
+            Check(Contains(viewport, region.rect),
+                "all-terminal pointer geometry stays inside the body");
+        std::optional<float> cardWidth;
+        for (std::size_t index = 0; index < 6; ++index) {
+            const auto id = L"matrix.game." + std::to_wstring(index);
+            const auto hit = std::find_if(
+                terminal.render.hitRegions.begin(), terminal.render.hitRegions.end(),
+                [&](const auto& item) { return item.nodeId == id; });
+            const auto uia = std::find_if(
+                terminal.render.accessibilityRegions.begin(),
+                terminal.render.accessibilityRegions.end(),
+                [&](const auto& item) { return item.nodeId == id; });
+            Check(hit != terminal.render.hitRegions.end() &&
+                  uia != terminal.render.accessibilityRegions.end(),
+                "terminal rail game retains hit and UIA geometry");
+            Check(Contains(terminal.railBounds, hit->rect) &&
+                  Contains(terminal.railBounds, uia->rect),
+                "terminal rail game geometry stays inside one rail");
+            if (!cardWidth) cardWidth = uia->rect.width;
+            Check(std::abs(uia->rect.width - *cardWidth) <= 1.0F,
+                "terminal rail game cards have equal width");
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -1091,6 +1314,7 @@ int main() {
     RenderedSlotsSharePaintPointerFocusAndUiaGeometry();
     ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract();
     ProductionProjectionUsesOneAtomicPresentationFrame();
+    NoArtworkHeroRailRetainsOneBoundedSemanticRail();
     std::cout << "LauncherExperienceTests: " << checks << " checks passed\n";
     CoUninitialize();
     return EXIT_SUCCESS;

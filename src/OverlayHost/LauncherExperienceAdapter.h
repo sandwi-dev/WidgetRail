@@ -20,6 +20,11 @@ struct RenderedExperience final {
     RenderResult render;
 };
 
+enum class GameRailPresentation {
+    Authored,
+    EqualWidthNoArtwork,
+};
+
 /// Renders host-created semantic slot snapshots into a validated launcher
 /// recipe. Recipes never create WidgetNode content or action IDs. One existing
 /// DeclarativeRenderer remains the only painter and geometry producer.
@@ -33,6 +38,7 @@ struct RenderedExperience final {
     std::wstring_view focusedElementId,
     DeclarativeRenderOptions options = {},
     const LauncherPresentationFrame* presentation = nullptr,
-    const WidgetSnapshot* semanticEnvelope = nullptr);
+    const WidgetSnapshot* semanticEnvelope = nullptr,
+    GameRailPresentation railPresentation = GameRailPresentation::Authored);
 
 } // namespace gba::launcher

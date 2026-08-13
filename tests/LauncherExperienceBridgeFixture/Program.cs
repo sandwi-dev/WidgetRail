@@ -48,7 +48,7 @@ internal static class Program
                 BridgeProtocol.DefaultMaximumMessageBytes,
                 256,
                 BridgeProtocol.AbsoluteMaximumMessageBytes);
-            if (scenario is not ("adoption" or "fallback" or "selection" or "matrix" or "lifecycle"))
+            if (scenario is not ("adoption" or "fallback" or "selection" or "matrix" or "lifecycle" or "no-artwork"))
                 throw new InvalidOperationException("Unknown Launcher Experience fixture scenario.");
 
             using var shutdown = new CancellationTokenSource();
@@ -138,12 +138,13 @@ internal static class Program
             await using var backend = new CompositePlatformBrokerBackend(
                 simulator,
                 simulator,
-                appLibrary: scenario is "adoption" or "selection" or "matrix" or "lifecycle"
+                appLibrary: scenario is "adoption" or "selection" or "matrix" or "lifecycle" or "no-artwork"
                     ? new SeededAppLibrary(Path.Combine(
                         settingsRoot, scenario == "lifecycle"
                             ? $"launcher-experience-backend-{Environment.ProcessId}.txt"
                             : "launcher-experience-backend.txt"),
-                        matrix: scenario == "matrix")
+                        matrix: scenario == "matrix",
+                        noArtwork: scenario == "no-artwork")
                     : UnavailableAppLibrary.Instance,
                 privateState: simulator);
 
@@ -215,7 +216,8 @@ internal static class Program
 
     private sealed class SeededAppLibrary(
         string diagnosticPath,
-        bool matrix = false) : IAppLibraryPlatformBrokerBackend
+        bool matrix = false,
+        bool noArtwork = false) : IAppLibraryPlatformBrokerBackend
     {
         private const string ArtworkPngBase64 =
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
@@ -257,9 +259,22 @@ internal static class Program
             },
             Games[0],
         ];
+        private static readonly AppLibraryBackendItemSummary[] NoArtworkGames =
+            Enumerable.Range(0, 32).Select(index => new AppLibraryBackendItemSummary(
+                $"dlv210-provider-{index:D2}",
+                $"dlv210-stable-{index:D2}",
+                index == 0
+                    ? "A long installed game title remains fully targetable without artwork"
+                    : $"DLV-210 Game {index:D2}",
+                AppLibraryKind.Game,
+                ArtworkRevision: $"dlv210-artwork-{index:D2}",
+                SourceAttribution: "DLV-210 Fixture")
+            {
+                SourceIdentity = "dlv210-fixture",
+            }).ToArray();
 
         private IReadOnlyList<AppLibraryBackendItemSummary> CurrentGames =>
-            matrix ? MatrixGames : Games;
+            noArtwork ? NoArtworkGames : matrix ? MatrixGames : Games;
 
         public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
             AppLibraryBackendCursorRequest request,
@@ -293,7 +308,8 @@ internal static class Program
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(new AppLibraryIconSummary(
                 CurrentGames.Any(game => game.ProviderAppId == appId) &&
-                    appId != "dlv152-missing-art" ? ArtworkPngBase64 : null));
+                    appId != "dlv152-missing-art" && !noArtwork
+                    ? ArtworkPngBase64 : null));
         }
 
         public Task LaunchAppLibraryItemAsync(

@@ -55,6 +55,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
     ("Null protocol collections report validation errors", NullCollectionsAreRejected),
     ("Valid manifest passes", ValidManifestPasses),
+    ("Full-trust entrypoint is versioned strict and schema-only", FullTrustEntrypointIsStrict),
     ("Manifest pinning is explicit and defaults closed", ManifestPinningIsExplicit),
     ("Manifest presentation uses only closed semantic host icons", ManifestPresentationIsSemantic),
     ("Manifest advanced presentation opt-in is explicit versioned and closed", ManifestAdvancedPresentationIsExplicit),
@@ -3014,6 +3015,54 @@ static Task ValidManifestPasses()
     }).Count);
     var roundTrip = ManifestJson.Deserialize(ManifestJson.Serialize(manifest));
     Assert.Equal(manifest.Id, roundTrip.Id);
+    return Task.CompletedTask;
+}
+
+static Task FullTrustEntrypointIsStrict()
+{
+    var manifest = ValidManifest() with
+    {
+        Entrypoint = new WidgetEntrypoint(
+            WidgetEntrypointRuntimes.FullTrustApplicationV1,
+            Executable: "payload/UnrelatedApplication.exe"),
+        Permissions = [],
+    };
+    Assert.Equal(WidgetExecutionTrust.FullTrustCurrentUser,
+        WidgetManifestTrust.Resolve(manifest));
+    Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
+
+    var payload = ManifestJson.Serialize(manifest);
+    var text = Encoding.UTF8.GetString(payload);
+    Assert.True(text.Contains("\"executable\": \"payload/UnrelatedApplication.exe\"",
+        StringComparison.Ordinal), "The versioned executable was not serialized.");
+    Assert.True(!text.Contains("packagePath", StringComparison.Ordinal),
+        "The derived package path leaked into the versioned manifest schema.");
+    var roundTrip = ManifestJson.Deserialize(payload);
+    Assert.Equal("payload/UnrelatedApplication.exe",
+        WidgetEntrypointRuntimes.ResolvePackagePath(roundTrip.Entrypoint));
+    Assert.Equal(0, WidgetManifestValidator.Validate(roundTrip).Count);
+
+    var document = JsonNode.Parse(payload)!.AsObject();
+    document["entrypoint"]!["packagePath"] = "payload/tampered.exe";
+    Assert.Throws<JsonException>(() => ManifestJson.Deserialize(
+        Encoding.UTF8.GetBytes(document.ToJsonString())));
+
+    var withCapabilities = manifest with { Permissions = ["storage.own"] };
+    Assert.True(WidgetManifestValidator.Validate(withCapabilities).Any(error =>
+        error.Path == "$.permissions" &&
+        error.Code == "full_trust_capabilities_forbidden"),
+        "Full-trust packages accepted sandbox broker capabilities.");
+    var mixedEntrypoint = manifest with
+    {
+        Entrypoint = manifest.Entrypoint with
+        {
+            Assembly = "payload/not-used.dll",
+            Type = "Unrelated.NotUsed",
+        },
+    };
+    Assert.True(WidgetManifestValidator.Validate(mixedEntrypoint).Any(error =>
+        error.Code == "conflicting_entrypoint"),
+        "The full-trust entrypoint accepted a second loader identity.");
     return Task.CompletedTask;
 }
 

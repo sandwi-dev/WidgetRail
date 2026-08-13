@@ -4300,3 +4300,98 @@ attempt is not passing evidence. The project is now listed with its bounded
 MSTest.Sdk invocation. The corrected aggregate is run once only after this
 correction is committed, and its exact result belongs to the milestone report;
 no capture evidence is used.
+
+### Generic full-trust Community application runtime (DLV-215)
+
+DLV-215 adds one versioned `full-trust-application-v1` manifest entrypoint for
+an exact immutable package executable. Install and enable deny it by default;
+CLI and Settings require an explicit full-trust approval while disclosing that
+the executable runs as an ordinary current-user process outside AppContainer
+with ambient file, network, registry, database, and child-process authority.
+There is no sandbox-to-full-trust fallback.
+
+The public author boundary is the new narrow `WidgetApplicationRuntime`
+bootstrap plus `WidgetSdk` and `WidgetProtocol`. The author package deliberately
+contains neither the host-side `WidgetRuntime` nor `PlatformBroker`, and the
+bootstrap creates no capability-broker connection. Host-private launch policy
+still pins the selected content generation and exact executable, authenticates
+a random session nonce and connected PID, validates bounded protocol messages,
+and retains lifecycle, failure/restart, update, disable, removal, and
+kill-on-close process-tree ownership. Full-trust sessions intentionally receive
+no AppContainer, broker grants, isolation-key ACL projection, private memory
+ceiling, or one-process restriction.
+
+Two unrelated installed fixtures use the ordinary catalog and bridge route.
+The first starts a child process, performs deterministic current-user file and
+transactional JSON-database work, and exercises a fake HTTPS transport; the
+second proves the same generic runtime with a different identity and tree.
+Focused evidence covers explicit trust denial/approval, exact executable
+selection, nonce/PID authentication, malformed/oversized/stale protocol
+denial, crash/restart with retained state, replacement generation, drain,
+disable, and removal. No package, provider, OAuth, assembly/type, element/style,
+or tree-shape special case is present.
+
+Pre-commit focused Release evidence passed Widget SDK 92/92, Widget Catalog
+35/35, Widget Runtime 75/75, sandbox WorkerHost 10/10, Widget Bridge 86/86,
+gbar CLI 65/65, Settings 61/61, and the native WidgetBridgeCatalog fixture. The
+clean exact-commit Tier 3 run for `ed39a70` stopped at Widget Runtime 74/75:
+the cancellation-ignoring retired gesture-grant case observed two permitted
+idempotent revocations and its invalid `.Single()` assertion failed. The
+retained result is
+`artifacts/verification/20260813T063409Z-37fcbe6e/verification-result.json`;
+it is explicitly not passing aggregate evidence. The copied
+external consumer restores only the generated local SDK package, contains no
+repository `ProjectReference`, emits only the narrow application runtime plus
+SDK/protocol dependencies, and completes its child/file/database/fake-HTTPS
+snapshot through the authenticated supervisor. The documentation contract
+currently remains red only on five links rooted in the reviewer-owned archived
+delivery-plan file `2026-08-12T21-06-00-07-00.md`; no DLV-215 documentation file
+is named by that failure.
+
+### Exact-commit full-trust Runtime verification correction (DLV-220)
+
+DLV-220 preserves the accepted DLV-215 runtime architecture and corrects only
+the cancellation-ignoring retired gesture-grant fixture. Session retirement may
+issue one best-effort revoke while the input request unwinds and a second revoke
+after a cancellation-ignoring grant actually completes. Both target the same
+input sequence and are intentionally idempotent; the fixture accepts only one
+or two observed revocations and requires every observed sequence to be the
+exact retired input sequence 92.
+
+Focused Release evidence passes Widget Runtime 75/75 and the packaged ordinary
+full-trust lifecycle 1/1. The latter installs and runs two unrelated package
+executables, exercises child/file/database/fake-HTTPS work, restart, replacement,
+drain, disable, and removal through the normal catalog and supervisor. The one
+clean exact-correction-commit Tier 3 result is retained separately and reported
+with its exact commit provenance; these focused results are not described as an
+aggregate pass.
+
+### Generic Hero Rail terminal-artwork recovery (DLV-210)
+
+The native Launcher Experience projection now derives one closed artwork state
+from ordinary opaque cache handles. Hero Rail keeps its existing presentation
+for pending, available, and mixed results. After all tracked rail artwork is
+terminally unavailable, it atomically selects a code-owned composition that
+keeps source/title, Search and collections, one equal-width horizontal game
+rail, operation state, and one controller-help hierarchy inside the admitted
+body. It does not fabricate artwork or recognize a widget, package, provider,
+game, element, or style identity.
+
+The recovery frame changes only presentation copies. The canonical snapshot
+retains exact action IDs, collection item keys, anchor, pagination actions,
+active scope, and authored focus edges. Terminal artwork nodes use the shared
+Play fallback while their oversized presentation boxes compact; the six-card
+rail receives equal host-owned widths and remains horizontally revealable.
+Production diagnostics now retain the generic artwork state plus exact body and
+rail bounds for temporal verification.
+
+Focused Release evidence passes 2,890 native checks across the exact 978x466
+compact body plus standard/wide profiles and pending/available/mixed/
+all-terminal states. The matrix retains all 32 exact action/SavedId/focus edges
+and asserts pointer, focus, and UIA geometry containment. The packaged
+`--no-artwork-only` production-host route passes with 32 seeded ordinary catalog
+items, six terminal visible handles, equal-width contained cards, reachable
+Search/collection/help semantics, stable visible focus identities, and a clean
+post-route projection/composition log. The legacy combined host route remains
+red before this scenario at its existing compact `experiences.open` expectation;
+it is not claimed as DLV-210 passing evidence and was not weakened or removed.

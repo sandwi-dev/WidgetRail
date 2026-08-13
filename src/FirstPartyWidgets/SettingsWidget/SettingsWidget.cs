@@ -1672,7 +1672,14 @@ public sealed class SettingsWidget : Widget
         SetOperation(nextEnabled ? "Enabling widget…" : "Disabling widget…", busy: true, error: false);
         try
         {
-            await _widgetCatalog.SetEnabledAsync(selected.Id, nextEnabled, cancellationToken).ConfigureAwait(false);
+            var trustApproval = nextEnabled && WidgetManifestTrust.Resolve(
+                    selected.ActiveVersion.Manifest) ==
+                WidgetExecutionTrust.FullTrustCurrentUser
+                    ? WidgetPackageTrustApproval.FullTrustCurrentUser
+                    : WidgetPackageTrustApproval.None;
+            await _widgetCatalog.SetEnabledAsync(
+                selected.Id, nextEnabled, trustApproval, cancellationToken)
+                .ConfigureAwait(false);
             var refreshed = await _widgetCatalog.DiscoverAsync(cancellationToken).ConfigureAwait(false);
             lock (_stateLock)
             {

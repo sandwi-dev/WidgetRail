@@ -48,7 +48,48 @@ public sealed record WidgetManifest
 }
 
 public sealed record HostApiRange(string Minimum, int MaximumMajor);
-public sealed record WidgetEntrypoint(string Runtime, string Assembly, string Type);
+public sealed record WidgetEntrypoint(
+    string Runtime,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Assembly = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Executable = null);
+
+public static class WidgetEntrypointRuntimes
+{
+    public const string DotNetWorker = "dotnet-worker";
+    public const string FullTrustApplicationV1 = "full-trust-application-v1";
+
+    public static bool IsFullTrust(string? runtime) =>
+        string.Equals(runtime, FullTrustApplicationV1, StringComparison.Ordinal);
+
+    public static string ResolvePackagePath(WidgetEntrypoint entrypoint)
+    {
+        ArgumentNullException.ThrowIfNull(entrypoint);
+        return entrypoint.Runtime switch
+        {
+            DotNetWorker => entrypoint.Assembly ?? string.Empty,
+            FullTrustApplicationV1 => entrypoint.Executable ?? string.Empty,
+            _ => string.Empty,
+        };
+    }
+}
+
+public enum WidgetExecutionTrust
+{
+    Sandboxed,
+    FullTrustCurrentUser,
+}
+
+public static class WidgetManifestTrust
+{
+    public static WidgetExecutionTrust Resolve(WidgetManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return WidgetEntrypointRuntimes.IsFullTrust(manifest.Entrypoint?.Runtime)
+            ? WidgetExecutionTrust.FullTrustCurrentUser
+            : WidgetExecutionTrust.Sandboxed;
+    }
+}
 public sealed record WidgetPresentation(WidgetGlyph Icon = WidgetGlyph.Connection);
 public sealed record WidgetAdvancedPresentationDeclaration
 {
@@ -151,7 +192,11 @@ public static class WidgetResidencyPolicies
 
 public static partial class WidgetManifestValidator
 {
-    private static readonly HashSet<string> SupportedRuntimes = new(StringComparer.Ordinal) { "dotnet-worker" };
+    private static readonly HashSet<string> SupportedRuntimes = new(StringComparer.Ordinal)
+    {
+        WidgetEntrypointRuntimes.DotNetWorker,
+        WidgetEntrypointRuntimes.FullTrustApplicationV1,
+    };
     private static readonly HashSet<string> SupportedArchitectures = new(StringComparer.Ordinal) { "x64", "arm64" };
     private static readonly HashSet<string> SupportedBackgroundPolicies = new(StringComparer.Ordinal) { "none", "suspend" };
 
@@ -185,12 +230,40 @@ public static partial class WidgetManifestValidator
             Add("$.entrypoint", "required", "Entrypoint is required.");
         else
         {
-            if (!SupportedRuntimes.Contains(manifest.Entrypoint.Runtime ?? string.Empty))
-                Add("$.entrypoint.runtime", "unsupported_runtime", "Only 'dotnet-worker' is currently supported.");
-            if (!IsRelativePackagePath(manifest.Entrypoint.Assembly))
-                Add("$.entrypoint.assembly", "invalid_path", "Assembly must be a normalized package-relative path without traversal segments.");
-            if (string.IsNullOrWhiteSpace(manifest.Entrypoint.Type) || !manifest.Entrypoint.Type.Contains('.', StringComparison.Ordinal))
-                Add("$.entrypoint.type", "invalid_type", "Entrypoint type must be namespace-qualified.");
+            var runtime = manifest.Entrypoint.Runtime ?? string.Empty;
+            if (!SupportedRuntimes.Contains(runtime))
+            {
+                Add("$.entrypoint.runtime", "unsupported_runtime",
+                    $"Supported runtimes are '{WidgetEntrypointRuntimes.DotNetWorker}' and " +
+                    $"'{WidgetEntrypointRuntimes.FullTrustApplicationV1}'.");
+                if (!IsRelativePackagePath(manifest.Entrypoint.Assembly))
+                    Add("$.entrypoint.assembly", "invalid_path",
+                        "Assembly must be a normalized package-relative path without traversal segments.");
+            }
+            else if (runtime == WidgetEntrypointRuntimes.DotNetWorker)
+            {
+                if (!IsRelativePackagePath(manifest.Entrypoint.Assembly))
+                    Add("$.entrypoint.assembly", "invalid_path",
+                        "Assembly must be a normalized package-relative path without traversal segments.");
+                if (string.IsNullOrWhiteSpace(manifest.Entrypoint.Type) ||
+                    !manifest.Entrypoint.Type.Contains('.', StringComparison.Ordinal))
+                    Add("$.entrypoint.type", "invalid_type",
+                        "Entrypoint type must be namespace-qualified.");
+                if (manifest.Entrypoint.Executable is not null)
+                    Add("$.entrypoint.executable", "not_applicable",
+                        "Sandboxed dotnet workers cannot declare an executable.");
+            }
+            else
+            {
+                if (!IsRelativePackagePath(manifest.Entrypoint.Executable) ||
+                    !string.Equals(Path.GetExtension(manifest.Entrypoint.Executable),
+                        ".exe", StringComparison.OrdinalIgnoreCase))
+                    Add("$.entrypoint.executable", "invalid_path",
+                        "A full-trust application executable must be a normalized package-relative .exe path.");
+                if (manifest.Entrypoint.Assembly is not null || manifest.Entrypoint.Type is not null)
+                    Add("$.entrypoint", "conflicting_entrypoint",
+                        "A full-trust application declares only its executable, not an assembly or type.");
+            }
         }
 
         if (manifest.Presentation is null)
@@ -239,6 +312,10 @@ public static partial class WidgetManifestValidator
                 $"A manifest may declare at most {ProtocolConstants.MaximumManifestPermissionCount} required and optional permissions in total.");
         CheckPermissions(permissions, "$.permissions");
         CheckPermissions(optionalPermissions, "$.optionalPermissions");
+        if (WidgetEntrypointRuntimes.IsFullTrust(manifest.Entrypoint?.Runtime) &&
+            (permissions.Count != 0 || optionalPermissions.Count != 0))
+            Add("$.permissions", "full_trust_capabilities_forbidden",
+                "Full-trust applications use ordinary current-user APIs and cannot request sandboxed host capabilities.");
         var validationLimit = ProtocolConstants.MaximumManifestPermissionCount + 1;
         var required = permissions.Take(validationLimit)
             .Where(permission => permission is not null)

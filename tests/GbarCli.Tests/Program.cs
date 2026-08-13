@@ -11,6 +11,7 @@ using GameBarAlternative.GbarCli;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
 
 if (args is ["--dev-persistent-grandchild", ..])
@@ -116,6 +117,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Source pack failures identify the required author action", SourcePackFailureIsActionable),
     ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
     ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
+    ("Full-trust install and enable require explicit disclosed approval", FullTrustCliConsent),
     ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow),
     ("Catalog repair lists and removes only inactive excess versions", CatalogRepairWorkflow),
     ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest),
@@ -639,7 +641,12 @@ static async Task ExternalVersionedSdkConsumer()
         var entries = archive.Entries.Select(entry => entry.FullName)
             .Order(StringComparer.Ordinal).ToArray();
         Assert.SequenceEqual(
-            new[] { "lib/net8.0/WidgetProtocol.dll", "lib/net8.0/WidgetSdk.dll" },
+            new[]
+            {
+                "lib/net8.0/WidgetApplicationRuntime.dll",
+                "lib/net8.0/WidgetProtocol.dll",
+                "lib/net8.0/WidgetSdk.dll",
+            },
             entries.Where(entry =>
                     entry.StartsWith("lib/net8.0/", StringComparison.Ordinal) &&
                     entry.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -662,11 +669,109 @@ static async Task ExternalVersionedSdkConsumer()
         "The exact generated SDK version was not restored into the isolated package root.");
     Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetProtocol.dll")),
         "The isolated SDK restore omitted WidgetProtocol.dll.");
+    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetApplicationRuntime.dll")),
+        "The isolated SDK restore omitted the narrow full-trust bootstrap.");
+    Assert.True(!File.Exists(Path.Combine(restoredSdk, "PlatformBroker.dll")),
+        "The public author SDK unexpectedly exposed PlatformBroker.dll.");
+    Assert.SequenceEqual(
+        new[] { "GameBarAlternative.WidgetRuntime.WidgetApplicationBootstrap" },
+        typeof(WidgetApplicationBootstrap).Assembly.GetExportedTypes()
+            .Select(type => type.FullName!).Order(StringComparer.Ordinal));
     Assert.SequenceEqual(
         new[] { sdkVersion.ToLowerInvariant() },
         Directory.EnumerateDirectories(Path.Combine(
                 nugetPackages, "gamebaralternative.widgetsdk"))
             .Select(Path.GetFileName).Order(StringComparer.Ordinal));
+
+    var externalApplication = Path.Combine(repository, "ExternalFullTrustConsumer");
+    Directory.CreateDirectory(externalApplication);
+    await File.WriteAllTextAsync(Path.Combine(externalApplication, "NuGet.Config"), """
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+            <add key="gbar-local" value="../ExternalBasic/.gbar/packages" />
+          </packageSources>
+        </configuration>
+        """);
+    var externalApplicationProject = Path.Combine(
+        externalApplication, "ExternalFullTrustConsumer.csproj");
+    await File.WriteAllTextAsync(externalApplicationProject, $$"""
+        <Project Sdk="Microsoft.NET.Sdk">
+          <PropertyGroup>
+            <OutputType>Exe</OutputType>
+            <TargetFramework>net8.0</TargetFramework>
+            <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+            <UseAppHost>true</UseAppHost>
+            <ImplicitUsings>enable</ImplicitUsings>
+            <Nullable>enable</Nullable>
+            <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+          </PropertyGroup>
+          <ItemGroup>
+            <PackageReference Include="GameBarAlternative.WidgetSdk" Version="{{sdkVersion}}" />
+          </ItemGroup>
+        </Project>
+        """);
+    File.Copy(
+        Path.Combine(Environment.CurrentDirectory, "tests", "FullTrustAlphaFixture", "Program.cs"),
+        Path.Combine(externalApplication, "Program.cs"));
+    var externalApplicationProjectText = await File.ReadAllTextAsync(
+        externalApplicationProject);
+    Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"",
+        externalApplicationProjectText);
+    Assert.DoesNotContain("ProjectReference", externalApplicationProjectText);
+    var externalApplicationBuild = await RunProcessAsync(
+        "dotnet", ["build", externalApplicationProject, "-c", "Release", "--nologo"],
+        TimeSpan.FromSeconds(90), externalApplication,
+        new Dictionary<string, string?> { ["NUGET_PACKAGES"] = nugetPackages });
+    Assert.True(externalApplicationBuild.Code == 0,
+        "external full-trust build: " + externalApplicationBuild.Output +
+        externalApplicationBuild.Error);
+    var externalApplicationOutput = Path.Combine(
+        externalApplication, "bin", "Release", "net8.0", "win-x64");
+    var externalApplicationExecutable = Path.Combine(
+        externalApplicationOutput, "ExternalFullTrustConsumer.exe");
+    Assert.True(File.Exists(externalApplicationExecutable),
+        "The external full-trust consumer did not produce its package executable.");
+    Assert.True(File.Exists(Path.Combine(
+            externalApplicationOutput, "WidgetApplicationRuntime.dll")),
+        "The external consumer omitted the narrow application bootstrap.");
+    Assert.True(!File.Exists(Path.Combine(externalApplicationOutput, "WidgetRuntime.dll")) &&
+                !File.Exists(Path.Combine(externalApplicationOutput, "PlatformBroker.dll")),
+        "The external full-trust consumer acquired a host or domain assembly.");
+
+    var externalInstance = "external.fulltrust." + Guid.NewGuid().ToString("N");
+    var externalIdentity = Convert.ToHexString(SHA256.HashData(
+        Encoding.UTF8.GetBytes(externalInstance)))[..20].ToLowerInvariant();
+    var externalState = Path.Combine(
+        Path.GetTempPath(), "gba-full-trust-alpha", externalIdentity);
+    try
+    {
+        await using var client = new WidgetProcessClient(new WidgetProcessOptions
+        {
+            ExecutablePath = externalApplicationExecutable,
+            WidgetInstanceId = externalInstance,
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            MaximumRestartAttempts = 0,
+            IsolationPolicy = WidgetWorkerIsolationPolicy.FullTrustCommunity,
+        });
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+        var externalSnapshot = await client.GetSnapshotAsync();
+        var evidence = externalSnapshot.Root.Children.Single(
+            node => node.Id == "alpha-result").Text ?? string.Empty;
+        foreach (var expected in new[]
+                 {
+                     "child=True", "file=True", "database=True", "https=True",
+                 })
+            Assert.Contains(expected, evidence);
+        await client.StopAsync();
+    }
+    finally
+    {
+        if (Directory.Exists(externalState))
+            Directory.Delete(externalState, recursive: true);
+    }
     var validation = await RunProcessAsync(
         gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository);
     Assert.True(validation.Code == 0,
@@ -957,7 +1062,8 @@ static void CopyGbarDistribution(string source, string destination)
                  "gbar.exe", "gbar.dll", "gbar.deps.json", "gbar.runtimeconfig.json",
                  "LauncherExperienceCatalog.dll", "PlatformBroker.dll",
                  "PlatformSettings.dll", "WidgetCatalog.dll", "WidgetProtocol.dll",
-                 "WidgetRuntime.dll", "WidgetSdk.dll", "WidgetStyling.dll",
+                 "WidgetApplicationRuntime.dll", "WidgetRuntime.dll", "WidgetSdk.dll",
+                 "WidgetStyling.dll",
              })
     {
         var sourcePath = Path.Combine(source, name);
@@ -1418,7 +1524,7 @@ static async Task DevBuildsIsolatedPackage()
             Path.Combine(temp.Path, "validation"))
         .CreateInstaller().ValidateAsync(prepared.PackagePath);
     Assert.Equal("dev.test.dev-panel", inspection.Id);
-    Assert.True(inspection.Manifest.Entrypoint.Assembly.StartsWith("payload/", StringComparison.Ordinal),
+    Assert.True(inspection.Manifest.Entrypoint.Assembly!.StartsWith("payload/", StringComparison.Ordinal),
         "Dev entrypoint did not remain in the isolated package payload.");
 }
 
@@ -1924,6 +2030,56 @@ static async Task LocalDistributionWorkflow()
     Assert.Contains("Disable it before installing an update", blockedUpdate.Error);
     Assert.True(!Directory.Exists(Path.Combine(catalog, "packages", "dev.test.local", "3.0.0")),
         "A local update bypassed disabled-only review.");
+}
+
+static async Task FullTrustCliConsent()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = Path.Combine(temp.Path, "catalog");
+    var package = Path.Combine(temp.Path, "full-trust.gbarwidget");
+    var manifest = BuildManifest(
+        "dev.test.full-trust-cli", "dev.test", "1.0.0") with
+    {
+        Entrypoint = new WidgetEntrypoint(
+            WidgetEntrypointRuntimes.FullTrustApplicationV1,
+            Executable: "payload/Independent.exe"),
+    };
+    await using (var stream = new FileStream(
+        package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+    using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
+    {
+        WriteArchiveEntry(archive, "manifest.json", ManifestJson.Serialize(manifest));
+        WriteArchiveEntry(archive, "payload/Independent.exe", [0x4d, 0x5a]);
+    }
+
+    var deniedInstall = await RunCli("install", package, "--catalog", catalog);
+    Assert.Equal(1, deniedInstall.Code);
+    Assert.Contains("full_trust_approval_required", deniedInstall.Error);
+    Assert.True(!Directory.Exists(Path.Combine(
+        catalog, "packages", manifest.Id, manifest.Version)),
+        "Denied full-trust bytes were published.");
+
+    var installed = await RunCli(
+        "install", package, "--catalog", catalog, "--accept-full-trust");
+    Assert.Equal(0, installed.Code);
+    Assert.Contains("FULL TRUST APPROVED", installed.Output);
+    Assert.Contains("ordinary current-user process", installed.Output);
+    Assert.Contains("not in AppContainer", installed.Output);
+
+    var deniedEnable = await RunCli("enable", manifest.Id, "--catalog", catalog);
+    Assert.Equal(1, deniedEnable.Code);
+    Assert.Contains("full_trust_approval_required", deniedEnable.Error);
+    var enabled = await RunCli(
+        "enable", manifest.Id, "--catalog", catalog, "--accept-full-trust");
+    Assert.Equal(0, enabled.Code);
+    Assert.Contains("FULL TRUST APPROVED", enabled.Output);
+    Assert.Contains("files, network, registry, databases, and child processes",
+        enabled.Output);
+
+    Assert.Equal(0, (await RunCli(
+        "disable", manifest.Id, "--catalog", catalog)).Code);
+    Assert.Equal(0, (await RunCli(
+        "uninstall", manifest.Id, "--catalog", catalog)).Code);
 }
 
 static async Task DirectoryShapeLimitsAreEnforced()

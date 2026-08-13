@@ -18,6 +18,7 @@ internal static class Program
         }
         var pipeName = RequiredValue(args, "--widget-pipe");
         var instanceId = RequiredValue(args, "--widget-instance");
+        var sessionNonce = RequiredValue(args, "--widget-session-nonce");
         var maximumBytes = int.Parse(
             RequiredValue(args, "--max-message-bytes"),
             NumberStyles.None,
@@ -33,7 +34,9 @@ internal static class Program
         try
         {
             var widget = new YtMusicWidget(new DeterministicFailureClient());
-            await new WidgetWorkerServer(widget, instanceId, pipeName, maximumBytes)
+            await new WidgetWorkerServer(
+                    widget, instanceId, pipeName, maximumBytes,
+                    sessionNonce: sessionNonce)
                 .RunAsync(shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

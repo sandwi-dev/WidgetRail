@@ -154,11 +154,14 @@ internal static class InstallCommand
         HttpMessageHandler? remoteHttpHandler,
         CancellationToken cancellationToken)
     {
-        var parsed = new CommandArguments(args, "--catalog", "--sha256");
+        var parsed = new CommandArguments(
+            args,
+            ["--catalog", "--sha256"],
+            ["--accept-full-trust"]);
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException(
                 "Usage: gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> " +
-                "[--sha256 <64-hex>] [--catalog <root>]");
+                "[--sha256 <64-hex>] [--catalog <root>] [--accept-full-trust]");
 
         var source = parsed.Positionals[0];
         var expectedSha256 = PackageIntegrity.ParseExpectedSha256(parsed.Option("--sha256"));
@@ -181,7 +184,10 @@ internal static class InstallCommand
                 var actualSha256 = await PackageIntegrity.HashStreamAsync(localPackage, cancellationToken);
                 PackageIntegrity.Verify(expectedSha256, actualSha256);
             }
-            var installed = await catalog.InstallAsync(localPackage, cancellationToken);
+            var approval = await InspectTrustAsync(
+                catalog, localPackage, parsed, output, cancellationToken);
+            var installed = await catalog.InstallAsync(
+                localPackage, approval, cancellationToken);
             await output.WriteLineAsync($"Installed {installed.Id} {installed.Version} to {installed.InstallPath}.");
             await WriteSelectionHintAsync(catalog, installed, output, cancellationToken);
             return 0;
@@ -191,7 +197,10 @@ internal static class InstallCommand
             throw new CliUsageException("Remote widget installation requires --sha256 <64-hex>.");
         using var downloader = new RemotePackageDownloader(remoteHttpHandler);
         await using var downloaded = await downloader.DownloadAsync(remoteUri, expectedSha256, cancellationToken);
-        var remoteInstalled = await catalog.InstallAsync(downloaded.PackageStream, cancellationToken);
+        var remoteApproval = await InspectTrustAsync(
+            catalog, downloaded.PackageStream, parsed, output, cancellationToken);
+        var remoteInstalled = await catalog.InstallAsync(
+            downloaded.PackageStream, remoteApproval, cancellationToken);
         await output.WriteLineAsync(
             $"Installed {remoteInstalled.Id} {remoteInstalled.Version} to {remoteInstalled.InstallPath} (disabled)." +
             " Review it, then run gbar enable when ready.");
@@ -199,6 +208,33 @@ internal static class InstallCommand
         await output.WriteLineAsync($"Downloaded SHA-256: {Convert.ToHexString(downloaded.Sha256).ToLowerInvariant()}");
         return 0;
     }
+
+    private static async Task<WidgetPackageTrustApproval> InspectTrustAsync(
+        CatalogService catalog,
+        Stream package,
+        CommandArguments arguments,
+        TextWriter output,
+        CancellationToken cancellationToken)
+    {
+        var inspection = await catalog.CreateInstaller()
+            .ValidateAsync(package, cancellationToken).ConfigureAwait(false);
+        if (WidgetManifestTrust.Resolve(inspection.Manifest) !=
+            WidgetExecutionTrust.FullTrustCurrentUser)
+            return WidgetPackageTrustApproval.None;
+        if (!arguments.HasFlag("--accept-full-trust"))
+            throw new WidgetPackageException(
+                "full_trust_approval_required",
+                "This package runs as an ordinary current-user process and is not AppContainer sandboxed. Review it, then repeat with --accept-full-trust.");
+        await WriteFullTrustDisclosureAsync(
+            output, inspection.Id, inspection.Version.ToString());
+        return WidgetPackageTrustApproval.FullTrustCurrentUser;
+    }
+
+    internal static Task WriteFullTrustDisclosureAsync(
+        TextWriter output,
+        string widgetId,
+        string version) => output.WriteLineAsync(
+            $"FULL TRUST APPROVED: {widgetId} {version} runs as an ordinary current-user process, not in AppContainer. It can use the current user's files, network, registry, databases, and child processes.");
 
     private static async Task WriteSelectionHintAsync(
         CatalogService catalog,
@@ -351,14 +387,38 @@ internal static class EnabledCommand
     public static async Task<int> RunAsync(string[] args, TextWriter output, bool enabled)
     {
         var command = enabled ? "enable" : "disable";
-        var parsed = new CommandArguments(args, "--catalog");
+        var parsed = new CommandArguments(
+            args,
+            ["--catalog"],
+            enabled ? ["--accept-full-trust"] : []);
         if (parsed.Positionals.Count != 1)
-            throw new CliUsageException($"Usage: gbar {command} <widget-id> [--catalog <root>]");
+            throw new CliUsageException(
+                $"Usage: gbar {command} <widget-id> [--catalog <root>]" +
+                (enabled ? " [--accept-full-trust]" : string.Empty));
 
         var catalog = new CatalogService(CatalogPath.Resolve(parsed.Option("--catalog")));
         try
         {
-            await catalog.SetEnabledAsync(parsed.Positionals[0], enabled);
+            var approval = WidgetPackageTrustApproval.None;
+            if (enabled)
+            {
+                var widget = (await catalog.DiscoverAsync()).Widgets.SingleOrDefault(
+                    candidate => candidate.Id == parsed.Positionals[0])
+                    ?? throw new KeyNotFoundException(
+                        $"Widget '{parsed.Positionals[0]}' is not installed.");
+                if (WidgetManifestTrust.Resolve(widget.ActiveVersion.Manifest) ==
+                    WidgetExecutionTrust.FullTrustCurrentUser)
+                {
+                    if (!parsed.HasFlag("--accept-full-trust"))
+                        throw new WidgetPackageException(
+                            "full_trust_approval_required",
+                            "This package runs as an ordinary current-user process and is not AppContainer sandboxed. Review it, then repeat with --accept-full-trust.");
+                    await InstallCommand.WriteFullTrustDisclosureAsync(
+                        output, widget.Id, widget.ActiveVersion.Version.ToString());
+                    approval = WidgetPackageTrustApproval.FullTrustCurrentUser;
+                }
+            }
+            await catalog.SetEnabledAsync(parsed.Positionals[0], enabled, approval);
         }
         catch (KeyNotFoundException exception)
         {

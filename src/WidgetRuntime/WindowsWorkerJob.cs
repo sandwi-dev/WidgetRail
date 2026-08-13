@@ -79,7 +79,7 @@ internal sealed class WindowsWorkerJob : IDisposable
         }
     }
 
-    public static WindowsWorkerJob Create()
+    public static WindowsWorkerJob Create(bool restrictUi = true)
     {
         var handle = NativeMethods.CreateJobObjectW(IntPtr.Zero, null);
         if (handle.IsInvalid)
@@ -100,17 +100,20 @@ internal sealed class WindowsWorkerJob : IDisposable
                     ref information,
                     (uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>()))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not configure worker containment.");
-            var uiRestrictions = new JobObjectBasicUiRestrictions
+            if (restrictUi)
             {
-                UiRestrictionsClass = JobObjectUiLimitAll,
-            };
-            if (!NativeMethods.SetInformationJobObjectUiRestrictions(
-                    handle,
-                    JobObjectBasicUiRestrictionsClass,
-                    ref uiRestrictions,
-                    (uint)Marshal.SizeOf<JobObjectBasicUiRestrictions>()))
-                throw new Win32Exception(
-                    Marshal.GetLastWin32Error(), "Could not configure worker UI restrictions.");
+                var uiRestrictions = new JobObjectBasicUiRestrictions
+                {
+                    UiRestrictionsClass = JobObjectUiLimitAll,
+                };
+                if (!NativeMethods.SetInformationJobObjectUiRestrictions(
+                        handle,
+                        JobObjectBasicUiRestrictionsClass,
+                        ref uiRestrictions,
+                        (uint)Marshal.SizeOf<JobObjectBasicUiRestrictions>()))
+                    throw new Win32Exception(
+                        Marshal.GetLastWin32Error(), "Could not configure worker UI restrictions.");
+            }
             return new WindowsWorkerJob(handle);
         }
         catch

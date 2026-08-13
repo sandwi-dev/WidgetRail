@@ -8,6 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
     <ProjectReference Include="..\..\src\WidgetRuntime\WidgetRuntime.csproj" />
     <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />
   </ItemGroup>
