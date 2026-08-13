@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 17:14 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 17:25 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,12 +13,20 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `ae1dee8`; worktree clean when this plan was
+- Local product baseline: `dd51da1`; worktree clean when this plan was
   published.
-- Latest implementation integrations: DLV-168 as `06dc8d0`, then the fully
-  corrected DLV-172-through-DLV-190 widgets cluster as `ae1dee8`.
-- Visible accepted Release: PID 38288, launched at 17:09:57 after the coherent
-  managed/runtime republish. The supported control tool still omitted the
+- Latest implementation integrations: DLV-168 as `06dc8d0`, the fully
+  corrected DLV-172-through-DLV-190 widgets cluster as `ae1dee8`, DLV-160 as
+  `9564b96`, and DLV-188 as `dd51da1`.
+- Visible accepted Release: PID 40688, launched at 17:21:21 after the accepted
+  DLV-160/188 integrations. Those milestones change CLI/test/docs rather than
+  launched host production bytes; the changed Gbar CLI Release rebuilt with
+  zero warnings/errors and the ordinary host restarted visibly. The new exact
+  session has zero startup error-class records. The immediately prior coherent
+  managed/runtime Release cycle invoked all eight tray items successfully;
+  every first page published expected semantic content and exact-session logs
+  admitted all eight transitions with zero error-class records.
+  The supported control tool still omitted the
   no-redirection window, but the authorized exact-HWND/UIA fallback invoked all
   eight tray items successfully. Every first page published expected semantic
   content and exact-session logs admitted all eight transitions with zero
@@ -145,6 +153,18 @@ That snapshot is historical evidence, not implementation authority.
   identity now survives selected-widget runtime replacement while widget nodes
   remain generation-bound. Provider 155, host accessibility 34, overlay state,
   and the real Network Controls tray Invoke route pass.
+- DLV-160 `0b50a76` is accepted and integrated as `9564b96`. One bounded
+  author-to-production lifecycle proves scaffold, validate, preview, pack,
+  inspect, install, exact v1/v2 selection and production-host adoption,
+  corrupted-reload last-good retention, safe start, Hero Rail recovery, and
+  supported removal without a second renderer, schema, network, signing, or
+  executable-content surface.
+- DLV-188 `16b1bf1` is accepted and integrated as `dd51da1`. The real packaged
+  host eight-widget route preserves exact shell/tray/selected bounds, complete
+  commit-before-geometry, premultiplied-clear composition, zero widget-switch
+  shell motion, bounded timing, atomic reopen, and no stale hidden commit. This
+  is a semantic/timing/log verdict; the user's physical-display verdict remains
+  the closing visual gate.
 
 ## Execution protocol
 
@@ -544,25 +564,31 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-160: author-to-production pack lifecycle
+### Current assignment — DLV-193: tray Y-hold refresh exact gesture
 
-**State:** In progress from clean platform commit `652e42a`. DLV-168 is accepted
-and integrated as `06dc8d0`; do not interrupt the active bounded lifecycle route.
+**State:** In progress after clean platform commits DLV-160 `0b50a76` and
+DLV-188 `16b1bf1`. Both predecessors are accepted and integrated through main
+`dd51da1`; do not interrupt the active visible gesture milestone.
 
-**Baseline/dependencies:** platform branch `652e42a`; accepted product `ae1dee8`.
-Own only the existing CLI/catalog/Settings/private bridge/native lifecycle
-fixture and directly affected docs. No merge of main is required for the current
-test-only orchestration work.
+**Baseline/dependencies:** platform branch `16b1bf1`; accepted product
+`dd51da1`. Own only existing host input/gesture/tray/action owners, the private
+authenticated production test seam, and directly affected docs. No merge of
+main is required.
 
-**Objective/acceptance:** in one isolated deterministic route, scaffold both
-reference packs, validate, preview, pack, install, select, activate in the
-ordinary host, replace with a new exact version, reject corrupted reload to
-last-good, safe-start once, restore Hero Rail, and remove unselected versions.
-Prove no executable/remote content, path leakage, second renderer, or stale
-selection.
+**Objective/acceptance:** retain tap-Y reorder and add one host-owned 700 ms
+Y-hold gesture for the selected tray widget. Dispatch its exact advertised
+contextual Refresh action once, show truthful hold guidance only for that opt-in,
+and never leak across hidden/wrong scope, repeat while held, or special-case a
+managed widget.
 
-**Verification/stop:** focused CLI/catalog/Settings/native route only; no new
-schema, public protocol, gallery, signing, network, aggregate, or screenshots.
+**Verification/stop:** focused input/gesture/tray/action suites plus one ordinary
+host Settings-or-library route. No protocol expansion, controller remap beyond
+the named hold, screenshot gate, aggregate, or managed-widget edit.
+
+### Accepted milestone — DLV-160: author-to-production pack lifecycle
+
+**State:** Done and accepted through main `9564b96`; evidence is summarized in
+the current accepted baseline above.
 
 ### Accepted milestone — DLV-152: custom-pack production matrix
 
@@ -676,25 +702,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-160 — DLV-188: current widget-switch continuity verdict.**
-   Reproduce the user's black-border/flicker/tray-motion regression against the
-   exact accepted packaged main path using live transition, placement, and
-   compositor diagnostics—not capture output. If current accepted behavior is
-   already clean, retain a bounded eight-widget transition result and make no
-   product edit. If reproduced, correct only the existing single-window shell/
-   composition transition owner so the tray remains fixed and no opaque border
-   or stale frame is exposed. Tier 1 transition/placement/compositor suites plus
-   one real-host eight-widget cycle; no screenshot gate, second window/renderer,
-   managed widget, protocol, aggregate, or unrelated animation redesign.
-2. **Ready after DLV-188 — DLV-193: tray Y-hold refresh exact gesture.**
-   Reproduce the user's F5-only refresh gap on the exact accepted host and add
-   one host-owned Y-hold gesture for the selected tray widget without changing
-   tap-Y reorder. Hold crosses its threshold once, emits one contextual refresh
-   only when the widget advertises it, and never leaks into hidden/wrong scope or
-   repeats while held. Tier 1 input/gesture/tray/action tests plus one real-host
-   Settings-or-library refresh route; no managed widget special case, screenshot,
-   protocol expansion, aggregate, or controller remapping beyond the named hold.
-3. **Ready after DLV-193 — DLV-197: private Launcher Experience switch bridge.**
+1. **Ready after DLV-193 — DLV-197: private Launcher Experience switch bridge.**
    Close the exact seam blocker reported by widgets DLV-191. Reuse the single
    trusted Settings/catalog selection and safe-built-in recovery owner; expose
    only one private host-mediated request usable by the current Game Launcher
