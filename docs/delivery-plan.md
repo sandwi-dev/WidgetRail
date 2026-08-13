@@ -16,6 +16,10 @@ evidence, not implementation authority.
 ## Current accepted baseline
 
 - Local accepted product baseline: 01af13c.
+- Local accepted Avalonia experiment baseline: AVP-002 through main `09b40da`.
+  The exact-main copied runtime is visibly running as PID 6868 for the user's
+  physical controller verdict. This does not change the production overlay
+  baseline or authorize a production migration.
 - DLV-219 is accepted and integrated through main 01af13c; its focused
   Release Settings suite passed 60/60.
 - DLV-213 is accepted and integrated through main b73eaa5 (implementation
@@ -142,12 +146,30 @@ resource baseline. It does not establish controller-first interaction. The
 user explicitly directed the remaining keyboard/evidence corrections to move
 into AVP-002 rather than blocking the next experiment.
 
-### Current assignment — AVP-002: controller-first Avalonia interaction
+### Recently completed — AVP-002: controller-first Avalonia interaction
 
-State: Assigned on the AVP-001 implementation branch after the user's hands-on
-verdict. Baseline: exact AVP-001 branch commit `0fd0d5b`. This is still an
-isolated feasibility project under `experiments/AvaloniaOverlayPrototype`, not
-a production migration.
+Accepted and integrated through main `09b40da` (`f876a1b`, `2ee2de0`, and
+`09b40da`). This remains an isolated feasibility project under
+`experiments/AvaloniaOverlayPrototype`, not a production migration. The user
+confirmed that Tray Up entering content and Down from the final content element
+returning to the tray are intentional controller behavior. Left/Right tray
+cycling retains tray focus; Down or A/Enter remains the direct entry action;
+Back restores the selected tray item.
+
+The implementation uses Avalonia `FocusManager.FindNextElement`/`XYFocus` with
+bounded search roots instead of visual-tree index navigation. It retains only
+narrow explicit Audio Mixer column links, remembers per-page focus, shares one
+keyboard/controller semantic router, and preserves controller lifecycle and
+neutral-gating behavior. The focused Release suite passed 18/18 in the
+implementation worktree. One exact-main measurement from `09b40da` retained
+executable SHA-256 `9ABB793D55D32D4E39B19E93E22B8EE0102D8A602E7333801B9590BB8FBE696B`,
+about 253.79 MiB visible private memory, 191.20 MiB hidden private memory,
+0.146% hidden CPU, and passing frame/transition diagnostics. Physical controller
+feel, focus rings, transparency, and compositor behavior remain the user's
+live verdict. Do not start AVP-003 automatically.
+
+Historical assignment detail follows until the next triggered control-plane
+compaction:
 
 Select a maintained Windows-capable controller library/adapter only after a
 short recorded comparison against a narrow in-house Microsoft GameInput
@@ -245,7 +267,7 @@ automatically; the planner and user test AVP-002 first.
 
 ### Avalonia Ready queue
 
-1. **Held until corrected AVP-002 is accepted — AVP-003: production-stack
+1. **Held until the user accepts the live AVP-002 controller feel — AVP-003: production-stack
    architecture slice.**
 
    Refactor only the isolated experiment into one representative production-
