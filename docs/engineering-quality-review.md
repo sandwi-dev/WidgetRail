@@ -1,7 +1,7 @@
 # Engineering Quality Review
 
 Status: active independent quality audit<br>
-Last reassessed: 2026-08-12 against integrated `main` `4aa7284`<br>
+Last reassessed: 2026-08-12 against integrated `main` `c4cf0af`<br>
 Scope: architecture, maintainability, correctness, security, performance,
 verification credibility, accessibility, and product readiness
 
@@ -233,7 +233,7 @@ diagnostic, and PID 41224 smoke contain zero controller-hint `invalid_style`.
 | EQ-034 | P1 | Closed through accepted DLV-142 and integrated normalized source prefix. | Reopen only if a new subdomain is folded back into a catch-all validator or stale presentation can authorize launch. |
 | EQ-011 | P1 | Partially resolved. Installed packages are digest-bound and isolated, but verified publisher identity and acquisition provenance remain ecosystem work. | Explicit signing/publisher/update design at the public-distribution milestone; do not reopen installed-widget hardening speculatively. |
 | EQ-013 | P1 | Architecturally implemented with bounded process leases and refusal policy; packaged aggregate-residency evidence remains. | Named multi-widget churn/residency run with exact process, cleanup, refusal, CPU, and memory evidence. |
-| EQ-015 | P1 | Partially implemented. Cloneable offline SDK, release unit, compatibility checks, starters, package lifecycle, and docs exist; external publication/version/update governance remains open. | A real external repository consumes a versioned SDK/template without checkout references and completes build, scenario, pack, install, rollback, and removal. |
+| EQ-015 | P1 | Materially advanced. DLV-194/199 prove a copied external consumer restores the exact content-versioned SDK from a fixture-local feed into a fresh isolated NuGet cache and consumes only the two public runtime DLLs. DLV-195/196 still have bounded loading-focus and public-setup reproducibility defects; publication/version/update governance remains open. | Correct DLV-195 loading/reset focus, then make DLV-196's self-contained setup exactly reproducible from public instructions and refresh the held compatibility-report provenance. |
 | EQ-020 | P1 | Open native responsiveness risk. Much bridge coordination moved off the UI thread, but synchronous startup/request paths still need exact-content latency and cancellation proof. | Production-host timing and cancellation evidence under slow/nonresponsive worker conditions without UI starvation or stale publication. |
 | EQ-035 | P1 | Implemented by accepted DLV-143; fresh PID 25004 confirms the first compact frame is bottom-anchored and all subsequent first pages stay contained. | User visual verdict on the accepted Release; reopen only for a live recurrence or contradictory physical display/DPI evidence. |
 | EQ-023 | P1 | Materially advanced. Native UIA/provider/action/Back semantics have deterministic host coverage; physical Narrator/MSAA and packaged assistive-technology proof remain. | Named packaged keyboard/controller/UIA/Narrator matrix on the accepted Release. |
@@ -279,9 +279,9 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, and accepted transition verdict DLV-188 are integrated through `dd51da1`; accepted main is visibly running as PID 40688. The immediately prior coherent runtime cycle admitted all eight UIA tray actions and first-page semantics with zero error-class records, while DLV-188's real packaged route preserves exact shell/tray bounds and complete premultiplied-clear commits across all eight transitions. | Visual appearance/clipping remains the user's live verdict. Platform DLV-193 owns the visible Y-hold refresh gap, followed by DLV-197's Launcher Experience switch bridge. |
-| Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are integrated through `dd51da1`. DLV-160 additionally proves the complete supported CLI-to-production lifecycle, safe start, last-good reload, recovery, and removal. | DLV-197 must provide the private trusted selection bridge before the managed Switch experience continuation. Manual artwork/background remains blocked on a trusted selection seam. |
-| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. DLV-194 demonstrates a plausible copied local distribution but is rejected because its external restore can reuse the machine-wide NuGet cache. | Finish active full-application reference DLV-195, then DLV-199 must prove a fresh exact fixture-local SDK restore before dependent onboarding and compatibility work. |
+| Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, transition verdict DLV-188, and tray hold-refresh DLV-193 are integrated through `70a33e3`; accepted main is visibly running as PID 18136 after the docs/test-only SDK pair. The coherent DLV-193 runtime cycle admitted all eight UIA tray actions and first-page semantics with zero product error-class records. | Visual appearance/clipping and physical 700 ms hold feel remain the user's live verdict. Platform DLV-197 now owns the Launcher Experience switch bridge. |
+| Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are integrated through `70a33e3`. DLV-160 proves the complete supported CLI-to-production lifecycle, safe start, last-good reload, recovery, and removal. | DLV-197 must provide the private trusted selection bridge before the managed Switch experience continuation. Manual artwork/background remains blocked on a trusted selection seam. |
+| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. DLV-194/199 now prove cache-isolated exact external SDK consumption and are integrated through `c4cf0af`. | Correct DLV-195's absent loading focus, then make DLV-196's public external-repository setup self-contained; refresh the independently accepted governance report afterward. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
 | Accessibility | Deterministic semantic and real-host UIA coverage is substantial. DLV-180 adds exact TextEntry focus/Invoke; DLV-168 closes tray Invoke completion while keeping widget descendants generation-bound. | Physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
@@ -309,16 +309,17 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Review active platform DLV-193 Y-hold refresh, then DLV-197's private trusted
-   Launcher Experience selection/recovery bridge. DLV-160 and DLV-188 are
-   accepted and integrated; do not reopen their bounded evidence without a live
-   recurrence.
-2. Review active widgets DLV-195, then require DLV-199's isolated global-
-   packages correction before DLV-196. Do not let developer infrastructure
-   delay the platform's visible queue.
+1. Review active platform DLV-197's private trusted Launcher Experience
+   selection/recovery bridge, then run DLV-200's accepted-host performance
+   checkpoint. DLV-193 is accepted and integrated; physical hold timing remains
+   a manual verdict rather than another implementation assignment.
+2. Review widgets DLV-201's loading/reset focus correction, then DLV-202's
+   self-contained documented external setup and DLV-203's refreshed governance
+   provenance. DLV-194/199 are accepted and integrated. Do not let developer
+   infrastructure delay the platform's visible queue.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-4. Keep PID 40688 visible for the user's dashboard, Spotify, Settings, and Game Launcher
+4. Keep PID 18136 visible for the user's dashboard, Spotify, Settings, and Game Launcher
    library verdict.
 5. DLV-176/177 now prove cancellation-ignoring late failures cannot mutate a
    later Active generation or replacement session; keep them held until the

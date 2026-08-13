@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 17:26 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 18:10 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,19 +13,21 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `dd51da1`; worktree clean when this plan was
+- Local product baseline: `c4cf0af`; worktree clean when this plan was
   published.
 - Latest implementation integrations: DLV-168 as `06dc8d0`, the fully
   corrected DLV-172-through-DLV-190 widgets cluster as `ae1dee8`, DLV-160 as
-  `9564b96`, and DLV-188 as `dd51da1`.
-- Visible accepted Release: PID 40688, launched at 17:21:21 after the accepted
-  DLV-160/188 integrations. Those milestones change CLI/test/docs rather than
-  launched host production bytes; the changed Gbar CLI Release rebuilt with
-  zero warnings/errors and the ordinary host restarted visibly. The new exact
-  session has zero startup error-class records. The immediately prior coherent
-  managed/runtime Release cycle invoked all eight tray items successfully;
-  every first page published expected semantic content and exact-session logs
-  admitted all eight transitions with zero error-class records.
+  `9564b96`, DLV-188 as `dd51da1`, DLV-193 as `70a33e3`, and the corrected
+  DLV-194/199 external-SDK proof pair as `73117f7`/`c4cf0af`.
+- Visible accepted Release: PID 18136, launched at 18:09:35 after the accepted
+  DLV-194/199 integration. Those two milestones change CLI tests/docs rather
+  than host product bytes; the affected Gbar CLI Release rebuilt with zero
+  warnings/errors and the ordinary accepted DLV-193 host restarted visibly.
+  Its exact startup interval has zero error-class records. The immediately
+  prior coherent DLV-193 runtime cycle invoked all eight tray items
+  successfully; every first page published expected semantic content and
+  exact-session logs admitted all eight transitions with zero product
+  error-class records.
   The supported control tool still omitted the
   no-redirection window, but the authorized exact-HWND/UIA fallback invoked all
   eight tray items successfully. Every first page published expected semantic
@@ -165,13 +167,29 @@ That snapshot is historical evidence, not implementation authority.
   shell motion, bounded timing, atomic reopen, and no stale hidden commit. This
   is a semantic/timing/log verdict; the user's physical-display verdict remains
   the closing visual gate.
-- DLV-194 `bd81c8f` is cleanly committed but rejected and remains unintegrated.
-  Its copied-distribution artifact design and external scaffold/build/validate/
-  pack flow are sound, but the external consumer inherits the machine-wide
-  NuGet global-packages cache. Earlier tests can therefore satisfy the same
-  content-derived SDK version without proving consumption of the fixture-local
-  package. DLV-199 owns that narrow proof correction after already-active
-  DLV-195; DLV-196 must not begin before the correction is committed.
+- DLV-193 `edad30d` is accepted and integrated as `70a33e3`. Tap Y still
+  toggles reorder; an eligible descriptor-advertised hold crosses at exactly
+  700 ms, routes the current admitted Refresh action once through the ordinary
+  bridge, and cancels on context, selection, focus, lifecycle, device, or shell
+  changes. The packaged host route proves exact-once dispatch; physical timing
+  feel remains manual evidence.
+- DLV-194 `bd81c8f` corrected by DLV-199 `7cfd4b4` is accepted and integrated
+  as `73117f7`/`c4cf0af`. The copied external consumer now restores the exact
+  content-versioned SDK from its fixture-local feed into a fresh isolated
+  `NUGET_PACKAGES` root for build and pack, and the package contains exactly
+  `WidgetSdk.dll` plus `WidgetProtocol.dll` under `lib/net8.0`.
+- DLV-195 `9aa28b7` is rejected and held. Its application-scale architecture
+  is otherwise sound, but Library NotLoaded/Loading renders only a loading
+  indicator while selecting absent `full-app.retry` as initial focus, causing
+  `invalid_focus_target` during a blocked load or post-deactivation reset.
+  DLV-201 owns the bounded focus correction and validator evidence.
+- DLV-196 `51512b2` is rejected and held. Its restore/build/validate/pack/
+  install/scenario/remove pipeline is isolated, but fixture setup silently
+  copies and rewrites checkout sample files before the documented commands.
+  DLV-202 must make the public setup path self-contained and make the fixture
+  execute those exact documented commands. DLV-198 `1578523` is independently
+  accepted but held until DLV-202, then DLV-203 refreshes its exact artifact
+  provenance before integration.
 
 ## Execution protocol
 
@@ -210,31 +228,32 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-195: full application-scale reference widget
+### Current assignment — DLV-201: correct full-application loading focus
 
-**State:** In progress after clean widgets commit DLV-194 `bd81c8f`. DLV-194 is
-rejected on a bounded external-consumer cache-isolation proof gap; do not
-interrupt this already-active independent reference milestone. DLV-199 is the
-next assignment before dependent DLV-196.
+**State:** Assigned after clean widgets commit DLV-198 `1578523`. DLV-199 is
+accepted and integrated; DLV-195 is rejected only on the bounded transient
+focus defect below. Begin immediately without merging main or modifying the
+separate DLV-196 onboarding fixture.
 
-**Baseline/dependencies:** widgets branch `bd81c8f`; accepted product remains
-`dd51da1`. Own one optional public-SDK-only reference, its focused tests,
-packaging fixture, and directly affected public author docs. Do not merge main
-or edit the DLV-194 external-consumer fixture during this milestone.
+**Baseline/dependencies:** widgets branch `1578523`; accepted product
+`c4cf0af`. Own only the Full Application reference, its focused tests, package
+fixture, and directly affected public/status docs. Preserve the accepted
+application-scale architecture and authority boundaries.
 
-**Developer-visible outcome:** developers have one credential-free optional
-reference showing how a full application-scale widget keeps large private state
-while paging/virtualizing only bounded current presentation into the host.
+**Developer-visible outcome:** the reference publishes a valid presentation
+during initial blocked loading and after deactivate/reset instead of naming a
+Retry control that is not present.
 
-**Objective/acceptance:** demonstrate application-scale private state,
-lifecycle-owned work, bounded host paging/virtualization, navigation, failure/
-retry, and ordinary packaging using only public SDK surfaces. The domain remains
-deterministic and credential-free and the sample never becomes a ninth built-in
-production tray item.
+**Objective/acceptance:** make Library NotLoaded/Loading initial focus null
+unless a real focusable control is rendered; retain exact Retry focus for Error
+and requested/item focus for Ready. Add deterministic blocked-load and
+post-deactivation/reset `CreateSnapshot` plus protocol-validator assertions.
+Retain lifecycle cancellation, bounded cursor projection, exact Back, and
+credential-free packaging behavior.
 
-**Verification/stop:** Tier 1 reference/SDK/docs plus one generic AppContainer
-package route. No new authority, native host, protocol, database dependency,
-remote service, production catalog mutation, aggregate, or capture.
+**Verification/stop:** Tier 1 Full Application/MSTest.Sdk suite, validator, and
+the existing generic AppContainer route. No production SDK/native/protocol,
+database, capability, catalog, aggregate, or capture work.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -539,28 +558,29 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-195 — DLV-199: isolate external SDK restore proof.**
-   Correct only rejected DLV-194's acceptance fixture and exact public claim.
-   Give the external build and `gbar pack` a fresh temp-local `NUGET_PACKAGES`
-   root, then prove the exact content-versioned SDK restored there from the
-   generated repository's cleared fixture-local feed. Assert the SDK nupkg's
-   `lib/net8.0` DLL entries are exactly `WidgetSdk.dll` and
-   `WidgetProtocol.dll`; do not add a denylist, production API, new artifact
-   policy, publication, network, or unrelated test. Tier 1 exact Gbar CLI route,
-   SDK compatibility, and affected docs only.
-2. **Ready after DLV-199 — DLV-196: external repository onboarding proof.**
-   Consume the DLV-194 artifact and DLV-195 reference pattern from a clean local
-   Git-repository-shaped fixture using only documented commands. Prove restore,
-   build, validate, package, install-to-isolated-catalog, scenario run, and remove
-   without checkout-relative references, external network, publication, signing,
-   or production catalog mutation. Update the public quickstart/troubleshooting
-   only from proven commands.
-3. **Ready after DLV-196 — DLV-198: SDK compatibility-governance proposal gate.**
-   Deliver a bounded executable compatibility report over current versioned
-   artifacts and author one planner-ready migration/deprecation proposal; do not
-   change protocol/API compatibility policy or implementation without planner
-   approval. This is evidence/docs only and may stop before edits if existing
-   artifact metadata cannot support a truthful report.
+1. **Ready after DLV-201 — DLV-202: self-contained external onboarding setup.**
+   Correct only rejected DLV-196's reproducibility gap. Provide one documented,
+   bounded export/copy/setup path—or include a ready external reference artifact
+   in the copied distribution—so a developer can create the proved clean repo
+   without reading checkout sample paths or relying on undocumented deletion,
+   string replacement, or authored scenario files. Make the fixture execute the
+   exact public commands, then retain the existing fresh NuGet cache, restore,
+   build, validate, pack, isolated install/scenario/remove, and no-network/no-
+   publication boundaries. No new SDK/protocol/authority or product feature.
+2. **Ready after DLV-202 — DLV-203: refresh compatibility-report provenance.**
+   Rebase the independently accepted DLV-198 governance proposal onto corrected
+   onboarding and regenerate its bounded executable report against the exact
+   corrected commit/artifacts. Refresh versions and hashes if they change. Keep
+   the proposal explicitly non-operative and planner-gated; do not change API,
+   protocol, compatibility, versioning, resolver, publication, or deprecation
+   implementation.
+3. **Ready after DLV-203 — DLV-204: external-reference author loop proof.**
+   From the same self-contained external repository, document and prove the
+   shortest supported edit-build-validate-preview-scenario-pack loop for one
+   presentation-only change. Reuse existing CLI commands and isolated fixtures;
+   improve diagnostics/docs/tests only when a reproduced author-facing gap
+   exists. No native host/product catalog mutation, new renderer, network,
+   signing, publication, aggregate, or capture gate.
 
 ## Platform lane
 
@@ -568,26 +588,25 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-193: tray Y-hold refresh exact gesture
+### Current assignment — DLV-197: private Launcher Experience switch bridge
 
-**State:** In progress after clean platform commits DLV-160 `0b50a76` and
-DLV-188 `16b1bf1`. Both predecessors are accepted and integrated through main
-`dd51da1`; do not interrupt the active visible gesture milestone.
+**State:** In progress after clean platform commit DLV-193 `edad30d`. DLV-193
+is accepted and integrated as main `70a33e3`; continue this already-active
+visible platform milestone without interruption.
 
-**Baseline/dependencies:** platform branch `16b1bf1`; accepted product
-`dd51da1`. Own only existing host input/gesture/tray/action owners, the private
-authenticated production test seam, and directly affected docs. No merge of
-main is required.
+**Baseline/dependencies:** platform branch `edad30d`; accepted product
+`c4cf0af`. Own the single trusted Settings/catalog selection and safe-built-in
+recovery owner plus one private host-mediated request. No merge of main is
+required.
 
-**Objective/acceptance:** retain tap-Y reorder and add one host-owned 700 ms
-Y-hold gesture for the selected tray widget. Dispatch its exact advertised
-contextual Refresh action once, show truthful hold guidance only for that opt-in,
-and never leak across hidden/wrong scope, repeat while held, or special-case a
-managed widget.
+**Objective/acceptance:** close DLV-191's exact seam blocker without a public
+widget capability or duplicate selection state. Prove exact installed-pack
+selection, built-in recovery, stale-version denial, and unchanged game,
+collection, action, and focus identity through the ordinary host path.
 
-**Verification/stop:** focused input/gesture/tray/action suites plus one ordinary
-host Settings-or-library route. No protocol expansion, controller remap beyond
-the named hold, screenshot gate, aggregate, or managed-widget edit.
+**Verification/stop:** Tier 1 native/catalog/Settings plus one ordinary host
+route. No pack schema, public protocol, executable/remote content, gallery,
+managed-widget edit, capture, or aggregate.
 
 ### Accepted milestone — DLV-160: author-to-production pack lifecycle
 
@@ -706,17 +725,7 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-193 — DLV-197: private Launcher Experience switch bridge.**
-   Close the exact seam blocker reported by widgets DLV-191. Reuse the single
-   trusted Settings/catalog selection and safe-built-in recovery owner; expose
-   only one private host-mediated request usable by the current Game Launcher
-   action without creating a public widget capability or duplicate selection
-   state. Prove exact installed-pack selection, built-in recovery, stale-version
-   denial, and unchanged game/collection/focus identity. Tier 1 native/catalog/
-   Settings plus one ordinary host route; no pack schema, public protocol,
-   executable/remote content, gallery, capture, or aggregate. After acceptance,
-   planner assigns the managed action continuation to widgets.
-2. **Ready after DLV-197 — DLV-200: accepted-host performance checkpoint.**
+1. **Ready after DLV-197 — DLV-200: accepted-host performance checkpoint.**
    Measure the ordinary packaged host at the exact branch commit across one
    bounded hidden/idle interval, visible dashboard idle, and an eight-widget
    switch/focus cycle. Retain PID/commit provenance and CPU, GPU/render,
@@ -729,7 +738,7 @@ missing private seam rather than adding parallel presentation authority.
    bounded performance route; no aggregate, screenshot, physical hardware, or
    speculative optimization.
 
-Only two independent platform Ready milestones are currently safe. The next
+Only one independent platform Ready milestone is currently safe. The next
 named native product areas after DLV-200 require a user-authorized rich-media
 budget, a documented audio endpoint setter, physical hardware/display evidence,
 or the managed continuation that moves to the widgets lane after DLV-197. Do
@@ -779,6 +788,8 @@ not manufacture a third native refactor merely to fill queue depth.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-194/199 corrected pair | `bd81c8f`/`7cfd4b4` | `73117f7`/`c4cf0af` | A copied external repository restores the exact content-versioned SDK from its fixture-local feed into a fresh `NUGET_PACKAGES` root for build and pack; the nupkg contains exactly the two public runtime DLLs. |
+| DLV-193 | `edad30d` | `70a33e3` | Tap-Y reorder is retained and eligible descriptor-advertised 700 ms hold Refresh routes exactly once through the ordinary host bridge with truthful guide/accessibility text and cancellation on ownership changes. |
 | DLV-172–190 corrected cluster | final widgets `e65069c` | `ae1dee8` | Collection/source truth, lifecycle and command staleness, TextEntry/compact Search, availability, offline exact launch, and generation-safe Recent are corrected. Launcher 90/90, YT Music 59/59, Now Playing 27/27, installed routes, coherent package rebuild, and eight-widget UIA/log smoke pass. |
 | DLV-168 | `652e42a` | `06dc8d0` | Host tray/shell providers survive widget runtime replacement while widget nodes remain generation-bound; focused 155/34/state and real UIA Network Controls Invoke pass. |
 | DLV-180 | `53f2b28` | `0c321a3` | Existing TextEntry has one native UIA/controller action; cancel dispatches no commit, preserves query, and restores exact focus. TextEntry modal, accessibility 17/17, and installed host route pass; PID 30500 is visible. |
@@ -787,8 +798,6 @@ not manufacture a third native refactor merely to fill queue depth.
 | DLV-169 | `add177e` | `be69735` | Spotify authors adjacent focus and terminal non-wrap edges across Queue, Playlists, and detail; 50/50, SDK 89/89, docs 66, and installed recovery pass. |
 | DLV-167 | `89005d1` | `8dd29c9` | Settings retains read-only last-good installed inventory and truthful Retry across typed version-limit faults; 60/60, Catalog 35/35, docs 66, and PID 41148 pass. |
 | DLV-166 | `9caa853` | `ded6821` | No Games & Apps product gap reproduced; 63/63, provider 75/75, and a two-worker shared-private-state installed restart route pass. |
-| DLV-165 | `217f515` | `466e189` | One late canceled broker reply no longer poisons the replacement request/channel; Broker 56/56, Launcher 77/77, exact installed launch route, and PID 26524 first-page admission pass. |
-| DLV-164 | `9a8822f` | `11a04e9` | Game Launcher controller hints use one valid responsive non-scroll Row; 77/77, ordinary host route, and zero-invalid-style installed/live evidence pass. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. On crossing 1,000, snapshot and compact according to
