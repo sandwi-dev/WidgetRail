@@ -13,15 +13,23 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `04fbdc0`; worktree clean when this plan was
+- Local product baseline: `8e38df5`; worktree clean when this plan was
   published.
 - Latest implementation integrations: DLV-168 as `06dc8d0`, the fully
   corrected DLV-172-through-DLV-190 widgets cluster as `ae1dee8`, DLV-160 as
   `9564b96`, DLV-188 as `dd51da1`, DLV-193 as `70a33e3`, and the corrected
   DLV-194/199 external-SDK proof pair as `73117f7`/`c4cf0af`.
 - Latest widgets integrations are the corrected DLV-195/196/198/201/202/203
-  chain through `ee0c445` and DLV-204 as `04fbdc0`.
-- Visible accepted Release: PID 39636, launched at 18:40:18 after DLV-204.
+  chain through `ee0c445`, DLV-204 as `04fbdc0`, and DLV-208 as `8e38df5`.
+- Visible accepted Release: PID 40224, launched at 19:25 after DLV-208.
+  Spotify 0.2.15 is installed, selected, and enabled through the supported
+  Community package path. Exact UIA activation reaches the new package with no
+  fresh startup/product error, but its new unsigned content identity correctly
+  has no inherited capability grant; the live surface therefore stops at the
+  explicit `Spotify permission is off` gate until the user grants the declared
+  capabilities. Layout verification resumes after that consent and remains the
+  user's verdict.
+  The prior DLV-204 Release evidence remains:
   The widgets chain adds public samples, tooling tests, and documentation rather
   than host product bytes; the Full Application reference rebuilt with zero
   warnings/errors and the ordinary accepted DLV-193 host restarted visibly.
@@ -829,7 +837,7 @@ not manufacture a third native refactor merely to fill queue depth.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
-| DLV-208 | `1c31a52` | pending current integration | Spotify 0.2.15 packages the accepted vertical rail; installed DLL/GBSS provenance and generic AppContainer snapshot pass. Historical 0.2.14 rollback identity is explicitly not a release gate. |
+| DLV-208 | `1c31a52` | `8e38df5` | Spotify 0.2.15 packages the accepted vertical rail; installed DLL/GBSS provenance and generic AppContainer snapshot pass. Historical 0.2.14 rollback identity is explicitly not a release gate. PID 40224 reaches the expected new-identity consent gate. |
 | DLV-195–204 corrected authoring cluster | final widgets `93e3ae7` | `04fbdc0` | Full-application loading/reset focus validates, one documented self-contained external repository completes offline onboarding and refreshed compatibility reporting, and its shortest edit/build/validate/preview/scenario/pack loop proves the changed semantic result. |
 | DLV-194/199 corrected pair | `bd81c8f`/`7cfd4b4` | `73117f7`/`c4cf0af` | A copied external repository restores the exact content-versioned SDK from its fixture-local feed into a fresh `NUGET_PACKAGES` root for build and pack; the nupkg contains exactly the two public runtime DLLs. |
 | DLV-193 | `edad30d` | `70a33e3` | Tap-Y reorder is retained and eligible descriptor-advertised 700 ms hold Refresh routes exactly once through the ordinary host bridge with truthful guide/accessibility text and cancellation on ownership changes. |
