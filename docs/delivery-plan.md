@@ -452,20 +452,24 @@ scroll affordance, balanced responsive typography/spacing/content widths,
 reusable section/card/action/loading themes, and strong visible focus. Do not
 create widget-specific Avalonia pages or identity/tree-shape branches.
 
-Independent review confirms the eight red geometry rows are most likely an
-evidence race rather than a return of the narrow-column defect: the harness
-captures one semantic frame, then provider-backed Media Sessions, Audio Mixer,
-and Network Controls publish newer frames while four sizes are measured. The
-oracle then compares stale required IDs with the current visual tree. Correct
-the harness by taking one coherent admitted authority/root/control set per
-fixture, or retry boundedly until authority is identical before and after the
-capture. Do not weaken effective-visibility checks. The same review rejects the
-claimed fourteen-category controller proof because the categories are stamped
-after a general suite pass and blindly recorded, rather than derived from named
-assertions. Map each deterministic category to a real focused test result or
-remove the claim; continue to report that no physical connected controller was
-observed. After those narrow evidence fixes and the generic polish correction,
-run one exact green changed-tip measurement and stop for review.
+The coherent-authority and honest-controller-evidence corrections are now in
+tip `ba25220`, but independent review still rejects it on two bounded evidence
+defects rather than a demonstrated width/layout regression. The expected-ID
+oracle classifies a vertical `Scroll` as virtualized only when it has more than
+64 children, while the generic renderer virtualizes every vertical `Scroll`;
+small Audio and Network scroll descendants are therefore falsely required in
+the realized initial tree. Classify every vertical `Scroll` as virtualized,
+apply the count threshold only to virtualized `Grid`, and add a focused
+small-scroll regression. YT Music's remaining controls are legitimately below
+the 978x466 initial viewport inside the host-owned outer `ScrollViewer`.
+Exercise each expected focusable node through a generic focus/BringIntoView
+probe, require contained bounds and UIA presence after reveal, then restore the
+original offset/focus. Do not weaken required IDs or add widget-specific layout
+branches. The existing width evidence remains strong and the deterministic
+controller claims are now honestly absent because no physical connected
+controller was observed. After these two evidence corrections, run one exact
+green changed-tip measurement and stop for independent review and the mandatory
+eight-widget physical display/controller walkthrough.
 
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
