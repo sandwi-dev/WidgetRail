@@ -24,7 +24,8 @@ param(
     [switch]$TextEntryHostTestsOnly,
     [switch]$TrayAccessibilityHostTestsOnly,
     [switch]$TrayRefreshHostTestsOnly,
-    [switch]$LauncherExperienceLifecycleTestsOnly
+    [switch]$LauncherExperienceLifecycleTestsOnly,
+    [switch]$PlatformInteropTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -90,7 +91,13 @@ if (-not (Test-Path -LiteralPath (Join-Path $sdkBin 'mt.exe'))) {
 $env:PATH = "$sdkBin;$compilerBin;$env:PATH"
 
 $outputDirectory = Join-Path $projectDirectory "out\$Configuration"
+$platformDirectory = [System.IO.Path]::GetFullPath(
+    (Join-Path $projectDirectory '..\OverlayPlatformInterop'))
+$platformTestDirectory = [System.IO.Path]::GetFullPath(
+    (Join-Path $projectDirectory '..\..\tests\OverlayPlatformInterop.Tests'))
 $hostObjectDirectory = Join-Path $outputDirectory 'obj\host'
+$platformObjectDirectory = Join-Path $outputDirectory 'obj\platform-interop'
+$platformTestObjectDirectory = Join-Path $outputDirectory 'obj\platform-interop-tests'
 $testObjectDirectory = Join-Path $outputDirectory 'obj\tests'
 $imageTestObjectDirectory = Join-Path $outputDirectory 'obj\image-tests'
 $layoutTestObjectDirectory = Join-Path $outputDirectory 'obj\layout-tests'
@@ -144,7 +151,7 @@ $advancedPresentationCommunityFixtureOutput = Join-Path $outputDirectory 'obj\ad
 $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refresh-host-tests'
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $launcherExperienceBridgeFixtureOutput = Join-Path $outputDirectory 'obj\launcher-experience-bridge-fixture'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $advancedPresentationHostTestObjectDirectory, $advancedPresentationCommunityFixtureOutput, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $launcherExperienceBridgeFixtureOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $advancedPresentationHostTestObjectDirectory, $advancedPresentationCommunityFixtureOutput, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $launcherExperienceBridgeFixtureOutput | Out-Null
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -164,6 +171,120 @@ $libraryArguments = @(
 )
 $common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
     $optimization + $includeArguments
+
+function Invoke-OverlayPlatformInteropBuild {
+    $arguments = $common + @(
+        '/DGBA_OVERLAY_PLATFORM_EXPORTS',
+        '/LD',
+        (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
+        (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+        "/Fo:$platformObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayPlatformInterop.dll",
+        '/link',
+        "/IMPLIB:$outputDirectory\OverlayPlatformInterop.lib"
+    ) + $libraryArguments + @(
+        '/SUBSYSTEM:WINDOWS', 'gameinput.lib', 'user32.lib',
+        'xinput9_1_0.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlatformInterop build failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-OverlayPlatformInteropTests {
+    $arguments = $common + @(
+        '/DGBA_OVERLAY_PLATFORM_TESTING',
+        (Join-Path $platformTestDirectory 'OverlayPlatformInteropTests.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
+        (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
+        "/Fo:$platformTestObjectDirectory\",
+        "/Fe:$outputDirectory\OverlayPlatformInteropTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'gameinput.lib', 'user32.lib', 'xinput9_1_0.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlatformInteropTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'OverlayPlatformInteropTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "OverlayPlatformInteropTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-OverlayPlatformParityTest {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [Parameter(Mandatory = $true)] [string]$ObjectDirectory,
+        [Parameter(Mandatory = $true)] [string[]]$Sources,
+        [string[]]$Libraries = @()
+    )
+
+    $arguments = $common + $Sources + @(
+        "/Fo:$ObjectDirectory\",
+        "/Fe:$outputDirectory\$Name.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + $Libraries
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Name build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory "$Name.exe")
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Name failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-OverlayPlatformParityTests {
+    Invoke-OverlayPlatformParityTest `
+        -Name 'OverlayStateTests' `
+        -ObjectDirectory $testObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'OverlayStateTests.cpp'),
+            (Join-Path $projectDirectory 'OverlayState.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'OverlayPlacementTests' `
+        -ObjectDirectory $placementTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
+            (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+            (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'OverlayTargetingTests' `
+        -ObjectDirectory $targetingTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
+            (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+            (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'GuideInputCompatibilityTests' `
+        -ObjectDirectory $guideTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
+            (Join-Path $projectDirectory 'GuideInputCompatibility.cpp')) `
+        -Libraries @('user32.lib')
+    Invoke-OverlayPlatformParityTest `
+        -Name 'ControllerInputOwnershipTests' `
+        -ObjectDirectory $inputOwnershipTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'ControllerInputOwnershipTests.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'ControllerNavigationTests' `
+        -ObjectDirectory $navigationTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
+            (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+            (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'))
+}
 
 function Invoke-SemanticChurnPerformanceTests {
     $arguments = $common + @(
@@ -410,6 +531,7 @@ function Invoke-CompositionTests {
     $placementArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
         (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         "/Fo:$placementTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayPlacementTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -426,6 +548,7 @@ function Invoke-CompositionTests {
     $targetingArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
         (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
         "/Fo:$targetingTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayTargetingTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -588,6 +711,7 @@ function Invoke-TrayRefreshHostTests {
     $navigationArguments = $common + @(
         (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
         (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
         "/Fo:$navigationTestObjectDirectory\",
         "/Fe:$outputDirectory\ControllerNavigationTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -604,6 +728,7 @@ function Invoke-TrayRefreshHostTests {
     $placementArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
         (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         "/Fo:$placementTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayPlacementTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -651,6 +776,7 @@ function Invoke-ColdDashboardTests {
     $placementArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
         (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         "/Fo:$placementTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayPlacementTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -667,6 +793,7 @@ function Invoke-ColdDashboardTests {
     $targetingArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
         (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
         "/Fo:$targetingTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayTargetingTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1150,7 +1277,19 @@ if ($WidgetSessionTestsOnly) {
     return
 }
 
+if ($PlatformInteropTestsOnly) {
+    if ($SkipTests) {
+        throw 'PlatformInteropTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-OverlayPlatformInteropTests
+    Invoke-OverlayPlatformParityTests
+    return
+}
+
+Invoke-OverlayPlatformInteropBuild
+
 $hostArguments = $common + @(
+    '/DGBA_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
@@ -1178,7 +1317,6 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'LauncherExperienceProjection.cpp'),
     (Join-Path $projectDirectory 'LauncherExperiencePresentation.cpp'),
     (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
-    (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
     (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
@@ -1202,6 +1340,7 @@ $hostArguments = $common + @(
     'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
     'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
+    (Join-Path $outputDirectory 'OverlayPlatformInterop.lib'),
     'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',
     'uiautomationcore.lib', 'advapi32.lib', 'uuid.lib'
 )
@@ -1591,6 +1730,7 @@ if (-not $SkipTests) {
     $placementTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayPlacementTests.cpp'),
         (Join-Path $projectDirectory 'OverlayPlacement.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         "/Fo:$placementTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayPlacementTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1612,6 +1752,7 @@ if (-not $SkipTests) {
     $targetingTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayTargetingTests.cpp'),
         (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
         "/Fo:$targetingTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayTargetingTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1691,6 +1832,7 @@ if (-not $SkipTests) {
     $navigationTestArguments = $common + @(
         (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
         (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
         "/Fo:$navigationTestObjectDirectory\",
         "/Fe:$outputDirectory\ControllerNavigationTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
