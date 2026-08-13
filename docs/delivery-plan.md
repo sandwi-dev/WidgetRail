@@ -77,8 +77,8 @@ implementation work.
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 Assigned from accepted main `47d8ffe` |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
 | Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Clean and held at `2a3c722` |
-| AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | AVP-004-SESSION active from `436d890` |
-| AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | AVP-004-PLATFORM active from `436d890` |
+| AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Correction active after rejected `36ea053` |
+| AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Correction active after rejected `c46f6192` |
 
 The two temporary AVP tasks are authorized concurrently because their files and
 owners are disjoint. The standing Avalonia lead remains idle until both
@@ -262,6 +262,12 @@ Correction `c8d6907` remains rejected: it attaches a sequence-1 failure to a
 newer sequence-2 frame and can emit that stale failure event after a concurrent
 restart/replacement publish. The next correction requires exact snapshot and
 input-scope authority plus serialized or monotonic observable publication.
+Correction `36ea053` closes those refresh/publication-order defects but remains
+rejected: asynchronous bridge Failure still captures obsolete LastGood/session
+authority, releases the gate, then blindly commits after restart, catalog
+replacement/removal, or a newer snapshot. The assigned correction must perform
+an exact-authority compare-and-commit for bridge Failure, atomically retire a
+generationless terminal failure, and cover those three deterministic races.
 
 Exclusive files:
 
@@ -305,6 +311,12 @@ previously hidden. The correction must restore that lease after every
 successful show/place, prove close-motion reopen parity, define fixed-width or
 explicitly verified managed ABI scalar/layout semantics, and exercise the
 built DLL plus real callback shutdown. Do not integrate the rejected commit.
+Correction `c46f6192` closes rapid-reopen lease and ABI/import gaps but remains
+rejected: callback admission checks shutdown and increments in-flight state
+outside the drain mutex, while leave/notify changes the wait predicate outside
+that mutex. The assigned correction must atomically close admission and account
+entrants, then prove an in-flight callback drains and no callback runs after
+shutdown returns.
 
 Exclusive files:
 
