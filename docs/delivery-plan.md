@@ -100,11 +100,35 @@ Task: Implementation agent — widgets lane
 
 Branch: codex/impl-widgets
 
-### Current assignment — none
+### Current assignment — DLV-219: restore B navigation in Launcher Experiences
 
-State: waiting at a clean boundary for accepted/integrated DLV-215.
-Do not begin Spotify or Game Launcher migration against the AppContainer-only
-model. Do not perform legacy Spotify rollback work.
+State: Assigned from the clean widgets boundary d136c35. This visible Settings
+regression is independent of DLV-215 and may run concurrently only with the
+exclusive ownership below. Do not begin Spotify or Game Launcher migration
+against the AppContainer-only model. Do not perform legacy Spotify rollback
+work.
+
+The Launcher Experiences list, exact-version review, and removal-confirmation
+pages render visible Back/Cancel actions, but physical/keyboard controller B
+does not return to the logical parent. Publish one truthful B-to-`back`
+shortcut for every non-root Launcher Experience page and route it through the
+existing Settings navigation policy. Preserve the visible actions, exact
+selection/removal authority, and existing focus policy.
+
+Own only `SettingsLauncherExperiencePresentation.cs` and directly focused
+Settings tests/documentation. DLV-215 concurrently owns
+`SettingsWidget.cs`, `SettingsInstalledWidgetPresentation.cs`, catalog,
+runtime, bridge, CLI, and full-trust documentation. Stop before editing any of
+those files or if the fix requires native input, public protocol, catalog,
+Launcher Experience pack, renderer, or host-global changes.
+
+Acceptance: B is advertised and dispatched as the same `back` action on list,
+version, missing-version, and removal-confirmation projections; list returns to
+Settings root, version returns to the same reviewed list entry under the
+existing focus policy, and confirmation returns to that version page.
+Pointer/A activation of the existing Back/Cancel controls remains unchanged.
+Use the focused Release Settings navigation/presentation suite only; no
+aggregate, capture work, package migration, or unrelated Settings cleanup.
 
 ### Accepted dependency — DLV-212
 
@@ -116,7 +140,7 @@ architecture. DLV-217 replaces its framework-owned domain authority.
 
 ### Widgets Ready queue
 
-1. **Awaiting accepted and integrated DLV-215 — DLV-216: make Spotify an
+1. **After DLV-219 and awaiting accepted and integrated DLV-215 — DLV-216: make Spotify an
    autonomous full-trust Community application.**
 
    Move Spotify OAuth, Web API, Web Playback host/protocol, token storage,
@@ -273,15 +297,17 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
 
 ## Serialized integration queue
 
-1. Implement, review, and integrate DLV-215.
-2. DLV-216 and DLV-217 may start only from accepted DLV-215. Keep their domain
+1. Implement, review, and integrate independent DLV-219 without overlapping
+   DLV-215's Settings trust-disclosure files.
+2. Implement, review, and integrate DLV-215.
+3. DLV-216 and DLV-217 may start only from accepted DLV-215. Keep their domain
    ownership disjoint; integrate Spotify autonomy before Game Launcher cutover.
-3. Only after DLV-216 and DLV-217 are accepted may DLV-218 delete retired core
+4. Only after DLV-216 and DLV-217 are accepted may DLV-218 delete retired core
    contracts.
-4. DLV-210 is the next visible generic presentation correction after DLV-215.
+5. DLV-210 is the next visible generic presentation correction after DLV-215.
    It must not reintroduce Game Launcher identity recognition.
-5. DLV-206 remains evidence-only and follows DLV-218.
-6. Live metadata/artwork and account verification remain credential-gated, but
+6. DLV-206 remains evidence-only and follows DLV-218.
+7. Live metadata/artwork and account verification remain credential-gated, but
    adapter implementation belongs to the Community package.
 
 ## Blocked work
@@ -299,7 +325,8 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
 
 ## Verification queue
 
-1. On the next accepted visible Release, retest Spotify layout, generic Hold Y
+1. On the next accepted visible Release, retest Launcher Experiences B/Back,
+   Spotify layout, generic Hold Y
    restart, Game Launcher Hero Rail/no-artwork layout, switching borders/flicker,
    and Games & Apps layout; inspect the exact log interval.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal.
