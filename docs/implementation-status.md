@@ -4175,6 +4175,14 @@ installs the checked-in manifest and assembly into an isolated catalog, renders
 the 10,000-record summary through the ordinary worker, and leaves the worker
 contained and running after its first valid snapshot.
 
+DLV-201 makes the reference's transient Library presentation valid as well as
+bounded: NotLoaded and Loading publish no initial focus because they render no
+focusable control, Error retains exact Retry focus, and Ready retains requested
+or item focus (falling back to the rendered Refresh control for an empty page).
+The four focused tests validate blocked Loading and post-deactivation reset
+snapshots through the protocol validator, and the generic AppContainer route
+passes unchanged.
+
 DLV-196 exercises that reference pattern from a clean temporary Git-repository
 shape using the copied DLV-194 `gbar` distribution. A fresh local NuGet cache
 restores only from the generated cleared feed; the external project then builds,
@@ -4183,6 +4191,15 @@ scenario in the AppContainer preview worker, and uninstalls every isolated
 package version. The consumer and archive contain no checkout-relative path,
 and the route performs no external network, publication, signing, credential,
 or production-catalog operation.
+
+DLV-202 replaces that fixture's undocumented checkout copying, scaffold-source
+deletion, manifest replacement, and scenario authoring with the same bounded
+`Export-ExternalReference.ps1` command documented for developers. The exporter
+uses the copied `gbar` release unit to create the offline SDK scaffold and writes
+the complete application-scale source, manifest, styles, and scenario before the
+external repository runs the documented restore/build/validate/pack/install/
+scenario/remove sequence. The exact onboarding case passes 1/1 and the
+documentation contract passes over 68 Markdown files.
 
 DLV-198 records a bounded executable compatibility report for the current
 versioned SDK/gbar/template release unit and a planner-ready migration and

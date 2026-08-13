@@ -12,6 +12,19 @@ safe load error, retry, explicit refresh, and Active-lifetime cancellation and
 drain. It requests no capabilities and performs no filesystem, network, or
 process operations.
 
+Export a self-contained external repository from a complete `gbar` distribution:
+
+```powershell
+pwsh -NoProfile -File .\samples\FullApplicationWidget\Export-ExternalReference.ps1 `
+  -Gbar .\tools\GbarCli\bin\Release\net8.0\gbar.exe `
+  -Output .\scratch\ExternalFullApplication
+```
+
+The output owns its local offline SDK feed, source, manifest, styles, and bounded
+credential-free scenario. It contains no checkout path or project reference;
+follow the external restore/build/validate/pack/install/scenario/remove commands
+in the [quickstart](../../docs/widget-quickstart.md#prove-the-workflow-in-an-isolated-catalog).
+
 Build and test from the repository root:
 
 ```powershell

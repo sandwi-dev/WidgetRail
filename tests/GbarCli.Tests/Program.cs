@@ -707,51 +707,14 @@ static async Task ExternalFullApplicationOnboarding()
         ["NUGET_PACKAGES"] = packages,
     };
     var gbar = Path.Combine(distribution, "gbar.exe");
+    var setupScript = Path.Combine(repositorySource, "samples", "FullApplicationWidget",
+        "Export-ExternalReference.ps1");
     var created = await RunProcessAsync(
-        gbar,
-        ["new", "widget", "ExternalFullApplication", "--output", widget,
-         "--id", "dev.external.full-application", "--publisher", "dev.external",
-         "--template", "multipage"],
-        TimeSpan.FromSeconds(30), repository, environment);
-    Assert.True(created.Code == 0, "external create: " + created.Output + created.Error);
-
-    File.Delete(Path.Combine(widget, "src", "ExternalFullApplication.cs"));
-    var referenceRoot = Path.Combine(repositorySource, "samples", "FullApplicationWidget");
-    foreach (var name in new[] { "FullApplicationReferenceWidget.cs", "ReferenceLibrary.cs" })
-        File.Copy(Path.Combine(referenceRoot, name), Path.Combine(widget, "src", name));
-    File.Copy(Path.Combine(referenceRoot, "styles", "default.gbss"),
-        Path.Combine(widget, "styles", "default.gbss"), overwrite: true);
-    var manifest = (await File.ReadAllTextAsync(Path.Combine(referenceRoot, "manifest.json")))
-        .Replace("org.gbar.samples.full-application", "dev.external.full-application",
-            StringComparison.Ordinal)
-        .Replace("org.gbar.samples", "dev.external", StringComparison.Ordinal)
-        .Replace("Full Application Reference", "External Full Application",
-            StringComparison.Ordinal)
-        .Replace("payload/FullApplicationWidget.dll",
-            "payload/ExternalFullApplication.dll", StringComparison.Ordinal);
-    await File.WriteAllTextAsync(Path.Combine(widget, "manifest.json"), manifest);
-    await File.WriteAllTextAsync(Path.Combine(widget, "src", "ExternalScenarios.cs"), """
-        using GameBarAlternative.WidgetSdk;
-
-        namespace GameBarAlternative.Samples.FullApplicationWidget;
-
-        public static class ExternalScenarios
-        {
-            public static WidgetScenarioDefinition Ready() => new(
-                new FullApplicationReferenceWidget(),
-                new WidgetTestHostServicesBuilder().Build());
-        }
-        """);
-    await File.WriteAllTextAsync(Path.Combine(widget, "gbar.scenarios.json"), """
-        {
-          "version": 1,
-          "assembly": "bin/Release/net8.0/ExternalFullApplication.dll",
-          "providerType": "GameBarAlternative.Samples.FullApplicationWidget.ExternalScenarios",
-          "scenarios": [
-            { "name": "ready", "factory": "Ready", "description": "Bounded application-scale library" }
-          ]
-        }
-        """);
+        "pwsh",
+        ["-NoProfile", "-File", setupScript, "-Gbar", gbar, "-Output", widget],
+        TimeSpan.FromSeconds(45), repository, environment);
+    Assert.True(created.Code == 0, "external export: " + created.Output + created.Error);
+    Assert.Contains("Exported the self-contained Full Application reference", created.Output);
 
     var project = Path.Combine(widget, "ExternalFullApplication.csproj");
     var projectText = await File.ReadAllTextAsync(project);

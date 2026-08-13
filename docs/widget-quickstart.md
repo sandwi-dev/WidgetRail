@@ -98,10 +98,25 @@ before intentionally changing the public SDK surface.
 ### Prove the workflow in an isolated catalog
 
 The optional [Full Application reference](../samples/FullApplicationWidget/README.md)
-uses the same public dependency and command path at application scale. After
-placing that reference pattern in a clean repository-shaped scaffold, the
-credential-free proof runs these commands with a fresh temporary
-`NUGET_PACKAGES` directory and a catalog path owned only by the fixture:
+uses the same public dependency and command path at application scale. Export it
+into a new repository-shaped directory with one bounded setup command; the
+exporter invokes the copied `gbar` release unit and writes the complete source,
+manifest, styles, and scenario declaration, so no undocumented source copying,
+deletion, or string replacement is required:
+
+```powershell
+New-Item -ItemType Directory .\external-full-application | Out-Null
+New-Item -ItemType Directory .\external-full-application\.git | Out-Null
+$gbar = (Resolve-Path $gbar).Path
+pwsh -NoProfile -File .\samples\FullApplicationWidget\Export-ExternalReference.ps1 `
+  -Gbar $gbar `
+  -Output .\external-full-application\ExternalFullApplication
+Set-Location .\external-full-application
+```
+
+From that clean external repository, the credential-free proof runs these exact
+commands with a fresh temporary `NUGET_PACKAGES` directory and a catalog path
+owned only by the fixture:
 
 ```powershell
 $env:NUGET_PACKAGES = (Join-Path $PWD '.nuget-packages')
@@ -118,7 +133,8 @@ The generated `NuGet.Config` clears all external sources, so restore consumes
 only the scaffold's relative `.gbar\packages` feed. `--catalog` is mandatory in
 this proof: it prevents test installation or removal from mutating the normal
 user catalog. This route performs no publication, signing, account, or network
-operation.
+operation. The automated onboarding fixture executes the same exporter and
+command sequence; it does not reproduce hidden checkout-copy steps.
 
 For the normal edit/build/overlay loop, replace the manual build with:
 
