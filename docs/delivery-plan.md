@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 18:10 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 18:42 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,15 +13,17 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `c4cf0af`; worktree clean when this plan was
+- Local product baseline: `04fbdc0`; worktree clean when this plan was
   published.
 - Latest implementation integrations: DLV-168 as `06dc8d0`, the fully
   corrected DLV-172-through-DLV-190 widgets cluster as `ae1dee8`, DLV-160 as
   `9564b96`, DLV-188 as `dd51da1`, DLV-193 as `70a33e3`, and the corrected
   DLV-194/199 external-SDK proof pair as `73117f7`/`c4cf0af`.
-- Visible accepted Release: PID 18136, launched at 18:09:35 after the accepted
-  DLV-194/199 integration. Those two milestones change CLI tests/docs rather
-  than host product bytes; the affected Gbar CLI Release rebuilt with zero
+- Latest widgets integrations are the corrected DLV-195/196/198/201/202/203
+  chain through `ee0c445` and DLV-204 as `04fbdc0`.
+- Visible accepted Release: PID 39636, launched at 18:40:18 after DLV-204.
+  The widgets chain adds public samples, tooling tests, and documentation rather
+  than host product bytes; the Full Application reference rebuilt with zero
   warnings/errors and the ordinary accepted DLV-193 host restarted visibly.
   Its exact startup interval has zero error-class records. The immediately
   prior coherent DLV-193 runtime cycle invoked all eight tray items
@@ -190,6 +192,25 @@ That snapshot is historical evidence, not implementation authority.
   execute those exact documented commands. DLV-198 `1578523` is independently
   accepted but held until DLV-202, then DLV-203 refreshes its exact artifact
   provenance before integration.
+- The corrected DLV-195/196/198/201/202/203 chain is accepted and integrated
+  through `ee0c445`. Loading/reset snapshots now use valid null focus, the
+  external repository is created through one documented self-contained export,
+  and compatibility hashes/provenance reflect the corrected artifacts.
+  DLV-204 is accepted and integrated as `04fbdc0`; the same external repository
+  proves edit, build, validate, declaration preview, isolated semantic scenario,
+  and pack with no catalog or authority expansion.
+- DLV-197 `fa628d6` is rejected and held. Its private trusted selection bridge
+  and stale-version denial are architecturally sound, but the ordinary-host
+  fixture compares game, input-scope, and focus identities while claiming
+  collection and exact action/SavedId preservation it never measures. It also
+  omits the required implementation-status evidence. DLV-205 owns the bounded
+  test/docs correction; no production redesign is requested.
+- DLV-200 `0c65e79`/`d9e2005` is rejected and held. The bounded measurement
+  harness is reasonable and missing private-working-set/GPU metrics are
+  truthfully unavailable, but durable evidence omits root PID/start time and
+  child identities, the separate switch run lacks exact provenance, one docs
+  statement misdescribes the isolated profile, and retained-complete timing is
+  not ordered after the retained paint. DLV-206 owns that correction.
 
 ## Execution protocol
 
@@ -228,32 +249,31 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-201: correct full-application loading focus
+### Current assignment — DLV-207: managed Launcher Experience switch action
 
-**State:** Assigned after clean widgets commit DLV-198 `1578523`. DLV-199 is
-accepted and integrated; DLV-195 is rejected only on the bounded transient
-focus defect below. Begin immediately without merging main or modifying the
-separate DLV-196 onboarding fixture.
+**State:** Awaiting platform DLV-205 acceptance. Widgets DLV-201 through DLV-204
+are accepted and integrated through main `04fbdc0`; the widgets branch is clean.
+Do not begin this milestone until the planner explicitly supplies the accepted
+private bridge commit at a clean boundary.
 
-**Baseline/dependencies:** widgets branch `1578523`; accepted product
-`c4cf0af`. Own only the Full Application reference, its focused tests, package
-fixture, and directly affected public/status docs. Preserve the accepted
-application-scale architecture and authority boundaries.
+**Baseline/dependencies:** accepted main `04fbdc0` plus corrected platform
+DLV-205. Own only the existing Game Launcher experience-picker action/presentation,
+its managed tests, installed route, and directly affected public/status docs.
 
-**Developer-visible outcome:** the reference publishes a valid presentation
-during initial blocked loading and after deactivate/reset instead of naming a
-Retry control that is not present.
+**Developer-visible outcome:** the Game Launcher can switch to an exact installed
+Launcher Experience or recover Hero Rail from its controller UI without opening
+Settings, while the same game, collection, Play authority, and focus remain.
 
-**Objective/acceptance:** make Library NotLoaded/Loading initial focus null
-unless a real focusable control is rendered; retain exact Retry focus for Error
-and requested/item focus for Ready. Add deterministic blocked-load and
-post-deactivation/reset `CreateSnapshot` plus protocol-validator assertions.
-Retain lifecycle cancellation, bounded cursor projection, exact Back, and
-credential-free packaging behavior.
+**Objective/acceptance:** connect the already-authored managed Switch experience
+action to the one accepted private host bridge. Display only installed validated
+versions plus built-in recovery, preserve one selection authority, and retain
+exact game/collection/action/focus identity across success, stale denial,
+failure, and recovery. Do not expose a public widget capability or duplicate
+Settings/catalog state.
 
-**Verification/stop:** Tier 1 Full Application/MSTest.Sdk suite, validator, and
-the existing generic AppContainer route. No production SDK/native/protocol,
-database, capability, catalog, aggregate, or capture work.
+**Verification/stop:** Tier 1 Game Launcher plus one ordinary installed bridge
+route. No public protocol/SDK, pack schema, raw path, executable/remote content,
+gallery, native redesign, aggregate, or capture.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -558,29 +578,12 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-201 — DLV-202: self-contained external onboarding setup.**
-   Correct only rejected DLV-196's reproducibility gap. Provide one documented,
-   bounded export/copy/setup path—or include a ready external reference artifact
-   in the copied distribution—so a developer can create the proved clean repo
-   without reading checkout sample paths or relying on undocumented deletion,
-   string replacement, or authored scenario files. Make the fixture execute the
-   exact public commands, then retain the existing fresh NuGet cache, restore,
-   build, validate, pack, isolated install/scenario/remove, and no-network/no-
-   publication boundaries. No new SDK/protocol/authority or product feature.
-2. **Ready after DLV-202 — DLV-203: refresh compatibility-report provenance.**
-   Rebase the independently accepted DLV-198 governance proposal onto corrected
-   onboarding and regenerate its bounded executable report against the exact
-   corrected commit/artifacts. Refresh versions and hashes if they change. Keep
-   the proposal explicitly non-operative and planner-gated; do not change API,
-   protocol, compatibility, versioning, resolver, publication, or deprecation
-   implementation.
-3. **Ready after DLV-203 — DLV-204: external-reference author loop proof.**
-   From the same self-contained external repository, document and prove the
-   shortest supported edit-build-validate-preview-scenario-pack loop for one
-   presentation-only change. Reuse existing CLI commands and isolated fixtures;
-   improve diagnostics/docs/tests only when a reproduced author-facing gap
-   exists. No native host/product catalog mutation, new renderer, network,
-   signing, publication, aggregate, or capture gate.
+No later widgets Ready assignment is safe before DLV-205. The next requested
+visible feature is DLV-207 itself; M2 external enrichment requires credentials
+and legal/API choices, M3 content operations require a separately reviewed
+trusted provider, and the video widget remains blocked by its resource gate.
+Do not manufacture another internal authoring milestone while the visible
+selection bridge correction is underway.
 
 ## Platform lane
 
@@ -588,25 +591,26 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-197: private Launcher Experience switch bridge
+### Current assignment — DLV-205: prove collection and action continuity
 
-**State:** In progress after clean platform commit DLV-193 `edad30d`. DLV-193
-is accepted and integrated as main `70a33e3`; continue this already-active
-visible platform milestone without interruption.
+**State:** Assigned after clean platform commits DLV-197 `fa628d6` and rejected
+DLV-200 prefix `0c65e79`/`d9e2005`. Correct DLV-197 first; do not modify its
+production bridge unless the missing evidence exposes a defect.
 
-**Baseline/dependencies:** platform branch `edad30d`; accepted product
-`c4cf0af`. Own the single trusted Settings/catalog selection and safe-built-in
-recovery owner plus one private host-mediated request. No merge of main is
-required.
+**Baseline/dependencies:** platform branch `d9e2005`; accepted product
+`04fbdc0`. Own only the existing Launcher Experience ordinary-host fixture and
+directly affected implementation-status documentation.
 
-**Objective/acceptance:** close DLV-191's exact seam blocker without a public
-widget capability or duplicate selection state. Prove exact installed-pack
-selection, built-in recovery, stale-version denial, and unchanged game,
-collection, action, and focus identity through the ordinary host path.
+**Objective/acceptance:** retain and compare a real collection semantic identity
+and the focused game's exact action/SavedId authority across exact selection,
+stale denial, and built-in recovery. Prefer invoking the same Play authority
+before/after through the trusted fixture when that is the strongest evidence.
+Keep the existing game, widget instance, input scope, and focus checks. Add a
+truthful DLV-197 status entry with actual Tier-1/Tier-2 results and limitations.
 
-**Verification/stop:** Tier 1 native/catalog/Settings plus one ordinary host
-route. No pack schema, public protocol, executable/remote content, gallery,
-managed-widget edit, capture, or aggregate.
+**Verification/stop:** focused Launcher Experience host/bridge checks plus the
+existing ordinary-host selection route. No production redesign, managed widget,
+public protocol/SDK, pack schema, aggregate, or capture.
 
 ### Accepted milestone — DLV-160: author-to-production pack lifecycle
 
@@ -725,23 +729,22 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-197 — DLV-200: accepted-host performance checkpoint.**
-   Measure the ordinary packaged host at the exact branch commit across one
-   bounded hidden/idle interval, visible dashboard idle, and an eight-widget
-   switch/focus cycle. Retain PID/commit provenance and CPU, GPU/render,
-   host/worker memory, process count, input-to-complete-presentation latency,
-   first-admitted activation, and background publication evidence against the
-   existing documented budgets. If no violation reproduces, commit evidence/
-   directly affected status docs only. If one reproduces, correct only its
-   existing platform owner with before/after evidence; stop before managed
-   widget/protocol/budget changes. Tier 1 affected native suites plus the named
-   bounded performance route; no aggregate, screenshot, physical hardware, or
-   speculative optimization.
+1. **Ready after DLV-205 — DLV-206: retain truthful performance provenance.**
+   Correct rejected DLV-200 without expanding measurement scope. Retain one
+   bounded sanitized committed artifact or summary containing root PID/start
+   time, exact commit/executable SHA, scenario/process-profile IDs, child
+   identities/roles, available metrics and explicit unavailable metrics. Give
+   the separate eight-widget timing run its own exact commit/executable/run/log
+   provenance. Anchor the complete composition search strictly after the
+   retained paint record, and correct the false ordinary-host-live wording.
+   Rerun only the affected bounded measurement/temporal routes. No aggregate,
+   speculative optimization, budget change, capture, or managed widget work.
 
-Only one independent platform Ready milestone is currently safe. The next
-named native product areas after DLV-200 require a user-authorized rich-media
+Only one platform correction is Ready. After DLV-206 the visible managed
+continuation moves to widgets DLV-207; other native product areas require a
+user-authorized rich-media
 budget, a documented audio endpoint setter, physical hardware/display evidence,
-or the managed continuation that moves to the widgets lane after DLV-197. Do
+or the managed continuation that moves to the widgets lane after DLV-205. Do
 not manufacture a third native refactor merely to fill queue depth.
 
 ## Serialized integration queue
@@ -788,6 +791,7 @@ not manufacture a third native refactor merely to fill queue depth.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-195–204 corrected authoring cluster | final widgets `93e3ae7` | `04fbdc0` | Full-application loading/reset focus validates, one documented self-contained external repository completes offline onboarding and refreshed compatibility reporting, and its shortest edit/build/validate/preview/scenario/pack loop proves the changed semantic result. |
 | DLV-194/199 corrected pair | `bd81c8f`/`7cfd4b4` | `73117f7`/`c4cf0af` | A copied external repository restores the exact content-versioned SDK from its fixture-local feed into a fresh `NUGET_PACKAGES` root for build and pack; the nupkg contains exactly the two public runtime DLLs. |
 | DLV-193 | `edad30d` | `70a33e3` | Tap-Y reorder is retained and eligible descriptor-advertised 700 ms hold Refresh routes exactly once through the ordinary host bridge with truthful guide/accessibility text and cancellation on ownership changes. |
 | DLV-172–190 corrected cluster | final widgets `e65069c` | `ae1dee8` | Collection/source truth, lifecycle and command staleness, TextEntry/compact Search, availability, offline exact launch, and generation-safe Recent are corrected. Launcher 90/90, YT Music 59/59, Now Playing 27/27, installed routes, coherent package rebuild, and eight-widget UIA/log smoke pass. |
@@ -797,7 +801,6 @@ not manufacture a third native refactor merely to fill queue depth.
 | DLV-170 | `1ba2183` | `1829140` | No Games & Apps artwork gap reproduced; 64/64 plus provider 75/75 cover opaque art, refresh/warm restart, and semantic fallback. |
 | DLV-169 | `add177e` | `be69735` | Spotify authors adjacent focus and terminal non-wrap edges across Queue, Playlists, and detail; 50/50, SDK 89/89, docs 66, and installed recovery pass. |
 | DLV-167 | `89005d1` | `8dd29c9` | Settings retains read-only last-good installed inventory and truthful Retry across typed version-limit faults; 60/60, Catalog 35/35, docs 66, and PID 41148 pass. |
-| DLV-166 | `9caa853` | `ded6821` | No Games & Apps product gap reproduced; 63/63, provider 75/75, and a two-worker shared-private-state installed restart route pass. |
 
 Do not create another snapshot while this file has 1,000 or fewer physical
 lines. On crossing 1,000, snapshot and compact according to

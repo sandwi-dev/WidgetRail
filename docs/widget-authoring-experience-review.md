@@ -1,8 +1,7 @@
 # Widget Authoring Experience Review
 
 Status: active independent assessment<br>
-Last reassessed: 2026-08-12 against integrated `main` `c4cf0af` and reviewed
-DLV-195/196/198 evidence<br>
+Last reassessed: 2026-08-12 against integrated `main` `04fbdc0`<br>
 Scope: public Widget SDK APIs, tooling, examples, packages, diagnostics, and the
 experience of building basic through full application-scale widgets
 
@@ -25,12 +24,12 @@ publication, commands, paged resources, stable focus/identity, navigation,
 responsive declarative UI, typed capabilities, scenario hosts, scaffolding,
 validation, packaging, installation, version selection, rollback, and removal.
 
-The framework is not yet a finished public platform. Exact cache-isolated
-external SDK consumption is now proven. The largest remaining author costs are
-a self-contained documented external-repository setup, version governance,
-isolated interactive preview, some composed pagination/failure/accessibility
-proof, publisher/update trust, and correcting one transient-focus defect in the
-otherwise credible full-application reference.
+The framework is not yet a finished public platform. Exact cache-isolated SDK
+consumption, self-contained external-repository setup, a full-application
+reference, and the shortest edit/build/validate/preview/scenario/pack loop are
+now proven. The largest remaining author costs are public version/update
+governance, separately hosted third-party proof, broader interactive/native
+preview, composed failure/accessibility proof, and publisher/update trust.
 
 C#/.NET remains a reasonable widget-authoring choice. It gives ordinary
 developers strong tooling, async primitives, records, package management,
@@ -59,13 +58,13 @@ the scalable path.
 | --- | --- | --- |
 | Choose a starter | Basic, data, media, and multipage templates generate atomically. | The catalog is local; public discovery/version policy is not final. |
 | Obtain the SDK | DLV-194/199 prove a copied distribution restores the exact content-versioned SDK from a fixture-local feed into a fresh isolated NuGet cache for build and pack; its nupkg exposes exactly the two public runtime DLLs. | No externally published/versioned package or update policy exists yet. |
-| Build UI | Declarative components, responsive layout, styling, semantic roles, focus IDs, collections, modal/navigation shells, common recipes, and an optional application-scale reference exist. | DLV-195 must correct the reference's absent initial-focus target during blocked loading and post-reset before that sample is accepted. |
+| Build UI | Declarative components, responsive layout, styling, semantic roles, focus IDs, collections, modal/navigation shells, common recipes, and an accepted application-scale reference exist. Loading/reset snapshots now validate with null focus while Error and Ready retain exact focus targets. | More advanced high-level recipes should be driven by a real widget need rather than another abstract framework layer. |
 | Own state/work | `WidgetModel<T>`, scoped operations, commands, tickers, nonpaged and paged resources, latest/single-flight/coalesced policies, cancellation, and invalidation exist. | The migration recipe across these helpers is spread across examples and flagship implementations. |
 | Use privileged services | Typed, narrow capabilities cover media, audio, network, Bluetooth, app library, settings, diagnostics, artwork, and other host-owned authority. | Provider-authoring is a separate trusted extension problem and is not yet a public workflow. |
 | Navigate and act | Stable identities, responsive focus persistence, nested Back, contextual shortcuts, gesture ownership, action sheets, picker/list/grid/slider/text-entry semantics exist. | Some live focus-edge, physical-controller, and assistive-technology evidence remains. |
 | Test | Deterministic fake services, semantic scenario hosts, focused fixtures, preview contracts, and MSTest.Sdk 4.3.2 for new projects coexist with existing runners. | Isolated interactive preview and broader real-host accessibility/failure scenarios remain. |
 | Package and install | Deterministic validation/pack/install/list/select/rollback/remove and versioned immutable local packages exist. | Verified publisher identity, acquisition provenance, automatic update discovery, and public gallery policy remain open. |
-| Share through GitHub | Repository-independent package graphs, checkout-path-free artifacts, and fresh-cache SDK consumption are proven locally. | DLV-196's tested repository assembly silently copies/rewrites checkout samples before the documented commands; DLV-202 must provide one self-contained public setup path and make the fixture execute it exactly. |
+| Share through GitHub | Repository-independent package graphs, checkout-path-free artifacts, fresh-cache SDK consumption, and one documented self-contained export/onboarding command are proven locally. | A truly separate hosted repository and approved publication/update channel remain; the local fixture is no longer described as that external hosting proof. |
 
 ## Framework capability assessment
 
@@ -113,9 +112,8 @@ the scalable path.
 - Externally published and versioned SDK/template artifacts.
 - Public compatibility, deprecation, migration, and update policy.
 - Verified publisher/acquisition provenance and update discovery.
-- Acceptance of the advanced application reference after its bounded transient-
-  focus correction, plus maintainability/performance evidence for later real
-  author extensions.
+- Maintainability/performance evidence as real authors extend the accepted
+  advanced application reference beyond the deterministic example.
 - Clear separation between ordinary widget authors and trusted capability-
   provider authors.
 - A real third-party GitHub repository onboarding proof.
