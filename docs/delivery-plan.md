@@ -371,6 +371,16 @@ latest-wins so canceled handlers cannot publish and all eight destinations
 retain Start/Midpoint/Completion; and replace the false
 `everyCurrentNodeKindObserved` artifact claim with asserted final evidence that
 combines ordinary lifecycle coverage with the focused generic mapping proof.
+Apply Avalonia's official performance guidance only where measured evidence
+supports it: preserve height-constrained virtualization with bounded buffer and
+uniform rows where practical, remove superseded trees from layout/rendering,
+coalesce publication/layout churn, exclude decorative elements from hit
+testing, and keep compiled bindings. Retain ownership evidence for managed heap,
+decoded artwork, live/superseded render trees, pending artwork, and available
+native/Skia resources before and after traversal/hide. Do not raise the Skia GPU
+cache or add `BitmapCache` without a measured benefit because either can increase
+the memory regression. A forced GC or eventual post-hide drop alone is not
+acceptance.
 
 Owner after unblock: standing `avalonia-prototype` task. Integration order is
 SESSION, PLATFORM, then candidate wiring. Substantial conflicts stop.
