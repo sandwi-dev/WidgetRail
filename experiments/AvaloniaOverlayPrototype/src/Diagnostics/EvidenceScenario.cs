@@ -99,7 +99,7 @@ internal static class EvidenceScenario
                 new[]
                 {
                     "Transition samples inspect Avalonia visual/composition-surface brushes and coverage; the physical Windows compositor verdict remains manual.",
-                    "Controller automation uses a fake narrow adapter; physical controller compatibility, reconnect, and feel remain planner/user checks.",
+                    "Controller automation drives the real adapter, processor, MainWindow, and semantic router through a deterministic state source; physical controller compatibility and feel remain planner/user checks.",
                     "XInput is limited to four XInput-compatible slots and does not provide durable device identity.",
                     "GPU frame cost unavailable in AVP-002 without an authorized ETW/PresentMon capture lane.",
                     "Hidden-before-first-frame was not sampled because delaying initial show would invalidate cold-start timing; hidden-after-use is retained instead.",

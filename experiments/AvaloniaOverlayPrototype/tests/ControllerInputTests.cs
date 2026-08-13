@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Reflection;
 
 namespace GameBarAlternative.AvaloniaPrototype.Tests;
 
@@ -33,57 +34,93 @@ public sealed class ControllerInputTests
 
     [TestMethod]
     [Timeout(15_000)]
-    public async Task Controller_and_keyboard_share_tray_slider_activate_and_child_back_routing()
+    public async Task Deterministic_real_adapter_drives_router_and_resets_across_every_lifecycle_boundary()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            var adapter = new FakeControllerAdapter();
+            var source = new DeterministicControllerStateSource();
+            var adapter = new XInputControllerAdapter(source, enableBackgroundPolling: false);
             var window = new MainWindow(adapter);
             window.Show();
             await window.NavigateAsync(PrototypeRoute.Settings);
+            Poll(adapter, source, Snapshot(connected: true), 0);
             var page = (Control)window.ShellView.Navigation.CurrentPage!;
             var primary = page.FindControl<Button>("PrimaryAction")!;
             var invocationCount = 0;
             primary.Click += (_, _) => invocationCount++;
             primary.Focus();
 
-            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
-            window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
-            Assert.AreEqual(1, invocationCount, "Tunnel-routed Enter must invoke exactly once.");
-            await Task.Delay(90);
-            adapter.Emit(SemanticInput.Activate);
-            await PumpAsync();
-            Assert.AreEqual(2, invocationCount, "Controller A must use the same one-shot activation path.");
+            Poll(adapter, source, Snapshot(connected: true, a: true), 10);
+            Poll(adapter, source, Snapshot(connected: true, a: true), 600);
+            Assert.AreEqual(1, invocationCount, "The real processor must keep controller A edge-triggered through the shared router.");
+            Poll(adapter, source, Snapshot(connected: true), 610);
 
             var slider = page.FindControl<Slider>("InterfaceScaleSlider")!;
             slider.Focus();
             var original = slider.Value;
-            adapter.Emit(SemanticInput.Right);
-            await PumpAsync();
+            Poll(adapter, source, Snapshot(connected: true, x: 0.8f), 620);
             Assert.IsGreaterThan(original, slider.Value, "Controller Right must adjust a focused Slider.");
-            adapter.Emit(SemanticInput.Down);
-            await PumpAsync();
+            Poll(adapter, source, Snapshot(connected: true), 630);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 640);
             Assert.AreNotSame(slider, window.FocusManager?.GetFocusedElement(), "Controller Down must leave a focused Slider.");
 
-            slider.Focus();
-            adapter.Emit(SemanticInput.Back);
-            await Task.Delay(220);
-            Assert.IsFalse(window.ShellView.ContentRegionControl.IsVisible, "Controller B must work from a focused child control.");
+            var firstFocus = window.FocusManager?.GetFocusedElement();
+            Poll(adapter, source, Snapshot(connected: true, down: true), 980);
+            Assert.AreSame(firstFocus, window.FocusManager?.GetFocusedElement(), "Held direction must wait for the repeat threshold.");
+            Poll(adapter, source, Snapshot(connected: true, down: true), 990);
+            Assert.AreNotSame(firstFocus, window.FocusManager?.GetFocusedElement(), "Held direction must repeat through actual focus after 350 ms.");
 
-            window.ShellView.TrayButtons[0].Focus();
-            adapter.Emit(SemanticInput.Left);
-            await Task.Delay(260);
-            Assert.AreEqual(PrototypeRoute.GameLauncher, window.ShellView.Navigation.CurrentRoute, "Tray Left must wrap and navigate without Enter.");
-            Assert.AreSame(window.ShellView.TrayButtons[3], window.FocusManager?.GetFocusedElement());
-            window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.None, null);
-            window.KeyRelease(Key.Right, RawInputModifiers.None, PhysicalKey.None, null);
-            await Task.Delay(260);
-            Assert.AreEqual(PrototypeRoute.Settings, window.ShellView.Navigation.CurrentRoute, "Tray Right must wrap and share keyboard routing.");
+            var beforeDeactivate = window.FocusManager?.GetFocusedElement();
+            RaiseWindowLifecycle(window, "HandleDeactivated");
+            Poll(adapter, source, Snapshot(connected: true, down: true), 1_500);
+            Assert.AreSame(beforeDeactivate, window.FocusManager?.GetFocusedElement(), "Deactivated input must not dispatch.");
+            RaiseWindowLifecycle(window, "HandleActivated");
+            Poll(adapter, source, Snapshot(connected: true, down: true), 1_510);
+            Assert.AreSame(beforeDeactivate, window.FocusManager?.GetFocusedElement(), "Activated must retain neutral gating after focus loss.");
+            Poll(adapter, source, Snapshot(connected: true), 1_520);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 1_530);
+            Assert.AreNotSame(beforeDeactivate, window.FocusManager?.GetFocusedElement());
 
             window.Hide();
-            Assert.IsFalse(adapter.Active, "Hidden windows must stop controller polling dispatch.");
+            Poll(adapter, source, Snapshot(connected: true, down: true), 2_000);
+            Assert.IsNull(window.FocusManager?.GetFocusedElement(), "Hidden window must retain no focused input target.");
+            window.Show();
+            primary.Focus();
+            var afterShowFocus = window.FocusManager?.GetFocusedElement();
+            Poll(adapter, source, Snapshot(connected: true, down: true), 2_010);
+            Assert.AreSame(afterShowFocus, window.FocusManager?.GetFocusedElement(), "Show must retain neutral gating after hidden cancellation.");
+            Poll(adapter, source, Snapshot(connected: true), 2_020);
+
+            await window.NavigateAsync(PrototypeRoute.AudioMixer);
+            Dispatcher.UIThread.RunJobs();
+            var afterRoute = window.FocusManager?.GetFocusedElement();
+            Poll(adapter, source, Snapshot(connected: true, down: true), 2_100);
+            Assert.AreSame(afterRoute, window.FocusManager?.GetFocusedElement(), "Route replacement must reset and neutral-gate held input.");
+            Poll(adapter, source, Snapshot(connected: true), 2_110);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 2_120);
+            Assert.AreNotSame(afterRoute, window.FocusManager?.GetFocusedElement());
+
+            var beforeDisconnect = window.FocusManager?.GetFocusedElement();
+            Poll(adapter, source, default, 2_200);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 2_210);
+            Assert.AreSame(beforeDisconnect, window.FocusManager?.GetFocusedElement(), "Reconnect while held must wait for neutral.");
+            Poll(adapter, source, Snapshot(connected: true), 2_220);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 2_230);
+            Assert.AreNotSame(beforeDisconnect, window.FocusManager?.GetFocusedElement());
+
+            var beforeReplacement = window.FocusManager?.GetFocusedElement();
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 2_300);
+            Assert.AreSame(beforeReplacement, window.FocusManager?.GetFocusedElement(), "Replacement device must wait for neutral.");
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 2_310);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 2_320);
+            Assert.AreNotSame(beforeReplacement, window.FocusManager?.GetFocusedElement());
+
+            Assert.IsNotNull(window.FocusManager?.GetFocusedElement() as Control, "Controller B fixture requires a focused child control.");
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 2_330);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, b: true), 2_340);
+            await Task.Delay(220);
+            Assert.AreEqual(PrototypeRoute.Settings, window.ShellView.Navigation.CurrentRoute, "Controller B must route from a focused child through history.");
             window.Close();
-            Assert.IsTrue(adapter.Disposed);
         });
     }
 
@@ -93,7 +130,38 @@ public sealed class ControllerInputTests
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            var adapter = new FakeControllerAdapter();
+            var source = new DeterministicControllerStateSource();
+            var adapter = new XInputControllerAdapter(source, enableBackgroundPolling: false);
+            var window = new MainWindow(adapter);
+            window.Show();
+            await window.NavigateAsync(PrototypeRoute.Settings);
+            Poll(adapter, source, Snapshot(connected: true), 0);
+            var primary = ((Control)window.ShellView.Navigation.CurrentPage!).FindControl<Button>("PrimaryAction")!;
+            var count = 0;
+            primary.Click += (_, _) => count++;
+            primary.Focus();
+
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+            Poll(adapter, source, Snapshot(connected: true, a: true), 10);
+            Assert.AreEqual(1, count);
+
+            Poll(adapter, source, Snapshot(connected: true), 20);
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.None, null);
+            Poll(adapter, source, Snapshot(connected: true, b: true), 30);
+            await Task.Delay(220);
+            Assert.IsFalse(window.ShellView.ContentRegionControl.IsVisible, "Keyboard/controller B co-report must not toggle the content twice.");
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Held_keyboard_enter_is_edge_triggered_and_rearms_on_key_up_or_focus_loss()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var source = new DeterministicControllerStateSource();
+            var adapter = new XInputControllerAdapter(source, enableBackgroundPolling: false);
             var window = new MainWindow(adapter);
             window.Show();
             await window.NavigateAsync(PrototypeRoute.Settings);
@@ -103,44 +171,58 @@ public sealed class ControllerInputTests
             primary.Focus();
 
             window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
-            adapter.Emit(SemanticInput.Activate);
-            await PumpAsync();
-            Assert.AreEqual(1, count);
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+            Assert.AreEqual(1, count, "OS repeat KeyDown must not repeatedly activate the focused Button.");
+            window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+            Assert.AreEqual(2, count, "KeyUp must rearm Enter activation.");
 
-            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.None, null);
-            adapter.Emit(SemanticInput.Back);
-            await Task.Delay(220);
-            Assert.IsFalse(window.ShellView.ContentRegionControl.IsVisible, "Keyboard/controller B co-report must not toggle the content twice.");
+            RaiseWindowLifecycle(window, "HandleDeactivated");
+            RaiseWindowLifecycle(window, "HandleActivated");
+            primary.Focus();
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
+            Assert.AreEqual(3, count, "Focus loss must clear a held keyboard edge whose KeyUp may be lost.");
             window.Close();
         });
     }
 
-    private static ControllerSnapshot Snapshot(bool connected, int slot = 0, float x = 0, float y = 0, bool a = false, bool b = false) =>
-        new(connected, slot, x, y, false, false, false, false, a, b);
+    private static ControllerSnapshot Snapshot(
+        bool connected,
+        int slot = 0,
+        float x = 0,
+        float y = 0,
+        bool up = false,
+        bool down = false,
+        bool left = false,
+        bool right = false,
+        bool a = false,
+        bool b = false) =>
+        new(connected, slot, x, y, up, down, left, right, a, b);
 
-    private static async Task PumpAsync()
+    private static void Poll(
+        XInputControllerAdapter adapter,
+        DeterministicControllerStateSource source,
+        ControllerSnapshot snapshot,
+        double milliseconds)
     {
-        await Task.Delay(30);
+        source.Current = snapshot;
+        adapter.PollOnce(TimeSpan.FromMilliseconds(milliseconds));
         Dispatcher.UIThread.RunJobs();
     }
 
-    private sealed class FakeControllerAdapter : IControllerInputAdapter
+    private static void RaiseWindowLifecycle(MainWindow window, string methodName)
     {
-        public event EventHandler<SemanticInputEventArgs>? InputReceived;
+        var method = typeof(WindowBase).GetMethod(
+            methodName,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) ??
+            throw new InvalidOperationException($"Avalonia WindowBase.{methodName} was not found.");
+        method.Invoke(window, null);
+    }
 
-        public bool Active { get; private set; }
+    private sealed class DeterministicControllerStateSource : IControllerStateSource
+    {
+        public ControllerSnapshot Current { get; set; }
 
-        public bool Disposed { get; private set; }
-
-        public void Start() { }
-
-        public void SetActive(bool active) => Active = active;
-
-        public void ResetHeldState() { }
-
-        public void Dispose() => Disposed = true;
-
-        public void Emit(SemanticInput input) =>
-            InputReceived?.Invoke(this, new SemanticInputEventArgs(input, SemanticInputSource.Controller));
+        public ControllerSnapshot Read() => Current;
     }
 }

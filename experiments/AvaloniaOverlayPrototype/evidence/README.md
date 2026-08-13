@@ -11,6 +11,12 @@ runtime/Avalonia versions, OS, architecture, controller dependency, all complete
 frames, every required authored Button/TextBlock bound, ScrollViewer clipping,
 and transition start/midpoint/completion surface samples.
 
+Controller acceptance does not stop at processor helper assertions: a
+deterministic state source feeds the real adapter/processor into the actual
+`MainWindow` and shared semantic router with focused controls. It covers held
+repeat and every assigned lifecycle/reset boundary. Keyboard Enter is
+explicitly edge-triggered until KeyUp or focus loss.
+
 The transition verdict is deliberately scoped to Avalonia visual/composition
 state and brush coverage. Physical controller behavior and the Windows
 compositor/transparency verdict remain planner/user evaluation; GPU cost is

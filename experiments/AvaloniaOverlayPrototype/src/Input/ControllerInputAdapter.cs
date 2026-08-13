@@ -157,13 +157,21 @@ internal sealed class ControllerStateProcessor
     }
 }
 
-internal sealed class XInputControllerAdapter(IControllerStateSource stateSource) : IControllerInputAdapter
+internal sealed class XInputControllerAdapter : IControllerInputAdapter
 {
     private readonly ControllerStateProcessor processor = new();
     private readonly object gate = new();
     private readonly Stopwatch clock = Stopwatch.StartNew();
+    private readonly IControllerStateSource stateSource;
+    private readonly bool enableBackgroundPolling;
     private CancellationTokenSource? lifetime;
     private bool active;
+
+    public XInputControllerAdapter(IControllerStateSource stateSource, bool enableBackgroundPolling = true)
+    {
+        this.stateSource = stateSource;
+        this.enableBackgroundPolling = enableBackgroundPolling;
+    }
 
     public event EventHandler<SemanticInputEventArgs>? InputReceived;
 
@@ -171,7 +179,7 @@ internal sealed class XInputControllerAdapter(IControllerStateSource stateSource
     {
         lock (gate)
         {
-            if (lifetime is not null) return;
+            if (!enableBackgroundPolling || lifetime is not null) return;
             lifetime = new CancellationTokenSource();
             _ = PollAsync(lifetime.Token);
         }
@@ -203,6 +211,21 @@ internal sealed class XInputControllerAdapter(IControllerStateSource stateSource
         }
     }
 
+    internal void PollOnce(TimeSpan now)
+    {
+        IReadOnlyList<SemanticInput> emitted;
+        lock (gate)
+        {
+            if (!active) return;
+            emitted = processor.Process(stateSource.Read(), now);
+        }
+
+        foreach (var input in emitted)
+        {
+            InputReceived?.Invoke(this, new SemanticInputEventArgs(input, SemanticInputSource.Controller));
+        }
+    }
+
     private async Task PollAsync(CancellationToken token)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(16));
@@ -210,17 +233,7 @@ internal sealed class XInputControllerAdapter(IControllerStateSource stateSource
         {
             while (await timer.WaitForNextTickAsync(token))
             {
-                IReadOnlyList<SemanticInput> emitted;
-                lock (gate)
-                {
-                    if (!active) continue;
-                    emitted = processor.Process(stateSource.Read(), clock.Elapsed);
-                }
-
-                foreach (var input in emitted)
-                {
-                    InputReceived?.Invoke(this, new SemanticInputEventArgs(input, SemanticInputSource.Controller));
-                }
+                PollOnce(clock.Elapsed);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

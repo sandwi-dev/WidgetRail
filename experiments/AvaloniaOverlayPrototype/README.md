@@ -16,8 +16,10 @@ there is no synthesized keyboard input or second control registry.
 - Tray Left/Right immediately cycles and opens destinations with wraparound.
 - Slider Left/Right adjusts the value; Up/Down leaves the Slider.
 - Escape, keyboard B, and controller B work while a child control has focus.
-- Enter and controller A raise the focused Avalonia Button once. A short
-  cross-source duplicate window rejects co-reported activation/back events.
+- Enter and controller A raise the focused Avalonia Button once. Enter is
+  edge-triggered until KeyUp (and rearmed on focus loss), so OS key repeat does
+  not repeatedly activate a Button. A short cross-source duplicate window
+  rejects co-reported activation/back events.
 - Directional input applies a 28% stick dead zone, 350 ms initial repeat, and
   100 ms repeat interval. A and B are edge-triggered and do not repeat.
 - Disconnect, replacement slot, reconnect, route replacement, hide, and focus
@@ -37,10 +39,14 @@ From the repository root:
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp002.ps1 -TimeoutSeconds 180
 ```
 
-The focused 16-test suite builds only this solution and covers the controller
-processor and real shared-router behavior, disconnect/reconnect/device loss,
-hidden/focus-loss reset, repeat/dead-zone/no-double-dispatch, standard Avalonia
-UIA, ScrollViewer focus movement, and bounded lifecycle. Its responsive matrix
+The focused 17-test suite builds only this solution. A deterministic
+`IControllerStateSource` drives the real adapter and `ControllerStateProcessor`
+through the actual `MainWindow`, shared router, and focused Avalonia controls.
+It covers held directional repeat, Deactivated/Activated, hide/show, route
+replacement, disconnect/reconnect neutral gating, device replacement,
+edge-triggered controller A and keyboard Enter, dead zone, and
+no-double-dispatch. The remaining tests cover standard Avalonia UIA,
+ScrollViewer focus movement, and bounded lifecycle. Its responsive matrix
 sets actual Avalonia render scaling, captures Skia-backed headless pixel frames,
 and verifies all four pages at three work areas × three scales. Every authored
 required Button/TextBlock is enumerated by AutomationId; a fully or partially

@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
     private readonly PrototypeLifecycle lifecycle = new();
     private readonly IControllerInputAdapter controller;
     private readonly SemanticInputRouter inputRouter;
+    private bool keyboardEnterHeld;
 
     public MainWindow() : this(new XInputControllerAdapter(new XInputStateSource()))
     {
@@ -26,16 +27,17 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         inputRouter = new SemanticInputRouter(this);
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(KeyUpEvent, OnPreviewKeyUp, RoutingStrategies.Tunnel);
         controller.InputReceived += ControllerInputReceived;
         Opened += (_, _) =>
         {
             lifecycle.Show();
             ShellView.Resume();
             controller.Start();
-            controller.SetActive(IsActive);
+            SetInputActive(IsActive);
         };
-        Activated += (_, _) => controller.SetActive(IsVisible);
-        Deactivated += (_, _) => controller.SetActive(false);
+        Activated += (_, _) => SetInputActive(IsVisible);
+        Deactivated += (_, _) => SetInputActive(false);
         Closed += (_, _) =>
         {
             lifecycle.Hide();
@@ -51,20 +53,19 @@ public sealed partial class MainWindow : Window
                 {
                     lifecycle.Show();
                     ShellView.Resume();
-                    controller.SetActive(IsActive);
+                    SetInputActive(IsActive);
                 }
                 else
                 {
                     lifecycle.Hide();
                     ShellView.Suspend();
-                    controller.SetActive(false);
+                    SetInputActive(false);
                 }
             }
         };
         ShellView.RouteChanged += (_, _) =>
         {
             controller.ResetHeldState();
-            inputRouter.ResetDuplicateState();
         };
     }
 
@@ -79,6 +80,17 @@ public sealed partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Enter)
+        {
+            if (keyboardEnterHeld)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            keyboardEnterHeld = true;
+        }
+
         var semantic = e.Key switch
         {
             Key.Up => SemanticInput.Up,
@@ -95,6 +107,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void OnPreviewKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            keyboardEnterHeld = false;
+            e.Handled = true;
+        }
+    }
+
     private void ControllerInputReceived(object? sender, SemanticInputEventArgs e)
     {
         Dispatcher.UIThread.Post(() =>
@@ -104,6 +125,15 @@ public sealed partial class MainWindow : Window
                 inputRouter.Route(e.Input, e.Source);
             }
         }, DispatcherPriority.Input);
+    }
+
+    private void SetInputActive(bool active)
+    {
+        controller.SetActive(active);
+        if (!active)
+        {
+            keyboardEnterHeld = false;
+        }
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
