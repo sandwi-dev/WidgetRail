@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
+    <ProjectReference Include="..\..\src\WidgetPresentationSession\WidgetPresentationSession.csproj" />
     <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
     <ProjectReference Include="..\FullTrustAlphaFixture\FullTrustAlphaFixture.csproj"
                       ReferenceOutputAssembly="false" />
