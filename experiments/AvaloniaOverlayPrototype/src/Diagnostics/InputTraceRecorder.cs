@@ -15,11 +15,18 @@ internal sealed class InputTraceRecorder
     private readonly object gate = new();
     private readonly string? outputPath;
     private readonly List<InputTraceEntry> entries = [];
+    private string sourceCommit;
     private long sequence;
 
-    public InputTraceRecorder(string? outputPath)
+    public InputTraceRecorder(string? outputPath, string? sourceCommit = null)
     {
         this.outputPath = string.IsNullOrWhiteSpace(outputPath) ? null : Path.GetFullPath(outputPath);
+        this.sourceCommit = string.IsNullOrWhiteSpace(sourceCommit) ? "manual-session" : sourceCommit;
+        if (this.outputPath is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(this.outputPath)!);
+            lock (gate) PersistSnapshotLocked();
+        }
     }
 
     public bool Enabled => outputPath is not null;
@@ -45,15 +52,26 @@ internal sealed class InputTraceRecorder
                 focusedSemanticId,
                 detail,
                 handled));
+            PersistSnapshotLocked();
         }
     }
 
-    public async Task FlushAsync(string sourceCommit, CancellationToken cancellationToken = default)
+    public Task FlushAsync(string sourceCommit, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (outputPath is null) return Task.CompletedTask;
+        lock (gate)
+        {
+            this.sourceCommit = sourceCommit;
+            PersistSnapshotLocked();
+        }
+        return Task.CompletedTask;
+    }
+
+    private void PersistSnapshotLocked()
     {
         if (outputPath is null) return;
-        InputTraceEntry[] snapshot;
-        lock (gate) snapshot = entries.ToArray();
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        var snapshot = entries.ToArray();
         var nativeRouted = snapshot.Any(entry => entry.EventName == "native-input-routed" && entry.Handled == true);
         var artifact = new InputTraceArtifact(
             "AVP-004-INTEGRATION",
@@ -69,10 +87,17 @@ internal sealed class InputTraceRecorder
             false,
             nativeRouted,
             []);
-        await File.WriteAllTextAsync(
-            outputPath,
-            JsonSerializer.Serialize(artifact, JsonOptions),
-            cancellationToken).ConfigureAwait(false);
+        var temporaryPath = outputPath + ".tmp";
+        try
+        {
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(artifact, JsonOptions));
+            if (File.Exists(outputPath)) File.Replace(temporaryPath, outputPath, null);
+            else File.Move(temporaryPath, outputPath);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
     }
 
     private sealed record InputTraceArtifact(

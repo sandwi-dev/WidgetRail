@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 24-test focused Avalonia integration suite. Its ignored exact-commit
+only the 25-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -17,9 +17,13 @@ unintended horizontal empty area, and non-overlapping content/guide/tray regions
 at every supported size/scale. A prototype-only mutex regression rejects a
 competing second owner.
 The shared-shell polish regression additionally uses all eight representative
-tray labels and requires the selected final item to be fully scrolled into view,
+tray labels and requires the selected first and final items to be fully scrolled into view,
 untruncated label content, and bounded guide/tray height. Transparent semantic
 buttons are also proven to retain a visible reusable Avalonia surface and border.
+Direct intrinsic-layout evidence requires non-overlapping action rows, complete
+heading line boxes, content-sized ordinary small-scroll rows, meaningful compact
+button glyphs, and readable generic advanced-preset slot allocation. The large
+collection path remains recycling with uniform rows.
 Responsive evidence captures authority, semantic root, expected IDs, rendered
 controls, and geometry as one UI-thread transaction after a real render turn.
 A replacement published during resize must settle to one exact authority/root
@@ -38,7 +42,10 @@ After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
 bridge, catalog, workers and domain payloads beside the framework-dependent
 Avalonia executable, then writes `artifacts/avp004/measurement.json` and the
-bounded native `input-trace.json`.
+bounded native `input-trace.json`. A planner manual session supplies its own
+`--input-trace` path; every record is atomically published during the run rather
+than waiting for normal shutdown, and the raw neutral-priming marker remains
+distinguished from later actionable connected frames.
 
 The JSON binds the source commit to executable ProductVersion and SHA-256. It
 records every installed descriptor and exact runtime/presentation/session/

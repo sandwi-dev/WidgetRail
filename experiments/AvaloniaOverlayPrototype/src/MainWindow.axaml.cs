@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -21,7 +22,9 @@ public sealed partial class MainWindow : Window
 {
     private readonly PrototypeLifecycle lifecycle = new();
     private readonly DispatcherTimer platformTimer;
-    private readonly InputTraceRecorder inputTrace = new(PrototypeArguments.Current.InputTracePath);
+    private readonly InputTraceRecorder inputTrace = new(
+        PrototypeArguments.Current.InputTracePath,
+        PrototypeArguments.Current.SourceCommit);
     private BridgeProcessHost? bridgeHost;
     private IOverlayPlatformClient? platform;
     private IntegratedShellView? integratedShell;
@@ -385,8 +388,15 @@ public sealed partial class MainWindow : Window
         if (!shutdownRequested)
         {
             shutdownRequested = true;
-            _ = ShutdownAsync();
+            _ = ShutdownApplicationAsync();
         }
+    }
+
+    private async Task ShutdownApplicationAsync()
+    {
+        await ShutdownAsync();
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            desktop.Shutdown(LastShutdownEvidence?.BoundedNormalShutdownPassed == true ? 0 : 1);
     }
 
     private void OnIntegratedFrameAdmitted(object? sender, GameBarAlternative.WidgetPresentationSession.WidgetPresentationFrame frame)

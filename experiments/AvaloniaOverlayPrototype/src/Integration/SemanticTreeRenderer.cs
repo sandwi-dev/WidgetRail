@@ -64,7 +64,7 @@ public sealed class SemanticTreeRenderer : IDisposable
         var root = currentFrame.Snapshot.AdvancedPresentation is { } advanced
             ? RenderAdvanced(currentFrame.Snapshot.Root, advanced, context)
             : RenderNode(currentFrame.Snapshot.Root, context);
-        PrepareSemanticRootForHost(root);
+        PrepareSemanticRootForHost(root, currentFrame.Snapshot.AdvancedPresentation is not null);
         ApplyFocusNeighbors(context);
         ownedRenders.Add(root, context);
         return root;
@@ -85,6 +85,7 @@ public sealed class SemanticTreeRenderer : IDisposable
                 ResponsiveVisibility.ExpandedOnly => !compact,
                 _ => true,
             };
+        foreach (var update in context.ResponsiveLayoutUpdates) update(compact);
         return true;
     }
 
@@ -115,7 +116,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             {
                 Text = node.Text ?? string.Empty,
                 TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
                 IsHitTestVisible = false,
             },
             ViewNodeKind.Button => RenderButton(node),
@@ -228,11 +229,31 @@ public sealed class SemanticTreeRenderer : IDisposable
     {
         var button = new Button
         {
-            Content = node.Text ?? node.AccessibilityLabel ?? "Action",
+            Content = node.Glyph is { } glyph
+                ? new TextBlock
+                {
+                    Text = Glyph(glyph),
+                    FontSize = 20,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    IsHitTestVisible = false,
+                }
+                : new TextBlock
+                {
+                    Text = node.Text ?? node.AccessibilityLabel ?? "Action",
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxLines = 2,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    IsHitTestVisible = false,
+                },
             IsEnabled = node.IsDisabled is not true,
             MinWidth = 44,
             MinHeight = 44,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = node.Glyph is null
+                ? HorizontalAlignment.Left
+                : HorizontalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         button.Click += async (_, _) =>
@@ -349,6 +370,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             Columns = 1,
             Rows = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
         };
         foreach (var childNode in node.Children)
         {
@@ -374,38 +396,60 @@ public sealed class SemanticTreeRenderer : IDisposable
 
         var layout = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("2*,3*"),
-            RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
         };
-        Add(WidgetAdvancedPresentationSlot.DetailsPanel, 0, 0);
-        Add(WidgetAdvancedPresentationSlot.PrimaryCollection, 1, 0, rowSpan: 2);
-        Add(WidgetAdvancedPresentationSlot.CollectionNavigation, 0, 1);
-        Add(WidgetAdvancedPresentationSlot.SourceStatus, 0, 2);
-        Add(WidgetAdvancedPresentationSlot.OperationStatus, 1, 2);
-        Add(WidgetAdvancedPresentationSlot.ControllerHints, 0, 3, columnSpan: 2);
-        if (advanced.Preset is WidgetAdvancedPresentationPreset.CoverWall or
-            WidgetAdvancedPresentationPreset.CompactGrid)
+        var renderedSlots = new Dictionary<WidgetAdvancedPresentationSlot, Control>();
+        foreach (var (slot, node) in slots)
         {
-            layout.ColumnDefinitions = new ColumnDefinitions("1*,4*");
+            var control = RenderNode(node, context);
+            control.Margin = new Thickness(6);
+            renderedSlots.Add(slot, control);
+            layout.Children.Add(control);
         }
-        else if (advanced.Preset == WidgetAdvancedPresentationPreset.Carousel)
-        {
-            layout.ColumnDefinitions = new ColumnDefinitions("3*,2*");
-        }
+        ApplyLayout(context.Compact);
+        context.ResponsiveLayoutUpdates.Add(ApplyLayout);
+        layout.SizeChanged += (_, args) => ApplyLayout(context.Compact || args.NewSize.Width <= 760);
         return layout;
 
-        void Add(WidgetAdvancedPresentationSlot slot, int column, int row, int columnSpan = 1, int rowSpan = 1)
+        void ApplyLayout(bool stacked)
         {
-            if (!slots.TryGetValue(slot, out var node)) return;
-            var control = RenderNode(node, context);
-            control.Margin = new Thickness(5);
+            if (stacked)
+            {
+                layout.ColumnDefinitions = new ColumnDefinitions("*");
+                layout.RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto");
+                Place(WidgetAdvancedPresentationSlot.DetailsPanel, 0, 0);
+                Place(WidgetAdvancedPresentationSlot.CollectionNavigation, 0, 1);
+                Place(WidgetAdvancedPresentationSlot.PrimaryCollection, 0, 2);
+                Place(WidgetAdvancedPresentationSlot.SourceStatus, 0, 3);
+                Place(WidgetAdvancedPresentationSlot.OperationStatus, 0, 4);
+                Place(WidgetAdvancedPresentationSlot.ControllerHints, 0, 5);
+                return;
+            }
+
+            layout.ColumnDefinitions = advanced.Preset switch
+            {
+                WidgetAdvancedPresentationPreset.Carousel => new ColumnDefinitions("3*,2*"),
+                WidgetAdvancedPresentationPreset.CoverWall or WidgetAdvancedPresentationPreset.CompactGrid =>
+                    new ColumnDefinitions("2*,4*"),
+                _ => new ColumnDefinitions("2*,3*"),
+            };
+            layout.RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto");
+            Place(WidgetAdvancedPresentationSlot.DetailsPanel, 0, 0);
+            Place(WidgetAdvancedPresentationSlot.CollectionNavigation, 0, 1);
+            Place(WidgetAdvancedPresentationSlot.PrimaryCollection, 1, 0, rowSpan: 2);
+            Place(WidgetAdvancedPresentationSlot.SourceStatus, 0, 2);
+            Place(WidgetAdvancedPresentationSlot.OperationStatus, 1, 2);
+            Place(WidgetAdvancedPresentationSlot.ControllerHints, 0, 3, columnSpan: 2);
+        }
+
+        void Place(WidgetAdvancedPresentationSlot slot, int column, int row, int columnSpan = 1, int rowSpan = 1)
+        {
+            if (!renderedSlots.TryGetValue(slot, out var control)) return;
             Grid.SetColumn(control, column);
             Grid.SetRow(control, row);
             Grid.SetColumnSpan(control, columnSpan);
             Grid.SetRowSpan(control, rowSpan);
-            layout.Children.Add(control);
         }
     }
 
@@ -527,6 +571,16 @@ public sealed class SemanticTreeRenderer : IDisposable
         if (control is TextBlock text)
         {
             if (TryNumber(values, "font-size") is { } fontSize) text.FontSize = fontSize;
+            if (TryNumber(values, "line-height") is { } lineHeight)
+                text.LineHeight = lineHeight <= 4 ? text.FontSize * lineHeight : lineHeight;
+            if (TryNumber(values, "max-lines") is { } maxLines)
+            {
+                text.MaxLines = Math.Max(1, (int)Math.Floor(maxLines));
+                if (text.MaxLines == 1) text.TextWrapping = TextWrapping.NoWrap;
+            }
+            if (values.TryGetValue("text-overflow", out var overflow) &&
+                string.Equals(overflow.Text, "ellipsis", StringComparison.OrdinalIgnoreCase))
+                text.TextTrimming = TextTrimming.CharacterEllipsis;
             if (values.TryGetValue("text-align", out var alignment))
                 text.TextAlignment = alignment.Text switch
                 {
@@ -540,7 +594,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             paddingControl.Padding = new Thickness(padding);
     }
 
-    internal static void PrepareSemanticRootForHost(Control root)
+    internal static void PrepareSemanticRootForHost(Control root, bool? fillViewport = null)
     {
         // Widget style still owns internal presentation, but the Avalonia page host owns the admitted
         // root's outer viewport. Carrying legacy renderer max-width or viewport-unit constraints into
@@ -549,7 +603,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         root.MinWidth = 0;
         root.MaxWidth = double.PositiveInfinity;
         root.HorizontalAlignment = HorizontalAlignment.Stretch;
-        root.VerticalAlignment = VerticalAlignment.Stretch;
+        if (fillViewport is not null)
+            root.VerticalAlignment = fillViewport.Value ? VerticalAlignment.Stretch : VerticalAlignment.Top;
     }
 
     private static void ApplyLength(
@@ -596,11 +651,20 @@ public sealed class SemanticTreeRenderer : IDisposable
         }
     }
 
-    private Control RenderVirtualizedItem(ViewNode node, RenderContext context)
+    private Control RenderVirtualizedItem(ViewNode node, RenderContext context, bool uniformHeight)
     {
         var control = RenderNode(node, context);
-        control.Height = 88;
-        control.VerticalAlignment = VerticalAlignment.Stretch;
+        if (uniformHeight)
+        {
+            control.Height = 88;
+            control.VerticalAlignment = VerticalAlignment.Stretch;
+        }
+        else
+        {
+            control.Height = double.NaN;
+            control.MinHeight = Math.Max(44, control.MinHeight);
+            control.VerticalAlignment = VerticalAlignment.Top;
+        }
         Avalonia.Threading.Dispatcher.UIThread.Post(
             () => ApplyFocusNeighbors(context), Avalonia.Threading.DispatcherPriority.Loaded);
         return control;
@@ -620,8 +684,9 @@ public sealed class SemanticTreeRenderer : IDisposable
             // VirtualizingStackPanel default is the desired zero additional viewport buffer.
             ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
         };
+        var uniformHeight = node.Children.Count > 64;
         list.ItemTemplate = new FuncDataTemplate<ViewNode>(
-            (item, _) => item is null ? null : RenderVirtualizedItem(item, context), supportsRecycling: true);
+            (item, _) => item is null ? null : RenderVirtualizedItem(item, context, uniformHeight), supportsRecycling: true);
         return list;
     }
 
@@ -698,6 +763,7 @@ public sealed class SemanticTreeRenderer : IDisposable
         public Dictionary<string, Control> FocusableById { get; } = new(StringComparer.Ordinal);
         public List<(Control Control, FocusNeighbors Neighbors)> PendingNeighbors { get; } = [];
         public List<(Control Control, ResponsiveVisibility Visibility)> ResponsiveControls { get; } = [];
+        public List<Action<bool>> ResponsiveLayoutUpdates { get; } = [];
         public int RealizedControlCount { get; set; }
     }
 

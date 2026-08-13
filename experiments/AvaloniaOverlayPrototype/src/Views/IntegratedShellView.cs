@@ -83,6 +83,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             Background = Brush.Parse("#EB172230"),
             BorderBrush = Brush.Parse("#7092B7E8"),
             BorderThickness = new Thickness(1),
+            ClipToBounds = true,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
             Child = transitionPresenter,
@@ -91,7 +92,12 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(pageHost, "avp.integrated.content");
         AutomationProperties.SetName(pageHost, "Current widget content");
 
-        trayPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        trayPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(7, 0),
+        };
         trayScroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -180,19 +186,19 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         shellGrid = new Grid
         {
             Margin = new Thickness(12),
-            RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("*,Auto,Auto"),
         };
-        Grid.SetRow(pageHost, 1);
+        Grid.SetRow(pageHost, 0);
         shellGrid.Children.Add(pageHost);
         Grid.SetRow(statusLayer, 0);
         shellGrid.Children.Add(statusLayer);
-        Grid.SetRow(controllerGuideLayer, 2);
+        Grid.SetRow(controllerGuideLayer, 1);
         shellGrid.Children.Add(controllerGuideLayer);
-        Grid.SetRow(trayLayer, 3);
+        Grid.SetRow(trayLayer, 2);
         trayLayer.Margin = new Thickness(0, 4, 0, 0);
         shellGrid.Children.Add(trayLayer);
         shellGrid.Children.Add(modalLayer);
-        Grid.SetRowSpan(modalLayer, 4);
+        Grid.SetRowSpan(modalLayer, 3);
         Content = shellGrid;
 
         DataContext = coordinator.ViewModel;
@@ -623,20 +629,21 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         pageHost.Padding = compact ? new Thickness(10) : new Thickness(16);
         pageHost.CornerRadius = compact ? new CornerRadius(11) : new CornerRadius(16);
         trayPanel.Spacing = compact ? 4 : 6;
+        trayPanel.Margin = compact ? new Thickness(5, 0) : new Thickness(7, 0);
         trayLayer.Padding = compact ? new Thickness(2) : new Thickness(4);
         trayLayer.Margin = new Thickness(0, compact ? 3 : 4, 0, 0);
         controllerGuideLayer.Margin = new Thickness(0, compact ? 3 : 4, 0, 0);
-        controllerGuideLayer.Padding = compact ? new Thickness(7, 2) : new Thickness(10, 3);
-        controllerGuideText.FontSize = compact ? 10 : 11;
+        controllerGuideLayer.Padding = compact ? new Thickness(6, 1) : new Thickness(8, 2);
+        controllerGuideText.FontSize = compact ? 9.5 : 10.5;
         foreach (var button in trayButtons.Values) ApplyTrayButtonSizing(button, compact);
     }
 
     private static void ApplyTrayButtonSizing(Button button, bool compact)
     {
-        button.MinWidth = compact ? 100 : 112;
-        button.MaxWidth = compact ? 158 : 184;
-        button.Height = compact ? 38 : 42;
-        button.Padding = compact ? new Thickness(8, 4) : new Thickness(10, 5);
+        button.MinWidth = compact ? 76 : 72;
+        button.MaxWidth = compact ? 164 : 180;
+        button.Height = compact ? 36 : 38;
+        button.Padding = compact ? new Thickness(7, 3) : new Thickness(8, 4);
         button.FontSize = compact ? 11 : 12;
     }
 
@@ -797,6 +804,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private RenderedPage RenderPage(WidgetPresentationFrame frame)
     {
         var semanticRoot = renderer.Render(frame, IsCompact);
+        var fillViewport = frame.Snapshot.AdvancedPresentation is not null;
         Control page = frame.Snapshot.Root.Kind == ViewNodeKind.Scroll
             ? semanticRoot
             : new ScrollViewer
@@ -805,7 +813,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                VerticalContentAlignment = VerticalAlignment.Stretch,
+                VerticalContentAlignment = fillViewport ? VerticalAlignment.Stretch : VerticalAlignment.Top,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Stretch,
             };

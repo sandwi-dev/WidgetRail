@@ -64,6 +64,7 @@
     </Style>
     <Style Selector="ListBoxItem">
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
       <Setter Property="Padding" Value="4" />
       <Setter Property="Margin" Value="0,0,0,6" />
       <Setter Property="CornerRadius" Value="10" />
@@ -100,6 +101,7 @@
       <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
       <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="Button.primary-button, Button.primary-action">
       <Setter Property="Background" Value="{DynamicResource SurfaceSelectedBrush}" />
@@ -122,6 +124,8 @@
     <Style Selector="TextBlock.semantic-text">
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="LineHeight" Value="21" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
     <Style Selector="TextBlock.page-heading">
       <Setter Property="FontSize" Value="26" />

@@ -369,6 +369,133 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
+    public async Task Generic_intrinsic_layout_keeps_headings_action_rows_glyphs_and_advanced_slots_readable()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var ordinaryRoot = new ViewNode
+            {
+                Id = "intrinsic-root",
+                Kind = ViewNodeKind.Stack,
+                InputScopeId = "root-scope",
+                Children =
+                [
+                    new ViewNode
+                    {
+                        Id = "intrinsic-heading", Kind = ViewNodeKind.Text, Text = "Intrinsic settings heading",
+                        StyleClasses = ["page-heading"],
+                    },
+                    new ViewNode
+                    {
+                        Id = "intrinsic-grid", Kind = ViewNodeKind.Grid,
+                        GridMinimumColumnWidth = 260, GridMaximumColumns = 2,
+                        Children = Enumerable.Range(0, 5).Select(index => new ViewNode
+                        {
+                            Id = $"intrinsic-action-{index}", Kind = ViewNodeKind.Button,
+                            Text = $"Action row {index}", ActionId = $"action-{index}",
+                            StyleClasses = ["setting-row"],
+                        }).Append(new ViewNode
+                        {
+                            Id = "intrinsic-glyph-action", Kind = ViewNodeKind.Button,
+                            Text = "Play", AccessibilityLabel = "Play", Glyph = WidgetGlyph.Play,
+                            ActionId = "play", StyleClasses = ["transport-action"],
+                        }).ToArray(),
+                    },
+                ],
+            };
+            var ordinaryStyles = new Dictionary<string, BridgeNodeRenderStyles>
+            {
+                [ordinaryRoot.Id] = Style(new Dictionary<string, BridgeComputedStyleValue>
+                {
+                    ["height"] = Length(100, "vh"),
+                }),
+                ["intrinsic-heading"] = Style(new Dictionary<string, BridgeComputedStyleValue>
+                {
+                    ["font-size"] = Number(24), ["line-height"] = Number(1.2), ["max-lines"] = Number(1),
+                }),
+                ["intrinsic-glyph-action"] = Style(new Dictionary<string, BridgeComputedStyleValue>
+                {
+                    ["width"] = Length(46, "px"), ["height"] = Length(46, "px"),
+                }),
+            };
+            var advancedRoot = AdvancedPresetTree();
+            var smallScrollRoot = new ViewNode
+            {
+                Id = "small-intrinsic-scroll", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
+                InputScopeId = "root-scope",
+                Children = Enumerable.Range(0, 3).Select(index => new ViewNode
+                {
+                    Id = $"small-scroll-action-{index}", Kind = ViewNodeKind.ActionSurface,
+                    ActionId = $"open-{index}",
+                    Children =
+                    [
+                        new ViewNode { Id = $"small-scroll-title-{index}", Kind = ViewNodeKind.Text, Text = $"Connection {index}" },
+                        new ViewNode { Id = $"small-scroll-copy-{index}", Kind = ViewNodeKind.Text, Text = "A longer status line remains readable without an arbitrary fixed row height." },
+                    ],
+                }).ToArray(),
+            };
+            var ordinary = Frame("intrinsic.widget", 1, ordinaryRoot, ordinaryStyles);
+            var advanced = Frame(
+                "advanced.widget",
+                1,
+                advancedRoot,
+                advanced: new WidgetAdvancedPresentationView(
+                    WidgetAdvancedPresentationKind.LauncherExperience,
+                    WidgetAdvancedPresentationPreset.CoverWall));
+            var smallScroll = Frame("small-scroll.widget", 1, smallScrollRoot);
+            var fake = new FakePresentationSession(ordinary, advanced, smallScroll);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => shell.AdmittedWidgetId == ordinary.Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var heading = (TextBlock)SemanticControl(shell, "intrinsic-heading");
+            Assert.IsGreaterThanOrEqualTo(heading.LineHeight - 1, heading.Bounds.Height,
+                "An authored heading must retain its intrinsic line height.");
+            var actions = Enumerable.Range(0, 5)
+                .Select(index => BoundsInShell(SemanticControl(shell, $"intrinsic-action-{index}"), shell))
+                .ToArray();
+            for (var left = 0; left < actions.Length; left++)
+            for (var right = left + 1; right < actions.Length; right++)
+                Assert.IsFalse(Overlaps(actions[left], actions[right]),
+                    $"Intrinsic action rows {left} and {right} must not overlap.");
+            Assert.IsTrue(SemanticControl(shell, "intrinsic-glyph-action")
+                .GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "▶" && text.Bounds.Width > 0),
+                "A compact semantic button with a glyph must retain a meaningful visible icon.");
+
+            await coordinator.SelectWidgetAsync(advanced.Authority.WidgetId);
+            await WaitForAsync(() => shell.AdmittedWidgetId == advanced.Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var page = BoundsInShell(shell.PageHostElement, shell);
+            var details = BoundsInShell(SemanticControl(shell, "advanced-details"), shell);
+            var collection = BoundsInShell(SemanticControl(shell, "advanced-collection"), shell);
+            Assert.IsGreaterThanOrEqualTo(page.Width * 0.24, details.Width,
+                "The generic advanced details slot must receive a readable allocation.");
+            Assert.IsGreaterThanOrEqualTo(page.Width * 0.48, collection.Width,
+                "The generic advanced primary collection must receive the dominant allocation.");
+            Assert.IsFalse(Overlaps(details, collection));
+            var advancedHeading = (TextBlock)SemanticControl(shell, "advanced-heading");
+            Assert.IsGreaterThanOrEqualTo(advancedHeading.LineHeight - 1, advancedHeading.Bounds.Height);
+
+            await coordinator.SelectWidgetAsync(smallScroll.Authority.WidgetId);
+            await WaitForAsync(() => shell.AdmittedWidgetId == smallScroll.Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var smallRows = Enumerable.Range(0, 3)
+                .Select(index => BoundsInShell(SemanticControl(shell, $"small-scroll-action-{index}"), shell))
+                .ToArray();
+            Assert.IsTrue(smallRows.All(row => row.Height > 60),
+                "Ordinary small semantic collections must retain intrinsic multi-line row height.");
+            Assert.IsFalse(Overlaps(smallRows[0], smallRows[1]));
+            Assert.IsFalse(Overlaps(smallRows[1], smallRows[2]));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
     public async Task Adaptive_tray_scrolls_long_selected_item_fully_into_view_without_dominating_the_shell()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -400,6 +527,16 @@ public sealed class IntegrationAdapterTests
                 "The selected tray item must be scrolled fully into the viewport.");
             Assert.IsLessThanOrEqualTo(viewport.Right + 1, selectedBounds.Right,
                 "The selected tray item must not remain clipped at the right edge.");
+
+            await coordinator.SelectWidgetAsync(frames[0].Authority.WidgetId);
+            await WaitForAsync(() => shell.AdmittedWidgetId == frames[0].Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var firstSelectedBounds = BoundsInShell(shell.TrayButtons[0], shell);
+            Assert.IsGreaterThanOrEqualTo(viewport.Left - 1, firstSelectedBounds.Left,
+                "The selected first tray item must retain its leading edge.");
+            Assert.IsLessThanOrEqualTo(viewport.Right + 1, firstSelectedBounds.Right,
+                "The selected first tray item must remain fully inside the viewport.");
 
             foreach (var button in shell.TrayButtons)
             {
@@ -681,14 +818,25 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task Input_trace_does_not_infer_controller_routes_or_categories_from_a_visible_native_lease()
+    public async Task Input_trace_is_live_atomic_and_controller_frames_after_neutral_prime_remain_routable()
     {
         var path = Path.Combine(Path.GetTempPath(), $"avp004-input-{Guid.NewGuid():N}.json");
         try
         {
-            var trace = new InputTraceRecorder(path);
+            var trace = new InputTraceRecorder(path, "manual-tip");
             trace.Record("native-controller-state", true, false,
                 detail: "connected=False;primed=False;readPath=GameInputVisibleLease;foregroundExclusive=False");
+
+            using (var liveDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
+            {
+                Assert.AreEqual("manual-tip", liveDocument.RootElement.GetProperty("SourceCommit").GetString());
+                Assert.HasCount(1, liveDocument.RootElement.GetProperty("Entries").EnumerateArray().ToArray(),
+                    "A manual-session trace must be readable before normal shutdown.");
+            }
+            Assert.IsFalse(File.Exists(path + ".tmp"), "Atomic publication must not leave a live partial artifact.");
+            Assert.IsTrue(OverlayPlatformClient.IsControllerFrameRoutable(connected: true),
+                "The actionable frame after the native neutral-prime frame must remain routable when primed=0.");
+            Assert.IsFalse(OverlayPlatformClient.IsControllerFrameRoutable(connected: false));
 
             await trace.FlushAsync("exact-commit");
             using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
@@ -967,7 +1115,8 @@ public sealed class IntegrationAdapterTests
         long sequence,
         ViewNode root,
         IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null,
-        string? displayName = null)
+        string? displayName = null,
+        WidgetAdvancedPresentationView? advanced = null)
     {
         var descriptor = Descriptor(widgetId, displayName);
         var authority = new WidgetPresentationAuthority(
@@ -983,6 +1132,7 @@ public sealed class IntegrationAdapterTests
                 ActiveInputScopeId = "root-scope",
                 InitialFocusId = Flatten(root).FirstOrDefault(node => node.IsFocusable)?.Id,
                 Root = root,
+                AdvancedPresentation = advanced,
             },
             renderStyles ?? new Dictionary<string, BridgeNodeRenderStyles>());
     }
@@ -999,6 +1149,13 @@ public sealed class IntegrationAdapterTests
     {
         Kind = GbssValueKind.Color,
         Text = text,
+    };
+
+    private static BridgeComputedStyleValue Number(double number) => new()
+    {
+        Kind = GbssValueKind.Number,
+        Text = number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        Number = number,
     };
 
     private static BridgeNodeRenderStyles Style(IReadOnlyDictionary<string, BridgeComputedStyleValue> values) => new()
@@ -1074,6 +1231,63 @@ public sealed class IntegrationAdapterTests
                     Id = $"tile-{index}", Kind = ViewNodeKind.ActionSurface, ActionId = "open",
                     Children = [new ViewNode { Id = $"tile-label-{index}", Kind = ViewNodeKind.Text, Text = $"Item {index}" }],
                 }).ToArray(),
+            },
+        ],
+    };
+
+    private static ViewNode AdvancedPresetTree() => new()
+    {
+        Id = "advanced-root", Kind = ViewNodeKind.Stack, InputScopeId = "root-scope",
+        Children =
+        [
+            new ViewNode
+            {
+                Id = "advanced-details", Kind = ViewNodeKind.Stack,
+                AdvancedPresentationSlot = WidgetAdvancedPresentationSlot.DetailsPanel,
+                Children =
+                [
+                    new ViewNode
+                    {
+                        Id = "advanced-heading", Kind = ViewNodeKind.Text,
+                        Text = "Selected library item", StyleClasses = ["page-heading"],
+                    },
+                    new ViewNode { Id = "advanced-copy", Kind = ViewNodeKind.Text, Text = "Readable details remain intrinsic." },
+                ],
+            },
+            new ViewNode
+            {
+                Id = "advanced-collection", Kind = ViewNodeKind.Grid,
+                AdvancedPresentationSlot = WidgetAdvancedPresentationSlot.PrimaryCollection,
+                GridMinimumColumnWidth = 160, GridMaximumColumns = 3,
+                Children = Enumerable.Range(0, 6).Select(index => new ViewNode
+                {
+                    Id = $"advanced-item-{index}", Kind = ViewNodeKind.ActionSurface,
+                    ActionId = "open", Children = [new ViewNode { Id = $"advanced-label-{index}", Kind = ViewNodeKind.Text, Text = $"Item {index}" }],
+                }).ToArray(),
+            },
+            new ViewNode
+            {
+                Id = "advanced-navigation", Kind = ViewNodeKind.Row,
+                AdvancedPresentationSlot = WidgetAdvancedPresentationSlot.CollectionNavigation,
+                Children = [new ViewNode { Id = "advanced-tab", Kind = ViewNodeKind.Button, Text = "Library", ActionId = "library" }],
+            },
+            new ViewNode
+            {
+                Id = "advanced-source", Kind = ViewNodeKind.Stack,
+                AdvancedPresentationSlot = WidgetAdvancedPresentationSlot.SourceStatus,
+                Children = [new ViewNode { Id = "advanced-source-copy", Kind = ViewNodeKind.Text, Text = "Source ready" }],
+            },
+            new ViewNode
+            {
+                Id = "advanced-operation", Kind = ViewNodeKind.Stack,
+                AdvancedPresentationSlot = WidgetAdvancedPresentationSlot.OperationStatus,
+                Children = [new ViewNode { Id = "advanced-operation-copy", Kind = ViewNodeKind.Text, Text = "No pending operation" }],
+            },
+            new ViewNode
+            {
+                Id = "advanced-hints", Kind = ViewNodeKind.Stack,
+                AdvancedPresentationSlot = WidgetAdvancedPresentationSlot.ControllerHints,
+                Children = [new ViewNode { Id = "advanced-hint-copy", Kind = ViewNodeKind.Text, Text = "A Open  B Back" }],
             },
         ],
     };

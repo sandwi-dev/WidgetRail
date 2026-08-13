@@ -177,7 +177,10 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
             wasConnected = connected;
             InputReceived?.Invoke(this, new OverlayPlatformInput(Connected: connected));
         }
-        if (!connected || frame.Primed == 0) return;
+        // `primed` marks the one neutral-baseline frame emitted after activation,
+        // reconnect, or focus restoration. It is not a persistent readiness flag:
+        // later actionable frames correctly carry zero and must still be routed.
+        if (!IsControllerFrameRoutable(connected)) return;
 
         DispatchNavigation(frame.StickNavigation);
         DispatchNavigation(frame.DpadNavigation);
@@ -290,6 +293,8 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
 
     private void DispatchButton(ControllerButton button, ControllerEventPhase phase) =>
         InputReceived?.Invoke(this, new OverlayPlatformInput(Button: button, Phase: phase));
+
+    internal static bool IsControllerFrameRoutable(bool connected) => connected;
 
     private void OnEventAvailable(nint context) =>
         ThreadPool.QueueUserWorkItem(_ =>

@@ -66,7 +66,7 @@ Confirm-InvalidCompiledBindingFails
 Invoke-BoundedDotnet -Label 'AVP-004 focused Release tests' -Arguments @(
     'test', '--project', $testProject,
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '24')
+    '--output', 'Detailed', '--minimum-expected-tests', '25')
 
 $worktreeState = (& git -C $repositoryRoot status --porcelain)
 if ($worktreeState.Count -ne 0) {
