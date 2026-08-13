@@ -3,11 +3,12 @@ namespace GameBarAlternative.AvaloniaPrototype;
 internal sealed record PrototypeArguments(
     string? EvidencePath,
     string? SourceCommit,
+    string? FocusedVerificationCommit,
     int ExitAfterSeconds,
     string? InstallationPath,
     bool ReducedMotion)
 {
-    private static PrototypeArguments current = new(null, null, 0, null, false);
+    private static PrototypeArguments current = new(null, null, null, 0, null, false);
 
     public static PrototypeArguments Current => current;
 
@@ -15,6 +16,7 @@ internal sealed record PrototypeArguments(
     {
         string? evidencePath = null;
         string? sourceCommit = null;
+        string? focusedVerificationCommit = null;
         var exitAfterSeconds = 0;
         string? installationPath = null;
         var reducedMotion = false;
@@ -28,6 +30,9 @@ internal sealed record PrototypeArguments(
                     break;
                 case "--source-commit" when index + 1 < args.Count:
                     sourceCommit = args[++index];
+                    break;
+                case "--focused-verification-commit" when index + 1 < args.Count:
+                    focusedVerificationCommit = args[++index];
                     break;
                 case "--exit-after-seconds" when index + 1 < args.Count:
                     if (!int.TryParse(args[++index], out exitAfterSeconds) || exitAfterSeconds is < 1 or > 60)
@@ -45,6 +50,12 @@ internal sealed record PrototypeArguments(
             }
         }
 
-        current = new(evidencePath, sourceCommit, exitAfterSeconds, installationPath, reducedMotion);
+        current = new(
+            evidencePath,
+            sourceCommit,
+            focusedVerificationCommit,
+            exitAfterSeconds,
+            installationPath,
+            reducedMotion);
     }
 }

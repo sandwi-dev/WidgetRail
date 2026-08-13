@@ -6,6 +6,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $prototypeRoot = Split-Path -Parent $PSScriptRoot
+$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $prototypeRoot '..\..'))
+$artifactRoot = Join-Path $prototypeRoot 'artifacts\avp004'
+$focusedProofPath = Join-Path $artifactRoot 'focused-verification.json'
 $testProject = Join-Path $prototypeRoot 'tests\AvaloniaOverlayPrototype.Tests.csproj'
 $invalidFixture = Join-Path $prototypeRoot 'tests\fixtures\InvalidCompiledBinding\InvalidCompiledBinding.csproj'
 
@@ -63,4 +66,21 @@ Confirm-InvalidCompiledBindingFails
 Invoke-BoundedDotnet -Label 'AVP-004 focused Release tests' -Arguments @(
     'test', '--project', $testProject,
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '12')
+    '--output', 'Detailed', '--minimum-expected-tests', '15')
+
+$worktreeState = (& git -C $repositoryRoot status --porcelain)
+if ($worktreeState.Count -ne 0) {
+    throw 'Final focused verification proof requires a clean exact commit.'
+}
+$sourceCommit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+[ordered]@{
+    assignment = 'AVP-004-INTEGRATION'
+    sourceCommit = $sourceCommit
+    focusedSuitePassed = $true
+    genericMappingTest = 'Generic_renderer_maps_every_current_node_kind_to_standard_Avalonia_controls_and_UIA'
+    currentNodeKinds = @(
+        'Stack', 'Row', 'Scroll', 'Text', 'Button', 'Progress', 'Slider',
+        'Spacer', 'Image', 'Icon', 'LoadingIndicator', 'ActionSurface', 'Grid', 'TextEntry')
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $focusedProofPath -Encoding utf8
+Write-Host "Retained exact-commit focused proof: $focusedProofPath"

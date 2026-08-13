@@ -18,6 +18,7 @@ namespace GameBarAlternative.AvaloniaPrototype.Views;
 
 public sealed record IntegratedTransitionSample(
     string WidgetId,
+    long SnapshotSequence,
     TransitionPhase Phase,
     bool TransparentShellRoot,
     bool OpaqueBlackFallbackAbsent,
@@ -38,8 +39,15 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private readonly Dictionary<string, Button> trayButtons = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> focusMemory = new(StringComparer.Ordinal);
     private readonly List<IntegratedTransitionSample> transitionSamples = [];
+    private readonly object admissionGate = new();
     private readonly bool reducedMotion;
     private TaskCompletionSource<string?>? modalCompletion;
+    private Task admissionPump = Task.CompletedTask;
+    private CancellationTokenSource? activeAdmission;
+    private WidgetPresentationFrame? pendingFrame;
+    private RenderedPage? admittedPresentation;
+    private string? transitioningWidgetId;
+    private bool admissionPumpRunning;
     private WidgetPresentationFrame? renderedFrame;
     private bool disposed;
     private bool suppressFocusMemory;
@@ -70,7 +78,6 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             Background = Brush.Parse("#EB172230"),
             BorderBrush = Brush.Parse("#7092B7E8"),
             BorderThickness = new Thickness(1),
-            ClipToBounds = true,
             Child = transitionPresenter,
         };
         AutomationProperties.SetAutomationId(pageHost, "avp.integrated.content");
@@ -100,6 +107,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         var statusView = new IntegratedStatusView { DataContext = coordinator.ViewModel };
         statusLayer = new Border
         {
+            IsHitTestVisible = false,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(12),
@@ -112,6 +120,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
         controllerGuideLayer = new Border
         {
+            IsHitTestVisible = false,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(0, 0, 0, 94),
@@ -176,10 +185,18 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     public PageTransitionPresenter TransitionPresenter => transitionPresenter;
     public Control? ActivePage => transitionPresenter.AdmittedPage;
     public IReadOnlyList<Button> TrayButtons => trayButtons.Values.ToArray();
-    public int RealizedSemanticControls => renderer.RealizedControlCount;
+    public int RealizedSemanticControls => admittedPresentation is null
+        ? 0
+        : renderer.GetRealizedControlCount(admittedPresentation.SemanticRoot);
+    public int OwnedArtworkBitmapCount => renderer.OwnedArtworkBitmapCount;
+    public long OwnedDecodedArtworkBytes => renderer.OwnedDecodedArtworkBytes;
+    public int PendingArtworkRequestCount => renderer.PendingArtworkRequestCount;
+    public int TrackedRenderCount => renderer.TrackedRenderCount;
     public bool IsCompact => Bounds.Width <= 700 || Bounds.Height <= 430;
     public IReadOnlyList<IntegratedTransitionSample> TransitionSamples => transitionSamples.ToArray();
     public string? AdmittedWidgetId => admittedWidgetId;
+    public WidgetPresentationAuthority? AdmittedAuthority => admittedPresentation?.Frame.Authority;
+    public Task AdmissionIdle => admissionPump;
     internal string? RememberedFocus(string widgetId) => focusMemory.GetValueOrDefault(widgetId);
     internal bool FocusRestorationPending { get; private set; }
     internal string? LastFocusRestorationOutcome { get; private set; }
@@ -305,8 +322,20 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         disposed = true;
         coordinator.ViewModel.PropertyChanged -= OnViewModelChanged;
         coordinator.FramePublished -= OnFramePublished;
+        lock (admissionGate)
+        {
+            pendingFrame = null;
+            activeAdmission?.Cancel();
+        }
+        try { await admissionPump.ConfigureAwait(true); }
+        catch (OperationCanceledException) { }
         modalCompletion?.TrySetResult(null);
         transitionPresenter.Dispose();
+        if (admittedPresentation is not null) renderer.Release(admittedPresentation.SemanticRoot);
+        admittedPresentation = null;
+        renderer.Dispose();
+        activeAdmission?.Dispose();
+        activeAdmission = null;
         await coordinator.DisposeAsync();
     }
 
@@ -334,7 +363,48 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         UpdateTraySelection();
     }
 
-    private async void OnFramePublished(object? sender, WidgetPresentationFrame frame)
+    private void OnFramePublished(object? sender, WidgetPresentationFrame frame)
+    {
+        if (disposed) return;
+        lock (admissionGate)
+        {
+            pendingFrame = frame;
+            if (activeAdmission is not null &&
+                !string.Equals(transitioningWidgetId, frame.Authority.WidgetId, StringComparison.Ordinal))
+                activeAdmission.Cancel();
+            if (admissionPumpRunning) return;
+            admissionPumpRunning = true;
+            admissionPump = ProcessAdmissionsAsync();
+        }
+    }
+
+    private async Task ProcessAdmissionsAsync()
+    {
+        try
+        {
+            while (!disposed)
+            {
+                WidgetPresentationFrame? frame;
+                lock (admissionGate)
+                {
+                    frame = pendingFrame;
+                    pendingFrame = null;
+                    if (frame is null)
+                    {
+                        admissionPumpRunning = false;
+                        return;
+                    }
+                }
+                await AdmitFrameAsync(frame);
+            }
+        }
+        finally
+        {
+            lock (admissionGate) admissionPumpRunning = false;
+        }
+    }
+
+    private async Task AdmitFrameAsync(WidgetPresentationFrame frame)
     {
         if (disposed) return;
         var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control;
@@ -345,19 +415,74 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             rememberedBeforeReplacement is not null)
             restoreContentFocus = true;
         suppressFocusMemory = restoreContentFocus;
-        renderedFrame = frame;
-        var semanticRoot = renderer.Render(frame, IsCompact);
-        Control page = frame.Snapshot.Root.Kind == ViewNodeKind.Scroll
-            ? semanticRoot
-            : new ScrollViewer
+        var candidate = RenderPage(frame);
+        var sameWidget = string.Equals(
+            admittedPresentation?.Frame.Authority.WidgetId, frame.Authority.WidgetId, StringComparison.Ordinal);
+        if (sameWidget)
+        {
+            transitionPresenter.ReplaceWithoutTransition(candidate.Page);
+        }
+        else
+        {
+            using var admission = new CancellationTokenSource();
+            lock (admissionGate)
             {
-                Content = semanticRoot,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            };
-        await transitionPresenter.PresentAsync(page, cancellationToken: default,
-            sample: phase => RecordTransition(frame, phase));
+                activeAdmission = admission;
+                transitioningWidgetId = frame.Authority.WidgetId;
+            }
+            var outcome = await transitionPresenter.PresentAsync(
+                candidate.Page,
+                sample: phase => RecordTransition(frame, phase),
+                cancellationToken: admission.Token);
+            lock (admissionGate)
+            {
+                if (ReferenceEquals(activeAdmission, admission)) activeAdmission = null;
+                if (string.Equals(transitioningWidgetId, frame.Authority.WidgetId, StringComparison.Ordinal))
+                    transitioningWidgetId = null;
+            }
+            if (outcome != PresentationOutcome.Admitted ||
+                !transitionPresenter.IsExactlyAdmitted(candidate.Page))
+            {
+                renderer.Release(candidate.SemanticRoot);
+                suppressFocusMemory = false;
+                return;
+            }
+
+            // Same-widget refreshes that arrived during the page transition are coalesced and
+            // installed without exposing the older authority as the admitted presentation.
+            WidgetPresentationFrame? replacement;
+            lock (admissionGate)
+            {
+                replacement = pendingFrame is not null && string.Equals(
+                    pendingFrame.Authority.WidgetId, frame.Authority.WidgetId, StringComparison.Ordinal)
+                    ? pendingFrame
+                    : null;
+                if (replacement is not null) pendingFrame = null;
+            }
+            if (replacement is not null)
+            {
+                var latestCandidate = RenderPage(replacement);
+                transitionPresenter.ReplaceWithoutTransition(latestCandidate.Page);
+                renderer.Release(candidate.SemanticRoot);
+                candidate = latestCandidate;
+                frame = replacement;
+            }
+        }
+
+        if (!transitionPresenter.IsExactlyAdmitted(candidate.Page) ||
+            !Equals(coordinator.CurrentFrame?.Authority, frame.Authority))
+        {
+            renderer.Release(candidate.SemanticRoot);
+            suppressFocusMemory = false;
+            return;
+        }
+
+        var superseded = admittedPresentation;
+        admittedPresentation = candidate;
+        renderedFrame = frame;
         admittedWidgetId = frame.Authority.WidgetId;
+        if (superseded is not null && !ReferenceEquals(superseded.SemanticRoot, candidate.SemanticRoot))
+            renderer.Release(superseded.SemanticRoot);
         if (restoreContentFocus)
         {
             FocusRestorationPending = true;
@@ -384,6 +509,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         var background = pageHost.Background as ISolidColorBrush;
         transitionSamples.Add(new IntegratedTransitionSample(
             frame.Authority.WidgetId,
+            frame.Authority.SnapshotSequence,
             phase,
             Background is null || Background is ISolidColorBrush { Color.A: 0 },
             background is null || background.Color is not { A: 255, R: 0, G: 0, B: 0 },
@@ -399,20 +525,15 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
     private void OnSizeChanged(object? sender, SizeChangedEventArgs args)
     {
-        if (renderedFrame is null) return;
+        if (renderedFrame is null || admittedPresentation is null || activeAdmission is not null) return;
         var wasCompact = args.PreviousSize.Width <= 700 || args.PreviousSize.Height <= 430;
         if (wasCompact == IsCompact) return;
         RememberCurrentFocus();
-        var semanticRoot = renderer.Render(renderedFrame, IsCompact);
-        Control page = renderedFrame.Snapshot.Root.Kind == ViewNodeKind.Scroll
-            ? semanticRoot
-            : new ScrollViewer
-            {
-                Content = semanticRoot,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            };
-        transitionPresenter.Content = page;
+        var replacement = RenderPage(renderedFrame);
+        var prior = admittedPresentation;
+        transitionPresenter.ReplaceWithoutTransition(replacement.Page);
+        admittedPresentation = replacement;
+        renderer.Release(prior.SemanticRoot);
     }
 
     private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs args)
@@ -544,6 +665,25 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         WidgetGlyph.Wifi => "⌁", WidgetGlyph.Ethernet => "↔", WidgetGlyph.Connection => "●",
         _ => "◆",
     };
+
+    private RenderedPage RenderPage(WidgetPresentationFrame frame)
+    {
+        var semanticRoot = renderer.Render(frame, IsCompact);
+        Control page = frame.Snapshot.Root.Kind == ViewNodeKind.Scroll
+            ? semanticRoot
+            : new ScrollViewer
+            {
+                Content = semanticRoot,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            };
+        return new RenderedPage(frame, page, semanticRoot);
+    }
+
+    private sealed record RenderedPage(
+        WidgetPresentationFrame Frame,
+        Control Page,
+        Control SemanticRoot);
 
     private static IEnumerable<ViewNode> Flatten(ViewNode node)
     {

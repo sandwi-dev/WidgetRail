@@ -50,13 +50,17 @@ internal static class EvidenceScenario
             var widgetSamples = new List<WidgetEvidence>();
             var responsiveSamples = new List<ResponsiveEvidence>();
             var allNodeKinds = new HashSet<ViewNodeKind>();
+            var memoryOwnershipCheckpoints = new List<MemoryOwnershipCheckpoint>
+            {
+                CaptureMemoryOwnership("initial-frame", process, shell),
+            };
             foreach (var widget in shell.Coordinator.ViewModel.Widgets.ToArray())
             {
                 var stopwatch = Stopwatch.StartNew();
                 await shell.Coordinator.SelectWidgetAsync(widget.Id);
                 await WaitUntilAsync(() =>
                     shell.Coordinator.CurrentFrame?.Authority.WidgetId == widget.Id &&
-                    shell.AdmittedWidgetId == widget.Id &&
+                    Equals(shell.AdmittedAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
                     !shell.Coordinator.ViewModel.IsBusy,
                     TimeSpan.FromSeconds(20),
                     $"Widget '{widget.Id}' did not admit a complete frame.");
@@ -114,6 +118,7 @@ internal static class EvidenceScenario
                             (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity)));
                 }
             }
+            memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership("after-8-widget-4-size-traversal", process, shell));
 
             // The responsive traversal deliberately ends at the largest evidence fixture and creates
             // short-lived Avalonia visual trees. Return to the representative visible shell before
@@ -121,11 +126,8 @@ internal static class EvidenceScenario
             // remains included in the process-tree total below.
             window.Width = 1180;
             window.Height = 680;
-            var representativeWidget = shell.Coordinator.ViewModel.Widgets[0];
-            await shell.Coordinator.SelectWidgetAsync(representativeWidget.Id);
             await WaitUntilAsync(() =>
-                shell.Coordinator.CurrentFrame?.Authority.WidgetId == representativeWidget.Id &&
-                shell.AdmittedWidgetId == representativeWidget.Id &&
+                Equals(shell.AdmittedAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
                 !shell.Coordinator.ViewModel.IsBusy,
                 TimeSpan.FromSeconds(20),
                 "The representative visible frame did not settle before resource sampling.");
@@ -135,6 +137,7 @@ internal static class EvidenceScenario
             GC.WaitForPendingFinalizers();
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership("settled-visible-before-sample", process, shell));
 
             var visibleProcesses = FindCandidateProcesses(process, window.BridgeProcessId);
             var visibleIdle = await SampleAsync(visibleProcesses, TimeSpan.FromMilliseconds(1500));
@@ -142,22 +145,45 @@ internal static class EvidenceScenario
             await Task.Delay(TimeSpan.FromMilliseconds(500));
             var hiddenProcesses = FindCandidateProcesses(process, window.BridgeProcessId);
             var hiddenAfterUse = await SampleAsync(hiddenProcesses, TimeSpan.FromMilliseconds(2000));
+            memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership("after-hide", process, shell));
 
             await using var executableStream = File.OpenRead(executable);
             var executableHash = Convert.ToHexString(await SHA256.HashDataAsync(executableStream));
             var transitions = shell.TransitionSamples;
             var transitionPassed = shell.Coordinator.ViewModel.Widgets.All(widget =>
                 transitions.Where(sample => sample.WidgetId == widget.Id)
-                    .TakeLast(3)
-                    .Select(sample => sample.Phase)
-                    .SequenceEqual(Enum.GetValues<Navigation.TransitionPhase>())) &&
+                    .GroupBy(sample => sample.SnapshotSequence)
+                    .Any(group => group.Select(sample => sample.Phase)
+                        .SequenceEqual(Enum.GetValues<Navigation.TransitionPhase>()))) &&
                 transitions.All(sample => sample.TransparentShellRoot &&
                     sample.OpaqueBlackFallbackAbsent && sample.AvaloniaSurfaceCoveragePresent &&
                     sample.VisualChildCount > 0);
             var responsivePassed = responsiveSamples.All(sample => sample.ReachableOrScrollClipped);
             var allWidgetsPassed = widgetSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
                 widgetSamples.All(sample => !sample.HasFailure && sample.RequiredSemanticControlsPassed);
+            var focusedMappingProofPassed = !string.IsNullOrWhiteSpace(arguments.SourceCommit) &&
+                string.Equals(
+                    arguments.FocusedVerificationCommit,
+                    arguments.SourceCommit,
+                    StringComparison.OrdinalIgnoreCase);
             var totalVisibleMiB = visibleIdle.TotalPrivateMemoryBytes / 1024d / 1024d;
+            var candidatePrivateMemoryBytes = visibleIdle.Processes
+                .Where(entry => string.Equals(entry.Role, "AvaloniaOverlayPrototype", StringComparison.Ordinal))
+                .Sum(entry => entry.PrivateMemoryBytes);
+            var resourceOwnership = new ResourceOwnershipEvidence(
+                candidatePrivateMemoryBytes / 1024d / 1024d,
+                (visibleIdle.TotalPrivateMemoryBytes - candidatePrivateMemoryBytes) / 1024d / 1024d,
+                shell.TrackedRenderCount,
+                shell.OwnedArtworkBitmapCount,
+                shell.OwnedDecodedArtworkBytes,
+                shell.PendingArtworkRequestCount,
+                shell.TrackedRenderCount == 1 && shell.PendingArtworkRequestCount == 0);
+            var nodeKindCoverage = new NodeKindCoverageEvidence(
+                allNodeKinds.Order().ToArray(),
+                Enum.GetValues<ViewNodeKind>(),
+                focusedMappingProofPassed,
+                "Generic_renderer_maps_every_current_node_kind_to_standard_Avalonia_controls_and_UIA",
+                focusedMappingProofPassed);
 
             var artifact = new MeasurementArtifact(
                 "AVP-004-INTEGRATION",
@@ -176,8 +202,7 @@ internal static class EvidenceScenario
                 shell.Coordinator.ViewModel.Widgets.Count,
                 widgetSamples,
                 allWidgetsPassed,
-                allNodeKinds.Order().ToArray(),
-                allNodeKinds.SetEquals(Enum.GetValues<ViewNodeKind>()),
+                nodeKindCoverage,
                 responsiveSamples,
                 responsivePassed,
                 transitions,
@@ -186,6 +211,8 @@ internal static class EvidenceScenario
                     (arguments.ReducedMotion ? "ReducedMotion" : "unavailable"),
                 visibleIdle,
                 hiddenAfterUse,
+                resourceOwnership,
+                memoryOwnershipCheckpoints,
                 totalVisibleMiB,
                 totalVisibleMiB < 350,
                 totalVisibleMiB < 500,
@@ -205,7 +232,9 @@ internal static class EvidenceScenario
             Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
             await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(artifact, JsonOptions));
             await window.ShutdownAsync();
-            desktop.Shutdown(allWidgetsPassed && responsivePassed && transitionPassed && totalVisibleMiB < 500 ? 0 : 1);
+            desktop.Shutdown(allWidgetsPassed && responsivePassed && transitionPassed &&
+                nodeKindCoverage.RetainedFinalVerificationPassed &&
+                resourceOwnership.SupersededResourcesReleased && totalVisibleMiB < 500 ? 0 : 1);
         }
         catch (Exception exception)
         {
@@ -318,6 +347,27 @@ internal static class EvidenceScenario
             entries);
     }
 
+    private static MemoryOwnershipCheckpoint CaptureMemoryOwnership(
+        string phase,
+        Process process,
+        IntegratedShellView shell)
+    {
+        process.Refresh();
+        var managedLiveBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var managedHeapSizeBytes = GC.GetGCMemoryInfo().HeapSizeBytes;
+        var decodedArtworkBytes = shell.OwnedDecodedArtworkBytes;
+        return new MemoryOwnershipCheckpoint(
+            phase,
+            process.PrivateMemorySize64,
+            managedLiveBytes,
+            managedHeapSizeBytes,
+            shell.TrackedRenderCount,
+            shell.OwnedArtworkBitmapCount,
+            decodedArtworkBytes,
+            shell.PendingArtworkRequestCount,
+            Math.Max(0, process.PrivateMemorySize64 - managedHeapSizeBytes - decodedArtworkBytes));
+    }
+
     private static async Task WaitUntilAsync(
         Func<bool> predicate,
         TimeSpan timeout,
@@ -355,8 +405,7 @@ internal static class EvidenceScenario
         int InstalledWidgetCount,
         IReadOnlyList<WidgetEvidence> Widgets,
         bool AllInstalledWidgetsPassed,
-        IReadOnlyList<ViewNodeKind> ObservedNodeKinds,
-        bool EveryCurrentNodeKindObserved,
+        NodeKindCoverageEvidence NodeKindCoverage,
         IReadOnlyList<ResponsiveEvidence> ResponsiveFixtures,
         bool ResponsiveEvidencePassed,
         IReadOnlyList<IntegratedTransitionSample> TransitionSurfaceSamples,
@@ -364,6 +413,8 @@ internal static class EvidenceScenario
         string PageTransition,
         ResourceSample VisibleIdleSample,
         ResourceSample HiddenAfterUseSample,
+        ResourceOwnershipEvidence ResourceOwnership,
+        IReadOnlyList<MemoryOwnershipCheckpoint> MemoryOwnershipCheckpoints,
         double VisibleCandidateProcessTreePrivateMemoryMiB,
         bool VisiblePrivateMemoryUnder350MiB,
         bool VisiblePrivateMemoryUnder500MiB,
@@ -371,6 +422,33 @@ internal static class EvidenceScenario
         string ControllerDependency,
         string SessionDependency,
         IReadOnlyList<string> UnavailableOrManualEvidence);
+
+    private sealed record NodeKindCoverageEvidence(
+        IReadOnlyList<ViewNodeKind> OrdinaryLifecycleObservedKinds,
+        IReadOnlyList<ViewNodeKind> FocusedGenericMappingKinds,
+        bool FocusedGenericMappingProofPassed,
+        string FocusedGenericMappingTest,
+        bool RetainedFinalVerificationPassed);
+
+    private sealed record ResourceOwnershipEvidence(
+        double CandidateProcessPrivateMemoryMiB,
+        double BridgeWorkersAndProvidersPrivateMemoryMiB,
+        int TrackedRenderCount,
+        int OwnedArtworkBitmapCount,
+        long OwnedDecodedArtworkBytes,
+        int PendingArtworkRequestCount,
+        bool SupersededResourcesReleased);
+
+    private sealed record MemoryOwnershipCheckpoint(
+        string Phase,
+        long CandidatePrivateMemoryBytes,
+        long ManagedLiveBytes,
+        long ManagedHeapSizeBytes,
+        int TrackedRenderCount,
+        int OwnedArtworkBitmapCount,
+        long OwnedDecodedArtworkBytes,
+        int PendingArtworkRequestCount,
+        long NativeSkiaAndOtherUnattributedBytes);
 
     private sealed record WidgetEvidence(
         string WidgetId,

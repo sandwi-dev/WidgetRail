@@ -10,6 +10,7 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $prototypeRoot '..\..
 $artifactRoot = Join-Path $prototypeRoot 'artifacts\avp004'
 $runtimeRoot = Join-Path $artifactRoot 'runtime-win-x64'
 $measurementPath = Join-Path $artifactRoot 'measurement.json'
+$focusedProofPath = Join-Path $artifactRoot 'focused-verification.json'
 $project = Join-Path $prototypeRoot 'src\AvaloniaOverlayPrototype.csproj'
 $productOutput = Join-Path $repositoryRoot 'src\OverlayHost\out\Release'
 $sourceCommit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
@@ -42,6 +43,10 @@ function Invoke-BoundedProcess {
 if ((& git -C $repositoryRoot status --porcelain).Count -ne 0) {
     throw 'Measurement requires a clean exact commit.'
 }
+$focusedProof = Get-Content -Raw -LiteralPath $focusedProofPath | ConvertFrom-Json
+if (-not $focusedProof.focusedSuitePassed -or $focusedProof.sourceCommit -ne $sourceCommit) {
+    throw 'Focused generic mapping proof is missing or stale for the exact measurement commit.'
+}
 
 $resolvedArtifact = [System.IO.Path]::GetFullPath($artifactRoot)
 $resolvedRuntime = [System.IO.Path]::GetFullPath($runtimeRoot)
@@ -73,7 +78,8 @@ $executable = Join-Path $resolvedRuntime 'AvaloniaOverlayPrototype.exe'
 Invoke-BoundedProcess -FilePath $executable -Arguments @(
     '--installation', $resolvedRuntime,
     '--evidence', $measurementPath,
-    '--source-commit', $sourceCommit) -WorkingDirectory $resolvedRuntime `
+    '--source-commit', $sourceCommit,
+    '--focused-verification-commit', $focusedProof.sourceCommit) -WorkingDirectory $resolvedRuntime `
     -Label 'AVP-004 ordinary catalog/runtime lifecycle'
 
 if (-not (Test-Path -LiteralPath $measurementPath)) {
@@ -88,6 +94,8 @@ if ($measurement.executableProductVersion -notmatch [Regex]::Escape($sourceCommi
 if (-not $measurement.allInstalledWidgetsPassed) { throw 'One or more installed widgets failed the generic adapter lifecycle.' }
 if (-not $measurement.responsiveEvidencePassed) { throw 'Responsive containment/ScrollViewer evidence failed.' }
 if (-not $measurement.transitionSurfaceDiagnosticsPassed) { throw 'Transition start/mid/end surface evidence failed.' }
+if (-not $measurement.nodeKindCoverage.retainedFinalVerificationPassed) { throw 'Combined ordinary lifecycle and focused generic node-kind verification failed.' }
+if (-not $measurement.resourceOwnership.supersededResourcesReleased) { throw 'Superseded render or artwork resources remained owned at the visible sample.' }
 if (-not $measurement.visiblePrivateMemoryUnder500MiB) { throw 'Visible candidate process tree exceeded 500 MiB.' }
 if ($measurement.pageTransition -ne 'CrossFade') { throw 'The candidate did not retain Avalonia CrossFade.' }
 

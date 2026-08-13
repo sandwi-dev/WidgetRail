@@ -9,7 +9,7 @@
 | Action authority | Snapshot node/action declarations plus managed session validation | Revalidate current source-node/action/value/text shape, then send exact runtime/session/snapshot/scope authority. Controls never become authority. |
 | Guide, controller device lifecycle, repeat/neutral, foreground and placement | Accepted native `OverlayPlatformInterop` ABI v1 | Supply the single Avalonia HWND; marshal events to the UI dispatcher and route them through the shared shell/session. |
 | Focus and shell policy | Avalonia FocusManager/XYFocus and presentation services | Dynamic tray cycle, explicit content entry, Back restoration, per-widget focus-persistence memory, modal/status/controller-guide layers. |
-| Transition and reduced motion | Avalonia `TransitioningContentControl` / `CrossFade` | Own cancellation and start/mid/end visual-surface evidence; physical compositor verdict remains manual. |
+| Transition and reduced motion | Avalonia `TransitioningContentControl` / `CrossFade` | Serialize/coalesce latest-wins admission, return explicit admitted/superseded results, release superseded visual/artwork ownership, and retain start/mid/end visual-surface evidence; physical compositor verdict remains manual. |
 | Composition | Explicit manual root in `MainWindow` | Own one bridge child, one managed coordinator, one shell, and one native interop handle with bounded teardown. |
 
 No renderer branch names a widget/package/provider/element/style class or known

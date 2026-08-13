@@ -49,6 +49,8 @@ public sealed class IntegrationAdapterTests
             }
             Assert.AreEqual(Enum.GetValues<ViewNodeKind>().Length,
                 Flatten(frame.Snapshot.Root).Select(node => node.Kind).Distinct().Count());
+            Assert.IsTrue(controls.OfType<TextBlock>().All(item => !item.IsHitTestVisible));
+            Assert.IsTrue(controls.OfType<Image>().All(item => !item.IsHitTestVisible));
         });
     }
 
@@ -123,9 +125,12 @@ public sealed class IntegrationAdapterTests
             Assert.IsGreaterThan(2, renderer.RealizedControlCount);
             Assert.IsLessThan(100, renderer.RealizedControlCount,
                 "The virtualized collection must not realize a page-shaped control tree per item.");
+            Assert.AreEqual(540, ((ListBox)rendered).MaxHeight);
+            Assert.IsInstanceOfType<VirtualizingStackPanel>(((ListBox)rendered).ItemsPanel?.Build());
             var first = rendered.GetVisualDescendants().OfType<Control>()
                 .First(control => control.GetValue(SemanticTreeRenderer.CollectionItemKeyProperty) is not null);
             Assert.AreEqual("stable-00000", first.GetValue(SemanticTreeRenderer.CollectionItemKeyProperty));
+            Assert.AreEqual(88, first.Height);
             var automationId = AutomationProperties.GetAutomationId(first);
             StringAssert.Contains(automationId, "widget.node");
             window.Close();
@@ -291,6 +296,110 @@ public sealed class IntegrationAdapterTests
             Assert.IsTrue(shell.TransitionSamples.All(sample => sample.OpaqueBlackFallbackAbsent));
             window.Close();
         });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Same_widget_snapshot_supersession_admits_only_latest_exact_authority_and_releases_predecessor()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var initial = Frame("same.widget", 1, ButtonTree("one"));
+            var fake = new FakePresentationSession(initial);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: false);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+
+            await shell.InitializeAsync();
+            fake.Publish(Frame("same.widget", 2, ButtonTree("two")));
+            var latest = Frame("same.widget", 3, ButtonTree("three"));
+            fake.Publish(latest);
+
+            await WaitForAsync(() => Equals(shell.AdmittedAuthority, latest.Authority));
+            Assert.AreEqual(latest.Authority, shell.AdmittedAuthority);
+            Assert.AreEqual(latest.Authority, coordinator.CurrentFrame?.Authority);
+            Assert.AreEqual(1, shell.TrackedRenderCount);
+            CollectionAssert.AreEqual(
+                Enum.GetValues<GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase>(),
+                shell.TransitionSamples.Where(sample => sample.WidgetId == "same.widget")
+                    .GroupBy(sample => sample.SnapshotSequence)
+                    .Single(group => group.Any(sample => sample.Phase == GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase.Completion))
+                    .Select(sample => sample.Phase).ToArray());
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Newer_widget_supersedes_inflight_transition_without_stale_admission_or_focus()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var alpha = Frame("alpha.widget", 1, ButtonTree("alpha"));
+            var beta = Frame("beta.widget", 1, ButtonTree("beta"));
+            var gamma = Frame("gamma.widget", 1, ButtonTree("gamma"));
+            var fake = new FakePresentationSession(alpha, beta, gamma);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: false);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => Equals(shell.AdmittedAuthority, alpha.Authority));
+
+            await coordinator.SelectWidgetAsync(beta.Authority.WidgetId);
+            await coordinator.SelectWidgetAsync(gamma.Authority.WidgetId);
+
+            await WaitForAsync(() => Equals(shell.AdmittedAuthority, gamma.Authority));
+            await Task.Delay(200);
+            Assert.AreEqual(gamma.Authority, shell.AdmittedAuthority);
+            Assert.AreEqual(gamma.Authority, coordinator.CurrentFrame?.Authority);
+            Assert.AreEqual(1, shell.TrackedRenderCount);
+            Assert.IsFalse(shell.TransitionSamples.Any(sample =>
+                sample.WidgetId == beta.Authority.WidgetId &&
+                sample.Phase == GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase.Completion));
+            CollectionAssert.AreEqual(
+                Enum.GetValues<GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase>(),
+                shell.TransitionSamples.Where(sample => sample.WidgetId == gamma.Authority.WidgetId)
+                    .TakeLast(3).Select(sample => sample.Phase).ToArray());
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Releasing_superseded_render_cancels_artwork_and_disposes_owned_bitmaps()
+    {
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var renderer = new SemanticTreeRenderer(
+            _ => Task.CompletedTask,
+            async (_, _, token) =>
+            {
+                using var registration = token.Register(() => cancellationObserved.TrySetResult());
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return ReadOnlyMemory<byte>.Empty;
+            },
+            _ => Task.FromResult<string?>(null));
+        var pending = renderer.Render(Frame("art.widget", 1, new ViewNode
+        {
+            Id = "art", Kind = ViewNodeKind.Image, ArtworkHandle = "cover",
+        }), false);
+        Assert.AreEqual(1, renderer.PendingArtworkRequestCount);
+        renderer.Release(pending);
+        await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForAsync(() => renderer.PendingArtworkRequestCount == 0);
+        Assert.AreEqual(0, renderer.TrackedRenderCount);
+        Assert.AreEqual(0, renderer.OwnedArtworkBitmapCount);
+
+        var inline = renderer.Render(Frame("art.widget", 2, new ViewNode
+        {
+            Id = "inline", Kind = ViewNodeKind.Image,
+            ImageSource = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        }), false);
+        Assert.AreEqual(1, renderer.OwnedArtworkBitmapCount);
+        renderer.Release(inline);
+        Assert.AreEqual(0, renderer.OwnedArtworkBitmapCount);
+        renderer.Dispose();
     }
 
     [TestMethod]

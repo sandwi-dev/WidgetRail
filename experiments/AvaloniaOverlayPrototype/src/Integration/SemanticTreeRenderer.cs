@@ -4,6 +4,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -23,7 +24,7 @@ public sealed record SemanticActionRequest(
     double? RequestedValue = null,
     string? CommittedText = null);
 
-public sealed class SemanticTreeRenderer
+public sealed class SemanticTreeRenderer : IDisposable
 {
     public static readonly AttachedProperty<string?> SemanticNodeIdProperty =
         AvaloniaProperty.RegisterAttached<SemanticTreeRenderer, Control, string?>("SemanticNodeId");
@@ -35,10 +36,9 @@ public sealed class SemanticTreeRenderer
     private readonly Func<SemanticActionRequest, Task> dispatch;
     private readonly Func<WidgetPresentationAuthority, string, CancellationToken, Task<ReadOnlyMemory<byte>>> artwork;
     private readonly Func<ViewNode, Task<string?>> requestText;
-    private readonly Dictionary<string, Control> focusableById = new(StringComparer.Ordinal);
-    private readonly List<(Control Control, FocusNeighbors Neighbors)> pendingNeighbors = [];
-    private WidgetPresentationFrame frame = null!;
-    private bool compact;
+    private readonly Dictionary<Control, RenderContext> ownedRenders = [];
+    private RenderContext? latest;
+    private bool disposed;
 
     public SemanticTreeRenderer(
         Func<SemanticActionRequest, Task> dispatch,
@@ -50,36 +50,59 @@ public sealed class SemanticTreeRenderer
         this.requestText = requestText;
     }
 
-    public int RealizedControlCount { get; private set; }
+    public int RealizedControlCount => latest?.RealizedControlCount ?? 0;
+    public int OwnedArtworkBitmapCount => ownedRenders.Values.Sum(context => context.Resources.OwnedBitmapCount);
+    public long OwnedDecodedArtworkBytes => ownedRenders.Values.Sum(context => context.Resources.OwnedDecodedBitmapBytes);
+    public int PendingArtworkRequestCount => ownedRenders.Values.Sum(context => context.Resources.PendingArtworkRequestCount);
+    public int TrackedRenderCount => ownedRenders.Count;
 
     public Control Render(WidgetPresentationFrame currentFrame, bool isCompact)
     {
-        frame = currentFrame;
-        compact = isCompact;
-        focusableById.Clear();
-        pendingNeighbors.Clear();
-        RealizedControlCount = 0;
-        var root = frame.Snapshot.AdvancedPresentation is { } advanced
-            ? RenderAdvanced(frame.Snapshot.Root, advanced)
-            : RenderNode(frame.Snapshot.Root);
-        ApplyFocusNeighbors();
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var context = new RenderContext(currentFrame, isCompact);
+        latest = context;
+        var root = currentFrame.Snapshot.AdvancedPresentation is { } advanced
+            ? RenderAdvanced(currentFrame.Snapshot.Root, advanced, context)
+            : RenderNode(currentFrame.Snapshot.Root, context);
+        ApplyFocusNeighbors(context);
+        ownedRenders.Add(root, context);
         return root;
     }
 
-    private Control RenderNode(ViewNode node)
+    public int GetRealizedControlCount(Control semanticRoot) =>
+        ownedRenders.TryGetValue(semanticRoot, out var context) ? context.RealizedControlCount : 0;
+
+    public void Release(Control semanticRoot)
     {
-        if (!IsVisible(node)) return new Border { IsVisible = false };
+        if (!ownedRenders.Remove(semanticRoot, out var context)) return;
+        context.Resources.Dispose();
+        if (ReferenceEquals(latest, context)) latest = null;
+    }
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        foreach (var context in ownedRenders.Values.Distinct()) context.Resources.Dispose();
+        ownedRenders.Clear();
+        latest = null;
+    }
+
+    private Control RenderNode(ViewNode node, RenderContext context)
+    {
+        if (!IsVisible(node, context)) return new Border { IsVisible = false };
 
         Control control = node.Kind switch
         {
-            ViewNodeKind.Stack => RenderStack(node, Orientation.Vertical),
-            ViewNodeKind.Row => RenderStack(node, Orientation.Horizontal),
-            ViewNodeKind.Scroll => RenderScroll(node),
+            ViewNodeKind.Stack => RenderStack(node, Orientation.Vertical, context),
+            ViewNodeKind.Row => RenderStack(node, Orientation.Horizontal, context),
+            ViewNodeKind.Scroll => RenderScroll(node, context),
             ViewNodeKind.Text => new TextBlock
             {
                 Text = node.Text ?? string.Empty,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
             },
             ViewNodeKind.Button => RenderButton(node),
             ViewNodeKind.Progress => new ProgressBar
@@ -89,48 +112,51 @@ public sealed class SemanticTreeRenderer
                 Value = node.Value ?? 0,
                 IsIndeterminate = node.Value is null,
                 MinHeight = 8,
+                IsHitTestVisible = false,
             },
             ViewNodeKind.Slider => RenderSlider(node),
-            ViewNodeKind.Spacer => new Border { MinHeight = 8, MinWidth = 8 },
-            ViewNodeKind.Image => RenderImage(node),
+            ViewNodeKind.Spacer => new Border { MinHeight = 8, MinWidth = 8, IsHitTestVisible = false },
+            ViewNodeKind.Image => RenderImage(node, context),
             ViewNodeKind.Icon => new TextBlock
             {
                 Text = Glyph(node.Glyph),
                 FontSize = 22,
                 VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
             },
             ViewNodeKind.LoadingIndicator => new ProgressBar
             {
                 IsIndeterminate = true,
                 Width = IndicatorSize(node.IndicatorSize),
                 Height = IndicatorSize(node.IndicatorSize),
+                IsHitTestVisible = false,
             },
-            ViewNodeKind.ActionSurface => RenderActionSurface(node),
-            ViewNodeKind.Grid => RenderGrid(node),
+            ViewNodeKind.ActionSurface => RenderActionSurface(node, context),
+            ViewNodeKind.Grid => RenderGrid(node, context),
             ViewNodeKind.TextEntry => RenderTextEntry(node),
             _ => throw new ArgumentOutOfRangeException(nameof(node.Kind)),
         };
 
-        RealizedControlCount++;
-        ApplyIdentity(control, node);
-        ApplyStyle(control, node);
+        context.RealizedControlCount++;
+        ApplyIdentity(control, node, context);
+        ApplyStyle(control, node, context);
         if (node.IsFocusable)
         {
-            focusableById[node.Id] = control;
-            if (node.Focus is not null) pendingNeighbors.Add((control, node.Focus));
+            context.FocusableById[node.Id] = control;
+            if (node.Focus is not null) context.PendingNeighbors.Add((control, node.Focus));
         }
 
         return control;
     }
 
-    private Control RenderStack(ViewNode node, Orientation orientation)
+    private Control RenderStack(ViewNode node, Orientation orientation, RenderContext context)
     {
         Panel panel = orientation == Orientation.Vertical
             ? new StackPanel { Orientation = orientation, Spacing = 8 }
             : new WrapPanel { Orientation = orientation };
         foreach (var child in node.Children)
         {
-            var rendered = RenderNode(child);
+            var rendered = RenderNode(child, context);
             rendered.Margin = orientation == Orientation.Horizontal
                 ? new Thickness(0, 0, 8, 8)
                 : new Thickness(0, 0, 0, 8);
@@ -140,7 +166,7 @@ public sealed class SemanticTreeRenderer
         return panel;
     }
 
-    private Control RenderScroll(ViewNode node)
+    private Control RenderScroll(ViewNode node, RenderContext context)
     {
         if (node.ScrollAxis == ScrollAxis.Horizontal)
         {
@@ -148,19 +174,11 @@ public sealed class SemanticTreeRenderer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = RenderStack(node, Orientation.Horizontal),
+                Content = RenderStack(node, Orientation.Horizontal, context),
             };
         }
 
-        var list = new ListBox
-        {
-            ItemsSource = node.Children,
-            SelectionMode = SelectionMode.Single,
-            MinHeight = 80,
-        };
-        list.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<ViewNode>(
-            (item, _) => item is null ? null : RenderVirtualizedItem(item), supportsRecycling: true);
-        return list;
+        return CreateVirtualizedList(node, context);
     }
 
     private Button RenderButton(ViewNode node)
@@ -208,7 +226,7 @@ public sealed class SemanticTreeRenderer
         return slider;
     }
 
-    private Control RenderImage(ViewNode node)
+    private Control RenderImage(ViewNode node, RenderContext context)
     {
         var image = new Image
         {
@@ -219,6 +237,7 @@ public sealed class SemanticTreeRenderer
                 _ => Stretch.Uniform,
             },
             MinHeight = 72,
+            IsHitTestVisible = false,
         };
         if (node.ImageSource is { Length: > 0 } source)
         {
@@ -228,11 +247,15 @@ public sealed class SemanticTreeRenderer
                 if (source.StartsWith(dataPrefix, StringComparison.Ordinal))
                 {
                     using var stream = new MemoryStream(Convert.FromBase64String(source[dataPrefix.Length..]));
-                    image.Source = new Bitmap(stream);
+                    var bitmap = new Bitmap(stream);
+                    if (context.Resources.TryOwn(bitmap)) image.Source = bitmap;
+                    else bitmap.Dispose();
                 }
                 else if (Uri.TryCreate(source, UriKind.Absolute, out var uri))
                 {
-                    image.Source = new Bitmap(uri.ToString());
+                    var bitmap = new Bitmap(uri.ToString());
+                    if (context.Resources.TryOwn(bitmap)) image.Source = bitmap;
+                    else bitmap.Dispose();
                 }
             }
             catch (Exception exception) when (exception is FormatException or ArgumentException or IOException)
@@ -242,16 +265,16 @@ public sealed class SemanticTreeRenderer
         }
         else if (node.ArtworkHandle is { Length: > 0 } handle)
         {
-            _ = LoadArtworkAsync(image, frame.Authority, handle);
+            _ = LoadArtworkAsync(image, context.Frame.Authority, handle, context.Resources);
         }
         return image;
     }
 
-    private Button RenderActionSurface(ViewNode node)
+    private Button RenderActionSurface(ViewNode node, RenderContext context)
     {
         var content = RenderStack(node, node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal
             ? Orientation.Horizontal
-            : Orientation.Vertical);
+            : Orientation.Vertical, context);
         var button = new Button
         {
             Content = content,
@@ -267,20 +290,10 @@ public sealed class SemanticTreeRenderer
         return button;
     }
 
-    private Control RenderGrid(ViewNode node)
+    private Control RenderGrid(ViewNode node, RenderContext context)
     {
         if (node.Children.Count > 64)
-        {
-            var virtualized = new ListBox
-            {
-                ItemsSource = node.Children,
-                SelectionMode = SelectionMode.Single,
-                MinHeight = 80,
-            };
-            virtualized.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<ViewNode>(
-                (item, _) => item is null ? null : RenderVirtualizedItem(item), supportsRecycling: true);
-            return virtualized;
-        }
+            return CreateVirtualizedList(node, context);
 
         var minimum = Math.Max(96, node.GridMinimumColumnWidth ?? 180);
         var columns = Math.Clamp((int)Math.Floor(760 / minimum), 1, node.GridMaximumColumns ?? 8);
@@ -290,7 +303,7 @@ public sealed class SemanticTreeRenderer
         for (var index = 0; index < node.Children.Count; index++)
         {
             if (index % columns == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var child = RenderNode(node.Children[index]);
+            var child = RenderNode(node.Children[index], context);
             Grid.SetColumn(child, index % columns);
             Grid.SetRow(child, index / columns);
             child.Margin = new Thickness(4);
@@ -299,12 +312,12 @@ public sealed class SemanticTreeRenderer
         return grid;
     }
 
-    private Control RenderAdvanced(ViewNode root, WidgetAdvancedPresentationView advanced)
+    private Control RenderAdvanced(ViewNode root, WidgetAdvancedPresentationView advanced, RenderContext context)
     {
         var slots = Flatten(root)
             .Where(node => node.AdvancedPresentationSlot is not null)
             .ToDictionary(node => node.AdvancedPresentationSlot!.Value);
-        if (slots.Count == 0) return RenderNode(root);
+        if (slots.Count == 0) return RenderNode(root, context);
 
         var layout = new Grid
         {
@@ -331,7 +344,7 @@ public sealed class SemanticTreeRenderer
         void Add(WidgetAdvancedPresentationSlot slot, int column, int row, int columnSpan = 1, int rowSpan = 1)
         {
             if (!slots.TryGetValue(slot, out var node)) return;
-            var control = RenderNode(node);
+            var control = RenderNode(node, context);
             control.Margin = new Thickness(5);
             Grid.SetColumn(control, column);
             Grid.SetRow(control, row);
@@ -362,23 +375,23 @@ public sealed class SemanticTreeRenderer
         return button;
     }
 
-    private void ApplyIdentity(Control control, ViewNode node)
+    private void ApplyIdentity(Control control, ViewNode node, RenderContext context)
     {
         control.SetValue(SemanticNodeIdProperty, node.Id);
         control.SetValue(FocusPersistenceIdProperty, node.FocusPersistenceId ?? node.Id);
         control.SetValue(CollectionItemKeyProperty, node.CollectionItemKey);
         AutomationProperties.SetAutomationId(control,
-            SemanticAutomationIdentity.ForWidgetNode(frame.Authority.WidgetId, node));
+            SemanticAutomationIdentity.ForWidgetNode(context.Frame.Authority.WidgetId, node));
         AutomationProperties.SetName(control,
             node.AccessibilityLabel ?? node.Text ?? node.Kind.ToString());
         if (!string.IsNullOrWhiteSpace(node.AccessibilityValue))
             AutomationProperties.SetHelpText(control, node.AccessibilityValue);
     }
 
-    private void ApplyStyle(Control control, ViewNode node)
+    private void ApplyStyle(Control control, ViewNode node, RenderContext context)
     {
         foreach (var styleClass in node.StyleClasses.Where(IsSafeClass)) control.Classes.Add(styleClass);
-        if (!frame.RenderStyles.TryGetValue(node.Id, out var styles)) return;
+        if (!context.Frame.RenderStyles.TryGetValue(node.Id, out var styles)) return;
         ApplyComputedStyle(control, styles.Base);
         control.GotFocus += (_, _) => ApplyComputedStyle(control, styles.Focused);
         control.LostFocus += (_, _) => ApplyComputedStyle(control, styles.Base);
@@ -441,9 +454,9 @@ public sealed class SemanticTreeRenderer
             paddingControl.Padding = new Thickness(padding);
     }
 
-    private void ApplyFocusNeighbors()
+    private static void ApplyFocusNeighbors(RenderContext context)
     {
-        foreach (var (control, neighbors) in pendingNeighbors)
+        foreach (var (control, neighbors) in context.PendingNeighbors)
         {
             Set(XYFocus.UpProperty, neighbors.Up);
             Set(XYFocus.DownProperty, neighbors.Down);
@@ -452,38 +465,81 @@ public sealed class SemanticTreeRenderer
 
             void Set(AttachedProperty<InputElement> property, string? targetId)
             {
-                if (targetId is not null && focusableById.TryGetValue(targetId, out var target))
+                if (targetId is not null && context.FocusableById.TryGetValue(targetId, out var target))
                     control.SetValue(property, target);
             }
         }
     }
 
-    private Control RenderVirtualizedItem(ViewNode node)
+    private Control RenderVirtualizedItem(ViewNode node, RenderContext context)
     {
-        var control = RenderNode(node);
-        Avalonia.Threading.Dispatcher.UIThread.Post(ApplyFocusNeighbors, Avalonia.Threading.DispatcherPriority.Loaded);
+        var control = RenderNode(node, context);
+        control.Height = 88;
+        control.VerticalAlignment = VerticalAlignment.Stretch;
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => ApplyFocusNeighbors(context), Avalonia.Threading.DispatcherPriority.Loaded);
         return control;
     }
 
-    private async Task LoadArtworkAsync(Image image, WidgetPresentationAuthority authority, string handle)
+    private ListBox CreateVirtualizedList(ViewNode node, RenderContext context)
     {
-        try
+        var list = new ListBox
         {
-            var bytes = await artwork(authority, handle, default);
-            await using var stream = new MemoryStream(bytes.ToArray(), writable: false);
-            var bitmap = new Bitmap(stream);
-            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => image.Source = bitmap);
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
-        {
-            AutomationProperties.SetHelpText(image, "Artwork unavailable");
-        }
+            ItemsSource = node.Children,
+            SelectionMode = SelectionMode.Single,
+            MinHeight = 80,
+            MaxHeight = 540,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            // Avalonia 12.1.1 does not expose the newer BufferFactor property; its supported
+            // VirtualizingStackPanel default is the desired zero additional viewport buffer.
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+        };
+        list.ItemTemplate = new FuncDataTemplate<ViewNode>(
+            (item, _) => item is null ? null : RenderVirtualizedItem(item, context), supportsRecycling: true);
+        return list;
     }
 
-    private bool IsVisible(ViewNode node) => node.VisibleWhen switch
+    private async Task LoadArtworkAsync(
+        Image image,
+        WidgetPresentationAuthority authority,
+        string handle,
+        RenderResources resources)
     {
-        ResponsiveVisibility.CompactOnly => compact,
-        ResponsiveVisibility.ExpandedOnly => !compact,
+        resources.BeginArtworkRequest();
+        try
+        {
+            var bytes = await artwork(authority, handle, resources.Token).ConfigureAwait(false);
+            resources.Token.ThrowIfCancellationRequested();
+            await using var stream = new MemoryStream(bytes.ToArray(), writable: false);
+            var bitmap = new Bitmap(stream);
+            if (!resources.TryOwn(bitmap))
+            {
+                bitmap.Dispose();
+                return;
+            }
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                () =>
+                {
+                    resources.Token.ThrowIfCancellationRequested();
+                    image.Source = bitmap;
+                },
+                Avalonia.Threading.DispatcherPriority.Normal,
+                resources.Token);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not OperationCanceledException)
+        {
+            if (!resources.Token.IsCancellationRequested)
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                    () => AutomationProperties.SetHelpText(image, "Artwork unavailable"));
+        }
+        catch (OperationCanceledException) when (resources.Token.IsCancellationRequested) { }
+        finally { resources.EndArtworkRequest(); }
+    }
+
+    private static bool IsVisible(ViewNode node, RenderContext context) => node.VisibleWhen switch
+    {
+        ResponsiveVisibility.CompactOnly => context.Compact,
+        ResponsiveVisibility.ExpandedOnly => !context.Compact,
         _ => true,
     };
 
@@ -507,6 +563,64 @@ public sealed class SemanticTreeRenderer
         LoadingIndicatorSize.Large => 48,
         _ => 28,
     };
+
+    private sealed class RenderContext(WidgetPresentationFrame frame, bool compact)
+    {
+        public WidgetPresentationFrame Frame { get; } = frame;
+        public bool Compact { get; } = compact;
+        public RenderResources Resources { get; } = new();
+        public Dictionary<string, Control> FocusableById { get; } = new(StringComparer.Ordinal);
+        public List<(Control Control, FocusNeighbors Neighbors)> PendingNeighbors { get; } = [];
+        public int RealizedControlCount { get; set; }
+    }
+
+    private sealed class RenderResources : IDisposable
+    {
+        private readonly object gate = new();
+        private readonly CancellationTokenSource lifetime = new();
+        private readonly List<Bitmap> bitmaps = [];
+        private long decodedBitmapBytes;
+        private int pendingArtworkRequests;
+        private bool disposed;
+
+        public CancellationToken Token => lifetime.Token;
+        public int PendingArtworkRequestCount => Volatile.Read(ref pendingArtworkRequests);
+        public int OwnedBitmapCount
+        {
+            get { lock (gate) return bitmaps.Count; }
+        }
+        public long OwnedDecodedBitmapBytes => Interlocked.Read(ref decodedBitmapBytes);
+
+        public void BeginArtworkRequest() => Interlocked.Increment(ref pendingArtworkRequests);
+        public void EndArtworkRequest() => Interlocked.Decrement(ref pendingArtworkRequests);
+
+        public bool TryOwn(Bitmap bitmap)
+        {
+            lock (gate)
+            {
+                if (disposed || lifetime.IsCancellationRequested) return false;
+                bitmaps.Add(bitmap);
+                decodedBitmapBytes += checked((long)bitmap.PixelSize.Width * bitmap.PixelSize.Height * 4);
+                return true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Bitmap[] owned;
+            lock (gate)
+            {
+                if (disposed) return;
+                disposed = true;
+                lifetime.Cancel();
+                owned = bitmaps.ToArray();
+                bitmaps.Clear();
+                decodedBitmapBytes = 0;
+            }
+            foreach (var bitmap in owned) bitmap.Dispose();
+            lifetime.Dispose();
+        }
+    }
 
     private static string Glyph(WidgetGlyph? glyph) => glyph switch
     {
