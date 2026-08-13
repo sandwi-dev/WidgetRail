@@ -1,9 +1,27 @@
 using Avalonia.Controls;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 
 namespace GameBarAlternative.AvaloniaPrototype.Views;
 
 public sealed class PrototypePageFactory
 {
+    private readonly SettingsPageViewModel settings;
+    private readonly AudioMixerPageViewModel audio;
+    private readonly SpotifyPlayerPageViewModel spotify;
+    private readonly GameLauncherViewModel launcher;
+
+    public PrototypePageFactory(
+        SettingsPageViewModel settings,
+        AudioMixerPageViewModel audio,
+        SpotifyPlayerPageViewModel spotify,
+        GameLauncherViewModel launcher)
+    {
+        this.settings = settings;
+        this.audio = audio;
+        this.spotify = spotify;
+        this.launcher = launcher;
+    }
+
     public async Task<Control> CreateAsync(PrototypeRoute route, CancellationToken cancellationToken)
     {
         var readinessDelay = route switch
@@ -18,12 +36,17 @@ public sealed class PrototypePageFactory
         await Task.Delay(readinessDelay, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (route == PrototypeRoute.GameLauncher)
+        {
+            await launcher.ActivateAsync(cancellationToken);
+        }
+
         return route switch
         {
-            PrototypeRoute.Settings => new SettingsPage(),
-            PrototypeRoute.AudioMixer => new AudioMixerPage(),
-            PrototypeRoute.SpotifyPlayer => new SpotifyPlayerPage(),
-            PrototypeRoute.GameLauncher => new GameLauncherPage(),
+            PrototypeRoute.Settings => new SettingsPage(settings),
+            PrototypeRoute.AudioMixer => new AudioMixerPage(audio),
+            PrototypeRoute.SpotifyPlayer => new SpotifyPlayerPage(spotify),
+            PrototypeRoute.GameLauncher => new GameLauncherPage(launcher),
             _ => throw new ArgumentOutOfRangeException(nameof(route)),
         };
     }

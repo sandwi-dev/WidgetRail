@@ -7,24 +7,39 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using GameBarAlternative.AvaloniaPrototype.Composition;
 using GameBarAlternative.AvaloniaPrototype.Diagnostics;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 
 namespace GameBarAlternative.AvaloniaPrototype.Views;
 
 public sealed partial class PrototypeShellView : UserControl, IDisposable
 {
     private readonly NavigationCoordinator<Control> navigation = new();
-    private readonly PrototypePageFactory pageFactory = new();
+    private readonly PrototypeComposition composition;
+    private readonly PrototypePageFactory pageFactory;
+    private readonly PrototypeShellViewModel viewModel;
+    private readonly bool ownsComposition;
     private CancellationTokenSource transitionLifetime = new();
     private readonly Dictionary<PrototypeRoute, string> lastPageFocus = [];
     private bool contentOpen = true;
     private bool suspended;
     private PrototypeRoute selectedRoute = PrototypeRoute.Settings;
 
-    public PrototypeShellView()
+    public PrototypeShellView() : this(PrototypeComposition.Create(), ownsComposition: true)
     {
+    }
+
+    internal PrototypeShellView(PrototypeComposition composition, bool ownsComposition = false)
+    {
+        this.composition = composition;
+        this.ownsComposition = ownsComposition;
+        pageFactory = composition.PageFactory;
+        viewModel = composition.Shell;
         InitializeComponent();
+        DataContext = viewModel;
+        viewModel.RouteRequested += RouteRequested;
         ContentRegionControl.Transitions =
         [
             new DoubleTransition
@@ -44,8 +59,6 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         this.FindControl<PageTransitionPresenter>("TransitionPresenter")!;
 
     private Border LoadingStatusControl => this.FindControl<Border>("LoadingStatus")!;
-
-    private TextBlock LoadingTextControl => this.FindControl<TextBlock>("LoadingText")!;
 
     private Button SettingsTrayButtonControl => this.FindControl<Button>("SettingsTrayButton")!;
 
@@ -77,11 +90,15 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         }
 
         selectedRoute = route;
+        if (route != PrototypeRoute.GameLauncher)
+        {
+            composition.Launcher.Deactivate();
+        }
 
         contentOpen = true;
         ContentRegionControl.IsVisible = true;
         ContentRegionControl.Opacity = 1;
-        LoadingTextControl.Text = $"Preparing {RouteTitle(route)}…";
+        viewModel.BeginNavigation(route, RouteTitle(route));
         AutomationProperties.SetName(LoadingStatusControl, $"Preparing {RouteTitle(route)}");
         LoadingStatusControl.IsVisible = true;
 
@@ -96,6 +113,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
             if (!navigation.IsLoading)
             {
                 LoadingStatusControl.IsVisible = false;
+                viewModel.CancelNavigation();
             }
 
             return result;
@@ -120,6 +138,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         }
 
         LoadingStatusControl.IsVisible = false;
+        viewModel.CompleteNavigation(route);
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         FrameDiagnostics.Record(this, route, result.LoadDuration);
         SelectedTrayButton.Focus(NavigationMethod.Directional);
@@ -205,8 +224,16 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         }
 
         RememberPageFocus(focused);
+        if (ActivePage is IPrototypeSemanticPage semanticPage && semanticPage.TryMoveSemantic(focused, direction))
+        {
+            return true;
+        }
+
         return FocusNavigator.Move(focused, direction, GetSpatialSearchRoots(focused));
     }
+
+    public bool TryActivateFocused(Control? focused) =>
+        focused is not null && ActivePage is IPrototypeSemanticPage semanticPage && semanticPage.TryActivateSemantic(focused);
 
     internal IReadOnlyList<Control> GetSpatialSearchRoots(Control focused)
     {
@@ -240,6 +267,8 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         transitionLifetime.Cancel();
         TransitionPresenterControl.CancelTransition();
         LoadingStatusControl.IsVisible = false;
+        composition.Launcher.Deactivate();
+        viewModel.CancelNavigation();
     }
 
     public void Dispose()
@@ -248,11 +277,16 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         transitionLifetime.Dispose();
         TransitionPresenterControl.Dispose();
         navigation.Dispose();
+        viewModel.RouteRequested -= RouteRequested;
+        if (ownsComposition)
+        {
+            composition.Dispose();
+        }
     }
 
     private async Task NavigateWithoutHistoryAsync(PrototypeRoute route)
     {
-        LoadingTextControl.Text = $"Preparing {RouteTitle(route)}…";
+        viewModel.BeginNavigation(route, RouteTitle(route));
         LoadingStatusControl.IsVisible = true;
         var result = await navigation.NavigateAsync(route, pageFactory.CreateAsync, recordHistory: false);
         if (result.Outcome == NavigationOutcome.Committed && result.Page is not null && !suspended)
@@ -271,6 +305,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
             }
 
             LoadingStatusControl.IsVisible = false;
+            viewModel.CompleteNavigation(route);
             FrameDiagnostics.Record(this, route, result.LoadDuration);
             selectedRoute = route;
             SelectedTrayButton.Focus(NavigationMethod.Directional);
@@ -292,6 +327,11 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         Control? target = null;
         if (lastPageFocus.TryGetValue(selectedRoute, out var rememberedId))
         {
+            if (page is IPrototypeSemanticPage semanticPage && semanticPage.TryRestoreSemanticFocus(rememberedId))
+            {
+                return true;
+            }
+
             target = page.GetVisualDescendants()
                 .OfType<Control>()
                 .FirstOrDefault(control =>
@@ -341,13 +381,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(route)),
     };
 
-    private void SettingsClicked(object? sender, RoutedEventArgs e) => _ = NavigateAsync(PrototypeRoute.Settings);
-
-    private void AudioClicked(object? sender, RoutedEventArgs e) => _ = NavigateAsync(PrototypeRoute.AudioMixer);
-
-    private void SpotifyClicked(object? sender, RoutedEventArgs e) => _ = NavigateAsync(PrototypeRoute.SpotifyPlayer);
-
-    private void LauncherClicked(object? sender, RoutedEventArgs e) => _ = NavigateAsync(PrototypeRoute.GameLauncher);
+    private void RouteRequested(object? sender, PrototypeRoute route) => _ = NavigateAsync(route);
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

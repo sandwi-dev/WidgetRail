@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
+using GameBarAlternative.AvaloniaPrototype.Remote;
 using GameBarAlternative.AvaloniaPrototype.Views;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Reflection;
@@ -152,6 +153,29 @@ public sealed class ControllerInputTests
             Assert.AreEqual(PrototypeRoute.AudioMixer, window.ShellView.Navigation.CurrentRoute);
             Assert.AreSame(window.ShellView.SelectedTrayButton, window.FocusManager?.GetFocusedElement(),
                 "Controller B must restore the selected tray item from a focused child.");
+
+            await window.NavigateAsync(PrototypeRoute.GameLauncher);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 3_000);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 3_010);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 3_020);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 3_030);
+            var launcher = (GameLauncherPage)window.ShellView.ActivePage!;
+            Assert.AreEqual("game-00001", launcher.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 3_040);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 3_050);
+            Assert.AreEqual("game-00002", launcher.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control),
+                "Controller movement must use the shared semantic router over virtualized ListBox containers.");
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 3_060);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, a: true), 3_070);
+            await Task.Delay(30);
+            var remote = (FakeRemoteWidgetEndpoint)window.Composition.RemoteEndpoint;
+            Assert.AreEqual(1, remote.Actions.Count);
+            Assert.AreEqual(new RemoteWidgetAction(new RemoteWidgetItemId("game-00002"), "open"), remote.Actions[0],
+                "Controller A must dispatch the exact focused semantic item through the shared router once.");
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, a: true), 3_500);
+            await Task.Delay(20);
+            Assert.AreEqual(1, remote.Actions.Count, "Held controller A must remain edge-triggered on a virtualized item.");
             window.Close();
         });
     }

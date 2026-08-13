@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameBarAlternative.AvaloniaPrototype.ViewModels"
              x:Class="GameBarAlternative.AvaloniaPrototype.Views.AudioMixerPage"
+             x:DataType="vm:AudioMixerPageViewModel"
              XYFocus.NavigationModes="Enabled"
              AutomationProperties.AutomationId="page.audio"
              AutomationProperties.Name="Audio Mixer page">
@@ -8,7 +10,7 @@
     <TextBlock x:Name="PageTitle"
                Grid.Row="0"
                Classes="page-title"
-               Text="Audio Mixer"
+               Text="{Binding State.Title}"
                AutomationProperties.AutomationId="audio.title"
                AutomationProperties.Name="Audio Mixer" />
     <ScrollViewer x:Name="PrimaryContent" Grid.Row="1"
@@ -20,33 +22,37 @@
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="System Sounds — primary communications output" TextWrapping="Wrap"
                      AutomationProperties.AutomationId="audio.master.label" AutomationProperties.Name="System Sounds" />
-          <Slider x:Name="MasterVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="78"
+          <Slider x:Name="MasterVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding MasterVolume, Mode=TwoWay}"
                   AutomationProperties.AutomationId="audio.master.volume" AutomationProperties.Name="System Sounds volume" />
           <Button x:Name="PrimaryAction" Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  Command="{Binding ToggleMasterMuteCommand}"
                   AutomationProperties.AutomationId="audio.master.mute" AutomationProperties.Name="Mute System Sounds" />
         </Grid>
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Cooperative game with an intentionally long executable display name" TextWrapping="Wrap"
                      AutomationProperties.AutomationId="audio.game.label" AutomationProperties.Name="Cooperative game" />
-          <Slider x:Name="GameVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="64"
+          <Slider x:Name="GameVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding GameVolume, Mode=TwoWay}"
                   AutomationProperties.AutomationId="audio.game.volume" AutomationProperties.Name="Cooperative game volume" />
           <Button x:Name="GameMuteButton" Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  Command="{Binding ToggleGameMuteCommand}"
                   AutomationProperties.AutomationId="audio.game.mute" AutomationProperties.Name="Mute cooperative game" />
         </Grid>
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Spotify"
                      AutomationProperties.AutomationId="audio.spotify.label" AutomationProperties.Name="Spotify" />
-          <Slider x:Name="SpotifyVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="52"
+          <Slider x:Name="SpotifyVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding SpotifyVolume, Mode=TwoWay}"
                   AutomationProperties.AutomationId="audio.spotify.volume" AutomationProperties.Name="Spotify volume" />
           <Button x:Name="SpotifyMuteButton" Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  Command="{Binding ToggleSpotifyMuteCommand}"
                   AutomationProperties.AutomationId="audio.spotify.mute" AutomationProperties.Name="Mute Spotify" />
         </Grid>
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Voice chat — USB headset microphone monitor" TextWrapping="Wrap"
                      AutomationProperties.AutomationId="audio.voice.label" AutomationProperties.Name="Voice chat" />
-          <Slider x:Name="VoiceVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="35"
+          <Slider x:Name="VoiceVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding VoiceVolume, Mode=TwoWay}"
                   AutomationProperties.AutomationId="audio.voice.volume" AutomationProperties.Name="Voice chat volume" />
           <Button x:Name="VoiceMuteButton" Grid.Column="2" Classes="prototype-action" Content="Mute"
+                  Command="{Binding ToggleVoiceMuteCommand}"
                   AutomationProperties.AutomationId="audio.voice.mute" AutomationProperties.Name="Mute voice chat" />
         </Grid>
       </StackPanel>

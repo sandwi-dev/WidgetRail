@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using GameBarAlternative.AvaloniaPrototype.Composition;
 using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Lifecycle;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
@@ -13,18 +14,26 @@ namespace GameBarAlternative.AvaloniaPrototype;
 public sealed partial class MainWindow : Window
 {
     private readonly PrototypeLifecycle lifecycle = new();
+    private readonly PrototypeComposition composition;
     private readonly IControllerInputAdapter controller;
     private readonly SemanticInputRouter inputRouter;
     private bool keyboardEnterHeld;
 
-    public MainWindow() : this(new XInputControllerAdapter(new XInputStateSource()))
+    public MainWindow() : this(new XInputControllerAdapter(new XInputStateSource()), PrototypeComposition.Create())
     {
     }
 
-    internal MainWindow(IControllerInputAdapter controller)
+    internal MainWindow(IControllerInputAdapter controller) : this(controller, PrototypeComposition.Create())
+    {
+    }
+
+    internal MainWindow(IControllerInputAdapter controller, PrototypeComposition composition)
     {
         this.controller = controller;
+        this.composition = composition;
         InitializeComponent();
+        ShellView = new PrototypeShellView(composition);
+        Content = ShellView;
         inputRouter = new SemanticInputRouter(this);
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, OnPreviewKeyUp, RoutingStrategies.Tunnel);
@@ -44,6 +53,7 @@ public sealed partial class MainWindow : Window
             ShellView.Suspend();
             ShellView.Dispose();
             controller.Dispose();
+            composition.Dispose();
         };
         PropertyChanged += (_, args) =>
         {
@@ -69,9 +79,11 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    public PrototypeShellView ShellView => this.FindControl<PrototypeShellView>("Shell")!;
+    public PrototypeShellView ShellView { get; }
 
     public PrototypeLifecycle Lifecycle => lifecycle;
+
+    internal PrototypeComposition Composition => composition;
 
     public Task<Navigation.NavigationResult<Control>> NavigateAsync(
         PrototypeRoute route,

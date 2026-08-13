@@ -11,4 +11,10 @@
     <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <ProjectReference Include="..\src\AvaloniaOverlayPrototype.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="fixtures\**\*.cs" />
+    <AvaloniaXaml Remove="fixtures\**\*.axaml" />
+    <None Include="fixtures\**\*" />
+  </ItemGroup>
 </Project>

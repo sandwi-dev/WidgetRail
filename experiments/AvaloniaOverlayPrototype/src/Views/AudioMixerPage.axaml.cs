@@ -1,14 +1,20 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 
 namespace GameBarAlternative.AvaloniaPrototype.Views;
 
 public sealed partial class AudioMixerPage : UserControl, IPrototypeFocusPage
 {
-    public AudioMixerPage()
+    public AudioMixerPage() : this(new AudioMixerPageViewModel())
+    {
+    }
+
+    internal AudioMixerPage(AudioMixerPageViewModel viewModel)
     {
         AvaloniaXamlLoader.Load(this);
+        DataContext = viewModel;
         var master = this.FindControl<Slider>("MasterVolumeSlider")!;
         var game = this.FindControl<Slider>("GameVolumeSlider")!;
         var spotify = this.FindControl<Slider>("SpotifyVolumeSlider")!;

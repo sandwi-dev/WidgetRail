@@ -54,6 +54,23 @@ public sealed class WindowsUiaSmokeTests
             audioButton.SetFocus();
             SpinWait.SpinUntil(() => audioButton.Current.HasKeyboardFocus, TimeSpan.FromSeconds(2));
             Assert.IsTrue(audioButton.Current.HasKeyboardFocus);
+
+            var launcherButton = WaitForAutomationId(window, "tray.launcher", TimeSpan.FromSeconds(5));
+            Assert.IsNotNull(launcherButton);
+            Assert.IsTrue(launcherButton.TryGetCurrentPattern(InvokePattern.Pattern, out var launcherInvoke));
+            ((InvokePattern)launcherInvoke).Invoke();
+            var applicationList = WaitForAutomationId(window, "launcher.applications", TimeSpan.FromSeconds(8));
+            Assert.IsNotNull(applicationList);
+            Assert.AreEqual(ControlType.List, applicationList.Current.ControlType);
+            Assert.IsTrue(applicationList.TryGetCurrentPattern(ScrollPattern.Pattern, out _),
+                "The ordinary virtualized ListBox must expose standard UIA scrolling.");
+            var firstApplication = WaitForAutomationId(window, "launcher.game.00001", TimeSpan.FromSeconds(5));
+            Assert.IsNotNull(firstApplication);
+            Assert.AreEqual(ControlType.ListItem, firstApplication.Current.ControlType);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(firstApplication.Current.Name));
+            Assert.IsTrue(firstApplication.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection));
+            ((SelectionItemPattern)selection).Select();
+            Assert.IsTrue(((SelectionItemPattern)selection).Current.IsSelected);
         }
         finally
         {

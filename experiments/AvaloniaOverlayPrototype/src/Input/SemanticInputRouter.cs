@@ -57,6 +57,11 @@ internal sealed class SemanticInputRouter(MainWindow window)
             });
         }
 
+        if (input == SemanticInput.Activate && window.ShellView.TryActivateFocused(focused))
+        {
+            return true;
+        }
+
         if (input == SemanticInput.Activate && focused is Button button)
         {
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

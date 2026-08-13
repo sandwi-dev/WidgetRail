@@ -1,5 +1,8 @@
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using GameBarAlternative.AvaloniaPrototype.Remote;
+using GameBarAlternative.AvaloniaPrototype.Views;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -51,6 +54,8 @@ internal static class EvidenceScenario
                 switchSamples.Add(new SwitchSample(route.ToString(), result.Outcome.ToString(), stopwatch.Elapsed.TotalMilliseconds));
             }
 
+            var virtualization = await MeasureVirtualizedLauncherAsync(window);
+
             var visiblePrivateMemoryBytes = process.PrivateMemorySize64;
             window.Hide();
             await Task.Delay(TimeSpan.FromSeconds(2));
@@ -61,13 +66,15 @@ internal static class EvidenceScenario
             await using var executableStream = File.OpenRead(executable);
             var executableHash = Convert.ToHexString(await SHA256.HashDataAsync(executableStream));
             var artifact = new MeasurementArtifact(
-                "AVP-002",
+                "AVP-003",
                 arguments.SourceCommit ?? "unavailable",
                 startedAtUtc,
                 Environment.OSVersion.VersionString,
                 Environment.Version.ToString(),
                 Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "unavailable",
+                FileVersionInfo.GetVersionInfo(executable).ProductVersion ?? "unavailable",
                 typeof(Avalonia.Application).Assembly.GetName().Version?.ToString() ?? "unavailable",
+                typeof(ObservableObject).Assembly.GetName().Version?.ToString() ?? "unavailable",
                 RuntimeInformation.ProcessArchitecture.ToString(),
                 executableHash,
                 firstCompleteFrameMilliseconds,
@@ -79,6 +86,7 @@ internal static class EvidenceScenario
                 hiddenAfterUse,
                 hiddenAfterUse.NormalizedCpuPercent < 0.5,
                 switchSamples,
+                virtualization,
                 frames,
                 frames.All(frame =>
                     frame.TransparentRoot &&
@@ -96,12 +104,14 @@ internal static class EvidenceScenario
                     sample.OpaqueBlackBrushAbsent &&
                     sample.AvaloniaSurfaceCoveragePresent),
                 "Vortice.XInput 3.8.3",
+                "Manual composition retained; Microsoft.Extensions.DependencyInjection 10.0.10 was measured separately and not retained.",
+                window.ShellView.TransitionPresenterControl.PageTransition?.GetType().Name ?? "unavailable",
                 new[]
                 {
                     "Transition samples inspect Avalonia visual/composition-surface brushes and coverage; the physical Windows compositor verdict remains manual.",
                     "Controller automation drives the real adapter, processor, MainWindow, and semantic router through a deterministic state source; physical controller compatibility and feel remain planner/user checks.",
                     "XInput is limited to four XInput-compatible slots and does not provide durable device identity.",
-                    "GPU frame cost unavailable in AVP-002 without an authorized ETW/PresentMon capture lane.",
+                    "GPU frame cost unavailable in AVP-003 without an authorized ETW/PresentMon capture lane.",
                     "Hidden-before-first-frame was not sampled because delaying initial show would invalidate cold-start timing; hidden-after-use is retained instead.",
                     "Physical visual quality remains a planner launch and user verdict.",
                 });
@@ -120,13 +130,55 @@ internal static class EvidenceScenario
                 JsonSerializer.Serialize(
                     new
                     {
-                        assignment = "AVP-002",
+                        assignment = "AVP-003",
                         errorType = exception.GetType().Name,
                         error = "Evidence lifecycle failed; inspect the local process trace.",
                     },
                     JsonOptions));
             desktop.Shutdown(1);
         }
+    }
+
+    private static async Task<VirtualizedCollectionEvidence> MeasureVirtualizedLauncherAsync(MainWindow window)
+    {
+        await window.NavigateAsync(PrototypeRoute.GameLauncher);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+        var firstPage = (GameLauncherPage)window.ShellView.ActivePage!;
+        firstPage.FocusIndex(9_000);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+        var focusedBefore = firstPage.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
+        var farOffset = firstPage.ApplicationScrollControl?.Offset.Y ?? 0;
+        var maximumRealized = firstPage.RealizedContainerCount;
+
+        await window.NavigateAsync(PrototypeRoute.Settings);
+        await window.NavigateAsync(PrototypeRoute.GameLauncher);
+        window.ShellView.TryEnterContent(window.ShellView.SelectedTrayButton);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+        var returnedPage = (GameLauncherPage)window.ShellView.ActivePage!;
+        var focusedAfter = returnedPage.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
+        var restoredOffset = returnedPage.ApplicationScrollControl?.Offset.Y ?? 0;
+        maximumRealized = Math.Max(maximumRealized, returnedPage.RealizedContainerCount);
+
+        var selected = returnedPage.ViewModel.SelectedItem ?? throw new InvalidOperationException("Launcher selection was not restored.");
+        await returnedPage.ViewModel.InvokeItemAsync(selected);
+        var exactAction = window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint fake &&
+            fake.Actions.LastOrDefault() == new RemoteWidgetAction(selected.Id, "open");
+
+        returnedPage.FocusIndex(0);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+        var returnedToTop = Math.Abs(returnedPage.ApplicationScrollControl?.Offset.Y ?? double.MaxValue) < 0.01;
+
+        return new VirtualizedCollectionEvidence(
+            returnedPage.ViewModel.State.Items.Count,
+            maximumRealized,
+            focusedBefore ?? "unavailable",
+            focusedAfter ?? "unavailable",
+            focusedBefore is not null && focusedBefore == focusedAfter,
+            farOffset,
+            restoredOffset,
+            restoredOffset > 0,
+            returnedToTop,
+            exactAction);
     }
 
     private static async Task<ResourceSample> SampleAsync(Process process, TimeSpan duration)
@@ -153,7 +205,9 @@ internal static class EvidenceScenario
         string OperatingSystem,
         string DotNetRuntime,
         string PrototypeAssemblyVersion,
+        string ExecutableProductVersion,
         string AvaloniaVersion,
+        string CommunityToolkitMvvmVersion,
         string ProcessArchitecture,
         string ExecutableSha256,
         double ColdStartToFirstCompleteFrameMilliseconds,
@@ -165,11 +219,14 @@ internal static class EvidenceScenario
         ResourceSample HiddenAfterUseSample,
         bool HiddenRenderingEffectivelyIdle,
         IReadOnlyList<SwitchSample> SwitchToCompleteFrameSamples,
+        VirtualizedCollectionEvidence VirtualizedCollection,
         IReadOnlyList<FrameSnapshot> CompleteFrames,
         bool CompleteFrameDiagnosticsPassed,
         IReadOnlyList<TransitionDiagnosticSample> TransitionSurfaceSamples,
         bool TransitionSurfaceDiagnosticsPassed,
         string ControllerDependency,
+        string CompositionDecision,
+        string PageTransition,
         IReadOnlyList<string> UnavailableOrManualEvidence);
 
     private sealed record ResourceSample(
@@ -179,4 +236,16 @@ internal static class EvidenceScenario
         double PrivateMemoryMiB);
 
     private sealed record SwitchSample(string Route, string Outcome, double Milliseconds);
+
+    private sealed record VirtualizedCollectionEvidence(
+        int TotalItems,
+        int MaximumRealizedContainers,
+        string FocusedSemanticIdBeforeRecycling,
+        string FocusedSemanticIdAfterReturn,
+        bool SemanticIdentityPreserved,
+        double FarScrollOffset,
+        double RestoredScrollOffset,
+        bool FocusAndScrollReturnPassed,
+        bool ReturnedToTop,
+        bool ExactRemoteActionDispatched);
 }

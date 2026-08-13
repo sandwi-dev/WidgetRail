@@ -11,11 +11,19 @@ public enum TransitionPhase
     Completion,
 }
 
-public sealed class PageTransitionPresenter : Grid, IDisposable
+public sealed class PageTransitionPresenter : TransitioningContentControl, IDisposable
 {
     private CancellationTokenSource? transition;
+    private Control? admittedPage;
 
-    public Control? AdmittedPage { get; private set; }
+    public PageTransitionPresenter()
+    {
+        PageTransition = new CrossFade(TimeSpan.FromMilliseconds(160));
+        HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch;
+        VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Stretch;
+    }
+
+    public Control? AdmittedPage => admittedPage;
 
     public async Task PresentAsync(
         Control destination,
@@ -28,19 +36,9 @@ public sealed class PageTransitionPresenter : Grid, IDisposable
         transition = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = transition.Token;
 
-        destination.Opacity = 0;
-        destination.Transitions =
-        [
-            new DoubleTransition
-            {
-                Property = OpacityProperty,
-                Duration = TimeSpan.FromMilliseconds(140),
-            },
-        ];
-
-        Children.Add(destination);
+        Content = destination;
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         sample?.Invoke(TransitionPhase.Start);
-        await Dispatcher.UIThread.InvokeAsync(() => destination.Opacity = 1);
 
         try
         {
@@ -50,16 +48,10 @@ public sealed class PageTransitionPresenter : Grid, IDisposable
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            Children.Remove(destination);
             return;
         }
 
-        if (AdmittedPage is { } previous)
-        {
-            Children.Remove(previous);
-        }
-
-        AdmittedPage = destination;
+        admittedPage = destination;
         sample?.Invoke(TransitionPhase.Completion);
     }
 

@@ -1,54 +1,136 @@
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 
 namespace GameBarAlternative.AvaloniaPrototype.Views;
 
-public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage
+public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage, IPrototypeSemanticPage
 {
-    private static readonly string[] Games =
-    [
-        "Disaster Crew — Grand Reopening Cooperative Test",
-        "The Centrifuge: Long-Name Containment Fixture",
-        "Cloud Harbor",
-        "Signal Cartographers",
-        "A Game Whose Artwork Has Not Been Downloaded Yet",
-        "Night Shift Dispatch",
-        "Orbital Pantry",
-        "River City Constructors",
-        "Circuit Garden",
-        "Uncatalogued Windows Application",
-        "Cooperative Museum After Hours",
-        "Twelve Player Lobby Stress Fixture",
-        "Lanternline",
-        "Missing Box Art Adventure",
-        "Local Multiplayer Workshop",
-        "Prototype Library Final Entry",
-    ];
+    private int pendingFocusIndex = -1;
 
-    public GameLauncherPage()
+    public GameLauncherPage() : this(new GameLauncherViewModel(new Remote.RemoteWidgetProjection(new Remote.FakeRemoteWidgetEndpoint())))
     {
-        AvaloniaXamlLoader.Load(this);
-        var list = this.FindControl<StackPanel>("ApplicationList")!;
-        for (var index = 0; index < Games.Length; index++)
-        {
-            var button = new Button
-            {
-                Content = $"{index + 1:00}   {Games[index]}",
-                HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-                MinHeight = 46,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-            };
-            AutomationProperties.SetAutomationId(button, $"launcher.game.{index + 1:00}");
-            AutomationProperties.SetName(button, $"Open {Games[index]}");
-            list.Children.Add(button);
-        }
     }
 
-    public ScrollViewer ApplicationScrollControl => this.FindControl<ScrollViewer>("ApplicationScroll")!;
+    internal GameLauncherPage(GameLauncherViewModel viewModel)
+    {
+        AvaloniaXamlLoader.Load(this);
+        ViewModel = viewModel;
+        DataContext = viewModel;
+        ApplicationListControl.ContainerPrepared += ContainerPrepared;
+    }
+
+    public GameLauncherViewModel ViewModel { get; }
+
+    public ListBox ApplicationListControl => this.FindControl<ListBox>("ApplicationList")!;
+
+    public ScrollViewer? ApplicationScrollControl =>
+        ApplicationListControl.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+
+    public int RealizedContainerCount => ApplicationListControl.GetRealizedContainers().Count();
 
     public Control InitialFocus => this.FindControl<Button>("PrimaryAction")!;
 
-    public IReadOnlyList<Button> ApplicationButtons =>
-        this.FindControl<StackPanel>("ApplicationList")!.Children.OfType<Button>().ToArray();
+    public bool TryMoveSemantic(Control focused, NavigationDirection direction)
+    {
+        if (direction is not (NavigationDirection.Up or NavigationDirection.Down) ||
+            FindContainer(focused) is not { } container)
+        {
+            return false;
+        }
+
+        var current = ApplicationListControl.IndexFromContainer(container);
+        var next = current + (direction == NavigationDirection.Down ? 1 : -1);
+        return next >= 0 && next < ViewModel.State.Items.Count && FocusIndex(next);
+    }
+
+    public bool TryActivateSemantic(Control focused)
+    {
+        if (FindContainer(focused) is not { } container)
+        {
+            return false;
+        }
+
+        var index = ApplicationListControl.IndexFromContainer(container);
+        if (index < 0 || index >= ViewModel.State.Items.Count)
+        {
+            return false;
+        }
+
+        ViewModel.SelectedItem = ViewModel.State.Items[index];
+        _ = ViewModel.InvokeItemAsync(ViewModel.State.Items[index]);
+        return true;
+    }
+
+    public bool TryRestoreSemanticFocus(string automationId)
+    {
+        var index = ViewModel.State.Items
+            .Select((item, position) => (item, position))
+            .FirstOrDefault(entry => string.Equals(entry.item.AutomationId, automationId, StringComparison.Ordinal))
+            .position;
+        return index >= 0 && index < ViewModel.State.Items.Count &&
+            string.Equals(ViewModel.State.Items[index].AutomationId, automationId, StringComparison.Ordinal) &&
+            FocusIndex(index);
+    }
+
+    public bool FocusIndex(int index)
+    {
+        if (index < 0 || index >= ViewModel.State.Items.Count)
+        {
+            return false;
+        }
+
+        pendingFocusIndex = index;
+        ApplicationListControl.SelectedIndex = index;
+        ApplicationListControl.ScrollIntoView(index);
+        ApplicationListControl.UpdateLayout();
+        if (TryFocusPrepared(index))
+        {
+            return true;
+        }
+
+        Dispatcher.UIThread.Post(() => TryFocusPrepared(index), DispatcherPriority.Input);
+        return true;
+    }
+
+    public string? FocusedSemanticId(Control? focused)
+    {
+        var container = focused is null ? null : FindContainer(focused);
+        var index = container is null ? -1 : ApplicationListControl.IndexFromContainer(container);
+        return index >= 0 && index < ViewModel.State.Items.Count ? ViewModel.State.Items[index].Id.Value : null;
+    }
+
+    private void ContainerPrepared(object? sender, ContainerPreparedEventArgs e)
+    {
+        if (e.Container is not ListBoxItem container || e.Index < 0 || e.Index >= ViewModel.State.Items.Count)
+        {
+            return;
+        }
+
+        var item = ViewModel.State.Items[e.Index];
+        AutomationProperties.SetAutomationId(container, item.AutomationId);
+        AutomationProperties.SetName(container, item.AutomationName);
+        if (e.Index == pendingFocusIndex)
+        {
+            Dispatcher.UIThread.Post(() => TryFocusPrepared(e.Index), DispatcherPriority.Input);
+        }
+    }
+
+    private bool TryFocusPrepared(int index)
+    {
+        if (ApplicationListControl.ContainerFromIndex(index) is not ListBoxItem container)
+        {
+            return false;
+        }
+
+        pendingFocusIndex = -1;
+        return container.Focus(NavigationMethod.Directional);
+    }
+
+    private ListBoxItem? FindContainer(Control focused) =>
+        focused as ListBoxItem ?? focused.GetVisualAncestors().OfType<ListBoxItem>().FirstOrDefault();
 }

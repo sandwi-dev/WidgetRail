@@ -1,14 +1,16 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameBarAlternative.AvaloniaPrototype.ViewModels"
              x:Class="GameBarAlternative.AvaloniaPrototype.Views.GameLauncherPage"
+             x:DataType="vm:GameLauncherViewModel"
              XYFocus.NavigationModes="Enabled"
              AutomationProperties.AutomationId="page.launcher"
              AutomationProperties.Name="Game Launcher page">
-  <Grid RowDefinitions="Auto,Auto,*,Auto">
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
     <TextBlock x:Name="PageTitle"
                Grid.Row="0"
                Classes="page-title"
-               Text="Game Launcher"
+               Text="{Binding State.Title}"
                AutomationProperties.AutomationId="launcher.title"
                AutomationProperties.Name="Game Launcher" />
     <WrapPanel Grid.Row="1" Margin="0,0,0,12">
@@ -19,16 +21,46 @@
       <Button Classes="prototype-action" Content="Favorites"
               AutomationProperties.AutomationId="launcher.collection.favorites" AutomationProperties.Name="Show favorite games" />
     </WrapPanel>
-    <ScrollViewer x:Name="ApplicationScroll"
-                  Grid.Row="2"
-                  HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Visible"
-                  AutomationProperties.AutomationId="launcher.applications.scroll"
-                  AutomationProperties.Name="Scrollable application list">
-      <StackPanel x:Name="ApplicationList" Spacing="8" Margin="0,0,12,0" />
-    </ScrollViewer>
+    <ListBox x:Name="ApplicationList"
+             Grid.Row="2"
+             ItemsSource="{Binding State.Items}"
+             SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+             SelectionMode="Single"
+             AutomationProperties.AutomationId="launcher.applications"
+             AutomationProperties.Name="Virtualized application library">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel CacheLength="1" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:GameLauncherItemViewModel">
+          <Grid MinHeight="46" Margin="8,2" ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Text="{Binding DisplayText}"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
+                       AutomationProperties.AutomationId="{Binding LabelAutomationId}"
+                       AutomationProperties.Name="{Binding AutomationName}" />
+            <TextBlock Grid.Column="1"
+                       Margin="12,0,0,0"
+                       VerticalAlignment="Center"
+                       Text="Open"
+                       AutomationProperties.AutomationId="{Binding ActionLabelAutomationId}"
+                       AutomationProperties.Name="Open action" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <TextBlock Grid.Row="3"
+               Margin="0,8,0,0"
+               Text="{Binding State.Status}"
+               TextWrapping="Wrap"
+               AutomationProperties.AutomationId="launcher.remote.status"
+               AutomationProperties.Name="Remote snapshot status" />
     <TextBlock x:Name="ControllerHelp"
-               Grid.Row="3"
+               Grid.Row="4"
                Classes="controller-help"
                Text="Up / Down  Browse    Enter / A  Open    Escape / B  Back"
                AutomationProperties.AutomationId="launcher.help"

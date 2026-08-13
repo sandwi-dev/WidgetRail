@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseDirectDi Condition="'$(UseDirectDi)' == ''">false</UseDirectDi>
+    <DefineConstants Condition="'$(UseDirectDi)' == 'true'">$(DefineConstants);DIRECT_DI</DefineConstants>
+    <AssemblyName Condition="'$(UseDirectDi)' == 'true'">CompositionComparison.DirectDi</AssemblyName>
+    <AssemblyName Condition="'$(UseDirectDi)' != 'true'">CompositionComparison.Manual</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UseDirectDi)' == 'true'">
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+  </ItemGroup>
+</Project>

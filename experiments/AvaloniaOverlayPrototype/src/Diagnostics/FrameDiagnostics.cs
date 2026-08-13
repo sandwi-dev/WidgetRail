@@ -99,7 +99,7 @@ public static class FrameDiagnostics
     public static void RecordTransition(PrototypeShellView shell, PrototypeRoute route, TransitionPhase phase)
     {
         var presenter = shell.TransitionPresenterControl;
-        var children = presenter.Children.OfType<Control>().ToArray();
+        var children = presenter.GetVisualDescendants().OfType<Control>().ToArray();
         var sample = new TransitionDiagnosticSample(
             route,
             phase,
@@ -127,7 +127,7 @@ public static class FrameDiagnostics
             AddNamed(page, shell, required, "PageTitle", "title");
             AddNamed(page, shell, required, "PrimaryContent", "primaryContent");
             AddNamed(page, shell, required, "SettingsScroll", "primaryContent");
-            AddNamed(page, shell, required, "ApplicationScroll", "primaryContent");
+            AddNamed(page, shell, required, "ApplicationList", "primaryContent");
             AddNamed(page, shell, required, "PrimaryAction", "primaryAction");
             AddNamed(page, shell, required, "ControllerHelp", "controllerHelp");
             authored.AddRange(page.GetLogicalDescendants().OfType<Control>()

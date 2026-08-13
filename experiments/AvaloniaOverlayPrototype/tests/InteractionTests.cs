@@ -87,42 +87,53 @@ public sealed class InteractionTests
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task Application_scroll_moves_to_the_end_and_back_to_the_first_item()
+    public async Task Virtualized_application_list_recycles_bounded_containers_and_restores_semantic_focus_and_scroll()
     {
         await RunOnUiThreadAsync(async () =>
         {
             var window = new MainWindow { Width = 900, Height = 420 };
             window.Show();
             await window.NavigateAsync(PrototypeRoute.GameLauncher);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
             window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
             var page = (GameLauncherPage)window.ShellView.ActivePage!;
-            var scroll = page.ApplicationScrollControl;
+            var scroll = page.ApplicationScrollControl!;
+            Assert.AreEqual(10_000, page.ViewModel.State.Items.Count);
             Assert.IsGreaterThan(0, scroll.Extent.Height - scroll.Viewport.Height, "Fixture must overflow its real ScrollViewer.");
             window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
             window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
-            Assert.AreSame(page.ApplicationButtons[0], window.FocusManager?.GetFocusedElement());
-            for (var index = 1; index < page.ApplicationButtons.Count; index++)
-            {
-                window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
-                window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
-            }
-
             Dispatcher.UIThread.RunJobs();
-            Assert.AreSame(page.ApplicationButtons[^1], window.FocusManager?.GetFocusedElement());
+            Assert.AreEqual("game-00001", page.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
+            Assert.IsTrue(page.RealizedContainerCount is >= 1 and <= 100,
+                "Ordinary ListBox virtualization must not realize the 10,000-item model.");
+
+            Assert.IsTrue(page.FocusIndex(9_000));
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            Assert.AreEqual("game-09001", page.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
             Assert.IsGreaterThan(0, scroll.Offset.Y);
+            Assert.IsTrue(page.RealizedContainerCount is >= 1 and <= 100);
 
-            for (var index = page.ApplicationButtons.Count - 1; index > 0; index--)
-            {
-                window.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.None, null);
-                window.KeyRelease(Key.Up, RawInputModifiers.None, PhysicalKey.None, null);
-            }
-
+            await window.NavigateAsync(PrototypeRoute.Settings);
+            await window.NavigateAsync(PrototypeRoute.GameLauncher);
+            Assert.IsTrue(window.ShellView.TryEnterContent(window.ShellView.SelectedTrayButton));
             Dispatcher.UIThread.RunJobs();
-            Assert.AreEqual(0, scroll.Offset.Y, 0.01);
-            Assert.AreSame(page.ApplicationButtons[0], window.FocusManager?.GetFocusedElement());
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            var replacement = (GameLauncherPage)window.ShellView.ActivePage!;
+            Assert.AreEqual("game-09001", replacement.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control),
+                "Semantic item identity must restore after page replacement and container recycling.");
+            Assert.IsGreaterThan(0, replacement.ApplicationScrollControl!.Offset.Y);
+
+            Assert.IsTrue(replacement.FocusIndex(0));
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            Assert.AreEqual(0, replacement.ApplicationScrollControl!.Offset.Y, 0.01);
+            Assert.AreEqual("game-00001", replacement.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
             window.Close();
-            await Task.CompletedTask;
         });
     }
 

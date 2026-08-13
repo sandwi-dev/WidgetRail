@@ -1,7 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:navigation="using:GameBarAlternative.AvaloniaPrototype.Navigation"
+             xmlns:vm="using:GameBarAlternative.AvaloniaPrototype.ViewModels"
              x:Class="GameBarAlternative.AvaloniaPrototype.Views.PrototypeShellView"
+             x:DataType="vm:PrototypeShellViewModel"
              XYFocus.NavigationModes="Enabled"
              Background="Transparent"
              AutomationProperties.AutomationId="avp.shell"
@@ -31,6 +33,7 @@
                 AutomationProperties.AutomationId="avp.loading"
                 AutomationProperties.Name="Destination loading">
           <TextBlock x:Name="LoadingText"
+                     Text="{Binding State.LoadingText}"
                      AutomationProperties.AutomationId="avp.loading.text"
                      AutomationProperties.Name="Loading destination" />
         </Border>
@@ -51,25 +54,25 @@
         <Button x:Name="SettingsTrayButton"
                 Classes="tray-button"
                 Content="⚙  Settings"
-                Click="SettingsClicked"
+                Command="{Binding ShowSettingsCommand}"
                 AutomationProperties.AutomationId="tray.settings"
                 AutomationProperties.Name="Open Settings" />
         <Button x:Name="AudioTrayButton"
                 Classes="tray-button"
                 Content="◉  Audio"
-                Click="AudioClicked"
+                Command="{Binding ShowAudioCommand}"
                 AutomationProperties.AutomationId="tray.audio"
                 AutomationProperties.Name="Open Audio Mixer" />
         <Button x:Name="SpotifyTrayButton"
                 Classes="tray-button"
                 Content="♪  Spotify"
-                Click="SpotifyClicked"
+                Command="{Binding ShowSpotifyCommand}"
                 AutomationProperties.AutomationId="tray.spotify"
                 AutomationProperties.Name="Open Spotify Player" />
         <Button x:Name="LauncherTrayButton"
                 Classes="tray-button"
                 Content="▦  Launcher"
-                Click="LauncherClicked"
+                Command="{Binding ShowLauncherCommand}"
                 AutomationProperties.AutomationId="tray.launcher"
                 AutomationProperties.Name="Open Game Launcher" />
       </StackPanel>

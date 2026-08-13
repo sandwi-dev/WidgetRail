@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:GameBarAlternative.AvaloniaPrototype.ViewModels"
              x:Class="GameBarAlternative.AvaloniaPrototype.Views.SpotifyPlayerPage"
+             x:DataType="vm:SpotifyPlayerPageViewModel"
              XYFocus.NavigationModes="Enabled"
              AutomationProperties.AutomationId="page.spotify"
              AutomationProperties.Name="Spotify Player page">
@@ -8,7 +10,7 @@
     <TextBlock x:Name="PageTitle"
                Grid.Row="0"
                Classes="page-title"
-               Text="Spotify Player"
+               Text="{Binding State.Title}"
                AutomationProperties.AutomationId="spotify.title"
                AutomationProperties.Name="Spotify Player" />
     <ScrollViewer x:Name="PrimaryContent" Grid.Row="1"
@@ -37,28 +39,29 @@
           <TextBlock FontSize="22"
                      FontWeight="SemiBold"
                      TextWrapping="Wrap"
-                     Text="A Very Long Track Title Designed to Exercise Responsive Containment Without Ellipsis Hiding the Important State"
+                     Text="{Binding State.Track}"
                      AutomationProperties.AutomationId="spotify.track"
                      AutomationProperties.Name="Current track title" />
-          <TextBlock Text="The Fixture Artists • Prototype Sessions" TextWrapping="Wrap"
+          <TextBlock Text="{Binding State.Artist}" TextWrapping="Wrap"
                      AutomationProperties.AutomationId="spotify.artist" AutomationProperties.Name="Current artist and album" />
           <Slider x:Name="PlaybackPositionSlider"
                   Minimum="0"
                   Maximum="312"
-                  Value="94"
+                  Value="{Binding Position, Mode=TwoWay}"
                   AutomationProperties.AutomationId="spotify.position"
                   AutomationProperties.Name="Playback position seconds" />
           <WrapPanel>
             <Button Classes="prototype-action" Content="Previous"
                     AutomationProperties.AutomationId="spotify.previous" AutomationProperties.Name="Previous track" />
             <Button x:Name="PrimaryAction" Classes="prototype-action" Content="Play / Pause"
+                    Command="{Binding TogglePlaybackCommand}"
                     AutomationProperties.AutomationId="spotify.play" AutomationProperties.Name="Play or pause" />
             <Button Classes="prototype-action" Content="Next"
                     AutomationProperties.AutomationId="spotify.next" AutomationProperties.Name="Next track" />
             <Button Classes="prototype-action" Content="Open queue"
                     AutomationProperties.AutomationId="spotify.queue" AutomationProperties.Name="Open queue" />
           </WrapPanel>
-          <TextBlock Text="Destination state: ready from an asynchronous credential-free fixture."
+          <TextBlock Text="{Binding State.Readiness}"
                      TextWrapping="Wrap"
                      AutomationProperties.AutomationId="spotify.readiness"
                      AutomationProperties.Name="Spotify destination ready" />

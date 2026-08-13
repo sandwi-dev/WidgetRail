@@ -1,28 +1,23 @@
-# AVP-002 retained evidence
+# AVP-003 retained evidence
 
-`scripts/Measure-Avp002.ps1` writes exact-commit machine output to the ignored
-`artifacts/avp002/measurement.json` path after the milestone commit exists. A
-copied framework-dependent `win-x64` runtime is retained beside it.
+`scripts/Verify-Avp003.ps1` performs one bounded Release build, confirms that
+the isolated invalid compiled-binding fixture fails with `AVLN2000`, and runs
+the focused MSTest.Sdk 4.3.2 suite. The real project uses compiled bindings and
+typed AXAML scopes; the invalid fixture is not part of its solution.
 
-The artifact separates visible and hidden CPU/private memory, cold first-frame
-time, every destination switch, the 250 MiB comparison target, and the roughly
-500 MiB unacceptable-region check. It records exact commit, executable SHA-256,
-runtime/Avalonia versions, OS, architecture, controller dependency, all complete
-frames, every required authored Button/TextBlock bound, ScrollViewer clipping,
-and transition start/midpoint/completion surface samples.
+The tracked [`composition-comparison.json`](composition-comparison.json)
+summarizes the seven-sample manual/direct-DI microcomparison. Raw outputs remain
+under ignored `artifacts/avp003/composition-comparison`; manual composition is
+the retained runtime decision.
 
-Controller acceptance does not stop at processor helper assertions: a
-deterministic state source feeds the real adapter/processor into the actual
-`MainWindow` and shared semantic router with focused controls. It covers held
-repeat and every assigned lifecycle/reset boundary. Keyboard Enter is
-explicitly edge-triggered until KeyUp or focus loss.
+After the AVP-003 commit, `scripts/Measure-Avp003.ps1` writes one exact-commit
+ordinary Windows measurement to ignored `artifacts/avp003/measurement.json` and
+copies the framework-dependent visible runtime beside it. The artifact binds
+the source commit to executable ProductVersion and SHA-256 and records package,
+resource, switch, complete-frame, native-transition, 10,000-item virtualization,
+semantic focus/scroll-return, and exact fake-action evidence.
 
-Focus evidence exercises Avalonia XYFocus through the shared semantic router:
-Audio Mixer Up/Down stays in the aligned Slider column, tray page completion
-does not steal focus, content entry is explicit, Back restores the selected
-tray item, and the last stable per-page focus is restored after page re-entry.
-
-The transition verdict is deliberately scoped to Avalonia visual/composition
-state and brush coverage. Physical controller behavior and the Windows
-compositor/transparency verdict remain planner/user evaluation; GPU cost is
-unavailable without an authorized ETW/PresentMon capture.
+Transition diagnostics inspect Avalonia visual/composition state only. Physical
+controller behavior, transparent Windows composition, mixed-monitor DPI, and
+visual quality remain planner/user checks. GPU cost remains unavailable without
+an authorized ETW/PresentMon lane.

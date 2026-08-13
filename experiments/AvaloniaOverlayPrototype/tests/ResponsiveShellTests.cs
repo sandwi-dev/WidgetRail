@@ -74,10 +74,26 @@ public sealed class ResponsiveShellTests
                         Assert.IsTrue(frame.RequiredElementsContained, $"{route} escaped {logicalSize} at {scale:P0}.");
                         Assert.IsTrue(frame.Tray.IsContainedBy(frame.Client), $"Tray escaped {logicalSize} at {scale:P0}.");
                         Assert.IsTrue(frame.AllVisibleRequiredElementsValid, $"{route} has an invalid authored Button/TextBlock bound at {scale:P0}.");
-                        CollectionAssert.AreEquivalent(
-                            ExpectedRequiredIds(route),
-                            frame.VisibleRequiredElements.Select(element => element.AutomationId).ToArray(),
-                            $"{route} must enumerate every authored required Button/TextBlock by stable AutomationId.");
+                        var actualIds = frame.VisibleRequiredElements.Select(element => element.AutomationId).ToArray();
+                        var expectedIds = ExpectedRequiredIds(route);
+                        foreach (var expectedId in expectedIds)
+                        {
+                            CollectionAssert.Contains(actualIds, expectedId,
+                                $"{route} must enumerate every static authored required Button/TextBlock by stable AutomationId.");
+                        }
+
+                        if (route == PrototypeRoute.GameLauncher)
+                        {
+                            Assert.IsTrue(actualIds.Any(id => id.StartsWith("launcher.game.", StringComparison.Ordinal) && id.EndsWith(".label", StringComparison.Ordinal)),
+                                "The virtualized viewport must enumerate realized item text without pretending all 10,000 items are visible.");
+                            var launcher = (GameLauncherPage)shell.ActivePage!;
+                            Assert.IsTrue(launcher.RealizedContainerCount is >= 1 and <= 100);
+                        }
+                        else
+                        {
+                            CollectionAssert.AreEquivalent(expectedIds, actualIds,
+                                $"{route} must enumerate every authored required Button/TextBlock by stable AutomationId.");
+                        }
                         foreach (var element in frame.VisibleRequiredElements)
                         {
                             Assert.IsTrue(element.LayoutBounds.HasArea, $"{element.AutomationId} emitted zero layout bounds.");
@@ -170,7 +186,7 @@ public sealed class ResponsiveShellTests
             PrototypeRoute.GameLauncher =>
             [
                 "launcher.title", "launcher.search", "launcher.collection.all", "launcher.collection.favorites",
-                .. Enumerable.Range(1, 16).Select(index => $"launcher.game.{index:00}"),
+                "launcher.remote.status",
                 "launcher.help",
             ],
             _ => throw new ArgumentOutOfRangeException(nameof(route)),

@@ -1,0 +1,20 @@
+{
+  "assignment": "AVP-003",
+  "measuredAtUtc": "2026-08-13T10:06:23.0850000+00:00",
+  "sampleCountPerStrategy": 7,
+  "scope": "Bounded framework-dependent console microcomparison; not an Avalonia startup benchmark.",
+  "microsoftDependencyInjectionVersion": "10.0.10",
+  "manual": {
+    "medianProcessMilliseconds": 57.4457,
+    "medianCompositionMilliseconds": 0.1519,
+    "medianPrivateMemoryMiB": 6.4609375,
+    "publishedBytes": 184424
+  },
+  "directMicrosoftDi": {
+    "medianProcessMilliseconds": 75.0394,
+    "medianCompositionMilliseconds": 20.8152,
+    "medianPrivateMemoryMiB": 6.21875,
+    "publishedBytes": 348190
+  },
+  "decision": "Manual composition retained because the slice has no scoped lifecycle benefit and DI added measured startup/composition and published-footprint cost; the small memory difference is treated as noise-sized."
+}
