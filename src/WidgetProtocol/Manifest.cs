@@ -25,6 +25,13 @@ public sealed record WidgetManifest
     /// package paths, font names, SVG, or executable drawing content.
     /// </summary>
     public WidgetPresentation Presentation { get; init; } = new();
+    /// <summary>
+    /// Opts this package into one closed host-owned advanced presentation.
+    /// The declaration grants no provider, action, navigation, file, script,
+    /// renderer, window, or global-settings authority. Omission defaults closed.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WidgetAdvancedPresentationDeclaration? AdvancedPresentation { get; init; }
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
     /// <summary>
@@ -43,6 +50,13 @@ public sealed record WidgetManifest
 public sealed record HostApiRange(string Minimum, int MaximumMajor);
 public sealed record WidgetEntrypoint(string Runtime, string Assembly, string Type);
 public sealed record WidgetPresentation(WidgetGlyph Icon = WidgetGlyph.Connection);
+public sealed record WidgetAdvancedPresentationDeclaration
+{
+    public const int CurrentSchemaVersion = 1;
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
+    public WidgetAdvancedPresentationKind Kind { get; init; } =
+        WidgetAdvancedPresentationKind.LauncherExperience;
+}
 public sealed record WidgetResourceRequest(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MemoryMb = null,
     int UpdateHz = 1);
@@ -184,6 +198,17 @@ public static partial class WidgetManifestValidator
         else if (!Enum.IsDefined(manifest.Presentation.Icon))
             Add("$.presentation.icon", "unsupported_icon",
                 "Presentation icon must use a host-defined semantic glyph.");
+
+        if (manifest.AdvancedPresentation is { } advanced)
+        {
+            if (advanced.SchemaVersion !=
+                WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion)
+                Add("$.advancedPresentation.schemaVersion", "unsupported_version",
+                    $"Expected advanced presentation schema {WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion}.");
+            if (!Enum.IsDefined(advanced.Kind))
+                Add("$.advancedPresentation.kind", "unsupported_presentation",
+                    "The advanced presentation kind is not supported.");
+        }
 
         if (manifest.BackgroundPolicy is not null &&
             !SupportedBackgroundPolicies.Contains(manifest.BackgroundPolicy))

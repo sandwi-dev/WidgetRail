@@ -1,0 +1,275 @@
+#include "OverlayHostTestSupport.h"
+
+#include <Windows.h>
+#include <ole2.h>
+#include <UIAutomation.h>
+#include <wrl/client.h>
+
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <vector>
+
+namespace fs = std::filesystem;
+using Microsoft::WRL::ComPtr;
+using namespace gba::host_testing;
+
+namespace {
+
+constexpr DWORD kTimeoutMilliseconds = 30'000;
+constexpr wchar_t kNonce[] =
+    L"2132132132132132132132132132132132132132132132132132132132132132";
+constexpr char kNonceUtf8[] =
+    "2132132132132132132132132132132132132132132132132132132132132132";
+
+struct Arguments final {
+    fs::path installation;
+    fs::path communityFixture;
+};
+
+Arguments ParseArguments(const int argc, wchar_t** argv) {
+    Arguments result;
+    for (int index = 1; index < argc; ++index) {
+        const std::wstring_view argument(argv[index]);
+        if ((argument == L"--installation" ||
+             argument == L"--community-fixture") && index + 1 < argc) {
+            if (argument == L"--installation") result.installation = argv[++index];
+            else result.communityFixture = argv[++index];
+        } else {
+            Fail("Usage: AdvancedPresentationHostTests --installation <dir> "
+                 "--community-fixture <exe>");
+        }
+    }
+    Require(!result.installation.empty() && !result.communityFixture.empty(),
+        "Both --installation and --community-fixture are required.");
+    return result;
+}
+
+void InstallPackages(const fs::path& executable, const fs::path& catalogRoot) {
+    Require(fs::is_regular_file(executable),
+        "--community-fixture does not name the published installer");
+    std::wstring command = QuoteArgument(executable.wstring()) + L" --install " +
+        QuoteArgument(catalogRoot.wstring());
+    std::vector<wchar_t> mutableCommand(command.begin(), command.end());
+    mutableCommand.push_back(L'\0');
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    Require(CreateProcessW(
+                executable.c_str(), mutableCommand.data(), nullptr, nullptr,
+                FALSE, CREATE_NO_WINDOW, nullptr,
+                executable.parent_path().c_str(), &startup, &process),
+        Win32Error("CreateProcessW(advanced presentation installer)"));
+    Handle processHandle(process.hProcess);
+    Handle threadHandle(process.hThread);
+    Require(WaitForSingleObject(
+                processHandle.Get(), kTimeoutMilliseconds) == WAIT_OBJECT_0,
+        "Advanced presentation fixture installation timed out.");
+    DWORD exitCode{};
+    Require(GetExitCodeProcess(processHandle.Get(), &exitCode) && exitCode == 0,
+        "Advanced presentation fixture installation failed.");
+}
+
+class TemporaryInstallation final {
+public:
+    TemporaryInstallation(
+        const fs::path& source,
+        const fs::path& communityFixture) {
+        Require(fs::is_regular_file(source / L"OverlayHost.exe"),
+            "--installation does not contain OverlayHost.exe");
+        wchar_t temporaryRoot[MAX_PATH + 1]{};
+        const DWORD length = GetTempPathW(MAX_PATH, temporaryRoot);
+        Require(length > 0 && length <= MAX_PATH, Win32Error("GetTempPathW"));
+        GUID guid{};
+        Require(SUCCEEDED(CoCreateGuid(&guid)), "CoCreateGuid failed");
+        wchar_t guidText[64]{};
+        Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
+        root_ = fs::path(temporaryRoot) /
+            (L"gba-advanced-presentation-" + std::wstring(guidText));
+        fs::create_directories(root_);
+        fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
+        fs::copy_file(
+            source / L"widget-catalog.json", root_ / L"widget-catalog.json");
+        fs::copy(source / L"runtime", root_ / L"runtime",
+            fs::copy_options::recursive | fs::copy_options::copy_symlinks);
+        localAppData_ = root_ / L"local-app-data";
+        catalogRoot_ = localAppData_ / L"GameBarAlternative" / L"widgets";
+        fs::create_directories(catalogRoot_);
+        readyPath_ = root_ / L"host-ready.txt";
+        InstallPackages(communityFixture, catalogRoot_);
+    }
+
+    ~TemporaryInstallation() {
+        std::error_code ignored;
+        fs::remove_all(root_, ignored);
+    }
+
+    const fs::path& Root() const noexcept { return root_; }
+    const fs::path& LocalAppData() const noexcept { return localAppData_; }
+    const fs::path& CatalogRoot() const noexcept { return catalogRoot_; }
+    const fs::path& ReadyPath() const noexcept { return readyPath_; }
+    fs::path LogPath() const {
+        return localAppData_ / L"GameBarAlternative" / L"overlay.log";
+    }
+
+private:
+    fs::path root_;
+    fs::path localAppData_;
+    fs::path catalogRoot_;
+    fs::path readyPath_;
+};
+
+ComPtr<IUIAutomationElement> FindByAutomationId(
+    IUIAutomation* automation,
+    IUIAutomationElement* root,
+    const std::wstring_view automationId) {
+    if (!automation || !root) return {};
+    VARIANT value{};
+    value.vt = VT_BSTR;
+    value.bstrVal = SysAllocStringLen(
+        automationId.data(), static_cast<UINT>(automationId.size()));
+    Require(value.bstrVal != nullptr, "Could not allocate UIA identity.");
+    ComPtr<IUIAutomationCondition> condition;
+    const auto conditionResult = automation->CreatePropertyCondition(
+        UIA_AutomationIdPropertyId, value, condition.GetAddressOf());
+    VariantClear(&value);
+    Require(SUCCEEDED(conditionResult) && condition,
+        "Could not create UIA identity condition.");
+    ComPtr<IUIAutomationElement> result;
+    (void)root->FindFirst(
+        TreeScope_Subtree, condition.Get(), result.GetAddressOf());
+    return result;
+}
+
+ComPtr<IUIAutomationElement> WaitForElement(
+    IUIAutomation* automation,
+    const HWND window,
+    const std::wstring_view automationId) {
+    ComPtr<IUIAutomationElement> result;
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        ComPtr<IUIAutomationElement> root;
+        if (FAILED(automation->ElementFromHandle(window, root.GetAddressOf())) ||
+            !root) return false;
+        result = FindByAutomationId(automation, root.Get(), automationId);
+        return static_cast<bool>(result);
+    }), "Expected UIA element was absent: " + WideToUtf8(automationId));
+    return result;
+}
+
+std::wstring NameOf(IUIAutomationElement* element) {
+    BSTR value{};
+    if (!element || FAILED(element->get_CurrentName(&value)) || !value) return {};
+    std::wstring result(value, SysStringLen(value));
+    SysFreeString(value);
+    return result;
+}
+
+void FocusAndActivate(
+    IUIAutomationElement* element,
+    const HWND window,
+    const std::string_view identity) {
+    Require(element && SUCCEEDED(element->SetFocus()),
+        "UIA focus failed for " + std::string(identity));
+    ComPtr<IUIAutomationInvokePattern> invoke;
+    Require(SUCCEEDED(element->GetCurrentPatternAs(
+                UIA_InvokePatternId,
+                IID_PPV_ARGS(invoke.ReleaseAndGetAddressOf()))) && invoke,
+        "UIA element omitted InvokePattern: " + std::string(identity));
+    Require(SUCCEEDED(invoke->Invoke()),
+        "UIA element rejected InvokePattern: " + std::string(identity));
+    (void)window;
+}
+
+void ExercisePackage(
+    IUIAutomation* automation,
+    const HWND window,
+    const fs::path& logPath,
+    const std::wstring_view widgetId,
+    const std::wstring_view itemId,
+    const std::wstring_view titleId,
+    const std::string_view preset) {
+    const auto trayId = L"tray:tray." + std::wstring(widgetId);
+    auto tray = WaitForElement(automation, window, trayId);
+    FocusAndActivate(tray.Get(), window, WideToUtf8(trayId));
+    const auto adoption = "Launcher Experience projection adopted widget=" +
+        WideToUtf8(widgetId) + " preset=" + std::string(preset);
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        return ReadUtf8(logPath).find(adoption) != std::string::npos;
+    }), "Installed Community package was not adopted through the ordinary host: " +
+        WideToUtf8(widgetId));
+
+    const auto widgetItemId = L"widget:" + std::wstring(itemId);
+    auto item = WaitForElement(automation, window, widgetItemId);
+    FocusAndActivate(item.Get(), window, WideToUtf8(widgetItemId));
+    const auto widgetTitleId = L"widget:" + std::wstring(titleId);
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        auto title = WaitForElement(automation, window, widgetTitleId);
+        return NameOf(title.Get()) == L"Activated";
+    }), "Exact authored action did not update the installed Community semantics.");
+
+    SendKey(window, VK_ESCAPE);
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        ComPtr<IUIAutomationElement> root;
+        return SUCCEEDED(automation->ElementFromHandle(
+                   window, root.GetAddressOf())) && root &&
+            static_cast<bool>(FindByAutomationId(
+                automation, root.Get(), trayId));
+    }), "Back did not return to the shared dashboard semantics.");
+}
+
+void Run(const Arguments& arguments) {
+    TemporaryInstallation installation(
+        arguments.installation, arguments.communityFixture);
+    const std::wstring hostArguments =
+        L"--show --process-profile advanced-presentation-dlv213 "
+        L"--development-catalog-root " +
+            QuoteArgument(installation.CatalogRoot().wstring()) +
+        L" --development-ready-path " +
+            QuoteArgument(installation.ReadyPath().wstring()) +
+        L" --development-ready-nonce " + kNonce +
+        L" --development-widget-id settings "
+        L"--development-widget-instance settings.default";
+    HostProcess host(
+        installation.Root(), installation.LocalAppData(), hostArguments);
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        return ReadUtf8(installation.ReadyPath()).find(kNonceUtf8) !=
+            std::string::npos;
+    }), "Production host did not publish authenticated readiness; log=" +
+        ReadUtf8(installation.LogPath()));
+    HWND window{};
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        window = LocateHostWindow(host.Id());
+        return window && IsWindowVisible(window);
+    }), "Production host did not create a visible HWND.");
+
+    ComPtr<IUIAutomation> automation;
+    Require(SUCCEEDED(CoCreateInstance(
+                CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
+        "Windows UI Automation client is unavailable.");
+    ExercisePackage(
+        automation.Get(), window, installation.LogPath(),
+        L"org.random.alpha.surface", L"alpha.item", L"alpha.title", "hero-rail");
+    ExercisePackage(
+        automation.Get(), window, installation.LogPath(),
+        L"net.unrelated.bravo.deck", L"q7.item", L"q7.title", "compact-grid");
+}
+
+} // namespace
+
+int wmain(const int argc, wchar_t** argv) {
+    const HRESULT apartment = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(apartment)) {
+        std::cerr << "AdvancedPresentationHostTests failed: COM initialization failed\n";
+        return 1;
+    }
+    try {
+        Run(ParseArguments(argc, argv));
+        CoUninitialize();
+        std::cout << "AdvancedPresentationHostTests passed: 2 installed Community packages\n";
+        return 0;
+    } catch (const std::exception& error) {
+        CoUninitialize();
+        std::cerr << "AdvancedPresentationHostTests failed: " << error.what() << '\n';
+        return 1;
+    }
+}

@@ -11,17 +11,16 @@ enum class NavigationDirection { None, Left, Right, Up, Down };
 
 enum class NavigationEventPhase { Pressed, Repeated };
 
-inline constexpr std::uint64_t kTrayWidgetRefreshHoldMilliseconds = 700;
+inline constexpr std::uint64_t kTrayWidgetRestartHoldMilliseconds = 700;
 
 enum class TrayYGestureAction {
     None,
     ToggleReorder,
-    RefreshSelectedWidget,
+    RestartSelectedWidget,
 };
 
 /// Resolves the widget owned by the current host surface for F5 and the
-/// recovery chord. Tray hold refresh instead uses a widget-advertised
-/// contextual action.
+/// recovery chord. Tray hold restart uses the same host authority.
 [[nodiscard]] constexpr std::wstring_view ResolveCurrentWidgetReloadTarget(
     const bool overlayVisible,
     const bool trayFocused,
@@ -38,30 +37,30 @@ class TrayYGesture final {
 public:
     void Press(
         std::wstring_view selectedWidget,
-        bool refreshEligible,
+        bool restartEligible,
         std::uint64_t now) noexcept;
     [[nodiscard]] TrayYGestureAction Update(
         std::wstring_view selectedWidget,
-        bool refreshEligible,
+        bool restartEligible,
         std::uint64_t now) noexcept;
     [[nodiscard]] TrayYGestureAction Release(
         std::wstring_view selectedWidget,
-        bool refreshEligible,
+        bool restartEligible,
         std::uint64_t now) noexcept;
     void Cancel() noexcept;
     void Reset() noexcept;
 
     [[nodiscard]] bool capturing() const noexcept;
-    [[nodiscard]] bool pendingRefresh() const noexcept;
+    [[nodiscard]] bool pendingRestart() const noexcept;
     [[nodiscard]] std::wstring_view selectedWidget() const noexcept;
     [[nodiscard]] unsigned int progressPercent(std::uint64_t now) const noexcept;
 
 private:
-    enum class State { Idle, PendingTap, PendingRefresh, RefreshWon, Canceled };
+    enum class State { Idle, PendingTap, PendingRestart, RestartWon, Canceled };
 
     [[nodiscard]] bool TargetIsCurrent(
         std::wstring_view selectedWidget,
-        bool refreshEligible) const noexcept;
+        bool restartEligible) const noexcept;
     [[nodiscard]] TrayYGestureAction CrossThreshold(std::uint64_t now) noexcept;
 
     State state_{State::Idle};

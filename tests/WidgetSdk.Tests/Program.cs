@@ -28,6 +28,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Visual nodes require accessibility and semantic data", VisualNodeRequirementsAreEnforced),
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
     ("Text entry is host-owned bounded and protocol v15", TextEntryRoundTrip),
+    ("Advanced presentation slots are typed versioned and identity agnostic", AdvancedPresentationRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
@@ -56,6 +57,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Valid manifest passes", ValidManifestPasses),
     ("Manifest pinning is explicit and defaults closed", ManifestPinningIsExplicit),
     ("Manifest presentation uses only closed semantic host icons", ManifestPresentationIsSemantic),
+    ("Manifest advanced presentation opt-in is explicit versioned and closed", ManifestAdvancedPresentationIsExplicit),
     ("Manifest permission declarations are bounded ASCII-safe and unambiguous", ManifestPermissionsAreBounded),
     ("Residency policy is versioned bounded and legacy compatible", ResidencyPolicyIsVersioned),
     ("Worker memory guidance is optional advisory metadata", WorkerMemoryGuidanceIsAdvisory),
@@ -141,6 +143,66 @@ static Task TextEntryRoundTrip()
     Assert.True(ViewSnapshotValidator.Validate(invalid).Any(error =>
         error.Code == "invalid_text_entry_value"),
         "Control characters must fail text-entry validation.");
+    return Task.CompletedTask;
+}
+
+static Task AdvancedPresentationRoundTrip()
+{
+    static IEnumerable<ViewNode> Traverse(ViewNode node)
+    {
+        yield return node;
+        foreach (var child in node.Children)
+            foreach (var descendant in Traverse(child))
+                yield return descendant;
+    }
+
+    WidgetElement Slot(string id, WidgetAdvancedPresentationSlot slot) =>
+        UI.Stack(id, UI.Text($"Copy for {id}", $"{id}.copy"))
+            .Classes($"unrelated-{id}")
+            .InAdvancedPresentationSlot(slot);
+    var view = new WidgetView(UI.Stack("unmemorized-root",
+        UI.Stack("arbitrary-wrapper",
+            Slot("alpha", WidgetAdvancedPresentationSlot.DetailsPanel),
+            Slot("bravo", WidgetAdvancedPresentationSlot.PrimaryCollection)),
+        Slot("charlie", WidgetAdvancedPresentationSlot.CollectionNavigation),
+        Slot("delta", WidgetAdvancedPresentationSlot.SourceStatus),
+        Slot("echo", WidgetAdvancedPresentationSlot.OperationStatus),
+        Slot("foxtrot", WidgetAdvancedPresentationSlot.ControllerHints)))
+    {
+        AdvancedPresentation = new(
+            WidgetAdvancedPresentationKind.LauncherExperience,
+            WidgetAdvancedPresentationPreset.HeroRail),
+    };
+    var snapshot = view.CreateSnapshot("random.publisher.widget.instance", 41);
+    Assert.Equal(ProtocolConstants.AdvancedPresentationVersion, snapshot.ProtocolVersion);
+    Assert.Equal(WidgetAdvancedPresentationKind.LauncherExperience,
+        snapshot.AdvancedPresentation?.Kind);
+    Assert.Equal(WidgetAdvancedPresentationPreset.HeroRail,
+        snapshot.AdvancedPresentation?.Preset);
+    var slots = Traverse(snapshot.Root)
+        .Where(node => node.AdvancedPresentationSlot is not null)
+        .Select(node => node.AdvancedPresentationSlot!.Value)
+        .Order()
+        .ToArray();
+    Assert.Equal(6, slots.Length);
+    Assert.Equal(6, slots.Distinct().Count());
+    Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+
+    var oldWire = snapshot with
+    {
+        ProtocolVersion = ProtocolConstants.TextEntryVersion,
+    };
+    Assert.True(ViewSnapshotValidator.Validate(oldWire).Any(error =>
+        error.Code == "feature_requires_version"),
+        "Advanced presentation metadata was accepted on a legacy protocol.");
+    Assert.Throws<ProtocolValidationException>(() =>
+        new WidgetView(
+            UI.Text("not a container", "copy")
+                .InAdvancedPresentationSlot(
+                    WidgetAdvancedPresentationSlot.DetailsPanel))
+        {
+            AdvancedPresentation = view.AdvancedPresentation,
+        }.CreateSnapshot("invalid-slot.instance", 1));
     return Task.CompletedTask;
 }
 
@@ -3010,6 +3072,44 @@ static Task ManifestPresentationIsSemantic()
     Assert.True(invalid.Any(error => error.Path == "$.presentation.icon" &&
                                      error.Code == "unsupported_icon"),
         "Undefined semantic glyph was not rejected by manifest validation.");
+    return Task.CompletedTask;
+}
+
+static Task ManifestAdvancedPresentationIsExplicit()
+{
+    var omitted = ValidManifest();
+    Assert.Equal(null, omitted.AdvancedPresentation);
+    Assert.Equal(0, WidgetManifestValidator.Validate(omitted).Count);
+
+    var declared = omitted with
+    {
+        AdvancedPresentation = new WidgetAdvancedPresentationDeclaration
+        {
+            SchemaVersion = WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion,
+            Kind = WidgetAdvancedPresentationKind.LauncherExperience,
+        },
+    };
+    var payload = ManifestJson.Serialize(declared);
+    var text = Encoding.UTF8.GetString(payload);
+    Assert.True(text.Contains("\"advancedPresentation\"", StringComparison.Ordinal) &&
+                text.Contains("\"launcherExperience\"", StringComparison.Ordinal),
+        "The advanced presentation declaration was not serialized as a closed semantic value.");
+    var roundTrip = ManifestJson.Deserialize(payload);
+    Assert.Equal(WidgetAdvancedPresentationKind.LauncherExperience,
+        roundTrip.AdvancedPresentation?.Kind);
+    Assert.Equal(0, WidgetManifestValidator.Validate(roundTrip).Count);
+
+    var incompatible = declared with
+    {
+        AdvancedPresentation = declared.AdvancedPresentation! with
+        {
+            SchemaVersion = WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion + 1,
+        },
+    };
+    Assert.True(WidgetManifestValidator.Validate(incompatible).Any(error =>
+        error.Path == "$.advancedPresentation.schemaVersion" &&
+        error.Code == "unsupported_version"),
+        "An incompatible advanced presentation declaration was admitted.");
     return Task.CompletedTask;
 }
 

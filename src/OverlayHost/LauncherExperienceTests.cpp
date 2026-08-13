@@ -214,31 +214,30 @@ WidgetSnapshot ProjectedProductionSnapshot(
     result.activeInputScopeId = L"game-launcher.scope.exact";
     result.initialFocusId = L"launcher.game.0";
     result.surface = gba::WidgetSurfaceHints{L"wide", 1180, 700, 640, 360};
+    result.advancedPresentationKind = L"launcherExperience";
+    result.advancedPresentationPreset = profile == L"hero-rail" ? L"heroRail" :
+        profile == L"cover-wall" ? L"coverWall" :
+        profile == L"compact-grid" ? L"compactGrid" : std::wstring{profile};
     result.root = Node(L"game-launcher.root.exact", L"stack");
     result.root.inputScopeId = result.activeInputScopeId;
-    result.root.styleClasses = {
-        L"ordinary-author-class",
-        L"game-launcher-experience",
-        L"game-launcher-experience--" + std::wstring{profile},
-    };
+    result.root.styleClasses = {L"ordinary-author-class"};
 
-    const auto addSlot = [&](const Slot slot, const wchar_t* name) {
+    const auto addSlot = [&](const Slot slot, const wchar_t* semanticSlot) {
         auto child = Content(slot).root;
         const auto rewriteScope = [&](const auto& self, WidgetNode& node) -> void {
             node.inputScopeId = result.activeInputScopeId;
             for (auto& descendant : node.children) self(self, descendant);
         };
         rewriteScope(rewriteScope, child);
-        child.styleClasses.push_back(L"game-launcher-slot");
-        child.styleClasses.push_back(L"game-launcher-slot--" + std::wstring{name});
+        child.advancedPresentationSlot = semanticSlot;
         result.root.children.push_back(std::move(child));
     };
-    addSlot(Slot::DetailsPanel, L"details-panel");
-    addSlot(Slot::GameRail, L"game-rail");
-    addSlot(Slot::CollectionTabs, L"collection-tabs");
-    addSlot(Slot::SourceStatus, L"source-status");
-    addSlot(Slot::OperationStatus, L"operation-status");
-    addSlot(Slot::ControllerHints, L"controller-hints");
+    addSlot(Slot::DetailsPanel, L"detailsPanel");
+    addSlot(Slot::GameRail, L"primaryCollection");
+    addSlot(Slot::CollectionTabs, L"collectionNavigation");
+    addSlot(Slot::SourceStatus, L"sourceStatus");
+    addSlot(Slot::OperationStatus, L"operationStatus");
+    addSlot(Slot::ControllerHints, L"controllerHints");
 
     auto& rail = result.root.children[1];
     rail.kind = L"scroll";
@@ -257,6 +256,31 @@ WidgetSnapshot ProjectedProductionSnapshot(
     secondArtwork.artworkHandle = L"library.art.11111111111111111111111111111111";
     rail.children[1].children.push_back(std::move(secondArtwork));
     return result;
+}
+
+std::optional<gba::WidgetAdvancedPresentationDeclaration>
+AdvancedPresentationDeclaration(const int schemaVersion = 1) {
+    return gba::WidgetAdvancedPresentationDeclaration{
+        schemaVersion, L"launcherExperience"};
+}
+
+void ReidentifySnapshot(WidgetSnapshot& snapshot, const std::wstring_view prefix) {
+    const auto rewrite = [&](std::wstring& value) {
+        if (!value.empty()) value = std::wstring(prefix) + L"." + value;
+    };
+    rewrite(snapshot.instanceId);
+    rewrite(snapshot.activeInputScopeId);
+    rewrite(snapshot.initialFocusId);
+    const auto visit = [&](const auto& self, WidgetNode& node) -> void {
+        rewrite(node.id);
+        rewrite(node.inputScopeId);
+        rewrite(node.focusUp);
+        rewrite(node.focusDown);
+        rewrite(node.focusLeft);
+        rewrite(node.focusRight);
+        for (auto& child : node.children) self(self, child);
+    };
+    visit(visit, snapshot.root);
 }
 
 Recipe LeftRailRecipe(const bool heroLast = false) {
@@ -633,7 +657,7 @@ void RenderedSlotsSharePaintPointerFocusAndUiaGeometry() {
               "z-order remains independent from accessibility order");
 }
 
-void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
+void ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract() {
     ComPtr<ID2D1Factory> d2d;
     Check(SUCCEEDED(D2D1CreateFactory(
         D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
@@ -684,16 +708,17 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
             target->BeginDraw();
             target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1));
             auto adopted = projection.Render(
-                renderer, target.Get(), nullptr, L"game-launcher", snapshot,
+                renderer, target.Get(), nullptr, AdvancedPresentationDeclaration(),
+                L"presentation-generation-a", L"game-launcher", snapshot,
                 L"launcher.game.0", viewport, options);
             Check(SUCCEEDED(target->EndDraw()),
                 "complete production projection frame");
             Check(adopted.disposition == ProductionProjectionDisposition::Adopted &&
                   adopted.preset == expectedPreset && adopted.render.succeeded,
-                "exact first-party projection adopts its closed preset");
+            "declared Community projection adopts its closed preset");
 
             const auto& semantic = projection.InteractionSnapshot(
-                L"game-launcher", snapshot);
+                L"game-launcher", L"presentation-generation-a", snapshot);
             Check(semantic.sequence == snapshot.sequence &&
                   semantic.instanceId == snapshot.instanceId &&
                   semantic.activeInputScopeId == snapshot.activeInputScopeId &&
@@ -769,34 +794,36 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
         options.collectAccessibility = true;
         target->BeginDraw();
         auto result = projection.Render(
-            renderer, target.Get(), nullptr, L"game-launcher", snapshot,
+            renderer, target.Get(), nullptr, AdvancedPresentationDeclaration(),
+            L"presentation-generation-a", L"game-launcher", snapshot,
             L"launcher.game.0", {0, 0, 1280, 720}, options);
         Check(SUCCEEDED(target->EndDraw()), "complete ordinary fallback frame");
         Check(result.disposition == ProductionProjectionDisposition::Fallback &&
               result.render.succeeded,
-            "malformed private projection atomically keeps ordinary content active");
+            "malformed advanced projection atomically keeps ordinary content active");
         Check(std::count_if(
             result.render.diagnostics.begin(), result.render.diagnostics.end(),
             [](const auto& item) {
-                return item.code == L"launcher_projection_invalid";
+                return item.code == L"advanced_presentation_invalid";
             }) == 1, "malformed projection emits one bounded fallback diagnostic");
     };
     auto missing = ProjectedProductionSnapshot();
     missing.root.children.pop_back();
     renderFallback(std::move(missing));
     auto duplicate = ProjectedProductionSnapshot();
-    duplicate.root.children[0].styleClasses.back() =
-        L"game-launcher-slot--game-rail";
+    duplicate.root.children[0].advancedPresentationSlot =
+        L"primaryCollection";
     renderFallback(std::move(duplicate));
     auto unknown = ProjectedProductionSnapshot();
-    unknown.root.styleClasses.back() = L"game-launcher-experience--future-profile";
+    unknown.advancedPresentationPreset = L"futureProfile";
     renderFallback(std::move(unknown));
 
     auto adapterFailure = ProjectedProductionSnapshot();
     projection.FailNextAdapterFrameForTesting();
     target->BeginDraw();
     auto recovered = projection.Render(
-        renderer, target.Get(), nullptr, L"game-launcher", adapterFailure,
+        renderer, target.Get(), nullptr, AdvancedPresentationDeclaration(),
+        L"presentation-generation-a", L"game-launcher", adapterFailure,
         L"launcher.game.0", {0, 0, 1280, 720}, {});
     Check(SUCCEEDED(target->EndDraw()), "complete forced adapter recovery frame");
     Check(recovered.disposition == ProductionProjectionDisposition::Fallback &&
@@ -808,23 +835,72 @@ void ProductionProjectionAdoptsOnlyTheExactFirstPartyShape() {
                   return item.code == L"launcher_projection_render_failed";
               }) == 1,
         "adapter failure commits no partial frame and retains usable ordinary content");
-    Check(&projection.InteractionSnapshot(L"game-launcher", adapterFailure) ==
+    Check(&projection.InteractionSnapshot(
+              L"game-launcher", L"presentation-generation-a", adapterFailure) ==
               &adapterFailure,
         "adapter failure retires stale canonical interaction geometry");
 
     auto ordinary = ProjectedProductionSnapshot();
-    ordinary.root.styleClasses.erase(
-        ordinary.root.styleClasses.begin() + 1,
-        ordinary.root.styleClasses.end());
+    ordinary.advancedPresentationKind.clear();
+    ordinary.advancedPresentationPreset.clear();
+    const auto clearSlots = [&](const auto& self, WidgetNode& node) -> void {
+        node.advancedPresentationSlot.clear();
+        for (auto& child : node.children) self(self, child);
+    };
+    clearSlots(clearSlots, ordinary.root);
     target->BeginDraw();
     auto ordinaryResult = projection.Render(
-        renderer, target.Get(), nullptr, L"spotify", ordinary,
+        renderer, target.Get(), nullptr, std::nullopt,
+        L"presentation-generation-b", L"spotify", ordinary,
         L"launcher.game.0", {0, 0, 1280, 720}, {});
     Check(SUCCEEDED(target->EndDraw()), "complete non-launcher ordinary frame");
     Check(ordinaryResult.disposition == ProductionProjectionDisposition::Ordinary &&
           ordinaryResult.render.succeeded &&
-          &projection.InteractionSnapshot(L"spotify", ordinary) == &ordinary,
+          &projection.InteractionSnapshot(
+              L"spotify", L"presentation-generation-b", ordinary) == &ordinary,
         "other widgets remain on the ordinary declarative path");
+
+    auto randomCommunity = ProjectedProductionSnapshot();
+    ReidentifySnapshot(randomCommunity, L"random-community");
+    randomCommunity.root.styleClasses = {L"totally-different-style"};
+    target->BeginDraw();
+    auto randomAdopted = projection.Render(
+        renderer, target.Get(), nullptr, AdvancedPresentationDeclaration(),
+        L"random-package-generation", L"random-surface", randomCommunity,
+        L"random-community.launcher.game.0", {0, 0, 1280, 720}, {});
+    Check(SUCCEEDED(target->EndDraw()) &&
+          randomAdopted.disposition == ProductionProjectionDisposition::Adopted &&
+          randomAdopted.render.focusRects.contains(
+              L"random-community.launcher.game.0"),
+        "random Community identity and style adopt the same public presentation contract");
+
+    auto replacement = randomCommunity;
+    Check(&projection.InteractionSnapshot(
+              L"random-surface", L"replacement-generation", replacement) ==
+              &replacement,
+        "package replacement generation cannot retain stale projected interaction authority");
+
+    target->BeginDraw();
+    auto missingDeclaration = projection.Render(
+        renderer, target.Get(), nullptr, std::nullopt,
+        L"missing-declaration", L"random-surface", randomCommunity,
+        L"random-community.launcher.game.0", {0, 0, 1280, 720}, {});
+    Check(SUCCEEDED(target->EndDraw()) &&
+          missingDeclaration.disposition ==
+              ProductionProjectionDisposition::Fallback &&
+          missingDeclaration.render.succeeded,
+        "missing declaration fails closed to the ordinary declarative surface");
+
+    target->BeginDraw();
+    auto incompatibleDeclaration = projection.Render(
+        renderer, target.Get(), nullptr, AdvancedPresentationDeclaration(99),
+        L"future-declaration", L"random-surface", randomCommunity,
+        L"random-community.launcher.game.0", {0, 0, 1280, 720}, {});
+    Check(SUCCEEDED(target->EndDraw()) &&
+          incompatibleDeclaration.disposition ==
+              ProductionProjectionDisposition::Fallback &&
+          incompatibleDeclaration.render.succeeded,
+        "incompatible declaration version fails closed to ordinary content");
 }
 
 void ProductionProjectionUsesOneAtomicPresentationFrame() {
@@ -871,7 +947,8 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
         options.accessibility = accessibility;
         target->BeginDraw();
         auto result = projection.Render(
-            renderer, target.Get(), &cache, L"game-launcher", snapshot,
+            renderer, target.Get(), &cache, AdvancedPresentationDeclaration(),
+            L"motion-generation", L"game-launcher", snapshot,
             focus, {0, 0, 1280, 720}, options);
         Check(SUCCEEDED(target->EndDraw()) && result.render.succeeded,
             "complete immutable presentation frame");
@@ -1012,7 +1089,7 @@ int main() {
     StaticAssetsDecodeWithinTheHostBoundary();
     ScopedCascadeAccessibilityAndRecoveryStayAtomic();
     RenderedSlotsSharePaintPointerFocusAndUiaGeometry();
-    ProductionProjectionAdoptsOnlyTheExactFirstPartyShape();
+    ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract();
     ProductionProjectionUsesOneAtomicPresentationFrame();
     std::cout << "LauncherExperienceTests: " << checks << " checks passed\n";
     CoUninitialize();

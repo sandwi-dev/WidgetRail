@@ -23,11 +23,11 @@ int main() {
 
     using gba::input::TrayYGesture;
     using gba::input::TrayYGestureAction;
-    constexpr auto hold = gba::input::kTrayWidgetRefreshHoldMilliseconds;
+    constexpr auto hold = gba::input::kTrayWidgetRestartHoldMilliseconds;
     TrayYGesture trayY;
     trayY.Press(L"spotify", true, 1'000);
-    Check(trayY.capturing() && trayY.pendingRefresh(),
-          "eligible tray Y begins one captured refresh gesture");
+    Check(trayY.capturing() && trayY.pendingRestart(),
+          "eligible tray Y begins one captured restart gesture");
     Check(trayY.progressPercent(1'000) == 0 &&
               trayY.progressPercent(1'000 + hold / 2) == 50,
           "hold progress is deterministic and bounded");
@@ -41,27 +41,27 @@ int main() {
 
     trayY.Press(L"spotify", true, 2'000);
     Check(trayY.Release(L"spotify", true, 2'000 + hold) ==
-              TrayYGestureAction::RefreshSelectedWidget,
-          "release exactly at threshold refreshes instead of reordering");
+              TrayYGestureAction::RestartSelectedWidget,
+          "release exactly at threshold restarts instead of reordering");
     trayY.Press(L"spotify", true, 2'800);
     Check(trayY.Release(L"spotify", true, 2'800 + hold + 1) ==
-              TrayYGestureAction::RefreshSelectedWidget,
-          "release after threshold refreshes without requiring an earlier timer tick");
+              TrayYGestureAction::RestartSelectedWidget,
+          "release after threshold restarts without requiring an earlier timer tick");
     trayY.Press(L"spotify", true, 3'000);
     trayY.Press(L"ytmusic", true, 3'100);
     Check(trayY.Update(L"spotify", true, 3'000 + hold) ==
-              TrayYGestureAction::RefreshSelectedWidget,
+              TrayYGestureAction::RestartSelectedWidget,
           "held Y activates at threshold and repeated press cannot replace its target");
     Check(trayY.Update(L"spotify", true, 3'000 + hold + 1) ==
               TrayYGestureAction::None,
-          "timer repeats cannot activate refresh twice");
+          "timer repeats cannot activate restart twice");
     Check(trayY.Release(L"spotify", true, 3'000 + hold + 2) ==
               TrayYGestureAction::None,
           "release after hold wins suppresses reorder and widget Y");
 
     trayY.Press(L"spotify", true, 4'000);
     Check(trayY.Update(L"ytmusic", true, 4'100) == TrayYGestureAction::None,
-          "stale selected ID cancels refresh");
+          "stale selected ID cancels restart");
     Check(trayY.Release(L"ytmusic", true, 4'200) == TrayYGestureAction::None,
           "stale-selection release cannot become reorder");
     trayY.Press(L"spotify", true, 5'000);
@@ -76,7 +76,7 @@ int main() {
     trayY.Press(L"spotify", true, 5'600);
     Check(trayY.Update(L"spotify", false, 5'700) == TrayYGestureAction::None &&
               trayY.Release(L"spotify", false, 5'800) == TrayYGestureAction::None,
-          "entering reorder cancels an already pending refresh");
+          "entering reorder cancels an already pending restart");
     trayY.Press(L"spotify", true, 6'000);
     trayY.Cancel();
     Check(trayY.Update(L"spotify", true, 6'000 + hold) == TrayYGestureAction::None,
@@ -92,13 +92,13 @@ int main() {
           "device loss cancels and blocks reconnect/repeat work until release");
 
     trayY.Press(L"spotify", false, 7'000);
-    Check(!trayY.pendingRefresh() && trayY.Release(L"spotify", false, 8'000) ==
+    Check(!trayY.pendingRestart() && trayY.Release(L"spotify", false, 8'000) ==
               TrayYGestureAction::ToggleReorder,
           "Y in reorder mode remains a tap-only done action");
     trayY.Press(L"spotify", true, 9'000);
     Check(trayY.Update(L"spotify", true, 9'000 + hold) ==
-              TrayYGestureAction::RefreshSelectedWidget,
-          "refresh authority is requested once even when the host reload fails");
+              TrayYGestureAction::RestartSelectedWidget,
+          "restart authority is requested once even when the host reload fails");
     Check(trayY.Update(L"spotify", true, 10'000) == TrayYGestureAction::None,
           "failed reload result cannot retrigger the recognized hold");
     trayY.Reset();

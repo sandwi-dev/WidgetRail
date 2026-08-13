@@ -43,6 +43,11 @@ struct WidgetDescriptorQuickAction final {
     std::optional<std::wstring> controllerButton;
 };
 
+struct WidgetAdvancedPresentationDeclaration final {
+    int schemaVersion{};
+    std::wstring kind;
+};
+
 /// Public catalog data returned by WidgetBridge. Worker paths and arguments are
 /// deliberately absent from this native model.
 struct WidgetDescriptor final {
@@ -53,6 +58,7 @@ struct WidgetDescriptor final {
     std::wstring presentationGeneration;
     std::wstring icon{L"connection"};
     bool pinningSupported{};
+    std::optional<WidgetAdvancedPresentationDeclaration> advancedPresentation;
     bool protectedWifiPromptSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
@@ -297,6 +303,7 @@ struct WidgetNode final {
     std::size_t scrollPaginationThreshold{};
     std::wstring collectionAnchorKey;
     std::wstring collectionItemKey;
+    std::wstring advancedPresentationSlot;
     std::wstring actionSurfaceOrientation;
     std::optional<double> gridMinimumColumnWidth;
     std::optional<std::size_t> gridMaximumColumns;
@@ -337,6 +344,8 @@ struct WidgetSnapshot final {
     std::wstring initialFocusId;
     std::vector<WidgetQuickAction> quickActions;
     std::optional<WidgetSurfaceHints> surface;
+    std::wstring advancedPresentationKind;
+    std::wstring advancedPresentationPreset;
     WidgetNode root;
 };
 

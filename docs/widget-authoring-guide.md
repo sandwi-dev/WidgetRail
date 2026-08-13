@@ -1,6 +1,6 @@
 # Widget authoring guide and API map
 
-Status: the package schema, managed SDK, additive declarative protocol versions 1–13,
+Status: the package schema, managed SDK, additive declarative protocol versions 1–16,
 controller routing, lifecycle, GBSS, local packaging/install workflow, and
 typed host capabilities described as **implemented** below exist in this
 repository, including exact-port local JSON and write-only private secrets.
@@ -80,14 +80,15 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `15` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `16` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
 v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
 explicit focus persistence v13; cursor collections and opaque artwork handles
-v14; and host-owned bounded TextEntry v15.
+v14; host-owned bounded TextEntry v15; and declared advanced-presentation
+semantic slots v16.
 Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
@@ -95,6 +96,64 @@ package host API range, which remains `1.0` through major `1`.
 Runtime, bridge, and capability-broker transports also have internal protocol
 versions. Widget code does not set or negotiate them; use
 `WidgetWorkerBootstrap` and the typed SDK.
+
+## Optional host-owned advanced presentation
+
+Any installed Community package may opt into the same closed native advanced
+presentation contract. This changes only how the host composes one immutable
+declarative view. It does not grant provider, launch, action, navigation,
+Settings mutation, path, URL, script, renderer, window, compositor, or GPU
+authority. Launcher Experience Packs remain data-only choices installed and
+selected through Settings.
+
+First add the versioned package declaration to `manifest.json`:
+
+```json
+"advancedPresentation": {
+  "schemaVersion": 1,
+  "kind": "launcherExperience"
+}
+```
+
+Then publish one preset and exactly one container for each of the six closed
+semantic roles. The containers may have arbitrary IDs, nesting, style classes,
+publisher identity, assembly/type, and authored child shape:
+
+```csharp
+var view = new WidgetView(UI.Stack("my-root",
+    details.InAdvancedPresentationSlot(
+        WidgetAdvancedPresentationSlot.DetailsPanel),
+    games.InAdvancedPresentationSlot(
+        WidgetAdvancedPresentationSlot.PrimaryCollection),
+    collections.InAdvancedPresentationSlot(
+        WidgetAdvancedPresentationSlot.CollectionNavigation),
+    sourceStatus.InAdvancedPresentationSlot(
+        WidgetAdvancedPresentationSlot.SourceStatus),
+    operationStatus.InAdvancedPresentationSlot(
+        WidgetAdvancedPresentationSlot.OperationStatus),
+    controllerHelp.InAdvancedPresentationSlot(
+        WidgetAdvancedPresentationSlot.ControllerHints)))
+{
+    AdvancedPresentation = new(
+        WidgetAdvancedPresentationKind.LauncherExperience,
+        WidgetAdvancedPresentationPreset.HeroRail),
+};
+```
+
+The available presets are `HeroRail`, `CoverWall`, `Carousel`, and
+`CompactGrid`. Slot roots must be Stack, Row, Scroll, or Grid containers and
+must not contain another slot root. Authored node IDs, action IDs, collection
+keys, focus neighbors, active input scope, Back behavior, and accessibility
+labels remain authoritative. The host never infers any of them from the
+presentation kind.
+
+Admission also requires the current bridge catalog generation to carry the
+matching validated manifest declaration. A missing or incompatible declaration,
+missing/duplicate/unknown/nested slot, stale package generation, or native
+composition failure rejects only advanced adoption; the same current tree is
+rendered through the ordinary declarative path. Existing widgets therefore
+migrate by replacing private marker/profile/slot style conventions with these
+typed fields. Do not keep identity checks or marker classes as a fallback.
 
 ## Tutorial 1: scaffold and run the minimal widget
 
@@ -172,7 +231,7 @@ their manifest; they do not need to ship a custom worker executable.
 
 The host reserves Guide/Home, D-pad and horizontal left-stick navigation, `A`
 to open, `B` to close, and tray `Y`. A `Y` tap enters/exits reorder; a fixed
-700 ms hold refreshes the exact revalidated selected worker once through the
+700 ms hold restarts the exact revalidated selected worker once through the
 host's F5 reload path. Neither gesture is a widget input. A selected card may
 expose up to three quick actions on `X`, `LB`, `RB`, `LT`, `RT`, either stick
 click, Menu, or View. The mapping comes from the widget snapshot; it is not
