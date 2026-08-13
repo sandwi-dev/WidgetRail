@@ -79,7 +79,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (25 tests):
+MSTest.Sdk 4.3.2 suite (26 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -149,7 +149,9 @@ the JSON artifact atomically while the candidate is still running; an abnormal
 manual-session close therefore retains the latest complete prefix. The native
 ABI `primed` value is recorded as the one neutral-baseline frame it represents;
 later connected frames with `primed=false` remain actionable through the same
-semantic router.
+semantic router. Y press/release/hold handling retains the exact shared-route
+result; a rejected quick action or widget route is recorded as unhandled rather
+than being promoted to a successful native input.
 Any red effective-visibility or geometry record keeps AVP-004 blocked; the
 renderer-capture polish does not weaken or substitute for those assertions.
 Ownership checkpoints separate managed live/heap bytes, decoded

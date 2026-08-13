@@ -856,6 +856,67 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
+    public async Task Y_shared_route_atomically_records_the_actual_handled_and_unhandled_results()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"avp004-y-route-{Guid.NewGuid():N}.json");
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var fake = new FakePresentationSession(Frame("y-route.widget", 1, ButtonTree("y-route")));
+                var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+                await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+                var shellWindow = new Window { Width = 978, Height = 466, Content = shell };
+                shellWindow.Show();
+                await shell.InitializeAsync();
+                await WaitForAsync(() => shell.AdmittedWidgetId == "y-route.widget");
+                var focused = SemanticControl(shell, "action");
+                Assert.IsTrue(focused.Focus(NavigationMethod.Directional));
+
+                var routeWindow = new MainWindow();
+                var trace = new InputTraceRecorder(path, "y-route-tip");
+                var unhandled = await routeWindow.HandleYAsync(
+                    ControllerEventPhase.Released, focused, shell);
+                trace.Record("native-input-routed", true, true, "action",
+                    "button=Y;phase=Released", unhandled);
+
+                using (var unhandledDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
+                {
+                    var entries = unhandledDocument.RootElement.GetProperty("Entries")
+                        .EnumerateArray().ToArray();
+                    Assert.HasCount(1, entries);
+                    Assert.IsFalse(entries[0].GetProperty("Handled").GetBoolean());
+                    Assert.IsFalse(unhandledDocument.RootElement
+                        .GetProperty("NativeRoutedSemanticInputObserved").GetBoolean());
+                }
+
+                fake.ControllerInputHandled = true;
+                var handled = await routeWindow.HandleYAsync(
+                    ControllerEventPhase.Released, focused, shell);
+                trace.Record("native-input-routed", true, true, "action",
+                    "button=Y;phase=Released", handled);
+
+                using var handledDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+                var retained = handledDocument.RootElement.GetProperty("Entries")
+                    .EnumerateArray().ToArray();
+                Assert.HasCount(2, retained);
+                Assert.IsFalse(retained[0].GetProperty("Handled").GetBoolean());
+                Assert.IsTrue(retained[1].GetProperty("Handled").GetBoolean());
+                Assert.IsTrue(handledDocument.RootElement
+                    .GetProperty("NativeRoutedSemanticInputObserved").GetBoolean());
+                Assert.IsFalse(File.Exists(path + ".tmp"));
+                shellWindow.Close();
+                await routeWindow.ShutdownAsync();
+            });
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
     public async Task Dynamic_shell_keeps_stationary_tray_cycles_enters_content_restores_back_and_records_native_transition_phases()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -1351,6 +1412,7 @@ public sealed class IntegrationAdapterTests
         public event EventHandler<WidgetPresentationDiagnosticEventArgs>? DiagnosticPublished { add { } remove { } }
         public int RefreshCalls { get; private set; }
         public Exception? RefreshFailure { get; init; }
+        public bool ControllerInputHandled { get; set; }
 
         public Task<WidgetPresentationCatalog> ListWidgetsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new WidgetPresentationCatalog(1, byId.Values.Select(frame => frame.Descriptor).ToArray()));
@@ -1380,7 +1442,7 @@ public sealed class IntegrationAdapterTests
         public Task<bool> SendControllerInputAsync(WidgetPresentationAuthority authority, ControllerInputEvent input, CancellationToken cancellationToken = default)
         {
             ControllerInputs.Add((authority, input));
-            return Task.FromResult(false);
+            return Task.FromResult(ControllerInputHandled);
         }
         public Task<WidgetOperationAdmission> InvokeQuickActionAsync(WidgetPresentationTarget target, string quickActionId, long sequence, long monotonicTimestampMicroseconds, CancellationToken cancellationToken = default) => Task.FromResult(WidgetOperationAdmission.Enqueued);
         public Task<WidgetPresentationArtwork> ResolveArtworkAsync(WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken = default) => Task.FromResult(new WidgetPresentationArtwork(authority, artworkHandle, Array.Empty<byte>()));

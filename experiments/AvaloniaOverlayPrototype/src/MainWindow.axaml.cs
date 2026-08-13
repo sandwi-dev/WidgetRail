@@ -302,9 +302,9 @@ public sealed partial class MainWindow : Window
             if (input.Button is not { } button) return;
             if (button == ControllerButton.Y)
             {
-                await HandleYAsync(input.Phase, focused);
+                var yHandled = await HandleYAsync(input.Phase, focused, shell);
                 inputTrace.Record("native-input-routed", IsVisible, IsActive, FocusedSemanticId(),
-                    $"button={button};phase={input.Phase}", true);
+                    $"button={button};phase={input.Phase}", yHandled);
                 return;
             }
             var handled = await shell.RouteControllerButtonAsync(button, input.Phase, focused);
@@ -317,15 +317,16 @@ public sealed partial class MainWindow : Window
                 $"button={button};phase={input.Phase}", handled);
         }, DispatcherPriority.Input);
 
-    private async Task HandleYAsync(ControllerEventPhase phase, Control? focused)
+    internal async Task<bool> HandleYAsync(
+        ControllerEventPhase phase,
+        Control? focused,
+        IntegratedShellView? shell = null)
     {
-        if (integratedShell is null) return;
-        var trayFocused = focused is not null && integratedShell.TrayButtons.Contains(focused);
+        shell ??= integratedShell;
+        if (shell is null) return false;
+        var trayFocused = focused is not null && shell.TrayButtons.Contains(focused);
         if (!trayFocused)
-        {
-            await integratedShell.RouteControllerButtonAsync(ControllerButton.Y, phase, focused);
-            return;
-        }
+            return await shell.RouteControllerButtonAsync(ControllerButton.Y, phase, focused);
         if (phase == ControllerEventPhase.Pressed)
         {
             yHold?.Cancel();
@@ -337,18 +338,18 @@ public sealed partial class MainWindow : Window
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(700), token);
                 yHoldCompleted = true;
-                await integratedShell.Coordinator.RestartActiveAsync(token);
+                await shell.Coordinator.RestartActiveAsync(token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-            return;
+            return true;
         }
-        if (phase != ControllerEventPhase.Released) return;
+        if (phase != ControllerEventPhase.Released) return false;
         yHold?.Cancel();
         yHold?.Dispose();
         yHold = null;
-        if (yHoldCompleted) return;
-        if (!await integratedShell.Coordinator.InvokeQuickActionForButtonAsync(ControllerButton.Y))
-            await integratedShell.RouteControllerButtonAsync(ControllerButton.Y, phase, focused);
+        if (yHoldCompleted) return true;
+        if (await shell.Coordinator.InvokeQuickActionForButtonAsync(ControllerButton.Y)) return true;
+        return await shell.RouteControllerButtonAsync(ControllerButton.Y, phase, focused);
     }
 
     private async Task ApplyVisibilityAsync(bool visible)

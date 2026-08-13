@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 25-test focused Avalonia integration suite. Its ignored exact-commit
+only the 26-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -93,3 +93,6 @@ unavailable evidence rather than automated claims.
 The native input trace likewise contains only observed platform events. Focused
 suite completion does not manufacture handled controller categories; an absent
 physical connection remains explicitly absent.
+The direct Y regression routes a focused semantic control through the real
+MainWindow/shared shell path and requires false and true handling results to
+remain atomically distinguishable in the live trace.
