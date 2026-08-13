@@ -5206,8 +5206,8 @@ through the actual widget core, and retains organization/SavedId state across
 restart, update, replacement, and reinstall. Focused Release evidence passes Game
 Launcher 90/90, package-owned application/runtime 6/6, catalog 35/35, the isolated
 external export/package/install route, and the ordinary packaged full-trust route.
-The supported package helper produced a 12-file, 26,833,278-byte immutable 0.2.0
-archive including the required Windows runtime.
+The supported package helper produced a 12-file immutable 0.2.0 package with
+26,833,278 expanded payload bytes, including the required Windows runtime.
 The one clean exact-commit Tier-3 checkpoint at `7aa229e` is retained under
 `artifacts/verification/20260813T131146Z-a314fbcd`; it stopped in the runner
 self-test before product execution because the new MSTest project was absent
