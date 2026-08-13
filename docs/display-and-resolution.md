@@ -221,6 +221,14 @@ refresh, exact retained/admitted tray bounds, stable widget-switch tray
 capacity, live work-area/DPI re-resolution, contained HWND placement, and
 synchronous catalog addition/removal without stale tray focus or dispatch.
 
+The current packaged continuity verdict also uses this eight-widget route as a
+functional temporal gate rather than capture output. It requires the shared tray
+to remain fixed, the no-redirection HWND to have no opaque class background, the
+complete surface to stay premultiplied-clear, and every destination to commit
+before any coordinated placement. It rejects direct-HWND fallback, stale frame
+work after hide, shell motion during widget switches, or an incomplete timing
+sample.
+
 Run the native contract suite with:
 
 ```powershell

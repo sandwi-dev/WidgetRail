@@ -4123,3 +4123,21 @@ Focused Release evidence passes 1,691 native Launcher Experience checks and the
 one exact author-to-production lifecycle route. No schema, public protocol,
 network/gallery/signing surface, renderer, window, or presentation owner was
 added.
+
+### Current widget-switch continuity verdict (DLV-188)
+
+The current single-window DirectComposition path does not reproduce the reported
+black border, flicker, or tray motion under the bounded production-shaped
+eight-widget cycle. No product code changed. The existing real-HWND fixture
+retains source content during delayed worker startup, commits each complete
+destination surface before coordinated placement, keeps the shared shell/tray
+stationary, and uses premultiplied-clear composition with no HWND class
+background. It also rejects direct-HWND fallback, render-target recreation,
+stale composition work after hide, and out-of-work-area placement.
+
+Focused Release evidence passes 111,381 placement, 66 targeting, 63 transition,
+45 chrome, 155 accessibility-provider, 49 focus, 34 host-accessibility, and
+4,839 renderer checks. The real-host cycle passes all eight identities with
+maximum draw 3,298 us, commit 1,190 us, coordinated geometry 1,303 us, and zero
+shell-motion commit time. This semantic/timing/log result does not replace the
+separate user physical-display verdict.
