@@ -54,6 +54,8 @@ public sealed class LauncherExperienceSelectionService : IAsyncDisposable
 
     private readonly PlatformSettingsStore _settings;
     private readonly LauncherExperienceCatalog.LauncherExperienceCatalog _catalog;
+    private readonly LauncherExperienceSelectionPolicy _selectionPolicy;
+    private readonly SemaphoreSlim _selectionGate = new(1, 1);
     private readonly object _gate = new();
     private readonly object _debounceGate = new();
     private readonly CancellationTokenSource _shutdown = new();
@@ -70,6 +72,7 @@ public sealed class LauncherExperienceSelectionService : IAsyncDisposable
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _catalog = new LauncherExperienceCatalog.LauncherExperienceCatalog(
             settings.Paths.LauncherExperiencesDirectory);
+        _selectionPolicy = new LauncherExperienceSelectionPolicy(settings);
     }
 
     public event EventHandler<long>? Changed;
@@ -86,6 +89,50 @@ public sealed class LauncherExperienceSelectionService : IAsyncDisposable
         lock (_gate)
             return _current ?? throw new BridgeProtocolException(
                 "Launcher Experience selection is unavailable.");
+    }
+
+    internal async Task<BridgeLauncherExperience> ApplySelectionAsync(
+        BridgeLauncherExperienceSelectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await _selectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            switch (request.Operation)
+            {
+                case BridgeLauncherExperienceSelectionOperation.SelectExact
+                    when !string.IsNullOrWhiteSpace(request.Id) &&
+                        !string.IsNullOrWhiteSpace(request.Version):
+                    try
+                    {
+                        await _selectionPolicy.SelectAsync(
+                            request.Id, request.Version, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (PlatformSettingsException exception)
+                    {
+                        throw new BridgeProtocolException(
+                            "The exact installed Launcher Experience version is unavailable or invalid.",
+                            exception);
+                    }
+                    break;
+                case BridgeLauncherExperienceSelectionOperation.RecoverBuiltIn
+                    when request.Id is null && request.Version is null:
+                    await _selectionPolicy.RecoverBuiltInAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+                default:
+                    throw new BridgeProtocolException(
+                        "Launcher Experience selection request is invalid.");
+            }
+            await ReloadNowAsync(cancellationToken).ConfigureAwait(false);
+            return CreatePayload();
+        }
+        finally
+        {
+            _selectionGate.Release();
+        }
     }
 
     public async Task ReloadNowAsync(CancellationToken cancellationToken = default)
@@ -168,6 +215,7 @@ public sealed class LauncherExperienceSelectionService : IAsyncDisposable
         }
         _settingsWatcher?.Dispose();
         _catalogWatcher?.Dispose();
+        _selectionGate.Dispose();
         _shutdown.Dispose();
         return ValueTask.CompletedTask;
     }

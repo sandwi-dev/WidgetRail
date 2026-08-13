@@ -22,6 +22,7 @@ internal static class BridgeMessageTypes
     public const string PlatformAppearance = "platform-appearance";
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string GetLauncherExperience = "get-launcher-experience";
+    public const string SelectLauncherExperience = "select-launcher-experience";
     public const string LauncherExperience = "launcher-experience";
     public const string LauncherExperienceChanged = "launcher-experience-changed";
     public const string CatalogChanged = "widget-catalog-changed";
@@ -96,6 +97,15 @@ internal sealed record BridgeHostEffect(
     long Sequence);
 internal sealed record BridgeAppearanceChanged(long Revision);
 internal sealed record BridgeLauncherExperienceChanged(long Revision);
+internal enum BridgeLauncherExperienceSelectionOperation
+{
+    SelectExact,
+    RecoverBuiltIn,
+}
+internal sealed record BridgeLauncherExperienceSelectionRequest(
+    BridgeLauncherExperienceSelectionOperation Operation,
+    string? Id = null,
+    string? Version = null);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);
 

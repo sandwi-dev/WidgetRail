@@ -1870,6 +1870,92 @@ WidgetBridgeClient::GetLauncherExperience() {
     return std::nullopt;
 }
 
+std::optional<LauncherExperienceSelection>
+WidgetBridgeClient::SelectLauncherExperience(
+    const LauncherExperienceSelectionRequest& request) {
+    std::scoped_lock lock(requestMutex_);
+    const bool exact = request.operation ==
+        LauncherExperienceSelectionOperation::SelectExact;
+    if (pipe_ == INVALID_HANDLE_VALUE ||
+        (exact && (request.id.empty() || request.version.empty() ||
+            request.id.size() > kMaximumIdentifierLength ||
+            request.version.size() > kMaximumIdentifierLength ||
+            !IsIdentifier(request.id) || !IsIdentifier(request.version))) ||
+        (!exact && (!request.id.empty() || !request.version.empty()))) {
+        Fail(L"Launcher Experience selection request is invalid.");
+        return std::nullopt;
+    }
+    try {
+        const long long requestId = ++nextRequestId_;
+        JsonObject payload;
+        payload.Insert(L"operation", JsonValue::CreateStringValue(
+            exact ? L"selectExact" : L"recoverBuiltIn"));
+        if (exact) {
+            payload.Insert(L"id", JsonValue::CreateStringValue(request.id));
+            payload.Insert(L"version", JsonValue::CreateStringValue(request.version));
+        }
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(
+            L"select-launcher-experience"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId) ||
+                !response.HasKey(L"type") ||
+                response.GetNamedValue(L"type").ValueType() != JsonValueType::String) {
+                Fail(L"WidgetBridge returned an invalid Launcher Experience selection response.");
+                return std::nullopt;
+            }
+            const std::wstring type(std::wstring_view(response.GetNamedString(L"type")));
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(
+                        response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status,
+                        &artworkResults_, &localPackageInstallResults_,
+                        &launcherExperienceChanges_)) {
+                    Fail(std::move(status));
+                    return std::nullopt;
+                }
+                if (!status.empty()) lastError_ = std::move(status);
+                continue;
+            }
+            if (responseId != requestId) {
+                Fail(L"WidgetBridge returned a mismatched Launcher Experience selection request ID.");
+                return std::nullopt;
+            }
+            if (type == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            if (type != L"launcher-experience" || !response.HasKey(L"payload") ||
+                response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
+                Fail(L"WidgetBridge returned an unexpected Launcher Experience selection response.");
+                return std::nullopt;
+            }
+            std::wstring parseError;
+            auto selection = ParseLauncherExperience(
+                response.GetNamedObject(L"payload"), parseError);
+            if (!selection) {
+                Fail(std::move(parseError));
+                return std::nullopt;
+            }
+            lastError_.clear();
+            return selection;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid WidgetBridge Launcher Experience selection JSON: " +
+             std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
 std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
     const std::wstring_view widgetId,
     const std::wstring_view state) {

@@ -93,6 +93,7 @@ constexpr UINT kAccessibilityActionMessage = WM_APP + 10;
 constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
 constexpr UINT kProcessActivationMessage = WM_APP + 12;
 constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
+constexpr ULONG_PTR kLauncherExperienceSelectionProof = 0x4742414c;
 constexpr std::wstring_view kContextualRefreshQuickActionId = L"refresh";
 
 constexpr BYTE kBackdropOpacity = 164;
@@ -1188,6 +1189,9 @@ private:
                 Dispatch(gba::Command::ToggleOverlay);
             }
             return 0;
+        case WM_COPYDATA:
+            return HandleLauncherExperienceSelectionProof(
+                reinterpret_cast<const COPYDATASTRUCT*>(lParam)) ? TRUE : FALSE;
         case kGuideMessage:
             if (GetTickCount64() - lastGuideDispatchAt_ < 150) return 0;
             lastGuideDispatchAt_ = GetTickCount64();
@@ -2197,14 +2201,30 @@ private:
                 bridge_.lastError());
             return;
         }
-        const long long revision = selection->revision;
+        (void)PublishLauncherExperience(std::move(*selection));
+    }
+
+    bool SelectLauncherExperience(
+        const gba::LauncherExperienceSelectionRequest& request) {
+        auto selection = bridge_.SelectLauncherExperience(request);
+        if (!selection) {
+            AppendDiagnostic(
+                L"Launcher Experience selection denied; retaining last good state: " +
+                bridge_.lastError());
+            return false;
+        }
+        return PublishLauncherExperience(std::move(*selection));
+    }
+
+    bool PublishLauncherExperience(gba::LauncherExperienceSelection selection) {
+        const long long revision = selection.revision;
         std::wstring diagnostic;
         if (!launcherExperienceProjection_.PublishSelection(
-                std::move(*selection), diagnostic)) {
+                std::move(selection), diagnostic)) {
             AppendDiagnostic(
                 L"Launcher Experience revision " + std::to_wstring(revision) +
                 L" rejected; retaining last good state: " + diagnostic);
-            return;
+            return false;
         }
         AppendDiagnostic(
             L"Applied Launcher Experience revision " + std::to_wstring(revision) +
@@ -2212,6 +2232,56 @@ private:
             (diagnostic.empty() ? L"" : L" retained-diagnostic=" + diagnostic));
         if (state_.surface() != gba::Surface::Hidden)
             InvalidateRect(window_, nullptr, FALSE);
+        return true;
+    }
+
+    bool HandleLauncherExperienceSelectionProof(
+        const COPYDATASTRUCT* message) {
+        // The production-host fixture must drive the same private method future
+        // trusted Game Launcher actions use. Keep the proof seam unavailable
+        // unless the existing bounded performance-evidence nonce is present.
+        if (!performanceDiagnosticsNonce_ || !message ||
+            message->dwData != kLauncherExperienceSelectionProof ||
+            !message->lpData || message->cbData < sizeof(wchar_t) ||
+            message->cbData > 2048 ||
+            message->cbData % sizeof(wchar_t) != 0) return false;
+        const auto characters = message->cbData / sizeof(wchar_t);
+        const auto* data = static_cast<const wchar_t*>(message->lpData);
+        if (data[characters - 1] != L'\0') return false;
+        const std::wstring_view payload(data, characters - 1);
+        std::array<std::wstring_view, 5> fields{};
+        std::size_t cursor{};
+        for (std::size_t index = 0; index < fields.size(); ++index) {
+            const auto end = payload.find(L'\n', cursor);
+            if (end == std::wstring_view::npos) {
+                if (index != fields.size() - 1) return false;
+                fields[index] = payload.substr(cursor);
+                cursor = payload.size();
+            } else {
+                fields[index] = payload.substr(cursor, end - cursor);
+                cursor = end + 1;
+            }
+        }
+        if (cursor != payload.size() || fields[0] != L"gba-launcher-selection-v1" ||
+            fields[1] != *performanceDiagnosticsNonce_) return false;
+
+        gba::LauncherExperienceSelectionRequest request;
+        if (fields[2] == L"select-exact" && !fields[3].empty() &&
+            !fields[4].empty()) {
+            request.operation =
+                gba::LauncherExperienceSelectionOperation::SelectExact;
+            request.id = fields[3];
+            request.version = fields[4];
+        } else if (fields[2] == L"recover-built-in" && fields[3].empty() &&
+                   fields[4].empty()) {
+            request.operation =
+                gba::LauncherExperienceSelectionOperation::RecoverBuiltIn;
+        } else {
+            return false;
+        }
+        AppendDiagnostic(L"Authenticated Launcher Experience selection proof operation=" +
+            std::wstring(fields[2]));
+        return SelectLauncherExperience(request);
     }
 
     void QueueDisplayEnvironmentRefresh(const gba::DisplayEnvironmentChange change) {

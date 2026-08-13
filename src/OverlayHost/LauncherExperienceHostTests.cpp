@@ -30,6 +30,7 @@ constexpr wchar_t kEvidenceNonce[] =
     L"1461461461461461461461461461461461461461461461461461461461461461";
 constexpr wchar_t kSeededGameName[] = L"DLV-146 Trusted Game";
 constexpr wchar_t kMotionGameName[] = L"DLV-148 Motion Game";
+constexpr ULONG_PTR kLauncherExperienceSelectionProof = 0x4742414c;
 
 struct ProjectionRecord final {
     std::string preset;
@@ -138,6 +139,28 @@ void SendModalCancelKey(const HWND modal) {
                 modal, WM_KEYDOWN, VK_ESCAPE, 1,
                 SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &ignored) != 0,
         Win32Error("SendMessageTimeoutW(TextEntry Escape)"));
+}
+
+bool SendLauncherExperienceSelection(
+    const HWND window,
+    const std::wstring_view operation,
+    const std::wstring_view id = {},
+    const std::wstring_view version = {}) {
+    const std::wstring payload = L"gba-launcher-selection-v1\n" +
+        std::wstring(kEvidenceNonce) + L"\n" + std::wstring(operation) + L"\n" +
+        std::wstring(id) + L"\n" + std::wstring(version);
+    COPYDATASTRUCT message{
+        kLauncherExperienceSelectionProof,
+        static_cast<DWORD>((payload.size() + 1) * sizeof(wchar_t)),
+        const_cast<wchar_t*>(payload.c_str()),
+    };
+    DWORD_PTR result{};
+    Require(SendMessageTimeoutW(
+                window, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&message),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, kStepTimeoutMilliseconds,
+                &result) != 0,
+        Win32Error("SendMessageTimeoutW(Launcher Experience selection)"));
+    return result == TRUE;
 }
 
 std::size_t CountOccurrences(
@@ -701,11 +724,12 @@ std::wstring AssertSeededGame(
             return seeded != nullptr;
         }), "Production host did not expose the seeded Game Launcher identity.");
     } else {
-        auto root = RootForWindow(automation, window);
-        seeded = FindByAutomationId(
-            automation, root.Get(), std::wstring(expectedIdentity).c_str());
-        Require(seeded != nullptr,
-            "Production host omitted the seeded game's stable UIA identity.");
+        Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+            auto root = RootForWindow(automation, window);
+            seeded = FindByAutomationId(
+                automation, root.Get(), std::wstring(expectedIdentity).c_str());
+            return seeded != nullptr;
+        }), "Production host omitted the seeded game's stable UIA identity.");
     }
     const auto identity = StringProperty(seeded.Get(), UIA_AutomationIdPropertyId);
     Require(identity.starts_with(L"widget:game-launcher.item.grid.game."),
@@ -884,6 +908,14 @@ void RunInstalledSelection(
             log.find("selection=dev.example.production@1.0.0") != std::string::npos &&
             log.find("background-focus=pack:") != std::string::npos;
     }), "Installed exact Launcher Experience did not adopt recipe, style, and sealed asset.");
+    const auto stableGameIdentity = AssertSeededGame(
+        automation, running.window);
+    auto initialGame = WaitForElement(
+        automation, running.window, stableGameIdentity.c_str());
+    RequireFocusedIdentity(automation, initialGame.Get(), stableGameIdentity);
+    const auto beforeSwitch = ProjectionRecords(running.installation.LogPath());
+    Require(!beforeSwitch.empty(),
+        "Initial exact Launcher Experience omitted its production projection.");
 
     running.installation.WriteSelection("1.0.0", true);
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
@@ -892,13 +924,57 @@ void RunInstalledSelection(
             std::string::npos;
     }), "Use global appearance did not retain the exact installed selection.");
 
-    running.installation.WriteSelection("2.0.0", false);
+    Require(SendLauncherExperienceSelection(
+                running.window, L"select-exact", L"dev.example.production", L"2.0.0"),
+        "Private host route rejected an installed exact Launcher Experience version.");
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
         const auto log = ReadUtf8(running.installation.LogPath());
         return log.find("preset=carousel") != std::string::npos &&
             log.find("selection=dev.example.production@2.0.0 appearance=launcher") !=
                 std::string::npos;
     }), "Valid installed replacement was not published atomically.");
+    const auto selectedGameIdentity = AssertSeededGame(
+        automation, running.window, stableGameIdentity);
+    Require(selectedGameIdentity == stableGameIdentity,
+        "Installed selection changed the seeded game's stable identity.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        ComPtr<IUIAutomationElement> focused;
+        return SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+            focused && StringProperty(
+                focused.Get(), UIA_AutomationIdPropertyId) == stableGameIdentity;
+    }), "Installed selection did not preserve exact Game Launcher focus identity.");
+    const auto afterSwitch = ProjectionRecords(running.installation.LogPath());
+    Require(!afterSwitch.empty() &&
+            afterSwitch.back().instance == beforeSwitch.back().instance &&
+            afterSwitch.back().scope == beforeSwitch.back().scope &&
+            afterSwitch.back().focus == beforeSwitch.back().focus,
+        "Installed selection changed the Game Launcher collection/scope/focus identity.");
+
+    Require(!SendLauncherExperienceSelection(
+                running.window, L"select-exact", L"dev.example.production", L"0.9.0"),
+        "Private host route admitted an unavailable stale Launcher Experience version.");
+    const auto staleSettings = ReadUtf8(
+        running.installation.SettingsRoot() / L"platform-settings.json");
+    Require(staleSettings.find("dev.example.production") != std::string::npos &&
+            staleSettings.find("2.0.0") != std::string::npos &&
+            staleSettings.find("0.9.0") == std::string::npos,
+        "Stale-version denial mutated the exact trusted selection.");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find(
+                   "Launcher Experience selection denied; retaining last good state") !=
+                std::string::npos &&
+            log.find(
+                "exact installed Launcher Experience version is unavailable or invalid") !=
+                std::string::npos;
+    }), "Stale-version denial omitted the bounded host diagnostic.");
+    (void)AssertSeededGame(automation, running.window, stableGameIdentity);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        ComPtr<IUIAutomationElement> focused;
+        return SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+            focused && StringProperty(
+                focused.Get(), UIA_AutomationIdPropertyId) == stableGameIdentity;
+    }), "Stale-version denial changed exact Game Launcher focus identity.");
 
     running.installation.RewriteExperienceStyle(L"2.0.0");
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
@@ -923,16 +999,26 @@ void RunInstalledSelection(
     Require(!retained.empty() && retained.back().preset == "carousel",
         "Invalid reload replaced the last-good production presentation.");
 
-    running.installation.WriteBuiltInRecovery();
+    Require(SendLauncherExperienceSelection(
+                running.window, L"recover-built-in"),
+        "Private host route rejected code-owned built-in recovery.");
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
         const auto log = ReadUtf8(running.installation.LogPath());
         return log.find("selection=org.gbar.builtin.hero-rail@1.0.0") !=
             std::string::npos;
     }), "Built-in controller-complete recovery selection did not activate.");
+    const auto recoveryRecords = ProjectionRecords(running.installation.LogPath());
+    Require(!recoveryRecords.empty() &&
+            recoveryRecords.back().selection ==
+                "org.gbar.builtin.hero-rail@1.0.0" &&
+            recoveryRecords.back().instance == beforeSwitch.back().instance &&
+            recoveryRecords.back().scope == beforeSwitch.back().scope &&
+            recoveryRecords.back().focus == beforeSwitch.back().focus,
+        "Built-in recovery changed the Game Launcher game/collection/focus identity.");
     running.Stop();
-    std::cout << "LauncherExperienceHostTests: installed exact selection, global "
-                 "appearance, atomic replacement, tamper/removal last-good reload, "
-                 "and recovery passed\n";
+    std::cout << "LauncherExperienceHostTests: private exact selection, stale denial, "
+                 "unchanged game/collection/focus identity, tamper/removal last-good "
+                 "reload, and built-in recovery passed\n";
 }
 
 void RunSafeStart(

@@ -320,6 +320,18 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 _launcherExperience.CreatePayload(),
                 cancellationToken).ConfigureAwait(false);
             break;
+        case BridgeMessageTypes.SelectLauncherExperience:
+            if (_launcherExperience is null)
+                throw new BridgeProtocolException("Launcher Experience selection is unavailable.");
+            await ReplyAsync(
+                BridgeMessageTypes.LauncherExperience,
+                request.RequestId,
+                await _launcherExperience.ApplySelectionAsync(
+                    BridgeJson.FromElement<BridgeLauncherExperienceSelectionRequest>(
+                        request.Payload),
+                    cancellationToken).ConfigureAwait(false),
+                cancellationToken).ConfigureAwait(false);
+            break;
         case BridgeMessageTypes.GetSnapshot:
         {
             var snapshotRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);

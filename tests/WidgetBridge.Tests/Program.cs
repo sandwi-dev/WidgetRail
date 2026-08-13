@@ -695,6 +695,29 @@ static Task RequestClassificationIsClosed()
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
     Assert.Equal<string?>(null, artwork.WidgetId);
 
+    var launcherSelection = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.SelectLauncherExperience,
+        RequestId = 11,
+        Payload = BridgeJson.ToElement(new BridgeLauncherExperienceSelectionRequest(
+            BridgeLauncherExperienceSelectionOperation.SelectExact,
+            "dev.example.launcher", "2.0.0")),
+    });
+    Assert.Equal(BridgeRequestKind.SelectLauncherExperience, launcherSelection.Kind);
+    Assert.Equal<string?>(null, launcherSelection.WidgetId);
+
+    var malformedLauncherSelection = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.SelectLauncherExperience,
+        RequestId = 12,
+        Payload = BridgeJson.ToElement(new
+        {
+            operation = "recoverBuiltIn",
+            id = "dev.example.forged",
+        }),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, malformedLauncherSelection.Kind);
+
     var localInstall = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
         Type = BridgeMessageTypes.InstallLocalWidgetPackage,

@@ -255,6 +255,18 @@ struct LauncherExperienceSelection final {
     std::wstring diagnostic;
 };
 
+enum class LauncherExperienceSelectionOperation {
+    SelectExact,
+    RecoverBuiltIn,
+};
+
+struct LauncherExperienceSelectionRequest final {
+    LauncherExperienceSelectionOperation operation{
+        LauncherExperienceSelectionOperation::RecoverBuiltIn};
+    std::wstring id;
+    std::wstring version;
+};
+
 struct WidgetNode final {
     std::wstring id;
     std::wstring kind;
@@ -410,6 +422,10 @@ public:
     /// without starting a widget worker.
     [[nodiscard]] std::optional<LauncherExperienceSelection>
         GetLauncherExperience();
+    /// Applies one exact installed-package selection or the code-owned built-in
+    /// recovery through the private Settings/catalog authority.
+    [[nodiscard]] std::optional<LauncherExperienceSelection>
+        SelectLauncherExperience(const LauncherExperienceSelectionRequest& request);
     /// Coalesced latest revision announced by platform-appearance-changed events.
     [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
     [[nodiscard]] std::optional<long long>

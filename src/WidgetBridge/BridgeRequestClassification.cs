@@ -8,6 +8,7 @@ internal enum BridgeRequestKind
     ListWidgets,
     GetPlatformAppearance,
     GetLauncherExperience,
+    SelectLauncherExperience,
     GetSnapshot,
     ResolveArtwork,
     RestartWidget,
@@ -89,6 +90,8 @@ internal static class BridgeRequestClassifier
                     request.Payload, BridgeRequestKind.GetPlatformAppearance),
                 BridgeMessageTypes.GetLauncherExperience => Empty(
                     request.Payload, BridgeRequestKind.GetLauncherExperience),
+                BridgeMessageTypes.SelectLauncherExperience => LauncherExperienceSelection(
+                    request.Payload),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
@@ -141,6 +144,22 @@ internal static class BridgeRequestClassifier
         if (!AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
         return BridgeRequestKey.Global(BridgeRequestKind.ResolveArtwork);
+    }
+
+    private static BridgeRequestKey LauncherExperienceSelection(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeLauncherExperienceSelectionRequest>(payload);
+        var exact = request.Operation ==
+            BridgeLauncherExperienceSelectionOperation.SelectExact;
+        var recovery = request.Operation ==
+            BridgeLauncherExperienceSelectionOperation.RecoverBuiltIn;
+        if ((!exact && !recovery) ||
+            (exact && (string.IsNullOrWhiteSpace(request.Id) ||
+                string.IsNullOrWhiteSpace(request.Version))) ||
+            (recovery && (request.Id is not null || request.Version is not null)))
+            throw new BridgeProtocolException(
+                "Launcher Experience selection request is invalid.");
+        return BridgeRequestKey.Global(BridgeRequestKind.SelectLauncherExperience);
     }
 
     private static BridgeRequestKey LocalPackageInstall(JsonElement payload)
