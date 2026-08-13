@@ -142,21 +142,23 @@ Acceptance and launch evidence:
   1,019-line backend after frozen core removal and add a direct playback-child
   termination assertion without reopening a core Spotify dependency.
 
-### Current assignment — DLV-217: autonomous Game Launcher flagship
+### Accepted, awaiting integration approval — DLV-217: autonomous Game Launcher flagship
 
-State: bounded evidence correction assigned after rejecting coherent commits
-`7aa229e`, `c504d2f`, and product correction `6b9d032`; do not integrate them
-yet. Commit `6b9d032` closes the Windows SDK runtime projection, usable packaged
+State: accepted through final correction `d57fd06`; cumulative linear range
+`7aa229e`, `c504d2f`, `6b9d032`, and `d57fd06` is ready for local integration.
+Commit `6b9d032` closes the Windows SDK runtime projection, usable packaged
 discovery, package-owned metadata/artwork cache and offline provenance,
 package-service 10k/Search/collections/Details/Back/failure/exact-launch/
 persistence/replacement evidence, and dormant host-adapter payload defects. It
-remains rejected only because the exact-clean Tier 3 stopped at its first
-verifier self-test: the canonical manifest omits the already-existing
-`SpotifyCommunityApplication.Tests` project, so no trust-boundary step ran. The
-assigned correction adds that bounded MSTest project entry and retains one
-exact-clean final-tip Tier 3 far enough to exercise the required package/trust
-boundary; it must not alter Launcher architecture. Label 26,833,278 as expanded
-payload bytes rather than compressed archive bytes in implementation status.
+is followed by `d57fd06`, which registers the missing Spotify Community MSTest
+project and labels 26,833,278 accurately as expanded payload bytes. Exact-clean
+Tier 3 executed 41 steps at `d57fd06`: 40 passed, including Spotify Community
+5/5, Game Launcher Community 6/6, and Widget Catalog trust/package 35/35. Only
+the unchanged reviewer-owned archived delivery-plan link step is red. The
+planner accepted the implementation but local cherry-pick is temporarily
+blocked because the execution policy requires explicit user approval to
+integrate a broad product sequence whose retained aggregate is still red for
+that known reviewer-document issue.
 Begin from clean accepted main `47d8ffe`; do not merge or replay the retired
 widgets branch.
 
@@ -367,8 +369,8 @@ build needed by the extraction. No aggregate. Commit one
 
 ### AVP-004-INTEGRATION — generic Avalonia candidate
 
-State: second correction assigned after rejecting `79615c3` and correction
-`4765cce`. Both extraction commits
+State: third correction assigned after rejecting `79615c3`, `4765cce`, and
+memory correction `56dffa6`. Both extraction commits
 remain accepted and integrated in SESSION then PLATFORM order through main
 `b5c4c6c`. The generic adapter architecture is sound. Correction `4765cce`
 closes exact-authority latest-wins transition/focus publication, superseded
@@ -389,7 +391,17 @@ decoded artwork, live/superseded render trees, pending artwork, and available
 native/Skia resources before and after traversal/hide. Do not raise the Skia GPU
 cache or add `BitmapCache` without a measured benefit because either can increase
 the memory regression. A forced GC or eventual post-hide drop alone is not
-acceptance.
+acceptance. Correction `56dffa6` then passes the memory gate at 435.38 MiB,
+retains one render, all 32 responsive fixtures, and eight complete transition
+sequences, but remains rejected on two bounded integration defects: the AVP
+duplicates the session-owned invalidation refresh and surfaces the losing
+`snapshot_stale` result as a visible Media Sessions failure; and its in-place
+compact visibility switch can hide the focused ExpandedOnly control without a
+visible fallback/restoration. The assigned correction removes duplicate refresh
+ownership or discards only the explicit stale result, proves latest frame with
+no visible failure, and preserves/restores visible focus plus UIA truth across
+compact/expanded changes. Final exact evidence must keep the candidate below
+500 MiB and set `allInstalledWidgetsPassed=true`.
 
 Owner after unblock: standing `avalonia-prototype` task. Integration order is
 SESSION, PLATFORM, then candidate wiring. Substantial conflicts stop.
