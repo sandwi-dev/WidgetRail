@@ -144,8 +144,16 @@ Acceptance and launch evidence:
 
 ### Current assignment — DLV-217: autonomous Game Launcher flagship
 
-State: Assigned. Begin from clean accepted main `47d8ffe`; do not merge or
-replay the retired widgets branch.
+State: correction assigned after rejecting coherent commits `7aa229e` and
+`c504d2f`; do not integrate them yet. The correction must: retain the Windows
+SDK runtime projection (or remove that dependency) and prove packaged discovery
+reaches usable source/library state; preserve package-owned metadata/artwork
+through a bounded cache/content-handle path with offline provenance; exercise
+the package service itself for 10k/Search/collections/Details/Back/failure/
+exact-launch/persistence/replacement; remove the dormant host capability/private
+state adapter from the shipped payload; and retain one final-tip Tier 3 result.
+Begin from clean accepted main `47d8ffe`; do not merge or replay the retired
+widgets branch.
 
 Baseline: accepted and integrated DLV-216 result `47d8ffe`.
 
