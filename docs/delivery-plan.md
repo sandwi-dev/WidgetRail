@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 21:06 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 21:22 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -167,10 +167,51 @@ Task: Implementation agent — platform lane
 
 Branch: codex/impl-platform-community
 
-### Current assignment — DLV-213: generic Community advanced presentation
+### Current assignment — DLV-213 correction: generic Community advanced presentation
 
-State: Assigned from main 56a09fb and already in coherent progress. Finish the
-current milestone; do not interrupt it for the new full-trust work.
+State: commit 0b756df is independently rejected pending one bounded correction.
+Its generic protocol/SDK/bridge/native contract and two unrelated Community
+fixtures are promising, but it did not migrate or exercise the required
+DLV-212 Game Launcher candidate. The actual bundled and exported Game Launcher
+still omit the manifest declaration and emit the retired private profile/slot
+style markers. Integrating the commit would therefore retire its current
+advanced layout and fall back to the ordinary declarative surface. The clean
+exact-commit canonical attempt also stopped before product steps because the
+verifier manifest omits the already-present FullApplicationWidget.Tests
+project, while implementation-status currently implies that required result is
+complete.
+
+Correct on top of 0b756df without redesigning the generic contract:
+
+- Migrate the one maintained Game Launcher presentation source and both bundled
+  and Export-CommunityReference manifests to the typed protocol-v16 declaration,
+  preset, and six slot roles. Delete the retired style-marker admission metadata
+  and update its focused tests; do not fork domain behavior or add identity
+  recognition.
+- Replace one synthetic installed-host consumer with the exact supported
+  DLV-212 exported Community candidate and retain the second differently named,
+  differently shaped fixture. Prove both are admitted through the same generic
+  declaration and preserve exact action, focus, collection, Back, and UIA
+  semantics. Also prove the currently packaged Game Launcher no longer falls
+  back solely because it lacks the declaration.
+- Add the already-existing FullApplicationWidget.Tests project to the verifier
+  manifest with its documented bounded MSTest.Sdk 4.3.2 invocation, then run the
+  required canonical aggregate once from the corrected clean commit. Do not
+  migrate other tests or rerun an unchanged aggregate.
+- Correct implementation-status to report the failed 0b756df aggregate honestly
+  and then record only the corrected evidence. Rename the now-generic
+  game-navigation diagnostic if it counts all navigation nodes.
+
+This is the serialized protocol consumer correction and may touch the exact
+managed Game Launcher projection/export/manifests/tests despite platform lane
+ownership. It may not change Game Launcher providers, capabilities, stores,
+launch authority, organization state, full-trust runtime, or any Spotify code.
+Tier 1 affected SDK/bridge/native/Game Launcher/verifier self-test; Tier 2 exact
+exported candidate plus second-package ordinary-host route; Tier 3 once from the
+corrected clean commit. Stop for a substantial conflict or if the candidate can
+consume the contract only through first-party identity or a private bridge.
+
+The underlying DLV-213 objective remains:
 
 Define the smallest versioned public manifest/SDK/protocol declaration by which
 any installed Community widget can opt into a closed host-owned advanced
