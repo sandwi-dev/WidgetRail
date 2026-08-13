@@ -429,6 +429,19 @@ failed before starting the already-green Release build; main Release itself was
 rebuilt successfully and the launched reviewed source executable retains the
 reviewed ProductVersion/SHA provenance.
 
+First physical-correction commit `9be5405` was independently rejected on
+evidence, then replaced by clean correction `fc1e653`. Its 19/19 focused suite
+passes and an exact-tip measurement was produced, but that measurement is red:
+all eight offscreen renderer captures exist and the native visible GameInput
+lease was observed, while no routed semantic controller input was observed and
+`allInstalledWidgetsPassed=false`. The candidate therefore remains unaccepted.
+Do not rerun the unchanged failed measurement. Diagnose once, make the bounded
+trace/lifecycle correction, and require the final controller gate to cover
+connected visible lease plus routed and handled Guide, navigation, activation,
+Back, tray/content, slider/scroll, reconnect, focus-loss, and hide/show events.
+Offscreen captures are renderer evidence only; final physical controller/display
+acceptance remains planner/user-owned.
+
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
 children. The obsolete AVP-002 process ignored two graceful close paths and was
