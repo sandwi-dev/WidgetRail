@@ -178,6 +178,7 @@ public sealed class GameLauncherLayoutTests
             "Reopening an unchanged presentation changed its semantic tree.");
         foreach (var profile in new[]
                  {
+                     (Name: "minimum-100", Width: 420, Height: 340, Scale: 1.0),
                      (Name: "compact-100", Width: 520, Height: 420, Scale: 1.0),
                      (Name: "compact-150", Width: 520, Height: 420, Scale: 1.5),
                      (Name: "standard-100", Width: 960, Height: 600, Scale: 1.0),
@@ -194,6 +195,10 @@ public sealed class GameLauncherLayoutTests
             Assert.AreEqual(!compact,
                 visible.Any(node => node.Id == "game-launcher.header.expanded"),
                 $"{profile.Name}: wrong expanded header at {profile.Scale:P0} scale");
+            Assert.AreEqual(compact,
+                visible.Any(node => node.Id == "game-launcher.compact.status" &&
+                    node.Text == cases[0].State.Status),
+                $"{profile.Name}: compact status is not truthful and visible");
             var scroll = visible.Single(node =>
                 node.Id == GameLauncherPresentation.ScrollId);
             var scrollNodes = Nodes(scroll).ToArray();
@@ -212,6 +217,26 @@ public sealed class GameLauncherLayoutTests
             Assert.IsTrue(controllerHints.StyleClasses.Contains(
                 "game-launcher-footer", StringComparer.Ordinal),
                 $"{profile.Name}: controller hints lost their responsive footer style");
+            var focused = visible.Single(node => node.Id == firstRender.InitialFocusId);
+            Assert.AreEqual("game-launcher.launch", focused.ActionId,
+                $"{profile.Name}: focused game lost its primary action");
+            Assert.IsTrue(visible.Any(node => node.Id == "game-launcher.collections"),
+                $"{profile.Name}: collection navigation is not visible");
+            var search = visible.Single(node => node.Id == "game-launcher.search");
+            Assert.AreEqual(ViewNodeKind.TextEntry, search.Kind,
+                $"{profile.Name}: Search does not use the host-owned TextEntry");
+            Assert.AreEqual("game-launcher.search.commit", search.ActionId,
+                $"{profile.Name}: Search changed its exact commit action");
+            Assert.IsTrue(Nodes(controllerHints).Any(node =>
+                    node.Id.StartsWith("game-launcher.hint.", StringComparison.Ordinal)),
+                $"{profile.Name}: controller help is not visible");
+            foreach (var secondaryId in new[]
+                     {
+                         "game-launcher.hero", "game-launcher.filters",
+                         "game-launcher.actions",
+                     })
+                Assert.AreEqual(!compact, visible.Any(node => node.Id == secondaryId),
+                    $"{profile.Name}: {secondaryId} responsive ownership is wrong");
         }
 
         var stylePath = Path.Combine(AppContext.BaseDirectory, "styles", "default.gbss");
@@ -225,7 +250,7 @@ public sealed class GameLauncherLayoutTests
         StringAssert.Contains(styles,
             ".game-launcher-hero { flex-shrink: 0; min-height: 150px;");
         StringAssert.Contains(styles,
-            ".game-launcher-rail { flex-shrink: 0; min-height: 178px;");
+            ".game-launcher-rail { flex-shrink: 0; min-height: 150px;");
         StringAssert.Contains(styles,
             ".game-launcher-footer { flex-shrink: 0; flex-wrap: wrap;");
     }

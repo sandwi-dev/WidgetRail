@@ -88,6 +88,24 @@ internal static class YtMusicPresentation
                 Surface: StandardSurface);
         }
 
+        if (!presentation.HasCurrentPlayback)
+        {
+            return new WidgetView(
+                UI.Stack("ytmusic-root",
+                    Header(presentation.Status, connection),
+                    UI.EmptyState(
+                        "No track playing",
+                        "Start playback in YTMDesktop2, then refresh now playing.",
+                        "ytmusic-idle",
+                        new ComponentAction(
+                            "Refresh", YtMusicActionPolicy.RefreshId,
+                            WidgetGlyph.Refresh),
+                        WidgetGlyph.Music))
+                    .Classes("ytmusic-widget", "is-connected", "is-idle"),
+                InitialFocusId: "ytmusic-idle.action",
+                Surface: StandardSurface);
+        }
+
         var duration = snapshot.DurationSeconds > 0 ? snapshot.DurationSeconds : 1;
         var position = Math.Clamp(snapshot.PositionSeconds, 0, duration);
         var playLabel = snapshot.IsPlaying ? "Pause" : "Play";

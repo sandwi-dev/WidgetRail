@@ -1051,6 +1051,19 @@ static async Task NormalizedAppLibrarySimulatorRoundTrip()
                 Metadata: null,
                 new AppLibraryCapabilitySet([AppLibraryAction.Launch]),
                 ActiveOperation: null)),
+        new AppLibraryItemSummary(
+            "backend-owned", "backend-stable-owned",
+            new AppLibraryItemPresentation(
+                "Owned Game",
+                AppLibraryKind.Game,
+                new AppLibrarySourceReference("source-store", "Store"),
+                new AppLibraryAvailabilitySummary(
+                    AppLibraryAvailabilityState.Unavailable, false,
+                    "owned_not_installed"),
+                new AppLibraryArtworkSet([]),
+                Metadata: null,
+                new AppLibraryCapabilitySet([AppLibraryAction.Install]),
+                ActiveOperation: null)),
     ]);
     await using var broker = Broker(identity, store, backend,
         PlatformCapabilities.AppLibraryReadV1);
@@ -1066,15 +1079,26 @@ static async Task NormalizedAppLibrarySimulatorRoundTrip()
         $"Normalized simulator page failed: {response.ErrorCode}");
     var page = response.Payload!.Value.Deserialize<AppLibraryCursorPageSummary>(
         BrokerJson.StrictOptions)!;
-    Assert.Equal(1, page.Items.Count);
-    Assert.Equal("Normalized Game", page.Items[0].Presentation.DisplayName);
-    Assert.Equal("source-steam", page.Items[0].Presentation.Source.SourceId);
+    Assert.Equal(2, page.Items.Count);
+    var installed = page.Items.Single(item =>
+        item.Presentation.DisplayName == "Normalized Game");
+    Assert.Equal("source-steam", installed.Presentation.Source.SourceId);
     Assert.Equal(AppLibraryAvailabilityState.Installed,
-        page.Items[0].Presentation.Availability.State);
+        installed.Presentation.Availability.State);
     Assert.Equal(AppLibraryAction.Launch,
-        page.Items[0].Presentation.Capabilities.Actions.Single());
-    Assert.Equal(AppLibrarySourceAccountState.NotApplicable,
-        page.Sources.Single().AccountState);
+        installed.Presentation.Capabilities.Actions.Single());
+    var owned = page.Items.Single(item =>
+        item.Presentation.DisplayName == "Owned Game");
+    Assert.Equal(AppLibraryAvailabilityState.Unavailable,
+        owned.Presentation.Availability.State);
+    Assert.Equal("owned_not_installed",
+        owned.Presentation.Availability.StatusCode);
+    Assert.True(!owned.Presentation.Availability.IsLaunchable);
+    Assert.Equal(AppLibraryAction.Install,
+        owned.Presentation.Capabilities.Actions.Single());
+    Assert.Equal(2, page.Sources.Count);
+    Assert.True(page.Sources.All(source =>
+        source.AccountState == AppLibrarySourceAccountState.NotApplicable));
 }
 
 static async Task AppLibraryContracts()

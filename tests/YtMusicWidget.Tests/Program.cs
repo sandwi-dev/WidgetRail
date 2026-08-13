@@ -18,6 +18,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("HTTP failure bodies never escape the companion client", HttpFailureBodyIsDiscarded),
     ("Capability failures render actionable status without provider details", CapabilityFailuresAreSafe),
     ("Disconnected UI offers controller-first connect and pair", DisconnectedUi),
+    ("Connected idle exposes only refresh without media authority", ConnectedIdleIsTruthful),
+    ("Transient refresh failure preserves last-good media and recovers", TransientRefreshPreservesLastGood),
     ("Every connection state publishes one bounded standard surface", SurfaceContractAcrossConnectionStates),
     ("First activation starts one non-blocking automatic connection", AutoConnectStartsOnce),
     ("Runtime operation lanes replace widget-owned task registries", RuntimeOperationsOwnLifecycleWork),
@@ -57,6 +59,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Transport reconciliation is canceled and drained when the widget becomes inactive", TransportReconciliationStopsWhenInactive),
     ("Superseded transport failures cannot commit attempt-local state", SupersededTransportFailuresCannotCommit),
     ("Lifecycle-stale authorization failures cannot disconnect", LifecycleStaleAuthorizationCannotCommit),
+    ("Lifecycle-stale explicit Refresh ordinary failures cannot commit", LifecycleStaleExplicitRefreshOrdinaryFailureCannotCommit),
+    ("Lifecycle-stale explicit Refresh authorization failures cannot commit", LifecycleStaleExplicitRefreshAuthorizationCannotCommit),
     ("Optimistic playback does not masquerade as companion confirmation", PlaybackReconciliationRejectsStaleState),
     ("Errors render a focused retry action", ErrorState),
     ("Pairing displays approval code before completing", PairingStateFlow),
@@ -423,6 +427,66 @@ static Task DisconnectedUi()
     Assert.Equal("Pair device", Find(snapshot.Root, "pair").Text);
     Assert.Equal("pair", Find(snapshot.Root, "connect").Focus!.Right);
     return Task.CompletedTask;
+}
+
+static async Task ConnectedIdleIsTruthful()
+{
+    var fake = new FakeClient { Snapshot = YtMusicPlaybackSnapshot.Empty };
+    var widget = new YtMusicWidget(fake);
+
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.idle", 1);
+
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal("ytmusic-idle.action", snapshot.InitialFocusId);
+    Assert.Equal("No track playing", Find(snapshot.Root, "ytmusic-idle.title").Text);
+    Assert.Equal("refresh", Find(snapshot.Root, "ytmusic-idle.action").ActionId);
+    Assert.Equal(0, snapshot.QuickActions.Count);
+    foreach (var id in new[]
+             {
+                 "previous", "play-pause", "next", "shuffle", "like", "dislike", "repeat",
+             })
+        Assert.True(FindOrNull(snapshot.Root, id) is null,
+            $"Idle companion exposed stale media action '{id}'.");
+
+    await widget.OnActionAsync(new WidgetActionEvent("toggle-playback", "play-pause"));
+    Assert.Equal(0, fake.Commands.Count);
+}
+
+static async Task TransientRefreshPreservesLastGood()
+{
+    var recovered = PlayingSnapshot("Recovered after disconnect") with
+    {
+        IsPlaying = false,
+    };
+    var fake = new FakeClient
+    {
+        SnapshotAsync = (call, _) => call switch
+        {
+            1 => Task.FromResult(PlayingSnapshot("Last-good track")),
+            2 => Task.FromException<YtMusicPlaybackSnapshot>(
+                new WidgetCapabilityException("loopback_timeout", "private provider path")),
+            _ => Task.FromResult(recovered),
+        },
+    };
+    var widget = new YtMusicWidget(fake);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+
+    await widget.OnActionAsync(new WidgetActionEvent("refresh", "refresh"));
+    var stale = widget.Render().CreateSnapshot("ytmusic.transient", 1);
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal("Last-good track", Find(stale.Root, "track-title").Text);
+    Assert.True((Find(stale.Root, "connection-status").Text ?? string.Empty).Contains(
+        "showing last known track", StringComparison.Ordinal),
+        "Transient refresh failure did not label the retained presentation stale.");
+    Assert.Equal(3, stale.QuickActions.Count);
+
+    await widget.OnActionAsync(new WidgetActionEvent("refresh", "refresh"));
+    var current = widget.Render().CreateSnapshot("ytmusic.transient", 2);
+    Assert.Equal("Recovered after disconnect", Find(current.Root, "track-title").Text);
+    Assert.Equal(WidgetGlyph.Play, Find(current.Root, "play-pause").Glyph);
+    Assert.Equal("Connected to YTMDesktop2", Find(
+        current.Root, "connection-status").Text);
 }
 
 static async Task AutoConnectStartsOnce()
@@ -1653,6 +1717,65 @@ static async Task LifecycleStaleAuthorizationCannotCommit()
     Assert.Equal("Next track…", Find(
         widget.Render().CreateSnapshot("ytmusic.lifecycle-stale", 1).Root,
         "connection-status").Text);
+}
+
+static Task LifecycleStaleExplicitRefreshOrdinaryFailureCannotCommit() =>
+    AssertLifecycleStaleExplicitRefreshFailureCannotCommit(
+        new InvalidOperationException("stale explicit refresh failure"));
+
+static Task LifecycleStaleExplicitRefreshAuthorizationCannotCommit() =>
+    AssertLifecycleStaleExplicitRefreshFailureCannotCommit(
+        new YtMusicAuthorizationRequiredException());
+
+static async Task AssertLifecycleStaleExplicitRefreshFailureCannotCommit(
+    Exception staleFailure)
+{
+    var initial = PlayingSnapshot("Current explicit refresh track");
+    var staleGate = NewSnapshotGate();
+    var cancellationObserved = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeClient
+    {
+        Snapshot = initial,
+        HasCredential = true,
+    };
+    fake.SnapshotAsync = (call, token) =>
+    {
+        if (call == 1) return Task.FromResult(initial);
+        token.Register(() => cancellationObserved.TrySetResult());
+        return staleGate.Task; // Deliberately ignores cancellation.
+    };
+    var policy = FastUpdatePolicy() with
+    {
+        ProgressInterval = TimeSpan.FromSeconds(5),
+        PollInterval = TimeSpan.FromSeconds(30),
+    };
+    var widget = new YtMusicWidget(fake, policy);
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    await widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Visible, CancellationToken.None);
+
+    var refresh = widget.OnActionAsync(
+        new WidgetActionEvent("refresh", "refresh")).AsTask();
+    await WaitUntil(() => fake.SnapshotCalls >= 2);
+    var background = widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Background, CancellationToken.None).AsTask();
+    await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    var replacement = widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Visible, CancellationToken.None).AsTask();
+    staleGate.SetException(staleFailure);
+    await Task.WhenAll(refresh, background, replacement).WaitAsync(TimeSpan.FromSeconds(2));
+
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.explicit-refresh", 1);
+    Assert.Equal(YtMusicWidgetConnectionState.Connected, widget.ConnectionState);
+    Assert.Equal("Current explicit refresh track",
+        Find(snapshot.Root, "track-title").Text);
+    Assert.Equal("Refreshing now playing…",
+        Find(snapshot.Root, "connection-status").Text);
+    Assert.True(fake.HasCredential,
+        "A stale explicit Refresh authorization failure removed current authority.");
+    await widget.SetLifecycleStateAsync(
+        WidgetLifecycleState.Background, CancellationToken.None);
 }
 
 static async Task<YtMusicPlaybackSnapshot> ObserveSnapshotCancellationAsync(

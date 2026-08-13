@@ -17,6 +17,7 @@ public class YtMusicWidget : Widget
     private const string ConnectionOperation = "ytmusic.connection";
     private const string ProgressOperation = "ytmusic.progress";
     private const string PollOperation = "ytmusic.poll";
+    private const string ExplicitRefreshOperation = "ytmusic.explicit-refresh";
     private const string TransportRefreshOperation = "ytmusic.transport-refresh";
     private IYtMusicClient? _client;
     // Auto-connect starts from activation rather than action admission, so it
@@ -199,13 +200,40 @@ public class YtMusicWidget : Widget
                 await RunConnectionActionAsync(PairAsync, cancellationToken).ConfigureAwait(false);
                 break;
             case YtMusicActionKind.Refresh:
-                await RefreshAsync(route.Status, cancellationToken).ConfigureAwait(false);
+                await RunExplicitRefreshAsync(route.Status, cancellationToken)
+                    .ConfigureAwait(false);
                 break;
             case YtMusicActionKind.Command when route.Command is { } command:
                 await RunCommandAsync(
                     command, route.Status, cancellationToken).ConfigureAwait(false);
                 break;
         }
+    }
+
+    private async Task RunExplicitRefreshAsync(
+        string message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        WidgetOperationHandle operation;
+        lock (_stateLock)
+            operation = Operations.RunLatest(
+                ExplicitRefreshOperation,
+                context => new ValueTask(RefreshAsync(
+                    message, context.CancellationToken, context)),
+                WidgetOperationLifetime.Active);
+        if (operation.IsAccepted)
+        {
+            var result = await operation.Completion.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (result.Status == WidgetOperationStatus.Failed &&
+                result.Exception is { } failure)
+                throw failure;
+            return;
+        }
+        if (LifecycleState == WidgetLifecycleState.Created)
+            await RefreshAsync(message, cancellationToken, operationContext: null)
+                .ConfigureAwait(false);
     }
 
     private async Task RunConnectionActionAsync(
@@ -365,16 +393,23 @@ public class YtMusicWidget : Widget
         }
     }
 
-    private async Task RefreshAsync(string message, CancellationToken cancellationToken)
+    private async Task RefreshAsync(
+        string message,
+        CancellationToken cancellationToken,
+        WidgetOperationContext? operationContext)
     {
         if (ConnectionState != YtMusicWidgetConnectionState.Connected) return;
-        SetConnectedStatus(message);
+        if (operationContext is null)
+            SetConnectedStatus(message);
+        else if (!TrySetConnectedStatus(operationContext, message))
+            return;
         try
         {
             await _clientGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await FetchConnectedSnapshotAsync(force: true, cancellationToken).ConfigureAwait(false);
+                await FetchConnectedSnapshotAsync(
+                    force: true, cancellationToken, operationContext).ConfigureAwait(false);
             }
             finally
             {
@@ -384,9 +419,14 @@ public class YtMusicWidget : Widget
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             if (exception is YtMusicAuthorizationRequiredException)
-                await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+            {
+                if (operationContext is null)
+                    await SetAuthorizationRequiredAsync().ConfigureAwait(false);
+                else
+                    TrySetAuthorizationRequired(operationContext);
+            }
             else
-                SetError(exception);
+                TrySetTransientRefreshError(operationContext, exception);
         }
     }
 
@@ -395,12 +435,12 @@ public class YtMusicWidget : Widget
         string message,
         CancellationToken cancellationToken)
     {
-        if (ConnectionState != YtMusicWidgetConnectionState.Connected) return;
         var isTransport = command is
             YtMusicCommand.TogglePlayback or YtMusicCommand.Previous or YtMusicCommand.Next;
         YtMusicPendingOptimisticState optimistic;
         lock (_stateLock)
         {
+            if (!_presentation.HasCurrentPlayback) return;
             var started = YtMusicCompanionPolicy.BeginOptimistic(
                 _presentation,
                 command,
@@ -592,6 +632,27 @@ public class YtMusicWidget : Widget
             _presentation = _presentation with { Status = message };
         }
         if (changed) Invalidate();
+    }
+
+    private bool TrySetTransientRefreshError(
+        WidgetOperationContext? context,
+        Exception exception)
+    {
+        lock (_stateLock)
+        {
+            if (context is { IsCurrent: false } ||
+                _presentation.ConnectionState != YtMusicWidgetConnectionState.Connected)
+                return false;
+            _presentation = _presentation with
+            {
+                Status = YtMusicConnectionPolicy.SafeStatus(exception) +
+                    (_presentation.HasCurrentPlayback
+                        ? " · showing last known track"
+                        : string.Empty),
+            };
+        }
+        Invalidate();
+        return true;
     }
 
     private bool TrySetConnectedStatus(WidgetOperationContext context, string message)

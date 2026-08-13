@@ -496,6 +496,16 @@ public sealed record AppLibraryBackendItemSummary(
     /// </summary>
     [JsonIgnore]
     public bool IsLaunchable { get; init; } = true;
+
+    [JsonIgnore]
+    public AppLibraryAvailabilityState AvailabilityState { get; init; } =
+        AppLibraryAvailabilityState.Installed;
+
+    [JsonIgnore]
+    public string? AvailabilityStatusCode { get; init; }
+
+    [JsonIgnore]
+    public IReadOnlyList<AppLibraryAction>? SupportedActions { get; init; }
 }
 
 public enum AppLibrarySortOrder

@@ -14,6 +14,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Session selection remains stable across reorder and metadata churn", SelectionSurvivesChurn),
     ("Session selection publishes one model invalidation and suppresses repeats", SelectionInvalidatesOnce),
     ("Removed selection falls back to Windows current session", RemovedSelectionFallsBack),
+    ("Identity-less updates retain current media and recover through Retry", IdentitylessUpdateRetainsCurrent),
+    ("Late control completion cannot mutate a replacement session", LateControlCompletionCannotMutateReplacement),
+    ("Late control failure cannot mutate a replacement session", LateControlFailureCannotMutateReplacement),
+    ("Late control failure cannot mutate a replacement Active generation", LateControlFailureCannotMutateActiveGeneration),
     ("Playing progress interpolates locally without capability polling", ProgressInterpolatesLocally),
     ("Current media artwork renders through the bounded inline image node", ArtworkRenders),
     ("Missing media artwork renders a semantic placeholder", MissingArtworkUsesPlaceholder),
@@ -278,6 +282,123 @@ static async Task RemovedSelectionFallsBack()
     fake.Publish([Session("three", app: "Third"), Session("one", current: true)]);
     await WaitUntil(() => widget.Sessions.Any(item => item.SessionId == "three"));
     Assert.Equal("one", widget.SelectedSessionId);
+    await Background(widget);
+}
+
+static async Task IdentitylessUpdateRetainsCurrent()
+{
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("current", current: true, title: "Current track")],
+    };
+    var widget = Create(fake);
+    await Visible(widget);
+    await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
+
+    fake.Publish([Session(string.Empty, current: true, title: "Unowned track")]);
+    await WaitUntil(() => !widget.LiveUpdatesAvailable && widget.Status.Contains(
+        "invalid_backend_data", StringComparison.Ordinal));
+    Assert.Equal("current", widget.SelectedSessionId);
+    Assert.Equal("Current track", widget.Sessions.Single().Title);
+    Assert.True(widget.RenderSnapshot("media.identityless", 1).QuickActions.Count > 0);
+
+    fake.Sessions = [Session("replacement", current: true, title: "Replacement track")];
+    await widget.OnActionAsync(new("media.retry", "media.retry.live"));
+    await WaitUntil(() => widget.SelectedSessionId == "replacement");
+    Assert.Equal("Replacement track", widget.Sessions.Single().Title);
+    await Background(widget);
+}
+
+static async Task LateControlCompletionCannotMutateReplacement()
+{
+    var pending = new TaskCompletionSource<WidgetCapabilityAcknowledgement>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("old", current: true, title: "Old track")],
+        PendingControl = pending,
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.SelectedSessionId == "old");
+
+    var command = widget.OnActionAsync(new(
+        "media.toggle", "media.play-toggle")).AsTask();
+    await WaitUntil(() => fake.Commands.Count == 1);
+    fake.Publish([Session("new", current: true, title: "New track")]);
+    await WaitUntil(() => widget.SelectedSessionId == "new" &&
+        widget.Status.Contains("active media session", StringComparison.Ordinal));
+    var replacementStatus = widget.Status;
+    pending.SetResult(new WidgetCapabilityAcknowledgement(true));
+    await command;
+
+    Assert.Equal("new", widget.SelectedSessionId);
+    Assert.Equal("New track", widget.Sessions.Single().Title);
+    Assert.Equal(replacementStatus, widget.Status);
+    await Background(widget);
+}
+
+static async Task LateControlFailureCannotMutateReplacement()
+{
+    var pending = new TaskCompletionSource<WidgetCapabilityAcknowledgement>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("old", current: true, title: "Old track")],
+        PendingControl = pending,
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.SelectedSessionId == "old");
+
+    var command = widget.OnActionAsync(new(
+        "media.toggle", "media.play-toggle")).AsTask();
+    await WaitUntil(() => fake.Commands.Count == 1);
+    fake.Publish([Session("new", current: true, title: "New track")]);
+    await WaitUntil(() => widget.SelectedSessionId == "new" &&
+        widget.Status.Contains("active media session", StringComparison.Ordinal));
+    var replacementStatus = widget.Status;
+    pending.SetException(new WidgetCapabilityException(
+        "not_supported", "stale provider failure"));
+    await command;
+
+    Assert.Equal("new", widget.SelectedSessionId);
+    Assert.Equal("New track", widget.Sessions.Single().Title);
+    Assert.Equal(replacementStatus, widget.Status);
+    Assert.True(widget.Sessions.Single().PlaybackStatus ==
+        WidgetMediaPlaybackStatus.Paused);
+    await Background(widget);
+}
+
+static async Task LateControlFailureCannotMutateActiveGeneration()
+{
+    var pending = new TaskCompletionSource<WidgetCapabilityAcknowledgement>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeMediaHost
+    {
+        Sessions = [Session("old", current: true, title: "Old generation")],
+        PendingControl = pending,
+        IgnoreControlCancellation = true,
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.SelectedSessionId == "old");
+
+    var command = widget.OnActionAsync(new(
+        "media.toggle", "media.play-toggle")).AsTask();
+    await WaitUntil(() => fake.Commands.Count == 1);
+    var background = Background(widget);
+    await fake.ControlCancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    fake.Sessions = [Session("new", current: true, title: "New generation")];
+    var replacement = Interactive(widget);
+    pending.SetException(new WidgetCapabilityException(
+        "not_supported", "stale active failure"));
+    await Task.WhenAll(command, background, replacement).WaitAsync(TimeSpan.FromSeconds(2));
+    await WaitUntil(() => widget.SelectedSessionId == "new");
+
+    Assert.Equal("New generation", widget.Sessions.Single().Title);
+    Assert.True(widget.Status.Contains("active media session", StringComparison.Ordinal));
+    Assert.True(!widget.Status.Contains("rejected", StringComparison.OrdinalIgnoreCase));
     await Background(widget);
 }
 
@@ -699,6 +820,9 @@ file sealed class FakeMediaHost
     internal TaskCompletionSource<bool> ReadCancellationObserved { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal bool IgnoreReadCancellation { get; set; }
+    internal bool IgnoreControlCancellation { get; set; }
+    internal TaskCompletionSource<bool> ControlCancellationObserved { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal List<string> CallOrder { get; } = [];
     internal List<ControlWidgetMediaSessionRequest> Commands { get; } = [];
     internal int GetCalls { get; private set; }
@@ -735,9 +859,12 @@ file sealed class FakeMediaHost
         ControlWidgetMediaSessionRequest request, CancellationToken cancellationToken)
     {
         Commands.Add(request);
+        cancellationToken.Register(() => ControlCancellationObserved.TrySetResult(true));
         if (PendingControl is not null)
             return new ValueTask<WidgetCapabilityAcknowledgement>(
-                PendingControl.Task.WaitAsync(cancellationToken));
+                IgnoreControlCancellation
+                    ? PendingControl.Task
+                    : PendingControl.Task.WaitAsync(cancellationToken));
         if (ControlException is not null)
             return ValueTask.FromException<WidgetCapabilityAcknowledgement>(ControlException);
         return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));

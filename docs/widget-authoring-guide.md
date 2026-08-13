@@ -960,6 +960,11 @@ deactivation drains the subscription/read, and cancellation-ignoring results
 are rejected before publication. Snapshot reads and event subscriptions remain
 independent, so a subscription failure can retain a valid current snapshot and
 a transient refresh failure retains last-good sessions with a reconnect action.
+An identity-less or duplicate session update is an invalid provider generation,
+not an authoritative empty library, so it also retains the current selected
+session. A real empty snapshot remains empty. Late command success or failure
+can update status or rollback only while the exact run and provider snapshot
+revision that admitted it are still current.
 Domain projection, provider-event merge, error copy, and rollback stay explicit
 widget policy.
 
@@ -1024,8 +1029,10 @@ when the model also needs the mapped safe error.
 
 Now Playing is the first production consumer. It uses SingleFlight transport
 commands, immediately projects Play/Pause, retains sibling control presentation,
-and rolls back the affected session only when the provider snapshot revision
-still matches.
+and rolls back the affected session only when its Active run, provider snapshot
+revision, and exact selected session all still match. Its failure reducer first
+returns current state wholesale on any mismatch, so mapped error text cannot
+overwrite a replacement generation after the rollback itself correctly declines.
 
 Its Active-lifetime read/subscription owner also keeps failure provenance at the
 consumer boundary. Safe status distinguishes `snapshot-read`,

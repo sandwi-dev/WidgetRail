@@ -21,6 +21,10 @@ internal sealed record YtMusicPresentationState(
     string Status,
     string? PairingCode)
 {
+    internal bool HasCurrentPlayback =>
+        ConnectionState == YtMusicWidgetConnectionState.Connected &&
+        !string.IsNullOrWhiteSpace(Snapshot.TrackId);
+
     internal static YtMusicPresentationState Initial(long timestamp) => new(
         YtMusicWidgetConnectionState.Disconnected,
         YtMusicPlaybackSnapshot.Empty,

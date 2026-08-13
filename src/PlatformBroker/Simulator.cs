@@ -150,6 +150,10 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
             item.Presentation.Source.DisplayName)
         {
             SourceIdentity = item.Presentation.Source.SourceId,
+            IsLaunchable = item.Presentation.Availability.IsLaunchable,
+            AvailabilityState = item.Presentation.Availability.State,
+            AvailabilityStatusCode = item.Presentation.Availability.StatusCode,
+            SupportedActions = item.Presentation.Capabilities.Actions.ToArray(),
         }));
         AppLibrarySources = normalized
             .Select(item => item.Presentation.Source)

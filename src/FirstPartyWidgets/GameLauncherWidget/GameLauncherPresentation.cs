@@ -21,6 +21,7 @@ internal sealed record GameLauncherPresentationState(
     int HeroIndex)
 {
     internal string? ActiveCategoryId { get; init; }
+    internal IReadOnlyList<GameLauncherCollectionOption> Collections { get; init; } = [];
 }
 
 internal enum GameLauncherRecentMode
@@ -61,6 +62,9 @@ internal static class GameLauncherPresentation
                 UI.Text(routeTitle, "game-launcher.compact.title", routeTitle)
                     .Classes("game-launcher-title")
                     .VisibleWhen(ResponsiveVisibility.CompactOnly),
+                UI.Text(state.Status, "game-launcher.compact.status", state.Status)
+                    .Classes("game-launcher-status")
+                    .VisibleWhen(ResponsiveVisibility.CompactOnly),
                 UI.Stack("game-launcher.header.expanded",
                         UI.Text("INSTALLED GAMES", "game-launcher.eyebrow", "Installed games")
                             .Classes("game-launcher-eyebrow"),
@@ -73,7 +77,6 @@ internal static class GameLauncherPresentation
             .Classes("game-launcher-header", "game-launcher-fixed");
         var sourceStatus = SourceStatus(state.Sources, snapshot.Status)
             .AddClasses("game-launcher-fixed");
-
         var filterControls = new List<WidgetElement>();
         if (state.Route != GameLauncherRoute.Library)
             filterControls.Add(UI.Button("Back",
@@ -147,33 +150,57 @@ internal static class GameLauncherPresentation
                 .Disabled(!state.Interactive));
             filterControls.Add(UI.Button("Clear", "game-launcher.query.clear",
                     "game-launcher.query.clear")
-                .Disabled(!state.Interactive || !state.FavoriteFilter &&
-                    state.RecentMode == GameLauncherRecentMode.Off &&
-                    state.Query.SearchText is null && state.Query.SourceAttribution is null &&
-                    state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName));
+                .Disabled(!state.Interactive ||
+                    state.Query.SearchText is null &&
+                    state.Query.Sort == WidgetAppLibrarySortOrder.DisplayName &&
+                    (state.Route == GameLauncherRoute.Library ||
+                     !state.FavoriteFilter &&
+                     state.RecentMode == GameLauncherRecentMode.Off &&
+                     state.Query.SourceAttribution is null)));
         }
 
-        WidgetElement queryControls = state.Route is GameLauncherRoute.Running or
-            GameLauncherRoute.Categories
-            ? UI.HorizontalScroll("game-launcher.query", filterControls.ToArray())
-                .Classes("game-launcher-query", "game-launcher-fixed")
-            : UI.Stack("game-launcher.query",
-            UI.TextEntry(
-                    state.Query.SearchText ?? string.Empty,
-                    state.Route switch
-                    {
-                        GameLauncherRoute.AddGames => "Search trusted installed registrations",
-                        GameLauncherRoute.Hidden => "Search hidden games",
-                        _ => "Search installed games",
-                    },
-                    "game-launcher.search.commit",
-                    "game-launcher.search",
-                    WidgetAppLibraryQuery.MaximumSearchTextLength)
-                .Disabled(!state.Interactive)
-                .Classes("game-launcher-search"),
-            UI.HorizontalScroll("game-launcher.filters", filterControls.ToArray())
-                .Classes("game-launcher-filters"))
-        .Classes("game-launcher-query", "game-launcher-fixed");
+        WidgetElement queryControls;
+        if (state.Route is GameLauncherRoute.Running or GameLauncherRoute.Categories)
+        {
+            queryControls =
+                UI.HorizontalScroll("game-launcher.query", filterControls.ToArray())
+                    .Classes("game-launcher-query", "game-launcher-fixed");
+        }
+        else
+        {
+            var queryChildren = new List<WidgetElement>
+            {
+                UI.TextEntry(
+                        state.Query.SearchText ?? string.Empty,
+                        state.Route switch
+                        {
+                            GameLauncherRoute.AddGames =>
+                                "Search trusted installed registrations",
+                            GameLauncherRoute.Hidden => "Search hidden games",
+                            _ => "Search installed games",
+                        },
+                        "game-launcher.search.commit",
+                        "game-launcher.search",
+                        WidgetAppLibraryQuery.MaximumSearchTextLength)
+                    .Disabled(!state.Interactive)
+                    .Classes("game-launcher-search"),
+            };
+            if (state.Route == GameLauncherRoute.Library)
+                queryChildren.Add(UI.HorizontalScroll("game-launcher.collections",
+                        state.Collections.Select(option => UI.ToggleButton(
+                                option.Label,
+                                option.Selected,
+                                option.ActionId,
+                                option.ActionId)
+                            .Disabled(!state.Interactive)).ToArray())
+                    .Classes("game-launcher-collections"));
+            queryChildren.Add(UI.HorizontalScroll(
+                    "game-launcher.filters", filterControls.ToArray())
+                .Classes("game-launcher-filters")
+                .VisibleWhen(ResponsiveVisibility.ExpandedOnly));
+            queryControls = UI.Stack("game-launcher.query", queryChildren.ToArray())
+                .Classes("game-launcher-query", "game-launcher-fixed");
+        }
 
         WidgetElement content;
         string? initialFocus = snapshot.RequestedFocusId;
@@ -315,8 +342,7 @@ internal static class GameLauncherPresentation
                             WidgetAppLibraryArtworkRole.Tile)?.Handle,
                         state.LaunchingSavedId,
                         LaunchStateFor(state.LaunchStates, row.Display.SavedId),
-                        current is not null,
-                        CanLaunch(current),
+                        current,
                         state.Organization.FavoriteSavedIds.Contains(
                             row.Display.SavedId, StringComparer.Ordinal),
                         group?.PreferredSavedId == row.Display.SavedId,
@@ -406,8 +432,7 @@ internal static class GameLauncherPresentation
                         WidgetAppLibraryArtworkRole.Tile)?.Handle,
                     state.LaunchingSavedId,
                     LaunchStateFor(state.LaunchStates, row.Display.SavedId),
-                    resolved: row.Current is not null,
-                    launchable: CanLaunch(row.Current),
+                    row.Current,
                     row.Favorite,
                     row.Preferred,
                     row.GroupSize,
@@ -445,7 +470,8 @@ internal static class GameLauncherPresentation
                             "game-launcher.recent.clear")
                         .Disabled(!state.Interactive || state.OrganizationBusy ||
                             state.Organization.RecentSavedIds.Count == 0))
-                .Classes("game-launcher-actions");
+                .Classes("game-launcher-actions")
+                .VisibleWhen(ResponsiveVisibility.ExpandedOnly);
             var hasActionableGame = state.Interactive && !state.OrganizationBusy &&
                 state.LaunchingSavedId is null &&
                 rail.Items.Any(row => row.Current is not null);
@@ -484,7 +510,8 @@ internal static class GameLauncherPresentation
             var children = new List<WidgetElement>
             {
                 GameLauncherHeroRailPresentation.Render(
-                    rail.Selected, state.LaunchingSavedId, state.LaunchStates),
+                        rail.Selected, state.LaunchingSavedId, state.LaunchStates)
+                    .VisibleWhen(ResponsiveVisibility.ExpandedOnly),
                 scroll,
                 controls,
             };
@@ -493,10 +520,13 @@ internal static class GameLauncherPresentation
                         "game-launcher.organization.hints", hintItems.ToArray())
                     .Classes("game-launcher-footer"));
             if (snapshot.Error is { } retained)
-                children.Add(UI.Alert("Some games are unavailable", retained.Message,
+            {
+                var retainedError = GameLauncherAvailabilityPresentation.Error(retained);
+                children.Add(UI.Alert(retainedError.Title, retainedError.Message,
                         AlertTone.Warning, "game-launcher.retained-error",
                         new ComponentAction("Try again", "game-launcher.retry", WidgetGlyph.Refresh))
                     .Classes("game-launcher-warning"));
+            }
             content = UI.Stack("game-launcher.content", children.ToArray())
                 .Classes("game-launcher-content");
             initialFocus ??= rail.Selected?.FocusId;
@@ -517,9 +547,8 @@ internal static class GameLauncherPresentation
                 .ToArray();
             var warm = warmRows.Select(item => Tile(
                 item.DisplayName, item.SourceAttribution, item.SavedId, null,
-                null, resolved: false,
-                launchable: false,
-                launchState: null,
+                null, launchState: null,
+                current: null,
                 favorite: state.Organization.FavoriteSavedIds.Contains(
                     item.SavedId, StringComparer.Ordinal),
                 preferred: state.Organization.VariantGroups.Any(group =>
@@ -561,14 +590,11 @@ internal static class GameLauncherPresentation
         }
         else if (snapshot.Status == WidgetPagedResourceStatus.Error)
         {
+            var error = GameLauncherAvailabilityPresentation.Error(snapshot.Error);
             content = UI.Stack("game-launcher.content",
                     GameLauncherHeroRailPresentation.Fallback(
-                        "Game library unavailable",
-                        snapshot.Error?.Message ??
-                        "The installed game library could not be loaded."),
-                    UI.Alert("Game library unavailable",
-                        snapshot.Error?.Message ??
-                        "The installed game library could not be loaded.",
+                        error.Title, error.Message),
+                    UI.Alert(error.Title, error.Message,
                         AlertTone.Danger, "game-launcher.error",
                         new ComponentAction("Try again", "game-launcher.retry",
                             WidgetGlyph.Refresh)))
@@ -641,13 +667,9 @@ internal static class GameLauncherPresentation
                 WidgetAppLibrarySourceHealth.Refreshing => "Refreshing",
                 _ => "Unavailable",
             };
-            var detail = refreshing ? "Refreshing installed games" : source.StatusCode switch
-            {
-                "healthy" => "Current installed games are available",
-                "source_degraded" => "Some installed games may be missing",
-                "source_unavailable" => "This source could not be refreshed",
-                _ => "Source status is limited",
-            };
+            var detail = refreshing
+                ? "Refreshing installed games"
+                : GameLauncherAvailabilityPresentation.SourceDetail(source);
             var text = $"{source.DisplayName}: {health} · {detail}";
             return UI.Text(text, "game-launcher.source." + source.SourceId, text)
                 .Classes("game-launcher-source-row");
@@ -800,8 +822,7 @@ internal static class GameLauncherPresentation
         string? artworkHandle,
         string? launchingSavedId,
         GameLauncherLaunchState? launchState,
-        bool resolved,
-        bool launchable,
+        GameLauncherItem? current,
         bool favorite,
         bool preferred,
         int groupSize,
@@ -816,6 +837,7 @@ internal static class GameLauncherPresentation
         var artwork = artworkHandle is { Length: > 0 }
             ? TileArtwork.FromHandle(new WidgetArtworkHandle(artworkHandle), title, ImageFit.Cover)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, title);
+        var availability = GameLauncherAvailabilityPresentation.Tile(current, interactive);
         var state = launching ? "Pending" : launchState switch
         {
             GameLauncherLaunchState.RequestAccepted => "Request accepted",
@@ -823,7 +845,7 @@ internal static class GameLauncherPresentation
             GameLauncherLaunchState.Running => "Running",
             GameLauncherLaunchState.Failed => "Failed",
             GameLauncherLaunchState.Ended => "Ended",
-            _ => launchable ? interactive ? "Ready" : "Paused" : "Play unavailable",
+            _ => availability.Status,
         };
         var traits = new List<string>(3);
         if (favorite) traits.Add("Favorite");
@@ -834,19 +856,19 @@ internal static class GameLauncherPresentation
                 "game-launcher.launch", id, subtitle: subtitle, artwork: artwork,
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)
-            .Busy(launching)
-            .Disabled(!interactive || !launchable)
+            .Busy(launching || availability.Busy)
+            .Disabled(!interactive || !availability.Launchable)
             .Classes("game-launcher-tile");
-        if (interactive && resolved && !launching)
+        if (interactive && current is not null && !launching)
             tile = tile
                 .Shortcut(ControllerButton.View, actionId: "game-launcher.details.open")
                 .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
                 .Shortcut(ControllerButton.Y, actionId: GameLauncherActionSheet.OpenAction);
-        if (interactive && resolved && !launching && !pageBumpers)
+        if (interactive && current is not null && !launching && !pageBumpers)
             tile = tile
                 .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
                 .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer");
-        if (interactive && resolved && !launching && collectionSwitch)
+        if (interactive && current is not null && !launching && collectionSwitch)
             tile = tile
                 .Shortcut(ControllerButton.LeftTrigger,
                     actionId: "game-launcher.collection.previous")
@@ -854,12 +876,6 @@ internal static class GameLauncherPresentation
                     actionId: "game-launcher.collection.next");
         return collectionItem ? tile.CollectionItem(key) : tile;
     }
-
-    private static bool CanLaunch(GameLauncherItem? item) => item is not null &&
-        item.Value.Presentation.Availability.State ==
-            WidgetAppLibraryAvailabilityState.Installed &&
-        item.Value.Presentation.Availability.IsLaunchable &&
-        item.Value.Presentation.Capabilities.Supports(WidgetAppLibraryAction.Launch);
 
     private static GameLauncherLaunchState? LaunchStateFor(
         IReadOnlyDictionary<string, GameLauncherLaunchState> states,

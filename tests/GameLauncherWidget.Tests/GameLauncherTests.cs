@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text;
+using System.Globalization;
 using GameBarAlternative.FirstPartyWidgets.GameLauncher;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
@@ -741,7 +743,8 @@ public sealed class GameLauncherTests
         var cleared = host.Queries[^1].Query;
         Assert.IsNull(cleared.SearchText);
         Assert.IsNull(cleared.SourceAttribution);
-        Assert.AreEqual(0, cleared.FavoriteSavedIds.Count);
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            cleared.FavoriteSavedIds.ToArray());
         Assert.AreEqual(WidgetAppLibrarySortOrder.DisplayName, cleared.Sort);
         await Background(widget);
     }
@@ -1407,6 +1410,10 @@ public sealed class GameLauncherTests
                     items.Skip(index * 2).Take(2)
                         .Select(item => item.SavedId).ToArray()))
                 .ToArray(),
+            ProvenSources = Enumerable.Range(
+                    0, GameLauncherPrivateState.MaximumProvenSources)
+                .Select(index => $"Source {index:D2} " + new string('S', 54))
+                .ToArray(),
         };
         var normalizedState = GameLauncherOrganizationPolicy.Normalize(state);
         var json = JsonSerializer.SerializeToUtf8Bytes(normalizedState);
@@ -1417,6 +1424,26 @@ public sealed class GameLauncherTests
         Assert.AreEqual(0, normalizedState.Categories.Count,
             "Over-budget categories were not reset atomically.");
         Assert.AreEqual(items.Length, normalizedState.Items.Count);
+        Assert.AreEqual(0, normalizedState.ProvenSources.Count,
+            "Byte pressure did not reset only the non-authorizing source catalog.");
+        var maximumSources = state.ProvenSources;
+        var sourcesOnly = GameLauncherOrganizationPolicy.Normalize(
+            GameLauncherPrivateState.Empty with { ProvenSources = maximumSources });
+        Assert.AreEqual(GameLauncherPrivateState.MaximumProvenSources,
+            sourcesOnly.ProvenSources.Count);
+        Assert.IsLessThanOrEqualTo(64 * 1024,
+            JsonSerializer.SerializeToUtf8Bytes(sourcesOnly).Length);
+        var invalidSources = GameLauncherOrganizationPolicy.Normalize(state with
+        {
+            Categories = [],
+            ProvenSources = Enumerable.Range(
+                    0, GameLauncherPrivateState.MaximumProvenSources + 1)
+                .Select(index => $"Source {index:D2}").ToArray(),
+        });
+        Assert.AreEqual(0, invalidSources.ProvenSources.Count,
+            "Invalid source evidence was not reset as one affected field.");
+        Assert.AreEqual(items.Length, invalidSources.Items.Count,
+            "Invalid source evidence reset unrelated organization state.");
         var validationOverflow = Enumerable.Range(
                 0, GameLauncherPrivateState.MaximumItems + 1)
             .Select(index => new GameLauncherDisplayItem(
@@ -2096,7 +2123,8 @@ public sealed class GameLauncherTests
         await widget.OnActionAsync(new(
             "game-launcher.filter.recent", "game-launcher.filter.recent"));
         await Bounded(widget.WhenLibraryIdleAsync(), "maximum fixed-slice reload");
-        Assert.AreEqual(LauncherWidget.PageSize, widget.Collection.Items.Count);
+        Assert.AreEqual(0, widget.Collection.Items.Count,
+            "Recent is an exact collection, not a hidden recent-first intersection.");
         Assert.AreEqual(LauncherWidget.PageSize, host.MaximumRequestedLimit);
         CollectionAssert.AreEquivalent(recentIds.Concat(manualIds).ToArray(),
             host.ResolveRequests[^1].ToArray());
@@ -2104,10 +2132,8 @@ public sealed class GameLauncherTests
         var snapshot = Snapshot(widget, 75);
         var launches = Nodes(snapshot.Root)
             .Where(node => node.ActionId == "game-launcher.launch").ToArray();
-        Assert.AreEqual(LauncherWidget.PageSize +
-            GameLauncherPrivateState.MaximumRecentItems +
-            GameLauncherPrivateState.MaximumManualItems, launches.Length);
-        Assert.AreEqual(LauncherWidget.PageSize,
+        Assert.AreEqual(GameLauncherPrivateState.MaximumRecentItems, launches.Length);
+        Assert.AreEqual(0,
             launches.Count(node => node.CollectionItemKey is not null),
             "only provider rows participate in cursor anchor accounting");
         Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
@@ -2124,24 +2150,26 @@ public sealed class GameLauncherTests
         Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
             GameLauncherIdentity.Key(recentIds[0])), sortedFixed[0].Id,
             "recent order remains exact instead of following catalog sort");
+
+        var manualOption = Nodes(Snapshot(widget, 7511).Root).Single(node =>
+            node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                StringComparison.Ordinal) == true &&
+            Nodes(node).Any(child =>
+                (child.Text ?? string.Empty).StartsWith("Manual (32):", StringComparison.Ordinal)));
+        await widget.OnActionAsync(new(manualOption.ActionId!, manualOption.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "manual fixed-slice collection");
+        sortedFixed = Nodes(Snapshot(widget, 7512).Root)
+            .Where(node => node.ActionId == "game-launcher.launch" &&
+                node.CollectionItemKey is null).ToArray();
+        Assert.AreEqual(GameLauncherPrivateState.MaximumManualItems, sortedFixed.Length);
         Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
             GameLauncherIdentity.Key(manualIds[^1])),
-            sortedFixed[GameLauncherPrivateState.MaximumRecentItems].Id,
+            sortedFixed[0].Id,
             "manual fixed rows follow the selected display sort");
 
         await widget.OnActionAsync(new(
-            "game-launcher.filter.source", "game-launcher.filter.source"));
-        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-slice source filter");
-        var sourceFixed = Nodes(Snapshot(widget, 752).Root)
-            .Where(node => node.ActionId == "game-launcher.launch" &&
-                node.CollectionItemKey is null).ToArray();
-        Assert.AreEqual(32, sourceFixed.Length);
-        Assert.IsTrue(sourceFixed.All(node =>
-            node.AccessibilityLabel!.Contains("Steam", StringComparison.Ordinal)));
-
-        await widget.OnActionAsync(new(
             "game-launcher.filter.favorites", "game-launcher.filter.favorites"));
-        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-slice favorite intersection");
+        await Bounded(widget.WhenLibraryIdleAsync(), "fixed-slice favorite collection");
         var favoriteFixed = Nodes(Snapshot(widget, 753).Root)
             .Where(node => node.ActionId == "game-launcher.launch" &&
                 node.CollectionItemKey is null).ToArray();
@@ -2376,17 +2404,18 @@ public sealed class GameLauncherTests
 
         await widget.OnActionAsync(new("game-launcher.filter.recent",
             "game-launcher.filter.recent"));
-        await Bounded(widget.WhenLibraryIdleAsync(), "recent-first reload");
+        await Bounded(widget.WhenLibraryIdleAsync(), "recent collection reload");
         var first = Nodes(Snapshot(widget, 60).Root)
             .First(node => node.ActionId == "game-launcher.launch");
         Assert.AreEqual(GameLauncherIdentity.FocusId("grid",
             GameLauncherIdentity.Key("saved-00034")), first.Id);
+        CollectionAssert.AreEqual(widget.Organization.RecentSavedIds.ToArray(),
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
 
         await widget.OnActionAsync(new("game-launcher.filter.recent",
             "game-launcher.filter.recent"));
-        await Bounded(widget.WhenLibraryIdleAsync(), "recent-only reload");
-        CollectionAssert.AreEqual(widget.Organization.RecentSavedIds.ToArray(),
-            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        await Bounded(widget.WhenLibraryIdleAsync(), "all collection reload");
+        Assert.AreEqual(0, host.Queries[^1].Query.FavoriteSavedIds.Count);
         await Background(widget);
     }
 
@@ -2561,6 +2590,367 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task AvailabilityStatesRemainDistinctNavigableAndRecoverLastGood()
+    {
+        var items = new[]
+        {
+            AvailabilityItem(0, WidgetAppLibraryAvailabilityState.Installed,
+                true, "installed"),
+            AvailabilityItem(1, WidgetAppLibraryAvailabilityState.Unavailable,
+                false, "offline"),
+            AvailabilityItem(2, WidgetAppLibraryAvailabilityState.StaleSource,
+                false, "source_degraded"),
+            AvailabilityItem(3, WidgetAppLibraryAvailabilityState.Installed,
+                false, "source_disabled"),
+            AvailabilityItem(4, WidgetAppLibraryAvailabilityState.Installed,
+                true, "installed") with
+            {
+                Presentation = AvailabilityItem(
+                    4, WidgetAppLibraryAvailabilityState.Installed,
+                    true, "installed").Presentation with
+                {
+                    ActiveOperation = new(
+                        "operation.0123456789abcdef0123456789abcdef",
+                        WidgetAppLibraryOperationKind.Update,
+                        WidgetAppLibraryOperationState.Running,
+                        "running"),
+                    Capabilities = new([
+                        WidgetAppLibraryAction.Launch,
+                        WidgetAppLibraryAction.Update,
+                    ]),
+                },
+            },
+        };
+        var fail = false;
+        var host = new FakeHost(0)
+        {
+            QueryHandler = (_, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                return fail
+                    ? ValueTask.FromException<WidgetAppLibraryPage>(
+                        new WidgetCapabilityException("platform_unavailable", "private"))
+                    : ValueTask.FromResult(new WidgetAppLibraryPage(
+                        items, null, null, "availability")
+                    {
+                        Sources =
+                        [
+                            new("source-healthy", "Healthy Store",
+                                WidgetAppLibrarySourceHealth.Healthy, 1, "healthy"),
+                            new("source-degraded", "Degraded Store",
+                                WidgetAppLibrarySourceHealth.Degraded, 1,
+                                "source_degraded"),
+                        ],
+                    });
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Bounded(widget.WhenLibraryIdleAsync(), "availability-state load");
+        Assert.AreEqual(WidgetPagedResourceStatus.Ready, widget.Collection.Status,
+            widget.Collection.Error is null ? "No resource error" :
+                $"{widget.Collection.Error.Code}: {widget.Collection.Error.Message}");
+        var ready = Snapshot(widget, 650);
+        AssertTile(ready, 0, "Ready", disabled: false, busy: false);
+        AssertTile(ready, 1, "Offline", disabled: true, busy: false);
+        AssertTile(ready, 2, "Source degraded", disabled: true, busy: false);
+        AssertTile(ready, 3, "Disabled", disabled: true, busy: false);
+        AssertTile(ready, 4, "Busy", disabled: true, busy: true);
+        StringAssert.Contains(Nodes(ready.Root).Single(node =>
+            node.Id == "game-launcher.source.source-degraded").Text!, "Degraded");
+        var focus = ready.InitialFocusId;
+
+        fail = true;
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "offline last-good refresh");
+        var offline = Snapshot(widget, 651);
+        Assert.AreEqual(5, Nodes(offline.Root).Count(node =>
+            node.ActionId == "game-launcher.launch"));
+        Assert.AreEqual(focus, offline.InitialFocusId);
+        var retained = Nodes(offline.Root).Single(node =>
+            node.Id == "game-launcher.retained-error");
+        Assert.IsTrue(Nodes(retained).Any(node =>
+            (node.Text ?? string.Empty).Contains("Game library offline",
+                StringComparison.Ordinal)));
+        Assert.IsFalse(Nodes(offline.Root).Any(node => node.Id == "game-launcher.empty"));
+
+        fail = false;
+        await widget.OnActionAsync(new("game-launcher.retry", "game-launcher.retry"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "offline retry recovery");
+        var recovered = Snapshot(widget, 652);
+        Assert.IsFalse(Nodes(recovered.Root).Any(node =>
+            node.Id == "game-launcher.retained-error"));
+        Assert.AreEqual(focus, recovered.InitialFocusId);
+        await Background(widget);
+
+        static WidgetAppLibraryItem AvailabilityItem(
+            int index,
+            WidgetAppLibraryAvailabilityState state,
+            bool launchable,
+            string statusCode)
+        {
+            var item = Item(index);
+            return item with
+            {
+                Presentation = item.Presentation with
+                {
+                    Availability = new(state, launchable, statusCode),
+                    Capabilities = launchable
+                        ? new([WidgetAppLibraryAction.Launch])
+                        : new([]),
+                },
+            };
+        }
+
+        static void AssertTile(
+            ViewSnapshot snapshot,
+            int index,
+            string reason,
+            bool disabled,
+            bool busy)
+        {
+            var tile = Nodes(snapshot.Root).Single(node =>
+                node.Id == GameLauncherIdentity.FocusId(
+                    "grid", GameLauncherIdentity.Key($"saved-{index:D5}")));
+            StringAssert.Contains(tile.AccessibilityLabel!, reason);
+            Assert.AreEqual(disabled, tile.IsDisabled == true);
+            Assert.AreEqual(busy, tile.IsBusy == true);
+            Assert.IsNotNull(tile.CollectionItemKey,
+                "Disabled and busy tiles must remain in controller navigation.");
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task OwnedNotInstalledRowsStayNavigableNonLaunchingAndCapabilityTruthful()
+    {
+        var installed = Item(0);
+        var installable = OwnedItem(1, "owned_not_installed",
+            [WidgetAppLibraryAction.Install]);
+        var signedOut = OwnedItem(2, "owned_signed_out", []);
+        var unsupported = OwnedItem(3, "owned_unsupported", []);
+        var stale = OwnedItem(4, "owned_not_installed",
+            [WidgetAppLibraryAction.Install]) with
+        {
+            Presentation = OwnedItem(4, "owned_not_installed",
+                [WidgetAppLibraryAction.Install]).Presentation with
+            {
+                Availability = new(
+                    WidgetAppLibraryAvailabilityState.StaleSource,
+                    false,
+                    "owned_not_installed"),
+            },
+        };
+        var items = new[] { installed, installable, signedOut, unsupported, stale };
+        var host = new FakeHost(0)
+        {
+            QueryHandler = (_, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(new WidgetAppLibraryPage(
+                    items, null, null, "mixed-owned"));
+            },
+            ResolveHandler = request => items.Where(item =>
+                request.SavedIds.Contains(item.SavedId, StringComparer.Ordinal)).ToArray(),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Bounded(widget.WhenLibraryIdleAsync(), "mixed installed and owned load");
+
+        var snapshot = Snapshot(widget, 653);
+        AssertOwnedTile(snapshot, installable, "Owned · Not installed · Install available");
+        AssertOwnedTile(snapshot, signedOut, "Owned · Sign in to install");
+        AssertOwnedTile(snapshot, unsupported, "Owned · Install unsupported");
+        AssertOwnedTile(snapshot, stale, "Owned · Source degraded");
+        var installedTile = Nodes(snapshot.Root).Single(node =>
+            node.Id == GameLauncherIdentity.FocusId(
+                "grid", GameLauncherIdentity.Key(installed.SavedId)));
+        Assert.IsFalse(installedTile.IsDisabled == true);
+
+        var ownedTile = Nodes(snapshot.Root).Single(node =>
+            node.Id == GameLauncherIdentity.FocusId(
+                "grid", GameLauncherIdentity.Key(installable.SavedId)));
+        await widget.OnActionAsync(new("game-launcher.launch", ownedTile.Id));
+        Assert.AreEqual(0, host.Launches.Count,
+            "Owned-but-not-installed rows must never enter launch admission.");
+
+        await widget.OnActionAsync(new("game-launcher.details.open", ownedTile.Id));
+        var details = Snapshot(widget, 654);
+        Assert.AreEqual("Primary action · Install from source",
+            Nodes(details.Root).Single(node =>
+                node.Id == "game-launcher.details.primary-action").Text);
+        Assert.IsTrue(Nodes(details.Root).Single(node =>
+            node.ActionId == "game-launcher.launch").IsDisabled == true);
+        await Background(widget);
+
+        static WidgetAppLibraryItem OwnedItem(
+            int index,
+            string statusCode,
+            IReadOnlyList<WidgetAppLibraryAction> capabilities)
+        {
+            var item = Item(index);
+            return item with
+            {
+                Presentation = item.Presentation with
+                {
+                    Availability = new(
+                        WidgetAppLibraryAvailabilityState.Unavailable,
+                        false,
+                        statusCode),
+                    Capabilities = new(capabilities),
+                },
+            };
+        }
+
+        static void AssertOwnedTile(
+            ViewSnapshot snapshot,
+            WidgetAppLibraryItem item,
+            string expected)
+        {
+            var tile = Nodes(snapshot.Root).Single(node =>
+                node.Id == GameLauncherIdentity.FocusId(
+                    "grid", GameLauncherIdentity.Key(item.SavedId)));
+            StringAssert.Contains(tile.AccessibilityLabel!, expected);
+            Assert.IsTrue(tile.IsDisabled == true);
+            Assert.IsNotNull(tile.CollectionItemKey,
+                "Owned unavailable rows must remain in controller navigation.");
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task OfflineLastGoodLaunchRequiresFreshExactInstalledAuthority()
+    {
+        var failCatalog = false;
+        var resolveMode = "installed";
+        var items = new[] { Item(0), Item(1) };
+        var host = new FakeHost(0)
+        {
+            QueryHandler = (_, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                return failCatalog
+                    ? ValueTask.FromException<WidgetAppLibraryPage>(
+                        new WidgetCapabilityException(
+                            "platform_unavailable", "source offline"))
+                    : ValueTask.FromResult(new WidgetAppLibraryPage(
+                        items, null, null, "offline-revision"));
+            },
+            ResolveHandler = request => resolveMode switch
+            {
+                "missing" => [],
+                "stale" => request.SavedIds.Select(savedId =>
+                {
+                    var item = items.Single(candidate => candidate.SavedId == savedId);
+                    return item with
+                    {
+                        Presentation = item.Presentation with
+                        {
+                            Availability = new(
+                                WidgetAppLibraryAvailabilityState.StaleSource,
+                                false,
+                                "source_degraded"),
+                            Capabilities = new([]),
+                        },
+                    };
+                }).ToArray(),
+                _ => request.SavedIds.Select(savedId =>
+                    items.Single(candidate => candidate.SavedId == savedId)).ToArray(),
+            },
+            LaunchHandler = (_, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(new WidgetAppLaunchObservation(
+                    WidgetAppLaunchObservationState.LauncherStarted,
+                    SupportsRunning: false,
+                    SupportsEnded: false));
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Bounded(widget.WhenLibraryIdleAsync(), "offline fixture initial load");
+        var initial = Snapshot(widget, 655);
+        var tile = Nodes(initial.Root).Single(node =>
+            node.Id == GameLauncherIdentity.FocusId(
+                "grid", GameLauncherIdentity.Key(items[0].SavedId)));
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        CollectionAssert.AreEqual(new[] { items[0].SavedId },
+            widget.Organization.RecentSavedIds.ToArray());
+
+        var withRecent = Snapshot(widget, 656);
+        var recent = Nodes(withRecent.Root).Single(node =>
+            node.ActionId?.StartsWith(
+                GameLauncherCollectionPolicy.ActionPrefix,
+                StringComparison.Ordinal) == true &&
+            Nodes(node).Any(child =>
+                (child.Text ?? string.Empty).StartsWith(
+                    "Continue (1):", StringComparison.Ordinal)));
+        await widget.OnActionAsync(new(recent.ActionId!, recent.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Continue collection load");
+        var selected = Snapshot(widget, 657);
+        var focus = selected.InitialFocusId;
+        Assert.IsNotNull(focus);
+
+        failCatalog = true;
+        await widget.OnActionAsync(new("game-launcher.refresh", "game-launcher.refresh"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "offline retained refresh");
+        var offline = Snapshot(widget, 658);
+        Assert.AreEqual(focus, offline.InitialFocusId);
+        Assert.IsTrue(Nodes(offline.Root).Any(node =>
+            node.Id == "game-launcher.retained-error"));
+        Assert.IsTrue(Nodes(offline.Root).Any(node =>
+            node.ActionId == recent.ActionId && node.IsSelected == true));
+
+        tile = Nodes(offline.Root).Single(node => node.Id == focus);
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        Assert.AreEqual(2, host.Launches.Count,
+            "A current exact installed resolve should launch while browsing last-good rows.");
+        CollectionAssert.AreEqual(new[] { items[0].SavedId },
+            widget.Organization.RecentSavedIds.ToArray(),
+            "Recovery launch duplicated or reordered Recent.");
+
+        resolveMode = "stale";
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        Assert.AreEqual(2, host.Launches.Count,
+            "Stale exact evidence entered launch admission.");
+        resolveMode = "missing";
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        Assert.AreEqual(2, host.Launches.Count,
+            "Missing exact evidence entered launch admission.");
+
+        resolveMode = "installed";
+        failCatalog = false;
+        await widget.OnActionAsync(new("game-launcher.retry", "game-launcher.retry"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "offline recovery");
+        var recovered = Snapshot(widget, 659);
+        Assert.AreEqual(focus, recovered.InitialFocusId);
+        Assert.IsFalse(Nodes(recovered.Root).Any(node =>
+            node.Id == "game-launcher.retained-error"));
+        CollectionAssert.AreEqual(new[] { items[0].SavedId },
+            widget.Organization.RecentSavedIds.ToArray());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task PermissionDeniedIsNotRenderedAsEmptyOrOffline()
+    {
+        var host = new FakeHost(0)
+        {
+            QueryHandler = (_, _) => ValueTask.FromException<WidgetAppLibraryPage>(
+                new WidgetCapabilityException("permission_denied", "private")),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Bounded(widget.WhenLibraryIdleAsync(), "permission-denied load");
+        var denied = Snapshot(widget, 653);
+        Assert.IsTrue(Nodes(denied.Root).Any(node =>
+            (node.Text ?? string.Empty).Contains("permission denied",
+                StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(Nodes(denied.Root).Any(node =>
+            node.ActionId == "game-launcher.retry"));
+        Assert.IsFalse(Nodes(denied.Root).Any(node => node.Id == "game-launcher.empty"));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task RecentMutationConflictPreservesOrganizationAndConcurrentOrder()
     {
         var a = new GameLauncherDisplayItem("saved-a", "A", "Steam");
@@ -2682,6 +3072,170 @@ public sealed class GameLauncherTests
         await Bounded(launch, "stale recent completion");
         Assert.AreEqual(0, staleWidget.Organization.RecentSavedIds.Count);
         await Background(staleWidget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task NewerLaunchMakesCancellationIgnoringCompletionStale()
+    {
+        var firstWriteStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstWrite = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new FakeHost(2)
+        {
+            LaunchHandler = (request, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (request.AppId.EndsWith("1", StringComparison.Ordinal))
+                    secondStarted.TrySetResult();
+                return ValueTask.FromResult(new WidgetAppLaunchObservation(
+                    WidgetAppLaunchObservationState.LauncherStarted, false, false));
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var blockFirstRecent = true;
+        host.StateWriteHandler = async (request, _) =>
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(
+                request.CanonicalJsonBase64));
+            var state = JsonSerializer.Deserialize<GameLauncherPrivateState>(json)!;
+            if (blockFirstRecent && state.RecentSavedIds.SequenceEqual(
+                    ["saved-00000"], StringComparer.Ordinal))
+            {
+                blockFirstRecent = false;
+                firstWriteStarted.TrySetResult();
+                await releaseFirstWrite.Task.ConfigureAwait(false);
+            }
+            return await host.State.WriteAsync(request, CancellationToken.None)
+                .ConfigureAwait(false);
+        };
+        var tiles = Nodes(Snapshot(widget, 64).Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+
+        var first = widget.OnActionAsync(new("game-launcher.launch", tiles[0].Id)).AsTask();
+        await Bounded(firstWriteStarted.Task, "accepted first launch Recent write");
+        var second = widget.OnActionAsync(new("game-launcher.launch", tiles[1].Id)).AsTask();
+        releaseFirstWrite.TrySetResult();
+        await Bounded(secondStarted.Task, "replacement launch admission");
+        await Bounded(Task.WhenAll(first, second), "replacement launch completion");
+
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            widget.Organization.RecentSavedIds.ToArray());
+        var durable = JsonSerializer.Deserialize<GameLauncherPrivateState>(host.State.Json!)!;
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            durable.RecentSavedIds.ToArray());
+        var rendered = Nodes(Snapshot(widget, 65).Root)
+            .Where(node => node.ActionId == "game-launcher.launch").ToArray();
+        Assert.IsFalse(rendered[0].AccessibilityLabel!.Contains(
+            "Running", StringComparison.Ordinal));
+        StringAssert.Contains(rendered[1].AccessibilityLabel!, "Launcher started");
+        await Background(widget);
+    }
+
+    [TestMethod]
+    public void RejectedLaunchAdmissionCannotReserveGeneration()
+    {
+        var coordinator = new GameLauncherLaunchPersistenceCoordinator();
+        foreach (var admission in new[]
+                 {
+                     WidgetOperationAdmission.RejectedInactive,
+                     WidgetOperationAdmission.RejectedCapacity,
+                 })
+        {
+            var ready = new TaskCompletionSource<long>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var handle = new WidgetOperationHandle(admission,
+                Task.FromResult(new WidgetOperationResult(
+                    WidgetOperationStatus.Rejected)));
+
+            Assert.IsFalse(coordinator.CompleteAdmission(handle, ready));
+            Assert.AreEqual(0L, coordinator.CurrentGeneration,
+                $"{admission} invalidated the active launch generation.");
+            Assert.IsTrue(ready.Task.IsCanceled);
+        }
+    }
+
+    [TestMethod]
+    public async Task LaunchPersistenceCoordinatorRestoresCurrentRecentAfterReplacement()
+    {
+        var coordinator = new GameLauncherLaunchPersistenceCoordinator();
+        var ready = new TaskCompletionSource<long>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var handle = new WidgetOperationHandle(
+            WidgetOperationAdmission.Started,
+            Task.FromResult(new WidgetOperationResult(WidgetOperationStatus.Succeeded)));
+        Assert.IsTrue(coordinator.CompleteAdmission(handle, ready));
+        var generation = await ready.Task;
+        var first = new GameLauncherDisplayItem("saved-first", "First", "Steam");
+        var current = new GameLauncherDisplayItem("saved-current", "Current", "Xbox");
+        var durable = GameLauncherPrivateState.Empty with
+        {
+            Items = [first, current],
+            RecentSavedIds = [current.SavedId],
+        };
+        var writes = 0;
+
+        async Task<bool> Save(
+            Func<GameLauncherPrivateState, GameLauncherStateMutation> apply,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var mutation = apply(durable);
+            Assert.IsTrue(mutation.Accepted);
+            durable = mutation.State;
+            if (++writes == 1) coordinator.Invalidate();
+            await Task.CompletedTask;
+            return true;
+        }
+
+        await coordinator.CommitRecentAsync(
+            generation,
+            WidgetAppLaunchObservationState.LauncherStarted,
+            first,
+            Save,
+            () => [current.SavedId],
+            CancellationToken.None);
+
+        Assert.AreEqual(2, writes);
+        CollectionAssert.AreEqual(new[] { current.SavedId },
+            durable.RecentSavedIds.ToArray());
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task FailedLaunchRestoresExactFocusAndRetriesSameGame()
+    {
+        var attempts = 0;
+        var host = new FakeHost(1)
+        {
+            LaunchHandler = (_, _) => ++attempts == 1
+                ? ValueTask.FromException<WidgetAppLaunchObservation>(
+                    new WidgetCapabilityException("launch_failed", "fixture"))
+                : ValueTask.FromResult(new WidgetAppLaunchObservation(
+                    WidgetAppLaunchObservationState.LauncherStarted, false, false)),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tile = Nodes(Snapshot(widget, 66).Root)
+            .Single(node => node.ActionId == "game-launcher.launch");
+
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        var failed = Snapshot(widget, 67);
+        Assert.AreEqual(tile.Id, failed.InitialFocusId);
+        StringAssert.Contains(Nodes(failed.Root).Single(node => node.Id == tile.Id)
+            .AccessibilityLabel!, "Failed");
+        await widget.OnActionAsync(new("game-launcher.launch", tile.Id));
+        var retried = Snapshot(widget, 68);
+        Assert.AreEqual(tile.Id, retried.InitialFocusId);
+        StringAssert.Contains(Nodes(retried.Root).Single(node => node.Id == tile.Id)
+            .AccessibilityLabel!, "Launcher started");
+        CollectionAssert.AreEqual(new[] { "saved-00000" },
+            widget.Organization.RecentSavedIds.ToArray());
+        await Background(widget);
     }
 
     [TestMethod]
@@ -2900,6 +3454,515 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task M1CollectionsAreVisibleExactAndDetailsReturnToTheirOrigin()
+    {
+        var displays = Enumerable.Range(0, 6)
+            .Select(index => new GameLauncherDisplayItem(
+                $"saved-{index:D5}", $"Game {index:D5}",
+                index % 2 == 0 ? "Steam" : "Windows"))
+            .ToArray();
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, displays)
+        {
+            FavoriteSavedIds = [displays[1].SavedId],
+            RecentSavedIds = [displays[2].SavedId],
+            ManualSavedIds = [displays[3].SavedId],
+        };
+        var host = new FakeHost(6, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1))
+        {
+            QueryHandler = (request, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                var offset = request.Cursor is null ? 0 : int.Parse(
+                    request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),
+                    CultureInfo.InvariantCulture);
+                var count = Math.Min(request.Limit, Math.Max(0, 6 - offset));
+                var items = Enumerable.Range(offset, count).Select(index => index == 3
+                    ? InstalledItem(
+                        "app-00003", "saved-00003", "Manual App",
+                        WidgetAppLibraryKind.Application, "source-windows", "Windows")
+                    : Item(index)).ToArray();
+                return ValueTask.FromResult(new WidgetAppLibraryPage(
+                    items,
+                    offset == 0 ? null : $"cursor.{Math.Max(0, offset - request.Limit)}",
+                    offset + count < 6 ? $"cursor.{offset + count}" : null,
+                    "revision-m1")
+                {
+                    Sources =
+                    [
+                        new("source-steam", "Steam", WidgetAppLibrarySourceHealth.Healthy,
+                            1, "healthy"),
+                        new("source-windows", "Windows", WidgetAppLibrarySourceHealth.Healthy,
+                            1, "healthy"),
+                        new("source-empty", "Empty Store", WidgetAppLibrarySourceHealth.Healthy,
+                            1, "healthy"),
+                    ],
+                });
+            },
+            ItemFactory = index => index == 3
+                ? InstalledItem(
+                    "app-00003", "saved-00003", "Manual App",
+                    WidgetAppLibraryKind.Application, "source-windows", "Windows")
+                : Item(index),
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "M1 collection warm state");
+        await Bounded(widget.WhenLibraryIdleAsync(), "M1 collection projection");
+
+        var library = Snapshot(widget, 35);
+        var collections = Nodes(library.Root).Single(node =>
+            node.Id == "game-launcher.collections");
+        foreach (var label in new[]
+                 {
+                     "All installed", "Continue (1)", "Favorites (1)", "Manual (1)",
+                     "Steam", "Windows",
+                 })
+            Assert.IsTrue(Nodes(collections).Any(node => MatchesToggle(node, label)),
+                $"Missing M1 collection {label}.");
+        Assert.IsFalse(Nodes(collections).Any(node => MatchesToggle(node, "Empty Store")),
+            "A healthy advertised source without a matching game became an empty collection.");
+
+        await SelectCollection("Continue (1)");
+        CollectionAssert.AreEqual(new[] { "saved-00002" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        await SelectCollection("Favorites (1)");
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        await SelectCollection("Manual (1)");
+        CollectionAssert.AreEqual(new[] { "saved-00003" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        await SelectCollection("Windows");
+        Assert.AreEqual("Windows", host.Queries[^1].Query.SourceAttribution);
+        Assert.AreEqual(0, host.Queries[^1].Query.FavoriteSavedIds.Count);
+
+        var sourceView = Snapshot(widget, 36);
+        var origin = Nodes(sourceView.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Windows", StringComparison.Ordinal));
+        var revision = widget.Collection.Revision;
+        var anchor = widget.Collection.Anchor;
+        await widget.OnActionAsync(new("game-launcher.details.open", origin.Id));
+        var details = Snapshot(widget, 37);
+        Assert.IsFalse(Nodes(details.Root).Any(node =>
+            node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                StringComparison.Ordinal) == true));
+        Assert.IsFalse(Nodes(details.Root).Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction,
+            GameLauncherDetailsPolicy.ActionSourceId));
+        var sheet = Snapshot(widget, 38);
+        Assert.AreEqual(GameLauncherActionSheet.ScopeId, sheet.ActiveInputScopeId);
+        Assert.IsFalse(Nodes(sheet.Root).Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
+        await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+        var detailView = Snapshot(widget, 39);
+        var detailBack = detailView.Root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.B);
+        await widget.OnActionAsync(new(detailBack.ActionId,
+            GameLauncherDetailsPolicy.ActionSourceId, ControllerButton.B,
+            ControllerEventPhase.Pressed, InputScopeId: detailView.ActiveInputScopeId));
+        var returned = Snapshot(widget, 40);
+        Assert.AreEqual(origin.Id, returned.InitialFocusId);
+        Assert.AreEqual(revision, widget.Collection.Revision);
+        Assert.AreEqual(anchor, widget.Collection.Anchor);
+        Assert.IsTrue(Nodes(returned.Root).Any(node =>
+            node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                StringComparison.Ordinal) == true && node.IsSelected == true &&
+            Nodes(node).Any(child => MatchesToggle(child, "Windows"))));
+
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction, origin.Id));
+        await widget.OnActionAsync(new("game-launcher.hide", "game-launcher.actions.hide"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "M1 hidden library reload");
+        var afterHide = Snapshot(widget, 41);
+        Assert.IsTrue(afterHide.InitialFocusId is null || Nodes(afterHide.Root).Any(node =>
+            node.Id == afterHide.InitialFocusId),
+            "Hide must not retain a removed tile as the Library focus target.");
+        await Background(widget);
+
+        async Task SelectCollection(string label)
+        {
+            var snapshot = Snapshot(widget, 100 + host.Queries.Count);
+            var option = Nodes(snapshot.Root).Single(node =>
+                node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                    StringComparison.Ordinal) == true &&
+                Nodes(node).Any(child => MatchesToggle(child, label)));
+            await widget.OnActionAsync(new(option.ActionId!, option.Id));
+            await Bounded(widget.WhenLibraryIdleAsync(), label + " collection load");
+        }
+
+        static bool MatchesToggle(ViewNode node, string label) =>
+            string.Equals(node.Text, label + ": On", StringComparison.Ordinal) ||
+            string.Equals(node.Text, label + ": Off", StringComparison.Ordinal) ||
+            string.Equals(node.AccessibilityLabel, label + ", On", StringComparison.Ordinal) ||
+            string.Equals(node.AccessibilityLabel, label + ", Off", StringComparison.Ordinal);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task CollectionSelectionIsExclusiveAndSourceCatalogSurvivesPagingAndRefresh()
+    {
+        var removedSteam = false;
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion,
+            [new("saved-00000", "Steam game", "Steam"),
+             new("saved-00064", "Windows game", "Windows")])
+        {
+            FavoriteSavedIds = ["saved-00000"],
+            RecentSavedIds = ["saved-00064"],
+            ManualSavedIds = ["saved-00000"],
+        };
+        var host = new FakeHost(0, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1))
+        {
+            QueryHandler = (request, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                var source = request.Query.SourceAttribution;
+                var offset = request.Cursor is null ? 0 : 64;
+                WidgetAppLibraryItem[] items = source switch
+                {
+                    "Steam" when !removedSteam => [WithPresentation(Item(0), source: "Steam")],
+                    "Windows" => [WithPresentation(Item(64), source: "Windows")],
+                    _ when offset == 0 => removedSteam
+                        ? [WithPresentation(Item(64), source: "Windows")]
+                        : [WithPresentation(Item(0), source: "Steam")],
+                    _ => [WithPresentation(Item(64), source: "Windows")],
+                };
+                var sources = removedSteam
+                    ? new WidgetAppLibrarySource[]
+                    {
+                        new("source-windows", "Windows", WidgetAppLibrarySourceHealth.Healthy,
+                            2, "healthy"),
+                        new("source-empty", "Empty Store", WidgetAppLibrarySourceHealth.Healthy,
+                            2, "healthy"),
+                    }
+                    :
+                    [
+                        new("source-steam", "Steam", WidgetAppLibrarySourceHealth.Healthy,
+                            1, "healthy"),
+                        new("source-windows", "Windows", WidgetAppLibrarySourceHealth.Healthy,
+                            1, "healthy"),
+                        new("source-empty", "Empty Store", WidgetAppLibrarySourceHealth.Healthy,
+                            1, "healthy"),
+                    ];
+                var after = source is null && !removedSteam && offset == 0
+                    ? "cursor.64"
+                    : null;
+                return ValueTask.FromResult(new WidgetAppLibraryPage(
+                    items, offset == 0 ? null : "cursor.0", after, "sources")
+                { Sources = sources });
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "collection warm state");
+
+        await Select("Continue (1)", GameLauncherCollectionKind.Recent, null,
+            ["saved-00064"]);
+        await Select("Favorites (1)", GameLauncherCollectionKind.Favorites, null,
+            ["saved-00000"]);
+        await Select("Continue (1)", GameLauncherCollectionKind.Recent, null,
+            ["saved-00064"]);
+        await Select("All installed", GameLauncherCollectionKind.AllInstalled, null, []);
+
+        var next = Nodes(Snapshot(widget, 510).Root).Single(node =>
+            node.ActionId == "game-launcher.next");
+        await widget.OnActionAsync(new(next.ActionId!, next.Id));
+        await Bounded(widget.WhenLibraryIdleAsync(), "second source page");
+        AssertOptions("All installed", "Steam", "Windows");
+
+        await Background(widget);
+        widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "persisted source catalog");
+        AssertOptions("All installed", "Steam", "Windows");
+
+        await Select("Steam", GameLauncherCollectionKind.Source, "Steam", []);
+        await Select("Windows", GameLauncherCollectionKind.Source, "Windows", []);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "Conformance" });
+        await Bounded(widget.WhenLibraryIdleAsync(), "source search");
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.sort", "game-launcher.filter.sort"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "source sort");
+        await widget.OnActionAsync(new(
+            "game-launcher.query.clear", "game-launcher.query.clear"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "source clear");
+        var cleared = host.Queries[^1].Query;
+        Assert.IsNull(cleared.SearchText);
+        Assert.AreEqual(WidgetAppLibrarySortOrder.DisplayName, cleared.Sort);
+        Assert.AreEqual("Windows", cleared.SourceAttribution);
+        Assert.IsTrue(Nodes(Snapshot(widget, 510).Root).Any(node =>
+            node.IsSelected == true && Nodes(node).Any(child =>
+                MatchesToggle(child, "Windows"))));
+        await Select("Steam", GameLauncherCollectionKind.Source, "Steam", []);
+
+        removedSteam = true;
+        await Select("All installed", GameLauncherCollectionKind.AllInstalled, null, []);
+        var refreshed = Snapshot(widget, 511);
+        Assert.IsFalse(Nodes(refreshed.Root).Any(node => MatchesToggle(node, "Steam")));
+        Assert.IsTrue(Nodes(refreshed.Root).Any(node => MatchesToggle(node, "Windows")));
+        Assert.IsFalse(Nodes(refreshed.Root).Any(node => MatchesToggle(node, "Empty Store")));
+
+        await Background(widget);
+        var restarted = Create(host);
+        await Interactive(restarted);
+        await Ready(restarted, host);
+        var restart = Snapshot(restarted, 512);
+        Assert.AreEqual(1, Nodes(restart.Root).Count(node => node.IsSelected == true &&
+            node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                StringComparison.Ordinal) == true));
+        Assert.IsTrue(Nodes(restart.Root).Any(node => MatchesToggle(node, "Windows")));
+        Assert.IsFalse(Nodes(restart.Root).Any(node => MatchesToggle(node, "Steam")));
+        await Background(restarted);
+
+        async Task Select(
+            string label,
+            GameLauncherCollectionKind kind,
+            string? source,
+            IReadOnlyList<string> savedIds)
+        {
+            var snapshot = Snapshot(widget, 520 + host.Queries.Count);
+            var option = Nodes(snapshot.Root).Single(node =>
+                node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                    StringComparison.Ordinal) == true &&
+                Nodes(node).Any(child => MatchesToggle(child, label)));
+            await widget.OnActionAsync(new(option.ActionId!, option.Id));
+            await Bounded(widget.WhenLibraryIdleAsync(), label + " load");
+            var selected = Nodes(Snapshot(widget, 530 + host.Queries.Count).Root)
+                .Where(node => node.IsSelected == true &&
+                    node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                        StringComparison.Ordinal) == true).ToArray();
+            Assert.AreEqual(1, selected.Length, "Exactly one collection must be selected.");
+            Assert.IsTrue(Nodes(selected[0]).Any(child => MatchesToggle(child, label)));
+            Assert.AreEqual(source, host.Queries[^1].Query.SourceAttribution);
+            CollectionAssert.AreEqual(savedIds.ToArray(),
+                host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+            Assert.AreEqual(kind == GameLauncherCollectionKind.Source, source is not null);
+        }
+
+        void AssertOptions(params string[] labels)
+        {
+            var snapshot = Snapshot(widget, 540 + host.Queries.Count);
+            foreach (var label in labels)
+                Assert.IsTrue(Nodes(snapshot.Root).Any(node => MatchesToggle(node, label)),
+                    $"Missing stable collection option {label}.");
+        }
+
+        static bool MatchesToggle(ViewNode node, string label) =>
+            string.Equals(node.Text, label + ": On", StringComparison.Ordinal) ||
+            string.Equals(node.Text, label + ": Off", StringComparison.Ordinal) ||
+            string.Equals(node.AccessibilityLabel, label + ", On", StringComparison.Ordinal) ||
+            string.Equals(node.AccessibilityLabel, label + ", Off", StringComparison.Ordinal);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task SearchCancelClearAndNestedRoutesPreserveCollectionScope()
+    {
+        var persisted = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion,
+            [new("saved-00001", "Game 00001", "Windows")])
+        {
+            FavoriteSavedIds = ["saved-00001"],
+        };
+        var host = new FakeHost(3, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(persisted), 1));
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "search collection warm state");
+        var compactSurface = Snapshot(widget, 400);
+        Assert.AreEqual(420, compactSurface.Surface!.MinimumWidth);
+        Assert.AreEqual(340, compactSurface.Surface.MinimumHeight);
+        var compactSearch = Nodes(compactSurface.Root).Single(node =>
+            node.Id == "game-launcher.search");
+        Assert.AreEqual(ViewNodeKind.TextEntry, compactSearch.Kind);
+        Assert.AreEqual("game-launcher.search.commit", compactSearch.ActionId);
+        Assert.AreNotEqual(ResponsiveVisibility.ExpandedOnly, compactSearch.VisibleWhen);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.filter.favorites", "game-launcher.filter.favorites"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "favorite collection load");
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search")
+            { CommittedText = "Game 00001" });
+        await Bounded(widget.WhenLibraryIdleAsync(), "committed favorite search");
+        var searched = Snapshot(widget, 401);
+        var search = Nodes(searched.Root).Single(node =>
+            node.Id == "game-launcher.search");
+        Assert.AreEqual("Game 00001", search.TextEntryValue);
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+
+        // The host emits no committed text when its modal is canceled. Even if
+        // a defensive null event reaches the widget, the committed query remains.
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "game-launcher.search.commit", "game-launcher.search"));
+        var canceled = Snapshot(widget, 402);
+        var returnedSearch = Nodes(canceled.Root).Single(node =>
+            node.Id == "game-launcher.search");
+        Assert.AreEqual("Game 00001", returnedSearch.TextEntryValue);
+        Assert.AreEqual(compactSearch.Id, returnedSearch.Id);
+        Assert.AreEqual(compactSearch.ActionId, returnedSearch.ActionId);
+
+        var origin = Nodes(canceled.Root).Single(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Game 00001", StringComparison.Ordinal));
+        await widget.OnActionAsync(new("game-launcher.details.open", origin.Id));
+        var details = Snapshot(widget, 403);
+        Assert.IsFalse(Nodes(details.Root).Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
+        await widget.OnActionAsync(new(
+            GameLauncherActionSheet.OpenAction,
+            GameLauncherDetailsPolicy.ActionSourceId));
+        var sheet = Snapshot(widget, 404);
+        Assert.IsFalse(Nodes(sheet.Root).Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
+        await widget.OnActionAsync(new(
+            GameLauncherActionSheet.CloseAction,
+            GameLauncherActionSheet.InitialFocusId));
+        var back = details.Root.Shortcuts.Single(shortcut =>
+            shortcut.Button == ControllerButton.B);
+        await widget.OnActionAsync(new(
+            back.ActionId,
+            GameLauncherDetailsPolicy.ActionSourceId,
+            ControllerButton.B,
+            ControllerEventPhase.Pressed,
+            InputScopeId: details.ActiveInputScopeId));
+        var returned = Snapshot(widget, 405);
+        Assert.AreEqual(origin.Id, returned.InitialFocusId);
+        Assert.AreEqual("Game 00001", Nodes(returned.Root).Single(node =>
+            node.Id == "game-launcher.search").TextEntryValue);
+
+        await widget.OnActionAsync(new(
+            "game-launcher.query.clear", "game-launcher.query.clear"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "clear search within favorites");
+        var cleared = Snapshot(widget, 406);
+        Assert.AreEqual(string.Empty, Nodes(cleared.Root).Single(node =>
+            node.Id == "game-launcher.search").TextEntryValue);
+        CollectionAssert.AreEqual(new[] { "saved-00001" },
+            host.Queries[^1].Query.FavoriteSavedIds.ToArray());
+        Assert.IsTrue(Nodes(cleared.Root).Any(node =>
+            node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
+                StringComparison.Ordinal) == true && node.IsSelected == true &&
+            Nodes(node).Any(child =>
+                (child.Text ?? string.Empty).StartsWith(
+                    "Favorites (1):", StringComparison.Ordinal))));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsExposeOnlyKnownNormalizedMetadataAndOperationState()
+    {
+        var display = new GameLauncherDisplayItem("saved-00000", "Metadata Game", "Steam");
+        var state = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, [display])
+        {
+            FavoriteSavedIds = [display.SavedId],
+            Categories = [new("category.0123456789abcdef0123456789abcdef",
+                "Couch", [display.SavedId])],
+        };
+        var host = new FakeHost(1, new WidgetTestPrivateState(
+            JsonSerializer.Serialize(state), 1))
+        {
+            ItemFactory = _ => Item(0) with
+            {
+                Presentation = Item(0).Presentation with
+                {
+                    DisplayName = "Metadata Game",
+                    Metadata = new(
+                        "metadata-revision",
+                        new("fixture", "record-revision", "Fixture metadata", 1_700_000_000_000))
+                    {
+                        Version = "1.2.3",
+                        LastPlayedAtUnixMilliseconds = 1_700_000_000_000,
+                        PlaytimeMinutes = 125,
+                        Categories = ["RPG"],
+                    },
+                    ActiveOperation = new(
+                        "operation.0123456789abcdef0123456789abcdef",
+                        WidgetAppLibraryOperationKind.Update,
+                        WidgetAppLibraryOperationState.Running,
+                        "running"),
+                    Capabilities = new([
+                        WidgetAppLibraryAction.Launch,
+                        WidgetAppLibraryAction.Update,
+                    ]),
+                },
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        await Bounded(widget.WhenWarmStateIdleAsync(), "details metadata warm state");
+        var tile = Nodes(Snapshot(widget, 60).Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        var details = Snapshot(widget, 61);
+
+        Assert.AreEqual("Primary action · Launch", Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.primary-action").Text);
+        Assert.AreEqual("Version · 1.2.3", Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.version").Text);
+        Assert.AreEqual("Last played · 2023-11-14 22:13 UTC",
+            Nodes(details.Root).Single(node =>
+                node.Id == "game-launcher.details.last-played").Text);
+        Assert.AreEqual("Playtime · 2 h 5 min", Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.playtime").Text);
+        Assert.AreEqual("Operation · Update · Running", Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.operation").Text);
+        var organization = Nodes(details.Root).Single(node =>
+            node.Id == "game-launcher.details.organization").Text!;
+        StringAssert.Contains(organization, "Favorite");
+        StringAssert.Contains(organization, "Couch");
+        StringAssert.Contains(organization, "RPG");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task DetailsOmitSdkValidUnrenderableLastPlayedTimestamp()
+    {
+        var host = new FakeHost(1)
+        {
+            ItemFactory = _ => Item(0) with
+            {
+                Presentation = Item(0).Presentation with
+                {
+                    Metadata = new(
+                        "metadata-revision",
+                        new("fixture", "record-revision", "Fixture metadata", 1))
+                    {
+                        LastPlayedAtUnixMilliseconds = long.MaxValue,
+                    },
+                },
+            },
+        };
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tile = Nodes(Snapshot(widget, 62).Root).Single(node =>
+            node.ActionId == "game-launcher.launch");
+
+        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        var details = Snapshot(widget, 63);
+
+        Assert.IsTrue(Nodes(details.Root).Any(node =>
+            node.Id == "game-launcher.details.title"));
+        Assert.IsFalse(Nodes(details.Root).Any(node =>
+            node.Id == "game-launcher.details.last-played"));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ViewOpensExactDetailsAndBackRestoresOriginTile()
     {
         var host = new FakeHost(2)
@@ -2991,12 +4054,8 @@ public sealed class GameLauncherTests
         Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
             shortcut.Button == ControllerButton.Y &&
             shortcut.ActionId == GameLauncherActionSheet.OpenAction));
-        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.LeftBumper &&
-            shortcut.ActionId == "game-launcher.variant"));
-        Assert.IsTrue(detailScroll.Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.RightBumper &&
-            shortcut.ActionId == "game-launcher.prefer"));
+        Assert.IsFalse(detailScroll.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper));
 
         host.QueryHandler = (_, _) => ValueTask.FromResult(
             new WidgetAppLibraryPage([], null, null, "removed"));
@@ -3488,6 +4547,8 @@ public sealed class GameLauncherTests
         internal List<WidgetAppLibraryCursorRequest> Queries { get; } = [];
         internal Func<LaunchWidgetAppLibraryItemRequest, CancellationToken,
             ValueTask<WidgetAppLaunchObservation>>? LaunchHandler { get; set; }
+        internal Func<WriteWidgetPrivateStateTransportRequest, CancellationToken,
+            ValueTask<WidgetPrivateStateTransportMutation>>? StateWriteHandler { get; set; }
         internal WidgetRunningAppObservation RunningObservation { get; set; } =
             new([], "running-empty");
         internal Func<ConfirmWidgetRunningAppRequest, WidgetAppLibraryItem?>?
@@ -3502,7 +4563,9 @@ public sealed class GameLauncherTests
             _state = state ?? new WidgetTestPrivateState();
         }
 
-        internal WidgetHostServices Services() => new WidgetTestHostServicesBuilder()
+        internal WidgetHostServices Services()
+        {
+            var builder = new WidgetTestHostServicesBuilder()
             .WithHandler(WidgetAppLibraryCapabilities.GetPage, Query)
             .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, Resolve)
             .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)
@@ -3522,8 +4585,14 @@ public sealed class GameLauncherTests
                     return ValueTask.FromResult(new ConfirmWidgetRunningAppResponse(
                         ConfirmRunningHandler?.Invoke(request)));
                 })
-            .WithPrivateState(_state)
-            .Build();
+            .WithHandler(WidgetPrivateStateCapabilities.Read, _state.ReadAsync)
+            .WithHandler(WidgetPrivateStateCapabilities.Write,
+                (request, token) => StateWriteHandler is null
+                    ? _state.WriteAsync(request, token)
+                    : StateWriteHandler(request, token))
+            .WithHandler(WidgetPrivateStateCapabilities.Clear, _state.ClearAsync);
+            return builder.Build();
+        }
 
         private ValueTask<WidgetAppLibraryPage> Query(
             WidgetAppLibraryCursorRequest request,

@@ -4023,3 +4023,81 @@ generic-worker `LauncherExperienceHostTests` tray route. That real HWND/UIA rout
 invokes Network Controls from Game Launcher, observes selected UIA state and
 exactly one `game-launcher` to `network-controls` presentation transition, and
 receives successful Invoke completion.
+
+### Game Launcher M1 organization and details (DLV-172 through DLV-190)
+
+The Library now exposes bounded controller-reachable **All installed**,
+**Continue**, **Favorites**, **Manual**, and non-empty row-proven source
+collections. One immutable selection owns the active collection, so legacy
+actions select or clear an exact mode instead of composing hidden filters.
+Source display labels persist through the existing bounded private-state/CAS
+owner, survive paging and cold restart, grant no provider or launch authority,
+and are retired only by authoritative unfiltered evidence. Observation-only
+empty sources are never advertised.
+
+View projects normalized title, source, typed availability, primary action,
+favorite/category/variant state, and bounded optional metadata. Timestamps
+outside `DateTimeOffset`'s renderable range are omitted safely. Nested details
+and action-sheet scopes consume Back before returning to the exact originating
+collection, page, anchor, tile, and focus; collection shortcuts do not leak.
+Search remains the one host-owned TextEntry in compact, standard, and wide
+semantic trees. Cancel cannot replace committed text, and Clear removes only
+search/sort criteria while retaining the selected collection.
+
+Loading, genuine empty, offline library, permission denial, degraded source,
+unavailable game, disabled source, active-operation busy, and Retry states have
+distinct visible and accessible copy. Disabled, busy, and owned-but-not-
+installed tiles remain controller-navigable without gaining launch authority.
+**Install from source** appears only for a current typed Install capability and
+is informational because no app-library install operation exists. Cursor errors
+retain bounded last-good games and exact focus; only the current retry may
+replace that state.
+
+Launch uses serialized latest-wins admission and fresh exact-SavedId resolution.
+Only current Installed plus Launch evidence can cross the broker boundary.
+`GameLauncherLaunchPersistenceCoordinator` owns launch generation admission,
+invalidation, accepted-observation Recent transition, stale-write detection,
+and restoration through the existing CAS state callback. A newer accepted Play
+therefore supersedes a cancellation-ignoring predecessor even when the older
+operation is already inside private-state persistence. Rejected or inactive
+admissions do not reserve generations. The root remains the sole lifecycle,
+operation, private-state I/O, committed-state, and render owner and shrinks
+rather than accumulating another coordination region.
+
+Focused Release evidence passes Game Launcher 90/90. Installed credential-free
+AppContainer routes cover organization and later-page source persistence,
+source removal and empty-source exclusion, mixed installed/owned presentation,
+exact launch denial/admission, TextEntry scope restoration, availability and
+last-good recovery, exact offline revalidation, stale/missing denial, retry
+focus, one deduplicated Recent sequence, and the cancellation-ignoring blocked-
+write ordering. YT Music 59/59 and Now Playing 27/27 also pass their corrected
+Active-generation and stale-command failure cases; the existing installed
+Community/media-session recovery routes remain green. Documentation validation
+passes over 66 Markdown files.
+
+### YT Music transport and recovery outcome (DLV-173/DLV-176)
+
+YT Music distinguishes connected idle from current playing or paused media.
+Connected idle exposes only focused Refresh and no stale dashboard transport.
+A transient poll or explicit-refresh failure preserves last-good media with
+truthful stale status, while a later success replaces it atomically.
+
+Explicit Refresh runs in its own Active-generation latest-operation context.
+Success, sanitized ordinary failure, and authorization failure all require that
+exact context at final state commit. Cancellation-ignoring ordinary and auth
+failures from an earlier Active generation cannot alter later presentation or
+credential authority. Focused Release evidence passes YT Music 59/59 and the
+installed Community fake-companion recovery route.
+
+### Now Playing recovery and quick actions (DLV-174/DLV-177)
+
+Identity-less or duplicate session generations are invalid provider data rather
+than an authoritative empty result, so the current session, metadata, supported
+quick actions, and bounded recovery status remain visible. A genuine empty
+snapshot still renders **Nothing is playing**.
+
+Command success or failure can reconcile only while its Active generation,
+snapshot revision, admitted session, and selected session remain exact. A stale
+failure returns the current immutable replacement state wholesale instead of
+applying rollback status. Focused Release evidence passes Now Playing 27/27,
+Platform Broker 56/56, and the installed media-session lifecycle/retry route.

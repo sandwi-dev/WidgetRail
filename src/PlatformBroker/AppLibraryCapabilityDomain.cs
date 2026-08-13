@@ -350,20 +350,23 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             new(AppLibraryArtworkRole.Tile, artworkHandle,
                 item.ArtworkRevision, fallback),
         ];
+        var actions = item.SupportedActions ?? (item.IsLaunchable
+            ? [AppLibraryAction.Launch]
+            : []);
+        var statusCode = item.AvailabilityStatusCode ??
+            (item.IsLaunchable ? "installed" : "play_unavailable");
         return new AppLibraryItemPresentation(
             item.DisplayName,
             item.Kind,
             new AppLibrarySourceReference(
                 sourceId, exactSource?.DisplayName ?? item.SourceAttribution),
             new AppLibraryAvailabilitySummary(
-                AppLibraryAvailabilityState.Installed,
+                item.AvailabilityState,
                 item.IsLaunchable,
-                item.IsLaunchable ? "installed" : "play_unavailable"),
+                statusCode),
             new AppLibraryArtworkSet(artwork),
             Metadata: null,
-            new AppLibraryCapabilitySet(item.IsLaunchable
-                ? [AppLibraryAction.Launch]
-                : []),
+            new AppLibraryCapabilitySet(actions),
             ActiveOperation: null);
     }
 
@@ -458,6 +461,21 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
             ContractValidation.DisplayName(item.SourceAttribution);
             if (!string.IsNullOrEmpty(item.ArtworkRevision))
                 ContractValidation.OpaqueId(item.ArtworkRevision, "invalid_backend_data");
+            var actions = item.SupportedActions ?? (item.IsLaunchable
+                ? [AppLibraryAction.Launch]
+                : []);
+            var statusCode = item.AvailabilityStatusCode ??
+                (item.IsLaunchable ? "installed" : "play_unavailable");
+            if (!Enum.IsDefined(item.AvailabilityState) ||
+                item.AvailabilityState != AppLibraryAvailabilityState.Installed &&
+                    item.IsLaunchable ||
+                actions.Count > 13 || actions.Distinct().Count() != actions.Count ||
+                actions.Any(action => !Enum.IsDefined(action)) ||
+                actions.Contains(AppLibraryAction.Launch) != item.IsLaunchable ||
+                statusCode is not { Length: > 0 and <= 48 } ||
+                statusCode.Any(character => !char.IsAsciiLetterOrDigit(character) &&
+                    character is not '_' and not '-' and not '.'))
+                throw InvalidItem();
             if (!providerIds.Add(item.ProviderAppId) ||
                 !stableIds.Add(item.StableProviderIdentity)) throw InvalidItem();
         }

@@ -103,7 +103,7 @@ public sealed class MediaSessionsWidget : Widget
                     return true;
                 },
                 Reconcile = (state, execution, _) =>
-                    Interlocked.Read(ref _runGeneration) != execution.RunGeneration
+                    !IsCommandCurrent(state, execution)
                         ? state
                         : state with
                         {
@@ -112,11 +112,7 @@ public sealed class MediaSessionsWidget : Widget
                         },
                 Rollback = RollBackCommand,
                 MapError = MapCommandError,
-                Fail = (state, baseline, execution, error) =>
-                    RollBackCommand(state, baseline, execution) with
-                    {
-                        Status = error.Message,
-                    },
+                Fail = FailCommand,
             });
     }
 
@@ -413,7 +409,7 @@ public sealed class MediaSessionsWidget : Widget
 
     private State RollBackCommand(State state, State baseline, CommandExecution execution)
     {
-        if (Interlocked.Read(ref _runGeneration) != execution.RunGeneration) return state;
+        if (!IsCommandCurrent(state, execution)) return state;
         var sessions = state.Sessions;
         if (state.SnapshotRevision == execution.SnapshotRevision &&
             execution.Session is { } session &&
@@ -431,6 +427,25 @@ public sealed class MediaSessionsWidget : Widget
             Status = baseline.Status,
         };
     }
+
+    private State FailCommand(
+        State state,
+        State baseline,
+        CommandExecution execution,
+        WidgetCommandError error) =>
+        !IsCommandCurrent(state, execution)
+            ? state
+            : RollBackCommand(state, baseline, execution) with
+            {
+                Status = error.Message,
+            };
+
+    private bool IsCommandCurrent(State state, CommandExecution execution) =>
+        Interlocked.Read(ref _runGeneration) == execution.RunGeneration &&
+        state.SnapshotRevision == execution.SnapshotRevision &&
+        execution.Session is { } admitted &&
+        string.Equals(Selected(state)?.SessionId, admitted.SessionId,
+            StringComparison.Ordinal);
 
     private static WidgetCommandError MapCommandError(Exception exception)
     {
@@ -605,10 +620,16 @@ public sealed class MediaSessionsWidget : Widget
     {
         if (incoming is null) return [];
         var ids = new HashSet<string>(StringComparer.Ordinal);
-        return incoming.Where(item => item is not null &&
-                !string.IsNullOrWhiteSpace(item.SessionId) && ids.Add(item.SessionId))
-            .Take(32)
-            .Select(NormalizeSession).ToArray();
+        var normalized = new List<WidgetMediaSession>(Math.Min(incoming.Count, 32));
+        foreach (var item in incoming.Take(32))
+        {
+            if (item is null || string.IsNullOrWhiteSpace(item.SessionId) ||
+                !ids.Add(item.SessionId))
+                throw new WidgetCapabilityException(
+                    "invalid_backend_data", "Media session identity was invalid.");
+            normalized.Add(NormalizeSession(item));
+        }
+        return normalized;
     }
 
     private static WidgetMediaSession NormalizeSession(WidgetMediaSession item)

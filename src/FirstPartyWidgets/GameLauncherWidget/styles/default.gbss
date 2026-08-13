@@ -21,7 +21,7 @@
 .game-launcher-hero-title { font-size: 24px; font-weight: 700; }
 .game-launcher-hero-source { color: #d6dee8; }
 .game-launcher-hero-state { color: #aeb9c6; }
-.game-launcher-rail { flex-shrink: 0; min-height: 178px; gap: 12px; }
+.game-launcher-rail { flex-shrink: 0; min-height: 150px; gap: 12px; }
 .game-launcher-grid { gap: 12px; }
 .game-launcher-tile { min-height: 150px; }
 .game-launcher-actions { flex-shrink: 0; gap: 10px; }

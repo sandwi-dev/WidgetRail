@@ -136,6 +136,30 @@ if (args.Contains("--game-launcher-launch-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
+if (args.Contains("--game-launcher-owned-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await InstalledGameLauncherOwnedRunsIsolated(installed.Catalog);
+    Console.WriteLine("PASS installed Game Launcher mixed installed/owned acceptance");
+    return 0;
+}
+
+if (args.Contains("--game-launcher-offline-acceptance", StringComparer.Ordinal))
+{
+    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
+    var installed = await BridgeCatalog.LoadWithInstalledAsync(
+        deployment.EmptyTrustedCatalogPath,
+        deployment.InstalledCatalogRoot,
+        deployment.WorkerHostPath);
+    await InstalledGameLauncherOfflineRunsIsolated(installed.Catalog);
+    Console.WriteLine("PASS installed Game Launcher offline/recovery acceptance");
+    return 0;
+}
+
 if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
@@ -708,6 +732,28 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
 static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalog)
 {
     var backend = CreateBackend(gameLibraryCount: 128);
+    AppLibraryBackendItemSummary[] SourceGames() => Enumerable.Range(0, 128)
+        .Select(index => new AppLibraryBackendItemSummary(
+            $"game-{index:D5}", $"stable-game-{index:D5}",
+            $"Conformance Game {index:D5}", AppLibraryKind.Game,
+            ArtworkRevision: $"art-{index:D5}",
+            SourceAttribution: index < 64 ? "Steam" : "Windows"))
+        .ToArray();
+    backend.SetAppLibraryBackend(SourceGames().Prepend(new AppLibraryBackendItemSummary(
+        "manual-app", "stable-manual-app", "A Conformance Manual App",
+        AppLibraryKind.Application, SourceAttribution: "Windows")));
+    backend.AppLibrarySources =
+    [
+        new AppLibrarySourceSummary(
+            "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
+            1, "healthy"),
+        new AppLibrarySourceSummary(
+            "source-windows", "Windows", AppLibrarySourceHealth.Degraded,
+            1, "source_degraded"),
+        new AppLibrarySourceSummary(
+            "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
+            1, "healthy"),
+    ];
     var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-category-consent");
     var consent = new ConsentStore(consentRoot.Path);
@@ -743,7 +789,201 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
         var library = await WaitForActionSnapshotAsync(
             client, "game-launcher.launch", "Conformance Game 00001");
+        Assert.True(!Nodes(library.Root).Any(node =>
+                node.ActionId?.StartsWith(
+                    "game-launcher.collection.select.", StringComparison.Ordinal) == true &&
+                Nodes(node).Any(child =>
+                    (child.Text ?? string.Empty).StartsWith(
+                        "Empty Store:", StringComparison.Ordinal))),
+            "An observed source with no matching game was advertised as a collection.");
+        Assert.True(Nodes(library.Root).Any(node =>
+                node.Id == "game-launcher.source.source-windows" &&
+                (node.Text ?? string.Empty).Contains("Degraded", StringComparison.Ordinal)),
+            "Installed mixed-source degradation was not visible.");
+        var retainedFocus = library.InitialFocusId;
+        backend.AppLibrarySources =
+        [
+            new AppLibrarySourceSummary(
+                "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
+                2, "healthy"),
+            new AppLibrarySourceSummary(
+                "source-windows", "Windows", AppLibrarySourceHealth.Unavailable,
+                2, "source_unavailable"),
+            new AppLibrarySourceSummary(
+                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
+                2, "healthy"),
+        ];
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.refresh", "game-launcher.refresh"));
+        library = await WaitForSnapshotAsync(client, "Windows: Unavailable");
+        Assert.Equal(64, Nodes(library.Root).Count(node =>
+            node.ActionId == "game-launcher.launch"));
+        Assert.Equal(retainedFocus, library.InitialFocusId);
+        backend.AppLibrarySources =
+        [
+            new AppLibrarySourceSummary(
+                "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
+                3, "healthy"),
+            new AppLibrarySourceSummary(
+                "source-windows", "Windows", AppLibrarySourceHealth.Healthy,
+                3, "healthy"),
+            new AppLibrarySourceSummary(
+                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
+                3, "healthy"),
+        ];
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.refresh", "game-launcher.refresh"));
+        library = await WaitForSnapshotAsync(client, "Windows: Healthy");
+        Assert.Equal(retainedFocus, library.InitialFocusId);
+
+        var next = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.next");
+        await client.SendActionAsync(new WidgetActionEvent(next.ActionId!, next.Id));
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00064");
+        AssertCollectionOptions(library, "All installed", "Steam", "Windows");
+
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+        await client.StopAsync();
+    }
+
+    await using (var client = CreateClient())
+    {
+        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+        var library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        AssertCollectionOptions(library, "All installed", "Steam", "Windows");
+        Assert.True(HasCollection(library, "Windows"),
+            "A later-page proven source was lost across worker restart.");
+
+        library = await SelectCollectionAsync(client, library, "Steam");
+        AssertCollectionSelected(library, "Steam");
+        library = await SelectCollectionAsync(client, library, "Windows");
+        AssertCollectionSelected(library, "Windows");
+
+        backend.SetAppLibraryBackend(SourceGames().Where(item =>
+            string.Equals(item.SourceAttribution, "Windows", StringComparison.Ordinal)));
+        backend.AppLibrarySources =
+        [
+            new AppLibrarySourceSummary(
+                "source-windows", "Windows", AppLibrarySourceHealth.Healthy,
+                2, "healthy"),
+            new AppLibrarySourceSummary(
+                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
+                2, "healthy"),
+        ];
+        library = await SelectCollectionAsync(client, library, "All installed");
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.refresh", "game-launcher.refresh"));
+        var sourceRefreshDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < sourceRefreshDeadline && HasCollection(library, "Steam"))
+        {
+            await Task.Delay(40);
+            library = await client.GetSnapshotAsync();
+        }
+        AssertCollectionOptions(library, "All installed", "Windows");
+        Assert.True(!HasCollection(library, "Steam"),
+            "An authoritative refresh retained a removed source collection.");
+        Assert.True(!HasCollection(library, "Empty Store"),
+            "An observation-only empty source became a collection after refresh.");
+
+        backend.SetAppLibraryBackend(SourceGames().Prepend(new AppLibraryBackendItemSummary(
+            "manual-app", "stable-manual-app", "A Conformance Manual App",
+            AppLibraryKind.Application, SourceAttribution: "Windows")));
+        backend.AppLibrarySources =
+        [
+            new AppLibrarySourceSummary(
+                "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
+                3, "healthy"),
+            new AppLibrarySourceSummary(
+                "source-windows", "Windows", AppLibrarySourceHealth.Healthy,
+                3, "healthy"),
+            new AppLibrarySourceSummary(
+                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
+                3, "healthy"),
+        ];
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.refresh", "game-launcher.refresh"));
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
         var game = Nodes(library.Root).First(node =>
+            node.ActionId == "game-launcher.launch" &&
+            (node.AccessibilityLabel ?? string.Empty).Contains(
+                "Conformance Game 00001", StringComparison.Ordinal));
+
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.details.open", game.Id));
+        var details = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.details.title", "Conformance Game 00001");
+        Assert.True(Nodes(details.Root).Any(node =>
+            node.Id == "game-launcher.details.source" &&
+            string.Equals(node.Text, "Source · Steam", StringComparison.Ordinal)),
+            "Installed details did not project the current normalized source.");
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.open", "game-launcher.details.actions"));
+        var detailSheet = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.actions.sheet.title",
+            "Actions for Conformance Game 00001");
+        var favorite = Nodes(detailSheet.Root).Single(node =>
+            node.ActionId == "game-launcher.favorite");
+        var favoriteWasSelected = string.Equals(
+            favorite.Text, "Remove favorite", StringComparison.Ordinal);
+        await client.SendActionAsync(new WidgetActionEvent(favorite.ActionId!, favorite.Id));
+        detailSheet = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.actions.favorite",
+            favoriteWasSelected ? "Add favorite" : "Remove favorite");
+        if (favoriteWasSelected)
+        {
+            favorite = Nodes(detailSheet.Root).Single(node =>
+                node.ActionId == "game-launcher.favorite");
+            await client.SendActionAsync(new WidgetActionEvent(
+                favorite.ActionId!, favorite.Id));
+            detailSheet = await WaitForNodeTextSnapshotAsync(
+                client, "game-launcher.actions.favorite", "Remove favorite");
+        }
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.close", "game-launcher.actions.favorite"));
+        details = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.details.title", "Conformance Game 00001");
+        var handledBack = await client.SendControllerInputAsync(new ControllerInputEvent(
+            ControllerButton.B,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "game-launcher.details.actions",
+            Sequence: 160,
+            ActiveInputScopeId: details.ActiveInputScopeId,
+            SnapshotSequence: details.Sequence));
+        Assert.True(handledBack, "Installed details did not consume Back.");
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        Assert.Equal(game.Id, library.InitialFocusId);
+        game = Nodes(library.Root).First(node => node.Id == game.Id);
+        await client.SendActionAsync(new WidgetActionEvent(
+            "game-launcher.actions.open", game.Id));
+        var hideSheet = await WaitForNodeTextSnapshotAsync(
+            client, "game-launcher.actions.sheet.title",
+            "Actions for Conformance Game 00001");
+        var hide = Nodes(hideSheet.Root).Single(node =>
+            node.ActionId == "game-launcher.hide");
+        await client.SendActionAsync(new WidgetActionEvent(hide.ActionId!, hide.Id));
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.hidden.open", "Hidden (1)");
+        var hiddenOpen = Nodes(library.Root).Single(node =>
+            node.ActionId == "game-launcher.hidden.open");
+        await client.SendActionAsync(new WidgetActionEvent(hiddenOpen.ActionId!, hiddenOpen.Id));
+        var hidden = await WaitForActionSnapshotAsync(
+            client, "game-launcher.restore", "Conformance Game 00001");
+        var restore = Nodes(hidden.Root).Single(node =>
+            node.ActionId == "game-launcher.restore");
+        await client.SendActionAsync(new WidgetActionEvent(restore.ActionId!, restore.Id));
+        hidden = await WaitForActionSnapshotAsync(
+            client, "game-launcher.hidden.back", "Back");
+        var hiddenBack = Nodes(hidden.Root).Single(node =>
+            node.ActionId == "game-launcher.hidden.back");
+        await client.SendActionAsync(new WidgetActionEvent(hiddenBack.ActionId!, hiddenBack.Id));
+        library = await WaitForActionSnapshotAsync(
+            client, "game-launcher.launch", "Conformance Game 00001");
+        game = Nodes(library.Root).First(node =>
             node.ActionId == "game-launcher.launch" &&
             (node.AccessibilityLabel ?? string.Empty).Contains(
                 "Conformance Game 00001", StringComparison.Ordinal));
@@ -949,6 +1189,256 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
         await client.StopAsync();
     }
+
+    static async Task<ViewSnapshot> SelectCollectionAsync(
+        WidgetProcessClient client,
+        ViewSnapshot snapshot,
+        string label)
+    {
+        var option = Nodes(snapshot.Root).Single(node =>
+            node.ActionId?.StartsWith(
+                "game-launcher.collection.select.", StringComparison.Ordinal) == true &&
+            Nodes(node).Any(child => CollectionLabel(child, label)));
+        await client.SendActionAsync(new WidgetActionEvent(option.ActionId!, option.Id));
+        return await WaitForSnapshotAsync(client, label + ": On");
+    }
+
+    static void AssertCollectionOptions(ViewSnapshot snapshot, params string[] labels)
+    {
+        foreach (var label in labels)
+            Assert.True(HasCollection(snapshot, label),
+                $"Installed collection option {label} was omitted.");
+    }
+
+    static void AssertCollectionSelected(ViewSnapshot snapshot, string label)
+    {
+        var selected = Nodes(snapshot.Root).Where(node =>
+            node.IsSelected == true && node.ActionId?.StartsWith(
+                "game-launcher.collection.select.", StringComparison.Ordinal) == true).ToArray();
+        Assert.Equal(1, selected.Length);
+        Assert.True(Nodes(selected[0]).Any(child => CollectionLabel(child, label)),
+            $"Selected collection did not match {label}.");
+    }
+
+    static bool HasCollection(ViewSnapshot snapshot, string label) =>
+        Nodes(snapshot.Root).Any(node =>
+            node.ActionId?.StartsWith(
+                "game-launcher.collection.select.", StringComparison.Ordinal) == true &&
+            Nodes(node).Any(child => CollectionLabel(child, label)));
+
+    static bool CollectionLabel(ViewNode node, string label) =>
+        string.Equals(node.Text, label + ": On", StringComparison.Ordinal) ||
+        string.Equals(node.Text, label + ": Off", StringComparison.Ordinal) ||
+        string.Equals(node.AccessibilityLabel, label + ", On", StringComparison.Ordinal) ||
+        string.Equals(node.AccessibilityLabel, label + ", Off", StringComparison.Ordinal);
+}
+
+static async Task InstalledGameLauncherOwnedRunsIsolated(BridgeCatalog catalog)
+{
+    var backend = CreateBackend();
+    backend.SetAppLibrary(
+    [
+        new AppLibraryItemSummary(
+            "game-installed", "stable-installed",
+            AppLibraryPresentation(
+                "Installed Fixture Game", AppLibraryKind.Game, "Windows")),
+        new AppLibraryItemSummary(
+            "game-owned", "stable-owned",
+            new AppLibraryItemPresentation(
+                "Owned Fixture Game",
+                AppLibraryKind.Game,
+                new AppLibrarySourceReference("source-store", "Store"),
+                new AppLibraryAvailabilitySummary(
+                    AppLibraryAvailabilityState.Unavailable,
+                    false,
+                    "owned_not_installed"),
+                new AppLibraryArtworkSet([]),
+                Metadata: null,
+                new AppLibraryCapabilitySet([AppLibraryAction.Install]),
+                ActiveOperation: null)),
+    ]);
+    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    using var consentRoot = new TemporaryDirectory("gba-installed-owned-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            backend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var snapshot = await WaitForSnapshotAsync(client, "Owned Fixture Game");
+    var installed = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "game-launcher.launch" &&
+        (node.AccessibilityLabel ?? string.Empty).Contains(
+            "Installed Fixture Game", StringComparison.Ordinal));
+    var owned = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "game-launcher.launch" &&
+        (node.AccessibilityLabel ?? string.Empty).Contains(
+            "Owned Fixture Game", StringComparison.Ordinal));
+    Assert.True(installed.IsDisabled is not true,
+        "The installed row lost exact launch admission.");
+    Assert.True(owned.IsDisabled is true &&
+        owned.CollectionItemKey is not null,
+        "The owned row was not a navigable non-launching collection item.");
+    Assert.True(owned.AccessibilityLabel!.Contains(
+        "Owned · Not installed · Install available from source",
+        StringComparison.Ordinal),
+        "The installed worker omitted truthful typed Install availability.");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.launch", owned.Id));
+    Assert.Equal(0, backend.AppLibraryLaunchCalls);
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.details.open", owned.Id));
+    snapshot = await WaitForSnapshotAsync(client, "Primary action · Install from source");
+    Assert.True(Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "game-launcher.launch").IsDisabled is true,
+        "Owned details exposed Play admission.");
+    var handledBack = await client.SendControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.B,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: "game-launcher.details.actions",
+        Sequence: 186,
+        ActiveInputScopeId: snapshot.ActiveInputScopeId,
+        SnapshotSequence: snapshot.Sequence));
+    Assert.True(handledBack, "Installed owned details did not consume Back.");
+    snapshot = await WaitForSnapshotAsync(client, "Installed Fixture Game");
+    installed = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "game-launcher.launch" &&
+        (node.AccessibilityLabel ?? string.Empty).Contains(
+            "Installed Fixture Game", StringComparison.Ordinal));
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.launch", installed.Id));
+    await WaitUntilAsync(() => backend.AppLibraryLaunchCalls == 1);
+    Assert.Equal(1, backend.AppLibraryLaunchCalls);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
+}
+
+static async Task InstalledGameLauncherOfflineRunsIsolated(BridgeCatalog catalog)
+{
+    var simulated = CreateBackend();
+    simulated.SetAppLibrary(
+    [
+        new AppLibraryItemSummary(
+            "game-offline", "stable-offline",
+            AppLibraryPresentation(
+                "Installed Offline Fixture", AppLibraryKind.Game, "Windows")),
+    ]);
+    var backend = new InstalledOfflineAppLibraryBackend(simulated);
+    await using var brokerBackend = new CompositePlatformBrokerBackend(
+        simulated,
+        simulated,
+        activity: simulated,
+        bluetooth: simulated,
+        media: simulated,
+        appLibrary: backend,
+        privateSecrets: simulated,
+        loopbackHttp: simulated,
+        privateState: simulated,
+        spotify: simulated);
+    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    using var consentRoot = new TemporaryDirectory("gba-installed-offline-consent");
+    var consent = new ConsentStore(consentRoot.Path);
+    var identity = new BrokerWidgetIdentity(
+        configured.PackageId, configured.PublisherId, configured.InstanceId);
+    foreach (var capability in configured.DeclaredCapabilities)
+        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+
+    await using var client = new WidgetProcessClient(new WidgetProcessOptions
+    {
+        ExecutablePath = configured.WorkerExecutable,
+        Arguments = configured.WorkerArguments,
+        WidgetInstanceId = configured.InstanceId,
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        RequestTimeout = TimeSpan.FromSeconds(4),
+        MaximumRestartAttempts = 0,
+        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+        IsolationKey = configured.IsolationKey,
+        ReadOnlyPaths = configured.ReadOnlyPaths,
+        ContentLeaseFactory = configured.ContentLeaseFactory,
+        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            configured.PackageId,
+            configured.PublisherId,
+            configured.InstanceId,
+            configured.DeclaredCapabilities,
+            consent,
+            brokerBackend,
+            context),
+    });
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var snapshot = await WaitForSnapshotAsync(client, "Installed Offline Fixture");
+    var tile = Nodes(snapshot.Root).Single(node =>
+        node.ActionId == "game-launcher.launch" &&
+        (node.AccessibilityLabel ?? string.Empty).Contains(
+            "Installed Offline Fixture", StringComparison.Ordinal));
+    var exactFocus = tile.Id;
+
+    backend.FailCatalogRefresh = true;
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.refresh", "game-launcher.refresh"));
+    snapshot = await WaitForSnapshotAsync(client, "Game library offline");
+    Assert.Equal(exactFocus, snapshot.InitialFocusId);
+    tile = Nodes(snapshot.Root).Single(node => node.Id == exactFocus);
+    Assert.True(tile.IsDisabled is not true,
+        "The last-good installed row lost navigability before exact revalidation.");
+
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.launch", tile.Id));
+    await WaitUntilAsync(() => backend.LaunchCount == 1);
+    snapshot = await WaitForSnapshotAsync(client, "Continue (1)");
+    Assert.Equal(exactFocus, snapshot.InitialFocusId);
+
+    backend.DenyExactResolution = true;
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.launch", exactFocus));
+    snapshot = await WaitForSnapshotAsync(client, "Failed");
+    Assert.True(Nodes(snapshot.Root).Single(node => node.Id == exactFocus)
+        .AccessibilityLabel?.Contains("Failed", StringComparison.Ordinal) == true,
+        "Missing exact evidence did not produce a failed non-launching tile state.");
+    Assert.Equal(1, backend.LaunchCount);
+
+    backend.DenyExactResolution = false;
+    backend.FailCatalogRefresh = false;
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.retry", "game-launcher.retry"));
+    snapshot = await WaitForSnapshotAsync(client, "Installed Offline Fixture");
+    Assert.Equal(exactFocus, snapshot.InitialFocusId);
+    Assert.Equal(1, Nodes(snapshot.Root).Count(node =>
+        node.ActionId?.StartsWith(
+            "game-launcher.collection.select.",
+            StringComparison.Ordinal) == true &&
+        Nodes(node).Any(child =>
+            (child.Text ?? string.Empty).StartsWith(
+                "Continue (1):", StringComparison.Ordinal))));
+    Assert.True(!Nodes(snapshot.Root).Any(node =>
+        node.Id == "game-launcher.retained-error"),
+        "Recovered installed browsing retained the offline warning.");
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    await client.StopAsync();
 }
 
 static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
@@ -1111,11 +1601,12 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
     phases.Add("generic-appcontainer-catalog-route");
 
     var trackGeneration = 0;
+    var companionMode = 0; // 0 = playing, 1 = connected idle, 2 = transient failure.
     string TrackId() => $"conformance-track-{Volatile.Read(ref trackGeneration)}";
     string TrackState() => JsonSerializer.Serialize(new
     {
-        id = TrackId(),
-        playing = true,
+        id = Volatile.Read(ref companionMode) == 1 ? string.Empty : TrackId(),
+        playing = Volatile.Read(ref companionMode) != 1,
         liked = false,
         disliked = false,
         shuffle = false,
@@ -1127,9 +1618,13 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
     {
         video = new
         {
-            title = $"Conformance Song {Volatile.Read(ref trackGeneration)}",
-            author = "Conformance Artist",
-            videoId = TrackId(),
+            title = Volatile.Read(ref companionMode) == 1
+                ? null
+                : $"Conformance Song {Volatile.Read(ref trackGeneration)}",
+            author = Volatile.Read(ref companionMode) == 1
+                ? null
+                : "Conformance Artist",
+            videoId = Volatile.Read(ref companionMode) == 1 ? null : TrackId(),
         },
         music = new { album = "Conformance Album" },
         meta = new { thumbnail = "https://img.example/conformance.jpg", duration = 180 },
@@ -1147,6 +1642,8 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
         var response = (isPost, request.Path) switch
         {
             (false, "/") => new LoopbackJsonResponse(200, "{\"authRequired\":true}", []),
+            (false, "/track/state") when Volatile.Read(ref companionMode) == 2 =>
+                new LoopbackJsonResponse(503, "{}", []),
             (false, "/track") => new LoopbackJsonResponse(200, Track(), []),
             (false, "/track/state") => new LoopbackJsonResponse(200, TrackState(), []),
             (true, "/auth/requestcode") =>
@@ -1291,6 +1788,24 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
         "Open-widget LB was not routed from the play control through the active input scope.");
     await WaitUntilAsync(() => Volatile.Read(ref previousCalls) == 1);
     phases.Add("dashboard-and-open-widget-controller-routing");
+
+    Volatile.Write(ref companionMode, 2);
+    await client.SendActionAsync(new WidgetActionEvent("refresh", "refresh"));
+    var retained = await WaitForSnapshotAsync(client, "showing last known track");
+    Assert.True(Nodes(retained.Root).Any(node =>
+        node.Id == "track-title" &&
+        (node.Text ?? string.Empty).StartsWith("Conformance Song", StringComparison.Ordinal)),
+        "Transient installed companion failure replaced last-good media.");
+    Volatile.Write(ref companionMode, 1);
+    await client.SendActionAsync(new WidgetActionEvent("refresh", "refresh"));
+    var idle = await WaitForSnapshotAsync(client, "No track playing");
+    Assert.Equal(0, idle.QuickActions.Count);
+    Assert.True(!Nodes(idle.Root).Any(node => node.ActionId == "toggle-playback"),
+        "Connected-idle installed state retained playback authority.");
+    Volatile.Write(ref companionMode, 0);
+    await client.SendActionAsync(new WidgetActionEvent("refresh", "refresh"));
+    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    phases.Add("transient-last-good-connected-idle-and-recovery");
 
     var startsBeforeSuspend = client.Starts;
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
@@ -2296,7 +2811,35 @@ static async Task MediaSessionsPackageRunsIsolated(
     });
 
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
-    _ = await WaitForSnapshotAsync(client, "Conformance Song");
+    var currentMedia = await WaitForSnapshotAsync(client, "Conformance Song");
+
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
+    backend.MediaSessionsHandler = _ => Task.FromResult<IReadOnlyList<MediaSessionSummary>>([
+        new MediaSessionSummary(
+            string.Empty, "Identity-less Player", "Unowned Song", "Artist",
+            MediaPlaybackStatus.Paused, 0, 1_000, 1, 1, true,
+            true, true, true, true, true),
+    ]);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var identityFailure = await WaitForSnapshotAsync(client, "invalid_backend_data");
+    Assert.True(Nodes(identityFailure.Root).Any(node =>
+            node.Id == "media.track-title" &&
+            string.Equals(node.Text, "Conformance Song", StringComparison.Ordinal)),
+        "Identity-less installed snapshot replaced current media.");
+    backend.MediaSessionsHandler = null;
+    backend.SetMediaSessions([
+        new MediaSessionSummary(
+            "media-identity-recovered", "Conformance Player", "Identity Recovered Song",
+            "Conformance Artist", MediaPlaybackStatus.Playing, 5_000, 180_000,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
+            true, true, true, true, true),
+    ]);
+    var identityRetry = Nodes(identityFailure.Root).Single(node =>
+        node.ActionId == "media.retry");
+    await client.SendActionAsync(new WidgetActionEvent("media.retry", identityRetry.Id));
+    currentMedia = await WaitForSnapshotAsync(client, "Identity Recovered Song");
+    Assert.True(currentMedia.QuickActions.Count > 0,
+        "Recovered installed current session omitted truthful quick actions.");
 
     backend.SetMediaSessions([]);
     backend.Publish(new BrokerPlatformEvent(
@@ -2393,6 +2936,71 @@ static async Task ExerciseTextEntryAsync(
     Assert.Equal(query, Nodes(filtered.Root).Single(node =>
         node.Kind == ViewNodeKind.TextEntry &&
         node.ActionId == "game-launcher.search.commit").TextEntryValue);
+
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.search.commit", search.Id));
+    var canceled = await client.GetSnapshotAsync();
+    Assert.Equal(query, Nodes(canceled.Root).Single(node =>
+        node.Kind == ViewNodeKind.TextEntry &&
+        node.ActionId == "game-launcher.search.commit").TextEntryValue);
+    var result = Nodes(canceled.Root).Single(node =>
+        node.ActionId == "game-launcher.launch");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.details.open", result.Id));
+    var details = await WaitForNodeTextSnapshotAsync(
+        client, "game-launcher.details.title", query);
+    Assert.True(!Nodes(details.Root).Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)),
+        "Search details leaked collection shortcuts.");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.actions.open", "game-launcher.details.actions"));
+    var sheet = await WaitForNodeTextSnapshotAsync(
+        client, "game-launcher.actions.sheet.title", $"Actions for {query}");
+    Assert.True(!Nodes(sheet.Root).Any(node => node.Shortcuts.Any(shortcut =>
+            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)),
+        "Search action sheet leaked collection shortcuts.");
+    await client.SendActionAsync(new WidgetActionEvent(
+        "game-launcher.actions.close", "game-launcher.actions.favorite"));
+    details = await WaitForNodeTextSnapshotAsync(
+        client, "game-launcher.details.title", query);
+    var handled = await client.SendControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.B,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        FocusedElementId: "game-launcher.details.actions",
+        Sequence: 181,
+        ActiveInputScopeId: details.ActiveInputScopeId,
+        SnapshotSequence: details.Sequence));
+    Assert.True(handled, "Installed searched details did not consume Back.");
+    var returned = await WaitForActionSnapshotAsync(
+        client, "game-launcher.launch", query);
+    Assert.Equal(result.Id, returned.InitialFocusId);
+    Assert.Equal(query, Nodes(returned.Root).Single(node =>
+        node.Kind == ViewNodeKind.TextEntry &&
+        node.ActionId == "game-launcher.search.commit").TextEntryValue);
+
+    var clear = Nodes(returned.Root).Single(node =>
+        node.ActionId == "game-launcher.query.clear");
+    await client.SendActionAsync(new WidgetActionEvent(clear.ActionId!, clear.Id));
+    var clearDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+    var clearObserved = false;
+    while (DateTime.UtcNow < clearDeadline)
+    {
+        var current = await client.GetSnapshotAsync();
+        var entry = Nodes(current.Root).Single(node =>
+            node.Kind == ViewNodeKind.TextEntry &&
+            node.ActionId == "game-launcher.search.commit");
+        clearObserved = entry.TextEntryValue == string.Empty && Nodes(current.Root).Any(node =>
+            node.ActionId?.StartsWith(
+                "game-launcher.collection.select.", StringComparison.Ordinal) == true &&
+            node.IsSelected == true && Nodes(node).Any(child =>
+                (child.Text ?? string.Empty).StartsWith(
+                    "All installed:", StringComparison.Ordinal)));
+        if (clearObserved) break;
+        await Task.Delay(40);
+    }
+    Assert.True(clearObserved,
+        "Clearing installed search did not restore the selected collection.");
 }
 
 static async Task ExerciseControlAsync(
@@ -3652,6 +4260,54 @@ file sealed class InstalledGogBoundaryBackend(
     {
         LaunchCount++;
         return inner.LaunchAppLibraryItemObservedAsync(appId, cancellationToken);
+    }
+
+    public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
+        string appId,
+        CancellationToken cancellationToken) =>
+        inner.GetAppLibraryIconAsync(appId, cancellationToken);
+}
+
+file sealed class InstalledOfflineAppLibraryBackend(
+    IAppLibraryPlatformBrokerBackend inner) : IAppLibraryPlatformBrokerBackend
+{
+    internal bool FailCatalogRefresh { get; set; }
+    internal bool DenyExactResolution { get; set; }
+    internal int LaunchCount { get; private set; }
+
+    public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
+        AppLibraryBackendCursorRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (FailCatalogRefresh && request.Refresh &&
+            request.Query.Kind == AppLibraryKind.Game)
+            return Task.FromException<AppLibraryBackendCursorPage>(
+                new BrokerException(
+                    "platform_unavailable", "The catalog source is offline."));
+        if (DenyExactResolution && request.Refresh && request.Query.Kind is null)
+            return Task.FromResult(new AppLibraryBackendCursorPage(
+                [], null, null, "offline-exact-empty"));
+        return inner.QueryAppLibraryAsync(request, cancellationToken);
+    }
+
+    public Task LaunchAppLibraryItemAsync(
+        string appId,
+        CancellationToken cancellationToken)
+    {
+        LaunchCount++;
+        return inner.LaunchAppLibraryItemAsync(appId, cancellationToken);
+    }
+
+    public async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
+        string appId,
+        CancellationToken cancellationToken)
+    {
+        LaunchCount++;
+        await inner.LaunchAppLibraryItemAsync(appId, cancellationToken)
+            .ConfigureAwait(false);
+        return new(AppLibraryLaunchObservationState.LauncherStarted,
+            SupportsRunning: false,
+            SupportsEnded: false);
     }
 
     public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(

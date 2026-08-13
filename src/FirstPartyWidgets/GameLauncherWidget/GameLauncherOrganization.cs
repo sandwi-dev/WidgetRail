@@ -33,6 +33,8 @@ internal sealed record GameLauncherPrivateState(
     internal const int MaximumCategoryMemberships = 2048;
     internal const int MaximumTitleValidationItems = 1024;
     internal const int MaximumTitleLength = 96;
+    internal const int MaximumProvenSources = 32;
+    internal const int MaximumSourceNameLength = 64;
     internal static readonly GameLauncherPrivateState Empty = new(CurrentVersion, []);
 
     public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
@@ -43,6 +45,7 @@ internal sealed record GameLauncherPrivateState(
     public IReadOnlyList<GameLauncherCategory> Categories { get; init; } = [];
     public IReadOnlyList<GameLauncherTitleOverride> TitleOverrides { get; init; } = [];
     public string ExperienceId { get; init; } = GameLauncherExperienceIdentity.HeroRail;
+    public IReadOnlyList<string> ProvenSources { get; init; } = [];
 }
 
 internal sealed record GameLauncherStateMutation(
@@ -118,6 +121,7 @@ internal static class GameLauncherOrganizationPolicy
         var experienceId = GameLauncherExperienceIdentity.IsValid(state.ExperienceId)
             ? state.ExperienceId
             : GameLauncherExperienceIdentity.HeroRail;
+        var provenSources = GameLauncherSourceCatalog.Normalize(state.ProvenSources);
         var categories = GameLauncherCategoryPolicy.Normalize(
             state.Categories, display, out _);
         var titleOverrides = GameLauncherTitlePolicy.Normalize(
@@ -136,6 +140,7 @@ internal static class GameLauncherOrganizationPolicy
             Categories = categories,
             TitleOverrides = titleOverrides,
             ExperienceId = experienceId,
+            ProvenSources = provenSources,
         };
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
@@ -143,6 +148,9 @@ internal static class GameLauncherOrganizationPolicy
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
             normalized = normalized with { Categories = [] };
+        if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
+            normalized = normalized with { ProvenSources = [] };
         return JsonSerializer.SerializeToUtf8Bytes(normalized).Length <=
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes
             ? normalized
@@ -207,6 +215,19 @@ internal static class GameLauncherOrganizationPolicy
 
     internal static GameLauncherStateMutation ClearRecent(GameLauncherPrivateState state) =>
         GameLauncherStateMutation.Apply(Normalize(state) with { RecentSavedIds = [] });
+
+    internal static GameLauncherStateMutation RestoreRecent(
+        GameLauncherPrivateState state,
+        IReadOnlyList<string> savedIds)
+    {
+        state = Normalize(state);
+        var retained = savedIds.Where(savedId => state.Items.Any(item =>
+                string.Equals(item.SavedId, savedId, StringComparison.Ordinal)))
+            .Distinct(StringComparer.Ordinal)
+            .Take(GameLauncherPrivateState.MaximumRecentItems)
+            .ToArray();
+        return GameLauncherStateMutation.Apply(state with { RecentSavedIds = retained });
+    }
 
     internal static GameLauncherStateMutation SetManual(
         GameLauncherPrivateState state,

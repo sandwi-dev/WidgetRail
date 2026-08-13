@@ -42,7 +42,15 @@ behind public host services:
 | D-pad + `A` | Navigate and invoke all visible controls |
 | Home/Guide | Reserved by the overlay host, never handled by this widget |
 
-When the connected widget card is selected on the dashboard, its snapshot also advertises three host-routable quick actions: `LB → previous`, `X → toggle-playback`, and `RB → next`. The SDK resolves those through the dashboard input context and reports `SourceElementId = "dashboard-card"`. `Y` is intentionally absent because the dashboard host owns it for widget reordering; after the widget is opened, its own `Y → refresh` shortcut remains available.
+These media actions appear only while the companion supplies a current playback
+identity. A connected companion with no current track shows one focused
+**Refresh** action and publishes no dashboard quick actions. When the connected
+widget card has current media and is selected on the dashboard, its snapshot
+advertises three host-routable quick actions: `LB → previous`, `X →
+toggle-playback`, and `RB → next`. The SDK resolves those through the dashboard
+input context and reports `SourceElementId = "dashboard-card"`. `Y` is
+intentionally absent because the dashboard host owns it for widget reordering;
+after the widget is opened, its own `Y → refresh` shortcut remains available.
 
 The widget renders explicit disconnected, connecting, pairing, connected, and
 error states. During pairing it displays the approval code returned by
@@ -70,6 +78,15 @@ process remains resident in Background by default. Connection, snapshot,
 pending-command, progress, status, and pairing-code inputs are published as one
 immutable render-facing revision. A cancellation-ignoring companion completion
 cannot update that revision after its operation is superseded or deactivated.
+An ordinary polling or explicit-refresh timeout keeps the last-good current
+track visible with bounded stale guidance; a later successful poll or Refresh
+replaces it atomically. Authorization rejection still clears media authority
+and returns to pairing rather than treating rejected state as last-good. Each
+explicit Refresh is owned by one runtime Active-generation operation. Its
+success, ordinary failure, or authorization failure can commit only while that
+exact generation is current, so cancellation-ignoring work from a deactivated
+generation cannot change playback, status, pairing, or credential authority
+after reactivation.
 
 ## Responsibility boundaries
 

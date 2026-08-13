@@ -1,5 +1,6 @@
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using System.Globalization;
 
 namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
 
@@ -26,7 +27,15 @@ internal sealed record GameLauncherDetailsState(
     bool Interactive,
     bool Resolved,
     bool Launchable,
-    bool Busy);
+    bool Busy)
+{
+    internal string? PrimaryAction { get; init; }
+    internal IReadOnlyList<string> Categories { get; init; } = [];
+    internal string? Version { get; init; }
+    internal string? LastPlayed { get; init; }
+    internal string? Playtime { get; init; }
+    internal string? Operation { get; init; }
+}
 
 internal static class GameLauncherDetailsPolicy
 {
@@ -71,8 +80,20 @@ internal static class GameLauncherDetailsPolicy
             current.Value.Presentation.Availability.IsLaunchable &&
             current.Value.Presentation.Capabilities.Supports(
                 WidgetAppLibraryAction.Launch);
+        var availability = GameLauncherAvailabilityPresentation.Tile(
+            current, interactive);
         var launching = string.Equals(selection.SavedId, launchingSavedId,
             StringComparison.Ordinal);
+        var metadata = current?.Presentation.Metadata;
+        var providerCategories = metadata?.Categories ?? [];
+        var categories = organization.Categories
+            .Where(category => GameLauncherCategoryPolicy.Contains(
+                category, selection.SavedId))
+            .Select(category => category.Name)
+            .Concat(providerCategories)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var operation = current?.Presentation.ActiveOperation;
         var launchState = launchStates.TryGetValue(
             selection.SavedId, out var recorded) ? recorded : (GameLauncherLaunchState?)null;
         var launchStatus = launching ? "Pending" : launchState switch
@@ -100,9 +121,7 @@ internal static class GameLauncherDetailsPolicy
             selection,
             current?.Presentation.DisplayName ?? selection.DisplayName,
             current?.Presentation.Source.DisplayName ?? selection.SourceAttribution,
-            resolved
-                ? launchable ? interactive ? "Available" : "Paused" : "Play unavailable"
-                : "Unavailable",
+            resolved ? availability.Status : "Unavailable",
             launchStatus,
             organization.FavoriteSavedIds.Contains(
                 selection.SavedId, StringComparer.Ordinal),
@@ -114,8 +133,45 @@ internal static class GameLauncherDetailsPolicy
             interactive,
             resolved,
             launchable,
-            launching || organizationBusy);
+            launching || organizationBusy)
+        {
+            PrimaryAction = launchable ? "Launch" : availability.PrimaryAction,
+            Categories = categories,
+            Version = metadata?.Version,
+            LastPlayed = metadata?.LastPlayedAtUnixMilliseconds is { } lastPlayed
+                ? FormatLastPlayed(lastPlayed)
+                : null,
+            Playtime = metadata?.PlaytimeMinutes is { } minutes
+                ? FormatPlaytime(minutes)
+                : null,
+            Operation = operation is null
+                ? null
+                : $"{FormatName(operation.Kind.ToString())} · " +
+                  FormatName(operation.State.ToString()),
+        };
     }
+
+    private static string FormatPlaytime(long minutes) => minutes < 60
+        ? $"{minutes} min"
+        : $"{minutes / 60} h {minutes % 60} min";
+
+    private static string? FormatLastPlayed(long unixMilliseconds)
+    {
+        try
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(unixMilliseconds)
+                .UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static string FormatName(string value) => string.Concat(
+        value.Select((character, index) => index > 0 && char.IsUpper(character)
+            ? " " + char.ToLowerInvariant(character)
+            : character.ToString()));
 
     internal static string? ResolveActionSource(
         GameLauncherDetailsSelection? selection,
@@ -155,8 +211,11 @@ internal static class GameLauncherDetailsPresentation
                 (state.Preferred ? " · Preferred" : string.Empty)
             : "Not grouped";
         var favorite = state.Favorite ? "Favorite" : "Not favorite";
-        var scroll = UI.VerticalScroll("game-launcher.details.scroll",
-                UI.Stack("game-launcher.details.content",
+        var organization = $"Organization · {favorite} · {groupStatus}";
+        if (state.Categories.Count != 0)
+            organization += " · " + string.Join(", ", state.Categories);
+        var details = new List<WidgetElement>
+        {
                     UI.Text("GAME DETAILS", "game-launcher.details.eyebrow", "Game details")
                         .Classes("game-launcher-eyebrow"),
                     UI.Text(state.DisplayName, "game-launcher.details.title",
@@ -166,9 +225,27 @@ internal static class GameLauncherDetailsPresentation
                         "game-launcher.details.source", "Game source"),
                     UI.Text($"Availability · {state.Availability}",
                         "game-launcher.details.availability", "Game availability"),
+        };
+        if (state.PrimaryAction is { } primaryAction)
+            details.Add(UI.Text($"Primary action · {primaryAction}",
+                "game-launcher.details.primary-action", "Game primary action"));
+        if (state.Version is { } version)
+            details.Add(UI.Text($"Version · {version}",
+                "game-launcher.details.version", "Game version"));
+        if (state.LastPlayed is { } lastPlayed)
+            details.Add(UI.Text($"Last played · {lastPlayed}",
+                "game-launcher.details.last-played", "Game last played"));
+        if (state.Playtime is { } playtime)
+            details.Add(UI.Text($"Playtime · {playtime}",
+                "game-launcher.details.playtime", "Game playtime"));
+        if (state.Operation is { } operation)
+            details.Add(UI.Text($"Operation · {operation}",
+                "game-launcher.details.operation", "Game operation"));
+        details.AddRange(
+        [
                     UI.Text($"Launch state · {state.LaunchStatus}",
                         "game-launcher.details.launch-state", "Game launch state"),
-                    UI.Text($"Organization · {favorite} · {groupStatus}",
+                    UI.Text(organization,
                         "game-launcher.details.organization", "Game organization"),
                     UI.Text($"Status · {state.Feedback}",
                         "game-launcher.details.feedback", "Game action status"),
@@ -191,14 +268,13 @@ internal static class GameLauncherDetailsPresentation
                     UI.Row("game-launcher.details.hints",
                         UI.ControllerHint(ControllerButton.A, "Launch", "game-launcher.details.hint.launch"),
                         UI.ControllerHint(ControllerButton.X, "Favorite", "game-launcher.details.hint.favorite"),
-                        UI.ControllerHint(ControllerButton.Y, "Game actions", "game-launcher.details.hint.actions"))))
+                        UI.ControllerHint(ControllerButton.Y, "Game actions", "game-launcher.details.hint.actions")),
+        ]);
+        var scroll = UI.VerticalScroll("game-launcher.details.scroll",
+                UI.Stack("game-launcher.details.content", details.ToArray()))
             .Classes("game-launcher-scroll", "game-launcher-main")
             .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
             .Shortcut(ControllerButton.Y, actionId: GameLauncherActionSheet.OpenAction);
-        if (!state.Selection.PageBumpers)
-            scroll = scroll
-                .Shortcut(ControllerButton.LeftBumper, actionId: "game-launcher.variant")
-                .Shortcut(ControllerButton.RightBumper, actionId: "game-launcher.prefer");
         return new WidgetView(
             UI.Stack("game-launcher.details.root", scroll).Classes("game-launcher-widget"),
             GameLauncherDetailsPolicy.ActionSourceId,
