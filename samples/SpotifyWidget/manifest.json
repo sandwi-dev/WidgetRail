@@ -3,27 +3,18 @@
   "id": "org.gbar.samples.spotify",
   "publisher": "org.gbar.samples",
   "name": "Spotify",
-  "version": "0.2.15",
+  "version": "0.3.0",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
   },
   "entrypoint": {
-    "runtime": "dotnet-worker",
-    "assembly": "payload/SpotifyWidget.dll",
-    "type": "GameBarAlternative.Samples.SpotifyWidget.SpotifyWidget"
+    "runtime": "full-trust-application-v1",
+    "executable": "payload/SpotifyApplication.exe"
   },
   "presentation": { "icon": "music" },
-  "permissions": [
-    "external.spotify.configuration.v1",
-    "external.spotify.authorization.v1",
-    "external.spotify.playback.read.v1"
-  ],
-  "optionalPermissions": [
-    "external.spotify.playback.control.v1",
-    "external.spotify.local-playback.v1",
-    "external.spotify.playlists.read.v1"
-  ],
+  "permissions": [],
+  "optionalPermissions": [],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "keep-alive"
@@ -33,7 +24,6 @@
     "updateHz": 4
   },
   "architectures": [
-    "x64",
-    "arm64"
+    "x64"
   ]
 }

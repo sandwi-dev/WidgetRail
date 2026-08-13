@@ -34,9 +34,11 @@ if (-not [string]::IsNullOrWhiteSpace($Version)) {
 }
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
 $cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
-$widgetProject = Join-Path $sampleRoot 'SpotifyWidget.csproj'
+$applicationProject = Join-Path $sampleRoot 'Application\SpotifyApplication.csproj'
+$playbackHostProject = Join-Path $sampleRoot 'PlaybackHost\SpotifyPlaybackHost.csproj'
 $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
-$publishRoot = Join-Path $artifactsRoot 'publish'
+$applicationPublishRoot = Join-Path $artifactsRoot 'application-publish'
+$playbackHostPublishRoot = Join-Path $artifactsRoot 'playback-host-publish'
 $deterministicPathMap = "$buildGraphRoot=/_/build%2C$repositoryRoot=/_/"
 
 function Assert-ChildPath {
@@ -81,8 +83,10 @@ New-Item -ItemType Directory -Force -Path $artifactsRoot | Out-Null
 Assert-NoReparsePoint -Path $artifactsRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $stagingRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $buildGraphRoot
-Assert-ChildPath -Parent $artifactsRoot -Child $publishRoot
-foreach ($generatedDirectory in @($stagingRoot, $buildGraphRoot, $publishRoot)) {
+Assert-ChildPath -Parent $artifactsRoot -Child $applicationPublishRoot
+Assert-ChildPath -Parent $artifactsRoot -Child $playbackHostPublishRoot
+foreach ($generatedDirectory in @(
+    $stagingRoot, $buildGraphRoot, $applicationPublishRoot, $playbackHostPublishRoot)) {
     Assert-NoReparsePoint -Path $generatedDirectory
     if (Test-Path -LiteralPath $generatedDirectory) {
         Remove-Item -LiteralPath $generatedDirectory -Recurse -Force
@@ -91,9 +95,10 @@ foreach ($generatedDirectory in @($stagingRoot, $buildGraphRoot, $publishRoot)) 
 New-Item -ItemType Directory -Force -Path $payloadRoot, (Join-Path $stagingRoot 'styles') | Out-Null
 Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $buildGraphRoot
-Assert-NoReparsePoint -Path $publishRoot
+Assert-NoReparsePoint -Path $applicationPublishRoot
+Assert-NoReparsePoint -Path $playbackHostPublishRoot
 
-& dotnet publish $widgetProject `
+& dotnet publish $applicationProject `
     --configuration $Configuration `
     --no-self-contained `
     --nologo `
@@ -102,15 +107,60 @@ Assert-NoReparsePoint -Path $publishRoot
     --property:UseSharedCompilation=false `
     --property:BuildInParallel=false `
     --artifacts-path $buildGraphRoot `
-    --output $publishRoot
+    --output $applicationPublishRoot
 if ($LASTEXITCODE -ne 0) {
-    throw "Spotify addon publish failed with exit code $LASTEXITCODE."
+    throw "Spotify application publish failed with exit code $LASTEXITCODE."
 }
 
-# Package only these explicitly selected public artifacts. Configuration values and
-# OAuth credentials live in host-owned stores and must never enter the addon archive.
-Copy-Item -LiteralPath (Join-Path $publishRoot 'SpotifyWidget.dll') `
-    -Destination (Join-Path $payloadRoot 'SpotifyWidget.dll') -Force
+& dotnet publish $playbackHostProject `
+    --configuration $Configuration `
+    --no-self-contained `
+    --nologo `
+    --property:ContinuousIntegrationBuild=true `
+    --property:PathMap=$deterministicPathMap `
+    --property:UseSharedCompilation=false `
+    --property:BuildInParallel=false `
+    --artifacts-path $buildGraphRoot `
+    --output $playbackHostPublishRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Spotify playback-host publish failed with exit code $LASTEXITCODE."
+}
+
+# Package the complete framework-dependent application graphs. Configuration
+# values and OAuth credentials remain in their existing user stores and never
+# enter the addon archive. Colliding dependency files must be byte-identical.
+function Copy-PublishGraph {
+    param([Parameter(Mandatory = $true)] [string]$Source)
+
+    $sourcePrefix = $Source.TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar) +
+        [System.IO.Path]::DirectorySeparatorChar
+    Get-ChildItem -LiteralPath $Source -File -Recurse | Where-Object {
+        $_.Extension -notin @('.pdb', '.xml') -and
+        # The Windows-targeting SDK copies its 24-MiB reference facade even
+        # though neither the host nor WebView2 runtime assemblies reference it.
+        # Keep the immutable package inside the generic per-entry bound.
+        $_.Name -cne 'Microsoft.Windows.SDK.NET.dll'
+    } | ForEach-Object {
+        $relative = $_.FullName.Substring($sourcePrefix.Length)
+        $destination = Join-Path $payloadRoot $relative
+        $destinationParent = Split-Path -Parent $destination
+        New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+        if (Test-Path -LiteralPath $destination) {
+            $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash
+            $destinationHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash
+            if ($sourceHash -cne $destinationHash) {
+                throw "Published Spotify graphs disagree on $relative."
+            }
+        } else {
+            Copy-Item -LiteralPath $_.FullName -Destination $destination
+        }
+    }
+}
+
+Copy-PublishGraph -Source $applicationPublishRoot
+Copy-PublishGraph -Source $playbackHostPublishRoot
 if ([string]::IsNullOrWhiteSpace($Version)) {
     Copy-Item -LiteralPath $manifestPath `
         -Destination (Join-Path $stagingRoot 'manifest.json') -Force
@@ -124,11 +174,6 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
     -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
 
-$expectedFiles = @(
-    'manifest.json',
-    'payload\SpotifyWidget.dll',
-    'styles\default.gbss'
-)
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
     [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
@@ -139,10 +184,31 @@ $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEac
     }
     $fullName.Substring($stagingPrefix.Length)
 })
-$unexpectedFiles = @($stagedFiles | Where-Object { $_ -notin $expectedFiles })
-$missingFiles = @($expectedFiles | Where-Object { $_ -notin $stagedFiles })
-if ($unexpectedFiles.Count -ne 0 -or $missingFiles.Count -ne 0) {
-    throw "Staged package allowlist mismatch. Unexpected: [$($unexpectedFiles -join ', ')]; missing: [$($missingFiles -join ', ')]."
+$requiredFiles = @(
+    'manifest.json',
+    'payload\SpotifyApplication.exe',
+    'payload\SpotifyApplication.dll',
+    'payload\SpotifyApplicationBackend.dll',
+    'payload\SpotifyPlaybackHost.exe',
+    'payload\SpotifyPlaybackHost.dll',
+    'payload\SpotifyPlaybackProtocol.dll',
+    'payload\SpotifyWidget.dll',
+    'payload\WidgetApplicationRuntime.dll',
+    'payload\WidgetSdk.dll',
+    'payload\WidgetProtocol.dll',
+    'payload\WebView2Loader.dll',
+    'styles\default.gbss'
+)
+$missingFiles = @($requiredFiles | Where-Object { $_ -notin $stagedFiles })
+if ($missingFiles.Count -ne 0) {
+    throw "Staged Spotify application is incomplete. Missing: [$($missingFiles -join ', ')]."
+}
+$forbiddenFiles = @($stagedFiles | Where-Object {
+    $_ -match '(^|\\)(PlatformBroker|WindowsSpotifyProvider|PlatformSettings)\.dll$' -or
+    $_ -match '\.(pdb|xml)$'
+})
+if ($forbiddenFiles.Count -ne 0) {
+    throw "Staged Spotify application contains product-owned or debug artifacts: [$($forbiddenFiles -join ', ')]."
 }
 
 if (Test-Path -LiteralPath $packagePath) {
@@ -186,7 +252,7 @@ if ($Install) {
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        install $packagePath @catalogArguments
+        install $packagePath --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "gbar install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
     }
@@ -198,7 +264,7 @@ if ($Install) {
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        enable $manifest.id @catalogArguments
+        enable $manifest.id --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "gbar enable failed for $($manifest.id)."
     }

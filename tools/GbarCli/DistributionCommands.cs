@@ -468,9 +468,11 @@ internal static class WidgetPackagePacker
                 "missing_manifest", "Widget directory must contain a root-level manifest.json using exact casing.");
         var manifest = ParseManifest(manifestEntry.Content);
         ValidatePackageIdentity(manifest);
-        if (!files.Any(file => file.RelativePath == manifest.Entrypoint.Assembly))
+        var entrypointPath = WidgetEntrypointRuntimes.ResolvePackagePath(
+            manifest.Entrypoint);
+        if (!files.Any(file => file.RelativePath == entrypointPath))
             throw new WidgetPackageException(
-                "missing_entrypoint", $"Entrypoint assembly is missing or has different casing: {manifest.Entrypoint.Assembly}");
+                "missing_entrypoint", $"Entrypoint is missing or has different casing: {entrypointPath}");
 
         var destination = requestedOutput ?? Path.Combine(
             Directory.GetParent(root)?.FullName ?? root,

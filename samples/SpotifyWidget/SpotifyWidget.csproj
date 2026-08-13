@@ -9,6 +9,12 @@
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="Application\**\*.cs" />
+    <Compile Remove="Backend\**\*.cs" />
+    <Compile Remove="PlaybackHost\**\*.cs" />
+    <Compile Remove="PlaybackProtocol\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.gbss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

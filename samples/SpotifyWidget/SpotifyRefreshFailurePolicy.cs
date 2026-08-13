@@ -1,5 +1,3 @@
-using GameBarAlternative.WidgetSdk;
-
 namespace GameBarAlternative.Samples.SpotifyWidget;
 
 internal enum SpotifyRefreshFailureDisposition
@@ -37,14 +35,12 @@ internal static class SpotifyRefreshFailurePolicy
     internal static SpotifyRefreshFailure Classify(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        if (exception is WidgetCapabilityUnavailableException)
-            return TransientUnavailable();
-        if (exception is not WidgetCapabilityException capability)
+        if (exception is not SpotifyApplicationException applicationError)
             return TransientFailure();
 
-        return capability.ErrorCode switch
+        return applicationError.Code switch
         {
-            "permission_denied" or "capability_revoked" => new(
+            "forbidden" => new(
                 SpotifyRefreshFailureDisposition.PermissionDenied,
                 SpotifyWidgetViewState.PermissionDenied,
                 "spotify_refresh_permission_denied",
@@ -54,17 +50,15 @@ internal static class SpotifyRefreshFailurePolicy
                 SpotifyWidgetViewState.Disconnected,
                 "spotify_refresh_authorization_required",
                 "Spotify needs you to reconnect"),
-            "capability_not_declared" or "invalid_declaration" or
-                "unsupported_capability" or "unsupported_protocol" or
-                "invalid_payload" => new(
+            "invalid_configuration" or "invalid_payload" => new(
                     SpotifyRefreshFailureDisposition.ConfigurationError,
                     SpotifyWidgetViewState.Error,
                     "spotify_refresh_incompatible",
                     "Spotify needs a compatible overlay configuration"),
-            "platform_unavailable" or "provider_unavailable" or "channel_closed" or
-                "lifecycle_denied" or "loopback_timeout" => TransientUnavailable(),
-            "response_too_large" or "invalid_response" or "invalid_backend_data" or
-                "malformed_response" or "malformed_frame" or "protocol_violation" =>
+            "spotify_unavailable" or "platform_unavailable" or "rate_limited" or
+                "loopback_timeout" => TransientUnavailable(),
+            "response_too_large" or "invalid_response" or "malformed_response" or
+                "protocol_violation" =>
                     TransientInvalidResponse(),
             _ => TransientFailure(),
         };

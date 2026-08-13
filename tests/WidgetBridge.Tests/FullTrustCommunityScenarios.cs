@@ -9,6 +9,9 @@ using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
 
 internal static class FullTrustCommunityScenarios
 {
+    private const string SpotifyConfigurationRootEnvironmentVariable =
+        "GBA_SPOTIFY_CONFIGURATION_ROOT";
+
     internal static async Task TwoApplicationsUseTheOrdinaryRuntime()
     {
         var root = RepositoryRoot();
@@ -132,6 +135,75 @@ internal static class FullTrustCommunityScenarios
             "A sandboxed manifest was silently promoted to full trust.");
     }
 
+    internal static async Task SpotifyUsesTheOrdinaryRuntime()
+    {
+        var root = RepositoryRoot();
+        var applicationOutput = Path.Combine(
+            root, "samples", "SpotifyWidget", "Application", "bin", "Release",
+            "net8.0", "win-x64");
+        var playbackHostOutput = Path.Combine(
+            root, "samples", "SpotifyWidget", "PlaybackHost", "bin", "Release",
+            "net8.0-windows10.0.19041.0", "win-x64");
+        Check(File.Exists(Path.Combine(applicationOutput, "SpotifyApplication.exe")),
+            "The package-owned Spotify application was not built.");
+        Check(File.Exists(Path.Combine(playbackHostOutput, "SpotifyPlaybackHost.exe")),
+            "The package-owned Spotify playback host was not built.");
+        using var temporary = new ScenarioDirectory();
+        var package = CreateSpotifyPackage(
+            root, applicationOutput, playbackHostOutput, temporary.Path);
+        var installedRoot = Path.Combine(temporary.Path, "installed");
+        var catalog = new CatalogService(installedRoot);
+        var installed = await catalog.InstallAsync(
+            package, WidgetPackageTrustApproval.FullTrustCurrentUser);
+        await catalog.SetEnabledAsync(
+            installed.Id, true, WidgetPackageTrustApproval.FullTrustCurrentUser);
+
+        var trustedCatalog = CreateTrustedCatalog(temporary.Path);
+        var load = await BridgeCatalog.LoadWithInstalledAsync(
+            trustedCatalog.CatalogPath, installedRoot, trustedCatalog.WorkerHostPath);
+        Check(load.InstalledCatalogValid && load.Warnings.Count == 0,
+            "The packaged Spotify application failed ordinary catalog admission.");
+        var configured = load.Catalog.GetConfigured(installed.Id);
+        AssertFullTrust(configured, "SpotifyApplication.exe");
+        Check(configured.DeclaredCapabilities.Count == 0 &&
+              configured.WorkerArguments.Count == 0,
+            "Spotify retained a product capability or special host argument.");
+
+        var previousRoot = Environment.GetEnvironmentVariable(
+            SpotifyConfigurationRootEnvironmentVariable);
+        Environment.SetEnvironmentVariable(
+            SpotifyConfigurationRootEnvironmentVariable,
+            Path.Combine(temporary.Path, "isolated-configuration"));
+        try
+        {
+            using var invalidated = new SemaphoreSlim(0);
+            await using var client = Client(configured);
+            client.Invalidated += (_, _) => invalidated.Release();
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+            var snapshot = await client.GetSnapshotAsync();
+            for (var attempt = 0; attempt != 4; attempt++)
+            {
+                if (TryFind(snapshot.Root, "spotify.setup.open") is not null) break;
+                await invalidated.WaitAsync(TimeSpan.FromSeconds(5));
+                snapshot = await client.GetSnapshotAsync();
+            }
+            Check(TryFind(snapshot.Root, "spotify.setup.open") is not null &&
+                  snapshot.InitialFocusId == "spotify.setup.open",
+                "The ordinary full-trust route did not return Spotify's credential-free setup snapshot.");
+            await client.StopAsync();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                SpotifyConfigurationRootEnvironmentVariable, previousRoot);
+        }
+
+        await catalog.SetEnabledAsync(installed.Id, false);
+        var removed = await catalog.UninstallAsync(installed.Id);
+        Check(removed.RemovedVersions.Count == 1,
+            "The ordinary Spotify package did not disable and remove cleanly.");
+    }
+
     private static WidgetProcessClient Client(ConfiguredWidget configured) => new(new WidgetProcessOptions
     {
         ExecutablePath = configured.WorkerExecutable,
@@ -180,6 +252,50 @@ internal static class FullTrustCommunityScenarios
                      .Order(StringComparer.Ordinal))
             Write(archive, "payload/" + Path.GetFileName(file), File.ReadAllBytes(file));
         return package;
+    }
+
+    private static string CreateSpotifyPackage(
+        string repositoryRoot,
+        string applicationOutput,
+        string playbackHostOutput,
+        string destination)
+    {
+        var package = Path.Combine(destination, "org.gbar.samples.spotify-0.3.0.gbarwidget");
+        using var stream = new FileStream(
+            package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+        Write(archive, "manifest.json", File.ReadAllBytes(Path.Combine(
+            repositoryRoot, "samples", "SpotifyWidget", "manifest.json")));
+        Write(archive, "styles/default.gbss", File.ReadAllBytes(Path.Combine(
+            repositoryRoot, "samples", "SpotifyWidget", "styles", "default.gbss")));
+        var payload = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
+        AddGraph(applicationOutput);
+        AddGraph(playbackHostOutput);
+        foreach (var (path, bytes) in payload) Write(archive, "payload/" + path, bytes);
+        return package;
+
+        void AddGraph(string graph)
+        {
+            var prefix = Path.TrimEndingDirectorySeparator(graph) +
+                         Path.DirectorySeparatorChar;
+            foreach (var file in Directory.EnumerateFiles(graph, "*", SearchOption.AllDirectories)
+                         .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
+                                        !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
+                                        !Path.GetFileName(path).Equals(
+                                            "Microsoft.Windows.SDK.NET.dll",
+                                            StringComparison.Ordinal)))
+            {
+                var relative = file[prefix.Length..].Replace('\\', '/');
+                var bytes = File.ReadAllBytes(file);
+                if (payload.TryGetValue(relative, out var current))
+                {
+                    Check(current.AsSpan().SequenceEqual(bytes),
+                        $"The Spotify application graphs disagree on {relative}.");
+                    continue;
+                }
+                payload.Add(relative, bytes);
+            }
+        }
     }
 
     private static WidgetManifest Manifest(string id, string version, string executable) => new()
@@ -237,6 +353,14 @@ internal static class FullTrustCommunityScenarios
             catch (KeyNotFoundException) { }
         }
         throw new KeyNotFoundException(id);
+    }
+
+    private static ViewNode? TryFind(ViewNode node, string id)
+    {
+        if (node.Id == id) return node;
+        foreach (var child in node.Children)
+            if (TryFind(child, id) is { } found) return found;
+        return null;
     }
 
     private static int ParseRun(string evidence)

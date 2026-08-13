@@ -2036,6 +2036,7 @@ static async Task FullTrustCliConsent()
 {
     using var temp = new TemporaryDirectory();
     var catalog = Path.Combine(temp.Path, "catalog");
+    var source = Path.Combine(temp.Path, "source");
     var package = Path.Combine(temp.Path, "full-trust.gbarwidget");
     var manifest = BuildManifest(
         "dev.test.full-trust-cli", "dev.test", "1.0.0") with
@@ -2044,13 +2045,15 @@ static async Task FullTrustCliConsent()
             WidgetEntrypointRuntimes.FullTrustApplicationV1,
             Executable: "payload/Independent.exe"),
     };
-    await using (var stream = new FileStream(
-        package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
-    using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
-    {
-        WriteArchiveEntry(archive, "manifest.json", ManifestJson.Serialize(manifest));
-        WriteArchiveEntry(archive, "payload/Independent.exe", [0x4d, 0x5a]);
-    }
+    Directory.CreateDirectory(Path.Combine(source, "payload"));
+    await File.WriteAllBytesAsync(
+        Path.Combine(source, "manifest.json"), ManifestJson.Serialize(manifest));
+    await File.WriteAllBytesAsync(
+        Path.Combine(source, "payload", "Independent.exe"), [0x4d, 0x5a]);
+    var packed = await RunCli("pack", source, "--output", package);
+    Assert.Equal(0, packed.Code);
+    Assert.True(File.Exists(package),
+        "The generic packer did not emit the full-trust package.");
 
     var deniedInstall = await RunCli("install", package, "--catalog", catalog);
     Assert.Equal(1, deniedInstall.Code);

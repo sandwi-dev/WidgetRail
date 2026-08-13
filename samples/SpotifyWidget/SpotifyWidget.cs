@@ -40,21 +40,22 @@ public sealed class SpotifyWidget : Widget
     private const int CollectionPageSize = 12;
     private const int QueuePageSize = 50;
     private const int MaximumRetainedCollectionItems = CollectionPageSize * 2;
-    private static readonly IReadOnlyList<WidgetSpotifyAuthorizationScope> SpotifyScopes =
+    private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
     [
-        WidgetSpotifyAuthorizationScope.PlaybackStateRead,
-        WidgetSpotifyAuthorizationScope.PlaybackStateControl,
-        WidgetSpotifyAuthorizationScope.LocalPlayback,
-        WidgetSpotifyAuthorizationScope.PlaylistsRead,
+        SpotifyAuthorizationScope.PlaybackStateRead,
+        SpotifyAuthorizationScope.PlaybackStateControl,
+        SpotifyAuthorizationScope.LocalPlayback,
+        SpotifyAuthorizationScope.PlaylistsRead,
     ];
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly ISpotifyApplicationService _spotify;
     private readonly TimeProvider _timeProvider;
     private SpotifyWidgetViewState _viewState = SpotifyWidgetViewState.Initial;
-    private WidgetSpotifyAuthorizationState _authorizationState =
-        WidgetSpotifyAuthorizationState.Disconnected;
-    private WidgetSpotifyPlaybackSummary? _playback;
+    private SpotifyAuthorizationState _authorizationState =
+        SpotifyAuthorizationState.Disconnected;
+    private SpotifyPlaybackSummary? _playback;
     private SpotifyDestination _destination;
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _queue;
     private readonly WidgetCursorResource<SpotifyPlaylistCollectionItem> _playlists;
@@ -63,8 +64,8 @@ public sealed class SpotifyWidget : Widget
         new(QueuePageSize * 2);
     private readonly SpotifyMediaOccurrencePolicy _playlistOccurrences =
         new(MaximumRetainedCollectionItems);
-    private WidgetSpotifyDevicesSummary? _devices;
-    private WidgetSpotifyLocalPlaybackSummary? _localPlayback;
+    private SpotifyDevicesSummary? _devices;
+    private SpotifyLocalPlaybackSummary? _localPlayback;
     private string? _preferredPlaybackDeviceId;
     private DateTimeOffset? _devicesCachedAt;
     private bool _pageLoading;
@@ -74,7 +75,7 @@ public sealed class SpotifyWidget : Widget
     private long? _playlistItemsSelectionGeneration;
     private long _playlistSelectionGeneration;
     private long _presentationCaptureSequence;
-    private WidgetSpotifyPlaybackOperation? _pendingOperation;
+    private SpotifyPlaybackOperation? _pendingOperation;
     private string _status = "Spotify loads when this widget becomes visible";
     private SpotifyRefreshWarning? _refreshWarning;
     private int _consecutiveRefreshFailures;
@@ -86,8 +87,11 @@ public sealed class SpotifyWidget : Widget
     private readonly object _authorizationGate = new();
     private Task? _authorizationTask;
 
-    public SpotifyWidget(TimeProvider? timeProvider = null)
+    public SpotifyWidget(
+        ISpotifyApplicationService spotify,
+        TimeProvider? timeProvider = null)
     {
+        _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
         _timeProvider = timeProvider ?? TimeProvider.System;
         _queue = CreateCursorResource<SpotifyMediaCollectionItem>("spotify.queue", new()
         {
@@ -98,7 +102,7 @@ public sealed class SpotifyWidget : Widget
                 if (cursor is not null || direction is not null)
                     throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
                 var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
-                var queue = await HostServices.Spotify.GetQueueAsync(token).ConfigureAwait(false);
+                var queue = await _spotify.GetQueueAsync(token).ConfigureAwait(false);
                 var items = _queueOccurrences.NormalizePage(
                     occurrenceRequest, queue.Items, []);
                 return new(items, null, null);
@@ -124,7 +128,7 @@ public sealed class SpotifyWidget : Widget
             LoadPage = async (cursor, _, limit, token) =>
             {
                 var offset = SpotifyCollectionIdentity.Offset(cursor);
-                var page = await HostServices.Spotify.GetPlaylistsAsync(offset, limit, token)
+                var page = await _spotify.GetPlaylistsAsync(offset, limit, token)
                     .ConfigureAwait(false);
                 var items = page.Items.Select(item => new SpotifyPlaylistCollectionItem(
                     item, SpotifyCollectionIdentity.Playlist(item.PlaylistId))).ToArray();
@@ -166,7 +170,7 @@ public sealed class SpotifyWidget : Widget
 
     public SpotifyWidgetViewState ViewState { get { lock (_gate) return _viewState; } }
     public string Status { get { lock (_gate) return _status; } }
-    public WidgetSpotifyPlaybackSummary? Playback { get { lock (_gate) return _playback; } }
+    public SpotifyPlaybackSummary? Playback { get { lock (_gate) return _playback; } }
     public SpotifyDestination Destination { get { lock (_gate) return _destination; } }
 
     public static string FormatTime(long milliseconds) =>
@@ -221,10 +225,12 @@ public sealed class SpotifyWidget : Widget
         lock (_authorizationGate) authorization = _authorizationTask;
         var tasks = new[] { authorization }
             .Where(task => task is not null).Cast<Task>().ToArray();
-        if (tasks.Length == 0) return;
         try
         {
-            await Task.WhenAll(tasks).WaitAsync(shutdownToken).ConfigureAwait(false);
+            if (tasks.Length != 0)
+                await Task.WhenAll(tasks).WaitAsync(shutdownToken).ConfigureAwait(false);
+            await _spotify.DisposeAsync().AsTask().WaitAsync(shutdownToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested) { }
     }
@@ -292,7 +298,7 @@ public sealed class SpotifyWidget : Widget
                 break;
             case SpotifyActionKind.Seek:
                 await RunCommandOperationAsync(token => ExecuteAsync(
-                    WidgetSpotifyPlaybackOperation.Seek,
+                    SpotifyPlaybackOperation.Seek,
                     intent.RequestedPositionMs, token), cancellationToken)
                     .ConfigureAwait(false);
                 break;
@@ -318,12 +324,12 @@ public sealed class SpotifyWidget : Widget
                 break;
             case SpotifyActionKind.LocalStart:
                 await RunCommandOperationAsync(token => ControlLocalPlaybackAsync(
-                    new(WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
+                    new(SpotifyLocalPlaybackOperation.StartAndTransfer,
                         ContinuePlaying: true), token), cancellationToken).ConfigureAwait(false);
                 break;
             case SpotifyActionKind.LocalStop:
                 await RunCommandOperationAsync(token => ControlLocalPlaybackAsync(
-                    new(WidgetSpotifyLocalPlaybackOperation.Stop), token), cancellationToken)
+                    new(SpotifyLocalPlaybackOperation.Stop), token), cancellationToken)
                     .ConfigureAwait(false);
                 break;
             case SpotifyActionKind.DeviceSelect:
@@ -559,11 +565,11 @@ public sealed class SpotifyWidget : Widget
             if (generation != Volatile.Read(ref _activeGeneration)) return;
             lock (_gate)
             {
-                if (_authorizationState != WidgetSpotifyAuthorizationState.Connected) return;
+                if (_authorizationState != SpotifyAuthorizationState.Connected) return;
             }
             try
             {
-                var playback = await HostServices.Spotify.GetPlaybackAsync(cancellationToken)
+                var playback = await _spotify.GetPlaybackAsync(cancellationToken)
                     .ConfigureAwait(false);
                 SetState(generation, SpotifyWidgetViewState.Ready,
                     playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
@@ -617,7 +623,7 @@ public sealed class SpotifyWidget : Widget
         }
         try
         {
-            var configuration = await HostServices.Spotify.GetConfigurationAsync(cancellationToken)
+            var configuration = await _spotify.GetConfigurationAsync(cancellationToken)
                 .ConfigureAwait(false);
             if (!configuration.IsConfigured)
             {
@@ -627,31 +633,31 @@ public sealed class SpotifyWidget : Widget
                 return;
             }
 
-            var authorization = await HostServices.Spotify.GetAuthorizationAsync(cancellationToken)
+            var authorization = await _spotify.GetAuthorizationAsync(cancellationToken)
                 .ConfigureAwait(false);
             lock (_gate) _authorizationState = authorization.State;
             switch (authorization.State)
             {
-                case WidgetSpotifyAuthorizationState.Unconfigured:
+                case SpotifyAuthorizationState.Unconfigured:
                     SetState(generation, SpotifyWidgetViewState.Unconfigured,
                         "Add your Spotify developer Client ID to continue", null);
                     return;
-                case WidgetSpotifyAuthorizationState.Disconnected:
-                case WidgetSpotifyAuthorizationState.ReauthorizationRequired:
+                case SpotifyAuthorizationState.Disconnected:
+                case SpotifyAuthorizationState.ReauthorizationRequired:
                     ClearPageCaches();
                     SetState(generation, SpotifyWidgetViewState.Disconnected,
                         authorization.DisplayMessage ?? (authorization.State ==
-                            WidgetSpotifyAuthorizationState.ReauthorizationRequired
+                            SpotifyAuthorizationState.ReauthorizationRequired
                                 ? "Spotify needs you to reconnect"
                                 : "Connect your Spotify account when you are ready"), null);
                     return;
-                case WidgetSpotifyAuthorizationState.Authorizing:
+                case SpotifyAuthorizationState.Authorizing:
                     SetState(generation, SpotifyWidgetViewState.Authorizing,
                         "Finish signing in through your browser", null);
                     return;
             }
 
-            var playback = await HostServices.Spotify.GetPlaybackAsync(cancellationToken)
+            var playback = await _spotify.GetPlaybackAsync(cancellationToken)
                 .ConfigureAwait(false);
             SetState(generation, SpotifyWidgetViewState.Ready,
                 playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
@@ -674,10 +680,10 @@ public sealed class SpotifyWidget : Widget
         Invalidate();
         try
         {
-            var authorization = await HostServices.Spotify.ConnectAsync(
+            var authorization = await _spotify.ConnectAsync(
                 SpotifyScopes, cancellationToken).ConfigureAwait(false);
             lock (_gate) _authorizationState = authorization.State;
-            if (authorization.State != WidgetSpotifyAuthorizationState.Connected)
+            if (authorization.State != SpotifyAuthorizationState.Connected)
             {
                 SetState(Volatile.Read(ref _activeGeneration),
                     SpotifyWidgetViewState.Disconnected,
@@ -697,19 +703,14 @@ public sealed class SpotifyWidget : Widget
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
             SetState(Volatile.Read(ref _activeGeneration),
-                exception.ErrorCode is "permission_denied" or "capability_revoked"
+                exception.Code == "forbidden"
                     ? SpotifyWidgetViewState.PermissionDenied
                     : SpotifyWidgetViewState.Disconnected,
                 SpotifyPlaybackPolicy.SafeMessage(
                     exception, "Spotify connection was not completed"), null);
-        }
-        catch (WidgetCapabilityUnavailableException)
-        {
-            SetState(Volatile.Read(ref _activeGeneration),
-                SpotifyWidgetViewState.ServiceUnavailable, "Spotify provider unavailable", null);
         }
         catch (Exception)
         {
@@ -722,12 +723,12 @@ public sealed class SpotifyWidget : Widget
     {
         try
         {
-            await HostServices.Spotify.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            await _spotify.DisconnectAsync(cancellationToken).ConfigureAwait(false);
             ClearPageCaches();
             SetState(Volatile.Read(ref _activeGeneration), SpotifyWidgetViewState.Disconnected,
                 "Disconnected from Spotify", null);
         }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
             SetCommandStatus(SpotifyPlaybackPolicy.SafeMessage(
                 exception, "Spotify could not disconnect"));
@@ -830,8 +831,8 @@ public sealed class SpotifyWidget : Widget
             switch (destination)
             {
                 case SpotifyDestination.Devices:
-                    var devicesTask = HostServices.Spotify.GetDevicesAsync(cancellationToken).AsTask();
-                    var localTask = HostServices.Spotify.GetLocalPlaybackAsync(cancellationToken).AsTask();
+                    var devicesTask = _spotify.GetDevicesAsync(cancellationToken).AsTask();
+                    var localTask = _spotify.GetLocalPlaybackAsync(cancellationToken).AsTask();
                     await Task.WhenAll(devicesTask, localTask).ConfigureAwait(false);
                     if (!operation.IsCurrent) return;
                     lock (_gate)
@@ -853,16 +854,7 @@ public sealed class SpotifyWidget : Widget
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (WidgetCapabilityUnavailableException)
-        {
-            if (!operation.IsCurrent) return;
-            lock (_gate)
-            {
-                _pageLoading = false;
-                _pageError = "This Spotify feature is unavailable in the trusted host.";
-            }
-        }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
             if (!operation.IsCurrent) return;
             lock (_gate)
@@ -919,7 +911,7 @@ public sealed class SpotifyWidget : Widget
             throw new InvalidOperationException("No Spotify playlist is selected.");
         var occurrenceRequest = _playlistOccurrences.BeginPage(
             selection.Key.PlaylistId, offset, direction);
-        var page = await HostServices.Spotify.GetPlaylistItemsAsync(
+        var page = await _spotify.GetPlaylistItemsAsync(
             selection.Key.PlaylistId, offset, limit, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(page.Playlist.PlaylistId, selection.Key.PlaylistId,
                 StringComparison.Ordinal))
@@ -961,7 +953,7 @@ public sealed class SpotifyWidget : Widget
 
     private async Task SelectDeviceAsync(int index, CancellationToken cancellationToken)
     {
-        WidgetSpotifyDeviceSummary? device;
+        SpotifyDeviceSummary? device;
         lock (_gate) device = ItemAt(_devices?.Devices, index);
         if (device is null || device.IsRestricted) return;
         try
@@ -969,11 +961,11 @@ public sealed class SpotifyWidget : Widget
             if (device.IsLocalHost)
             {
                 await ControlLocalPlaybackAsync(
-                    new(WidgetSpotifyLocalPlaybackOperation.StartAndTransfer,
+                    new(SpotifyLocalPlaybackOperation.StartAndTransfer,
                         ContinuePlaying: true), cancellationToken).ConfigureAwait(false);
                 return;
             }
-            await HostServices.Spotify.TransferPlaybackAsync(
+            await _spotify.TransferPlaybackAsync(
                 device.DeviceId, true, cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
@@ -984,7 +976,7 @@ public sealed class SpotifyWidget : Widget
             }
             Invalidate();
         }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
             SetCommandStatus(SpotifyPlaybackPolicy.SafeMessage(
                 exception, "Spotify could not switch devices"));
@@ -992,14 +984,14 @@ public sealed class SpotifyWidget : Widget
     }
 
     private async Task ControlLocalPlaybackAsync(
-        WidgetSpotifyLocalPlaybackCommand command,
+        SpotifyLocalPlaybackCommand command,
         CancellationToken cancellationToken)
     {
         try
         {
             lock (_gate) _pageLoading = true;
             Invalidate();
-            var local = await HostServices.Spotify.ControlLocalPlaybackAsync(
+            var local = await _spotify.ControlLocalPlaybackAsync(
                 command, cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
@@ -1009,7 +1001,7 @@ public sealed class SpotifyWidget : Widget
                 _status = local.DisplayMessage ?? "Local Spotify playback updated";
                 var localDeviceId = _devices?.Devices
                     .FirstOrDefault(device => device.IsLocalHost)?.DeviceId;
-                if (command.Operation == WidgetSpotifyLocalPlaybackOperation.Stop)
+                if (command.Operation == SpotifyLocalPlaybackOperation.Stop)
                 {
                     if (_preferredPlaybackDeviceId == localDeviceId)
                         _preferredPlaybackDeviceId = null;
@@ -1024,15 +1016,15 @@ public sealed class SpotifyWidget : Widget
             }
             Invalidate();
         }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
             lock (_gate)
             {
                 _pageLoading = false;
                 _pageError = null;
-                _status = exception.ErrorCode switch
+                _status = exception.Code switch
                 {
-                    "lifecycle_denied" =>
+                    "platform_unavailable" =>
                         "Return focus to Devices, then try Play here again.",
                     "resource_not_found" =>
                         "Spotify could not activate this playback device.",
@@ -1058,7 +1050,7 @@ public sealed class SpotifyWidget : Widget
 
     private async Task PlayPlaylistAsync(CancellationToken cancellationToken)
     {
-        WidgetSpotifyPlaylistSummary? playlist;
+        SpotifyPlaylistSummary? playlist;
         lock (_gate) playlist = _playlistSelection?.Playlist;
         if (playlist is null) return;
         await StartPlaybackAsync(new(playlist.Uri, null,
@@ -1070,8 +1062,8 @@ public sealed class SpotifyWidget : Widget
         WidgetCollectionItemKey key,
         CancellationToken cancellationToken)
     {
-        WidgetSpotifyPlaylistSummary? playlist;
-        WidgetSpotifyMediaItemSummary? item;
+        SpotifyPlaylistSummary? playlist;
+        SpotifyMediaItemSummary? item;
         lock (_gate)
         {
             playlist = _playlistSelection?.Playlist;
@@ -1088,22 +1080,22 @@ public sealed class SpotifyWidget : Widget
     }
 
     private async Task StartPlaybackAsync(
-        StartWidgetSpotifyPlaybackRequest request,
+        StartSpotifyPlaybackRequest request,
         string successStatus,
         CancellationToken cancellationToken)
     {
         try
         {
-            await HostServices.Spotify.StartPlaybackAsync(request, cancellationToken)
+            await _spotify.StartPlaybackAsync(request, cancellationToken)
                 .ConfigureAwait(false);
             InvalidateQueueCollection();
             SetCommandStatus(successStatus);
             await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
-            SetCommandStatus(exception.ErrorCode == "resource_not_found"
+            SetCommandStatus(exception.Code == "resource_not_found"
                 ? "No active Spotify device. Open Devices and choose where to play."
                 : SpotifyPlaybackPolicy.SafeMessage(
                     exception, "Spotify could not start playback"));
@@ -1118,10 +1110,10 @@ public sealed class SpotifyWidget : Widget
     private static T? ItemAt<T>(IReadOnlyList<T>? items, int index) where T : class =>
         items is not null && index >= 0 && index < items.Count ? items[index] : null;
 
-    private static string PageError(WidgetCapabilityException exception) => exception.ErrorCode switch
+    private static string PageError(SpotifyApplicationException exception) => exception.Code switch
     {
-        "permission_denied" or "capability_revoked" =>
-            "This optional Spotify capability is disabled in widget settings.",
+        "forbidden" =>
+            "Spotify did not allow this action for the current account.",
         "authorization_scope_required" =>
             "Reconnect Spotify to grant the scope required for this page.",
         "premium_required" =>
@@ -1132,17 +1124,17 @@ public sealed class SpotifyWidget : Widget
 
     private static WidgetResourceError SpotifyResourceError(Exception exception) => new(
         "spotify_page_error",
-        exception is WidgetCapabilityException capability
+        exception is SpotifyApplicationException capability
             ? PageError(capability)
             : "Spotify could not load this page. Try again.");
 
     private async Task ExecuteAsync(
-        WidgetSpotifyPlaybackOperation operation,
+        SpotifyPlaybackOperation operation,
         long? requestedPosition,
         CancellationToken cancellationToken)
     {
-        WidgetSpotifyPlaybackSummary? before;
-        WidgetSpotifyPlaybackCommand? command;
+        SpotifyPlaybackSummary? before;
+        SpotifyPlaybackCommand? command;
         lock (_gate)
         {
             before = _playback;
@@ -1162,15 +1154,15 @@ public sealed class SpotifyWidget : Widget
         Invalidate();
         try
         {
-            await HostServices.Spotify.ControlPlaybackAsync(command, cancellationToken)
+            await _spotify.ControlPlaybackAsync(command, cancellationToken)
                 .ConfigureAwait(false);
             var invalidateQueue = false;
             lock (_gate)
             {
                 _pendingOperation = null;
                 _status = "Updated in Spotify";
-                if (operation is WidgetSpotifyPlaybackOperation.Next or
-                    WidgetSpotifyPlaybackOperation.Previous)
+                if (operation is SpotifyPlaybackOperation.Next or
+                    SpotifyPlaybackOperation.Previous)
                     invalidateQueue = true;
             }
             if (invalidateQueue) InvalidateQueueCollection();
@@ -1182,20 +1174,16 @@ public sealed class SpotifyWidget : Widget
         {
             RestoreOptimistic(before);
         }
-        catch (WidgetCapabilityException exception)
+        catch (SpotifyApplicationException exception)
         {
             RestoreOptimistic(before, SpotifyPlaybackPolicy.SafeMessage(exception,
-                exception.ErrorCode is "permission_denied" or "capability_revoked"
-                    ? "Playback control permission is off"
+                exception.Code == "forbidden"
+                    ? "Spotify did not allow playback control"
                     : "Spotify rejected that control"));
-        }
-        catch (WidgetCapabilityUnavailableException)
-        {
-            RestoreOptimistic(before, "Spotify playback control is unavailable");
         }
     }
 
-    private void RestoreOptimistic(WidgetSpotifyPlaybackSummary? playback, string? status = null)
+    private void RestoreOptimistic(SpotifyPlaybackSummary? playback, string? status = null)
     {
         lock (_gate)
         {
@@ -1210,7 +1198,7 @@ public sealed class SpotifyWidget : Widget
         long generation,
         SpotifyWidgetViewState state,
         string status,
-        WidgetSpotifyPlaybackSummary? playback)
+        SpotifyPlaybackSummary? playback)
     {
         if (generation != Volatile.Read(ref _activeGeneration)) return;
         lock (_gate)
@@ -1258,7 +1246,7 @@ public sealed class SpotifyWidget : Widget
                     if (failure.Disposition ==
                         SpotifyRefreshFailureDisposition.AuthorizationRequired)
                         _authorizationState =
-                            WidgetSpotifyAuthorizationState.ReauthorizationRequired;
+                            SpotifyAuthorizationState.ReauthorizationRequired;
                 }
                 invalidate = true;
             }

@@ -134,10 +134,10 @@ planner and implementation turns do not spend context on closed evidence.
 - [Discord integration research](discord-integration.md) — official API/SDK
   capability matrix, authentication and production-access gates, and why the
   social/voice widget is deferred rather than built on unsupported client APIs.
-- [Spotify integration](spotify-integration.md) — implemented broker/provider/
-  configuration foundation, fixed-loopback PKCE, current CLI setup, remaining
-  Community-addon work, staged Web API surfaces, separately trusted Web
-  Playback SDK plan, Development Mode quota, and attribution gates.
+- [Spotify integration](spotify-integration.md) — autonomous full-trust
+  Community application, package-owned fixed-loopback PKCE/Web API/token and Web
+  Playback behavior, current CLI setup, Development Mode quota, manual live-
+  account/EME evidence, and attribution gates.
 
 ## Distribution and operations
 

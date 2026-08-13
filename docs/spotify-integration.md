@@ -1,19 +1,15 @@
 # Spotify Web API integration
 
-Status: **trusted provider, isolated Web Playback host orchestration, and
-Community addon 0.2.15 implemented; live WebView2 playback proof remains in
-progress as of 2026-08-08**.
+Status: **autonomous full-trust Community application 0.3.0 implemented;
+live-account and WebView2 playback proof remains manual as of 2026-08-13**.
 
-The intended product is a separately installable Community addon backed by a
-trusted, reusable Spotify provider. The current repository implements the
-typed v1 broker surface, a trusted Web API/PKCE provider, protected refresh-token
-storage, package configuration storage, local configuration CLI, production
-`WidgetBridge` composition, Spotify Community addon package 0.2.15, and a lazily
-started isolated WebView2 Web Playback SDK host. The provider owns its process
-lifecycle, short-lived streaming-token handoff, safe local-device alias,
-transfer, queue, and playlist operations. It does not yet expose a
-controller-native text editor or prove live encrypted audio playback in the
-supported WebView2 runtime.
+The shipped reference is a separately installable Community application. Its
+immutable package owns the Web API/PKCE backend, protected refresh-token storage,
+package configuration reader, response parsing, queue/playlists/devices,
+playback policy, and lazily started WebView2 Web Playback child. It enters the
+product only through the generic `full-trust-application-v1` supervisor and
+generic overlay protocol. It does not request `external.spotify.*`, load a
+product-owned Spotify assembly, or add a Spotify contract to product core.
 
 The metadata/control path uses Spotify's official Web API and reviewed OpenAPI
 schema, not desktop-client reverse engineering, browser scraping, or private
@@ -28,10 +24,10 @@ Premium eligibility, and terms remain external requirements.
 | Area | Current status |
 | --- | --- |
 | Public configuration | `WidgetConfigurationStore` persists bounded non-secret values under `widget-config`, isolated by publisher and package; `gbar config` provides the current local workflow. |
-| Broker contract | Implemented capability IDs and strict DTOs for configuration, authorization, playback read/control, and playback-change events. |
-| Trusted provider | Implemented PKCE, exact loopback callback, refresh-token vault, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized errors. |
-| Native composition | `WidgetBridge` constructs the Windows Spotify provider through the same typed broker used by every widget. |
-| Community addon | Version 0.2.15 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, and Devices surfaces through the same public SDK/AppContainer path as third-party addons. Wide and compact branches retain the same controller-first vertical-rail hierarchy and explicit focus-persistence identities; compact Player content lives in one focus-revealing vertical viewport at the documented 620x400 minimum. Its seek control uses the public `UI.Scrubber` contract and authors Left to the selected rail destination. |
+| Application contract | Package-private bounded DTOs connect the widget to its package-owned backend; no Spotify DTO or capability is added to product core. |
+| Package backend | Implemented PKCE, exact loopback callback, Credential Manager refresh-token storage, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized application errors. |
+| Product composition | Generic catalog, full-trust supervisor, authenticated overlay IPC, lifecycle, restart, and presentation only; no Spotify construction or authorization. |
+| Community application | Version 0.3.0 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, and Devices surfaces through the generic full-trust package path. Wide and compact branches retain the same controller-first vertical-rail hierarchy and focus identities. |
 | Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll, responsive actions, and a fresh Scroll identity on every explicit setup entry; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host, lifecycle/token orchestration, sanitized local-device projection, and offline protocol/process tests implemented; live account/device proof remains. |
@@ -77,7 +73,7 @@ move the widget through Visible and Background without canceling that
 already-started request. This does not permit a new connect or any other control
 from an inactive state.
 
-Package 0.1.7 selects explicit `keep-alive` residency so the bridge cannot idle-
+The package selects explicit `keep-alive` residency so the supervisor cannot idle-
 unload the worker while this one user-started browser authorization is in
 flight. Active polling, progress interpolation, snapshots, invalidations, and
 ordinary presentation work still follow their Visible/Interactive lifetimes;
@@ -91,7 +87,7 @@ close local probes inside the same fifteen-minute window instead of consuming th
 only accept. Every accepted callback still requires a loopback peer, exact
 `Host: 127.0.0.1:43827`, `GET`/`HTTP/1.1`, exact callback path, and matching
 OAuth state. The exact
-broker Connect deadline is seventeen minutes. Its remaining two minutes cover only
+application Connect deadline is seventeen minutes. Its remaining two minutes cover only
 bounded authorization-code exchange, HTTP retry/backoff, and credential-vault
 persistence after the human callback window. Disconnect is not exempt.
 Destroying, consent revocation, caller/pipe cancellation, or callback/deadline
@@ -148,7 +144,7 @@ exactly:
 - Connect/Reconnect and Disconnect actions with explicit status; and
 - no client-secret field.
 
-Package 0.1.7 places the full instruction card in a controller VerticalScroll,
+The setup route places the full instruction card in a controller VerticalScroll,
 assigns a fresh Scroll node identity on every explicit setup entry so a prior
 bottom offset cannot hide the title/first step, uses compact responsive spacing/
 wrapping, and keeps Connect/Setup/Refresh/
@@ -246,10 +242,10 @@ selection, device transfer, queue, seek, and transport commands target a
 Spotify Connect device and must show **No active Spotify device** when none is
 available.
 
-For actual local playback, the approved later design uses Spotify's Web
-Playback SDK in one trusted singleton WebView2 playback host. That host is a
-host-owned Spotify Connect device, not a Community worker, arbitrary browsing
-surface, or reusable web/network authority. It requests the `streaming` scope
+For actual local playback, the package uses Spotify's Web Playback SDK in one
+application-owned singleton WebView2 child process. That child is a narrowly
+configured Spotify Connect device, not an arbitrary browsing surface or
+product-global web/network authority. It requests the `streaming` scope
 only when the user enables local playback, requires an eligible Premium
 account, handles activation/autoplay/account/playback error events explicitly,
 and keeps access tokens out of DOM logs, worker IPC, navigation URLs, and widget
@@ -262,12 +258,14 @@ Spotify documents additional approval requirements for commercial streaming
 integrations. Local development success is not permission to ship this playback
 mode publicly.
 
-## Provider and SDK architecture
+## Community application architecture
 
-The Community addon must be equivalent to an independent developer package. It
-must not receive a trusted worker exception or ambient Internet access.
+The Community application is equivalent to an independent desktop application.
+Its manifest requires explicit full-trust approval and honestly receives
+ordinary current-user authority; it receives no product capability or special
+Spotify host API.
 
-- One trusted Spotify integration backend owns package identity, OAuth/PKCE,
+- One package-owned Spotify integration backend owns package identity, OAuth/PKCE,
   the credential vault, access-token refresh/401 replacement, lifecycle, local
   playback, and event publication. It supplies only an exact method/URI/scope/
   body authenticated-request seam to internal playback and collection endpoint
@@ -281,33 +279,31 @@ must not receive a trusted worker exception or ambient Internet access.
   generate only the endpoint subset used by the provider, and review schema
   diffs before regeneration. Generated DTOs stay provider-internal; the public
   widget SDK exposes smaller stable sanitized contracts.
-- Store access/refresh tokens in host-owned Windows protected storage
+- Store access/refresh tokens in package-owned use of Windows protected storage
   (Credential Manager and/or DPAPI with publisher/package/user scoping). Tokens
   and token metadata needed for replay never cross widget IPC, snapshots,
   diagnostics, crash reports, or GBSS.
-- Expose separate read/control/library capability decisions. Authentication is
-  not capability consent; both must be valid, and revoke/disconnect cancels
-  work and deletes only this provider's scoped tokens.
+- Authentication and enabled feature scopes remain explicit package policy.
+  Revoke/disconnect cancels work and deletes only this package identity's token.
 - Current playback reads may use bounded adaptive polling only while Visible or
   Interactive; interpolate progress locally between authoritative snapshots.
   Background/hidden state must stop polling. Controller mutations are
   Interactive or one exact declared dashboard gesture, never ambient.
-- Dashboard X/LB/RB-style actions remain bound to one exact capability
-  operation, snapshot, widget generation, and short-lived broker lease.
+- Dashboard actions remain ordinary generic widget actions bound to one exact
+  snapshot and widget generation; there is no Spotify broker lease.
 - Host-owned public configuration is separate from secrets and consent. The
   package-scoped Client ID comes only from Settings; the provider must reject a
   token whose recorded Client ID differs from current configuration.
 - Artwork goes through the existing bounded HTTPS image/cache path with
   Spotify-host allowlisting, response limits, cancellation, and no arbitrary
   URL/file escape.
-- The optional Web Playback SDK engine is a separate trusted singleton process/
+- The optional Web Playback SDK engine is a package-owned singleton process/
   WebView2 host with only the Spotify playback page and token handoff it needs.
-  It never expands the Community addon's capabilities or exposes raw WebView2
-  access through the SDK.
+  It never exposes raw WebView2 access through the public SDK or product core.
 
-The public SDK shape is not frozen until provider contract tests prove auth
-loss, refresh rotation, scope denial, no active device, restrictions, stale
-responses, and rate limiting without leaking Spotify wire models.
+Spotify's application contract remains private to the package. The public SDK
+contains only generic application bootstrap, widget lifecycle, semantic tree,
+actions, and presentation contracts.
 
 DLV-034 reduced the integration/token owner from 1,724 lines (81,619 bytes) to
 1,032 lines (48,862 bytes). The extracted internal owners are the playback plus
@@ -321,7 +317,7 @@ that its access token and rotated refresh credential are neither published nor
 reused; the next request performs a fresh exchange. A credential-free local-host
 fixture proves disconnect stops playback, deletes the vault entry, clears the
 cached access token, and prevents a later request from reaching Spotify with the
-pre-disconnect session. No public provider/broker protocol changed.
+pre-disconnect session. No public product protocol changed.
 
 ## Rate limiting and recovery
 
@@ -338,11 +334,11 @@ preferences. Optimistic play/like/shuffle/repeat feedback must reconcile with
 the next authoritative response and roll back on failure, following the same
 stable-focus pattern as YT Music.
 
-The Community widget now classifies every playback refresh and poll failure
-without inspecting provider messages. `permission_denied`/`capability_revoked`,
-authorization expiry/scope loss, and incompatible capability declarations are
-fatal presentation changes: they clear provider-derived data and select the
-permission, reconnect, or compatibility screen. Provider unavailability,
+The Community application now classifies every playback refresh and poll failure
+without inspecting provider messages. Spotify `forbidden`, authorization
+expiry/scope loss, and invalid package configuration are fatal presentation
+changes: they clear provider-derived data and select the account, reconnect, or
+configuration screen. Provider unavailability,
 malformed/invalid responses, and unexpected request failures are transient when
 a `Ready` revision already exists. They retain the last accepted playback,
 route, collection detail, and focus; render one warning containing only a
@@ -389,8 +385,9 @@ These are acceptance requirements, not optional visual polish.
 5. Nested-surface tests for player, device transfer, queue, search, recent,
    library, playlists, albums, and artists with B hierarchy, focus restoration,
    paging, incremental scope denial, and removed/unknown response fields.
-6. AppContainer package/permission conformance proving the Community addon has
-   no direct Internet or secret access.
+6. Generic full-trust install/consent/catalog/supervisor evidence proving the
+   package declares no product capabilities and returns a valid credential-free
+   setup snapshot through ordinary authenticated overlay IPC.
 7. Live Development Mode playtest with an allowlisted account, followed by
    controller/lifecycle/resource and attribution screenshots.
 8. Keep public distribution explicitly limited until Spotify grants a quota

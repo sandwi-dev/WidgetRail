@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseAppHost>true</UseAppHost>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>SpotifyApplication</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
+    <ProjectReference Include="..\SpotifyWidget.csproj" />
+    <ProjectReference Include="..\Backend\SpotifyApplicationBackend.csproj" />
+  </ItemGroup>
+</Project>

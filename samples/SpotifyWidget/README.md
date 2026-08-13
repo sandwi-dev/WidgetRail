@@ -1,10 +1,20 @@
 # Spotify community widget
 
-This controller-first sample consumes only `WidgetHostServices.Spotify`. It never receives OAuth tokens, a client secret, raw Spotify device IDs for the local player, or generic network access.
+This controller-first reference is an autonomous full-trust Community
+application. Its immutable package owns the Spotify Web API client, PKCE flow,
+Windows credential-vault entry, response parsing, playlists, queue, devices,
+playback policy, and the isolated Web Playback child process. It uses only the
+generic application bootstrap and overlay protocol; no Spotify-specific product
+capability or product-owned Spotify assembly is required.
+
+Full trust is explicit: the application runs with ordinary current-user file,
+network, registry, database, and child-process authority outside AppContainer.
+Review the package before accepting that trust. The application never requires
+a client secret, and tokens never enter snapshots, logs, or widget action data.
 
 Configure the public Client ID for this package, register the exact redirect URI `http://127.0.0.1:43827/callback/` in Spotify's developer dashboard, then choose **Connect** in the widget. Authorization is always explicit; merely opening the widget never launches a browser.
 
-Version 0.2.15 is the current immutable Community package. It publishes the
+Version 0.3.0 is the first autonomous immutable Community package. It publishes the
 accepted vertical-rail responsive layout and its four
 controller-first destinations:
 
@@ -14,7 +24,9 @@ same commit produces a checkout-independent managed payload and sealed archive.
 - **Player** keeps artwork, projected progress, transport, shuffle, and repeat responsive without increasing Spotify polling.
 - **Queue** is fetched only when selected and remains cached while the widget worker lives.
 - **Playlists** lazily appends bounded keyed windows, opens a continuous detail list, and can start the playlist or an exact URI-keyed track context.
-- **Devices** transfers to Spotify devices and exposes **This overlay** through the trusted Web Playback SDK host. Tokens and the local Spotify device ID never enter widget code.
+- **Devices** transfers to Spotify devices and exposes **This overlay** through
+  the package-owned Web Playback SDK child. Its short-lived token handoff and
+  local device ID stay inside the application process tree.
 
 Internally, one non-partial widget owns lifecycle, provider calls, resources,
 committed state, and invalidation. Closed value-only policies classify authored
@@ -76,8 +88,10 @@ release checklist.
 dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples
 ```
 
-Playback control, local playback, and playlist access remain separately
-optional permissions. The addon never gains generic network or WebView access.
+The manifest declares no product capabilities. Network, browser, credential,
+and child-process behavior belongs to the explicitly approved full-trust
+application, while the product still owns package ingestion, authenticated
+overlay IPC, bounded snapshots, presentation, lifecycle, restart, and removal.
 
 Build and validate the standalone community package without installing it:
 
@@ -85,4 +99,16 @@ Build and validate the standalone community package without installing it:
 .\samples\SpotifyWidget\Build-CommunityPackage.ps1
 ```
 
-Use `-Install` to install and enable the package in the local catalog, or pass `-Catalog PATH` to target another catalog. The archive contains only the widget DLL, manifest, and public theme; the public Client ID and OAuth credentials remain in host-owned storage.
+Use `-Install` to install, select, and enable the package in the local catalog,
+or pass `-Catalog PATH` to target another catalog. The script supplies the
+required explicit full-trust acknowledgement to the generic CLI. The archive
+contains the package executable, backend, widget, Web Playback child/protocol,
+generic application runtime, public SDK/protocol, manifest, and theme. It does
+not contain `PlatformBroker`, `WindowsSpotifyProvider`, `PlatformSettings`, a
+Client ID, or OAuth credentials.
+
+The package reads the existing publisher/package-scoped public Client ID and
+the existing Windows Credential Manager target, so updating from the retired
+provider path preserves user configuration and refresh credentials without a
+migration or deletion step. Live authorization, Premium eligibility, Web
+Playback EME, and account/device behavior remain manual verification.

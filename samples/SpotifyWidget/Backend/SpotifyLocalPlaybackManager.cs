@@ -1,0 +1,476 @@
+using GameBarAlternative.Samples.SpotifyWidget;
+using GameBarAlternative.SpotifyPlayback;
+using SpotifyLocalPlaybackState =
+    GameBarAlternative.Samples.SpotifyWidget.SpotifyLocalPlaybackState;
+
+namespace GameBarAlternative.WindowsSpotifyProvider;
+
+internal sealed record SpotifyLocalPlaybackStartResult(
+    string SpotifyDeviceId,
+    SpotifyLocalPlaybackSummary Summary);
+
+/// <summary>
+/// Owns the isolated Web Playback SDK process. OAuth material and the SDK's
+/// real Spotify Connect device identifier never leave this trusted assembly.
+/// </summary>
+internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
+{
+    internal const string PublicDeviceId = "gbar-local-playback";
+    internal const string DeviceName = "Spotify on Game Bar";
+
+    private static readonly IReadOnlyCollection<string> RequiredScopes =
+        [WindowsSpotifyPlatformBackend.StreamingScope];
+    private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(35);
+
+    private readonly string _executablePath;
+    private readonly Func<ISpotifyPlaybackHostClient> _clientFactory;
+    private readonly Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>,
+        CancellationToken, Task<TrustedHostSpotifyAccessToken>> _tokenProvider;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _stateGate = new();
+    private readonly CancellationTokenSource _lifetime = new();
+    private ISpotifyPlaybackHostClient? _client;
+    private SpotifyIntegrationIdentity? _owner;
+    private SpotifyLocalPlaybackState _state;
+    private string? _spotifyDeviceId;
+    private int _volumePercent = 80;
+    private string? _message;
+    private TaskCompletionSource<string>? _ready;
+    private int _disposed;
+
+    internal SpotifyLocalPlaybackManager(
+        string executablePath,
+        Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
+            Task<TrustedHostSpotifyAccessToken>> tokenProvider)
+        : this(executablePath, tokenProvider, () => new SpotifyPlaybackHostClient(
+            SpotifyPlaybackHostClientOptions.CreateDefault(executablePath))) { }
+
+    internal SpotifyLocalPlaybackManager(
+        string executablePath,
+        Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
+            Task<TrustedHostSpotifyAccessToken>> tokenProvider,
+        Func<ISpotifyPlaybackHostClient> clientFactory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
+        _executablePath = Path.GetFullPath(executablePath);
+        _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
+        _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
+        _state = IsHostAvailable ? SpotifyLocalPlaybackState.Disabled :
+            SpotifyLocalPlaybackState.Unavailable;
+    }
+
+    internal bool IsHostAvailable => File.Exists(_executablePath) &&
+        (File.GetAttributes(_executablePath) & FileAttributes.ReparsePoint) == 0;
+
+    internal SpotifyLocalPlaybackSummary GetSummary(SpotifyIntegrationIdentity identity)
+    {
+        lock (_stateGate)
+        {
+            if (_owner is { } owner && owner != identity)
+                return new(SpotifyLocalPlaybackState.Disabled, DeviceName, null,
+                    "Local playback is currently owned by another authorized widget.");
+            return SummaryLocked();
+        }
+    }
+
+    internal SpotifyDeviceSummary? GetPublicDevice(SpotifyIntegrationIdentity identity)
+    {
+        var summary = GetSummary(identity);
+        if (summary.State == SpotifyLocalPlaybackState.Unavailable) return null;
+        return new(PublicDeviceId, DeviceName, "Computer",
+            summary.State == SpotifyLocalPlaybackState.Active,
+            false, true, summary.VolumePercent, true);
+    }
+
+    internal async Task<SpotifyLocalPlaybackStartResult> StartAsync(
+        SpotifyIntegrationIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!IsHostAvailable)
+            {
+                SetState(identity, SpotifyLocalPlaybackState.Unavailable,
+                    "The local Spotify playback component is not installed.");
+                throw new SpotifyProviderException(
+                    "platform_unavailable", "Spotify local playback is unavailable.");
+            }
+
+            lock (_stateGate)
+            {
+                if (_client?.IsRunning == true && _owner == identity &&
+                    _state is SpotifyLocalPlaybackState.Ready or
+                        SpotifyLocalPlaybackState.Active &&
+                    _spotifyDeviceId is { } existingDevice)
+                    return new(existingDevice, SummaryLocked());
+            }
+
+            await StopClientLockedAsync().ConfigureAwait(false);
+            TrustedHostSpotifyAccessToken initialToken;
+            try
+            {
+                initialToken = await _tokenProvider(identity, RequiredScopes, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (SpotifyProviderException exception)
+                when (exception.Code is "insufficient_scope" or "not_connected" or
+                    "authorization_expired" or "authorization_scope_required")
+            {
+                SetState(identity, SpotifyLocalPlaybackState.ReauthorizationRequired,
+                    "Reconnect Spotify to allow playback on this PC.");
+                throw;
+            }
+
+            var client = _clientFactory();
+            client.EventReceived += OnClientEvent;
+            lock (_stateGate)
+            {
+                _client = client;
+                _owner = identity;
+                _spotifyDeviceId = null;
+                _state = SpotifyLocalPlaybackState.Starting;
+                _message = "Starting Spotify playback on this PC.";
+                _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            try
+            {
+                await client.StartAsync(cancellationToken).ConfigureAwait(false);
+                var connect = client.ConnectAsync(new(
+                    DeviceName,
+                    _volumePercent / 100d,
+                    new(true, initialToken.GrantedScopes)), cancellationToken);
+                using var readyLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken, _lifetime.Token);
+                readyLifetime.CancelAfter(ReadyTimeout);
+                var readyTask = _ready!.Task.WaitAsync(readyLifetime.Token);
+                var first = await Task.WhenAny(connect, readyTask).ConfigureAwait(false);
+                if (ReferenceEquals(first, connect)) await connect.ConfigureAwait(false);
+                var deviceId = await readyTask.ConfigureAwait(false);
+                await connect.ConfigureAwait(false);
+                try
+                {
+                    await client.SendAsync("activate_element", new { }, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (SpotifyPlaybackHostClientException)
+                {
+                    // Activation is best effort. Some WebView runtimes require a browser-native
+                    // user gesture; transfer can still succeed and surface any playback failure.
+                }
+                SetState(identity, SpotifyLocalPlaybackState.Ready,
+                    "Ready to play through this PC.", deviceId);
+                return new(deviceId, GetSummary(identity));
+            }
+            catch (OperationCanceledException exception)
+                when (!cancellationToken.IsCancellationRequested)
+            {
+                SetState(identity, SpotifyLocalPlaybackState.Error,
+                    "Spotify playback did not become ready in time.");
+                await StopClientLockedAsync().ConfigureAwait(false);
+                throw new SpotifyProviderException(
+                    "local_playback_timeout",
+                    "Spotify local playback did not become ready in time.", exception);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // The overlay can transition out of its interactive lifecycle while the
+                // SDK is starting. Never retain a half-started client or a terminal-looking
+                // Starting state after the caller cancels the broker operation.
+                await StopClientLockedAsync().ConfigureAwait(false);
+                SetState(null, IsHostAvailable ? SpotifyLocalPlaybackState.Disabled :
+                    SpotifyLocalPlaybackState.Unavailable, null);
+                throw;
+            }
+            catch (SpotifyPlaybackHostClientException exception)
+            {
+                var state = GetSummary(identity).State;
+                if (state is SpotifyLocalPlaybackState.Starting or
+                    SpotifyLocalPlaybackState.Ready)
+                    SetState(identity, SpotifyLocalPlaybackState.Error,
+                        "Spotify local playback could not be started.");
+                await StopClientLockedAsync().ConfigureAwait(false);
+                var code = state switch
+                {
+                    SpotifyLocalPlaybackState.PremiumRequired => "premium_required",
+                    SpotifyLocalPlaybackState.ReauthorizationRequired =>
+                        "reauthorization_required",
+                    _ => exception.Code,
+                };
+                throw new SpotifyProviderException(
+                    code, GetSummary(identity).DisplayMessage ??
+                        "Spotify local playback could not be started.", exception);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                SetState(identity, SpotifyLocalPlaybackState.Error,
+                    "Spotify local playback could not be started.");
+                await StopClientLockedAsync().ConfigureAwait(false);
+                throw new SpotifyProviderException(
+                    "local_playback_failed",
+                    "Spotify local playback could not be started.", exception);
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal void MarkActive(SpotifyIntegrationIdentity identity) =>
+        SetState(identity, SpotifyLocalPlaybackState.Active,
+            "Playing through this PC.");
+
+    internal async Task StopAsync(
+        SpotifyIntegrationIdentity identity, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_owner is { } owner && owner != identity) return;
+            await StopClientLockedAsync().ConfigureAwait(false);
+            SetState(null, IsHostAvailable ? SpotifyLocalPlaybackState.Disabled :
+                SpotifyLocalPlaybackState.Unavailable, null);
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal async Task SetVolumeAsync(
+        SpotifyIntegrationIdentity identity, int volumePercent,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        if (volumePercent is < 0 or > 100) throw new ArgumentOutOfRangeException(nameof(volumePercent));
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var client = RequireOwnedClient(identity);
+            await client.SendAsync("set_volume", new { volume = volumePercent / 100d },
+                cancellationToken).ConfigureAwait(false);
+            lock (_stateGate) _volumePercent = volumePercent;
+        }
+        catch (SpotifyPlaybackHostClientException exception)
+        {
+            throw new SpotifyProviderException(
+                exception.Code, "Spotify local playback volume could not be changed.", exception);
+        }
+        finally { _gate.Release(); }
+    }
+
+    internal string? GetSpotifyDeviceId(SpotifyIntegrationIdentity identity)
+    {
+        lock (_stateGate)
+            return _owner == identity ? _spotifyDeviceId : null;
+    }
+
+    internal async Task<bool> TryControlAsync(
+        SpotifyIntegrationIdentity identity,
+        SpotifyProviderPlaybackCommand command,
+        CancellationToken cancellationToken)
+    {
+        string? operation = command.Operation switch
+        {
+            SpotifyProviderPlaybackOperation.Play => "resume",
+            SpotifyProviderPlaybackOperation.Pause => "pause",
+            SpotifyProviderPlaybackOperation.Next => "next_track",
+            SpotifyProviderPlaybackOperation.Previous => "previous_track",
+            SpotifyProviderPlaybackOperation.Seek => "seek",
+            _ => null,
+        };
+        ISpotifyPlaybackHostClient? client;
+        lock (_stateGate)
+            client = _owner == identity && _state == SpotifyLocalPlaybackState.Active
+                ? _client : null;
+        if (client?.IsRunning != true || operation is null) return false;
+        var payload = operation == "seek"
+            ? new { positionMilliseconds = command.PositionMilliseconds }
+            : (object)new { };
+        try
+        {
+            await client.SendAsync(operation, payload, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (SpotifyPlaybackHostClientException)
+        {
+            return false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _lifetime.Cancel();
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try { await StopClientLockedAsync().ConfigureAwait(false); }
+        finally
+        {
+            _gate.Release();
+            _gate.Dispose();
+            _lifetime.Dispose();
+        }
+    }
+
+    private void OnClientEvent(object? sender, SpotifyPlaybackEventEnvelope value)
+    {
+        switch (value.Type)
+        {
+            case "token_requested":
+                _ = AnswerTokenRequestAsync(sender as ISpotifyPlaybackHostClient, value);
+                break;
+            case "ready":
+                var ready = SpotifyPlaybackProtocolCodec.DecodePayload<PageDevice>(value.Payload);
+                lock (_stateGate)
+                {
+                    _spotifyDeviceId = ready.DeviceId;
+                    _state = SpotifyLocalPlaybackState.Ready;
+                    _message = "Ready to play through this PC.";
+                    _ready?.TrySetResult(ready.DeviceId);
+                }
+                break;
+            case "not_ready":
+                lock (_stateGate)
+                {
+                    _spotifyDeviceId = null;
+                    _state = SpotifyLocalPlaybackState.NotReady;
+                    _message = "Spotify temporarily disconnected this PC.";
+                }
+                break;
+            case "player_state_changed":
+                var playback = SpotifyPlaybackProtocolCodec
+                    .DecodePayload<GameBarAlternative.SpotifyPlayback.SpotifyLocalPlaybackState>(
+                        value.Payload);
+                if (playback.IsAvailable)
+                    SetState(_owner, SpotifyLocalPlaybackState.Active,
+                        "Playing through this PC.");
+                break;
+            case "sdk_error":
+                var error = SpotifyPlaybackProtocolCodec.DecodePayload<PageError>(value.Payload);
+                var state = error.Code switch
+                {
+                    "account_error" => SpotifyLocalPlaybackState.PremiumRequired,
+                    "authentication_error" => SpotifyLocalPlaybackState.ReauthorizationRequired,
+                    _ => SpotifyLocalPlaybackState.Error,
+                };
+                var message = state switch
+                {
+                    SpotifyLocalPlaybackState.PremiumRequired =>
+                        "Spotify Premium is required for playback on this PC.",
+                    SpotifyLocalPlaybackState.ReauthorizationRequired =>
+                        "Reconnect Spotify to resume playback on this PC.",
+                    _ => "Spotify local playback reported an error.",
+                };
+                lock (_stateGate) _ready?.TrySetException(
+                    new SpotifyPlaybackHostClientException(error.Code, message));
+                SetState(_owner, state, message);
+                break;
+        }
+    }
+
+    private async Task AnswerTokenRequestAsync(
+        ISpotifyPlaybackHostClient? source, SpotifyPlaybackEventEnvelope value)
+    {
+        SpotifyIntegrationIdentity? owner = null;
+        try
+        {
+            var request = SpotifyPlaybackProtocolCodec.DecodePayload<PageTokenRequest>(value.Payload);
+            lock (_stateGate) owner = ReferenceEquals(source, _client) ? _owner : null;
+            if (source is null || owner is null) return;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            var token = await _tokenProvider(owner.Value, RequiredScopes, timeout.Token)
+                .ConfigureAwait(false);
+            await source.ProvideTokenAsync(request.TokenRequestId, token, timeout.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is SpotifyProviderException or
+            SpotifyPlaybackHostClientException or SpotifyPlaybackProtocolException or
+            OperationCanceledException)
+        {
+            lock (_stateGate)
+            {
+                if (source is null || owner is null ||
+                    !ReferenceEquals(source, _client) || owner != _owner) return;
+                _state = SpotifyLocalPlaybackState.ReauthorizationRequired;
+                _message = "Spotify could not renew local playback authorization.";
+                _ready?.TrySetException(new SpotifyPlaybackHostClientException(
+                    "reauthorization_required", _message));
+            }
+            _ = Task.Run(() => StopFailedClientAsync(source, owner.Value));
+        }
+    }
+
+    private async Task StopFailedClientAsync(
+        ISpotifyPlaybackHostClient source,
+        SpotifyIntegrationIdentity owner)
+    {
+        try
+        {
+            await _gate.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+            try
+            {
+                lock (_stateGate)
+                    if (!ReferenceEquals(source, _client) || _owner != owner) return;
+                await StopClientLockedAsync().ConfigureAwait(false);
+            }
+            finally { _gate.Release(); }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0) { }
+    }
+
+    private ISpotifyPlaybackHostClient RequireOwnedClient(SpotifyIntegrationIdentity identity)
+    {
+        lock (_stateGate)
+        {
+            if (_owner != identity || _client?.IsRunning != true)
+                throw new SpotifyProviderException(
+                    "local_playback_not_started",
+                    "Start Spotify playback on this PC before changing it.");
+            return _client;
+        }
+    }
+
+    private async Task StopClientLockedAsync()
+    {
+        ISpotifyPlaybackHostClient? client;
+        lock (_stateGate)
+        {
+            client = _client;
+            _client = null;
+            _spotifyDeviceId = null;
+            _ready?.TrySetCanceled();
+            _ready = null;
+        }
+        if (client is null) return;
+        client.EventReceived -= OnClientEvent;
+        await client.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private void SetState(
+        SpotifyIntegrationIdentity? owner,
+        SpotifyLocalPlaybackState state,
+        string? message,
+        string? spotifyDeviceId = null)
+    {
+        lock (_stateGate)
+        {
+            _owner = owner;
+            _state = state;
+            _message = message;
+            if (spotifyDeviceId is not null) _spotifyDeviceId = spotifyDeviceId;
+        }
+    }
+
+    private SpotifyLocalPlaybackSummary SummaryLocked() =>
+        new(_state, DeviceName,
+            _state is SpotifyLocalPlaybackState.Disabled or
+                SpotifyLocalPlaybackState.Unavailable ? null : _volumePercent,
+            _message);
+
+    private void ThrowIfDisposed() =>
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+    private sealed record PageDevice(string DeviceId);
+    private sealed record PageError(string Code, string Message);
+    private sealed record PageTokenRequest(string TokenRequestId);
+}

@@ -8,6 +8,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WindowsSpotifyProvider\WindowsSpotifyProvider.csproj" />
+    <ProjectReference Include="..\..\samples\SpotifyWidget\Backend\SpotifyApplicationBackend.csproj" />
   </ItemGroup>
 </Project>

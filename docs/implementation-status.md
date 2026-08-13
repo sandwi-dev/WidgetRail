@@ -4348,6 +4348,40 @@ currently remains red only on five links rooted in the reviewer-owned archived
 delivery-plan file `2026-08-12T21-06-00-07-00.md`; no DLV-215 documentation file
 is named by that failure.
 
+### Autonomous Spotify full-trust Community application (DLV-216)
+
+Spotify 0.3.0 now enters the product as an ordinary
+`full-trust-application-v1` package. The immutable package executable owns PKCE,
+the Web API transport and strict parser, package-scoped public configuration,
+the existing Credential Manager target, token refresh/rotation, Player, Queue,
+Playlists, Devices, local playback policy, and its WebView2 playback child and
+protocol. The widget consumes one package-local typed application interface.
+Neither the manifest nor payload uses `external.spotify.*`, `PlatformBroker`,
+`PlatformSettings`, `WindowsSpotifyProvider`, or another product-specific
+Spotify assembly. Product ownership stops at generic package ingestion,
+explicit full-trust consent, authenticated overlay IPC, bounded snapshots,
+lifecycle/restart, presentation, disable, and removal.
+
+The default configuration path and publisher/package identity are unchanged,
+and the package backend uses the same stable Credential Manager target. Existing
+Client ID state and refresh credentials therefore remain available without a
+migration or deletion step. Provider error bodies are reduced to package-owned
+safe messages before reaching the widget. The retired product-core provider and
+playback paths remain intact as the frozen fallback required until DLV-218; the
+autonomous package does not reference them, and the comprehensive provider and
+playback suites now compile against the package-owned source.
+
+Focused Release evidence passes Spotify widget 50/50, package backend 32/32,
+credential-free application 5/5, playback client 3/3, playback host/protocol
+10/10, gbar CLI 65/65, and ordinary Widget Bridge 87/87. The documentation
+contract reaches only unchanged reviewer-owned delivery-plan history links and
+remains blocked there; the DLV-216 documentation diff passes `git diff --check`.
+The isolated package path emits 23 files / 3,271,094 bytes, requires explicit
+full-trust approval, installs/selects/enables 0.3.0, and returns the exact
+credential-free setup snapshot through the ordinary installed catalog and
+generic full-trust supervisor. No aggregate, account credential, live Premium/
+EME session, native renderer, Avalonia, capture, or publication work is claimed.
+
 ### Exact-commit full-trust Runtime verification correction (DLV-220)
 
 DLV-220 preserves the accepted DLV-215 runtime architecture and corrects only

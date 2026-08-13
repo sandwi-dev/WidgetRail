@@ -14,5 +14,9 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\FullTrustBetaFixture\FullTrustBetaFixture.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\samples\SpotifyWidget\Application\SpotifyApplication.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\samples\SpotifyWidget\PlaybackHost\SpotifyPlaybackHost.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

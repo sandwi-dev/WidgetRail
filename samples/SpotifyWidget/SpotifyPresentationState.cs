@@ -8,7 +8,7 @@ internal readonly record struct SpotifyPlaylistSelectionKey(
 
 internal sealed record SpotifyPlaylistSelection(
     SpotifyPlaylistSelectionKey Key,
-    WidgetSpotifyPlaylistSummary Playlist,
+    SpotifyPlaylistSummary Playlist,
     string Mode,
     string ReturnFocusId);
 
@@ -29,8 +29,8 @@ internal readonly record struct SpotifyPresentationRevision(
 internal sealed record SpotifyPresentationState(
     SpotifyPresentationRevision Revision,
     SpotifyWidgetViewState ViewState,
-    WidgetSpotifyPlaybackSummary? Playback,
-    WidgetSpotifyPlaybackOperation? PendingOperation,
+    SpotifyPlaybackSummary? Playback,
+    SpotifyPlaybackOperation? PendingOperation,
     string Status,
     SpotifyRefreshWarning? RefreshWarning,
     bool ShowSetup,
@@ -39,8 +39,8 @@ internal sealed record SpotifyPresentationState(
     WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> Queue,
     WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem> Playlists,
     SpotifyPlaylistDetailPresentation? PlaylistDetail,
-    WidgetSpotifyDevicesSummary? Devices,
-    WidgetSpotifyLocalPlaybackSummary? LocalPlayback,
+    SpotifyDevicesSummary? Devices,
+    SpotifyLocalPlaybackSummary? LocalPlayback,
     bool PageLoading,
     string? PageError,
     string? ReadyInitialFocusId);

@@ -6,11 +6,11 @@ using GameBarAlternative.WidgetSdk;
 namespace GameBarAlternative.Samples.SpotifyWidget;
 
 internal sealed record SpotifyPlaylistCollectionItem(
-    WidgetSpotifyPlaylistSummary Value,
+    SpotifyPlaylistSummary Value,
     WidgetCollectionItemKey Key);
 
 internal sealed record SpotifyMediaCollectionItem(
-    WidgetSpotifyMediaItemSummary Value,
+    SpotifyMediaItemSummary Value,
     WidgetCollectionItemKey Key);
 
 internal static class SpotifyCollectionIdentity
@@ -113,7 +113,7 @@ internal sealed class SpotifyMediaOccurrencePolicy(int maximumRetainedOccurrence
 
     internal IReadOnlyList<SpotifyMediaCollectionItem> NormalizePage(
         Request request,
-        IReadOnlyList<WidgetSpotifyMediaItemSummary> items,
+        IReadOnlyList<SpotifyMediaItemSummary> items,
         IReadOnlyCollection<WidgetCollectionItemKey> retainedKeys)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -196,7 +196,7 @@ internal sealed class SpotifyMediaOccurrencePolicy(int maximumRetainedOccurrence
 
     private static IReadOnlyList<SpotifyMediaCollectionItem> NormalizeSuperseded(
         Request request,
-        IReadOnlyList<WidgetSpotifyMediaItemSummary> items,
+        IReadOnlyList<SpotifyMediaItemSummary> items,
         IReadOnlyList<Evidence> evidence)
     {
         var keys = new HashSet<WidgetCollectionItemKey>();
@@ -242,7 +242,7 @@ internal sealed class SpotifyMediaOccurrencePolicy(int maximumRetainedOccurrence
     }
 
     private static Evidence[] BuildEvidence(
-        IReadOnlyList<WidgetSpotifyMediaItemSummary> items)
+        IReadOnlyList<SpotifyMediaItemSummary> items)
     {
         var evidence = new Evidence[items.Count];
         for (var index = 0; index < items.Count; index++)

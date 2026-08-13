@@ -1,0 +1,92 @@
+using GameBarAlternative.WindowsSpotifyProvider;
+
+namespace GameBarAlternative.Samples.SpotifyWidget;
+
+internal sealed class SpotifyApplicationService(
+    WindowsSpotifyPlatformBackend backend,
+    SpotifyIntegrationIdentity identity) : ISpotifyApplicationService
+{
+    private readonly WindowsSpotifyPlatformBackend _backend = backend ??
+        throw new ArgumentNullException(nameof(backend));
+    private readonly SpotifyIntegrationIdentity _identity = identity;
+
+    public ValueTask<SpotifyConfigurationSummary> GetConfigurationAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyConfigurationAsync(_identity, cancellationToken));
+
+    public ValueTask<SpotifyAuthorizationSummary> GetAuthorizationAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyAuthorizationAsync(_identity, cancellationToken));
+
+    public ValueTask<SpotifyAuthorizationSummary> ConnectAsync(
+        IReadOnlyCollection<SpotifyAuthorizationScope> requestedScopes,
+        CancellationToken cancellationToken = default) => new(
+        _backend.ConnectSpotifyAsync(_identity,
+            new ConnectSpotifyRequest(requestedScopes.ToArray()), cancellationToken));
+
+    public ValueTask<SpotifyAuthorizationSummary> DisconnectAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.DisconnectSpotifyAsync(_identity, cancellationToken));
+
+    public ValueTask<SpotifyPlaybackSummary> GetPlaybackAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyPlaybackAsync(_identity, cancellationToken));
+
+    public ValueTask ControlPlaybackAsync(
+        SpotifyPlaybackCommand command,
+        CancellationToken cancellationToken = default) => new(
+        _backend.ControlSpotifyPlaybackAsync(_identity, command, cancellationToken));
+
+    public ValueTask<SpotifyDevicesSummary> GetDevicesAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyDevicesAsync(_identity, cancellationToken));
+
+    public ValueTask TransferPlaybackAsync(
+        string deviceId,
+        bool continuePlaying,
+        CancellationToken cancellationToken = default) => new(
+        _backend.TransferSpotifyPlaybackAsync(_identity,
+            new TransferSpotifyPlaybackRequest(deviceId, continuePlaying), cancellationToken));
+
+    public ValueTask<SpotifyQueueSummary> GetQueueAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyQueueAsync(_identity, cancellationToken));
+
+    public ValueTask AddToQueueAsync(
+        string uri,
+        string? deviceId = null,
+        CancellationToken cancellationToken = default) => new(
+        _backend.AddSpotifyQueueItemAsync(_identity,
+            new AddSpotifyQueueItemRequest(uri, deviceId), cancellationToken));
+
+    public ValueTask StartPlaybackAsync(
+        StartSpotifyPlaybackRequest request,
+        CancellationToken cancellationToken = default) => new(
+        _backend.StartSpotifyPlaybackAsync(_identity, request, cancellationToken));
+
+    public ValueTask<SpotifyLocalPlaybackSummary> GetLocalPlaybackAsync(
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyLocalPlaybackAsync(_identity, cancellationToken));
+
+    public ValueTask<SpotifyLocalPlaybackSummary> ControlLocalPlaybackAsync(
+        SpotifyLocalPlaybackCommand command,
+        CancellationToken cancellationToken = default) => new(
+        _backend.ControlSpotifyLocalPlaybackAsync(_identity, command, cancellationToken));
+
+    public ValueTask<SpotifyPlaylistPageSummary> GetPlaylistsAsync(
+        int offset,
+        int limit,
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyPlaylistsAsync(_identity,
+            new SpotifyPlaylistPageRequest(offset, limit), cancellationToken));
+
+    public ValueTask<SpotifyPlaylistItemsSummary> GetPlaylistItemsAsync(
+        string playlistId,
+        int offset,
+        int limit,
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyPlaylistItemsAsync(_identity,
+            new SpotifyPlaylistItemsRequest(playlistId, offset, limit), cancellationToken));
+
+    public ValueTask DisposeAsync() => _backend.DisposeAsync();
+}

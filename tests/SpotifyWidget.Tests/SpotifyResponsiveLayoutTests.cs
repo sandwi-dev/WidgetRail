@@ -123,9 +123,9 @@ internal static class SpotifyResponsiveLayoutTests
 
     private static SpotifyPresentationState ReadyState() => new(
         new(1, 1, 1, null), SpotifyWidgetViewState.Ready,
-        new WidgetSpotifyPlaybackSummary(true, true, 60_000, 240_000, 1,
-            WidgetSpotifyRepeatState.Off, false,
-            new WidgetSpotifyPlaybackItemSummary(WidgetSpotifyPlaybackItemType.Track,
+        new SpotifyPlaybackSummary(true, true, 60_000, 240_000, 1,
+            SpotifyRepeatState.Off, false,
+            new SpotifyPlaybackItemSummary(SpotifyPlaybackItemType.Track,
                 "Small Hours", "Northern Lines", "Night Drive",
                 "https://i.scdn.co/image/current", "spotify:track:current"),
             new(false, false, false, false, false, false, false, false), "Spotify"),

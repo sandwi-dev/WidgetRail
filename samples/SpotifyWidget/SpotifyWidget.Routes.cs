@@ -30,7 +30,7 @@ internal enum SpotifyActionKind
 internal readonly record struct SpotifyActionIntent(
     SpotifyActionKind Kind,
     SpotifyDestination? Destination = null,
-    WidgetSpotifyPlaybackOperation? PlaybackOperation = null,
+    SpotifyPlaybackOperation? PlaybackOperation = null,
     WidgetCollectionItemKey? ItemKey = null,
     int ItemIndex = -1,
     long? RequestedPositionMs = null);
@@ -54,10 +54,10 @@ internal static class SpotifyRouteActionPolicy
             "spotify.disconnect" => new(SpotifyActionKind.Disconnect),
             "spotify.retry" or "spotify.refresh" => new(SpotifyActionKind.Refresh),
             "spotify.play-toggle" => new(SpotifyActionKind.Playback),
-            "spotify.previous" => Playback(WidgetSpotifyPlaybackOperation.Previous),
-            "spotify.next" => Playback(WidgetSpotifyPlaybackOperation.Next),
-            "spotify.shuffle" => Playback(WidgetSpotifyPlaybackOperation.SetShuffle),
-            "spotify.repeat" => Playback(WidgetSpotifyPlaybackOperation.SetRepeat),
+            "spotify.previous" => Playback(SpotifyPlaybackOperation.Previous),
+            "spotify.next" => Playback(SpotifyPlaybackOperation.Next),
+            "spotify.shuffle" => Playback(SpotifyPlaybackOperation.SetShuffle),
+            "spotify.repeat" => Playback(SpotifyPlaybackOperation.SetRepeat),
             "spotify.nav.player" => Navigate(SpotifyDestination.Player),
             "spotify.nav.queue" => Navigate(SpotifyDestination.Queue),
             "spotify.nav.playlists" => Navigate(SpotifyDestination.Playlists),
@@ -95,15 +95,15 @@ internal static class SpotifyRouteActionPolicy
         $"spotify.nav.{mode}.{destination.ToString().ToLowerInvariant()}";
 
     internal static bool DevicesNeedLoad(
-        WidgetSpotifyDevicesSummary? devices,
-        WidgetSpotifyLocalPlaybackSummary? localPlayback,
+        SpotifyDevicesSummary? devices,
+        SpotifyLocalPlaybackSummary? localPlayback,
         DateTimeOffset? cachedAt,
         DateTimeOffset now,
         TimeSpan lifetime) =>
         devices is null || localPlayback is null || cachedAt is not { } value ||
         now - value >= lifetime;
 
-    private static SpotifyActionIntent Playback(WidgetSpotifyPlaybackOperation operation) =>
+    private static SpotifyActionIntent Playback(SpotifyPlaybackOperation operation) =>
         new(SpotifyActionKind.Playback, PlaybackOperation: operation);
 
     private static SpotifyActionIntent Navigate(SpotifyDestination destination) =>
