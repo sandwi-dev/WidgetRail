@@ -362,15 +362,19 @@ build needed by the extraction. No aggregate. Commit one
 
 ### AVP-004-INTEGRATION — generic Avalonia candidate
 
-State: correction assigned after rejecting `79615c3`. Both extraction commits
+State: second correction assigned after rejecting `79615c3` and correction
+`4765cce`. Both extraction commits
 remain accepted and integrated in SESSION then PLATFORM order through main
-`b5c4c6c`. The generic adapter architecture is sound, but the correction must:
-bring the Avalonia process below the hard 500 MiB visible ceiling after concrete
-resource-lifetime analysis; make transition admission/focus exact-authority
-latest-wins so canceled handlers cannot publish and all eight destinations
-retain Start/Midpoint/Completion; and replace the false
-`everyCurrentNodeKindObserved` artifact claim with asserted final evidence that
-combines ordinary lifecycle coverage with the focused generic mapping proof.
+`b5c4c6c`. The generic adapter architecture is sound. Correction `4765cce`
+closes exact-authority latest-wins transition/focus publication, superseded
+tree/artwork disposal, all-eight Start/Midpoint/Completion, truthful combined
+node-kind proof, and documented Avalonia performance guidance. It remains
+rejected solely because exact evidence measures the candidate at 539.94 MiB and
+the visible process tree at 769.02 MiB. The next correction must phase-isolate
+widget cycling, each size transition, CrossFade, artwork, and hide/show using
+available native allocation/render-target/Skia evidence; remove, reuse, or
+retire the responsible surfaces/caches; and retain one final exact-tip candidate
+below 500 MiB without weakening behavior or the gate.
 Apply Avalonia's official performance guidance only where measured evidence
 supports it: preserve height-constrained virtualization with bounded buffer and
 uniform rows where practical, remove superseded trees from layout/rendering,
