@@ -94,7 +94,6 @@ constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
 constexpr UINT kProcessActivationMessage = WM_APP + 12;
 constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
 constexpr ULONG_PTR kLauncherExperienceSelectionProof = 0x4742414c;
-constexpr std::wstring_view kContextualRefreshQuickActionId = L"refresh";
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr int kDeveloperHotkey = 1;
@@ -4809,20 +4808,11 @@ private:
         if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
     }
 
-    [[nodiscard]] const gba::WidgetDescriptorQuickAction*
-        TrayYRefreshAction() const noexcept {
-        const auto* descriptor = sessions_.FindDescriptor(state_.selectedWidget());
-        if (!descriptor || !InteractionSnapshotFor(state_.selectedWidget())) return nullptr;
-        return gba::FindDescriptorQuickAction(
-            *descriptor, kContextualRefreshQuickActionId);
-    }
-
     [[nodiscard]] bool TrayYRefreshEligible() const noexcept {
         return state_.surface() != gba::Surface::Hidden &&
                state_.focusRegion() == gba::FocusRegion::Tray &&
                !state_.reorderMode() &&
-               IsBridgeWidget(state_.selectedWidget()) &&
-               TrayYRefreshAction() != nullptr;
+               IsBridgeWidget(state_.selectedWidget());
     }
 
     void ApplyTrayYGestureAction(const gba::input::TrayYGestureAction action) {
@@ -4831,35 +4821,10 @@ private:
             Dispatch(gba::Command::ToggleReorder);
             break;
         case gba::input::TrayYGestureAction::RefreshSelectedWidget:
-            if (const auto* refresh = TrayYRefreshAction()) {
-                const std::wstring widgetId(state_.selectedWidget());
-                const auto* snapshot = InteractionSnapshotFor(widgetId);
-                if (!snapshot) break;
-                const std::wstring actionId(refresh->actionId);
-                const std::wstring sourceElementId(refresh->sourceElementId);
-                const auto handled = bridge_.SendAction(
-                    widgetId, actionId, sourceElementId,
-                    snapshot->activeInputScopeId);
-                lastActionWidgetId_ = widgetId;
-                lastActionExpiresAt_ = GetTickCount64() + 2400;
-                if (!handled) {
-                    lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                        L" refresh failed: " + bridge_.lastError();
-                } else if (*handled) {
-                    lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                        L" refreshed";
-                    RefreshAndApplyPresentation([&] {
-                        RefreshWidgetSnapshot(widgetId);
-                    });
-                } else {
-                    lastActionMessage_ = std::wstring(DisplayWidgetName(widgetId)) +
-                        L" refresh was not handled";
-                }
-                AppendDiagnostic(
-                    L"Tray Y contextual refresh widget=" + widgetId +
-                    L" action=" + actionId +
-                    L" handled=" + (handled && *handled ? L"true" : L"false"));
-            }
+            // The recognizer revalidated the exact selected bridge widget and
+            // tray context. Resolve it once more through the same restart
+            // authority as F5; tray Y never depends on a widget-authored action.
+            RestartCurrentWidget();
             break;
         case gba::input::TrayYGestureAction::None:
             break;
@@ -5933,7 +5898,7 @@ private:
 
     std::wstring DashboardHint(const float availableWidth) const {
         if (trayYGesture_.pendingRefresh()) {
-            return L"Hold Y to refresh " +
+            return L"Hold Y to restart " +
                 std::wstring(DisplayWidgetName(trayYGesture_.selectedWidget())) +
                 L" — " +
                 std::to_wstring(trayYGesture_.progressPercent(GetTickCount64())) +
@@ -5961,7 +5926,7 @@ private:
         if (state_.reorderMode() || !TrayYRefreshEligible())
             return std::wstring{visualHint};
         return std::wstring{visualHint} +
-            L". Tap Y to reorder. Hold Y to refresh the selected widget.";
+            L". Tap Y to reorder. Hold Y to restart the selected widget.";
     }
 
     void DrawDashboard(const float width, const float height) {

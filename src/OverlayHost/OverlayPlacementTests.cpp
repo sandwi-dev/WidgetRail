@@ -217,20 +217,20 @@ int main() {
           "untrusted widget hint text cannot wrap or overflow minimal chrome");
     Check(BuildTrayControllerGuide(
               ControllerGuideDensity::Full, false, true).find(
-                  L"Y Tap reorder / Hold refresh") != std::wstring::npos,
+                  L"Y Tap reorder / Hold restart") != std::wstring::npos,
           "full tray guide explains both sides of the Y gesture");
     Check(BuildTrayControllerGuide(
               ControllerGuideDensity::Minimal, false, true) ==
               L"Y Tap/Hold   B Close",
           "minimal tray guide keeps the gesture and escape discoverable");
     Check(BuildTrayControllerGuide(
-              ControllerGuideDensity::Full, false, false).find(L"Hold") ==
-              std::wstring::npos,
-          "tray guide does not advertise hold refresh without widget opt-in");
+                ControllerGuideDensity::Full, false, false).find(L"Hold") ==
+                std::wstring::npos,
+          "tray guide does not advertise hold restart for a non-bridge item");
     Check(BuildTrayControllerGuide(
               ControllerGuideDensity::Full, true, true).find(L"Y Done") !=
               std::wstring::npos,
-          "reorder mode keeps tap-Y completion for refresh-capable widgets");
+          "reorder mode keeps tap-Y completion for bridge widgets");
 
     const auto legacySurface = ResolveWidgetSurfaceTarget(std::nullopt, 1.0F);
     CheckNear(legacySurface.windowWidthDip, 1180.0F,

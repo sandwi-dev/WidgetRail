@@ -323,7 +323,7 @@ ControllerGuideDensity ResolveControllerGuideDensity(
 std::wstring BuildTrayControllerGuide(
     const ControllerGuideDensity density,
     const bool reorderMode,
-    const bool contextualRefreshAvailable,
+    const bool selectedBridgeWidget,
     const std::span<const ControllerGuideAction> quickActions) {
     if (reorderMode) {
         return density == ControllerGuideDensity::Minimal
@@ -339,9 +339,9 @@ std::wstring BuildTrayControllerGuide(
         density == ControllerGuideDensity::Compact ? 8U : 6U;
     const std::size_t actionBudget =
         density == ControllerGuideDensity::Minimal ? 1U : 3U;
-    const std::wstring_view suffix = contextualRefreshAvailable
+    const std::wstring_view suffix = selectedBridgeWidget
         ? density == ControllerGuideDensity::Full
-            ? L"↑/A Enter   Y Tap reorder / Hold refresh   B Close"
+            ? L"↑/A Enter   Y Tap reorder / Hold restart   B Close"
             : density == ControllerGuideDensity::Compact
                 ? L"↑/A Enter   Y Tap/Hold   B Close"
                 : L"Y Tap/Hold   B Close"
@@ -396,11 +396,11 @@ std::wstring BuildTrayControllerGuide(
 
     switch (density) {
     case ControllerGuideDensity::Full:
-        return contextualRefreshAvailable
-            ? L"←→ Switch   ↑/A Enter   Y Tap reorder / Hold refresh   B Close"
+        return selectedBridgeWidget
+            ? L"←→ Switch   ↑/A Enter   Y Tap reorder / Hold restart   B Close"
             : L"←→ Switch   ↑/A Enter   Y Reorder   B Close";
     case ControllerGuideDensity::Compact:
-        return contextualRefreshAvailable
+        return selectedBridgeWidget
             ? L"←→ Switch   ↑/A Enter   Y Tap/Hold   B Close"
             : L"←→ Switch   ↑/A Enter   Y Reorder   B Close";
     case ControllerGuideDensity::Minimal:

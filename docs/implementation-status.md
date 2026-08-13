@@ -636,19 +636,18 @@ renderer diagnostics. Its semantic exporter records the existing Settings
 worker startup gap explicitly. Full-shell physical-controller, display, and
 assistive-technology sign-off remains verification-only evidence.
 
-DLV-005 established deterministic tray-Y tap/hold arbitration. DLV-193 closes
-its production-action gap: release before 700 ms retains reorder, while crossing
-the threshold invokes one exact private catalog quick action whose ID is
-`refresh`. The host revalidates tray focus, non-reorder state, selected widget,
-admitted snapshot, and advertised action/source before dispatch; widgets without
-the opt-in remain tap-only and receive no hold guidance. Any accepted shell
-transition, focus loss, overlay hide, or controller loss cancels progress, and a
-winning or canceled gesture consumes its stale release. The focused Release
-runner passes catalog admission, 107 controller-gesture checks, 111,383 tray and
-placement checks, and one ordinary production-host Settings route that records
-exactly one handled refresh across threshold, repeat, and release. F5 remains a
-separate desktop worker-restart fallback. Physical-controller threshold proof
-remains in the verification queue.
+DLV-005 established deterministic tray-Y tap/hold arbitration. DLV-209 restores
+its intended production action after DLV-193 narrowed it incorrectly: release
+before 700 ms retains reorder, while crossing the threshold restarts the exact
+selected bundled or installed bridge widget through the same worker authority as
+F5. No descriptor or widget-authored Refresh action is required. The host
+revalidates tray focus, non-reorder state, and selected widget before dispatch;
+accepted shell transition, focus loss, overlay hide, controller loss, or worker
+lifecycle change cancels progress, and a winning or canceled gesture consumes
+its stale release. The focused production fixture covers packaged Settings and
+one installed Community worker, including exact-once threshold, repeat, and
+release behavior. Physical-controller threshold proof remains in the
+verification queue.
 
 DLV-004 repairs the Games & Apps product surface without changing catalog
 authority, protocol, or native geometry. Library, Add applications, loading,
@@ -805,8 +804,8 @@ private-state, and conformance boundaries were not repeated.
 `src/OverlayHost` starts hidden, uses a GameInput Guide callback, stops ordinary
 polling/rendering while hidden, and presents a Win32/Direct2D controller
 dashboard. It supports reorder mode, last-widget/order persistence, focus
-routing for the reference widget, deterministic advertised tray-Y contextual
-refresh with a separate F5 recovery path, managed bridge startup, bounded HTTPS
+routing for the reference widget, deterministic tray-Y selected-worker restart
+through the shared F5 recovery path, managed bridge startup, bounded HTTPS
 artwork, fixed native semantic icon geometry, responsive logical viewports,
 per-monitor placement, and snapshot-gated visual/extent transitions that retain
 host chrome and the last admitted widget presentation across worker startup.

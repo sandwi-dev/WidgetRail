@@ -18,15 +18,7 @@
         ".."
       ],
       "declaredCapabilities": [],
-      "quickActions": [
-        {
-          "id": "refresh",
-          "label": "Refresh",
-          "actionId": "refresh",
-          "sourceElementId": "settings.refresh",
-          "controllerButton": null
-        }
-      ]
+      "quickActions": []
     }
   ],
   "bundledWidgets": [
