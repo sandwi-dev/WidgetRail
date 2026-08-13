@@ -531,19 +531,32 @@ Preserve the product direction already recorded in the roadmap:
 - Public widget APIs that keep simple widgets simple and let advanced widgets
   reuse lifecycle, concurrency, navigation, resource, state, failure, testing,
   packaging, and installation infrastructure.
-- A normalized trusted game-library platform with opaque launch authority,
-  cursor-backed virtualization, lazy artwork, host-owned query, and store
-  adapters outside ordinary widget authority.
+- Two explicit Community execution tiers: a contained `sandboxed` worker for
+  widgets that choose typed host capabilities, and an opt-in `full-trust`
+  application process for independently trusted packages that need arbitrary
+  user-level network, filesystem, registry, process, COM, WinRT, database,
+  credential, or other OS behavior. Full trust is an install-time trust choice,
+  not a claim of sandboxing or a collection of service-specific host APIs.
+- Domain integrations for a Community package belong to that package or its
+  full-trust application process. The native host, public SDK, protocol,
+  WidgetBridge, and PlatformBroker must not contain Spotify-, Game Launcher-,
+  IGDB-, SteamGridDB-, store-, or other add-on-specific admission, DTOs,
+  backends, package identities, or behavior. Add a core contract only for a
+  genuinely reusable overlay primitive, never to implement one Community app.
+- A normalized trusted game-library platform may remain for bundled Games &
+  Apps and for sandboxed widgets that voluntarily use the generic capability.
+  It is not the required implementation path for the Community Game Launcher.
 - Keep Games & Apps as a bundled first-party widget. Game Launcher is the
   flagship Community-widget proof and must be built, packaged, installed,
   consented, selected, updated, and run through the same supported path
   available to an independent author. It may not depend on a first-party
   package ID, built-in catalog entry, build-time runtime copy, SDK friend
   assembly, private widget bridge, or package/publisher/style/element-name
-  special case. Any advanced presentation, library, artwork, storage, or host
-  interaction it needs must be a generic, versioned, documented contract
-  available to every qualifying Community widget under the same validation,
-  consent, resource, and authority rules.
+  special case. Any advanced overlay interaction it needs must be a generic,
+  versioned, documented contract available to every qualifying Community
+  widget. Its store adapters, metadata/artwork APIs, caches, databases,
+  credentials, and launch behavior must live in its own full-trust package
+  process rather than product host code.
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
 - Lightweight idle/hidden operation suitable for use while gaming.
@@ -569,6 +582,22 @@ memory ceiling, one-process ceiling, or similarly arbitrary private-execution
 limit merely for compatibility with the prototype. Job membership may still
 provide accounting, non-breakaway cleanup, kill-on-close, integrity, and UI
 restrictions; those containment properties are not product-size quotas.
+
+The two trust tiers are materially different and must never be conflated:
+
+- `sandboxed` workers retain the current AppContainer/capability boundary and
+  receive no ambient user authority.
+- `full-trust` Community applications run with the ordinary authority of the
+  user who explicitly enabled them. They may call arbitrary APIs and OS
+  surfaces directly, use their own libraries and credentials, and own their
+  process tree. The framework validates package/entrypoint integrity and the
+  overlay IPC session, but does not claim to contain the application's private
+  behavior.
+
+Require clear install/enable disclosure and never auto-upgrade a sandboxed
+package into full trust. Full-trust execution does not grant authority inside
+the overlay host: host navigation, pinning, composition, input routing, global
+settings, and native resources still require generic explicit contracts.
 
 The trusted native host and every boundary entering it remain strictly bounded.
 Keep explicit limits on IPC frames, validated current presentation trees,

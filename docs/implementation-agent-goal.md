@@ -566,13 +566,15 @@ Community reference application, not another built-in. Its acceptance requires
 the same external-consumer path an independent author receives: a public SDK
 artifact rather than friend/internal access, a non-first-party manifest and
 package, ordinary install/consent/enable/select/update/remove behavior, and the
-generic worker/capability/renderer path. Do not authorize Game Launcher by its
+generic Community application/renderer path. Do not authorize Game Launcher by its
 package ID, publisher, assembly, type, element IDs, style classes, or known
-tree shape. When it needs an advanced host feature, implement one generic,
-versioned, documented manifest/SDK/protocol contract with equal validation,
-consent, bounds, failure behavior, and accessibility semantics for every
-qualifying Community widget. A private or first-party-only seam does not count
-as framework support and cannot satisfy the flagship proof.
+tree shape. Its own full-trust process owns store discovery, metadata/artwork
+APIs, caches, databases, credentials, and launch behavior. When it needs an
+advanced *overlay* feature, implement one generic, versioned, documented
+manifest/SDK/protocol contract with equal validation, consent, bounds, failure
+behavior, and accessibility semantics for every qualifying Community widget. A
+private, first-party-only, or domain-specific host seam does not count as
+framework support and cannot satisfy the flagship proof.
 
 Assigned developer-experience work should move toward:
 
@@ -594,11 +596,29 @@ composable rather than becoming a mandatory application framework.
 
 ## Security boundary
 
-Ordinary widgets do not receive ambient network, filesystem, token, device,
-process, registry, credential, window, or desktop authority.
+The framework supports two explicit Community execution tiers:
 
-Privileged behavior belongs behind typed, narrow, consented host capabilities or
-a separately reviewed trusted provider process.
+- A `sandboxed` worker receives no ambient network, filesystem, token, device,
+  process, registry, credential, window, or desktop authority. It may use typed,
+  narrow, consented host capabilities.
+- A `full-trust` Community application is an ordinary user-trusted application,
+  not a sandbox. After explicit install/enable disclosure it may use arbitrary
+  user-level network, filesystem, registry, process, COM, WinRT, database,
+  credential, and window APIs through normal platform and third-party libraries.
+  Its private process tree and domain behavior are not implemented as host
+  capabilities.
+
+Never silently promote a sandboxed package to full trust. Never describe a
+full-trust package as contained merely because its overlay IPC is authenticated
+and bounded.
+
+Community-domain code belongs to the Community package. Do not add service- or
+add-on-specific DTOs, capability domains, provider construction, identity
+checks, OAuth logic, API clients, or process hosts to WidgetSdk, WidgetProtocol,
+PlatformBroker, WidgetBridge, or OverlayHost. Core changes are permitted only
+for a genuinely reusable overlay/runtime primitive exercised by differently
+named packages. A bundled first-party widget may use first-party providers, but
+that does not make the provider part of the Community authoring contract.
 
 Treat packages, manifests, snapshots, scenario inputs, companion responses,
 images, provider data, paths, and protocol messages as untrusted. Enforce
@@ -612,6 +632,13 @@ one-process ceilings are not the product model. The native host must remain
 bounded even when a widget is a full application: reject an unsafe submission
 before native allocation, preserve the last valid presentation when possible,
 and return a precise diagnostic rather than silently truncating it.
+
+For a full-trust Community application, bound only what it submits to or asks
+the shared product to own: IPC frames, presentation trees, native resources,
+host queues/caches, action admission, update frequency, and host-owned sessions.
+Do not impose an application CPU, memory, database, file, socket, dependency, or
+child-process ceiling as part of the widget contract. Measure and diagnose its
+resource use without pretending the host is its operating-system sandbox.
 
 Never present an in-process timeout, cancellation token, reflection filter, or
 assembly loader as a security sandbox.

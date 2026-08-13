@@ -63,10 +63,19 @@ silently truncate content.
 
 ### Explicit authority
 
-- Ordinary widgets receive no ambient network, filesystem, registry, process,
-  device, credential, token, window, or desktop authority.
-- Privileged behavior is provided by narrow typed host capabilities or a
-  separately reviewed trusted provider.
+- Sandboxed widgets receive no ambient network, filesystem, registry, process,
+  device, credential, token, window, or desktop authority; reusable privileged
+  behavior is provided by narrow typed host capabilities.
+- Full-trust Community applications are an explicit separately consented tier.
+  They run as ordinary user-trusted applications and may use arbitrary APIs,
+  OS actions, libraries, credentials, storage, and child processes directly.
+  The framework does not claim to sandbox them.
+- Only the boundary entering the shared overlay remains universally bounded:
+  authenticated IPC, current presentation trees, actions, update admission,
+  native/GPU resources, and host-owned queues/caches.
+- Community-domain integrations remain in the package. Core product code must
+  not recognize or implement Spotify, Game Launcher, IGDB, SteamGridDB, or
+  another add-on through custom DTOs, providers, identities, or behavior.
 - Public identities are stable opaque values; widgets never receive raw paths,
   commands, AUMIDs, package/store IDs, provider records, or credentials.
 - Presentation is not authority. The host revalidates exact current identity
@@ -155,20 +164,22 @@ The authoritative product specification is
 [`game-launcher-requirements.md`](game-launcher-requirements.md). It is intended
 to exceed Spotify in complexity and acts as the full-application Community-
 widget proof. Games & Apps remains bundled first-party functionality. Game
-Launcher must be an independently installable Community package using only
-public SDK artifacts, generic manifest/protocol contracts, ordinary capability
+Launcher must be an independently installable full-trust Community package
+using public SDK artifacts, generic manifest/protocol contracts, explicit trust
 consent, and the supported package catalog. Its source may remain a maintained
 reference in this repository, but its runtime receives no first-party identity,
-built-in registration, SDK friend access, or native recognition special case.
+built-in registration, SDK friend access, native recognition, or provider
+special case. Its own package process owns store discovery, metadata/artwork
+APIs, caching, persistence, and launch behavior.
 
-### M1 — trusted installed library and console-home presentation
+### M1 — independently owned installed library and console-home presentation
 
 - Normalized source/item availability, capability, operation, metadata
   provenance, and tile/cover/hero/logo artwork roles.
 - Stable opaque SavedId/AppId authority and current launch revalidation.
-- Windows/Xbox installed-game discovery through supported registration APIs.
-- Optional trusted local store adapters added one at a time with explicit
-  enablement and source health.
+- Windows/Xbox installed-game discovery and optional store adapters live in the
+  full-trust Game Launcher package, using supported OS/store contracts and
+  explicit source enablement/health.
 - Deduplication with distinct launch variants preserved.
 - Warm persisted organization and last-good display while providers refresh.
 - Search, filter, sort, sources, favorites, hidden, recents, variants, details,
@@ -180,7 +191,8 @@ built-in registration, SDK friend access, or native recognition special case.
 Current dependency chain:
 
 1. Normalize and validate the managed presentation contract.
-2. Import supported Windows/Xbox games and then bounded opt-in local stores.
+2. Add the generic full-trust Community application runtime and move supported
+   Windows/Xbox plus opt-in local-store adapters into the reference package.
 3. Define one generic versioned advanced-presentation declaration usable by
    any qualifying Community widget; never recognize Game Launcher by identity,
    publisher, assembly, element IDs, style classes, or a private tree shape.
@@ -188,7 +200,7 @@ Current dependency chain:
    through that generic declaration.
 5. Add launcher-scoped style/artwork/recovery ownership without granting the
    widget new data or action authority.
-6. Package, install, consent, enable, select, update, and remove Game Launcher
+6. Package, install, disclose full trust, enable, select, update, and remove Game Launcher
    through the ordinary Community path, then project its state into every
    declared experience.
 7. Deliver author CLI, preview, pack, inspect, install, select, and removal for
@@ -199,8 +211,9 @@ Current dependency chain:
 
 - Provider-attributed metadata and artwork with revision, cache, licensing,
   attribution, offline, failure, and rate-limit policy.
-- No title-derived authority and no remote URL or provider record exposed to
-  ordinary widgets.
+- No title-derived launch authority. Provider records and credentials remain
+  private to the full-trust Game Launcher backend and never enter its overlay
+  presentation snapshot.
 - Metadata failure never removes trusted installed identity or grants launch.
 
 External IGDB/SteamGridDB or similar services require a selected legal/API
@@ -209,7 +222,8 @@ plan and credentials; they must not block installed-only work.
 ### M3 — trusted content operations
 
 - Install/update/pause/resume/cancel/repair/move/import/uninstall/cloud-sync and
-  add-on operations belong to a separately reviewed trusted provider.
+  add-on operations belong to Game Launcher's explicitly trusted application
+  backend, not OverlayHost, WidgetSdk, WidgetBridge, or PlatformBroker.
 - Destructive operations require explicit confirmation, progress, cancellation,
   rollback/recovery, disk/network policy, and exact current authority.
 - No raw command, executable path, protocol URL, or store credential enters the
@@ -289,8 +303,9 @@ eligibility; credential-free structural work continues independently.
   by background provider reconciliation.
 - Trusted artwork/icons with semantic fallback.
 - Stable add/remove behavior, available-app list, refresh, focus, and layout.
-- Share normalized library/provider infrastructure with Game Launcher without
-  duplicating launch authority.
+- Keep its bundled first-party library provider independent from the Community
+  Game Launcher backend; shared libraries are optional code reuse, not shared
+  host authority or a Community requirement.
 
 ### Audio Mixer
 

@@ -109,7 +109,7 @@ the scalable path.
 
 ### Open platform work
 
-#### Flagship proof currently has the wrong trust tier
+#### Flagship proof currently has the wrong trust tier and backend ownership
 
 Game Launcher was intended to prove that an independent author can build a
 full application-scale widget. Accepted DLV-212 (`5a6ce0b`) now proves the
@@ -122,22 +122,36 @@ catalog, and reaches a native Launcher Experience path designed around its
 known first-party projection. Managed portability is proven; product trust-tier
 parity is not yet complete.
 
-Games & Apps should remain bundled. Convert Game Launcher into a Community
-reference in three explicit gates: the managed public-SDK portability gate is
-now accepted; next replace every identity/shape/private presentation dependency
-with one generic documented contract; then install and run the actual reference
-through ordinary Community package, consent, selection, update, and removal
-flows. Acceptance must include a differently named fixture using the same
-advanced contract so a renamed Game Launcher is not the only consumer that
-passes.
+The accepted AppContainer proof is also insufficient for the clarified product
+goal. A developer must be able to ship an application-scale Community package
+that performs arbitrary user-authorized API and OS work without asking the
+framework team to add a domain capability. Add a separate explicit full-trust
+Community entrypoint with honest installation disclosure and generic
+authenticated overlay IPC. Keep the sandboxed path for widgets that prefer it.
+
+Games & Apps remains bundled and may retain the first-party App Library
+provider. Convert Game Launcher through four gates: managed public-SDK
+portability (accepted), generic advanced presentation, generic full-trust
+Community execution, and an atomic package cutover that moves store discovery,
+metadata/artwork APIs, persistence, and launch behavior into the reference
+package. Acceptance includes a differently named full-trust fixture and proves
+that core host/SDK code contains no Game Launcher domain or identity knowledge.
+
+Spotify exposes the same architectural defect more directly. The public SDK,
+PlatformBroker, WidgetBridge, and trusted product runtime currently contain
+Spotify DTOs, capability routing, provider construction, OAuth/Web API logic,
+and a playback host. Migrate those owners into the Spotify Community package
+after the generic full-trust entrypoint exists, then delete `external.spotify.*`
+and every Spotify-specific core dependency. The framework should see only a
+generic package process, lifecycle, snapshots, actions, and native resources.
 
 - Externally published and versioned SDK/template artifacts.
 - Public compatibility, deprecation, migration, and update policy.
 - Verified publisher/acquisition provenance and update discovery.
 - Maintainability/performance evidence as real authors extend the accepted
   advanced application reference beyond the deterministic example.
-- Clear separation between ordinary widget authors and trusted capability-
-  provider authors.
+- Clear separation between sandboxed authors, full-trust application authors,
+  and bundled first-party capability-provider authors.
 - A real third-party GitHub repository onboarding proof.
 
 ## Current contract review: responsive branch fit
