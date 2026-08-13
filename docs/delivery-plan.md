@@ -9,16 +9,19 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `b5c4c6c`, including accepted DLV-216 plus the
-  behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries.
-- Accepted Avalonia experiment: `2a3c722` on
-  `codex/avalonia-prototype`, integrated previously through main `9d3ad8e`.
+- Production code: local main `a74add9`, including accepted DLV-216, the
+  behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
+  the accepted isolated AVP-004 candidate. No production renderer cutover is
+  implied.
+- Accepted Avalonia experiment: source `1868e97` on
+  `codex/avalonia-prototype`, integrated through main `a74add9`.
 - Latest packaged production Release:
-  `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main
-  and launched as PID 30240 on 2026-08-13 04:15 -07:00.
-- Post-launch evidence: every one of the eight tray identities admitted through
-  the ordinary bridge, complete composition frames were committed, Guide
-  reopened the overlay, and the recent log scan contained no error, failure,
+  `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
+  gracefully closed so the isolated accepted AVP candidate could own the
+  physical Guide/controller test. The AVP candidate is visible as PID 4328.
+- Last production post-launch evidence: every one of the eight tray identities
+  admitted through the ordinary bridge, complete composition frames were
+  committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
   exception, fatal, reject, or crash entry.
 
 ## Execution rules
@@ -73,9 +76,9 @@ implementation work.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 Assigned from accepted main `47d8ffe` |
+| Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004-INTEGRATION Assigned from `b5c4c6c` + `2a3c722` |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004 accepted at `1868e97`; copied candidate running for user verdict; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -367,10 +370,10 @@ Verification: focused native parity suites and the smallest bounded Release
 build needed by the extraction. No aggregate. Commit one
 `[AVP-004-PLATFORM]` milestone and stop.
 
-### AVP-004-INTEGRATION — generic Avalonia candidate
+### Accepted and integrated — AVP-004-INTEGRATION: generic Avalonia candidate
 
-State: third correction assigned after rejecting `79615c3`, `4765cce`, and
-memory correction `56dffa6`. Both extraction commits
+State: accepted at source commit `1868e97` and integrated through main
+`a74add9` after rejected `79615c3`, `4765cce`, and `56dffa6`. Both extraction commits
 remain accepted and integrated in SESSION then PLATFORM order through main
 `b5c4c6c`. The generic adapter architecture is sound. Correction `4765cce`
 closes exact-authority latest-wins transition/focus publication, superseded
@@ -401,10 +404,22 @@ visible fallback/restoration. The assigned correction removes duplicate refresh
 ownership or discards only the explicit stale result, proves latest frame with
 no visible failure, and preserves/restores visible focus plus UIA truth across
 compact/expanded changes. Final exact evidence must keep the candidate below
-500 MiB and set `allInstalledWidgetsPassed=true`.
+500 MiB and set `allInstalledWidgetsPassed=true`. Final correction `1868e97`
+removes duplicate invalidation refresh ownership and preserves/restores visible
+focus and truthful UIA/XYFocus across responsive modes. Exact evidence passes
+17/17 focused tests, 8/8 widgets without visible failure, 32/32 responsive
+fixtures, all 24 transition phases, one retained render, zero artwork ownership,
+and 471.70 MiB candidate private memory. The exact accepted copied runtime was
+launched visibly as PID 4328 for the user's physical controller, Guide,
+transparency, motion, and clipping verdict. The equivalent main measurement
+wrapper could not republish its copied runtime because its nested process helper
+failed before starting the already-green Release build; main Release itself was
+rebuilt successfully and the launched accepted source executable retains the
+reviewed ProductVersion/SHA provenance.
 
-Owner after unblock: standing `avalonia-prototype` task. Integration order is
-SESSION, PLATFORM, then candidate wiring. Substantial conflicts stop.
+Integration is complete in SESSION, PLATFORM, then candidate order. The
+standing `avalonia-prototype` task stops at accepted `1868e97`; AVP-005 and
+production cutover are not authorized.
 
 Objective:
 
@@ -479,7 +494,9 @@ cutover remain out of scope.
 
 | Milestone | Accepted result |
 | --- | --- |
-| DLV-216 | Spotify is an ordinary autonomous full-trust Community application; accepted package `0.3.0` is installed and the refreshed production Release is visibly running. |
+| AVP-004 | Reuse-first generic Avalonia candidate accepted and integrated through main `a74add9`; exact copied runtime is visibly running as PID 4328 for the user verdict. |
+| DLV-217 | Autonomous Game Launcher Community package accepted through `d57fd06`; local integration awaits explicit approval because the retained aggregate is red only for known reviewer-owned archived links. |
+| DLV-216 | Spotify is an ordinary autonomous full-trust Community application; accepted package `0.3.0` is installed and passed its refreshed production Release launch. |
 | DLV-220 | Corrected retired gesture revocation evidence; 1-2 events and every sequence exactly 92. |
 | DLV-210 | Contained generic Hero Rail for terminal artwork without changing SavedId/action/focus authority. |
 | DLV-215 | Generic explicitly consented full-trust Community application runtime. |
