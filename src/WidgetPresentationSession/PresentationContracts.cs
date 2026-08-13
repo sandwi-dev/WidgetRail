@@ -69,7 +69,10 @@ public sealed record WidgetPresentationState(
     string WidgetId,
     WidgetPresentationFrame? LastGood,
     WidgetPresentationFailure? Failure,
-    long InvalidationRevision);
+    long InvalidationRevision)
+{
+    public long PublicationRevision { get; init; }
+}
 
 public sealed record WidgetPresentationInvalidation(string WidgetId, long Revision);
 

@@ -19,11 +19,14 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     private readonly Dictionary<string, long> _sessionGenerations =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task> _refreshes = new(StringComparer.Ordinal);
+    private readonly Queue<WidgetPresentationState> _statePublications = [];
     private readonly Dictionary<(string WidgetId, string ArtworkHandle), Queue<PendingArtwork>>
         _artwork = [];
     private readonly Queue<WidgetPresentationDiagnostic> _diagnostics = [];
     private long _catalogRevision = -1;
     private int _pendingArtworkCount;
+    private long _publicationRevision;
+    private bool _publicationOwner;
     private bool _disposed;
     private Exception? _terminalFailure;
 
@@ -32,7 +35,8 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         BridgeWidgetDescriptor Descriptor,
         long SessionGeneration,
         WidgetPresentationFrame LastGood,
-        long InvalidationRevision);
+        long InvalidationRevision,
+        long StatePublicationRevision);
 
     private WidgetPresentationSession(
         BridgePresentationTransport transport,
@@ -111,6 +115,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             if (!byId.TryAdd(widget.Id, widget))
                 throw new BridgeProtocolException("WidgetBridge returned duplicate widget IDs.");
         }
+        var startPublications = false;
         lock (_gate)
         {
             if (revision < _catalogRevision)
@@ -127,18 +132,19 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 {
                     _sessionGenerations[pair.Key] =
                         _sessionGenerations.GetValueOrDefault(pair.Key) + 1;
-                    _states.Remove(pair.Key);
+                    startPublications |= RetireStateLocked(pair.Key);
                 }
             }
             foreach (var removed in _descriptors.Keys.Where(id => !byId.ContainsKey(id)).ToArray())
             {
                 _sessionGenerations[removed] =
                     _sessionGenerations.GetValueOrDefault(removed) + 1;
-                _states.Remove(removed);
+                startPublications |= RetireStateLocked(removed);
             }
             _descriptors.Clear();
             foreach (var pair in byId) _descriptors.Add(pair.Key, pair.Value);
         }
+        if (startPublications) DrainStatePublications();
         return new WidgetPresentationCatalog(revision, Array.AsReadOnly(widgets));
     }
 
@@ -174,7 +180,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             lock (_gate)
             {
                 if (_states.TryGetValue(target.Descriptor.Id, out var current))
-                    _states[target.Descriptor.Id] = current with { Failure = null };
+                    _ = CommitStateLocked(current with { Failure = null }, publish: false);
             }
         }
     }
@@ -385,8 +391,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 if (_states.TryGetValue(invalidation.WidgetId, out var current) &&
                     invalidation.Revision > current.InvalidationRevision)
                 {
-                    changed = current with { InvalidationRevision = invalidation.Revision };
-                    _states[invalidation.WidgetId] = changed;
+                    changed = CommitStateLocked(
+                        current with { InvalidationRevision = invalidation.Revision },
+                        publish: false);
                 }
             }
             Invalidated?.Invoke(this, new WidgetPresentationInvalidatedEventArgs(invalidation));
@@ -547,7 +554,8 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                             descriptor,
                             _sessionGenerations.GetValueOrDefault(widgetId),
                             state.LastGood,
-                            state.InvalidationRevision);
+                            state.InvalidationRevision,
+                            state.PublicationRevision);
                     }
                 }
                 if (publication is null) break;
@@ -594,6 +602,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             Bound(exception.Message),
             publication.LastGood.Authority.RuntimeGeneration);
         WidgetPresentationState? committed = null;
+        var startPublications = false;
         lock (_gate)
         {
             var capturedAuthority = publication.LastGood.Authority;
@@ -604,12 +613,12 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                     publication.SessionGeneration &&
                 _states.TryGetValue(publication.Descriptor.Id, out var current) &&
                 current.LastGood is { } currentLastGood &&
-                HasSamePresentation(currentLastGood.Authority, capturedAuthority) &&
+                currentLastGood.Authority == capturedAuthority &&
                 current.InvalidationRevision >= publication.InvalidationRevision &&
-                currentLastGood.Authority.SnapshotSequence >= capturedAuthority.SnapshotSequence)
+                current.PublicationRevision == publication.StatePublicationRevision)
             {
-                committed = current with { Failure = failure };
-                _states[publication.Descriptor.Id] = committed;
+                committed = CommitStateLocked(current with { Failure = failure }, publish: true);
+                startPublications = TakePublicationOwnershipLocked();
             }
         }
         if (committed is null)
@@ -620,23 +629,8 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 publication.Descriptor.Id);
             return;
         }
-        PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(committed));
+        if (startPublications) DrainStatePublications();
     }
-
-    private static bool HasSamePresentation(
-        WidgetPresentationAuthority current,
-        WidgetPresentationAuthority captured) =>
-        string.Equals(current.WidgetId, captured.WidgetId, StringComparison.Ordinal) &&
-        string.Equals(
-            current.RuntimeGeneration,
-            captured.RuntimeGeneration,
-            StringComparison.Ordinal) &&
-        string.Equals(
-            current.PresentationGeneration,
-            captured.PresentationGeneration,
-            StringComparison.Ordinal) &&
-        current.SessionGeneration == captured.SessionGeneration &&
-        string.Equals(current.WidgetInstanceId, captured.WidgetInstanceId, StringComparison.Ordinal);
 
     private WidgetPresentationFrame PublishSnapshot(
         BridgeWidgetDescriptor descriptor,
@@ -669,6 +663,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             snapshot,
             new ReadOnlyDictionary<string, BridgeNodeRenderStyles>(renderStyles));
         WidgetPresentationState committed;
+        var startPublications = false;
         lock (_gate)
         {
             if (!_descriptors.TryGetValue(descriptor.Id, out var currentDescriptor) ||
@@ -686,18 +681,92 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 if (current.Authority.SnapshotSequence == snapshot.Sequence)
                     return current;
             }
-            committed = new WidgetPresentationState(
-                descriptor.Id, frame, null, prior?.InvalidationRevision ?? 0);
-            _states[descriptor.Id] = committed;
+            committed = CommitStateLocked(
+                new WidgetPresentationState(
+                    descriptor.Id, frame, null, prior?.InvalidationRevision ?? 0),
+                publish: true);
+            startPublications = TakePublicationOwnershipLocked();
         }
-        PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(committed));
+        if (startPublications) DrainStatePublications();
         return frame;
     }
 
     private void PublishState(WidgetPresentationState state)
     {
-        lock (_gate) _states[state.WidgetId] = state;
-        PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(state));
+        var startPublications = false;
+        lock (_gate)
+        {
+            _ = CommitStateLocked(state, publish: true);
+            startPublications = TakePublicationOwnershipLocked();
+        }
+        if (startPublications) DrainStatePublications();
+    }
+
+    private WidgetPresentationState CommitStateLocked(
+        WidgetPresentationState state,
+        bool publish)
+    {
+        var committed = state with { PublicationRevision = NextPublicationRevisionLocked() };
+        _states[state.WidgetId] = committed;
+        if (publish) _statePublications.Enqueue(committed);
+        return committed;
+    }
+
+    private bool RetireStateLocked(string widgetId)
+    {
+        if (!_states.Remove(widgetId)) return false;
+        var retired = new WidgetPresentationState(widgetId, null, null, 0)
+        {
+            PublicationRevision = NextPublicationRevisionLocked(),
+        };
+        _statePublications.Enqueue(retired);
+        return TakePublicationOwnershipLocked();
+    }
+
+    private long NextPublicationRevisionLocked() =>
+        _publicationRevision = checked(_publicationRevision + 1);
+
+    private bool TakePublicationOwnershipLocked()
+    {
+        if (_publicationOwner || _statePublications.Count == 0) return false;
+        _publicationOwner = true;
+        return true;
+    }
+
+    private void DrainStatePublications()
+    {
+        while (true)
+        {
+            WidgetPresentationState state;
+            lock (_gate)
+            {
+                if (_statePublications.Count == 0)
+                {
+                    _publicationOwner = false;
+                    return;
+                }
+                state = _statePublications.Dequeue();
+            }
+            try
+            {
+                PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(state));
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                try
+                {
+                    RecordDiagnostic(
+                        "presentation_subscriber_failed",
+                        "A presentation state subscriber failed.",
+                        state.WidgetId);
+                }
+                catch (Exception diagnosticException)
+                    when (diagnosticException is not OutOfMemoryException)
+                {
+                    // Subscriber failures cannot take ownership of state publication.
+                }
+            }
+        }
     }
 
     private BridgeWidgetDescriptor ValidateAuthority(WidgetPresentationAuthority authority)
@@ -743,6 +812,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(target.Descriptor);
         WidgetPresentationState cleared;
+        var startPublications = false;
         long generation;
         lock (_gate)
         {
@@ -754,10 +824,12 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                     "The widget descriptor is no longer current.");
             generation = _sessionGenerations.GetValueOrDefault(target.Descriptor.Id) + 1;
             _sessionGenerations[target.Descriptor.Id] = generation;
-            cleared = new WidgetPresentationState(target.Descriptor.Id, null, null, 0);
-            _states[target.Descriptor.Id] = cleared;
+            cleared = CommitStateLocked(
+                new WidgetPresentationState(target.Descriptor.Id, null, null, 0),
+                publish: true);
+            startPublications = TakePublicationOwnershipLocked();
         }
-        PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(cleared));
+        if (startPublications) DrainStatePublications();
         return generation;
     }
 

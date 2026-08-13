@@ -291,12 +291,24 @@ public sealed class SessionTransportTests
             refreshReceived.TrySetResult();
             var explicitRefresh = await ReadAsync(channel);
             Assert.AreEqual(BridgeMessageTypes.GetSnapshot, explicitRefresh.Type);
-            await ReplySnapshotAsync(channel, explicitRefresh.RequestId, descriptor, sequence: 2);
+            await ReplySnapshotAsync(
+                channel,
+                explicitRefresh.RequestId,
+                descriptor,
+                sequence: 2,
+                activeInputScopeId: "scope-2");
             await newerApplied.Task.WaitAsync(TestDeadline);
             await ReplyRefreshErrorAsync(channel, invalidationRefresh.RequestId);
             await ExpectStopAsync(channel);
         });
         var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options());
+        var failurePublications = 0;
+        void CountFailures(object? sender, WidgetPresentationChangedEventArgs eventArgs)
+        {
+            if (eventArgs.State.Failure is not null)
+                Interlocked.Increment(ref failurePublications);
+        }
+        session.PresentationChanged += CountFailures;
         try
         {
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
@@ -308,21 +320,33 @@ public sealed class SessionTransportTests
             await refreshReceived.Task.WaitAsync(TestDeadline);
             var newer = await session.RefreshAsync(initial.Authority).WaitAsync(TestDeadline);
             Assert.AreEqual(2L, newer.Authority.SnapshotSequence);
+            Assert.AreEqual("scope-2", newer.Authority.ActiveInputScopeId);
             newerApplied.TrySetResult();
 
-            await WaitUntilAsync(() => session.GetState("session-widget")?.Failure is not null);
+            await WaitForStaleRefreshDiagnosticAsync(session);
             var state = session.GetState("session-widget");
             Assert.IsNotNull(state?.LastGood);
             Assert.AreEqual(newer.Authority, state.LastGood.Authority);
-            Assert.AreEqual("refresh_test_failure", state.Failure?.Code);
-            Assert.IsFalse(session.Diagnostics.Any(
-                diagnostic => diagnostic.Code == "stale_refresh_failure"));
+            Assert.IsNull(state.Failure);
+            Assert.AreEqual(0, Volatile.Read(ref failurePublications));
         }
         finally
         {
+            session.PresentationChanged -= CountFailures;
             await session.DisposeAsync();
             await serverTask.WaitAsync(TestDeadline);
         }
+    }
+
+    [TestMethod]
+    public async Task CommittedFailurePublicationCannotFollowAConcurrentReplacement()
+    {
+        await AssertCommittedFailurePublicationIsOrderedAsync(
+            ConcurrentPublicationReplacement.Restart);
+        await AssertCommittedFailurePublicationIsOrderedAsync(
+            ConcurrentPublicationReplacement.CatalogReplacement);
+        await AssertCommittedFailurePublicationIsOrderedAsync(
+            ConcurrentPublicationReplacement.NewerSnapshot);
     }
 
     [TestMethod]
@@ -342,6 +366,148 @@ public sealed class SessionTransportTests
         MaximumPendingArtworkRequests = 2,
         MaximumRetainedDiagnostics = 8,
     };
+
+    private static async Task AssertCommittedFailurePublicationIsOrderedAsync(
+        ConcurrentPublicationReplacement replacement)
+    {
+        await using var server = new ScriptedBridgeServer();
+        var established = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var failurePublicationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFailurePublication = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var descriptor = Descriptor();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await ReadAsync(channel);
+            await ReplyCatalogAsync(channel, list.RequestId, revision: 1);
+            var establish = await ReadAsync(channel);
+            await ReplySnapshotAsync(channel, establish.RequestId, descriptor, sequence: 1);
+            await established.Task.WaitAsync(TestDeadline);
+            await SendInvalidationAsync(channel, revision: 1);
+
+            var refresh = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, refresh.Type);
+            await ReplyRefreshErrorAsync(channel, refresh.RequestId);
+            var replacementRequest = await ReadAsync(channel);
+            switch (replacement)
+            {
+            case ConcurrentPublicationReplacement.Restart:
+                Assert.AreEqual(BridgeMessageTypes.RestartWidget, replacementRequest.Type);
+                await channel.WriteAsync(new BridgeEnvelope
+                {
+                    Type = BridgeMessageTypes.Acknowledged,
+                    RequestId = replacementRequest.RequestId,
+                    Payload = BridgeJson.ToElement(new
+                    {
+                        widgetId = "session-widget",
+                        state = GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive,
+                    }),
+                }, CancellationToken.None);
+                break;
+            case ConcurrentPublicationReplacement.CatalogReplacement:
+                Assert.AreEqual(BridgeMessageTypes.ListWidgets, replacementRequest.Type);
+                await ReplyCatalogAsync(
+                    channel,
+                    replacementRequest.RequestId,
+                    revision: 2,
+                    [Descriptor(
+                        instanceId: "session.replacement",
+                        runtimeGeneration: new string('c', 32),
+                        presentationGeneration: new string('d', 32))]);
+                break;
+            case ConcurrentPublicationReplacement.NewerSnapshot:
+                Assert.AreEqual(BridgeMessageTypes.GetSnapshot, replacementRequest.Type);
+                await ReplySnapshotAsync(
+                    channel,
+                    replacementRequest.RequestId,
+                    descriptor,
+                    sequence: 2,
+                    activeInputScopeId: "scope-2");
+                break;
+            default:
+                Assert.Fail("Unknown concurrent publication replacement.");
+                break;
+            }
+            await ExpectStopAsync(channel);
+        });
+        var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options());
+        var observed = new List<WidgetPresentationState>();
+        var observedGate = new object();
+        void OnPresentationChanged(object? sender, WidgetPresentationChangedEventArgs eventArgs)
+        {
+            if (eventArgs.State.Failure?.Code == "refresh_test_failure")
+            {
+                failurePublicationEntered.TrySetResult();
+                if (!releaseFailurePublication.Task.Wait(TestDeadline))
+                    throw new TimeoutException("The publication replacement was not committed.");
+            }
+            lock (observedGate) observed.Add(eventArgs.State);
+        }
+        session.PresentationChanged += OnPresentationChanged;
+        try
+        {
+            _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
+            var target = session.GetTarget("session-widget");
+            var initial = await session.EstablishPresentationAsync(
+                target, GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                .WaitAsync(TestDeadline);
+            established.TrySetResult();
+            await failurePublicationEntered.Task.WaitAsync(TestDeadline);
+
+            switch (replacement)
+            {
+            case ConcurrentPublicationReplacement.Restart:
+                _ = await session.RestartAsync(target).WaitAsync(TestDeadline);
+                Assert.IsNull(session.GetState("session-widget")?.LastGood);
+                break;
+            case ConcurrentPublicationReplacement.CatalogReplacement:
+                _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
+                Assert.IsNull(session.GetState("session-widget"));
+                break;
+            case ConcurrentPublicationReplacement.NewerSnapshot:
+                var newer = await session.RefreshAsync(initial.Authority).WaitAsync(TestDeadline);
+                Assert.AreEqual(2L, newer.Authority.SnapshotSequence);
+                Assert.AreEqual("scope-2", newer.Authority.ActiveInputScopeId);
+                Assert.IsNull(session.GetState("session-widget")?.Failure);
+                break;
+            default:
+                Assert.Fail("Unknown concurrent publication replacement.");
+                break;
+            }
+            releaseFailurePublication.TrySetResult();
+            await WaitUntilAsync(() =>
+            {
+                lock (observedGate) return observed.Count >= 3;
+            });
+
+            WidgetPresentationState failure;
+            WidgetPresentationState final;
+            lock (observedGate)
+            {
+                failure = observed[^2];
+                final = observed[^1];
+            }
+            Assert.AreEqual("refresh_test_failure", failure.Failure?.Code);
+            Assert.IsTrue(final.PublicationRevision > failure.PublicationRevision);
+            Assert.IsNull(final.Failure);
+            if (replacement == ConcurrentPublicationReplacement.NewerSnapshot)
+            {
+                Assert.AreEqual(2L, final.LastGood?.Authority.SnapshotSequence);
+                Assert.AreEqual("scope-2", final.LastGood?.Authority.ActiveInputScopeId);
+            }
+            else
+                Assert.IsNull(final.LastGood);
+        }
+        finally
+        {
+            releaseFailurePublication.TrySetResult();
+            session.PresentationChanged -= OnPresentationChanged;
+            await session.DisposeAsync();
+            await serverTask.WaitAsync(TestDeadline);
+        }
+    }
 
     private static async Task AssertCatalogRefreshFailureDiscardedAsync(bool removeWidget)
     {
@@ -428,14 +594,15 @@ public sealed class SessionTransportTests
         BridgeFrameChannel channel,
         long requestId,
         BridgeWidgetDescriptor descriptor,
-        long sequence)
+        long sequence,
+        string activeInputScopeId = "root")
     {
         var snapshot = new ViewSnapshot
         {
             Sequence = sequence,
             WidgetInstanceId = descriptor.InstanceId,
-            ActiveInputScopeId = "root",
-            Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
+            ActiveInputScopeId = activeInputScopeId,
+            Root = new ViewNode { Id = activeInputScopeId, Kind = ViewNodeKind.Stack },
         };
         using var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
         await channel.WriteAsync(new BridgeEnvelope
@@ -535,6 +702,13 @@ public sealed class SessionTransportTests
             await Task.Delay(10);
         }
     }
+}
+
+internal enum ConcurrentPublicationReplacement
+{
+    Restart,
+    CatalogReplacement,
+    NewerSnapshot,
 }
 
 internal sealed class ScriptedBridgeServer : IAsyncDisposable
