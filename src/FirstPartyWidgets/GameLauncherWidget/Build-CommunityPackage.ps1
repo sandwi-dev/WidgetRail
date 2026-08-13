@@ -87,8 +87,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Get-ChildItem -LiteralPath $publishRoot -File -Recurse | Where-Object {
-    $_.Extension -notin @('.pdb', '.xml') -and
-    $_.Name -cne 'Microsoft.Windows.SDK.NET.dll'
+    $_.Extension -notin @('.pdb', '.xml')
 } | ForEach-Object {
     $relative = [System.IO.Path]::GetRelativePath($publishRoot, $_.FullName)
     $destination = Join-Path $payloadRoot $relative
@@ -110,10 +109,11 @@ $required = @(
     'manifest.json',
     'payload\GameLauncherApplication.exe',
     'payload\GameLauncherApplication.dll',
-    'payload\GameLauncherWidget.dll',
+    'payload\GameLauncherWidget.Core.dll',
     'payload\WidgetApplicationRuntime.dll',
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
+    'payload\Microsoft.Windows.SDK.NET.dll',
     'styles\default.gbss'
 )
 $missing = @($required | Where-Object { $_ -notin $stagedFiles })
@@ -121,7 +121,7 @@ if ($missing.Count -ne 0) {
     throw "Staged Game Launcher application is incomplete: [$($missing -join ', ')]."
 }
 $forbidden = @($stagedFiles | Where-Object {
-    $_ -match '(^|\\)(PlatformBroker|WindowsAppLibraryProvider|PlatformSettings)\.dll$' -or
+    $_ -match '(^|\\)(PlatformBroker|WindowsAppLibraryProvider|PlatformSettings|GameLauncherWidget)\.dll$' -or
     $_ -match '\.(pdb|xml)$'
 })
 if ($forbidden.Count -ne 0) {

@@ -12,6 +12,7 @@ internal sealed class GameLauncherApplicationService(
     GameLauncherStateFileStore state) : IGameLauncherApplicationService
 {
     private const int MaximumTraversalPages = 160;
+    private const int MaximumArtworkEntries = 128;
     private readonly PackageAppLibraryProvider _provider = provider ??
         throw new ArgumentNullException(nameof(provider));
     private readonly GameLauncherSavedIdIssuer _savedIds = savedIds ??
@@ -19,6 +20,12 @@ internal sealed class GameLauncherApplicationService(
     private readonly GameLauncherStateFileStore _state = state ??
         throw new ArgumentNullException(nameof(state));
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Dictionary<string, ArtworkRegistration> _artwork =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string?> _artworkContent =
+        new(StringComparer.Ordinal);
+    private readonly Queue<string> _artworkOrder = new();
+    public bool OwnsArtworkContent => true;
 
     public async ValueTask<WidgetAppLibraryPage> QueryAsync(
         WidgetAppLibraryQuery query,
@@ -196,6 +203,38 @@ internal sealed class GameLauncherApplicationService(
         }
     }
 
+    public async ValueTask<string?> ResolveArtworkAsync(
+        WidgetAppLibraryArtwork artwork,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(artwork);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_artwork.TryGetValue(artwork.Handle, out var registration) ||
+                !string.Equals(registration.Revision, artwork.Revision,
+                    StringComparison.Ordinal))
+                return null;
+            if (_artworkContent.TryGetValue(artwork.Handle, out var cached))
+                return cached;
+            var result = await _provider.GetAppLibraryIconAsync(
+                registration.AppId, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            _artworkContent[artwork.Handle] = result.PngBase64;
+            return result.PngBase64;
+        }
+        catch (BrokerException exception)
+        {
+            if (exception.Code is "app_not_found" or "platform_unavailable")
+                return null;
+            throw Safe(exception);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public ValueTask<WidgetPrivateStateValue<GameLauncherPrivateState>> ReadStateAsync(
         CancellationToken cancellationToken) => _state.ReadAsync(cancellationToken);
 
@@ -208,6 +247,9 @@ internal sealed class GameLauncherApplicationService(
     public async ValueTask DisposeAsync()
     {
         await _provider.DisposeAsync().ConfigureAwait(false);
+        _artwork.Clear();
+        _artworkContent.Clear();
+        _artworkOrder.Clear();
         _gate.Dispose();
     }
 
@@ -287,6 +329,10 @@ internal sealed class GameLauncherApplicationService(
         var actions = item.SupportedActions ?? (item.IsLaunchable
             ? [AppLibraryAction.Launch]
             : []);
+        var artwork = RegisterArtwork(item);
+        var metadataRevision = ContentId(
+            "metadata", item.StableProviderIdentity, item.ArtworkRevision);
+        var retrievedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return new(
             item.ProviderAppId,
             _savedIds.Issue(item.StableProviderIdentity),
@@ -307,10 +353,46 @@ internal sealed class GameLauncherApplicationService(
                     item.IsLaunchable,
                     item.AvailabilityStatusCode ??
                         (item.IsLaunchable ? "installed" : "play_unavailable")),
-                new WidgetAppLibraryArtworkSet([]),
-                Metadata: null,
+                artwork,
+                new WidgetAppLibraryMetadata(
+                    metadataRevision,
+                    new WidgetAppLibraryMetadataAttribution(
+                        "Game Launcher Community",
+                        metadataRevision,
+                        source?.DisplayName ?? item.SourceAttribution,
+                        retrievedAt)),
                 new WidgetAppLibraryCapabilitySet(actions.Select(ToWidget).ToArray()),
                 ActiveOperation: null));
+    }
+
+    private WidgetAppLibraryArtworkSet RegisterArtwork(
+        AppLibraryBackendItemSummary item)
+    {
+        if (string.IsNullOrWhiteSpace(item.ArtworkRevision))
+            return new([]);
+        var revision = ContentId(
+            "artwork-revision", item.StableProviderIdentity, item.ArtworkRevision);
+        var handle = ContentId(
+            "artwork-handle", item.StableProviderIdentity, item.ArtworkRevision);
+        if (!_artwork.ContainsKey(handle))
+        {
+            _artwork.Add(handle, new(item.ProviderAppId, revision));
+            _artworkOrder.Enqueue(handle);
+            while (_artworkOrder.Count > MaximumArtworkEntries)
+            {
+                var retired = _artworkOrder.Dequeue();
+                _artwork.Remove(retired);
+                _artworkContent.Remove(retired);
+            }
+        }
+        var fallback = item.Kind == AppLibraryKind.Game
+            ? WidgetAppLibraryArtworkFallback.Game
+            : WidgetAppLibraryArtworkFallback.Application;
+        return new([
+            new(WidgetAppLibraryArtworkRole.Tile, handle, revision, fallback),
+            new(WidgetAppLibraryArtworkRole.Cover, handle, revision, fallback),
+            new(WidgetAppLibraryArtworkRole.Hero, handle, revision, fallback),
+        ]);
     }
 
     private static WidgetAppLibrarySource Project(AppLibrarySourceSummary source) => new(
@@ -396,7 +478,13 @@ internal sealed class GameLauncherApplicationService(
 
     private static string SourceId(string value) => "source-" + Convert.ToHexString(
         System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(value)).AsSpan(0, 12)).ToLowerInvariant();
+        System.Text.Encoding.UTF8.GetBytes(value)).AsSpan(0, 12)).ToLowerInvariant();
+
+    private static string ContentId(string kind, params string[] values) =>
+        "gl-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(
+                kind + "\0" + string.Join("\0", values))).AsSpan(0, 16))
+            .ToLowerInvariant();
 
     private static WidgetCapabilityException Safe(BrokerException exception) => new(
         exception.Code is "invalid_payload" or "invalid_cursor" or "app_not_found" or
@@ -409,4 +497,6 @@ internal sealed class GameLauncherApplicationService(
             "stale_observation" => "The running application list changed.",
             _ => "The installed game library is unavailable.",
         });
+
+    private sealed record ArtworkRegistration(string AppId, string Revision);
 }

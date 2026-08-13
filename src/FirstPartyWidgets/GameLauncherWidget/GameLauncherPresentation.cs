@@ -777,12 +777,7 @@ internal static class GameLauncherPresentation
                 actionId,
                 GameLauncherIdentity.FocusId("add", item.Key),
                 subtitle: $"{kind} · {item.Presentation.Source.DisplayName}",
-                artwork: item.Presentation.Artwork.Find(
-                        WidgetAppLibraryArtworkRole.Tile) is { } tileArtwork
-                    ? TileArtwork.FromHandle(new WidgetArtworkHandle(tileArtwork.Handle),
-                        item.Presentation.DisplayName, ImageFit.Cover)
-                    : TileArtwork.FromGlyph(
-                        WidgetGlyph.Play, item.Presentation.DisplayName),
+                artwork: Artwork(item),
                 accessibilityLabel: $"{item.Presentation.DisplayName}, {kind}, " +
                     (automatic ? "Included automatically" : included
                         ? runningRoute ? "Already included" : "Added, remove from library"
@@ -796,11 +791,9 @@ internal static class GameLauncherPresentation
     private static WidgetElement HiddenTile(PresentedRow row, bool interactive)
     {
         var current = row.Current;
-        var artwork = current?.Presentation.Artwork.Find(
-                WidgetAppLibraryArtworkRole.Tile) is { } tileArtwork
-            ? TileArtwork.FromHandle(new WidgetArtworkHandle(tileArtwork.Handle),
-                row.Display.DisplayName, ImageFit.Cover)
-            : TileArtwork.FromGlyph(WidgetGlyph.Play, row.Display.DisplayName);
+        var artwork = current is null
+            ? TileArtwork.FromGlyph(WidgetGlyph.Play, row.Display.DisplayName)
+            : Artwork(current);
         var availability = current is null ? "Unavailable · Restore" : "Hidden · Restore";
         return UI.AppTile(row.Display.DisplayName, availability,
                 "game-launcher.restore",
@@ -834,7 +827,9 @@ internal static class GameLauncherPresentation
     {
         var id = GameLauncherIdentity.FocusId("grid", key);
         var launching = string.Equals(savedId, launchingSavedId, StringComparison.Ordinal);
-        var artwork = artworkHandle is { Length: > 0 }
+        var artwork = current?.ArtworkPngBase64 is { } png
+            ? TileArtwork.FromInlinePng(png, title, ImageFit.Cover)
+            : artworkHandle is { Length: > 0 }
             ? TileArtwork.FromHandle(new WidgetArtworkHandle(artworkHandle), title, ImageFit.Cover)
             : TileArtwork.FromGlyph(WidgetGlyph.Play, title);
         var availability = GameLauncherAvailabilityPresentation.Tile(current, interactive);
@@ -876,6 +871,15 @@ internal static class GameLauncherPresentation
                     actionId: "game-launcher.collection.next");
         return collectionItem ? tile.CollectionItem(key) : tile;
     }
+
+    private static TileArtwork Artwork(GameLauncherItem item) =>
+        item.ArtworkPngBase64 is { } png
+            ? TileArtwork.FromInlinePng(
+                png, item.Presentation.DisplayName, ImageFit.Cover)
+            : item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile) is { } artwork
+                ? TileArtwork.FromHandle(new WidgetArtworkHandle(artwork.Handle),
+                    item.Presentation.DisplayName, ImageFit.Cover)
+                : TileArtwork.FromGlyph(WidgetGlyph.Play, item.Presentation.DisplayName);
 
     private static GameLauncherLaunchState? LaunchStateFor(
         IReadOnlyDictionary<string, GameLauncherLaunchState> states,

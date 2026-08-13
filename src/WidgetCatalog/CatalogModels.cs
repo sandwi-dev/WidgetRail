@@ -5,7 +5,7 @@ namespace GameBarAlternative.WidgetCatalog;
 public sealed record WidgetCatalogOptions
 {
     public int MaximumArchiveEntries { get; init; } = 512;
-    public long MaximumEntryBytes { get; init; } = 16 * 1024 * 1024;
+    public long MaximumEntryBytes { get; init; } = 32 * 1024 * 1024;
     public long MaximumTotalBytes { get; init; } = 64 * 1024 * 1024;
     public int MaximumPathLength { get; init; } = 240;
     public int MaximumInstalledWidgetIds { get; init; } = 256;

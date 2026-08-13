@@ -212,6 +212,11 @@ internal static class FullTrustCommunityScenarios
             "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
         Check(File.Exists(Path.Combine(applicationOutput, "GameLauncherApplication.exe")),
             "The package-owned Game Launcher application was not built.");
+        Check(File.Exists(Path.Combine(applicationOutput, "Microsoft.Windows.SDK.NET.dll")) &&
+              File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.Core.dll")) &&
+              !File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.dll")),
+            "The Game Launcher package graph did not contain the Windows runtime and " +
+            "capability-free widget core exclusively.");
         using var temporary = new ScenarioDirectory();
         var package = CreateGameLauncherPackage(root, applicationOutput, temporary.Path);
         var installedRoot = Path.Combine(temporary.Path, "installed");
@@ -237,12 +242,21 @@ internal static class FullTrustCommunityScenarios
         Environment.SetEnvironmentVariable(variable, Path.Combine(temporary.Path, "data"));
         try
         {
+            using var invalidated = new SemaphoreSlim(0);
             await using var client = Client(configured);
+            client.Invalidated += (_, _) => invalidated.Release();
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
             var snapshot = await client.GetSnapshotAsync();
-            Check(snapshot.Root.Id == "game-launcher.root",
-                $"The ordinary full-trust route returned root '{snapshot.Root.Id}' " +
-                $"with focus '{snapshot.InitialFocusId ?? "<null>"}'.");
+            for (var attempt = 0; attempt != 12; attempt++)
+            {
+                if (UsableGameLauncherLibrary(snapshot)) break;
+                await invalidated.WaitAsync(TimeSpan.FromSeconds(5));
+                snapshot = await client.GetSnapshotAsync();
+            }
+            Check(UsableGameLauncherLibrary(snapshot),
+                $"The ordinary full-trust route did not reach a usable library/source " +
+                $"snapshot. Root '{snapshot.Root.Id}', focus " +
+                $"'{snapshot.InitialFocusId ?? "<null>"}'.");
             await client.StopAsync();
         }
         finally
@@ -254,6 +268,27 @@ internal static class FullTrustCommunityScenarios
         var removed = await catalog.UninstallAsync(installed.Id);
         Check(removed.RemovedVersions.Count == 1,
             "The ordinary Game Launcher package did not disable and remove cleanly.");
+    }
+
+    private static bool UsableGameLauncherLibrary(ViewSnapshot snapshot)
+    {
+        if (snapshot.InitialFocusId is null ||
+            TryFind(snapshot.Root, "game-launcher.sources") is null ||
+            TryFind(snapshot.Root, "game-launcher.retry") is not null)
+            return false;
+        return Descendants(snapshot.Root).Any(node =>
+            node.Id.StartsWith("game-launcher.source.source-", StringComparison.Ordinal) &&
+            node.Text is { } text &&
+            (text.Contains(": Healthy", StringComparison.Ordinal) ||
+             text.Contains(": Degraded", StringComparison.Ordinal)));
+    }
+
+    private static IEnumerable<ViewNode> Descendants(ViewNode root)
+    {
+        yield return root;
+        foreach (var child in root.Children)
+        foreach (var descendant in Descendants(child))
+            yield return descendant;
     }
 
     private static WidgetProcessClient Client(ConfiguredWidget configured) => new(new WidgetProcessOptions
@@ -369,9 +404,7 @@ internal static class FullTrustCommunityScenarios
         foreach (var file in Directory.EnumerateFiles(
                      applicationOutput, "*", SearchOption.AllDirectories)
                  .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
-                                !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
-                                !Path.GetFileName(path).Equals(
-                                    "Microsoft.Windows.SDK.NET.dll", StringComparison.Ordinal))
+                                !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                  .Order(StringComparer.Ordinal))
         {
             var relative = Path.GetRelativePath(applicationOutput, file).Replace('\\', '/');

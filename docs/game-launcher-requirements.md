@@ -170,7 +170,11 @@ ships a Game Launcher-specific capability. Windows/Xbox and opt-in installed-sto
 adapters, caches, source health, organization persistence, SavedId issuance, and
 fresh launch revalidation are package-owned. This ordinary current-user authority
 is disclosed at install and enable time; it is not AppContainer isolation and does
-not grant authority to retained display rows.
+not grant authority to retained display rows. Package-owned artwork registrations
+are opaque, bounded to 128 current entries, and resolved lazily through exact
+provider revalidation. Successful demands become bounded inline PNG content;
+missing or offline artwork becomes the closed game glyph and never exposes a path,
+store identity, or unusable package-local handle to the host.
 
 ### Source adapter contract
 

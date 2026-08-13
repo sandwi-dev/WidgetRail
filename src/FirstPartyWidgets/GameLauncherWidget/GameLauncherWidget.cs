@@ -54,6 +54,11 @@ public sealed class GameLauncherWidget : Widget
     private string? _heroSavedId;
     private int _heroIndex;
 
+#if GAME_LAUNCHER_COMMUNITY_CORE
+    internal GameLauncherWidget(IGameLauncherApplicationService application)
+    {
+        _application = application ?? throw new ArgumentNullException(nameof(application));
+#else
     public GameLauncherWidget() : this(null)
     {
     }
@@ -61,6 +66,7 @@ public sealed class GameLauncherWidget : Widget
     internal GameLauncherWidget(IGameLauncherApplicationService? application)
     {
         _application = application ?? new HostGameLauncherApplicationService(() => HostServices);
+#endif
         _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
             maximumDepth: 1, maximumRoutes: 8);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()
@@ -876,7 +882,10 @@ public sealed class GameLauncherWidget : Widget
                 cancellationToken)
             .ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        var rawItems = page.Items.Select(GameLauncherItem.From).ToArray();
+        var rawArtwork = await ResolveArtworkAsync(page.Items, cancellationToken)
+            .ConfigureAwait(false);
+        var rawItems = page.Items.Select(item => ProjectArtwork(
+            item, rawArtwork.GetValueOrDefault(item.SavedId))).ToArray();
         var fixedRows = GameLauncherFixedRows.Empty;
         var rawFixedRows = GameLauncherFixedRows.Empty;
         if (direction is null)
@@ -897,6 +906,8 @@ public sealed class GameLauncherWidget : Widget
                 : await _application.ResolveSavedAsync(
                     fixedSavedIds, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
+            var resolvedArtwork = await ResolveArtworkAsync(resolved, cancellationToken)
+                .ConfigureAwait(false);
             var resolvedBySavedId = resolved.ToDictionary(
                 item => item.SavedId, StringComparer.Ordinal);
             var automaticManualGames = route == GameLauncherRoute.Library
@@ -921,7 +932,8 @@ public sealed class GameLauncherWidget : Widget
                     .OfType<WidgetAppLibraryItem>()
                     .Where(item => MatchesFixedQuery(
                         GameLauncherTitlePolicy.Project(organization, item), query))
-                    .Select(GameLauncherItem.From)
+                    .Select(item => ProjectArtwork(
+                        item, resolvedArtwork.GetValueOrDefault(item.SavedId)))
                     .Take(GameLauncherPrivateState.MaximumRecentItems)
                     .ToArray();
             GameLauncherItem[] manual = route != GameLauncherRoute.Library ||
@@ -934,7 +946,8 @@ public sealed class GameLauncherWidget : Widget
                         item.Presentation.Kind != WidgetAppLibraryKind.Game &&
                         MatchesFixedQuery(
                             GameLauncherTitlePolicy.Project(organization, item), query))
-                    .Select(GameLauncherItem.From)
+                    .Select(item => ProjectArtwork(
+                        item, resolvedArtwork.GetValueOrDefault(item.SavedId)))
                     .Take(GameLauncherPrivateState.MaximumManualItems)
                     .ToArray();
             var occupied = recent.Concat(manual).Select(item => item.Value.SavedId)
@@ -945,16 +958,18 @@ public sealed class GameLauncherWidget : Widget
                 .OfType<WidgetAppLibraryItem>()
                 .Select(item => GameLauncherTitlePolicy.Project(organization, item))
                 .Where(item => MatchesFixedQuery(item, query))
-                .Select(GameLauncherItem.From)
+                .Select(item => ProjectArtwork(
+                    item, resolvedArtwork.GetValueOrDefault(item.SavedId)))
                 .Take(WidgetAppLibraryService.MaximumSavedItems)
                 .ToArray();
             rawFixedRows = new(recent, manual,
                 titleMatches.Select(item => resolvedBySavedId[item.Value.SavedId])
-                    .Select(GameLauncherItem.From).ToArray());
+                    .Select(item => ProjectArtwork(
+                        item, resolvedArtwork.GetValueOrDefault(item.SavedId))).ToArray());
             fixedRows = new(
-                recent.Select(item => GameLauncherItem.From(
+                recent.Select(item => item.WithValue(
                     GameLauncherTitlePolicy.Project(organization, item.Value))).ToArray(),
-                manual.Select(item => GameLauncherItem.From(
+                manual.Select(item => item.WithValue(
                     GameLauncherTitlePolicy.Project(organization, item.Value))).ToArray(),
                 titleMatches);
         }
@@ -978,7 +993,7 @@ public sealed class GameLauncherWidget : Widget
         var projectionSaved = await PersistProjectionAsync(
                 projectionItems, provenSources, cancellationToken)
             .ConfigureAwait(false);
-        var items = rawItems.Select(item => GameLauncherItem.From(
+        var items = rawItems.Select(item => item.WithValue(
                 GameLauncherTitlePolicy.Project(organization, item.Value)))
             .Where(item => MatchesFixedQuery(item.Value, query))
             .ToArray();
@@ -999,6 +1014,38 @@ public sealed class GameLauncherWidget : Widget
         return new(items,
             page.Before is null ? null : new WidgetCollectionCursor(page.Before),
             page.After is null ? null : new WidgetCollectionCursor(page.After));
+    }
+
+    private async ValueTask<IReadOnlyDictionary<string, string>> ResolveArtworkAsync(
+        IReadOnlyList<WidgetAppLibraryItem> items,
+        CancellationToken cancellationToken)
+    {
+        var content = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!_application.OwnsArtworkContent) return content;
+        foreach (var item in items)
+        {
+            var artwork = item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
+            if (artwork is null) continue;
+            var png = await _application.ResolveArtworkAsync(artwork, cancellationToken)
+                .ConfigureAwait(false);
+            if (png is not null) content[item.SavedId] = png;
+        }
+        return content;
+    }
+
+    private GameLauncherItem ProjectArtwork(
+        WidgetAppLibraryItem item,
+        string? pngBase64)
+    {
+        if (!_application.OwnsArtworkContent)
+            return GameLauncherItem.From(item, pngBase64);
+        return GameLauncherItem.From(item with
+        {
+            Presentation = item.Presentation with
+            {
+                Artwork = new WidgetAppLibraryArtworkSet([]),
+            },
+        }, pngBase64);
     }
 
     private async Task LaunchAsync(string sourceElementId, CancellationToken cancellationToken)
@@ -1505,15 +1552,15 @@ public sealed class GameLauncherWidget : Widget
         var organization = GameLauncherTitlePolicy.Project(_organization);
         var collection = _library.Snapshot with
         {
-            Items = _library.Snapshot.Items.Select(item => GameLauncherItem.From(
+            Items = _library.Snapshot.Items.Select(item => item.WithValue(
                 GameLauncherTitlePolicy.Project(_organization, item.Value))).ToArray(),
         };
         var fixedRows = new GameLauncherFixedRows(
-            _fixedRows.Recent.Select(item => GameLauncherItem.From(
+            _fixedRows.Recent.Select(item => item.WithValue(
                 GameLauncherTitlePolicy.Project(_organization, item.Value))).ToArray(),
-            _fixedRows.Manual.Select(item => GameLauncherItem.From(
+            _fixedRows.Manual.Select(item => item.WithValue(
                 GameLauncherTitlePolicy.Project(_organization, item.Value))).ToArray(),
-            _fixedRows.TitleMatches.Select(item => GameLauncherItem.From(
+            _fixedRows.TitleMatches.Select(item => item.WithValue(
                 GameLauncherTitlePolicy.Project(_organization, item.Value))).ToArray());
         return new(
         collection,

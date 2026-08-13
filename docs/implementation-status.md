@@ -5182,7 +5182,14 @@ cursor queries, opaque SavedId key, organization-state CAS file, running-app
 observation, and exact launch revalidation. It uses the public normalized SDK
 presentation values and generic application bootstrap; the staged payload contains
 neither `PlatformBroker.dll`, `WindowsAppLibraryProvider.dll`, nor
-`PlatformSettings.dll`, and the manifest declares no product capability.
+`PlatformSettings.dll`, and the manifest declares no product capability. The
+package ships `GameLauncherWidget.Core.dll`, which has no dormant
+`system.apps.library.*` or `storage.private-state.v1` adapter; the retained built-in
+host adapter is compiled only into the unshipped legacy assembly. The payload also
+includes the required `Microsoft.Windows.SDK.NET.dll` runtime projection. The
+finite archive defaults remain 64 MiB total and 512 entries; the per-entry limit is
+32 MiB so that the 24.9 MiB Windows projection is admitted under the same streamed
+length and integrity checks.
 
 The external export produces the same autonomous executable from only the local
 public SDK package and copied package source. The ordinary catalog route requires
@@ -5192,17 +5199,20 @@ supports disable/uninstall cleanup. Package-local organization state is a narrow
 pre-release reset from the retired overlay state; the existing Epic/GOG opt-in
 booleans are imported once, while external store/account data and credentials are
 left untouched. Game Launcher appears as Community; Games & Apps remains Built-in.
-Focused Release evidence passes Game Launcher 90/90, package-owned persistence
-3/3, Windows app-library source behavior 75/75, Gbar CLI/export/package 65/65,
-and Widget Bridge 88/88 including the ordinary full-trust application route. The
-supported package helper produced a 13-file, 1,952,494-byte immutable 0.2.0
-archive. Documentation validation reaches only the seven pre-existing broken
-links in reviewer-owned delivery-plan history; no implementation-owned document
-failure was reported.
+Package service coverage now traverses all 10,000 items, searches a later-page
+item, demands and caches exact artwork, retains a degraded last-good catalog,
+routes exact SavedId launch success/failure, drives collection and Details/Back
+through the actual widget core, and retains organization/SavedId state across
+restart, update, replacement, and reinstall. Focused Release evidence passes Game
+Launcher 90/90, package-owned application/runtime 6/6, catalog 35/35, the isolated
+external export/package/install route, and the ordinary packaged full-trust route.
+The supported package helper produced a 12-file, 26,833,278-byte immutable 0.2.0
+archive including the required Windows runtime.
 The one clean exact-commit Tier-3 checkpoint at `7aa229e` is retained under
 `artifacts/verification/20260813T131146Z-a314fbcd`; it stopped in the runner
 self-test before product execution because the new MSTest project was absent
 from the verification manifest. The appended verifier registration is proven by
-the bounded 3/3 step at
+the bounded application step at
 `artifacts/verification/20260813T131228Z-bb1ba3ef`; the canonical aggregate was
-not repeated.
+not repeated for the original candidate. The correction runs one new final-tip
+Tier-3 checkpoint after its coherent commit and records that outcome separately.

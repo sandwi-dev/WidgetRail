@@ -50,7 +50,7 @@ The prototype defaults are:
 - At most 512 archive entries
 - At most 1,024 distinct package-root/implicit directories needed to reach
   regular files under exact worker authority
-- At most 16 MiB expanded per entry
+- At most 32 MiB expanded per entry
 - At most 64 MiB expanded across the package
 - At most 240 UTF-16 characters per relative path
 

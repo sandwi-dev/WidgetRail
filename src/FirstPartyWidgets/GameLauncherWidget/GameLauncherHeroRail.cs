@@ -257,7 +257,10 @@ internal static class GameLauncherHeroRailPresentation
         if (selected.Preferred) traits.Add("Preferred variant");
         if (selected.GroupSize > 1) traits.Add($"{selected.GroupSize} grouped variants");
         var metadata = traits.Count == 0 ? state : state + " · " + string.Join(" · ", traits);
-        WidgetElement artwork = selected.Current?.Presentation.Artwork.Find(
+        WidgetElement artwork = selected.Current?.ArtworkPngBase64 is { } png
+            ? UI.InlinePngImage(png, "game-launcher.hero.artwork",
+                $"Artwork for {title}", ImageFit.Cover)
+            : selected.Current?.Presentation.Artwork.Find(
                 WidgetAppLibraryArtworkRole.Hero) is { } hero
             ? UI.Artwork(new WidgetArtworkHandle(hero.Handle), "game-launcher.hero.artwork",
                 $"Artwork for {title}", ImageFit.Cover)

@@ -1026,9 +1026,7 @@ static async Task ExternalGameLauncherCommunityReference()
     foreach (var input in Directory.EnumerateFiles(
                  applicationOutput, "*", SearchOption.AllDirectories)
              .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
-                            !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) &&
-                            !Path.GetFileName(path).Equals(
-                                "Microsoft.Windows.SDK.NET.dll", StringComparison.Ordinal)))
+                            !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)))
     {
         var destination = Path.Combine(
             staging, "payload", Path.GetRelativePath(applicationOutput, input));
@@ -1070,10 +1068,26 @@ static async Task ExternalGameLauncherCommunityReference()
     foreach (var productAssembly in new[]
              {
                  "PlatformBroker.dll", "WindowsAppLibraryProvider.dll",
-                 "PlatformSettings.dll",
+                 "PlatformSettings.dll", "GameLauncherWidget.dll",
              })
         Assert.True(!File.Exists(Path.Combine(applicationOutput, productAssembly)),
             $"The exported application retained product assembly {productAssembly}.");
+    Assert.True(!File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.Core.dll")),
+        "The source-export application unexpectedly split its single capability-free assembly.");
+    Assert.True(File.Exists(Path.Combine(applicationOutput, "Microsoft.Windows.SDK.NET.dll")),
+        "The exported application omitted its required Windows SDK runtime projection.");
+    var coreBytes = await File.ReadAllBytesAsync(Path.Combine(
+        applicationOutput, "GameLauncherApplication.dll"));
+    foreach (var forbiddenCapability in new[]
+             {
+                 "system.apps.library.read.v1",
+                 "system.apps.library.launch.v1",
+                 "storage.private-state.v1",
+                 "HostGameLauncherApplicationService",
+             })
+        Assert.True(!ContainsBytes(coreBytes, Encoding.UTF8.GetBytes(forbiddenCapability)) &&
+                    !ContainsBytes(coreBytes, Encoding.Unicode.GetBytes(forbiddenCapability)),
+            $"The shipped widget core retained dormant capability '{forbiddenCapability}'.");
     var snapshot = await new WidgetCatalog(catalog).DiscoverAsync();
     var candidate = snapshot.Widgets.Single();
     Assert.Equal(manifest.Id, candidate.Id);

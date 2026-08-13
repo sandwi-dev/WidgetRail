@@ -6,10 +6,16 @@ namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
 
 internal sealed record GameLauncherItem(
     WidgetAppLibraryItem Value,
-    WidgetCollectionItemKey Key)
+    WidgetCollectionItemKey Key,
+    string? ArtworkPngBase64 = null)
 {
-    internal static GameLauncherItem From(WidgetAppLibraryItem item) =>
-        new(item, GameLauncherIdentity.Key(item.SavedId));
+    internal static GameLauncherItem From(
+        WidgetAppLibraryItem item,
+        string? artworkPngBase64 = null) =>
+        new(item, GameLauncherIdentity.Key(item.SavedId), artworkPngBase64);
+
+    internal GameLauncherItem WithValue(WidgetAppLibraryItem item) =>
+        From(item, ArtworkPngBase64);
 
     internal WidgetAppLibraryPresentation Presentation => Value.Presentation;
 }

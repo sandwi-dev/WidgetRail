@@ -77,6 +77,7 @@ if (-not $sdkVersion.Success) {
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>GameLauncherApplication</AssemblyName>
+    <DefineConstants>`$(DefineConstants);GAME_LAUNCHER_COMMUNITY_CORE</DefineConstants>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PathMap>`$(MSBuildProjectDirectory)=/_/source</PathMap>
   </PropertyGroup>
