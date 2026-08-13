@@ -297,7 +297,11 @@ internal static class SettingsInstalledWidgetPresentation
             _ => "Unknown",
         };
         var contentDigest = package.ActiveVersion.ContentDigest.ToLowerInvariant();
-        var action = package.Enabled ? "Disable widget" : "Enable unsigned widget";
+        var fullTrust = WidgetManifestTrust.Resolve(manifest) ==
+            WidgetExecutionTrust.FullTrustCurrentUser;
+        var action = package.Enabled
+            ? "Disable widget"
+            : fullTrust ? "Enable full-trust application" : "Enable unsigned widget";
         var canToggle = package.Enabled || compatibility.IsSupported;
         var canToggleNow = valid && canToggle;
         var hasPermissions = permissionCatalogValid &&
@@ -352,7 +356,9 @@ internal static class SettingsInstalledWidgetPresentation
                         : "Installed catalog refresh is required. This last-good package remains reviewable, but package mutations are disabled until Retry succeeds.",
                     "installed.details.catalog-status", "Installed catalog status")
                     .Classes(valid ? "diagnostic-ok" : "diagnostic-error"),
-                UI.Text("Trust: Unsigned · publisher unverified", "installed.details.trust",
+                UI.Text(fullTrust
+                        ? "Trust: Full trust · ordinary current-user process · not AppContainer sandboxed"
+                        : "Trust: Unsigned · publisher unverified", "installed.details.trust",
                     "Unsigned package trust status").Classes("diagnostic-error"),
                 UI.Text($"ID: {manifest.Id}", "installed.details.id", "Package ID").Classes("diagnostic-line"),
                 UI.Text($"Declared publisher (unverified): {manifest.Publisher}",
@@ -385,7 +391,9 @@ internal static class SettingsInstalledWidgetPresentation
                             ? "This unsigned widget is available in the overlay. Its declared publisher remains unverified. Disable it to stop future activation."
                             : "This widget is marked enabled but cannot run on this host. Disable it before installing a compatible update."
                         : compatibility.IsSupported
-                            ? "Enabling confirms review of these exact unsigned bytes and declared capabilities, not publisher identity. Capability access still requires separate consent."
+                            ? fullTrust
+                                ? "Enabling explicitly approves these exact unsigned bytes to use ordinary current-user authority, including files, network, registry, databases, and child processes. No AppContainer or broker capability boundary applies."
+                                : "Enabling confirms review of these exact unsigned bytes and declared capabilities, not publisher identity. Capability access still requires separate consent."
                             : "Install a version that supports this host API and architecture before enabling. Capability consent is a separate decision.",
                     "installed.details.status", "Package enabled status").Classes("page-help"),
         };

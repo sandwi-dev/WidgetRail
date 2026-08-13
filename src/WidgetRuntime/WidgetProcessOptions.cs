@@ -170,6 +170,12 @@ public enum WidgetWorkerIsolationPolicy
     HostTrustedJobOnly,
     /// <summary>Requires a capability-free AppContainer in addition to Job Object limits.</summary>
     RequireAppContainer,
+    /// <summary>
+    /// An explicitly approved installed Community executable running with the
+    /// ordinary current user's authority. The host retains process lifetime
+    /// ownership but applies no AppContainer or UI restriction policy.
+    /// </summary>
+    FullTrustCommunity,
 }
 
 public sealed record WidgetProcessOptions
@@ -264,7 +270,7 @@ public sealed record WidgetProcessOptions
             (string.IsNullOrWhiteSpace(IsolationKey) || IsolationKey.Length > 512))
             throw new ArgumentException(
                 "AppContainer workers require a bounded host-owned isolation key.", nameof(IsolationKey));
-        if (IsolationPolicy == WidgetWorkerIsolationPolicy.HostTrustedJobOnly && IsolationKey is not null)
+        if (IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer && IsolationKey is not null)
             throw new ArgumentException(
                 "Isolation keys apply only to AppContainer workers.", nameof(IsolationKey));
         if (ReadOnlyPaths is null || ReadOnlyPaths.Any(path => string.IsNullOrWhiteSpace(path)))
@@ -277,19 +283,21 @@ public sealed record WidgetProcessOptions
             if ((File.GetAttributes(fullPath) & FileAttributes.ReparsePoint) != 0)
                 throw new ArgumentException("Worker read-only roots cannot be reparse points.", nameof(ReadOnlyPaths));
         }
-        if (IsolationPolicy == WidgetWorkerIsolationPolicy.HostTrustedJobOnly && ReadOnlyPaths.Count != 0)
+        if (IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer && ReadOnlyPaths.Count != 0)
             throw new ArgumentException(
                 "Read-only paths apply only to AppContainer workers.", nameof(ReadOnlyPaths));
         if (ContentLeaseFactory is not null &&
-            (IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer ||
+            (IsolationPolicy is not (WidgetWorkerIsolationPolicy.RequireAppContainer or
+                WidgetWorkerIsolationPolicy.FullTrustCommunity) ||
              ReadOnlyPaths.Count != 0))
             throw new ArgumentException(
-                "Content leases require an AppContainer with no broad read-only roots.",
+                "Content leases require an installed worker with no broad read-only roots.",
                 nameof(ContentLeaseFactory));
         if ((ContentAuthorityOperations is not null || ContentAuthorityJournal is not null) &&
-            ContentLeaseFactory is null)
+            (ContentLeaseFactory is null ||
+             IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer))
             throw new ArgumentException(
-                "Content authority overrides require a content lease.",
+                "Content authority overrides require an AppContainer content lease.",
                 nameof(ContentLeaseFactory));
     }
 }

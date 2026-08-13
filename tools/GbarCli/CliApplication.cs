@@ -108,14 +108,14 @@ public static class CliApplication
           gbar render <snapshot.json> [--output <canonical-snapshot.json>]
           gbar replay <snapshot.json> <input-replay.json>
           gbar pack <widget-directory|widget.csproj> [--output <file.gbarwidget>] [--configuration <name>] [--build-timeout-seconds <10-600>]
-          gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> [--sha256 <64-hex>] [--catalog <root>]
+          gbar install <file.gbarwidget|https-url|github:owner/repository@tag/asset.gbarwidget> [--sha256 <64-hex>] [--catalog <root>] [--accept-full-trust]
           gbar uninstall <widget-id> [--catalog <root>]
           gbar repair list [--catalog <root>]
           gbar repair remove <widget-id> <version> [--catalog <root>]
           gbar authority-recovery list
           gbar authority-recovery retry <confirmation-token>
           gbar list [--catalog <root>]
-          gbar enable <widget-id> [--catalog <root>]
+          gbar enable <widget-id> [--catalog <root>] [--accept-full-trust]
           gbar disable <widget-id> [--catalog <root>]
           gbar version list <widget-id> [--catalog <root>]
           gbar version select <widget-id> <version> [--catalog <root>]

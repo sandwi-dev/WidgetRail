@@ -654,12 +654,18 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 : new Dictionary<int, string>(),
             ProcessLeaseFactory = processLeaseFactory,
             ContentLeaseFactory = configured.ContentLeaseFactory,
-            IsolationPolicy = configured.RequiresAppContainer
-                ? WidgetWorkerIsolationPolicy.RequireAppContainer
-                : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
+            IsolationPolicy = configured.ExecutionTrust ==
+                WidgetExecutionTrust.FullTrustCurrentUser
+                    ? WidgetWorkerIsolationPolicy.FullTrustCommunity
+                    : configured.RequiresAppContainer
+                        ? WidgetWorkerIsolationPolicy.RequireAppContainer
+                        : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
             IsolationKey = configured.IsolationKey,
             ReadOnlyPaths = configured.ReadOnlyPaths,
-            CompanionSessionFactory = IsTrustedSettings(configured)
+            CompanionSessionFactory = configured.ExecutionTrust ==
+                WidgetExecutionTrust.FullTrustCurrentUser
+                    ? null
+                : IsTrustedSettings(configured)
                 ? context => new DiagnosticsWidgetProcessCompanion(
                     _diagnostics.CreateAsync,
                     _authorityRecovery.RetryAsync,

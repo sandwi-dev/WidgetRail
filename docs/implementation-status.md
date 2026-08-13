@@ -4300,3 +4300,44 @@ attempt is not passing evidence. The project is now listed with its bounded
 MSTest.Sdk invocation. The corrected aggregate is run once only after this
 correction is committed, and its exact result belongs to the milestone report;
 no capture evidence is used.
+
+### Generic full-trust Community application runtime (DLV-215)
+
+DLV-215 adds one versioned `full-trust-application-v1` manifest entrypoint for
+an exact immutable package executable. Install and enable deny it by default;
+CLI and Settings require an explicit full-trust approval while disclosing that
+the executable runs as an ordinary current-user process outside AppContainer
+with ambient file, network, registry, database, and child-process authority.
+There is no sandbox-to-full-trust fallback.
+
+The public author boundary is the new narrow `WidgetApplicationRuntime`
+bootstrap plus `WidgetSdk` and `WidgetProtocol`. The author package deliberately
+contains neither the host-side `WidgetRuntime` nor `PlatformBroker`, and the
+bootstrap creates no capability-broker connection. Host-private launch policy
+still pins the selected content generation and exact executable, authenticates
+a random session nonce and connected PID, validates bounded protocol messages,
+and retains lifecycle, failure/restart, update, disable, removal, and
+kill-on-close process-tree ownership. Full-trust sessions intentionally receive
+no AppContainer, broker grants, isolation-key ACL projection, private memory
+ceiling, or one-process restriction.
+
+Two unrelated installed fixtures use the ordinary catalog and bridge route.
+The first starts a child process, performs deterministic current-user file and
+transactional JSON-database work, and exercises a fake HTTPS transport; the
+second proves the same generic runtime with a different identity and tree.
+Focused evidence covers explicit trust denial/approval, exact executable
+selection, nonce/PID authentication, malformed/oversized/stale protocol
+denial, crash/restart with retained state, replacement generation, drain,
+disable, and removal. No package, provider, OAuth, assembly/type, element/style,
+or tree-shape special case is present.
+
+Focused Release evidence passes Widget SDK 92/92, Widget Catalog 35/35,
+Widget Runtime 75/75, sandbox WorkerHost 10/10, Widget Bridge 86/86, gbar CLI
+65/65, Settings 61/61, and the native WidgetBridgeCatalog fixture. The copied
+external consumer restores only the generated local SDK package, contains no
+repository `ProjectReference`, emits only the narrow application runtime plus
+SDK/protocol dependencies, and completes its child/file/database/fake-HTTPS
+snapshot through the authenticated supervisor. The documentation contract
+currently remains red only on five links rooted in the reviewer-owned archived
+delivery-plan file `2026-08-12T21-06-00-07-00.md`; no DLV-215 documentation file
+is named by that failure.

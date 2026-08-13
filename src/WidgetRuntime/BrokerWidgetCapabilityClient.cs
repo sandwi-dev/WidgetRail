@@ -7,13 +7,6 @@ using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
 
-internal interface IDashboardGestureActivatingCapabilityClient
-{
-    void SetDashboardGestureActivator(
-        Func<WidgetCapabilityGestureContext, string, string, CancellationToken, ValueTask<bool>>
-            activator);
-}
-
 /// <summary>
 /// Keeps broker transport details behind the transport-neutral SDK contract.
 /// Widget code receives only <see cref="IWidgetCapabilityClient"/>.

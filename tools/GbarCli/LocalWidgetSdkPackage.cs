@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WidgetRuntime;
 
 namespace GameBarAlternative.GbarCli;
 
@@ -24,9 +25,13 @@ internal static class LocalWidgetSdkPackage
         var sdk = ReadAssembly(typeof(Widget).Assembly.Location, "WidgetSdk.dll");
         var protocol = ReadAssembly(
             typeof(ViewSnapshot).Assembly.Location, "WidgetProtocol.dll");
+        var applicationRuntime = ReadAssembly(
+            typeof(WidgetApplicationBootstrap).Assembly.Location,
+            "WidgetApplicationRuntime.dll");
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(sdk);
         hash.AppendData(protocol);
+        hash.AppendData(applicationRuntime);
         var suffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
             .ToLowerInvariant();
         var contract = WidgetSdkReleaseContract.Current;
@@ -39,6 +44,8 @@ internal static class LocalWidgetSdkPackage
             WriteText(archive, "_rels/.rels", Relationships(contract.PackageId));
             WriteBytes(archive, "lib/net8.0/WidgetSdk.dll", sdk);
             WriteBytes(archive, "lib/net8.0/WidgetProtocol.dll", protocol);
+            WriteBytes(archive, "lib/net8.0/WidgetApplicationRuntime.dll",
+                applicationRuntime);
         }
         return new(
             contract.PackageId,

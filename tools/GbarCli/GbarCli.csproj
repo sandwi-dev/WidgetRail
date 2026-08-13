@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
     <ProjectReference Include="..\..\src\WidgetRuntime\WidgetRuntime.csproj" />
+    <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\templates\ControllerWidget\**\*">

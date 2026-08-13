@@ -258,6 +258,7 @@ static string[] RuntimeArguments() =>
 [
     "--widget-pipe", "gba-runtime-test",
     "--widget-instance", "widget-1",
+    "--widget-session-nonce", new string('B', 64),
     "--max-message-bytes", "65536",
 ];
 

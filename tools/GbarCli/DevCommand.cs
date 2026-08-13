@@ -857,9 +857,14 @@ internal static class DevGenerationBuilder
             return new(packed.PackagePath, packed.Inspection.Manifest);
         }
 
+        if (!string.Equals(manifest.Entrypoint.Runtime,
+                WidgetEntrypointRuntimes.DotNetWorker, StringComparison.Ordinal))
+            throw new CliOperationException(
+                "gbar dev supports sandboxed dotnet-worker projects; full-trust applications are installed and launched only through the production catalog.");
+
         var packageRoot = Path.Combine(generationRoot, "package");
         var entrypoint = Path.GetFullPath(
-            manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar), packageRoot);
+            manifest.Entrypoint.Assembly!.Replace('/', Path.DirectorySeparatorChar), packageRoot);
         if (!IsWithin(packageRoot, entrypoint))
             throw new CliOperationException("Manifest entrypoint escapes the package root.");
         var outputDirectory = Path.GetDirectoryName(entrypoint)!;

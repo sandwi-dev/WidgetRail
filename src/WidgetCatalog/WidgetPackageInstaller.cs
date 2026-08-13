@@ -220,10 +220,15 @@ public sealed class WidgetPackageInstaller
         if (!Version.TryParse(manifest.Version, out var version) ||
             !string.Equals(version.ToString(), manifest.Version, StringComparison.Ordinal))
             throw new WidgetPackageException("invalid_manifest", "Manifest version must use a deterministic dotted numeric representation.");
-        if (!knownPaths.TryGetValue(manifest.Entrypoint.Assembly, out var assemblyPath) ||
-            assemblyPath.IsDirectory ||
-            !string.Equals(assemblyPath.CanonicalPath, manifest.Entrypoint.Assembly, StringComparison.Ordinal))
-            throw new WidgetPackageException("missing_entrypoint", $"Entrypoint assembly is missing or has different casing: {manifest.Entrypoint.Assembly}");
+        var entrypointPath = WidgetEntrypointRuntimes.ResolvePackagePath(
+            manifest.Entrypoint);
+        if (!knownPaths.TryGetValue(entrypointPath, out var packagedEntrypoint) ||
+            packagedEntrypoint.IsDirectory ||
+            !string.Equals(
+                packagedEntrypoint.CanonicalPath, entrypointPath, StringComparison.Ordinal))
+            throw new WidgetPackageException(
+                "missing_entrypoint",
+                $"Entrypoint is missing or has different casing: {entrypointPath}");
 
         return new PackagePlan(
             entries,

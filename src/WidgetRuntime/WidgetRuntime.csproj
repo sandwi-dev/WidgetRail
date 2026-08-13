@@ -6,7 +6,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="RuntimeProtocol.cs" />
+    <Compile Remove="WidgetWorkerServer.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />
+    <ProjectReference Include="..\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
     <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
 </Project>

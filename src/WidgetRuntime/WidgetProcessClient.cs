@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GameBarAlternative.PlatformBroker;
@@ -432,6 +433,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             }
             var pipeSuffix = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
             var pipeName = pipeSuffix;
+            var sessionNonce = Convert.ToHexString(
+                RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
             var serverPipeName = pipeName;
             var pipe = appContainer is null
                 ? new NamedPipeServerStream(
@@ -471,6 +474,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             startInfo.ArgumentList.Add(pipeName);
             startInfo.ArgumentList.Add("--widget-instance");
             startInfo.ArgumentList.Add(_options.WidgetInstanceId);
+            startInfo.ArgumentList.Add("--widget-session-nonce");
+            startInfo.ArgumentList.Add(sessionNonce);
             startInfo.ArgumentList.Add("--max-message-bytes");
             startInfo.ArgumentList.Add(_options.MaximumMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
@@ -483,7 +488,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         Process.Start(startInfo) ??
                             throw new WidgetProcessException("Worker process did not start."),
                         null);
-                var job = WindowsWorkerJob.Create();
+                var job = WindowsWorkerJob.Create(
+                    restrictUi: _options.IsolationPolicy !=
+                        WidgetWorkerIsolationPolicy.FullTrustCommunity);
                 try { return (job.StartProcess(startInfo, appContainer), job); }
                 catch
                 {
@@ -516,6 +523,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             var helloPayload = RuntimeJson.FromElement<HelloPayload>(hello.Payload);
             if (!string.Equals(helloPayload.WidgetInstanceId, _options.WidgetInstanceId, StringComparison.Ordinal))
                 throw new WidgetProtocolViolationException("Worker handshake used the wrong instance ID.");
+            if (helloPayload.SessionNonce is not { Length: 64 } ||
+                !helloPayload.SessionNonce.All(char.IsAsciiHexDigit))
+                throw new WidgetProtocolViolationException(
+                    "Worker handshake used an invalid session nonce.");
+            if (!CryptographicOperations.FixedTimeEquals(
+                    Encoding.ASCII.GetBytes(helloPayload.SessionNonce),
+                    Encoding.ASCII.GetBytes(sessionNonce)))
+                throw new WidgetProtocolViolationException("Worker handshake used the wrong session nonce.");
             await currentSession.WriteAsync(new RuntimeEnvelope
             {
                 Type = MessageTypes.HelloAccepted,

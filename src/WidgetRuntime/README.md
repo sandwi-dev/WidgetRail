@@ -1,6 +1,6 @@
 # Widget runtime spike
 
-## Native .NET worker bootstrap
+## Sandboxed .NET worker bootstrap
 
 Custom workers must use `WidgetWorkerBootstrap`; do not parse the host command
 line or open runtime/broker pipes directly. A complete executable entrypoint is:
@@ -32,6 +32,26 @@ Factories with a closed, non-sensitive startup failure may throw
 must never contain paths, credentials, or user data. Host-owned lifecycle
 messages remain the only way to transition a running widget.
 
+## Full-trust Community application bootstrap
+
+An explicitly approved full-trust Community application uses the separate
+`WidgetApplicationRuntime.dll` author artifact and
+`WidgetApplicationBootstrap`; it must not reference this host-side
+`WidgetRuntime` assembly or `PlatformBroker`:
+
+```csharp
+using GameBarAlternative.WidgetRuntime;
+
+return await WidgetApplicationBootstrap.RunAsync(args, () => new MyWidget());
+```
+
+That narrow bootstrap implements only the authenticated overlay lifecycle and
+snapshot/action channel. It does not connect to the capability broker and does
+not expose product or provider DTOs. The host still validates the exact sealed
+package executable, session nonce, connected PID, bounded protocol, and
+lifecycle. Those checks authenticate the admitted application session; they do
+not sandbox its ordinary current-user OS authority.
+
 `WidgetProcessClient` is the host-side lifecycle/API boundary. Construction is
 inert; the configured worker starts on the first render, action, controller
 input, or activation request. Deactivation of an unstarted worker is the one
@@ -40,17 +60,23 @@ named pipe in the trusted Job-only path, or one random SID/Low-label global pipe
 in the installed/community AppContainer path, and must run `WidgetWorkerServer`
 with the supplied command-line values.
 
-`WidgetProcessOptions.IsolationPolicy` is trusted host policy, never manifest or
-worker input. `RequireAppContainer` also requires a bounded host-owned
+`WidgetProcessOptions.IsolationPolicy` is trusted host policy, never worker
+input. The strict manifest runtime selects either the ordinary sandboxed worker
+contract or the explicitly approved full-trust application contract.
+`RequireAppContainer` also requires a bounded host-owned
 `IsolationKey`; for unsigned installations the bridge derives it from a
 host-computed authority ID bound to the asserted publisher, package ID, and
 exact immutable version, then supplies that version root through
 `ReadOnlyPaths`. A different unsigned version receives a different profile and
 cannot inherit the prior version's broker consent.
 `HostTrustedJobOnly` remains a temporary platform-owned exception for bundled
-Settings and YT Music workers that need desktop-user resources. The generic
-installed-package bridge path always selects `RequireAppContainer`; a community
-package cannot request the exception.
+Settings and YT Music workers that need desktop-user resources. The ordinary
+installed-worker path selects `RequireAppContainer`. A
+`full-trust-application-v1` package instead receives the dedicated
+`FullTrustCommunity` policy only after catalog trust approval; it receives no
+AppContainer, broker channel, capability grants, isolation key, or package ACL
+projection. Both policies remain host-selected consequences of the validated
+manifest rather than worker command-line input.
 
 On Windows, `RequireAppContainer` opens or creates one stable profile derived
 from that isolation key, grants its SID read/execute access only to the worker

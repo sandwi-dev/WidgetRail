@@ -18,6 +18,7 @@ internal static class Program
     {
         var pipeName = RequiredValue(args, "--widget-pipe");
         var instanceId = RequiredValue(args, "--widget-instance");
+        var sessionNonce = RequiredValue(args, "--widget-session-nonce");
         var maximumBytes = int.Parse(
             RequiredValue(args, "--max-message-bytes"),
             NumberStyles.None,
@@ -52,7 +53,8 @@ internal static class Program
             try
             {
                 await new WidgetWorkerServer(
-                        widget, instanceId, pipeName, maximumBytes, capabilities)
+                        widget, instanceId, pipeName, maximumBytes, capabilities,
+                        sessionNonce)
                     .RunAsync(shutdown.Token)
                     .ConfigureAwait(false);
             }

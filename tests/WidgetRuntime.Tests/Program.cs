@@ -67,6 +67,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Retired sessions cannot grant gesture authority into replacements", WidgetProcessOwnershipScenarios.StaleGestureCannotGrantReplacementAuthority),
     ("Cancellation-ignoring retired gesture grants are revoked", WidgetProcessOwnershipScenarios.CancellationIgnoringGestureGrantIsRevoked),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
+    ("Worker handshake requires the exact random session nonce", SessionNonceMismatchIsRejected),
     ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
     ("Process residency leases follow exact worker sessions", ProcessLeaseFollowsSession),
     ("Content admission failures release residency before launch", ContentAdmissionFailsBeforeLaunch),
@@ -153,10 +154,11 @@ static async Task<int> RunWorkerAsync(string[] arguments)
 {
     var pipe = RequiredValue(arguments, "--widget-pipe");
     var instance = RequiredValue(arguments, "--widget-instance");
+    var sessionNonce = RequiredValue(arguments, "--widget-session-nonce");
     var maximumBytes = int.Parse(
         RequiredValue(arguments, "--max-message-bytes"), CultureInfo.InvariantCulture);
     if (arguments.Contains("--malformed-worker", StringComparer.Ordinal))
-        return await RunMalformedWorkerAsync(pipe, instance, maximumBytes);
+        return await RunMalformedWorkerAsync(pipe, instance, sessionNonce, maximumBytes);
     VerifyPrecreatedCompanionEndpoint(arguments);
 
     var usesGestureProbe = arguments.Contains("--gesture-queue-probe", StringComparer.Ordinal) ||
@@ -188,8 +190,11 @@ static async Task<int> RunWorkerAsync(string[] arguments)
                 ? privateMemoryMb
                 : 0);
     IWidgetCapabilityClient? capabilityClient = gestureProbe;
+    var workerNonce = arguments.Contains("--wrong-session-nonce", StringComparer.Ordinal)
+        ? new string('0', 64)
+        : sessionNonce;
     await new WidgetWorkerServer(
-        widget, instance, pipe, maximumBytes, capabilityClient).RunAsync();
+        widget, instance, pipe, maximumBytes, capabilityClient, workerNonce).RunAsync();
     return 0;
 }
 
@@ -214,7 +219,11 @@ static void VerifyPrecreatedCompanionEndpoint(string[] arguments)
     }
 }
 
-static async Task<int> RunMalformedWorkerAsync(string pipeName, string instanceId, int maximumBytes)
+static async Task<int> RunMalformedWorkerAsync(
+    string pipeName,
+    string instanceId,
+    string sessionNonce,
+    int maximumBytes)
 {
     await using var pipe = new System.IO.Pipes.NamedPipeClientStream(
         ".", pipeName, System.IO.Pipes.PipeDirection.InOut,
@@ -224,7 +233,7 @@ static async Task<int> RunMalformedWorkerAsync(string pipeName, string instanceI
     await channel.WriteAsync(new RuntimeEnvelope
     {
         Type = MessageTypes.Hello,
-        Payload = RuntimeJson.ToElement(new HelloPayload(instanceId)),
+        Payload = RuntimeJson.ToElement(new HelloPayload(instanceId, sessionNonce)),
     }, CancellationToken.None);
     _ = await channel.ReadAsync(CancellationToken.None);
     var request = await channel.ReadAsync(CancellationToken.None);
@@ -2502,6 +2511,18 @@ static async Task MalformedSnapshotIsRejected()
 {
     await using var client = CreateClient(extraArguments: ["--malformed-worker"]);
     await Assert.ThrowsAsync<WidgetProtocolViolationException>(() => client.GetSnapshotAsync());
+}
+
+static async Task SessionNonceMismatchIsRejected()
+{
+    await using var client = CreateClient(extraArguments: ["--wrong-session-nonce"]);
+    var exception = await Assert.ThrowsAsync<WidgetProcessException>(
+        () => client.GetSnapshotAsync());
+    Assert.True(exception.InnerException is WidgetProtocolViolationException violation &&
+                violation.Message.Contains("wrong session nonce", StringComparison.Ordinal),
+        "A nonce mismatch did not retain its sanitized primary protocol failure.");
+    Assert.True(!client.IsRunning,
+        "A worker with a mismatched session nonce remained admitted.");
 }
 
 static async Task ProtocolValidationDiagnosticIsStructural()

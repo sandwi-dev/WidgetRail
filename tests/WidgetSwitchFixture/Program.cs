@@ -11,6 +11,7 @@ internal static class Program
     {
         var pipeName = RequiredValue(args, "--widget-pipe");
         var instanceId = RequiredValue(args, "--widget-instance");
+        var sessionNonce = RequiredValue(args, "--widget-session-nonce");
         var maximumBytes = int.Parse(
             RequiredValue(args, "--max-message-bytes"),
             NumberStyles.None,
@@ -31,7 +32,8 @@ internal static class Program
                     new SwitchFixtureWidget(instanceId, firstSnapshotSignal, refreshSignal),
                     instanceId,
                     pipeName,
-                    maximumBytes)
+                    maximumBytes,
+                    sessionNonce: sessionNonce)
                 .RunAsync(shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

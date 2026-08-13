@@ -1,13 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WidgetRuntime\WidgetRuntime.csproj" />
-    <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
+    <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\WidgetRuntime\RuntimeProtocol.cs" Link="RuntimeProtocol.cs" />
+    <Compile Include="..\WidgetRuntime\WidgetWorkerServer.cs" Link="WidgetWorkerServer.cs" />
   </ItemGroup>
 </Project>

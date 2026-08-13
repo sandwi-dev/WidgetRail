@@ -64,6 +64,13 @@ internal sealed record ConfiguredWidget
     /// </summary>
     [JsonIgnore]
     public bool RequiresAppContainer { get; init; }
+    /// <summary>
+    /// Trusted host execution policy derived from an installed manifest's
+    /// validated runtime. It is never accepted from trusted catalog JSON.
+    /// </summary>
+    [JsonIgnore]
+    public WidgetExecutionTrust ExecutionTrust { get; init; } =
+        WidgetExecutionTrust.Sandboxed;
     [JsonIgnore]
     public string? IsolationKey { get; init; }
     [JsonIgnore]
@@ -342,14 +349,17 @@ public sealed class BridgeCatalog
                 warnings.Add($"Installed widget '{SafeDiagnostic(manifest.Id)}' declares an unsupported capability and was ignored.");
                 continue;
             }
-            if (!File.Exists(workerHost))
+            var executionTrust = WidgetManifestTrust.Resolve(manifest);
+            if (executionTrust == WidgetExecutionTrust.Sandboxed &&
+                !File.Exists(workerHost))
             {
                 warnings.Add("Installed widgets are enabled, but the generic worker host is not packaged.");
                 break;
             }
             var packageRoot = widget.ActiveVersion.InstallPath;
-            var assembly = Path.GetFullPath(
-                manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar),
+            var entrypoint = Path.GetFullPath(
+                WidgetEntrypointRuntimes.ResolvePackagePath(manifest.Entrypoint)
+                    .Replace('/', Path.DirectorySeparatorChar),
                 packageRoot);
             var styleFile = widget.ActiveVersion.VerifiedGbssDigests.ContainsKey(
                 "styles/default.gbss")
@@ -387,23 +397,30 @@ public sealed class BridgeCatalog
                 Icon = manifest.Presentation.Icon,
                 PinningSupported = manifest.PinningSupported,
                 AdvancedPresentation = manifest.AdvancedPresentation,
-                WorkerExecutable = workerHost,
-                WorkerArguments =
-                [
-                    "--package-root", packageRoot,
-                    "--widget-assembly", assembly,
-                    "--widget-type", manifest.Entrypoint.Type,
-                ],
+                WorkerExecutable = executionTrust == WidgetExecutionTrust.Sandboxed
+                    ? workerHost
+                    : entrypoint,
+                WorkerArguments = executionTrust == WidgetExecutionTrust.Sandboxed
+                    ?
+                    [
+                        "--package-root", packageRoot,
+                        "--widget-assembly", entrypoint,
+                        "--widget-type", manifest.Entrypoint.Type!,
+                    ]
+                    : [],
                 DeclaredCapabilities = declaredCapabilities,
-                RequiresAppContainer = true,
-                IsolationKey = CommunityIsolationKey(authorityPublisherId, manifest.Id),
+                RequiresAppContainer = executionTrust == WidgetExecutionTrust.Sandboxed,
+                ExecutionTrust = executionTrust,
+                IsolationKey = executionTrust == WidgetExecutionTrust.Sandboxed
+                    ? CommunityIsolationKey(authorityPublisherId, manifest.Id)
+                    : null,
                 AuthorityGeneration = manifest.Version,
                 ReadOnlyPaths = [],
                 ContentLeaseFactory = cancellationToken => AcquireInstalledContentLease(
                     installedRoot,
                     widget.ActiveVersion,
                     cancellationToken),
-                UsesGenericWorkerHost = true,
+                UsesGenericWorkerHost = executionTrust == WidgetExecutionTrust.Sandboxed,
                 StyleFile = styleFile,
                 MemoryRequestMb = manifest.ResourceRequest.MemoryMb,
                 ResidencyPolicy = manifest.ResidencyPolicy ??
@@ -454,7 +471,8 @@ public sealed class BridgeCatalog
             source.WorkerExecutable,
             .. source.WorkerArguments,
             .. source.DeclaredCapabilities,
-            source.RequiresAppContainer ? "appcontainer-required" : "host-trusted-job-only",
+            source.ExecutionTrust.ToString(),
+            source.RequiresAppContainer ? "appcontainer-required" : "job-only",
             source.IsolationKey ?? string.Empty,
             source.AuthorityGeneration ?? string.Empty,
             source.ContentLeaseFactory is null
@@ -602,6 +620,10 @@ public sealed class BridgeCatalog
         if (!WidgetHostCompatibility.Evaluate(manifest).IsSupported)
             throw new BridgeCatalogException(
                 $"Bundled widget '{source.Id}' is incompatible with this host.");
+        if (!string.Equals(manifest.Entrypoint.Runtime,
+                WidgetEntrypointRuntimes.DotNetWorker, StringComparison.Ordinal))
+            throw new BridgeCatalogException(
+                $"Bundled widget '{source.Id}' must use the sandboxed worker runtime.");
 
         var declaredCapabilities = manifest.Permissions
             .Concat(manifest.OptionalPermissions)
@@ -613,7 +635,7 @@ public sealed class BridgeCatalog
             throw new BridgeCatalogException(
                 $"Bundled widget '{source.Id}' declares an unsupported capability.");
         var assembly = Path.GetFullPath(
-            manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar),
+            manifest.Entrypoint.Assembly!.Replace('/', Path.DirectorySeparatorChar),
             packageRoot);
         if (!IsWithin(packageRoot, assembly) || !File.Exists(assembly))
             throw new BridgeCatalogException(
@@ -652,7 +674,7 @@ public sealed class BridgeCatalog
             [
                 "--package-root", packageRoot,
                 "--widget-assembly", assembly,
-                "--widget-type", manifest.Entrypoint.Type,
+                "--widget-type", manifest.Entrypoint.Type!,
             ],
             DeclaredCapabilities = declaredCapabilities,
             RequiresAppContainer = true,

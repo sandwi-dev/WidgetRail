@@ -41,6 +41,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activation reloads once per visible lifetime without polling", ActivationLifecycle),
     ("Focus IDs remain stable at setting bounds", StableBoundFocus),
     ("Installed widgets use controller pages and explicit review", InstalledWidgetReview),
+    ("Full-trust installed applications disclose authority before enabling", FullTrustInstalledWidgetReview),
     ("Local widget installation is an exact host-owned disabled-review action", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
@@ -876,6 +877,44 @@ static async Task InstalledWidgetReview()
     Assert.Valid(second);
     Assert.Valid(details);
     Assert.Valid(permissions);
+}
+
+static async Task FullTrustInstalledWidgetReview()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(
+        catalogRoot,
+        "dev.test.full-trust-settings",
+        "dev.test",
+        "Independent Application",
+        [],
+        [],
+        fullTrust: true);
+    var widget = CreateWithPermissions(
+        temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.select.0");
+    var details = Snapshot(widget);
+    Assert.Contains("Full trust", Text(details.Root, "installed.details.trust").Text!);
+    Assert.Contains("ordinary current-user process",
+        Text(details.Root, "installed.details.trust").Text!);
+    Assert.Contains("not AppContainer sandboxed",
+        Text(details.Root, "installed.details.trust").Text!);
+    Assert.Contains("Enable full-trust application",
+        Button(details.Root, "installed.details.toggle").Text!);
+    Assert.Contains("files, network, registry, databases, and child processes",
+        Text(details.Root, "installed.details.status").Text!);
+    Assert.Contains("No AppContainer or broker capability boundary applies",
+        Text(details.Root, "installed.details.status").Text!);
+
+    await Action(widget, "installed.toggle");
+    var enabled = (await new WidgetCatalog(catalogRoot).DiscoverAsync())
+        .Widgets.Single();
+    Assert.True(enabled.Enabled,
+        "The explicitly disclosed Settings action did not approve full-trust enablement.");
+    Assert.Valid(details);
 }
 
 static async Task LocalWidgetInstallationAction()
@@ -2360,7 +2399,8 @@ static void WriteInstalledWidget(
     IReadOnlyList<string> optional,
     HostApiRange? hostApi = null,
     IReadOnlyList<string>? architectures = null,
-    string version = "1.0.0")
+    string version = "1.0.0",
+    bool fullTrust = false)
 {
     var directory = Path.Combine(catalogRoot, "packages", id, version);
     var payload = Path.Combine(directory, "payload");
@@ -2372,9 +2412,15 @@ static void WriteInstalledWidget(
         Name = name,
         Version = version,
         HostApi = hostApi ?? new("1.0", 1),
-        Entrypoint = new("dotnet-worker", "payload/Widget.dll", "Dev.Test.Widget"),
-        Permissions = required,
-        OptionalPermissions = optional,
+        Entrypoint = fullTrust
+            ? new WidgetEntrypoint(
+                WidgetEntrypointRuntimes.FullTrustApplicationV1,
+                Executable: "payload/Independent.exe")
+            : new WidgetEntrypoint(
+                WidgetEntrypointRuntimes.DotNetWorker,
+                "payload/Widget.dll", "Dev.Test.Widget"),
+        Permissions = fullTrust ? [] : required,
+        OptionalPermissions = fullTrust ? [] : optional,
         BackgroundPolicy = "suspend",
         ResourceRequest = new(32, 1),
         Architectures = architectures ?? ["x64"],
@@ -2382,7 +2428,9 @@ static void WriteInstalledWidget(
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
     File.WriteAllBytes(Path.Combine(directory, "manifest.json"), ManifestJson.Serialize(manifest));
-    File.WriteAllBytes(Path.Combine(payload, "Widget.dll"), [0x47, 0x42, 0x41]);
+    File.WriteAllBytes(
+        Path.Combine(payload, fullTrust ? "Independent.exe" : "Widget.dll"),
+        [0x47, 0x42, 0x41]);
     InstalledPackageIntegrity.Seal(
         catalogRoot, directory, new WidgetCatalogOptions());
 }

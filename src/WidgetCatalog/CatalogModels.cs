@@ -76,6 +76,17 @@ public sealed record WidgetPackageInspection(
     int EntryCount,
     long TotalUncompressedBytes);
 
+/// <summary>
+/// An explicit caller decision for a package that runs as an ordinary
+/// current-user process. Omission always rejects full-trust installation or
+/// enablement and has no effect on sandboxed packages.
+/// </summary>
+public enum WidgetPackageTrustApproval
+{
+    None,
+    FullTrustCurrentUser,
+}
+
 public sealed record WidgetVersionChange(string Id, Version PreviousVersion, Version SelectedVersion);
 
 public sealed record WidgetUninstallResult(
