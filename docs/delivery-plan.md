@@ -178,22 +178,22 @@ Task: Implementation agent — platform lane
 
 Branch: codex/impl-platform-community
 
-### Current assignment — DLV-215: generic full-trust Community application runtime
+### Current assignment — DLV-210: generic Hero Rail no-artwork layout
 
-State: Assigned from accepted main b73eaa5. DLV-213 is accepted: any qualifying
-Community package can use the typed protocol-v16 advanced presentation without
-identity recognition. Its exact-commit aggregate was provenance-clean but
-failed later in unrelated WidgetActionFailureHostTests when the fixture did not
-obtain a visible HWND; direct SDK, Game Launcher, Full Application, native, and
-ordinary-host package evidence passed, so the unchanged aggregate is not rerun.
-
-Implement DLV-215 exactly as the first Platform Ready item below. Baseline is
-b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
+State: In progress from committed DLV-215 candidate ed39a70. Do not interrupt
+the coherent visible DLV-210 milestone. DLV-215's production architecture is
+accepted in review, but its commit is held from integration because its clean
+exact-commit verifier stopped at the directly affected Widget Runtime suite
+with 74/75 and `Sequence contains more than one element`; retained evidence is
+`artifacts/verification/20260813T063409Z-37fcbe6e/verification-result.json`.
+DLV-220 is the next Platform item and owns only that bounded verification
+correction. DLV-216 and DLV-217 remain blocked until the corrected DLV-215
+ancestry is accepted and integrated.
 
 ### Platform Ready queue
 
-1. **Assigned as current work — DLV-215: add the generic full-trust Community
-   application runtime.**
+1. **Committed candidate; held for DLV-220 — DLV-215: add the generic full-trust
+   Community application runtime.**
 
    Add one explicit versioned manifest/runtime entrypoint for an immutable
    package-owned executable. Installation/enabling must clearly disclose that
@@ -225,7 +225,8 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
    design requires identity recognition or claims containment it does not
    provide.
 
-2. **After DLV-215 — DLV-210: repair the generic Hero Rail no-artwork layout.**
+2. **Assigned as current work — DLV-210: repair the generic Hero Rail
+   no-artwork layout.**
 
    The user's accepted live frame exposed a disconnected header, large empty
    hero region, title-width cards, clipped controls, and competing help when
@@ -246,7 +247,23 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
    credentials, public protocol expansion, managed Launcher root, tray/work-
    area owner, or unrelated animation refactor.
 
-3. **Awaiting accepted DLV-216 and DLV-217 — DLV-218: remove retired
+3. **Immediately after DLV-210 — DLV-220: correct DLV-215 exact-commit Runtime
+   verification.**
+
+   Preserve the reviewed generic full-trust architecture in ed39a70. Diagnose
+   only the clean verifier failure in
+   `WidgetProcessOwnershipScenarios.cs` where the cancellation-ignoring retired
+   gesture-grant case observed more than one matching revocation. Correct the
+   runtime race if production is wrong; otherwise make the smallest
+   deterministic correction to an invalid single-match test assumption.
+
+   Update DLV-215 evidence wording so focused and aggregate results cannot
+   conflict. Run the focused Widget Runtime suite and the packaged full-trust
+   lifecycle, then one clean exact-correction-commit Tier 3. Retain truthful
+   output and provenance. No full-trust API redesign, Community-domain work,
+   DLV-210 layout change, broad test migration, or unrelated flaky-test cleanup.
+
+4. **Awaiting accepted DLV-216 and DLV-217 — DLV-218: remove retired
    Community-domain code from the product core.**
 
    Remove external.spotify.*, WidgetSdk/SpotifyService.cs, the PlatformBroker
@@ -265,7 +282,7 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
    Apps remains functional. Do not delete or migrate old credentials without
    separate user authorization.
 
-4. **After DLV-218 — DLV-206: retain truthful performance provenance.**
+5. **After DLV-218 — DLV-206: retain truthful performance provenance.**
 
    Correct rejected DLV-200 without expanding measurement scope. Retain one
    bounded sanitized committed artifact or summary containing root PID/start
@@ -279,14 +296,16 @@ b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
 
 ## Serialized integration queue
 
-1. Implement, review, and integrate DLV-215. DLV-219 is already accepted on
-   main without overlapping DLV-215's Settings trust-disclosure files.
-2. DLV-216 and DLV-217 may start only from accepted DLV-215. Keep their domain
-   ownership disjoint; integrate Spotify autonomy before Game Launcher cutover.
+1. Finish coherent DLV-210, then correct DLV-215 verification through DLV-220
+   and integrate the accepted corrected ancestry. DLV-219 is already accepted
+   on main; do not resolve any resulting product-code conflict in the planner.
+2. DLV-216 and DLV-217 may start only from accepted and integrated DLV-215.
+   Keep their domain ownership disjoint; integrate Spotify autonomy before Game
+   Launcher cutover.
 3. Only after DLV-216 and DLV-217 are accepted may DLV-218 delete retired core
    contracts.
-4. DLV-210 is the next visible generic presentation correction after DLV-215.
-   It must not reintroduce Game Launcher identity recognition.
+4. DLV-210 is the active visible generic presentation correction and must not
+   reintroduce Game Launcher identity recognition.
 5. DLV-206 remains evidence-only and follows DLV-218.
 6. Live metadata/artwork and account verification remain credential-gated, but
    adapter implementation belongs to the Community package.
