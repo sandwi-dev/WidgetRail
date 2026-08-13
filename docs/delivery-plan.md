@@ -362,8 +362,15 @@ build needed by the extraction. No aggregate. Commit one
 
 ### AVP-004-INTEGRATION — generic Avalonia candidate
 
-State: Assigned. Both extraction commits were independently accepted and
-integrated in SESSION then PLATFORM order through main `b5c4c6c`.
+State: correction assigned after rejecting `79615c3`. Both extraction commits
+remain accepted and integrated in SESSION then PLATFORM order through main
+`b5c4c6c`. The generic adapter architecture is sound, but the correction must:
+bring the Avalonia process below the hard 500 MiB visible ceiling after concrete
+resource-lifetime analysis; make transition admission/focus exact-authority
+latest-wins so canceled handlers cannot publish and all eight destinations
+retain Start/Midpoint/Completion; and replace the false
+`everyCurrentNodeKindObserved` artifact claim with asserted final evidence that
+combines ordinary lifecycle coverage with the focused generic mapping proof.
 
 Owner after unblock: standing `avalonia-prototype` task. Integration order is
 SESSION, PLATFORM, then candidate wiring. Substantial conflicts stop.
