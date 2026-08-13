@@ -144,14 +144,19 @@ Acceptance and launch evidence:
 
 ### Current assignment — DLV-217: autonomous Game Launcher flagship
 
-State: correction assigned after rejecting coherent commits `7aa229e` and
-`c504d2f`; do not integrate them yet. The correction must: retain the Windows
-SDK runtime projection (or remove that dependency) and prove packaged discovery
-reaches usable source/library state; preserve package-owned metadata/artwork
-through a bounded cache/content-handle path with offline provenance; exercise
-the package service itself for 10k/Search/collections/Details/Back/failure/
-exact-launch/persistence/replacement; remove the dormant host capability/private
-state adapter from the shipped payload; and retain one final-tip Tier 3 result.
+State: bounded evidence correction assigned after rejecting coherent commits
+`7aa229e`, `c504d2f`, and product correction `6b9d032`; do not integrate them
+yet. Commit `6b9d032` closes the Windows SDK runtime projection, usable packaged
+discovery, package-owned metadata/artwork cache and offline provenance,
+package-service 10k/Search/collections/Details/Back/failure/exact-launch/
+persistence/replacement evidence, and dormant host-adapter payload defects. It
+remains rejected only because the exact-clean Tier 3 stopped at its first
+verifier self-test: the canonical manifest omits the already-existing
+`SpotifyCommunityApplication.Tests` project, so no trust-boundary step ran. The
+assigned correction adds that bounded MSTest project entry and retains one
+exact-clean final-tip Tier 3 far enough to exercise the required package/trust
+boundary; it must not alter Launcher architecture. Label 26,833,278 as expanded
+payload bytes rather than compressed archive bytes in implementation status.
 Begin from clean accepted main `47d8ffe`; do not merge or replay the retired
 widgets branch.
 
