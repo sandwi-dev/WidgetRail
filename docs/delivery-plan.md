@@ -11,13 +11,15 @@ implementation work.
 
 - Production code: local main `a74add9`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
-  the accepted isolated AVP-004 candidate. No production renderer cutover is
-  implied.
-- Accepted Avalonia experiment: source `1868e97` on
-  `codex/avalonia-prototype`, integrated through main `a74add9`.
+  the isolated AVP-004 implementation now reopened after its failed physical
+  verdict. No production renderer cutover is implied.
+- Latest reviewed Avalonia implementation: source `1868e97` on
+  `codex/avalonia-prototype`, integrated through main `a74add9`. Its automated
+  evidence passed, but the user's live AVP-004 visual/controller verdict
+  rejected the candidate; it is not an accepted release candidate.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
-  gracefully closed so the isolated accepted AVP candidate could own the
+  gracefully closed so the isolated reviewed AVP candidate could own the
   physical Guide/controller test. The AVP candidate is visible as PID 4328.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
@@ -78,7 +80,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004 accepted at `1868e97`; copied candidate running for user verdict; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004 physical-acceptance correction assigned from `1868e97`; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -370,10 +372,19 @@ Verification: focused native parity suites and the smallest bounded Release
 build needed by the extraction. No aggregate. Commit one
 `[AVP-004-PLATFORM]` milestone and stop.
 
-### Accepted and integrated — AVP-004-INTEGRATION: generic Avalonia candidate
+### Reopened — AVP-004-INTEGRATION: physical visual/controller correction
 
-State: accepted at source commit `1868e97` and integrated through main
-`a74add9` after rejected `79615c3`, `4765cce`, and `56dffa6`. Both extraction commits
+State: automated review accepted source commit `1868e97` and it is integrated
+through main `a74add9` after rejected `79615c3`, `4765cce`, and `56dffa6`. The
+user's first live AVP-004 walkthrough then rejected physical acceptance. Audio
+Mixer renders as a narrow partial column, Network Controls collapses into an
+extremely narrow strip with wrapped/clipped text, Spotify shows a narrow loading
+column inside a mostly empty surface, the controller guide overlaps content,
+and the tray consumes excessive width. Controller navigation was completely
+non-functional during the same run. The prior containment evidence therefore
+proved only that selected authored controls had nonzero contained bounds; it did
+not prove useful allocation, readable composition, or physical input behavior.
+AVP-004 remains reopened until a corrected live verdict. Both extraction commits
 remain accepted and integrated in SESSION then PLATFORM order through main
 `b5c4c6c`. The generic adapter architecture is sound. Correction `4765cce`
 closes exact-authority latest-wins transition/focus publication, superseded
@@ -414,12 +425,52 @@ launched visibly as PID 4328 for the user's physical controller, Guide,
 transparency, motion, and clipping verdict. The equivalent main measurement
 wrapper could not republish its copied runtime because its nested process helper
 failed before starting the already-green Release build; main Release itself was
-rebuilt successfully and the launched accepted source executable retains the
+rebuilt successfully and the launched reviewed source executable retains the
 reviewed ProductVersion/SHA provenance.
 
-Integration is complete in SESSION, PLATFORM, then candidate order. The
-standing `avalonia-prototype` task stops at accepted `1868e97`; AVP-005 and
-production cutover are not authorized.
+Process reconciliation found two actual overlay executables: obsolete AVP-002
+PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
+children. The obsolete AVP-002 process ignored two graceful close paths and was
+then force-stopped by exact PID; AVP-004 remains the sole overlay executable.
+The correction must still diagnose controller admission with one instance and
+must not dismiss the user's report as only process contention.
+
+Correction assignment:
+
+- Preserve one generic semantic-tree renderer. Do not create per-widget
+  Avalonia pages or widget/package/identity-specific layout branches.
+- Fix the presentation boundary so the page host, ScrollViewer content, root
+  semantic panels, rows, grids, action surfaces, and virtualized collections
+  stretch/reflow against the actual admitted viewport instead of measuring at
+  their narrow desired width. Remove hard-coded layout assumptions such as a
+  fixed 760-DIP grid calculation when the real viewport is available.
+- Establish a coherent reusable Avalonia control theme for semantic headings,
+  status, buttons, tiles, sliders, lists, artwork, spacing, and focus states.
+  Reserve non-overlapping content, guide, and tray regions. Essential text and
+  controls must be readable at compact, 978x466, standard, and wide layouts;
+  scrolling is allowed only where it produces a usable page.
+- With exactly one overlay instance, trace native GameInput admission through
+  the shared semantic router and fix Guide, D-pad/stick, A, B, direct tray
+  cycling, content entry/exit, slider Left/Right adjustment and spatial
+  Up/Down exit, scrolling, repeat, reconnect, focus loss, and hide/show. Do not
+  add a second C# controller reader or synthesize keyboard input.
+- Add a single-instance prototype guard or an equivalent bounded launch
+  preflight so an obsolete AVP candidate cannot silently compete for Guide and
+  controller ownership during later physical tests.
+- Replace the tautological containment gate with rendered-geometry assertions
+  for useful page-width allocation, minimum readable text/control dimensions,
+  non-overlapping shell regions, effective visibility, and a bounded maximum
+  unintended empty-area ratio. Retain the existing semantic/UIA/authority and
+  memory gates.
+- Before review, visibly exercise the first page of all eight ordinary widgets
+  at the real production-shaped work area and retain screenshots plus controller
+  trace evidence. The planner will repeat that walkthrough and check logs before
+  acceptance. Automated semantic checks alone cannot accept this correction.
+
+The completed integration order remains SESSION, PLATFORM, then candidate. The
+standing `avalonia-prototype` task owns only the bounded physical-acceptance
+correction above from `1868e97`; AVP-005 and production cutover are not
+authorized.
 
 Objective:
 
@@ -494,7 +545,6 @@ cutover remain out of scope.
 
 | Milestone | Accepted result |
 | --- | --- |
-| AVP-004 | Reuse-first generic Avalonia candidate accepted and integrated through main `a74add9`; exact copied runtime is visibly running as PID 4328 for the user verdict. |
 | DLV-217 | Autonomous Game Launcher Community package accepted through `d57fd06`; local integration awaits explicit approval because the retained aggregate is red only for known reviewer-owned archived links. |
 | DLV-216 | Spotify is an ordinary autonomous full-trust Community application; accepted package `0.3.0` is installed and passed its refreshed production Release launch. |
 | DLV-220 | Corrected retired gesture revocation evidence; 1-2 events and every sequence exactly 92. |
