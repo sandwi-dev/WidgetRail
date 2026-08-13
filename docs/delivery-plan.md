@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 17:25 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 17:26 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -165,6 +165,13 @@ That snapshot is historical evidence, not implementation authority.
   shell motion, bounded timing, atomic reopen, and no stale hidden commit. This
   is a semantic/timing/log verdict; the user's physical-display verdict remains
   the closing visual gate.
+- DLV-194 `bd81c8f` is cleanly committed but rejected and remains unintegrated.
+  Its copied-distribution artifact design and external scaffold/build/validate/
+  pack flow are sound, but the external consumer inherits the machine-wide
+  NuGet global-packages cache. Earlier tests can therefore satisfy the same
+  content-derived SDK version without proving consumption of the fixture-local
+  package. DLV-199 owns that narrow proof correction after already-active
+  DLV-195; DLV-196 must not begin before the correction is committed.
 
 ## Execution protocol
 
@@ -203,35 +210,31 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-194: external versioned SDK consumption slice
+### Current assignment — DLV-195: full application-scale reference widget
 
-**State:** Assigned from clean widgets commit `e65069c`. DLV-191 and DLV-192
-stopped before edits on documented missing seams and are reclassified below;
-the lane must continue this developer-facing roadmap milestone immediately.
+**State:** In progress after clean widgets commit DLV-194 `bd81c8f`. DLV-194 is
+rejected on a bounded external-consumer cache-isolation proof gap; do not
+interrupt this already-active independent reference milestone. DLV-199 is the
+next assignment before dependent DLV-196.
 
-**Baseline/dependencies:** widgets branch `e65069c`; accepted product `ae1dee8`.
-Own managed SDK/template/package tooling, one isolated external-consumer fixture,
-directly affected public author docs/examples, and focused verification. Do not
-merge main; DLV-168 is native-only and not a dependency.
+**Baseline/dependencies:** widgets branch `bd81c8f`; accepted product remains
+`dd51da1`. Own one optional public-SDK-only reference, its focused tests,
+packaging fixture, and directly affected public author docs. Do not merge main
+or edit the DLV-194 external-consumer fixture during this milestone.
 
-**Developer-visible outcome:** a developer can create and build one basic widget
-from versioned local SDK/template artifacts without checkout-relative project
-references or copying repository internals.
+**Developer-visible outcome:** developers have one credential-free optional
+reference showing how a full application-scale widget keeps large private state
+while paging/virtualizing only bounded current presentation into the host.
 
-**Objective/acceptance:** produce the smallest deterministic local versioned SDK
-and template artifact flow already supported by repository tooling. Consume it
-from a clean temporary repository-shaped fixture, compile/package its widget,
-validate manifest/capabilities, and prove no source-tree `ProjectReference`,
-absolute developer path, unpublished feed assumption, or bundled implementation
-assembly leaks into the consumer. Existing in-repository samples and executable
-test suites remain working; newly created managed test projects use MSTest.Sdk
-4.3.2.
+**Objective/acceptance:** demonstrate application-scale private state,
+lifecycle-owned work, bounded host paging/virtualization, navigation, failure/
+retry, and ordinary packaging using only public SDK surfaces. The domain remains
+deterministic and credential-free and the sample never becomes a ninth built-in
+production tray item.
 
-**Verification/stop:** Tier 1 SDK/template/packaging/docs plus one isolated local
-consumer route. No NuGet.org/GitHub publication, network, signing identity,
-compatibility governance, public protocol change, native host, first-party widget
-rewrite, aggregate, or capture. Stop if a public protocol/versioning decision
-with materially different outcomes is required.
+**Verification/stop:** Tier 1 reference/SDK/docs plus one generic AppContainer
+package route. No new authority, native host, protocol, database dependency,
+remote service, production catalog mutation, aggregate, or capture.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -536,15 +539,16 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-194 — DLV-195: full application-scale reference widget.**
-   Build one optional reference that demonstrates private application-scale
-   state, bounded host paging/virtualization, lifecycle-owned work, navigation,
-   failure/retry, and packaging through only public SDK surfaces. Keep its domain
-   deterministic and credential-free; it must not add a ninth built-in tray item
-   to the user's production configuration. Tier 1 reference/SDK/docs plus one
-   generic AppContainer package route; no new authority, native host, protocol,
-   database dependency, remote service, aggregate, or capture.
-2. **Ready after DLV-195 — DLV-196: external repository onboarding proof.**
+1. **Ready after DLV-195 — DLV-199: isolate external SDK restore proof.**
+   Correct only rejected DLV-194's acceptance fixture and exact public claim.
+   Give the external build and `gbar pack` a fresh temp-local `NUGET_PACKAGES`
+   root, then prove the exact content-versioned SDK restored there from the
+   generated repository's cleared fixture-local feed. Assert the SDK nupkg's
+   `lib/net8.0` DLL entries are exactly `WidgetSdk.dll` and
+   `WidgetProtocol.dll`; do not add a denylist, production API, new artifact
+   policy, publication, network, or unrelated test. Tier 1 exact Gbar CLI route,
+   SDK compatibility, and affected docs only.
+2. **Ready after DLV-199 — DLV-196: external repository onboarding proof.**
    Consume the DLV-194 artifact and DLV-195 reference pattern from a clean local
    Git-repository-shaped fixture using only documented commands. Prove restore,
    build, validate, package, install-to-isolated-catalog, scenario run, and remove

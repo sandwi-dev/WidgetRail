@@ -281,7 +281,7 @@ its change is accepted.
 | --- | --- | --- |
 | Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, and accepted transition verdict DLV-188 are integrated through `dd51da1`; accepted main is visibly running as PID 40688. The immediately prior coherent runtime cycle admitted all eight UIA tray actions and first-page semantics with zero error-class records, while DLV-188's real packaged route preserves exact shell/tray bounds and complete premultiplied-clear commits across all eight transitions. | Visual appearance/clipping remains the user's live verdict. Platform DLV-193 owns the visible Y-hold refresh gap, followed by DLV-197's Launcher Experience switch bridge. |
 | Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are integrated through `dd51da1`. DLV-160 additionally proves the complete supported CLI-to-production lifecycle, safe start, last-good reload, recovery, and removal. | DLV-197 must provide the private trusted selection bridge before the managed Switch experience continuation. Manual artwork/background remains blocked on a trusted selection seam. |
-| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. | External versioned consumption, isolated semantic preview, broader advanced-widget reference, publisher/update governance. |
+| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. DLV-194 demonstrates a plausible copied local distribution but is rejected because its external restore can reuse the machine-wide NuGet cache. | Finish active full-application reference DLV-195, then DLV-199 must prove a fresh exact fixture-local SDK restore before dependent onboarding and compatibility work. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
 | Accessibility | Deterministic semantic and real-host UIA coverage is substantial. DLV-180 adds exact TextEntry focus/Invoke; DLV-168 closes tray Invoke completion while keeping widget descendants generation-bound. | Physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
@@ -313,8 +313,9 @@ its change is accepted.
    Launcher Experience selection/recovery bridge. DLV-160 and DLV-188 are
    accepted and integrated; do not reopen their bounded evidence without a live
    recurrence.
-2. Review widgets DLV-194's external versioned SDK consumption without letting
-   developer infrastructure delay the platform's visible queue.
+2. Review active widgets DLV-195, then require DLV-199's isolated global-
+   packages correction before DLV-196. Do not let developer infrastructure
+   delay the platform's visible queue.
 3. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
 4. Keep PID 40688 visible for the user's dashboard, Spotify, Settings, and Game Launcher
