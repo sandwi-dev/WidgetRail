@@ -1333,23 +1333,23 @@ private:
             if (!developmentReadyNonce_ || !developmentCatalogRoot_) return 0;
             AppendDiagnostic(
                 L"Development tray Y phase=" + std::to_wstring(wParam) +
-                L" eligible=" + (TrayYRefreshEligible() ? L"true" : L"false"));
+                L" eligible=" + (TrayYRestartEligible() ? L"true" : L"false"));
             if (wParam == 1) {
                 trayYGesture_.Press(
-                    state_.selectedWidget(), TrayYRefreshEligible(), GetTickCount64());
+                    state_.selectedWidget(), TrayYRestartEligible(), GetTickCount64());
             } else if (wParam == 2) {
                 ApplyTrayYGestureAction(trayYGesture_.Update(
-                    state_.selectedWidget(), TrayYRefreshEligible(), GetTickCount64()));
+                    state_.selectedWidget(), TrayYRestartEligible(), GetTickCount64()));
             } else if (wParam == 3) {
                 ApplyTrayYGestureAction(trayYGesture_.Release(
-                    state_.selectedWidget(), TrayYRefreshEligible(), GetTickCount64()));
+                    state_.selectedWidget(), TrayYRestartEligible(), GetTickCount64()));
             } else if (wParam == 4) {
                 const auto now = GetTickCount64();
                 trayYGesture_.Press(
-                    state_.selectedWidget(), TrayYRefreshEligible(),
-                    now - gba::input::kTrayWidgetRefreshHoldMilliseconds);
+                    state_.selectedWidget(), TrayYRestartEligible(),
+                    now - gba::input::kTrayWidgetRestartHoldMilliseconds);
                 ApplyTrayYGestureAction(trayYGesture_.Update(
-                    state_.selectedWidget(), TrayYRefreshEligible(), now));
+                    state_.selectedWidget(), TrayYRestartEligible(), now));
             }
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
@@ -1991,7 +1991,7 @@ private:
     void Dispatch(const gba::Command command) {
         if (command == gba::Command::Activate &&
             state_.focusRegion() == gba::FocusRegion::Tray &&
-            state_.selectedWidget() == L"game-launcher") {
+            UsesLauncherExperiencePresentation(state_.selectedWidget())) {
             launcherExperienceProjection_.BeginActivation(
                 std::exchange(launcherSafeStartPending_, false));
         } else if (command == gba::Command::Activate) {
@@ -2236,8 +2236,8 @@ private:
 
     bool HandleLauncherExperienceSelectionProof(
         const COPYDATASTRUCT* message) {
-        // The production-host fixture must drive the same private method future
-        // trusted Game Launcher actions use. Keep the proof seam unavailable
+        // The production-host fixture drives the existing host-owned Settings
+        // selection service. Keep the proof seam unavailable
         // unless the existing bounded performance-evidence nonce is present.
         if (!performanceDiagnosticsNonce_ || !message ||
             message->dwData != kLauncherExperienceSelectionProof ||
@@ -2386,6 +2386,14 @@ private:
 
     [[nodiscard]] bool IsBridgeWidget(const std::wstring_view id) const noexcept {
         return sessions_.Contains(id);
+    }
+
+    [[nodiscard]] bool UsesLauncherExperiencePresentation(
+        const std::wstring_view id) const noexcept {
+        const auto* descriptor = sessions_.FindDescriptor(id);
+        return descriptor && descriptor->advancedPresentation &&
+            descriptor->advancedPresentation->schemaVersion == 1 &&
+            descriptor->advancedPresentation->kind == L"launcherExperience";
     }
 
     void RecordWidgetStartupFailure(
@@ -4175,14 +4183,14 @@ private:
         const bool launcherSafeStartGesture =
             (pressed & XINPUT_GAMEPAD_A) != 0 &&
             state_.focusRegion() == gba::FocusRegion::Tray &&
-            state_.selectedWidget() == L"game-launcher" &&
+            UsesLauncherExperiencePresentation(state_.selectedWidget()) &&
             controller.Gamepad.bLeftTrigger >= 30 &&
             controller.Gamepad.bRightTrigger >= 30;
         if (launcherSafeStartGesture) {
             launcherSafeStartPending_ = true;
-            lastActionWidgetId_ = L"game-launcher";
+            lastActionWidgetId_ = state_.selectedWidget();
             lastActionMessage_ =
-                L"Game Launcher safe start: built-in experience for this activation";
+                L"Advanced presentation safe start: built-in experience for this activation";
             lastActionExpiresAt_ = now + 5000;
             AppendDiagnostic(lastActionMessage_);
         }
@@ -4243,7 +4251,7 @@ private:
                 // physical release must not create a second gesture.
             } else if (state_.focusRegion() == gba::FocusRegion::Tray) {
                 trayYGesture_.Press(
-                    state_.selectedWidget(), TrayYRefreshEligible(), now);
+                    state_.selectedWidget(), TrayYRestartEligible(), now);
                 InvalidateRect(window_, nullptr, FALSE);
             } else {
                 DispatchControllerAction(L"Y", true);
@@ -4252,14 +4260,14 @@ private:
         if (connected && trayYGesture_.capturing() &&
             (buttons & XINPUT_GAMEPAD_Y) != 0) {
             ApplyTrayYGestureAction(trayYGesture_.Update(
-                state_.selectedWidget(), TrayYRefreshEligible(), now));
-            if (trayYGesture_.pendingRefresh())
+                state_.selectedWidget(), TrayYRestartEligible(), now));
+            if (trayYGesture_.pendingRestart())
                 InvalidateRect(window_, nullptr, FALSE);
         }
         if (connected && (released & XINPUT_GAMEPAD_Y) != 0) {
             if (trayYGesture_.capturing()) {
                 ApplyTrayYGestureAction(trayYGesture_.Release(
-                    state_.selectedWidget(), TrayYRefreshEligible(), now));
+                    state_.selectedWidget(), TrayYRestartEligible(), now));
                 InvalidateRect(window_, nullptr, FALSE);
             } else {
                 releaseButton(XINPUT_GAMEPAD_Y, L"y");
@@ -4269,7 +4277,7 @@ private:
             // A device can reconnect after the synthetic loss edge. Retire the
             // canceled capture only after its physical Y is observed released.
             ApplyTrayYGestureAction(trayYGesture_.Release(
-                state_.selectedWidget(), TrayYRefreshEligible(), now));
+                state_.selectedWidget(), TrayYRestartEligible(), now));
             InvalidateRect(window_, nullptr, FALSE);
         }
         // The visible overlay already polls controller state at 60 Hz. Reuse
@@ -4287,8 +4295,10 @@ private:
     const gba::WidgetSnapshot* InteractionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
         const auto* source = SnapshotFor(widgetId);
-        return source
-            ? &launcherExperienceProjection_.InteractionSnapshot(widgetId, *source)
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        return source && descriptor
+            ? &launcherExperienceProjection_.InteractionSnapshot(
+                widgetId, descriptor->presentationGeneration, *source)
             : nullptr;
     }
 
@@ -4808,7 +4818,7 @@ private:
         if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
     }
 
-    [[nodiscard]] bool TrayYRefreshEligible() const noexcept {
+    [[nodiscard]] bool TrayYRestartEligible() const noexcept {
         return state_.surface() != gba::Surface::Hidden &&
                state_.focusRegion() == gba::FocusRegion::Tray &&
                !state_.reorderMode() &&
@@ -4820,7 +4830,7 @@ private:
         case gba::input::TrayYGestureAction::ToggleReorder:
             Dispatch(gba::Command::ToggleReorder);
             break;
-        case gba::input::TrayYGestureAction::RefreshSelectedWidget:
+        case gba::input::TrayYGestureAction::RestartSelectedWidget:
             // The recognizer revalidated the exact selected bridge widget and
             // tray context. Resolve it once more through the same restart
             // authority as F5; tray Y never depends on a widget-authored action.
@@ -5897,7 +5907,7 @@ private:
     }
 
     std::wstring DashboardHint(const float availableWidth) const {
-        if (trayYGesture_.pendingRefresh()) {
+        if (trayYGesture_.pendingRestart()) {
             return L"Hold Y to restart " +
                 std::wstring(DisplayWidgetName(trayYGesture_.selectedWidget())) +
                 L" — " +
@@ -5918,12 +5928,12 @@ private:
         return gba::BuildTrayControllerGuide(
             gba::ResolveControllerGuideDensity(
                 availableWidth, CurrentTextScale()),
-            state_.reorderMode(), TrayYRefreshEligible(), quickActions);
+            state_.reorderMode(), TrayYRestartEligible(), quickActions);
     }
 
     std::wstring DashboardAccessibilityHint(const std::wstring_view visualHint) const {
-        if (trayYGesture_.pendingRefresh()) return std::wstring{visualHint};
-        if (state_.reorderMode() || !TrayYRefreshEligible())
+        if (trayYGesture_.pendingRestart()) return std::wstring{visualHint};
+        if (state_.reorderMode() || !TrayYRestartEligible())
             return std::wstring{visualHint};
         return std::wstring{visualHint} +
             L". Tap Y to reorder. Hold Y to restart the selected widget.";
@@ -6298,21 +6308,24 @@ private:
                     }
                 }
                 auto launcherProjection = launcherExperienceProjection_.Render(
-                    *declarativeRenderer_, renderTarget_.Get(), imageCache_.get(), renderedWidget,
+                    *declarativeRenderer_, renderTarget_.Get(), imageCache_.get(),
+                    descriptor ? descriptor->advancedPresentation
+                               : std::optional<gba::WidgetAdvancedPresentationDeclaration>{},
+                    descriptor ? std::wstring_view{descriptor->presentationGeneration}
+                               : std::wstring_view{},
+                    renderedWidget,
                     *snapshot, renderedFocusId, viewport, options);
                 auto result = std::move(launcherProjection.render);
                 const auto& semanticSnapshot =
                     launcherExperienceProjection_.InteractionSnapshot(
-                        renderedWidget, *snapshot);
+                        renderedWidget,
+                        descriptor ? std::wstring_view{descriptor->presentationGeneration}
+                                   : std::wstring_view{},
+                        *snapshot);
                 if (result.succeeded) {
                     const auto launcherGameNavigationCount =
-                        static_cast<std::size_t>(std::count_if(
-                            result.navigationRects.begin(),
-                            result.navigationRects.end(),
-                            [](const auto& entry) {
-                                return std::wstring_view{entry.first}.starts_with(
-                                    L"game-launcher.item.grid.game.");
-                            }));
+                        launcherProjection.presentationActive
+                            ? result.navigationRects.size() : 0U;
                     std::wstring launcherRailPrevious;
                     std::wstring launcherRailNext;
                     if (launcherProjection.preset) {

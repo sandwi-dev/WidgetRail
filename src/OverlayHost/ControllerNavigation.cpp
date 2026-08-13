@@ -30,20 +30,20 @@ bool Horizontal(const NavigationDirection direction) noexcept {
 
 void TrayYGesture::Press(
     const std::wstring_view selectedWidget,
-    const bool refreshEligible,
+    const bool restartEligible,
     const std::uint64_t now) noexcept {
     if (state_ != State::Idle || selectedWidget.empty()) return;
     selectedWidget_ = selectedWidget;
     pressedAt_ = now;
-    state_ = refreshEligible ? State::PendingRefresh : State::PendingTap;
+    state_ = restartEligible ? State::PendingRestart : State::PendingTap;
 }
 
 TrayYGestureAction TrayYGesture::Update(
     const std::wstring_view selectedWidget,
-    const bool refreshEligible,
+    const bool restartEligible,
     const std::uint64_t now) noexcept {
-    if (state_ == State::PendingRefresh) {
-        if (!TargetIsCurrent(selectedWidget, refreshEligible)) {
+    if (state_ == State::PendingRestart) {
+        if (!TargetIsCurrent(selectedWidget, restartEligible)) {
             Cancel();
             return TrayYGestureAction::None;
         }
@@ -55,23 +55,23 @@ TrayYGestureAction TrayYGesture::Update(
 
 TrayYGestureAction TrayYGesture::Release(
     const std::wstring_view selectedWidget,
-    const bool refreshEligible,
+    const bool restartEligible,
     const std::uint64_t now) noexcept {
-    if (state_ == State::PendingRefresh) {
-        if (!TargetIsCurrent(selectedWidget, refreshEligible)) {
+    if (state_ == State::PendingRestart) {
+        if (!TargetIsCurrent(selectedWidget, restartEligible)) {
             Reset();
             return TrayYGestureAction::None;
         }
-        if (CrossThreshold(now) == TrayYGestureAction::RefreshSelectedWidget) {
+        if (CrossThreshold(now) == TrayYGestureAction::RestartSelectedWidget) {
             Reset();
-            return TrayYGestureAction::RefreshSelectedWidget;
+            return TrayYGestureAction::RestartSelectedWidget;
         }
     }
     if (state_ == State::PendingTap && selectedWidget == selectedWidget_) {
         Reset();
         return TrayYGestureAction::ToggleReorder;
     }
-    if (state_ == State::PendingRefresh) {
+    if (state_ == State::PendingRestart) {
         Reset();
         return TrayYGestureAction::ToggleReorder;
     }
@@ -93,8 +93,8 @@ bool TrayYGesture::capturing() const noexcept {
     return state_ != State::Idle;
 }
 
-bool TrayYGesture::pendingRefresh() const noexcept {
-    return state_ == State::PendingRefresh;
+bool TrayYGesture::pendingRestart() const noexcept {
+    return state_ == State::PendingRestart;
 }
 
 std::wstring_view TrayYGesture::selectedWidget() const noexcept {
@@ -102,28 +102,28 @@ std::wstring_view TrayYGesture::selectedWidget() const noexcept {
 }
 
 unsigned int TrayYGesture::progressPercent(const std::uint64_t now) const noexcept {
-    if (state_ != State::PendingRefresh) return 0;
+    if (state_ != State::PendingRestart) return 0;
     if (now <= pressedAt_) return 0;
     const auto elapsed = now - pressedAt_;
-    if (elapsed >= kTrayWidgetRefreshHoldMilliseconds) return 100;
+    if (elapsed >= kTrayWidgetRestartHoldMilliseconds) return 100;
     return static_cast<unsigned int>(
-        elapsed * 100 / kTrayWidgetRefreshHoldMilliseconds);
+        elapsed * 100 / kTrayWidgetRestartHoldMilliseconds);
 }
 
 bool TrayYGesture::TargetIsCurrent(
     const std::wstring_view selectedWidget,
-    const bool refreshEligible) const noexcept {
-    return refreshEligible && !selectedWidget.empty() &&
+    const bool restartEligible) const noexcept {
+    return restartEligible && !selectedWidget.empty() &&
            selectedWidget == selectedWidget_;
 }
 
 TrayYGestureAction TrayYGesture::CrossThreshold(const std::uint64_t now) noexcept {
-    if (state_ != State::PendingRefresh || now < pressedAt_ ||
-        now - pressedAt_ < kTrayWidgetRefreshHoldMilliseconds) {
+    if (state_ != State::PendingRestart || now < pressedAt_ ||
+        now - pressedAt_ < kTrayWidgetRestartHoldMilliseconds) {
         return TrayYGestureAction::None;
     }
-    state_ = State::RefreshWon;
-    return TrayYGestureAction::RefreshSelectedWidget;
+    state_ = State::RestartWon;
+    return TrayYGestureAction::RestartSelectedWidget;
 }
 
 StickNavigator::StickNavigator(StickNavigationOptions options) noexcept

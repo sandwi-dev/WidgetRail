@@ -392,6 +392,17 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(LauncherExperienceHostTests PRIVATE
         user32 ole32 oleaut32 uiautomationcore)
 
+    # Two unrelated installed Community packages exercise the public advanced
+    # presentation contract through the ordinary production host.
+    add_executable(AdvancedPresentationHostTests
+        AdvancedPresentationHostTests.cpp OverlayHostTestSupport.cpp)
+    target_compile_features(AdvancedPresentationHostTests PRIVATE cxx_std_20)
+    target_compile_options(AdvancedPresentationHostTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AdvancedPresentationHostTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(AdvancedPresentationHostTests PRIVATE
+        user32 ole32 oleaut32 uiautomationcore)
+
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)
     target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)

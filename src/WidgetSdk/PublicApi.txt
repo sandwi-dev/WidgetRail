@@ -521,6 +521,10 @@ method GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.Deconstruct
 method GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.GetHashCode() -> int
 method GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.ToString() -> string
+method GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.Equals(GameBarAlternative.WidgetSdk.WidgetElement? other) -> bool
+method GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.Equals(object? obj) -> bool
+method GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.ToString() -> string
 method GameBarAlternative.WidgetSdk.ButtonElement.Busy(bool busy = true) -> GameBarAlternative.WidgetSdk.ButtonElement
 method GameBarAlternative.WidgetSdk.ButtonElement.Disabled(bool disabled = true) -> GameBarAlternative.WidgetSdk.ButtonElement
 method GameBarAlternative.WidgetSdk.ButtonElement.Equals(GameBarAlternative.WidgetSdk.WidgetElement? other) -> bool
@@ -1045,6 +1049,7 @@ method GameBarAlternative.WidgetSdk.WidgetElement.CollectionItem(GameBarAlternat
 method GameBarAlternative.WidgetSdk.WidgetElement.Deconstruct(out string Id) -> void
 method GameBarAlternative.WidgetSdk.WidgetElement.Equals(object? obj) -> bool
 method GameBarAlternative.WidgetSdk.WidgetElement.GetHashCode() -> int
+method GameBarAlternative.WidgetSdk.WidgetElement.InAdvancedPresentationSlot(GameBarAlternative.WidgetProtocol.WidgetAdvancedPresentationSlot slot) -> GameBarAlternative.WidgetSdk.WidgetElement
 method GameBarAlternative.WidgetSdk.WidgetElement.ToString() -> string
 method GameBarAlternative.WidgetSdk.WidgetElement.VisibleWhen(GameBarAlternative.WidgetProtocol.ResponsiveVisibility visibility) -> GameBarAlternative.WidgetSdk.WidgetElement
 method GameBarAlternative.WidgetSdk.WidgetIdScope.Id(string name) -> string
@@ -1487,6 +1492,8 @@ method static GameBarAlternative.WidgetSdk.ActionSurfaceElement.op_Equality(Game
 method static GameBarAlternative.WidgetSdk.ActionSurfaceElement.op_Inequality(GameBarAlternative.WidgetSdk.ActionSurfaceElement? left, GameBarAlternative.WidgetSdk.ActionSurfaceElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.op_Equality(GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest? left, GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest? right) -> bool
 method static GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.op_Inequality(GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest? left, GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest? right) -> bool
+method static GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.op_Equality(GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement? left, GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement? right) -> bool
+method static GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.op_Inequality(GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement? left, GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.ButtonElement.op_Equality(GameBarAlternative.WidgetSdk.ButtonElement? left, GameBarAlternative.WidgetSdk.ButtonElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.ButtonElement.op_Inequality(GameBarAlternative.WidgetSdk.ButtonElement? left, GameBarAlternative.WidgetSdk.ButtonElement? right) -> bool
 method static GameBarAlternative.WidgetSdk.CollectionItemElement.op_Equality(GameBarAlternative.WidgetSdk.CollectionItemElement? left, GameBarAlternative.WidgetSdk.CollectionItemElement? right) -> bool
@@ -1865,6 +1872,8 @@ method virtual GameBarAlternative.WidgetSdk.ActionSheetItem.Equals(GameBarAltern
 method virtual GameBarAlternative.WidgetSdk.ActionSurfaceElement.<Clone>$() -> GameBarAlternative.WidgetSdk.ActionSurfaceElement
 method virtual GameBarAlternative.WidgetSdk.ActionSurfaceElement.Equals(GameBarAlternative.WidgetSdk.ActionSurfaceElement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest.Equals(GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest? other) -> bool
+method virtual GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.<Clone>$() -> GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement
+method virtual GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.Equals(GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.ButtonElement.<Clone>$() -> GameBarAlternative.WidgetSdk.ButtonElement
 method virtual GameBarAlternative.WidgetSdk.ButtonElement.Equals(GameBarAlternative.WidgetSdk.ButtonElement? other) -> bool
 method virtual GameBarAlternative.WidgetSdk.CollectionItemElement.<Clone>$() -> GameBarAlternative.WidgetSdk.CollectionItemElement
@@ -2063,6 +2072,8 @@ property GameBarAlternative.WidgetProtocol.SliderInteractionMode? GameBarAlterna
 property GameBarAlternative.WidgetProtocol.SliderInteractionMode? GameBarAlternative.WidgetSdk.SliderElement.ControllerInteractionMode { get; set; }
 property GameBarAlternative.WidgetProtocol.ViewSnapshot GameBarAlternative.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property GameBarAlternative.WidgetProtocol.ViewSnapshot? GameBarAlternative.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }
+property GameBarAlternative.WidgetProtocol.WidgetAdvancedPresentationSlot GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.Slot { get; set; }
+property GameBarAlternative.WidgetProtocol.WidgetAdvancedPresentationView? GameBarAlternative.WidgetSdk.WidgetView.AdvancedPresentation { get; set; }
 property GameBarAlternative.WidgetProtocol.WidgetGlyph GameBarAlternative.WidgetSdk.IconElement.Glyph { get; set; }
 property GameBarAlternative.WidgetProtocol.WidgetGlyph GameBarAlternative.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
 property GameBarAlternative.WidgetProtocol.WidgetGlyph? GameBarAlternative.WidgetSdk.ActionSheetItem.Glyph { get; set; }
@@ -2120,6 +2131,7 @@ property GameBarAlternative.WidgetSdk.WidgetCollectionItemKey? GameBarAlternativ
 property GameBarAlternative.WidgetSdk.WidgetCommandPolicy GameBarAlternative.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetCursorDirection? GameBarAlternative.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetCursorResourceSnapshot<TItem> GameBarAlternative.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
+property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement.Child { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.CollectionItemElement.Child { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property GameBarAlternative.WidgetSdk.WidgetElement GameBarAlternative.WidgetSdk.WidgetView.Root { get; set; }
@@ -2817,6 +2829,7 @@ type enum GameBarAlternative.WidgetSdk.WidgetWifiSecurityKind : System.IComparab
 type sealed class GameBarAlternative.WidgetSdk.ActionSheetItem : System.IEquatable<GameBarAlternative.WidgetSdk.ActionSheetItem>
 type sealed class GameBarAlternative.WidgetSdk.ActionSurfaceElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.ActionSurfaceElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest : System.IEquatable<GameBarAlternative.WidgetSdk.AddWidgetSpotifyQueueItemRequest>
+type sealed class GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.AdvancedPresentationSlotElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.ButtonElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.ButtonElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.CollectionItemElement : GameBarAlternative.WidgetSdk.WidgetElement, System.IEquatable<GameBarAlternative.WidgetSdk.CollectionItemElement>, System.IEquatable<GameBarAlternative.WidgetSdk.WidgetElement>
 type sealed class GameBarAlternative.WidgetSdk.ComponentAction : System.IEquatable<GameBarAlternative.WidgetSdk.ComponentAction>

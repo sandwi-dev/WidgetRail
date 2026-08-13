@@ -46,8 +46,8 @@ struct ProductionProjectionResult final {
 [[nodiscard]] std::wstring_view PresetName(Preset preset) noexcept;
 [[nodiscard]] std::wstring_view EffectQualityName(EffectQuality quality) noexcept;
 
-/// Owns the private first-party projection boundary between one admitted Game
-/// Launcher snapshot and the existing native Launcher Experience adapter. It
+/// Owns the public-declaration projection boundary between one admitted
+/// Community snapshot and the existing native Launcher Experience adapter. It
 /// never creates actions or domain state. Invalid or failed projection is
 /// painted through the ordinary declarative path without exposing a partial
 /// native frame.
@@ -61,13 +61,15 @@ public:
     [[nodiscard]] long long selectionRevision() const noexcept {
         return selection_ ? selection_->revision : 0;
     }
-    /// Sets the recovery route for the next Game Launcher activation. Ordinary
+    /// Sets the recovery route for the next admitted presentation activation. Ordinary
     /// activation passes false and therefore retires any prior one-shot bypass.
     void BeginActivation(bool safeStart) noexcept;
     [[nodiscard]] ProductionProjectionResult Render(
         DeclarativeRenderer& renderer,
         ID2D1RenderTarget* target,
         RemoteImageCache* imageCache,
+        const std::optional<WidgetAdvancedPresentationDeclaration>& declaration,
+        std::wstring_view presentationGeneration,
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot,
         std::wstring_view focusedElementId,
@@ -75,8 +77,8 @@ public:
         const DeclarativeRenderOptions& options);
 
     /// Records the existing host input owner's exact focus-change edge. The
-    /// projection consumes it only for Game Launcher and closes it when the
-    /// corresponding immutable presentation frame is committed.
+    /// projection consumes it only for the current admitted presentation and
+    /// closes it when the corresponding immutable frame is committed.
     void ObserveFocusInput(
         std::wstring_view widgetId,
         std::uint64_t nowMilliseconds) noexcept;
@@ -85,6 +87,7 @@ public:
     /// exact immutable source generation. All other callers retain the source.
     [[nodiscard]] const WidgetSnapshot& InteractionSnapshot(
         std::wstring_view widgetId,
+        std::wstring_view presentationGeneration,
         const WidgetSnapshot& source) const noexcept;
 
     /// Returns an authored focus edge only from the last complete canonical
@@ -120,9 +123,9 @@ private:
     };
 
     [[nodiscard]] static std::optional<Projection> Recognize(
-        std::wstring_view widgetId,
+        const std::optional<WidgetAdvancedPresentationDeclaration>& declaration,
         const WidgetSnapshot& snapshot,
-        bool& markerPresent);
+        bool& presentationRequested);
     [[nodiscard]] bool EnsureStagingTarget(
         ID2D1RenderTarget* target,
         declarative::Rect viewport);
@@ -137,6 +140,7 @@ private:
     void RetirePresentation() noexcept;
     void RetainCanonical(
         std::wstring_view widgetId,
+        std::wstring_view presentationGeneration,
         WidgetSnapshot snapshot);
     void ClearCanonical() noexcept;
 
@@ -144,6 +148,7 @@ private:
     declarative::Size stagingSize_{};
     Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> stagingTarget_;
     std::wstring canonicalWidgetId_;
+    std::wstring canonicalPresentationGeneration_;
     std::optional<WidgetSnapshot> canonicalSnapshot_;
     LauncherExperiencePresentationOwner presentationOwner_;
     std::optional<LauncherExperienceSelection> selection_;

@@ -46,6 +46,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pipelined requests preserve per-widget receive order", PipelinedWidgetRequestsStayOrdered),
     ("Duplicate pending request IDs fail the bridge session closed", DuplicatePendingRequestIdsFailClosed),
     ("Enabled installed widgets join the bridge catalog without eager launch", InstalledWidgetsJoinCatalog),
+    ("Installed Community advanced presentation declarations are generic and generation owned", InstalledAdvancedPresentationDeclarationsAreGeneric),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
     ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
@@ -1428,6 +1429,46 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, installed.ResidencyPolicy.Mode);
 }
 
+static async Task InstalledAdvancedPresentationDeclarationsAreGeneric()
+{
+    using var temporary = new TemporaryDirectory("gba-advanced-presentation");
+    using var trusted = TemporaryCatalog.Create();
+    var installedRoot = Path.Combine(temporary.Path, "installed");
+    var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(installedRoot);
+    var declaration = new WidgetAdvancedPresentationDeclaration
+    {
+        SchemaVersion = WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion,
+        Kind = WidgetAdvancedPresentationKind.LauncherExperience,
+    };
+    await InstallWidgetAsync(
+        catalog, temporary.Path, "org.random.alpha.surface", enabled: true,
+        advancedPresentation: declaration,
+        publisher: "org.random",
+        assembly: "payload/AlphaSurface.dll",
+        type: "Random.Alpha.SurfaceWidget");
+    await InstallWidgetAsync(
+        catalog, temporary.Path, "net.unrelated.bravo.deck", enabled: true,
+        advancedPresentation: declaration,
+        publisher: "net.unrelated",
+        assembly: "payload/BravoDeck.dll",
+        type: "Unrelated.Bravo.DeckWidget");
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trusted.Path, installedRoot, Environment.ProcessPath!);
+    var declared = load.Catalog.Widgets
+        .Where(widget => widget.AdvancedPresentation is not null)
+        .OrderBy(widget => widget.Id, StringComparer.Ordinal)
+        .ToArray();
+    Assert.Equal(2, declared.Length);
+    Assert.True(declared.All(widget =>
+        widget.AdvancedPresentation!.SchemaVersion == 1 &&
+        widget.AdvancedPresentation.Kind ==
+            WidgetAdvancedPresentationKind.LauncherExperience),
+        "Installed declarations did not survive the generic catalog boundary.");
+    Assert.True(declared.Select(widget => widget.PresentationGeneration)
+        .Distinct(StringComparer.Ordinal).Count() == 2,
+        "Distinct installed package identities shared one presentation generation.");
+}
+
 static async Task InstalledLaunchAdmissionRejectsRace()
 {
     using var trusted = TemporaryCatalog.Create();
@@ -2232,10 +2273,15 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     IReadOnlyList<string>? permissions = null,
     WidgetResidencyPolicy? residencyPolicy = null,
     WidgetGlyph icon = WidgetGlyph.Connection,
-    string version = "1.0.0")
+    string version = "1.0.0",
+    WidgetAdvancedPresentationDeclaration? advancedPresentation = null,
+    string publisher = "dev.example",
+    string assembly = "payload/Widget.dll",
+    string type = "Example.EnabledWidget")
 {
     var packagePath = await CreateWidgetPackageAsync(
-        packageDirectory, id, version, styleSource, permissions, residencyPolicy, icon);
+        packageDirectory, id, version, styleSource, permissions, residencyPolicy, icon,
+        advancedPresentation, publisher, assembly, type);
     var installed = await catalog.InstallAsync(packagePath);
     if (enabled) await catalog.SetEnabledAsync(id, true);
     return installed;
@@ -2248,20 +2294,25 @@ static async Task<string> CreateWidgetPackageAsync(
     string styleSource = "button { color: #abcdef; }",
     IReadOnlyList<string>? permissions = null,
     WidgetResidencyPolicy? residencyPolicy = null,
-    WidgetGlyph icon = WidgetGlyph.Connection)
+    WidgetGlyph icon = WidgetGlyph.Connection,
+    WidgetAdvancedPresentationDeclaration? advancedPresentation = null,
+    string publisher = "dev.example",
+    string assembly = "payload/Widget.dll",
+    string type = "Example.EnabledWidget")
 {
     var packagePath = Path.Combine(
         packageDirectory, $"{id}-{version}-{Guid.NewGuid():N}.gbarwidget");
     var manifest = new WidgetManifest
     {
         Id = id,
-        Publisher = "dev.example",
+        Publisher = publisher,
         Name = id.EndsWith("enabled", StringComparison.Ordinal) ? "Enabled Widget" : "Test Widget",
         Version = version,
         HostApi = new HostApiRange("1.0", 1),
         Entrypoint = new WidgetEntrypoint(
-            "dotnet-worker", "payload/Widget.dll", "Example.EnabledWidget"),
+            "dotnet-worker", assembly, type),
         Presentation = new WidgetPresentation(icon),
+        AdvancedPresentation = advancedPresentation,
         Permissions = permissions ?? [],
         OptionalPermissions = [],
         BackgroundPolicy = residencyPolicy is null ? "none" : null,
@@ -2274,7 +2325,7 @@ static async Task<string> CreateWidgetPackageAsync(
     using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: false))
     {
         WriteArchiveEntry(archive, "manifest.json", ManifestJson.Serialize(manifest));
-        WriteArchiveEntry(archive, "payload/Widget.dll", [0x4d, 0x5a]);
+        WriteArchiveEntry(archive, assembly, [0x4d, 0x5a]);
         WriteArchiveEntry(archive, "styles/default.gbss",
             System.Text.Encoding.UTF8.GetBytes(styleSource));
     }

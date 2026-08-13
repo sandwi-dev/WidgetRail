@@ -4253,3 +4253,35 @@ packaging; the fixture requires the edited heading in the scenario result before
 accepting the archive. It reuses the restored offline SDK and isolated CLI paths
 and adds no install, publication, signing, account, network, native, or renderer
 behavior.
+
+### Generic Community advanced presentation contract (DLV-213)
+
+The package manifest now has one optional version-1 `launcherExperience`
+declaration. Protocol v16 adds one closed preset value per immutable view and
+six typed semantic slot roles. The Widget SDK exposes those values directly;
+package identity, publisher, assembly/type, element IDs, style classes, and a
+memorized root shape are not part of native admission.
+
+The bridge copies the declaration only from a validated bundled or installed
+manifest, includes it in the public descriptor and presentation-generation
+fingerprint, and gives arbitrary Community identities the same boundary. The
+native projection locates exactly one non-nested container per closed role,
+uses the existing Launcher Experience adapter/presentation owner and single
+renderer/window/compositor, and retains canonical interaction geometry only
+for the exact current descriptor generation. Missing declarations, malformed
+slots, incompatible schema/preset, replacement generations, or adapter failure
+fall back atomically to the current ordinary declarative tree. Actions, focus,
+collection keys, active scope, Back, pointer geometry, and UIA remain authored.
+Launcher Experience Packs stay data-only and Settings/host-owned.
+
+The adjacent internal tray gesture state/action names now say `Restart` rather
+than `Refresh`; its 700 ms timing, Y tap/release/cancellation behavior, generic
+worker-restart authority, help text, and public protocol are unchanged.
+
+Focused Release evidence passes Widget SDK 91/91, Widget SDK compatibility
+12/12, the two-identity installed bridge declaration fixture 1/1, native bridge
+catalog parsing, and 1,695 projection/layout/render/focus/UIA checks. The
+ordinary packaged host also admits and invokes actions in two installed
+Community packages whose complete identities and authored shapes differ. The
+one clean exact-commit canonical protocol-boundary result is retained in the
+milestone report after its required run; no capture evidence is used.

@@ -15,6 +15,15 @@ This is a local pre-release contract. It does not publish a NuGet package,
 promise post-1.0 semantic-version compatibility, sign the SDK, or change the
 runtime wire protocol.
 
+DLV-213 adds the reviewed protocol-v16 advanced-presentation surface:
+`WidgetAdvancedPresentationDeclaration`, the closed kind/preset/slot enums,
+`WidgetAdvancedPresentationView`, `WidgetView.AdvancedPresentation`, and
+`WidgetElement.InAdvancedPresentationSlot`. These are additive public symbols.
+They do not change the `0.1.0-dev` release-unit version or template inventory;
+the API baseline is intentionally regenerated in the same milestone. Older
+views remain on their prior protocol version, and omission keeps ordinary
+declarative presentation.
+
 The current bounded artifact report and a non-operative migration/deprecation
 proposal are recorded in the
 [Widget SDK governance proposal](widget-sdk-governance-proposal.md). That page

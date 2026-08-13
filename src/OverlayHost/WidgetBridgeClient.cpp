@@ -280,6 +280,35 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
             }
             descriptor.pinningSupported = source.GetNamedBoolean(L"pinningSupported");
         }
+        if (source.HasKey(L"advancedPresentation")) {
+            if (source.GetNamedValue(L"advancedPresentation").ValueType() !=
+                JsonValueType::Object) {
+                error = L"Widget descriptor property 'advancedPresentation' must be an object.";
+                return std::nullopt;
+            }
+            const auto declaration = source.GetNamedObject(L"advancedPresentation");
+            if (!HasOnlyProperties(declaration, {L"schemaVersion", L"kind"}) ||
+                !declaration.HasKey(L"schemaVersion") ||
+                declaration.GetNamedValue(L"schemaVersion").ValueType() !=
+                    JsonValueType::Number ||
+                !declaration.HasKey(L"kind") ||
+                declaration.GetNamedValue(L"kind").ValueType() !=
+                    JsonValueType::String) {
+                error = L"Widget descriptor advanced presentation declaration is malformed.";
+                return std::nullopt;
+            }
+            const auto schema = declaration.GetNamedNumber(L"schemaVersion");
+            auto kind = std::wstring(std::wstring_view(
+                declaration.GetNamedString(L"kind")));
+            if (!std::isfinite(schema) || schema < 0 || schema > 65535 ||
+                std::floor(schema) != schema || kind.empty() || kind.size() > 64 ||
+                !IsIdentifier(kind)) {
+                error = L"Widget descriptor advanced presentation declaration is invalid.";
+                return std::nullopt;
+            }
+            descriptor.advancedPresentation = WidgetAdvancedPresentationDeclaration{
+                static_cast<int>(schema), std::move(kind)};
+        }
         if (source.HasKey(L"protectedWifiPromptSupported")) {
             if (source.GetNamedValue(L"protectedWifiPromptSupported").ValueType() !=
                 JsonValueType::Boolean) {
@@ -954,6 +983,8 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
     node.collectionAnchorKey = OptionalString(source, L"collectionAnchorKey");
     node.collectionItemKey = OptionalString(source, L"collectionItemKey");
+    node.advancedPresentationSlot = OptionalString(
+        source, L"advancedPresentationSlot");
     if ((!node.collectionAnchorKey.empty() &&
          (node.collectionAnchorKey.size() > kMaximumIdentifierLength ||
           !IsIdentifier(node.collectionAnchorKey))) ||
@@ -1093,6 +1124,11 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.minimumWidth = optionalNumber(L"minimumWidth");
         parsed.minimumHeight = optionalNumber(L"minimumHeight");
         snapshot.surface = std::move(parsed);
+    }
+    if (source.HasKey(L"advancedPresentation")) {
+        const auto advanced = source.GetNamedObject(L"advancedPresentation");
+        snapshot.advancedPresentationKind = OptionalString(advanced, L"kind");
+        snapshot.advancedPresentationPreset = OptionalString(advanced, L"preset");
     }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");
