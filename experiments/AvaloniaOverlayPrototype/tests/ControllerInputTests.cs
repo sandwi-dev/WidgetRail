@@ -1,9 +1,11 @@
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
 using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
+using GameBarAlternative.AvaloniaPrototype.Views;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Reflection;
 
@@ -40,36 +42,52 @@ public sealed class ControllerInputTests
         {
             var source = new DeterministicControllerStateSource();
             var adapter = new XInputControllerAdapter(source, enableBackgroundPolling: false);
-            var window = new MainWindow(adapter);
+            var emitted = new List<SemanticInput>();
+            adapter.InputReceived += (_, args) => emitted.Add(args.Input);
+            var window = new MainWindow(adapter) { Width = 1000, Height = 640 };
             window.Show();
-            await window.NavigateAsync(PrototypeRoute.Settings);
+            await window.NavigateAsync(PrototypeRoute.AudioMixer);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Poll(adapter, source, Snapshot(connected: true), 0);
-            var page = (Control)window.ShellView.Navigation.CurrentPage!;
+            Poll(adapter, source, Snapshot(connected: true, down: true), 5);
+            Poll(adapter, source, Snapshot(connected: true), 6);
+            var page = (AudioMixerPage)window.ShellView.Navigation.CurrentPage!;
             var primary = page.FindControl<Button>("PrimaryAction")!;
             var invocationCount = 0;
             primary.Click += (_, _) => invocationCount++;
-            primary.Focus();
 
-            Poll(adapter, source, Snapshot(connected: true, a: true), 10);
-            Poll(adapter, source, Snapshot(connected: true, a: true), 600);
-            Assert.AreEqual(1, invocationCount, "The real processor must keep controller A edge-triggered through the shared router.");
-            Poll(adapter, source, Snapshot(connected: true), 610);
-
-            var slider = page.FindControl<Slider>("InterfaceScaleSlider")!;
-            slider.Focus();
+            var slider = page.FindControl<Slider>("MasterVolumeSlider")!;
+            Assert.AreSame(slider, window.FocusManager?.GetFocusedElement());
+            var initialSpatialTarget = FocusNavigator.FindTarget(
+                window.FocusManager,
+                slider,
+                NavigationDirection.Down,
+                window.ShellView.GetSpatialSearchRoots(slider));
+            Assert.IsNotNull(initialSpatialTarget);
             var original = slider.Value;
-            Poll(adapter, source, Snapshot(connected: true, x: 0.8f), 620);
+            Poll(adapter, source, Snapshot(connected: true, x: 0.8f), 20);
             Assert.IsGreaterThan(original, slider.Value, "Controller Right must adjust a focused Slider.");
-            Poll(adapter, source, Snapshot(connected: true), 630);
-            Poll(adapter, source, Snapshot(connected: true, down: true), 640);
-            Assert.AreNotSame(slider, window.FocusManager?.GetFocusedElement(), "Controller Down must leave a focused Slider.");
+            Poll(adapter, source, Snapshot(connected: true), 30);
+            var expectedSpatialTarget = FocusNavigator.FindTarget(
+                window.FocusManager,
+                slider,
+                NavigationDirection.Down,
+                window.ShellView.GetSpatialSearchRoots(slider));
+            Assert.IsNotNull(expectedSpatialTarget);
+            Assert.AreEqual("audio.game.volume", AutomationProperties.GetAutomationId(expectedSpatialTarget));
+            Poll(adapter, source, Snapshot(connected: true, down: true), 40);
+            Assert.AreEqual(SemanticInput.Down, emitted[^1], "Real processor must emit the directional edge into MainWindow.");
+            Assert.AreEqual("audio.game.volume", AutomationProperties.GetAutomationId((Control)window.FocusManager!.GetFocusedElement()!),
+                "Controller Down must stay in the aligned Slider column.");
 
             var firstFocus = window.FocusManager?.GetFocusedElement();
-            Poll(adapter, source, Snapshot(connected: true, down: true), 980);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 380);
             Assert.AreSame(firstFocus, window.FocusManager?.GetFocusedElement(), "Held direction must wait for the repeat threshold.");
-            Poll(adapter, source, Snapshot(connected: true, down: true), 990);
+            Poll(adapter, source, Snapshot(connected: true, down: true), 390);
             Assert.AreNotSame(firstFocus, window.FocusManager?.GetFocusedElement(), "Held direction must repeat through actual focus after 350 ms.");
 
+            Poll(adapter, source, Snapshot(connected: true), 1_000);
+            slider.Focus();
             var beforeDeactivate = window.FocusManager?.GetFocusedElement();
             RaiseWindowLifecycle(window, "HandleDeactivated");
             Poll(adapter, source, Snapshot(connected: true, down: true), 1_500);
@@ -81,11 +99,13 @@ public sealed class ControllerInputTests
             Poll(adapter, source, Snapshot(connected: true, down: true), 1_530);
             Assert.AreNotSame(beforeDeactivate, window.FocusManager?.GetFocusedElement());
 
+            Poll(adapter, source, Snapshot(connected: true), 1_540);
+            slider.Focus();
             window.Hide();
             Poll(adapter, source, Snapshot(connected: true, down: true), 2_000);
             Assert.IsNull(window.FocusManager?.GetFocusedElement(), "Hidden window must retain no focused input target.");
             window.Show();
-            primary.Focus();
+            slider.Focus();
             var afterShowFocus = window.FocusManager?.GetFocusedElement();
             Poll(adapter, source, Snapshot(connected: true, down: true), 2_010);
             Assert.AreSame(afterShowFocus, window.FocusManager?.GetFocusedElement(), "Show must retain neutral gating after hidden cancellation.");
@@ -98,8 +118,10 @@ public sealed class ControllerInputTests
             Assert.AreSame(afterRoute, window.FocusManager?.GetFocusedElement(), "Route replacement must reset and neutral-gate held input.");
             Poll(adapter, source, Snapshot(connected: true), 2_110);
             Poll(adapter, source, Snapshot(connected: true, down: true), 2_120);
-            Assert.AreNotSame(afterRoute, window.FocusManager?.GetFocusedElement());
+            Assert.AreSame(((AudioMixerPage)window.ShellView.ActivePage!).FindControl<Slider>("MasterVolumeSlider"), window.FocusManager?.GetFocusedElement(),
+                "Neutral then Down must explicitly re-enter at the declared initial focus.");
 
+            var currentMaster = (Slider)window.FocusManager!.GetFocusedElement()!;
             var beforeDisconnect = window.FocusManager?.GetFocusedElement();
             Poll(adapter, source, default, 2_200);
             Poll(adapter, source, Snapshot(connected: true, down: true), 2_210);
@@ -108,6 +130,8 @@ public sealed class ControllerInputTests
             Poll(adapter, source, Snapshot(connected: true, down: true), 2_230);
             Assert.AreNotSame(beforeDisconnect, window.FocusManager?.GetFocusedElement());
 
+            Poll(adapter, source, Snapshot(connected: true), 2_240);
+            currentMaster.Focus();
             var beforeReplacement = window.FocusManager?.GetFocusedElement();
             Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 2_300);
             Assert.AreSame(beforeReplacement, window.FocusManager?.GetFocusedElement(), "Replacement device must wait for neutral.");
@@ -115,11 +139,19 @@ public sealed class ControllerInputTests
             Poll(adapter, source, Snapshot(connected: true, slot: 1, down: true), 2_320);
             Assert.AreNotSame(beforeReplacement, window.FocusManager?.GetFocusedElement());
 
-            Assert.IsNotNull(window.FocusManager?.GetFocusedElement() as Control, "Controller B fixture requires a focused child control.");
             Poll(adapter, source, Snapshot(connected: true, slot: 1), 2_330);
-            Poll(adapter, source, Snapshot(connected: true, slot: 1, b: true), 2_340);
-            await Task.Delay(220);
-            Assert.AreEqual(PrototypeRoute.Settings, window.ShellView.Navigation.CurrentRoute, "Controller B must route from a focused child through history.");
+            var activePrimary = ((AudioMixerPage)window.ShellView.ActivePage!).FindControl<Button>("PrimaryAction")!;
+            activePrimary.Click += (_, _) => invocationCount++;
+            activePrimary.Focus();
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, a: true), 2_340);
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, a: true), 2_700);
+            Assert.AreEqual(1, invocationCount, "The real processor must keep controller A edge-triggered through the shared router.");
+            Poll(adapter, source, Snapshot(connected: true, slot: 1), 2_710);
+            Assert.IsNotNull(window.FocusManager?.GetFocusedElement() as Control, "Controller B fixture requires a focused child control.");
+            Poll(adapter, source, Snapshot(connected: true, slot: 1, b: true), 2_720);
+            Assert.AreEqual(PrototypeRoute.AudioMixer, window.ShellView.Navigation.CurrentRoute);
+            Assert.AreSame(window.ShellView.SelectedTrayButton, window.FocusManager?.GetFocusedElement(),
+                "Controller B must restore the selected tray item from a focused child.");
             window.Close();
         });
     }
@@ -149,7 +181,9 @@ public sealed class ControllerInputTests
             window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.None, null);
             Poll(adapter, source, Snapshot(connected: true, b: true), 30);
             await Task.Delay(220);
-            Assert.IsFalse(window.ShellView.ContentRegionControl.IsVisible, "Keyboard/controller B co-report must not toggle the content twice.");
+            Assert.IsTrue(window.ShellView.ContentRegionControl.IsVisible);
+            Assert.AreSame(window.ShellView.SelectedTrayButton, window.FocusManager?.GetFocusedElement(),
+                "Keyboard/controller B co-report must restore tray focus exactly once.");
             window.Close();
         });
     }
@@ -207,6 +241,7 @@ public sealed class ControllerInputTests
     {
         source.Current = snapshot;
         adapter.PollOnce(TimeSpan.FromMilliseconds(milliseconds));
+        Dispatcher.UIThread.RunJobs();
         Dispatcher.UIThread.RunJobs();
     }
 

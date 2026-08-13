@@ -17,6 +17,11 @@ deterministic state source feeds the real adapter/processor into the actual
 repeat and every assigned lifecycle/reset boundary. Keyboard Enter is
 explicitly edge-triggered until KeyUp or focus loss.
 
+Focus evidence exercises Avalonia XYFocus through the shared semantic router:
+Audio Mixer Up/Down stays in the aligned Slider column, tray page completion
+does not steal focus, content entry is explicit, Back restores the selected
+tray item, and the last stable per-page focus is restored after page re-entry.
+
 The transition verdict is deliberately scoped to Avalonia visual/composition
 state and brush coverage. Physical controller behavior and the Windows
 compositor/transparency verdict remain planner/user evaluation; GPU cost is

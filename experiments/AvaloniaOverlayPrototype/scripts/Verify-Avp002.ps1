@@ -36,5 +36,5 @@ Invoke-BoundedDotnet -Label 'AVP-002 Release build' -Arguments @('build', $solut
 Invoke-BoundedDotnet -Label 'AVP-002 focused Release tests' -Arguments @(
     'test', '--project', (Join-Path $prototypeRoot 'tests\AvaloniaOverlayPrototype.Tests.csproj'),
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '17'
+    '--output', 'Detailed', '--minimum-expected-tests', '18'
 )

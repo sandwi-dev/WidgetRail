@@ -14,6 +14,9 @@ controller input then use the same focus, page, tray, Slider, and Button state;
 there is no synthesized keyboard input or second control registry.
 
 - Tray Left/Right immediately cycles and opens destinations with wraparound.
+- Tray cycling retains the selected tray item. Down or A/Enter explicitly
+  enters page content; Back returns to the selected tray item. Each page keeps
+  its last valid AutomationId-backed focus with a declared initial fallback.
 - Slider Left/Right adjusts the value; Up/Down leaves the Slider.
 - Escape, keyboard B, and controller B work while a child control has focus.
 - Enter and controller A raise the focused Avalonia Button once. Enter is
@@ -39,14 +42,22 @@ From the repository root:
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp002.ps1 -TimeoutSeconds 180
 ```
 
-The focused 17-test suite builds only this solution. A deterministic
+Directional movement uses Avalonia 12 `FocusManager.FindNextElement`/XYFocus
+with rectilinear spatial selection and bounded tray/page/ScrollViewer search
+roots. A strict directional check prevents non-monotonic repeat loops. The
+Audio Mixer uses a small set of explicit XYFocus links only for its genuinely
+ambiguous parallel Slider/Mute columns; it does not define a full page graph.
+
+The focused 18-test suite builds only this solution. A deterministic
 `IControllerStateSource` drives the real adapter and `ControllerStateProcessor`
 through the actual `MainWindow`, shared router, and focused Avalonia controls.
 It covers held directional repeat, Deactivated/Activated, hide/show, route
 replacement, disconnect/reconnect neutral gating, device replacement,
 edge-triggered controller A and keyboard Enter, dead zone, and
-no-double-dispatch. The remaining tests cover standard Avalonia UIA,
-ScrollViewer focus movement, and bounded lifecycle. Its responsive matrix
+no-double-dispatch. Direct regressions cover aligned Audio Slider Up/Down,
+tray focus retention, explicit content entry, Back restoration, and per-page
+focus re-entry. The remaining tests cover standard Avalonia UIA, ScrollViewer
+focus movement, and bounded lifecycle. Its responsive matrix
 sets actual Avalonia render scaling, captures Skia-backed headless pixel frames,
 and verifies all four pages at three work areas × three scales. Every authored
 required Button/TextBlock is enumerated by AutomationId; a fully or partially

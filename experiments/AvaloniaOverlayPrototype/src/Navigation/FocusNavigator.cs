@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.VisualTree;
@@ -6,52 +7,83 @@ namespace GameBarAlternative.AvaloniaPrototype.Navigation;
 
 public static class FocusNavigator
 {
-    public static bool HandleDirectionalKey(Control root, KeyEventArgs e)
+    internal static bool Move(
+        Control focused,
+        NavigationDirection direction,
+        IEnumerable<Control> searchRoots)
     {
-        if (e.Key is not (Key.Left or Key.Right or Key.Up or Key.Down))
-        {
-            return false;
-        }
-
-        if (!Move(root, e.Key))
-        {
-            return false;
-        }
-
-        e.Handled = true;
-        return true;
+        var focusManager = TopLevel.GetTopLevel(focused)?.FocusManager;
+        var target = FindTarget(focusManager, focused, direction, searchRoots);
+        return target is not null && focusManager!.Focus(target, NavigationMethod.Directional);
     }
 
-    internal static bool Move(Control root, Key key)
+    internal static Control? FindTarget(
+        IFocusManager? focusManager,
+        Control focused,
+        NavigationDirection direction,
+        IEnumerable<Control> searchRoots)
     {
-        var focused = TopLevel.GetTopLevel(root)?.FocusManager?.GetFocusedElement() as Control;
-        if (focused is Slider && key is Key.Left or Key.Right)
+        if (focusManager is null || !direction.IsDirectional())
+        {
+            return null;
+        }
+
+        foreach (var searchRoot in searchRoots.Distinct())
+        {
+            var target = focusManager.FindNextElement(
+                direction,
+                new FindNextElementOptions
+                {
+                    FocusedElement = focused,
+                    SearchRoot = searchRoot,
+                    NavigationStrategyOverride = XYFocusNavigationStrategy.RectilinearDistance,
+                }) as Control;
+            if (target is not null &&
+                !ReferenceEquals(target, focused) &&
+                (IsExplicitTarget(focused, target, direction) || IsStrictlyInDirection(focused, target, direction)))
+            {
+                return target;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsExplicitTarget(Control focused, Control target, NavigationDirection direction)
+    {
+        var explicitTarget = direction switch
+        {
+            NavigationDirection.Up => focused.GetValue(XYFocus.UpProperty),
+            NavigationDirection.Down => focused.GetValue(XYFocus.DownProperty),
+            NavigationDirection.Left => focused.GetValue(XYFocus.LeftProperty),
+            NavigationDirection.Right => focused.GetValue(XYFocus.RightProperty),
+            _ => null,
+        };
+        return ReferenceEquals(explicitTarget, target);
+    }
+
+    private static bool IsStrictlyInDirection(Control focused, Control target, NavigationDirection direction)
+    {
+        var root = TopLevel.GetTopLevel(focused);
+        if (root is null || !ReferenceEquals(root, TopLevel.GetTopLevel(target)))
         {
             return false;
         }
 
-        if (focused is ListBoxItem && key is Key.Up or Key.Down)
+        var fromOrigin = focused.TranslatePoint(default, root) ?? default;
+        var toOrigin = target.TranslatePoint(default, root) ?? default;
+        var fromX = fromOrigin.X + focused.Bounds.Width / 2;
+        var fromY = fromOrigin.Y + focused.Bounds.Height / 2;
+        var toX = toOrigin.X + target.Bounds.Width / 2;
+        var toY = toOrigin.Y + target.Bounds.Height / 2;
+        const double tolerance = 0.5;
+        return direction switch
         {
-            return false;
-        }
-
-        var candidates = root.GetVisualDescendants()
-            .OfType<Control>()
-            .Where(control => control.Focusable && control.IsVisible && control.IsEffectivelyEnabled)
-            .ToArray();
-
-        if (candidates.Length == 0)
-        {
-            return false;
-        }
-
-        var currentIndex = focused is null ? -1 : Array.IndexOf(candidates, focused);
-        var delta = key is Key.Left or Key.Up ? -1 : 1;
-        var nextIndex = currentIndex < 0
-            ? 0
-            : (currentIndex + delta + candidates.Length) % candidates.Length;
-
-        candidates[nextIndex].Focus(NavigationMethod.Directional);
-        return true;
+            NavigationDirection.Up => toY < fromY - tolerance,
+            NavigationDirection.Down => toY > fromY + tolerance,
+            NavigationDirection.Left => toX < fromX - tolerance,
+            NavigationDirection.Right => toX > fromX + tolerance,
+            _ => false,
+        };
     }
 }

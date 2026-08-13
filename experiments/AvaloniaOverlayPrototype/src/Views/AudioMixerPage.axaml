@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="GameBarAlternative.AvaloniaPrototype.Views.AudioMixerPage"
+             XYFocus.NavigationModes="Enabled"
              AutomationProperties.AutomationId="page.audio"
              AutomationProperties.Name="Audio Mixer page">
   <Grid RowDefinitions="Auto,*,Auto">
@@ -27,25 +28,25 @@
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Cooperative game with an intentionally long executable display name" TextWrapping="Wrap"
                      AutomationProperties.AutomationId="audio.game.label" AutomationProperties.Name="Cooperative game" />
-          <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="64"
+          <Slider x:Name="GameVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="64"
                   AutomationProperties.AutomationId="audio.game.volume" AutomationProperties.Name="Cooperative game volume" />
-          <Button Grid.Column="2" Classes="prototype-action" Content="Mute"
+          <Button x:Name="GameMuteButton" Grid.Column="2" Classes="prototype-action" Content="Mute"
                   AutomationProperties.AutomationId="audio.game.mute" AutomationProperties.Name="Mute cooperative game" />
         </Grid>
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Spotify"
                      AutomationProperties.AutomationId="audio.spotify.label" AutomationProperties.Name="Spotify" />
-          <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="52"
+          <Slider x:Name="SpotifyVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="52"
                   AutomationProperties.AutomationId="audio.spotify.volume" AutomationProperties.Name="Spotify volume" />
-          <Button Grid.Column="2" Classes="prototype-action" Content="Mute"
+          <Button x:Name="SpotifyMuteButton" Grid.Column="2" Classes="prototype-action" Content="Mute"
                   AutomationProperties.AutomationId="audio.spotify.mute" AutomationProperties.Name="Mute Spotify" />
         </Grid>
         <Grid ColumnDefinitions="2*,4*,Auto" ColumnSpacing="16">
           <TextBlock Grid.Column="0" MinWidth="140" VerticalAlignment="Center" Text="Voice chat — USB headset microphone monitor" TextWrapping="Wrap"
                      AutomationProperties.AutomationId="audio.voice.label" AutomationProperties.Name="Voice chat" />
-          <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="35"
+          <Slider x:Name="VoiceVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="35"
                   AutomationProperties.AutomationId="audio.voice.volume" AutomationProperties.Name="Voice chat volume" />
-          <Button Grid.Column="2" Classes="prototype-action" Content="Mute"
+          <Button x:Name="VoiceMuteButton" Grid.Column="2" Classes="prototype-action" Content="Mute"
                   AutomationProperties.AutomationId="audio.voice.mute" AutomationProperties.Name="Mute voice chat" />
         </Grid>
       </StackPanel>

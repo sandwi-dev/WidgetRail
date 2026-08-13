@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
@@ -16,8 +17,10 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
     private readonly NavigationCoordinator<Control> navigation = new();
     private readonly PrototypePageFactory pageFactory = new();
     private CancellationTokenSource transitionLifetime = new();
+    private readonly Dictionary<PrototypeRoute, string> lastPageFocus = [];
     private bool contentOpen = true;
     private bool suspended;
+    private PrototypeRoute selectedRoute = PrototypeRoute.Settings;
 
     public PrototypeShellView()
     {
@@ -30,6 +33,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
                 Duration = TimeSpan.FromMilliseconds(120),
             },
         ];
+        AddHandler(GotFocusEvent, OnDescendantGotFocus, RoutingStrategies.Bubble);
     }
 
     public Border ContentRegionControl => this.FindControl<Border>("ContentRegion")!;
@@ -55,6 +59,12 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
 
     public NavigationCoordinator<Control> Navigation => navigation;
 
+    public Control? ActivePage => TransitionPresenterControl.AdmittedPage;
+
+    public PrototypeRoute SelectedRoute => selectedRoute;
+
+    public Button SelectedTrayButton => TrayButtons[(int)selectedRoute];
+
     public event EventHandler<PrototypeRoute>? RouteChanged;
 
     public async Task<NavigationResult<Control>> NavigateAsync(
@@ -65,6 +75,8 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         {
             return new NavigationResult<Control>(NavigationOutcome.Cancelled, route, null, TimeSpan.Zero);
         }
+
+        selectedRoute = route;
 
         contentOpen = true;
         ContentRegionControl.IsVisible = true;
@@ -110,7 +122,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         LoadingStatusControl.IsVisible = false;
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         FrameDiagnostics.Record(this, route, result.LoadDuration);
-        FocusFirstElement(result.Page);
+        SelectedTrayButton.Focus(NavigationMethod.Directional);
         RouteChanged?.Invoke(this, route);
         return result;
     }
@@ -131,7 +143,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         {
             await Task.Delay(TimeSpan.FromMilliseconds(130));
             ContentRegionControl.IsVisible = false;
-            SettingsTrayButtonControl.Focus();
+            SelectedTrayButton.Focus();
         }
         else
         {
@@ -152,9 +164,71 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         }
 
         var next = (current + delta + buttons.Count) % buttons.Count;
+        selectedRoute = (PrototypeRoute)next;
         buttons[next].Focus(Avalonia.Input.NavigationMethod.Directional);
-        _ = NavigateFromTrayAsync((PrototypeRoute)next, buttons[next]);
+        _ = NavigateAsync(selectedRoute);
         return true;
+    }
+
+    public bool TryEnterContent(Control? focused)
+    {
+        if (!IsTrayFocus(focused))
+        {
+            return false;
+        }
+
+        if (ActivePage is not { } page || Navigation.CurrentRoute != selectedRoute)
+        {
+            _ = NavigateAndEnterContentAsync(selectedRoute);
+            return true;
+        }
+
+        return FocusRememberedOrInitial(page);
+    }
+
+    public bool RestoreSelectedTrayFocus(Control? focused)
+    {
+        if (!IsPageFocus(focused))
+        {
+            return false;
+        }
+
+        RememberPageFocus(focused);
+        return SelectedTrayButton.Focus(NavigationMethod.Directional);
+    }
+
+    public bool TryMoveSpatial(Control? focused, NavigationDirection direction)
+    {
+        if (focused is null || IsTrayFocus(focused))
+        {
+            return false;
+        }
+
+        RememberPageFocus(focused);
+        return FocusNavigator.Move(focused, direction, GetSpatialSearchRoots(focused));
+    }
+
+    internal IReadOnlyList<Control> GetSpatialSearchRoots(Control focused)
+    {
+        if (IsTrayFocus(focused))
+        {
+            return [TrayRegionControl];
+        }
+
+        if (ActivePage is { } page && IsWithin(focused, page))
+        {
+            var roots = new List<Control>(2);
+            var scroll = focused.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault();
+            if (scroll is not null)
+            {
+                roots.Add(scroll);
+            }
+
+            roots.Add(page);
+            return roots;
+        }
+
+        return TopLevel.GetTopLevel(focused) is Control modalRoot ? [modalRoot] : [];
     }
 
     public void Resume() => suspended = false;
@@ -198,30 +272,65 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
 
             LoadingStatusControl.IsVisible = false;
             FrameDiagnostics.Record(this, route, result.LoadDuration);
-            FocusFirstElement(result.Page);
+            selectedRoute = route;
+            SelectedTrayButton.Focus(NavigationMethod.Directional);
             RouteChanged?.Invoke(this, route);
         }
     }
 
-    private async Task NavigateFromTrayAsync(PrototypeRoute route, Button trayButton)
+    private async Task NavigateAndEnterContentAsync(PrototypeRoute route)
     {
         var result = await NavigateAsync(route);
-        if (result.Outcome == NavigationOutcome.Committed && !suspended)
+        if (result.Outcome == NavigationOutcome.Committed && result.Page is not null && !suspended)
         {
-            trayButton.Focus(Avalonia.Input.NavigationMethod.Directional);
+            FocusRememberedOrInitial(result.Page);
         }
     }
 
-    private static void FocusFirstElement(Control page)
+    private bool FocusRememberedOrInitial(Control page)
     {
-        Dispatcher.UIThread.Post(() =>
+        Control? target = null;
+        if (lastPageFocus.TryGetValue(selectedRoute, out var rememberedId))
         {
-            var first = page.GetVisualDescendants()
+            target = page.GetVisualDescendants()
                 .OfType<Control>()
-                .FirstOrDefault(control => control.Focusable && control.IsVisible && control.IsEffectivelyEnabled);
-            first?.Focus();
-        }, DispatcherPriority.Input);
+                .FirstOrDefault(control =>
+                    string.Equals(AutomationProperties.GetAutomationId(control), rememberedId, StringComparison.Ordinal) &&
+                    IsValidFocus(control));
+        }
+
+        target ??= (page as IPrototypeFocusPage)?.InitialFocus;
+        return target is not null && IsValidFocus(target) && target.Focus(NavigationMethod.Directional);
     }
+
+    private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        RememberPageFocus(e.Source as Control);
+    }
+
+    private void RememberPageFocus(Control? focused)
+    {
+        if (focused is null || ActivePage is not { } page || !IsWithin(focused, page) || !IsValidFocus(focused))
+        {
+            return;
+        }
+
+        var id = AutomationProperties.GetAutomationId(focused);
+        if (!string.IsNullOrWhiteSpace(id) && Navigation.CurrentRoute is { } route)
+        {
+            lastPageFocus[route] = id;
+        }
+    }
+
+    private bool IsTrayFocus(Control? focused) => focused is not null && IsWithin(focused, TrayRegionControl);
+
+    private bool IsPageFocus(Control? focused) => focused is not null && ActivePage is { } page && IsWithin(focused, page);
+
+    private static bool IsWithin(Control child, Control root) =>
+        ReferenceEquals(child, root) || child.GetVisualAncestors().Contains(root);
+
+    private static bool IsValidFocus(Control control) =>
+        control.Focusable && control.IsVisible && control.IsEffectivelyEnabled;
 
     private static string RouteTitle(PrototypeRoute route) => route switch
     {

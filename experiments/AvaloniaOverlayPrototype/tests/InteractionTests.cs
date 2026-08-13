@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -15,54 +16,52 @@ public sealed class InteractionTests
 {
     [TestMethod]
     [Timeout(10_000)]
-    public async Task Directional_focus_moves_while_slider_left_right_remains_adjustable()
+    public async Task Audio_slider_adjusts_horizontally_and_moves_spatially_in_the_aligned_column()
     {
         await RunOnUiThreadAsync(async () =>
         {
-            var window = new Window { Width = 1000, Height = 640 };
-            var page = new AudioMixerPage();
-            window.Content = page;
+            var window = new MainWindow { Width = 1000, Height = 640 };
             window.Show();
-            var primaryAction = page.FindControl<Button>("PrimaryAction")!;
-            var invoked = false;
-            primaryAction.Click += (_, _) => invoked = true;
-            primaryAction.Focus();
-            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
-            window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null);
-            Assert.IsTrue(invoked, "Enter must invoke the focused standard Avalonia Button.");
-
+            await window.NavigateAsync(PrototypeRoute.AudioMixer);
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            var page = (AudioMixerPage)window.ShellView.ActivePage!;
             var slider = page.FindControl<Slider>("MasterVolumeSlider")!;
-            slider.Focus();
-
-            Assert.IsFalse(FocusNavigator.Move(page, Key.Right), "Slider Left/Right must remain owned by the range control.");
+            Assert.AreSame(slider, window.FocusManager?.GetFocusedElement(), "Down from tray must explicitly enter at the declared initial Slider.");
             var originalValue = slider.Value;
             window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.None, null);
             window.KeyRelease(Key.Right, RawInputModifiers.None, PhysicalKey.None, null);
-            Assert.IsGreaterThan(originalValue, slider.Value, "Right must adjust the focused standard Avalonia Slider.");
-            Assert.IsTrue(FocusNavigator.Move(page, Key.Down));
-            Assert.AreNotSame(slider, window.FocusManager?.GetFocusedElement());
+            Assert.IsGreaterThan(originalValue, slider.Value, "Right must adjust the focused Slider.");
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            var nextSlider = window.FocusManager?.GetFocusedElement() as Control;
+            Assert.IsNotNull(nextSlider);
+            Assert.AreEqual("audio.game.volume", AutomationProperties.GetAutomationId(nextSlider));
+            window.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyRelease(Key.Up, RawInputModifiers.None, PhysicalKey.None, null);
+            Assert.AreSame(slider, window.FocusManager?.GetFocusedElement());
             window.Close();
-            await Task.CompletedTask;
         });
     }
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task B_key_returns_from_the_active_page_to_the_stationary_tray_surface()
+    public async Task B_key_from_content_restores_the_selected_stationary_tray_item()
     {
         await RunOnUiThreadAsync(async () =>
         {
             var window = new MainWindow();
             window.Show();
             await window.NavigateAsync(PrototypeRoute.Settings);
-            Assert.IsTrue(window.ShellView.ContentRegionControl.IsVisible);
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            Assert.AreNotSame(window.ShellView.SelectedTrayButton, window.FocusManager?.GetFocusedElement());
 
             window.KeyPress(Key.B, RawInputModifiers.None, PhysicalKey.None, null);
             window.KeyRelease(Key.B, RawInputModifiers.None, PhysicalKey.None, null);
-            await Task.Delay(TimeSpan.FromMilliseconds(180));
 
-            Assert.IsFalse(window.ShellView.ContentRegionControl.IsVisible);
-            Assert.IsTrue(window.ShellView.TrayRegionControl.IsVisible);
+            Assert.IsTrue(window.ShellView.ContentRegionControl.IsVisible);
+            Assert.AreSame(window.ShellView.SelectedTrayButton, window.FocusManager?.GetFocusedElement());
             window.Close();
         });
     }
@@ -92,18 +91,21 @@ public sealed class InteractionTests
     {
         await RunOnUiThreadAsync(async () =>
         {
-            var window = new Window { Width = 900, Height = 420 };
-            var page = new GameLauncherPage();
-            window.Content = page;
+            var window = new MainWindow { Width = 900, Height = 420 };
             window.Show();
-            page.Measure(new Size(900, 420));
-            page.Arrange(new Rect(0, 0, 900, 420));
+            await window.NavigateAsync(PrototypeRoute.GameLauncher);
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            var page = (GameLauncherPage)window.ShellView.ActivePage!;
             var scroll = page.ApplicationScrollControl;
             Assert.IsGreaterThan(0, scroll.Extent.Height - scroll.Viewport.Height, "Fixture must overflow its real ScrollViewer.");
-            page.ApplicationButtons[0].Focus();
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+            Assert.AreSame(page.ApplicationButtons[0], window.FocusManager?.GetFocusedElement());
             for (var index = 1; index < page.ApplicationButtons.Count; index++)
             {
-                Assert.IsTrue(FocusNavigator.Move(page, Key.Down));
+                window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
+                window.KeyRelease(Key.Down, RawInputModifiers.None, PhysicalKey.None, null);
             }
 
             Dispatcher.UIThread.RunJobs();
@@ -112,7 +114,8 @@ public sealed class InteractionTests
 
             for (var index = page.ApplicationButtons.Count - 1; index > 0; index--)
             {
-                Assert.IsTrue(FocusNavigator.Move(page, Key.Up));
+                window.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.None, null);
+                window.KeyRelease(Key.Up, RawInputModifiers.None, PhysicalKey.None, null);
             }
 
             Dispatcher.UIThread.RunJobs();

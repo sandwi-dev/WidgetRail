@@ -4,7 +4,7 @@ using Avalonia.Markup.Xaml;
 
 namespace GameBarAlternative.AvaloniaPrototype.Views;
 
-public sealed partial class GameLauncherPage : UserControl
+public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage
 {
     private static readonly string[] Games =
     [
@@ -46,6 +46,8 @@ public sealed partial class GameLauncherPage : UserControl
     }
 
     public ScrollViewer ApplicationScrollControl => this.FindControl<ScrollViewer>("ApplicationScroll")!;
+
+    public Control InitialFocus => this.FindControl<Button>("PrimaryAction")!;
 
     public IReadOnlyList<Button> ApplicationButtons =>
         this.FindControl<StackPanel>("ApplicationList")!.Children.OfType<Button>().ToArray();

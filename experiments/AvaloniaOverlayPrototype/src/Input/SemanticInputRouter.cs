@@ -33,6 +33,12 @@ internal sealed class SemanticInputRouter(MainWindow window)
             return true;
         }
 
+        if (input is SemanticInput.Down or SemanticInput.Activate &&
+            window.ShellView.TryEnterContent(focused))
+        {
+            return true;
+        }
+
         if (focused is Slider slider && input is SemanticInput.Left or SemanticInput.Right)
         {
             var step = slider.SmallChange > 0 ? slider.SmallChange : 1;
@@ -42,12 +48,12 @@ internal sealed class SemanticInputRouter(MainWindow window)
 
         if (input is SemanticInput.Up or SemanticInput.Down or SemanticInput.Left or SemanticInput.Right)
         {
-            return FocusNavigator.Move(window, input switch
+            return window.ShellView.TryMoveSpatial(focused, input switch
             {
-                SemanticInput.Up => Key.Up,
-                SemanticInput.Down => Key.Down,
-                SemanticInput.Left => Key.Left,
-                _ => Key.Right,
+                SemanticInput.Up => NavigationDirection.Up,
+                SemanticInput.Down => NavigationDirection.Down,
+                SemanticInput.Left => NavigationDirection.Left,
+                _ => NavigationDirection.Right,
             });
         }
 
@@ -59,6 +65,11 @@ internal sealed class SemanticInputRouter(MainWindow window)
 
         if (input == SemanticInput.Back)
         {
+            if (window.ShellView.RestoreSelectedTrayFocus(focused))
+            {
+                return true;
+            }
+
             _ = window.ShellView.BackAsync();
             return true;
         }
