@@ -200,6 +200,132 @@ public sealed class SessionTransportTests
     }
 
     [TestMethod]
+    public async Task InvalidationRefreshFailureAfterRestartIsDiscarded()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var established = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshReceived = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await ReadAsync(channel);
+            await ReplyCatalogAsync(channel, list.RequestId, revision: 1);
+            var establish = await ReadAsync(channel);
+            await ReplySnapshotAsync(channel, establish.RequestId, Descriptor(), sequence: 1);
+            await established.Task.WaitAsync(TestDeadline);
+            await SendInvalidationAsync(channel, revision: 1);
+
+            var refresh = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, refresh.Type);
+            refreshReceived.TrySetResult();
+            var restart = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.RestartWidget, restart.Type);
+            await channel.WriteAsync(new BridgeEnvelope
+            {
+                Type = BridgeMessageTypes.Acknowledged,
+                RequestId = restart.RequestId,
+                Payload = BridgeJson.ToElement(new
+                {
+                    widgetId = "session-widget",
+                    state = GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive,
+                }),
+            }, CancellationToken.None);
+            await ReplyRefreshErrorAsync(channel, refresh.RequestId);
+            await ExpectStopAsync(channel);
+        });
+        var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options());
+        try
+        {
+            _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
+            var target = session.GetTarget("session-widget");
+            _ = await session.EstablishPresentationAsync(
+                target, GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                .WaitAsync(TestDeadline);
+            established.TrySetResult();
+            await refreshReceived.Task.WaitAsync(TestDeadline);
+            _ = await session.RestartAsync(target).WaitAsync(TestDeadline);
+            await WaitForStaleRefreshDiagnosticAsync(session);
+
+            var state = session.GetState("session-widget");
+            Assert.IsNotNull(state);
+            Assert.IsNull(state.LastGood);
+            Assert.IsNull(state.Failure);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await serverTask.WaitAsync(TestDeadline);
+        }
+    }
+
+    [TestMethod]
+    public async Task InvalidationRefreshFailureAfterCatalogReplacementOrRemovalIsDiscarded()
+    {
+        await AssertCatalogRefreshFailureDiscardedAsync(removeWidget: false);
+        await AssertCatalogRefreshFailureDiscardedAsync(removeWidget: true);
+    }
+
+    [TestMethod]
+    public async Task InvalidationRefreshFailurePreservesANewerLastGoodSnapshot()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var established = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshReceived = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var newerApplied = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var descriptor = Descriptor();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await ReadAsync(channel);
+            await ReplyCatalogAsync(channel, list.RequestId, revision: 1);
+            var establish = await ReadAsync(channel);
+            await ReplySnapshotAsync(channel, establish.RequestId, descriptor, sequence: 1);
+            await established.Task.WaitAsync(TestDeadline);
+            await SendInvalidationAsync(channel, revision: 1);
+
+            var invalidationRefresh = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, invalidationRefresh.Type);
+            refreshReceived.TrySetResult();
+            var explicitRefresh = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, explicitRefresh.Type);
+            await ReplySnapshotAsync(channel, explicitRefresh.RequestId, descriptor, sequence: 2);
+            await newerApplied.Task.WaitAsync(TestDeadline);
+            await ReplyRefreshErrorAsync(channel, invalidationRefresh.RequestId);
+            await ExpectStopAsync(channel);
+        });
+        var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options());
+        try
+        {
+            _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
+            var initial = await session.EstablishPresentationAsync(
+                session.GetTarget("session-widget"),
+                GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                .WaitAsync(TestDeadline);
+            established.TrySetResult();
+            await refreshReceived.Task.WaitAsync(TestDeadline);
+            var newer = await session.RefreshAsync(initial.Authority).WaitAsync(TestDeadline);
+            Assert.AreEqual(2L, newer.Authority.SnapshotSequence);
+            newerApplied.TrySetResult();
+
+            await WaitUntilAsync(() => session.GetState("session-widget")?.Failure is not null);
+            var state = session.GetState("session-widget");
+            Assert.IsNotNull(state?.LastGood);
+            Assert.AreEqual(newer.Authority, state.LastGood.Authority);
+            Assert.AreEqual("refresh_test_failure", state.Failure?.Code);
+            Assert.IsFalse(session.Diagnostics.Any(
+                diagnostic => diagnostic.Code == "stale_refresh_failure"));
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await serverTask.WaitAsync(TestDeadline);
+        }
+    }
+
+    [TestMethod]
     public async Task ConfigurationBoundsFailBeforeTransportCreation()
     {
         var invalid = Options() with { MaximumPendingRequests = 0 };
@@ -217,10 +343,163 @@ public sealed class SessionTransportTests
         MaximumRetainedDiagnostics = 8,
     };
 
+    private static async Task AssertCatalogRefreshFailureDiscardedAsync(bool removeWidget)
+    {
+        await using var server = new ScriptedBridgeServer();
+        var established = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshReceived = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalogApplied = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var initialList = await ReadAsync(channel);
+            await ReplyCatalogAsync(channel, initialList.RequestId, revision: 1);
+            var establish = await ReadAsync(channel);
+            await ReplySnapshotAsync(channel, establish.RequestId, Descriptor(), sequence: 1);
+            await established.Task.WaitAsync(TestDeadline);
+            await SendInvalidationAsync(channel, revision: 1);
+
+            var refresh = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, refresh.Type);
+            refreshReceived.TrySetResult();
+            var replacementList = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.ListWidgets, replacementList.Type);
+            var widgets = removeWidget
+                ? Array.Empty<BridgeWidgetDescriptor>()
+                : new[]
+                {
+                    Descriptor(
+                        instanceId: "session.replacement",
+                        runtimeGeneration: new string('c', 32),
+                        presentationGeneration: new string('d', 32)),
+                };
+            await ReplyCatalogAsync(channel, replacementList.RequestId, revision: 2, widgets);
+            await catalogApplied.Task.WaitAsync(TestDeadline);
+            await ReplyRefreshErrorAsync(channel, refresh.RequestId);
+            await ExpectStopAsync(channel);
+        });
+        var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options());
+        try
+        {
+            _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
+            _ = await session.EstablishPresentationAsync(
+                session.GetTarget("session-widget"),
+                GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                .WaitAsync(TestDeadline);
+            established.TrySetResult();
+            await refreshReceived.Task.WaitAsync(TestDeadline);
+            var catalog = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
+            Assert.AreEqual(removeWidget ? 0 : 1, catalog.Widgets.Count);
+            catalogApplied.TrySetResult();
+            await WaitForStaleRefreshDiagnosticAsync(session);
+
+            Assert.IsNull(session.GetState("session-widget"));
+            if (!removeWidget)
+                Assert.AreEqual(
+                    "session.replacement",
+                    session.GetTarget("session-widget").Descriptor.InstanceId);
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            await serverTask.WaitAsync(TestDeadline);
+        }
+    }
+
+    private static BridgeWidgetDescriptor Descriptor(
+        string instanceId = "session.instance",
+        string? runtimeGeneration = null,
+        string? presentationGeneration = null) => new()
+    {
+        Id = "session-widget",
+        Name = "Session widget",
+        InstanceId = instanceId,
+        RuntimeGeneration = runtimeGeneration ?? new string('a', 32),
+        PresentationGeneration = presentationGeneration ?? new string('b', 32),
+        Icon = WidgetGlyph.Connection,
+    };
+
+    private static async Task<BridgeEnvelope> ReadAsync(BridgeFrameChannel channel) =>
+        await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(TestDeadline);
+
+    private static async Task ReplySnapshotAsync(
+        BridgeFrameChannel channel,
+        long requestId,
+        BridgeWidgetDescriptor descriptor,
+        long sequence)
+    {
+        var snapshot = new ViewSnapshot
+        {
+            Sequence = sequence,
+            WidgetInstanceId = descriptor.InstanceId,
+            ActiveInputScopeId = "root",
+            Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
+        };
+        using var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Snapshot,
+            RequestId = requestId,
+            Payload = BridgeJson.ToElement(new
+            {
+                widgetId = descriptor.Id,
+                snapshot = document.RootElement.Clone(),
+                renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
+            }),
+        }, CancellationToken.None);
+    }
+
+    private static async Task SendInvalidationAsync(BridgeFrameChannel channel, long revision)
+    {
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Invalidation,
+            Payload = BridgeJson.ToElement(new
+            {
+                widgetId = "session-widget",
+                revision,
+            }),
+        }, CancellationToken.None);
+    }
+
+    private static async Task ReplyRefreshErrorAsync(BridgeFrameChannel channel, long requestId)
+    {
+        await channel.WriteAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.Error,
+            RequestId = requestId,
+            Payload = BridgeJson.ToElement(new
+            {
+                code = "refresh_test_failure",
+                message = "The deterministic refresh failed.",
+            }),
+        }, CancellationToken.None);
+    }
+
+    private static async Task WaitForStaleRefreshDiagnosticAsync(
+        WidgetPresentationSession session)
+    {
+        await WaitUntilAsync(() => session.Diagnostics.Any(
+            diagnostic => diagnostic.Code == "stale_refresh_failure"));
+        var diagnostic = session.Diagnostics.Last(
+            item => item.Code == "stale_refresh_failure");
+        Assert.IsTrue(diagnostic.Message.Length <= 512);
+        Assert.AreEqual("session-widget", diagnostic.WidgetId);
+    }
+
     private static async Task ReplyCatalogAsync(
         BridgeFrameChannel channel,
         long requestId,
         long revision)
+        => await ReplyCatalogAsync(channel, requestId, revision, [Descriptor()]);
+
+    private static async Task ReplyCatalogAsync(
+        BridgeFrameChannel channel,
+        long requestId,
+        long revision,
+        IReadOnlyList<BridgeWidgetDescriptor> widgets)
     {
         await channel.WriteAsync(new BridgeEnvelope
         {
@@ -229,18 +508,7 @@ public sealed class SessionTransportTests
             Payload = BridgeJson.ToElement(new
             {
                 revision,
-                widgets = new[]
-                {
-                    new BridgeWidgetDescriptor
-                    {
-                        Id = "session-widget",
-                        Name = "Session widget",
-                        InstanceId = "session.instance",
-                        RuntimeGeneration = new string('a', 32),
-                        PresentationGeneration = new string('b', 32),
-                        Icon = WidgetGlyph.Connection,
-                    },
-                },
+                widgets,
             }),
         }, CancellationToken.None);
     }

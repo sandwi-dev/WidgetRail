@@ -27,6 +27,13 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     private bool _disposed;
     private Exception? _terminalFailure;
 
+    private sealed record RefreshPublication(
+        long CatalogRevision,
+        BridgeWidgetDescriptor Descriptor,
+        long SessionGeneration,
+        WidgetPresentationFrame LastGood,
+        long InvalidationRevision);
+
     private WidgetPresentationSession(
         BridgePresentationTransport transport,
         WidgetPresentationSessionOptions options)
@@ -523,13 +530,31 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         {
             while (!_lifetime.IsCancellationRequested)
             {
-                WidgetPresentationState? state;
-                lock (_gate) state = _states.GetValueOrDefault(widgetId);
-                if (state?.LastGood is null || state.InvalidationRevision <= appliedRevision) break;
-                appliedRevision = state.InvalidationRevision;
+                RefreshPublication? publication;
+                lock (_gate)
+                {
+                    var state = _states.GetValueOrDefault(widgetId);
+                    if (state?.LastGood is null ||
+                        state.InvalidationRevision <= appliedRevision ||
+                        !_descriptors.TryGetValue(widgetId, out var descriptor))
+                    {
+                        publication = null;
+                    }
+                    else
+                    {
+                        publication = new RefreshPublication(
+                            _catalogRevision,
+                            descriptor,
+                            _sessionGenerations.GetValueOrDefault(widgetId),
+                            state.LastGood,
+                            state.InvalidationRevision);
+                    }
+                }
+                if (publication is null) break;
+                appliedRevision = publication.InvalidationRevision;
                 try
                 {
-                    await RefreshAsync(state.LastGood.Authority, _lifetime.Token)
+                    await RefreshAsync(publication.LastGood.Authority, _lifetime.Token)
                         .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
@@ -538,7 +563,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 }
                 catch (Exception exception) when (exception is not OutOfMemoryException)
                 {
-                    PublishRefreshFailure(widgetId, state.LastGood, exception);
+                    PublishRefreshFailure(publication, exception);
                     break;
                 }
             }
@@ -558,19 +583,60 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         }
     }
 
-    private void PublishRefreshFailure(
-        string widgetId,
-        WidgetPresentationFrame lastGood,
-        Exception exception)
+    private void PublishRefreshFailure(RefreshPublication publication, Exception exception)
     {
         var code = exception is WidgetPresentationSessionException sessionException
             ? sessionException.Code
             : "refresh_failed";
         var failure = new WidgetPresentationFailure(
-            widgetId, code, Bound(exception.Message), lastGood.Authority.RuntimeGeneration);
-        var invalidation = GetState(widgetId)?.InvalidationRevision ?? 0;
-        PublishState(new WidgetPresentationState(widgetId, lastGood, failure, invalidation));
+            publication.Descriptor.Id,
+            code,
+            Bound(exception.Message),
+            publication.LastGood.Authority.RuntimeGeneration);
+        WidgetPresentationState? committed = null;
+        lock (_gate)
+        {
+            var capturedAuthority = publication.LastGood.Authority;
+            if (_catalogRevision == publication.CatalogRevision &&
+                _descriptors.TryGetValue(publication.Descriptor.Id, out var descriptor) &&
+                descriptor == publication.Descriptor &&
+                _sessionGenerations.GetValueOrDefault(publication.Descriptor.Id) ==
+                    publication.SessionGeneration &&
+                _states.TryGetValue(publication.Descriptor.Id, out var current) &&
+                current.LastGood is { } currentLastGood &&
+                HasSamePresentation(currentLastGood.Authority, capturedAuthority) &&
+                current.InvalidationRevision >= publication.InvalidationRevision &&
+                currentLastGood.Authority.SnapshotSequence >= capturedAuthority.SnapshotSequence)
+            {
+                committed = current with { Failure = failure };
+                _states[publication.Descriptor.Id] = committed;
+            }
+        }
+        if (committed is null)
+        {
+            RecordDiagnostic(
+                "stale_refresh_failure",
+                "A refresh failure for retired presentation authority was discarded.",
+                publication.Descriptor.Id);
+            return;
+        }
+        PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(committed));
     }
+
+    private static bool HasSamePresentation(
+        WidgetPresentationAuthority current,
+        WidgetPresentationAuthority captured) =>
+        string.Equals(current.WidgetId, captured.WidgetId, StringComparison.Ordinal) &&
+        string.Equals(
+            current.RuntimeGeneration,
+            captured.RuntimeGeneration,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            current.PresentationGeneration,
+            captured.PresentationGeneration,
+            StringComparison.Ordinal) &&
+        current.SessionGeneration == captured.SessionGeneration &&
+        string.Equals(current.WidgetInstanceId, captured.WidgetInstanceId, StringComparison.Ordinal);
 
     private WidgetPresentationFrame PublishSnapshot(
         BridgeWidgetDescriptor descriptor,
