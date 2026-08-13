@@ -361,13 +361,193 @@ increase with no clear owner.
 
 ### Avalonia Ready queue
 
-AVP-004 through AVP-006 remain held architecture experiments. The planner will
-define and assign the next experiment only after AVP-003 is independently
-reviewed and the user tests its copied runtime. AVP-004 is reserved as the
-Guide-button/window-lifecycle integration gate: it must evaluate a supported
-background-capable GameInput path for Guide-driven show/hide while preserving
-the accepted Avalonia navigation, focus, and controller behavior; no production
-migration is implied by that reservation.
+### Ready after corrected AVP-003 — AVP-004: complete polished overlay prototype
+
+State: Pre-authorized as one integrated prototype milestone at the user's
+request; implementation starts only after the corrected AVP-003 commit is
+independently accepted. The planner then assigns the foundation to the standing
+Avalonia integration lead, creates up to three temporary Codex worktree tasks
+from the accepted foundation commit, reviews their file-exclusive commits, and
+returns accepted commits to the lead for final integration. Do not start
+AVP-005 automatically.
+
+Objective: turn the isolated Avalonia experiment into a cohesive, polished,
+controller-first prototype of the complete current overlay rather than another
+small architecture sample. Include every current tray experience:
+
+- bundled Settings, Now Playing, Games & Apps, Audio Mixer, and Network
+  Controls;
+- Community-reference Spotify, YT Music, and Game Launcher; and
+- the stationary shared tray, controller guide, responsive shell, transitions,
+  loading/empty/error/disabled/busy states, and standard UIA.
+
+This is still an isolated presentation and interaction prototype. Reuse feature
+semantics from the current implementation through deterministic prototype-owned
+services and fake asynchronous data. Do not import production widget/provider
+assemblies, mutate product code, use credentials, call live providers, or imply
+that the Community pages are built into the future host. The three Community
+pages must remain visibly identified as replaceable package projections.
+
+#### AVP-004-FOUNDATION — integration lead
+
+Branch/task: `codex/avalonia-prototype`, standing Avalonia prototype task.
+Baseline: accepted corrected AVP-003 commit. Concurrency: first, before the page
+tasks are created.
+
+Create the shared production-quality design and integration foundation:
+
+- one responsive shell, stationary tray, page host, modal layer, notification
+  layer, shared controller guide, focus memory, reduced-motion policy, and
+  native Avalonia transition owner;
+- coherent Avalonia tokens/control themes for typography, spacing, shape,
+  elevation, focus, selection, validation, status, cards, buttons, sliders,
+  tabs, lists, grids, dialogs, and scroll affordances, with no GBSS or second
+  styling system;
+- typed prototype service/state contracts and feature registration that let a
+  page lane supply a view/view-model/service fixture without editing shell or
+  navigation owners; and
+- a supported prototype-local Microsoft GameInput path for Guide-driven
+  show/hide while retaining the accepted D-pad/left-stick/A/B path, neutral
+  gating, focus restoration, debounce, hidden lifecycle, and one semantic
+  input router. If Guide cannot be read through a documented supported API,
+  stop that subfeature with evidence rather than using undocumented hooks.
+
+Commit only the shared foundation and its focused tests. The planner reviews
+it, then creates the three temporary page tasks from that exact commit.
+
+#### AVP-004-SYSTEM — system controls page lane
+
+Temporary branch/task: `codex/avp004-system-pages`, `AVP-004 — system pages`.
+Exclusive ownership: experiment directories for Settings, Audio Mixer, Network
+Controls, and their focused tests/fixtures. Do not edit shared shell, design
+tokens, navigation, project files, measurement code, media/library directories,
+or reviewer documents.
+
+Implement polished, interactive feature parity for:
+
+- Settings: installed experience list with Built-in/Community/trust/status
+  labels, enable/disable/restart/update states, Launcher Experience selection,
+  appearance/interface-scale controls, startup/behavior toggles, diagnostics,
+  confirmations, and B/Back through every child route;
+- Audio Mixer: master output and microphone volume/mute, input/output device
+  selection, virtualized per-application sessions, active/idle state, exact
+  slider navigation, reverse scrolling, and the LB/RB/X tray-shortcut model;
+  and
+- Network Controls: current connection, adapter state, available-network
+  refresh, connect/disconnect/secured states, empty/offline/error/retry paths,
+  and bounded virtualized results.
+
+All behavior uses deterministic async prototype services with latest-wins,
+last-good, cancellation, and failure states where applicable.
+
+#### AVP-004-MEDIA — media page lane
+
+Temporary branch/task: `codex/avp004-media-pages`, `AVP-004 — media pages`.
+Exclusive ownership: experiment directories for Now Playing, Spotify, YT Music,
+and their focused tests/fixtures. Do not edit shared shell, design tokens,
+navigation, project files, measurement code, system/library directories, or
+reviewer documents.
+
+Implement polished, interactive feature parity for:
+
+- Now Playing: session selection, artwork/fallback, metadata, transport, seek,
+  timeline, volume/mute, unavailable/permission/error/retry states, and stable
+  focus through session refresh;
+- Spotify: Player, Queue, Playlists, playlist contents, Devices, playback
+  transfer, transport, seek, shuffle/repeat, pagination with stable focus,
+  authorization/disconnected/loading/last-good/error/retry states, and compact
+  plus expanded layouts; and
+- YT Music: disconnected/connecting/pairing/connected/unavailable states,
+  pairing instructions, now-playing artwork/metadata/progress, transport,
+  shuffle/repeat/rating, queue/library samples, refresh, and reconnection.
+
+Use deterministic local fixtures only. Do not add OAuth, WebView, credentials,
+provider clients, EME, or media playback processes.
+
+#### AVP-004-LIBRARY — library page lane
+
+Temporary branch/task: `codex/avp004-library-pages`, `AVP-004 — library pages`.
+Exclusive ownership: experiment directories for Games & Apps, Game Launcher,
+and their focused tests/fixtures. Do not edit shared shell, design tokens,
+navigation, project files, measurement code, system/media directories, or
+reviewer documents.
+
+Implement polished, interactive feature parity for:
+
+- Games & Apps: persisted-items-first presentation, background discovery,
+  game/application classification, add/remove, artwork/fallback, search,
+  refresh, launch/details, empty/loading/error states, and stable restoration;
+  and
+- Game Launcher: large virtualized library, artwork/fallback, Search,
+  collections/source filters/sort, favorites/hidden/recent/grouping, details,
+  exact semantic actions, paging/continuation, source health, retained last-good
+  failure, and compact/standard/wide layouts.
+
+Preserve AVP-003 item-stable identity and snapshot-owned exact action authority.
+No store APIs, filesystem discovery, launch commands, credentials, or product
+providers are permitted in the prototype.
+
+#### AVP-004-INTEGRATION — integration lead
+
+After independent planner acceptance of all three page commits, the integration
+lead incorporates them in SYSTEM, MEDIA, LIBRARY order and owns all shared
+wiring. Substantial conflicts stop; page lanes do not resolve shared conflicts.
+
+Complete one senior-level polish pass across the integrated prototype:
+
+- consistent hierarchy, density, iconography, alignment, button text, focus
+  treatment, scroll indication, empty/loading/error copy, and motion;
+- controller traversal and B/Back for every first page and child route, direct
+  tray cycling without content-focus theft, intentional tray/content boundary
+  transitions, slider Left/Right adjustment plus spatial Up/Down exit, modal
+  trapping/restoration, and Guide show/hide when the supported foundation path
+  succeeded;
+- responsive containment at minimum 420x340, current compact 978x466, standard
+  1316x896-class, wide, and 100/125/150-percent render scaling, with essential
+  controls reachable through reflow or scrolling rather than clipping;
+- native start/mid/end page transitions with a stationary tray, no deliberate
+  black fallback, reduced-motion behavior, bounded realized containers, and
+  standard Avalonia UIA only; and
+- an in-prototype feature matrix identifying each original feature as working,
+  realistically simulated, credential/hardware blocked, or intentionally out
+  of scope. Never label a fake provider operation as live integration.
+
+Acceptance criteria:
+
+1. All eight tray experiences open from one shell, have polished populated and
+   failure-state presentations, and expose their principal original interaction
+   paths without placeholder-only pages.
+2. Keyboard and physical controller share one semantic router. Tray cycling,
+   entry/exit, Back, Guide lifecycle, sliders, tabs, grids, lists, dialogs,
+   paging, and scroll return behave predictably with stable semantic focus.
+3. Compiled bindings and typed templates remain enabled. Remote/domain fixtures
+   stay UI-framework-neutral; bound publication is explicitly scheduled to the
+   Avalonia UI thread; exact snapshot item/action authority is preserved.
+4. Standard Avalonia controls/UIA remain the only accessibility tree. Names,
+   roles, values, states, bounds, ordering, disabled/busy semantics, and actions
+   are truthful for every representative route.
+5. One focused suite per work package is run once at its coherent boundary.
+   The integration lead then runs one final bounded Release build and complete
+   AVP MSTest.Sdk 4.3.2 suite, fixing only actual AVP-004 regressions; no product
+   aggregate or exhaustive screenshot harness.
+6. One exact-final-commit ordinary Windows measurement retains commit/runtime
+   hash, dependency versions, startup, page-switch samples for all eight pages,
+   transition samples, visible/hidden private memory and CPU, realized-container
+   maxima, and honest unavailable GPU metrics. Visible private memory must stay
+   below the user's 500-MiB ceiling; investigate a regression above 350 MiB
+   before acceptance rather than hiding it behind the ceiling.
+7. The planner launches the copied exact AVP-004 runtime and leaves it running
+   for the user's return. Automated semantic/layout evidence is not described
+   as a physical-display verdict; the user retains final visual, motion,
+   controller, Guide, and clipping acceptance.
+
+Out of scope: production migration, production widget/provider reuse, GBSS
+adapter/removal, live accounts or credentials, live OS/media/network/game
+mutation, package execution, WebView/video, publication, installer, NativeAOT,
+cross-platform work, or AVP-005. Stop for a required production edit,
+undocumented input/window API, external access, destructive state change,
+substantial cross-lane conflict, or visible memory at/above 500 MiB with no
+bounded owner.
 
 ## Widgets lane
 

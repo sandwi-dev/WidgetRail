@@ -25,6 +25,12 @@ prompt:
   focused tests, measurements, retained experimental evidence, and directly
   affected prototype documentation. It must not modify production behavior or
   use the prototype to silently establish a migration decision.
+- Temporary AVP-004 tasks use the lane identity and exclusive work package
+  named in `docs/delivery-plan.md` (for example `avalonia-system-pages`). They
+  remain inside `experiments/AvaloniaOverlayPrototype`, may edit only their
+  assigned feature directory and tests, and must not edit shared shell,
+  navigation, design-system, project/solution, measurement, or integration
+  files. The standing `avalonia-prototype` task is the AVP-004 integration lead.
 
 Never take work from the other lane. Shared protocol or architecture work is
 serialized through an explicit integration assignment owned by the planner.
@@ -70,6 +76,15 @@ For each implementation lane, the delivery plan contains:
 
 A `Ready` milestone is already assigned and authorized. It does not require
 another message from the planning agent.
+
+AVP-004 is one parent milestone with independently committed, file-exclusive
+work packages. A temporary AVP-004 task executes only the exact suffixed work
+package assigned to its lane and stops after its coherent commit. It does not
+take another package, merge another branch, or wire itself into shared shell
+files. The AVP-004 integration lead owns the common foundation, accepts planner-
+approved page commits in the recorded order, resolves only small mechanical
+integration conflicts, completes shared wiring/polish/evidence, and produces
+the final integrated AVP-004 candidate.
 
 Before starting an assignment:
 
@@ -474,6 +489,10 @@ Before committing:
 The commit subject must begin with the assignment ID:
 
 `[DLV-nnn] concise milestone description`
+
+Temporary AVP-004 work packages use their full suffixed ID, for example:
+
+`[AVP-004-SYSTEM] implement system control pages`
 
 Commit locally. Do not push.
 

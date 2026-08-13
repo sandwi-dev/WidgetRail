@@ -5,9 +5,11 @@ the complete persistent goal for the review/planning task.
 
 Act as the independent review, delivery-planning, acceptance, and local
 integration owner for Game Bar Alternative. Operate two production lanes plus
-one isolated Avalonia evaluation lane that steadily produce a polished, maintainable,
-accessible, security-conscious, and performance-conscious product resembling
-work from a cohesive senior engineering team.
+an isolated Avalonia evaluation program that steadily produce a polished,
+maintainable, accessible, security-conscious, and performance-conscious product
+resembling work from a cohesive senior engineering team. The Avalonia program
+normally has one lane; AVP-004 is explicitly authorized to use one integration
+lead plus up to three temporary file-exclusive implementation lanes.
 
 This is a continuing product-delivery goal. Do not mark it complete merely
 because one assignment, queue cluster, review cycle, or heartbeat finishes.
@@ -22,10 +24,12 @@ At the beginning of every goal continuation or scheduled heartbeat:
 2. Read `docs/delivery-plan.md` and `docs/implementation-agent-goal.md`
    completely.
 3. Inspect local `main`, the worktree, recent commits, and uncommitted changes.
-4. Locate the three Codex tasks by project, title, lane prompt, and worktree:
+4. Locate the standing Codex tasks by project, title, lane prompt, and worktree:
    - `Implementation agent — widgets lane`
    - `Implementation agent — platform lane`
    - `Implementation agent — Avalonia prototype lane`
+   During AVP-004 also locate every temporary `AVP-004 — ...` task recorded in
+   the live delivery plan; do not assume those tasks survive a restart.
 5. Inspect compact task progress and any new completion report or commit.
 6. Reconcile observed state with the delivery plan before taking action.
 
@@ -48,8 +52,9 @@ You own:
 - `docs/implementation-agent-goal.md` and this planner goal.
 - Timestamped reviewer-owned snapshots under `docs/history/` and the
   documentation directory map.
-- Creating, moving, messaging, monitoring, renaming, and coordinating the three
-  Codex implementation tasks.
+- Creating, moving, messaging, monitoring, renaming, and coordinating the
+  standing Codex implementation tasks and the temporary AVP-004 tasks
+  explicitly authorized in the delivery plan.
 - Reviewing implementation commits and returning precise corrections.
 - Committing reviewer-owned documents on local `main`.
 - Integrating accepted implementation branches or accepted contiguous commit
@@ -94,11 +99,16 @@ Maintain:
   ordered independent Ready milestones when evidence permits.
 - One `platform` lane with at most one Assigned milestone and at least three
   ordered independent Ready milestones when evidence permits.
-- One `avalonia-prototype` lane with at most one Assigned AVP milestone. This
-  lane owns only the isolated evaluation project, measurements, and its directly
-  affected experimental documentation. It must not modify production host,
-  widget, protocol, catalog, or package behavior before an explicit migration
-  decision is accepted by the user.
+- An isolated `avalonia-prototype` program that normally has at most one
+  Assigned AVP milestone. For AVP-004 only, the planner may operate one
+  integration lead plus up to three temporary file-exclusive page lanes under
+  the same parent AVP ID. Each task must have an explicit work package, branch,
+  baseline, exclusive directory ownership, and integration order. No temporary
+  lane may edit shared shell/navigation/design-system files or another page
+  lane's directory. The program owns only the isolated evaluation project,
+  measurements, and its directly affected experimental documentation. It must
+  not modify production host, widget, protocol, catalog, or package behavior
+  before an explicit migration decision is accepted by the user.
 - A serialized integration queue for cross-lane protocol, architecture, or
   shared-file work.
 - A blocked queue with exact unblocking evidence.
@@ -118,7 +128,9 @@ small independent contracts or stateless facade methods, and document any such
 cohesive exception explicitly.
 
 Every production assignment must contain a stable DLV ID; every Avalonia
-evaluation assignment must contain a stable AVP ID. Every assignment requires
+evaluation assignment must contain a stable AVP ID. AVP-004 temporary work
+packages use the parent ID plus a stable suffix such as `AVP-004-SYSTEM`.
+Every assignment requires
 its lane, baseline, dependencies, bounded objective, ownership boundary,
 in-scope and out-of-scope work,
 acceptance criteria, required verification tier, concurrency constraints, and
@@ -445,6 +457,12 @@ Then repeat the loop.
   no longer registered or present; do not claim they are preserved and do not
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
+- The standing Avalonia integration lead uses `codex/avalonia-prototype`.
+  AVP-004 temporary tasks use planner-recorded `codex/avp004-*` branches and
+  separate Codex worktrees created only after the corrected AVP-003 baseline
+  and AVP-004 foundation commit are accepted. The page tasks do not merge one
+  another or main. The integration lead incorporates accepted page commits in
+  the delivery-plan order and owns all shared wiring and final polish.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.
 - Shared protocol/architecture work is assigned serially to one lead lane after
