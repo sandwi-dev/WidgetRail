@@ -26,6 +26,7 @@ internal static class EvidenceScenario
         ArgumentException.ThrowIfNullOrWhiteSpace(arguments.EvidencePath);
         try
         {
+            FrameDiagnostics.Reset();
             var process = Process.GetCurrentProcess();
             var executable = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unavailable.");
             var startedAtUtc = process.StartTime.ToUniversalTime();
@@ -56,10 +57,11 @@ internal static class EvidenceScenario
             var hiddenAfterUse = await SampleAsync(process, TimeSpan.FromMilliseconds(2_000));
 
             var frames = FrameDiagnostics.RecordedFrames;
+            var transitions = FrameDiagnostics.RecordedTransitions;
             await using var executableStream = File.OpenRead(executable);
             var executableHash = Convert.ToHexString(await SHA256.HashDataAsync(executableStream));
             var artifact = new MeasurementArtifact(
-                "AVP-001",
+                "AVP-002",
                 arguments.SourceCommit ?? "unavailable",
                 startedAtUtc,
                 Environment.OSVersion.VersionString,
@@ -81,10 +83,25 @@ internal static class EvidenceScenario
                 frames.All(frame =>
                     frame.TransparentRoot &&
                     frame.OpaqueBlackFallbackAbsent &&
-                    frame.RequiredElementsContained),
+                    frame.RequiredElementsContained &&
+                    frame.AllVisibleRequiredElementsValid),
+                transitions,
+                Enum.GetValues<PrototypeRoute>().All(route =>
+                    transitions.Where(sample => sample.Route == route)
+                        .TakeLast(3)
+                        .Select(sample => sample.Phase)
+                        .SequenceEqual(Enum.GetValues<Navigation.TransitionPhase>())) &&
+                transitions.All(sample =>
+                    sample.TransparentRoot &&
+                    sample.OpaqueBlackBrushAbsent &&
+                    sample.AvaloniaSurfaceCoveragePresent),
+                "Vortice.XInput 3.8.3",
                 new[]
                 {
-                    "GPU frame cost unavailable in AVP-001 without an authorized ETW/PresentMon capture lane.",
+                    "Transition samples inspect Avalonia visual/composition-surface brushes and coverage; the physical Windows compositor verdict remains manual.",
+                    "Controller automation uses a fake narrow adapter; physical controller compatibility, reconnect, and feel remain planner/user checks.",
+                    "XInput is limited to four XInput-compatible slots and does not provide durable device identity.",
+                    "GPU frame cost unavailable in AVP-002 without an authorized ETW/PresentMon capture lane.",
                     "Hidden-before-first-frame was not sampled because delaying initial show would invalidate cold-start timing; hidden-after-use is retained instead.",
                     "Physical visual quality remains a planner launch and user verdict.",
                 });
@@ -103,7 +120,7 @@ internal static class EvidenceScenario
                 JsonSerializer.Serialize(
                     new
                     {
-                        assignment = "AVP-001",
+                        assignment = "AVP-002",
                         errorType = exception.GetType().Name,
                         error = "Evidence lifecycle failed; inspect the local process trace.",
                     },
@@ -150,6 +167,9 @@ internal static class EvidenceScenario
         IReadOnlyList<SwitchSample> SwitchToCompleteFrameSamples,
         IReadOnlyList<FrameSnapshot> CompleteFrames,
         bool CompleteFrameDiagnosticsPassed,
+        IReadOnlyList<TransitionDiagnosticSample> TransitionSurfaceSamples,
+        bool TransitionSurfaceDiagnosticsPassed,
+        string ControllerDependency,
         IReadOnlyList<string> UnavailableOrManualEvidence);
 
     private sealed record ResourceSample(

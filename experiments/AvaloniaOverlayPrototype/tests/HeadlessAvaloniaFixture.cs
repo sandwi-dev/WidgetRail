@@ -20,7 +20,12 @@ public static class HeadlessAvaloniaFixture
         dispatcherThread = new Thread(() =>
         {
             AppBuilder.Configure<TestApplication>()
-                .UseHeadless(new AvaloniaHeadlessPlatformOptions())
+                .UseSkia()
+                .UseHeadless(new AvaloniaHeadlessPlatformOptions
+                {
+                    ShouldRenderOnUIThread = true,
+                    UseHeadlessDrawing = false,
+                })
                 .SetupWithoutStarting();
             Ready.Set();
             Dispatcher.UIThread.MainLoop(Shutdown.Token);

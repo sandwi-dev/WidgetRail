@@ -45,7 +45,17 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
 
     private Button SettingsTrayButtonControl => this.FindControl<Button>("SettingsTrayButton")!;
 
+    public IReadOnlyList<Button> TrayButtons =>
+    [
+        this.FindControl<Button>("SettingsTrayButton")!,
+        this.FindControl<Button>("AudioTrayButton")!,
+        this.FindControl<Button>("SpotifyTrayButton")!,
+        this.FindControl<Button>("LauncherTrayButton")!,
+    ];
+
     public NavigationCoordinator<Control> Navigation => navigation;
+
+    public event EventHandler<PrototypeRoute>? RouteChanged;
 
     public async Task<NavigationResult<Control>> NavigateAsync(
         PrototypeRoute route,
@@ -88,7 +98,10 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         transitionLifetime.Dispose();
         var ownedTransition = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         transitionLifetime = ownedTransition;
-        await TransitionPresenterControl.PresentAsync(result.Page, ownedTransition.Token);
+        await TransitionPresenterControl.PresentAsync(
+            result.Page,
+            phase => FrameDiagnostics.RecordTransition(this, route, phase),
+            ownedTransition.Token);
         if (suspended || ownedTransition.IsCancellationRequested)
         {
             return result with { Outcome = NavigationOutcome.Cancelled, Page = null };
@@ -98,6 +111,7 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         FrameDiagnostics.Record(this, route, result.LoadDuration);
         FocusFirstElement(result.Page);
+        RouteChanged?.Invoke(this, route);
         return result;
     }
 
@@ -127,6 +141,21 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
 
     public FrameSnapshot CaptureFrame(PrototypeRoute route, TimeSpan transitionDuration) =>
         FrameDiagnostics.Capture(this, route, transitionDuration);
+
+    public bool TryCycleTray(Control? focused, int delta)
+    {
+        var buttons = TrayButtons;
+        var current = focused is null ? -1 : Array.IndexOf(buttons.ToArray(), focused);
+        if (current < 0)
+        {
+            return false;
+        }
+
+        var next = (current + delta + buttons.Count) % buttons.Count;
+        buttons[next].Focus(Avalonia.Input.NavigationMethod.Directional);
+        _ = NavigateFromTrayAsync((PrototypeRoute)next, buttons[next]);
+        return true;
+    }
 
     public void Resume() => suspended = false;
 
@@ -158,7 +187,10 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
             transitionLifetime.Dispose();
             var ownedTransition = new CancellationTokenSource();
             transitionLifetime = ownedTransition;
-            await TransitionPresenterControl.PresentAsync(result.Page, ownedTransition.Token);
+            await TransitionPresenterControl.PresentAsync(
+                result.Page,
+                phase => FrameDiagnostics.RecordTransition(this, route, phase),
+                ownedTransition.Token);
             if (suspended || ownedTransition.IsCancellationRequested)
             {
                 return;
@@ -167,6 +199,16 @@ public sealed partial class PrototypeShellView : UserControl, IDisposable
             LoadingStatusControl.IsVisible = false;
             FrameDiagnostics.Record(this, route, result.LoadDuration);
             FocusFirstElement(result.Page);
+            RouteChanged?.Invoke(this, route);
+        }
+    }
+
+    private async Task NavigateFromTrayAsync(PrototypeRoute route, Button trayButton)
+    {
+        var result = await NavigateAsync(route);
+        if (result.Outcome == NavigationOutcome.Committed && !suspended)
+        {
+            trayButton.Focus(Avalonia.Input.NavigationMethod.Directional);
         }
     }
 

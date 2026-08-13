@@ -4,13 +4,23 @@ using Avalonia.Threading;
 
 namespace GameBarAlternative.AvaloniaPrototype.Navigation;
 
+public enum TransitionPhase
+{
+    Start,
+    Midpoint,
+    Completion,
+}
+
 public sealed class PageTransitionPresenter : Grid, IDisposable
 {
     private CancellationTokenSource? transition;
 
     public Control? AdmittedPage { get; private set; }
 
-    public async Task PresentAsync(Control destination, CancellationToken cancellationToken = default)
+    public async Task PresentAsync(
+        Control destination,
+        Action<TransitionPhase>? sample = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(destination);
         transition?.Cancel();
@@ -29,11 +39,14 @@ public sealed class PageTransitionPresenter : Grid, IDisposable
         ];
 
         Children.Add(destination);
+        sample?.Invoke(TransitionPhase.Start);
         await Dispatcher.UIThread.InvokeAsync(() => destination.Opacity = 1);
 
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(160), token);
+            await Task.Delay(TimeSpan.FromMilliseconds(80), token);
+            sample?.Invoke(TransitionPhase.Midpoint);
+            await Task.Delay(TimeSpan.FromMilliseconds(80), token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -47,6 +60,7 @@ public sealed class PageTransitionPresenter : Grid, IDisposable
         }
 
         AdmittedPage = destination;
+        sample?.Invoke(TransitionPhase.Completion);
     }
 
     public void CancelTransition() => transition?.Cancel();

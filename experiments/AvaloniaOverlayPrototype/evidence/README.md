@@ -1,25 +1,17 @@
-# AVP-001 retained evidence
+# AVP-002 retained evidence
 
-The focused source tree retains the evidence procedure, schema, thresholds, and
-honest unavailable-metric declarations. Exact-commit machine output is written
-to the ignored `artifacts/avp001/measurement.json` path by
-`scripts/Measure-Avp001.ps1` after the milestone commit exists. The matching
-copied framework-dependent `win-x64` runtime is retained beside that JSON.
+`scripts/Measure-Avp002.ps1` writes exact-commit machine output to the ignored
+`artifacts/avp002/measurement.json` path after the milestone commit exists. A
+copied framework-dependent `win-x64` runtime is retained beside it.
 
-The artifact separates:
+The artifact separates visible and hidden CPU/private memory, cold first-frame
+time, every destination switch, the 250 MiB comparison target, and the roughly
+500 MiB unacceptable-region check. It records exact commit, executable SHA-256,
+runtime/Avalonia versions, OS, architecture, controller dependency, all complete
+frames, every required authored Button/TextBlock bound, ScrollViewer clipping,
+and transition start/midpoint/completion surface samples.
 
-- hidden-after-use CPU/private-memory after a bounded two-second settling period;
-- visible idle CPU/private-memory;
-- visible representative-shell private memory, the 250 MiB initial target, and
-  the user's roughly 500 MiB unacceptable-region check;
-- a 0.5% normalized-CPU decision check for effectively idle hidden rendering;
-- cold process start to the first complete Settings frame;
-- page switch to complete-frame samples for every representative destination;
-- each complete frame's transparent-root and containment diagnostic; and
-- exact source commit, executable SHA-256, runtime, Avalonia version, OS, and
-  process architecture.
-
-GPU frame cost is explicitly unavailable in AVP-001 because it would require a
-separately authorized ETW/PresentMon measurement lane. Physical appearance,
-mixed-monitor behavior, and the final visual verdict remain live planner/user
-checks; the prototype does not infer them from screenshots.
+The transition verdict is deliberately scoped to Avalonia visual/composition
+state and brush coverage. Physical controller behavior and the Windows
+compositor/transparency verdict remain planner/user evaluation; GPU cost is
+unavailable without an authorized ETW/PresentMon capture.

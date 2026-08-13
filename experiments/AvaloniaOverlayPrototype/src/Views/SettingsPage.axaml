@@ -50,7 +50,9 @@
                 TickFrequency="25"
                 AutomationProperties.AutomationId="settings.scale"
                 AutomationProperties.Name="Interface scale percentage" />
-        <TextBlock Text="Accessibility" FontSize="19" FontWeight="SemiBold" />
+        <TextBlock Text="Accessibility" FontSize="19" FontWeight="SemiBold"
+                   AutomationProperties.AutomationId="settings.accessibility.label"
+                   AutomationProperties.Name="Accessibility" />
         <WrapPanel>
           <Button Classes="prototype-action"
                   Content="High contrast focus"

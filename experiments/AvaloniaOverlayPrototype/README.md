@@ -1,81 +1,77 @@
-# Avalonia Overlay Prototype — AVP-001
+# Avalonia Overlay Prototype — AVP-002
 
-This is an isolated feasibility process, not a production migration. It uses
-.NET 10 and pinned stable Avalonia 12.1.1 packages. It does not reference the
-production renderer, layout/focus/accessibility engines, GBSS, Widget SDK,
-GameInput/SDL, or remote widget surfaces.
+This remains an isolated .NET 10/Avalonia 12.1.1 feasibility process, not a
+production migration. AVP-002 adds one narrow physical-controller adapter and
+closes the carried scale, bounds, and transition-surface evidence gaps. It does
+not reference production renderer/layout/focus/accessibility code, GBSS, remote
+widget surfaces, or production build scripts.
 
-## Architecture
+## Controller and semantic input
 
-- `MainWindow` is one transparent, borderless, topmost, no-taskbar Windows
-  shell. Its client size is stable while the experiment is open.
-- `PrototypeShellView` owns one stationary tray and one clipped content region.
-  Page transitions happen between Avalonia controls inside that region; the
-  HWND is not resized between pages.
-- `NavigationCoordinator<TPage>` applies a latest-wins generation and
-  cancellation policy. The admitted page remains present while an asynchronous
-  destination is loading, and only a completed destination is cross-faded.
-- Four independent Avalonia pages exercise long text, missing artwork,
-  buttons, sliders, and an explicitly named `ScrollViewer` containing a
-  sixteen-item application list.
-- `PrototypeLifecycle` cancels visible work when hidden. The ordinary evidence
-  route starts hidden, shows and switches the real window, samples visible
-  idle cost, hides it again, and exits explicitly.
-- Standard Avalonia controls and `AutomationProperties` provide UIA. There is
-  no parallel accessibility tree.
+`Vortice.XInput` 3.8.3 supplies the polling boundary. Its snapshots enter one
+`SemanticInputRouter` as Up, Down, Left, Right, Activate, or Back. Keyboard and
+controller input then use the same focus, page, tray, Slider, and Button state;
+there is no synthesized keyboard input or second control registry.
 
-## Bounded focused verification
+- Tray Left/Right immediately cycles and opens destinations with wraparound.
+- Slider Left/Right adjusts the value; Up/Down leaves the Slider.
+- Escape, keyboard B, and controller B work while a child control has focus.
+- Enter and controller A raise the focused Avalonia Button once. A short
+  cross-source duplicate window rejects co-reported activation/back events.
+- Directional input applies a 28% stick dead zone, 350 ms initial repeat, and
+  100 ms repeat interval. A and B are edge-triggered and do not repeat.
+- Disconnect, replacement slot, reconnect, route replacement, hide, and focus
+  loss reset held state. Reconnect/replacement must observe neutral before a
+  newly held input is admitted.
+
+The bounded dependency decision is recorded in
+[`controller-dependency-decision.md`](controller-dependency-decision.md).
+XInput is a prototype limitation: only four XInput-compatible slots, no durable
+device identity, and incomplete native coverage of non-XInput controllers.
+
+## Focused verification and evidence
 
 From the repository root:
 
 ```powershell
-powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp001.ps1 -TimeoutSeconds 180
+powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp002.ps1 -TimeoutSeconds 180
 ```
 
-The command builds the isolated solution in Release and runs only its focused
-MSTest.Sdk 4.3.2 component/Windows UIA suite. Each child command is killed and
-reported if it exceeds the supplied bound. The tests cover the 3 logical work
-areas × 3 scales × 4 pages, emitted Avalonia containment, stationary tray,
-retained loading, transition supersession, directional focus ownership,
-slider/Enter/Back ownership, real `ScrollViewer` round-trip, hidden lifecycle
-and in-flight suspension,
-the transparent/topmost/no-taskbar window contract, and a real
-Windows UIA smoke for Window/Button/Slider focus, Invoke, and RangeValue.
+The focused 16-test suite builds only this solution and covers the controller
+processor and real shared-router behavior, disconnect/reconnect/device loss,
+hidden/focus-loss reset, repeat/dead-zone/no-double-dispatch, standard Avalonia
+UIA, ScrollViewer focus movement, and bounded lifecycle. Its responsive matrix
+sets actual Avalonia render scaling, captures Skia-backed headless pixel frames,
+and verifies all four pages at three work areas × three scales. Every authored
+required Button/TextBlock is enumerated by AutomationId; a fully or partially
+visible bound must have nonzero contained bounds, while off-viewport
+ScrollViewer children are explicitly recorded as clipped.
 
-After committing a clean milestone, retain exact-runtime measurements with:
+Transitions retain start/midpoint/completion samples of the Avalonia visual and
+composition surface: transparent root, brush inspection, visual child count,
+and nontransparent surface coverage. These diagnostics can detect an opaque
+black brush fallback inside the Avalonia surface; they do not claim to prove
+the physical Windows compositor result.
+
+After committing the clean milestone, run the exact-commit lifecycle once:
 
 ```powershell
-powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Measure-Avp001.ps1 -TimeoutSeconds 90
+powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Measure-Avp002.ps1 -TimeoutSeconds 90
 ```
 
-The script publishes a copied framework-dependent `win-x64` runtime and runs
-one ordinary bounded Windows lifecycle. Outputs remain under
-`experiments/AvaloniaOverlayPrototype/artifacts/avp001` and are intentionally
-ignored by Git so evidence can name the exact commit that already exists.
+The ignored artifact and copied framework-dependent runtime are retained under
+`experiments/AvaloniaOverlayPrototype/artifacts/avp002`.
 
-## Visible planner launch
-
-After measurement/publish, launch the exact copied build:
+## Visible planner/user launch
 
 ```powershell
-& .\experiments\AvaloniaOverlayPrototype\artifacts\avp001\runtime-win-x64\AvaloniaOverlayPrototype.exe
+& .\experiments\AvaloniaOverlayPrototype\artifacts\avp002\runtime-win-x64\AvaloniaOverlayPrototype.exe
 ```
 
-Arrows move through standard focusable controls; Left/Right stays with a
-focused slider; Enter invokes buttons; Escape or B returns through page history
-and then closes/reopens the content surface while leaving the tray stationary.
-The normal process remains open until its window/process is closed. No
-credentials, privileged installation, or undocumented window manipulation are
-used.
-
-## AVP-001 limits
-
-The retained bounds/UIA/frame records are deterministic feasibility evidence,
-not proof of physical visual quality. The planner/user still owns the visible
-transparency, focus-ring, animation, mixed-DPI, and no-black-frame verdict on
-the accepted Release. GPU timing is unavailable without a separately assigned
-ETW/PresentMon lane. The 250 MiB private-memory value is retained as an initial
-comparison target, not enforcement code. Evidence also states whether the run
-remains below the user's roughly 500 MiB unacceptable region; misses are
-reported without speculative prototype tuning. There is no Ready AVP-002
-assignment.
+Physical controller compatibility, controller feel, focus rings, transparency,
+mixed-monitor behavior, and the physical no-black-frame verdict remain
+planner/user checks. GPU timing remains unavailable without a separately
+authorized ETW/PresentMon lane. The 250 MiB value remains an initial comparison
+target rather than an acceptance gate; evidence also states whether memory is
+below the user's roughly 500 MiB unacceptable region. Stop after AVP-002; no
+AVP-003 work is included.

@@ -26,8 +26,10 @@
                 AutomationProperties.AutomationId="spotify.artwork.missing"
                 AutomationProperties.Name="Artwork unavailable">
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-            <TextBlock HorizontalAlignment="Center" FontSize="34" Text="♪" />
-            <TextBlock HorizontalAlignment="Center" Text="Artwork unavailable" TextWrapping="Wrap" />
+            <TextBlock HorizontalAlignment="Center" FontSize="34" Text="♪"
+                       AutomationProperties.AutomationId="spotify.artwork.icon" AutomationProperties.Name="Music note placeholder" />
+            <TextBlock HorizontalAlignment="Center" Text="Artwork unavailable" TextWrapping="Wrap"
+                       AutomationProperties.AutomationId="spotify.artwork.label" AutomationProperties.Name="Artwork unavailable" />
           </StackPanel>
         </Border>
         <StackPanel Grid.Column="1" Spacing="10">

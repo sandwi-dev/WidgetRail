@@ -4,7 +4,7 @@ using Avalonia.VisualTree;
 
 namespace GameBarAlternative.AvaloniaPrototype.Navigation;
 
-internal static class FocusNavigator
+public static class FocusNavigator
 {
     public static bool HandleDirectionalKey(Control root, KeyEventArgs e)
     {

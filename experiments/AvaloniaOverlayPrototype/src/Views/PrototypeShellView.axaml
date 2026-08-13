@@ -29,7 +29,9 @@
                 Background="#E82B3D55"
                 AutomationProperties.AutomationId="avp.loading"
                 AutomationProperties.Name="Destination loading">
-          <TextBlock x:Name="LoadingText" />
+          <TextBlock x:Name="LoadingText"
+                     AutomationProperties.AutomationId="avp.loading.text"
+                     AutomationProperties.Name="Loading destination" />
         </Border>
       </Grid>
     </Border>
