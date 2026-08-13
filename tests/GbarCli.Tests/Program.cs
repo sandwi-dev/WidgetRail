@@ -129,6 +129,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unknown commands return usage errors", UnknownCommand),
 };
 
+if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+        "GBA_LAUNCHER_LIFECYCLE_HOST_TEST")))
+    tests = [.. tests, (
+        "Launcher Experience author-to-production lifecycle is exact",
+        LauncherThemeScenarios.AuthorToProductionLifecycle)];
+
 if (args is ["--test", var exactName])
 {
     tests = tests.Where(test => string.Equals(

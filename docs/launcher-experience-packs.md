@@ -34,6 +34,15 @@ overwrite an existing path. Packing sorts entries ordinally and fixes ZIP
 timestamps and metadata, so identical source bytes produce identical archives
 and SHA-256 digests. Installed ID/version directories are immutable.
 
+The checked-in scaffold uses the same bottom-rail compact, standard, and wide
+geometry admitted by the production native compatibility matrix, including its
+150%-text controller-hint minimums. The focused author-to-production fixture
+uses the supported commands above for a bottom-rail version and a left-rail/
+glass replacement, then carries that exact isolated catalog through Settings
+selection, ordinary-host activation, safe start, last-good recovery, built-in
+Hero Rail recovery, and exact removal. Preview and package artifacts remain
+data-only and path-free throughout that route.
+
 Preview emits a bounded deterministic offscreen fixture document, not widget
 code or a browser page. It enumerates Hero Rail, Cover Wall, Carousel, and
 Compact Grid over compact, standard, and wide surfaces for empty, 20-game,

@@ -39,7 +39,7 @@ internal static class Program
                 BridgeProtocol.DefaultMaximumMessageBytes,
                 256,
                 BridgeProtocol.AbsoluteMaximumMessageBytes);
-            if (scenario is not ("adoption" or "fallback" or "selection" or "matrix"))
+            if (scenario is not ("adoption" or "fallback" or "selection" or "matrix" or "lifecycle"))
                 throw new InvalidOperationException("Unknown Launcher Experience fixture scenario.");
 
             using var shutdown = new CancellationTokenSource();
@@ -104,9 +104,11 @@ internal static class Program
             await using var backend = new CompositePlatformBrokerBackend(
                 simulator,
                 simulator,
-                appLibrary: scenario is "adoption" or "selection" or "matrix"
+                appLibrary: scenario is "adoption" or "selection" or "matrix" or "lifecycle"
                     ? new SeededAppLibrary(Path.Combine(
-                        settingsRoot, "launcher-experience-backend.txt"),
+                        settingsRoot, scenario == "lifecycle"
+                            ? $"launcher-experience-backend-{Environment.ProcessId}.txt"
+                            : "launcher-experience-backend.txt"),
                         matrix: scenario == "matrix")
                     : UnavailableAppLibrary.Instance,
                 privateState: simulator);

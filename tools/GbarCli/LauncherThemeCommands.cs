@@ -430,24 +430,24 @@ internal static class LauncherThemeTemplate
           "branches": {
             "compact": { "root": { "type": "overlay", "children": [
               { "type": "region", "slot": "hero-background", "region": { "x": 0, "y": 0, "width": 1, "height": 1 } },
-              { "type": "region", "slot": "details-panel", "region": { "x": 0.05, "y": 0.08, "width": 0.9, "height": 0.28 }, "surface": "glass" },
-              { "type": "region", "slot": "source-status", "region": { "x": 0.05, "y": 0.39, "width": 0.4, "height": 0.08 } },
-              { "type": "region", "slot": "game-rail", "region": { "x": 0.05, "y": 0.5, "width": 0.9, "height": 0.3 }, "orientation": "horizontal" },
-              { "type": "region", "slot": "controller-hints", "region": { "x": 0.5, "y": 0.86, "width": 0.45, "height": 0.08 } }
+              { "type": "region", "slot": "source-status", "region": { "x": 0.05, "y": 0.03, "width": 0.35, "height": 0.14 } },
+              { "type": "region", "slot": "details-panel", "region": { "x": 0.05, "y": 0.19, "width": 0.9, "height": 0.32 }, "surface": "glass" },
+              { "type": "region", "slot": "game-rail", "region": { "x": 0.05, "y": 0.54, "width": 0.9, "height": 0.27 }, "orientation": "horizontal" },
+              { "type": "region", "slot": "controller-hints", "region": { "x": 0.5, "y": 0.83, "width": 0.45, "height": 0.15 } }
             ] } },
             "standard": { "root": { "type": "overlay", "children": [
               { "type": "region", "slot": "hero-background", "region": { "x": 0, "y": 0, "width": 1, "height": 1 } },
-              { "type": "region", "slot": "details-panel", "region": { "x": 0.07, "y": 0.08, "width": 0.54, "height": 0.42 }, "surface": "glass" },
-              { "type": "region", "slot": "source-status", "region": { "x": 0.67, "y": 0.08, "width": 0.26, "height": 0.1 } },
-              { "type": "region", "slot": "game-rail", "region": { "x": 0.06, "y": 0.62, "width": 0.88, "height": 0.25 }, "orientation": "horizontal" },
-              { "type": "region", "slot": "controller-hints", "region": { "x": 0.58, "y": 0.9, "width": 0.36, "height": 0.07 } }
+              { "type": "region", "slot": "details-panel", "region": { "x": 0.08, "y": 0.08, "width": 0.5, "height": 0.36 }, "surface": "glass" },
+              { "type": "region", "slot": "source-status", "region": { "x": 0.68, "y": 0.08, "width": 0.24, "height": 0.1 } },
+              { "type": "region", "slot": "game-rail", "region": { "x": 0.08, "y": 0.55, "width": 0.84, "height": 0.27 }, "orientation": "horizontal" },
+              { "type": "region", "slot": "controller-hints", "region": { "x": 0.52, "y": 0.88, "width": 0.4, "height": 0.08 } }
             ] } },
             "wide": { "root": { "type": "overlay", "children": [
               { "type": "region", "slot": "hero-background", "region": { "x": 0, "y": 0, "width": 1, "height": 1 } },
-              { "type": "region", "slot": "game-rail", "region": { "x": 0.04, "y": 0.08, "width": 0.22, "height": 0.78 }, "orientation": "vertical" },
-              { "type": "region", "slot": "details-panel", "region": { "x": 0.32, "y": 0.18, "width": 0.47, "height": 0.5 }, "surface": "glass" },
-              { "type": "region", "slot": "source-status", "region": { "x": 0.81, "y": 0.08, "width": 0.15, "height": 0.12 } },
-              { "type": "region", "slot": "controller-hints", "region": { "x": 0.58, "y": 0.9, "width": 0.38, "height": 0.07 } }
+              { "type": "region", "slot": "details-panel", "region": { "x": 0.08, "y": 0.08, "width": 0.5, "height": 0.36 }, "surface": "glass" },
+              { "type": "region", "slot": "source-status", "region": { "x": 0.68, "y": 0.08, "width": 0.24, "height": 0.1 } },
+              { "type": "region", "slot": "game-rail", "region": { "x": 0.08, "y": 0.55, "width": 0.84, "height": 0.27 }, "orientation": "horizontal" },
+              { "type": "region", "slot": "controller-hints", "region": { "x": 0.52, "y": 0.88, "width": 0.4, "height": 0.08 } }
             ] } }
           }
         }

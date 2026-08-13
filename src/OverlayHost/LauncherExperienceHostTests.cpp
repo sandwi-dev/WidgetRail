@@ -215,7 +215,8 @@ public:
     TemporaryInstallation(
         const fs::path& source,
         const fs::path& fixtureBridge,
-        const std::string_view scenario) {
+        const std::string_view scenario,
+        const fs::path& externalSettingsRoot = {}) {
         Require(fs::is_regular_file(source / L"OverlayHost.exe"),
             "--installation does not contain OverlayHost.exe");
         Require(fs::is_directory(source / L"runtime"),
@@ -265,14 +266,24 @@ public:
         fs::copy_file(fixtureBridge, bridgeRoot / L"WidgetBridge.exe",
             fs::copy_options::overwrite_existing);
 
-        localAppData_ = root_ / L"local-app-data";
-        const auto settings = localAppData_ / L"GameBarAlternative";
-        fs::create_directories(settings);
-        if (scenario.starts_with("selection")) {
+        const bool usesExternalSettings = !externalSettingsRoot.empty();
+        const auto settings = usesExternalSettings
+            ? fs::absolute(externalSettingsRoot)
+            : root_ / L"local-app-data" / L"GameBarAlternative";
+        if (usesExternalSettings) {
+            Require(settings.filename() == L"GameBarAlternative" &&
+                    fs::is_directory(settings),
+                "--lifecycle-settings-root must name an existing GameBarAlternative settings directory");
+            localAppData_ = settings.parent_path();
+        } else {
+            localAppData_ = root_ / L"local-app-data";
+            fs::create_directories(settings);
+        }
+        if (!usesExternalSettings && scenario.starts_with("selection")) {
             WriteExperiencePackage(settings, "1.0.0", "cover-wall", false, true);
             WriteExperiencePackage(settings, "2.0.0", "carousel", false, true);
             WriteSelection("1.0.0", false);
-        } else if (scenario.starts_with("matrix")) {
+        } else if (!usesExternalSettings && scenario.starts_with("matrix")) {
             WriteExperiencePackage(settings, "10.0.0", "hero-rail", false, false);
             WriteExperiencePackage(settings, "11.0.0", "hero-rail", true, true);
             WriteExperiencePackage(settings, "12.0.0", "hero-rail", false, true);
@@ -641,8 +652,9 @@ struct RunningHost final {
         const fs::path& source,
         const fs::path& fixtureBridge,
         const std::string_view scenario,
-        const std::wstring_view performanceState = L"interactive")
-        : installation(source, fixtureBridge, scenario),
+        const std::wstring_view performanceState = L"interactive",
+        const fs::path& externalSettingsRoot = {})
+        : installation(source, fixtureBridge, scenario, externalSettingsRoot),
           host(installation.Root(), installation.LocalAppData(),
                Arguments(performanceState)) {
         Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
@@ -959,6 +971,85 @@ void RunSafeStart(
                  "unchanged exact selection passed\n";
 }
 
+void PublishLifecycleStage(
+    const fs::path& controlRoot,
+    const std::wstring_view stage) {
+    WriteUtf8(controlRoot / std::wstring(stage), "ready\n");
+}
+
+void WaitForLifecycleStage(
+    const fs::path& controlRoot,
+    const std::wstring_view stage) {
+    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+        return fs::is_regular_file(controlRoot / std::wstring(stage));
+    }), "Author-to-production lifecycle coordinator omitted stage " +
+        WideToUtf8(stage) + ".");
+}
+
+void RunAuthorLifecycle(
+    IUIAutomation* automation,
+    const fs::path& installationPath,
+    const fs::path& fixtureBridge,
+    const fs::path& settingsRoot,
+    const fs::path& controlRoot) {
+    fs::create_directories(controlRoot);
+    RunningHost running(
+        installationPath, fixtureBridge, "lifecycle\n", L"safe-start",
+        settingsRoot);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        return log.find("selection=dev.example.production@1.0.0") !=
+                std::string::npos &&
+            log.find("safe-start=true") != std::string::npos &&
+            log.find("background=fallback") != std::string::npos;
+    }), "One-activation safe start did not bypass the authored selection.");
+    SendKey(running.window, VK_ESCAPE);
+    auto tray = WaitForElement(
+        automation, running.window, L"tray:tray.game-launcher");
+    FocusAndActivate(tray.Get(), running.window, "tray:tray.game-launcher");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() &&
+            records.back().selection == "dev.example.production@1.0.0" &&
+            records.back().rail == "horizontal";
+    }), "Safe start did not expire into the authored bottom-rail selection.");
+    PublishLifecycleStage(controlRoot, L"selected-after-safe-start");
+    PublishLifecycleStage(controlRoot, L"v1-active");
+
+    WaitForLifecycleStage(controlRoot, L"v2-selected");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() &&
+            records.back().selection == "dev.example.production@2.0.0" &&
+            records.back().rail == "vertical" &&
+            records.back().detailsSurface == "glass";
+    }), "Exact replacement version did not activate its left-rail/glass recipe.");
+    PublishLifecycleStage(controlRoot, L"v2-active");
+
+    WaitForLifecycleStage(controlRoot, L"v2-corrupted");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(running.installation.LogPath());
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return log.find("retained-diagnostic=") != std::string::npos &&
+            !records.empty() &&
+            records.back().selection == "dev.example.production@2.0.0" &&
+            records.back().rail == "vertical";
+    }), "Corrupted selected reload did not retain the exact last-good presentation.");
+    PublishLifecycleStage(controlRoot, L"last-good-retained");
+
+    WaitForLifecycleStage(controlRoot, L"hero-rail-restored");
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto records = ProjectionRecords(running.installation.LogPath());
+        return !records.empty() && records.back().selection ==
+                "org.gbar.builtin.hero-rail@1.0.0" &&
+            records.back().rail == "horizontal";
+    }), "Built-in Hero Rail did not replace the recovered authored selection.");
+    running.Stop();
+    PublishLifecycleStage(controlRoot, L"host-complete");
+    std::cout << "LauncherExperienceHostTests: author-to-production replacement, "
+                 "one-activation safe start, last-good reload, and Hero Rail recovery passed\n";
+}
+
 void RunCustomPackMatrix(
     IUIAutomation* automation,
     const fs::path& installationPath,
@@ -1168,7 +1259,8 @@ void Run(
     const fs::path& installationPath,
     const fs::path& fixtureBridge,
     const bool textEntryOnly,
-    const bool trayInvokeOnly) {
+    const bool trayInvokeOnly,
+    const std::optional<std::pair<fs::path, fs::path>>& lifecycle) {
     if (textEntryOnly) {
         RunTextEntryCancel(installationPath, fixtureBridge);
         return;
@@ -1182,6 +1274,12 @@ void Run(
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
         "Windows UI Automation client is unavailable.");
+    if (lifecycle) {
+        RunAuthorLifecycle(
+            automation.Get(), installationPath, fixtureBridge,
+            lifecycle->first, lifecycle->second);
+        return;
+    }
     RunInstalledSelection(automation.Get(), installationPath, fixtureBridge);
     RunSafeStart(automation.Get(), installationPath, fixtureBridge);
     RunCustomPackMatrix(automation.Get(), installationPath, fixtureBridge);
@@ -1196,12 +1294,17 @@ int wmain(const int argc, wchar_t** argv) {
         std::wstring_view(argv[5]) == L"--text-entry-only";
     const bool trayInvokeOnly = argc == 6 &&
         std::wstring_view(argv[5]) == L"--tray-invoke-only";
-    if ((argc != 5 && !textEntryOnly && !trayInvokeOnly) ||
+    const bool lifecycleOnly = argc == 10 &&
+        std::wstring_view(argv[5]) == L"--lifecycle-only" &&
+        std::wstring_view(argv[6]) == L"--lifecycle-settings-root" &&
+        std::wstring_view(argv[8]) == L"--lifecycle-control-root";
+    if ((argc != 5 && !textEntryOnly && !trayInvokeOnly && !lifecycleOnly) ||
         std::wstring_view(argv[1]) != L"--installation" ||
         std::wstring_view(argv[3]) != L"--fixture-bridge") {
         std::cerr << "Usage: LauncherExperienceHostTests --installation <dir> "
                      "--fixture-bridge <exe> "
-                     "[--text-entry-only|--tray-invoke-only]\n";
+                     "[--text-entry-only|--tray-invoke-only|--lifecycle-only "
+                     "--lifecycle-settings-root <dir> --lifecycle-control-root <dir>]\n";
         return 1;
     }
     const auto initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -1210,7 +1313,11 @@ int wmain(const int argc, wchar_t** argv) {
         return 1;
     }
     try {
-        Run(fs::path(argv[2]), fs::path(argv[4]), textEntryOnly, trayInvokeOnly);
+        const std::optional<std::pair<fs::path, fs::path>> lifecycle = lifecycleOnly
+            ? std::optional{std::pair{fs::path(argv[7]), fs::path(argv[9])}}
+            : std::nullopt;
+        Run(fs::path(argv[2]), fs::path(argv[4]), textEntryOnly, trayInvokeOnly,
+            lifecycle);
         std::cout << "LauncherExperienceHostTests: production host passed\n";
         CoUninitialize();
         return 0;

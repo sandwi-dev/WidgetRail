@@ -21,7 +21,8 @@ param(
     [switch]$LauncherExperienceTestsOnly,
     [switch]$LauncherExperienceHostTestsOnly,
     [switch]$TextEntryHostTestsOnly,
-    [switch]$TrayAccessibilityHostTestsOnly
+    [switch]$TrayAccessibilityHostTestsOnly,
+    [switch]$LauncherExperienceLifecycleTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -903,7 +904,8 @@ function Invoke-LauncherExperienceTests {
 function Invoke-LauncherExperienceHostTests {
     param(
         [switch]$TextEntryOnly,
-        [switch]$TrayInvokeOnly
+        [switch]$TrayInvokeOnly,
+        [switch]$LifecycleOnly
     )
     & dotnet publish (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
@@ -936,6 +938,27 @@ function Invoke-LauncherExperienceHostTests {
         $testArguments += '--text-entry-only'
     } elseif ($TrayInvokeOnly) {
         $testArguments += '--tray-invoke-only'
+    } elseif ($LifecycleOnly) {
+        $previousInstallation = $env:GBA_LAUNCHER_LIFECYCLE_INSTALLATION
+        $previousHostTest = $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST
+        $previousFixtureBridge = $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE
+        try {
+            $env:GBA_LAUNCHER_LIFECYCLE_INSTALLATION = $outputDirectory
+            $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST = Join-Path $outputDirectory 'LauncherExperienceHostTests.exe'
+            $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $fixtureBridge
+            & dotnet run `
+                --project (Join-Path $projectDirectory '..\..\tests\GbarCli.Tests\GbarCli.Tests.csproj') `
+                --configuration $Configuration -- `
+                --test 'Launcher Experience author-to-production lifecycle is exact'
+            if ($LASTEXITCODE -ne 0) {
+                throw "Launcher Experience lifecycle coordinator failed with exit code $LASTEXITCODE."
+            }
+        } finally {
+            $env:GBA_LAUNCHER_LIFECYCLE_INSTALLATION = $previousInstallation
+            $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST = $previousHostTest
+            $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $previousFixtureBridge
+        }
+        return
     }
     & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') $testArguments
     if ($LASTEXITCODE -ne 0) {
@@ -1248,6 +1271,15 @@ if ($TrayAccessibilityHostTestsOnly) {
     }
     Invoke-TrayAccessibilityTests
     Invoke-LauncherExperienceHostTests -TrayInvokeOnly
+    return
+}
+
+if ($LauncherExperienceLifecycleTestsOnly) {
+    if ($SkipTests -or $SkipPackaging) {
+        throw 'LauncherExperienceLifecycleTestsOnly requires tests and packaging.'
+    }
+    Invoke-LauncherExperienceTests
+    Invoke-LauncherExperienceHostTests -LifecycleOnly
     return
 }
 

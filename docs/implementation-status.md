@@ -4101,3 +4101,25 @@ snapshot revision, admitted session, and selected session remain exact. A stale
 failure returns the current immutable replacement state wholesale instead of
 applying rollback status. Focused Release evidence passes Now Playing 27/27,
 Platform Broker 56/56, and the installed media-session lifecycle/retry route.
+### Author-to-production Launcher Experience lifecycle (DLV-160)
+
+The supported CLI scaffold now emits bottom-rail compact, standard, and wide
+geometry that passes the production native compatibility matrix at 100% and
+150% text scale. One isolated conditional Gbar CLI test owns the complete
+author path: scaffold and validate bottom-rail v1 plus left-rail/glass v2,
+generate path-free previews, pack, inspect, install into the real catalog, and
+select through `LauncherExperienceSelectionPolicy`.
+
+The same catalog and Settings root then enter one ordinary production host and
+private bridge. That single HWND/compositor/renderer first bypasses v1 for one
+safe-start activation, restores v1, atomically adopts exact v2, retains v2 when
+its recipe reload is temporarily corrupted, and activates built-in Hero Rail.
+After valid bytes are restored, the supported CLI removes both now-unselected
+custom versions; exact Settings selection remains Hero Rail and catalog listing
+contains no stale custom version. Retained preview, archive, native output, and
+host-log evidence contains no local path or remote/executable content.
+
+Focused Release evidence passes 1,691 native Launcher Experience checks and the
+one exact author-to-production lifecycle route. No schema, public protocol,
+network/gallery/signing surface, renderer, window, or presentation owner was
+added.
