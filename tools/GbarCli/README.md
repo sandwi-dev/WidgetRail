@@ -73,10 +73,12 @@ gbar launcher-theme remove dev.example.deep-space 1.0.0
   output path must not already exist, even as an empty directory. Its
   generated `NuGet.Config` clears external feeds and resolves that dependency
   only from the relative project-local feed, so the scaffold builds offline in
-  a clean directory without a platform checkout or machine-specific project
-  reference. Each sibling `MSTest.Sdk` 4.3.2 project executes the same semantic
-  scenario declared for isolated `gbar preview`; no repository project
-  reference or credential is generated.
+  a clean directory without a platform checkout, machine-wide package-cache
+  dependency, or machine-specific project reference. The external-consumer
+  contract verifies this with a fresh temporary `NUGET_PACKAGES` root and the
+  generated cleared `NuGet.Config`. Each sibling `MSTest.Sdk` 4.3.2 project
+  executes the same semantic scenario declared for isolated `gbar preview`; no
+  repository project reference or credential is generated.
   `eng/WidgetSdkRelease.props` supplies the shared pre-release version and
   supported template version stamped into the CLI and SDK. The generated
   package adds a deterministic content suffix and the project references that

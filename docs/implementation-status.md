@@ -426,7 +426,8 @@ local developer artifact. A focused fixture copies only the built `gbar`
 distribution, removes the template override, and invokes that executable from
 a fresh repository-shaped directory. The copied tool scaffolds an exact
 content-versioned `GameBarAlternative.WidgetSdk` dependency, builds the basic
-widget from its project-local cleared feed, validates its capability-free
+widget from its project-local cleared feed into a fresh temporary
+`NUGET_PACKAGES` root, validates its capability-free
 manifest, and creates a catalog-valid package. The SDK nupkg contains only
 `WidgetSdk.dll` and `WidgetProtocol.dll`; CLI, broker, Runtime, catalog, Settings,
 absolute checkout paths, and source-tree project references do not enter the

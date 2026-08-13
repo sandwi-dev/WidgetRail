@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using GameBarAlternative.GbarCli;
 using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetCatalog;
@@ -584,6 +585,7 @@ static async Task ExternalVersionedSdkConsumer()
     var distribution = Path.Combine(temp.Path, "gbar-dist");
     var repository = Path.Combine(temp.Path, "external-repository");
     var widget = Path.Combine(repository, "ExternalBasic");
+    var nugetPackages = Path.Combine(temp.Path, "nuget-packages");
     Directory.CreateDirectory(distribution);
     Directory.CreateDirectory(Path.Combine(repository, ".git"));
     CopyGbarDistribution(AppContext.BaseDirectory, distribution);
@@ -606,6 +608,12 @@ static async Task ExternalVersionedSdkConsumer()
     Assert.Contains("PackageReference Include=\"GameBarAlternative.WidgetSdk\"", projectText);
     Assert.DoesNotContain("ProjectReference", projectText);
     Assert.DoesNotContain(Environment.CurrentDirectory, projectText);
+    var sdkReference = XDocument.Load(project).Descendants("PackageReference").Single(element =>
+        string.Equals((string?)element.Attribute("Include"),
+            "GameBarAlternative.WidgetSdk", StringComparison.Ordinal));
+    var sdkVersion = (string?)sdkReference.Attribute("Version") ??
+        throw new InvalidOperationException("The generated SDK reference omitted its exact version.");
+    Assert.Contains("-dev.local.", sdkVersion);
     var generatedInputs = Directory.EnumerateFiles(widget, "*", SearchOption.AllDirectories)
         .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
                            StringComparison.OrdinalIgnoreCase) &&
@@ -621,25 +629,35 @@ static async Task ExternalVersionedSdkConsumer()
     {
         var entries = archive.Entries.Select(entry => entry.FullName)
             .Order(StringComparer.Ordinal).ToArray();
-        Assert.True(entries.Contains("lib/net8.0/WidgetSdk.dll", StringComparer.Ordinal),
-            "The local SDK artifact omitted WidgetSdk.dll.");
-        Assert.True(entries.Contains("lib/net8.0/WidgetProtocol.dll", StringComparer.Ordinal),
-            "The local SDK artifact omitted WidgetProtocol.dll.");
-        foreach (var implementation in new[]
-                 {
-                     "gbar.dll", "WidgetRuntime.dll", "PlatformBroker.dll",
-                     "WidgetCatalog.dll", "PlatformSettings.dll",
-                 })
-            Assert.True(!entries.Any(entry => entry.EndsWith(
-                    implementation, StringComparison.OrdinalIgnoreCase)),
-                $"The local SDK artifact leaked bundled implementation assembly {implementation}.");
+        Assert.SequenceEqual(
+            new[] { "lib/net8.0/WidgetProtocol.dll", "lib/net8.0/WidgetSdk.dll" },
+            entries.Where(entry =>
+                    entry.StartsWith("lib/net8.0/", StringComparison.Ordinal) &&
+                    entry.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                .Order(StringComparer.Ordinal));
     }
     await AssertArchiveHasNoPathsAsync(sdkPackage, Environment.CurrentDirectory);
 
     var build = await RunProcessAsync(
         "dotnet", ["build", project, "-c", "Release", "--nologo"],
-        TimeSpan.FromSeconds(90), widget);
+        TimeSpan.FromSeconds(90), widget,
+        new Dictionary<string, string?> { ["NUGET_PACKAGES"] = nugetPackages });
     Assert.True(build.Code == 0, "external build: " + build.Output + build.Error);
+    var restoredSdk = Path.Combine(
+        nugetPackages,
+        "gamebaralternative.widgetsdk",
+        sdkVersion.ToLowerInvariant(),
+        "lib",
+        "net8.0");
+    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetSdk.dll")),
+        "The exact generated SDK version was not restored into the isolated package root.");
+    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetProtocol.dll")),
+        "The isolated SDK restore omitted WidgetProtocol.dll.");
+    Assert.SequenceEqual(
+        new[] { sdkVersion.ToLowerInvariant() },
+        Directory.EnumerateDirectories(Path.Combine(
+                nugetPackages, "gamebaralternative.widgetsdk"))
+            .Select(Path.GetFileName).Order(StringComparer.Ordinal));
     var validation = await RunProcessAsync(
         gbar, ["validate", widget], TimeSpan.FromSeconds(30), repository);
     Assert.True(validation.Code == 0,
@@ -655,7 +673,8 @@ static async Task ExternalVersionedSdkConsumer()
     var packed = await RunProcessAsync(
         gbar,
         ["pack", widget, "--configuration", "Release", "--output", package],
-        TimeSpan.FromSeconds(120), repository);
+        TimeSpan.FromSeconds(120), repository,
+        new Dictionary<string, string?> { ["NUGET_PACKAGES"] = nugetPackages });
     Assert.True(packed.Code == 0, "external pack: " + packed.Output + packed.Error);
     using (var archive = ZipFile.OpenRead(package))
     {
