@@ -19,6 +19,11 @@ session performs its exact authority check. Large Scroll and Grid collections
 use a recycling `ListBox`; no custom accessibility tree or container cache is
 present.
 
+`WidgetPresentationSession` is the sole invalidation-refresh owner. The AVP
+coordinator consumes its coalesced `PresentationChanged`/last-good publication
+and does not launch a second `RefreshAsync` whose stale loser could become a
+visible failure.
+
 `OverlayPlatformClient` consumes accepted `OverlayPlatformInterop` ABI v1. The
 native component remains the sole GameInput/Guide/device/repeat/neutral/
 foreground/placement owner, while Avalonia supplies its one HWND and one focus
@@ -33,7 +38,10 @@ reduced motion. A latest-wins admission pump serializes transitions, coalesces
 same-widget snapshots, and admits authority/focus only while the exact
 destination remains current. Superseded trees are removed, artwork is canceled,
 and decoded bitmaps are disposed. Responsive visibility uses the current logical surface;
-non-Scroll roots receive a host ScrollViewer so compact content stays reachable.
+focus remains only on effectively visible controls, remembers valid identities
+per compact/expanded mode, and falls back within the current page or selected
+tray when a branch becomes hidden. Hidden responsive branches remain outside
+UIA and XYFocus. Non-Scroll roots receive a host ScrollViewer so compact content stays reachable.
 Advanced presentation uses only the closed protocol kind/preset/slot enums and
 never package, widget, element, provider, or tree-shape identity.
 
@@ -43,7 +51,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (15 tests):
+MSTest.Sdk 4.3.2 suite (17 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -56,7 +64,9 @@ collection/UIA identity, compact/standard/wide layouts at actual Avalonia
 authority, stationary dynamic tray, content entry/Back focus restoration,
 start/mid/end transition surface diagnostics, same/new-widget supersession,
 artwork cancellation/disposal, slider quantization, ABI layout, and the absence
-of Vortice. The suite retains an ignored exact-commit focused proof consumed by
+of Vortice. It also proves session-owned out-of-order invalidation coalescing and
+compact/expanded focus migration, hidden-branch UIA/XYFocus exclusion, and exact
+mode-identity restoration with one render tree. The suite retains an ignored exact-commit focused proof consumed by
 the final measurement.
 
 After the coherent commit, run exactly one ordinary exact-commit measurement:

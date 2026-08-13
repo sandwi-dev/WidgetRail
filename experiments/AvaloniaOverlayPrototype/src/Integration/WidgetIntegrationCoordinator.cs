@@ -49,7 +49,6 @@ public sealed class WidgetIntegrationCoordinator : IAsyncDisposable
         this.session = session;
         this.scheduler = scheduler;
         session.PresentationChanged += OnPresentationChanged;
-        session.Invalidated += OnInvalidated;
         session.DiagnosticPublished += OnDiagnosticPublished;
     }
 
@@ -266,7 +265,6 @@ public sealed class WidgetIntegrationCoordinator : IAsyncDisposable
         if (disposed) return;
         disposed = true;
         session.PresentationChanged -= OnPresentationChanged;
-        session.Invalidated -= OnInvalidated;
         session.DiagnosticPublished -= OnDiagnosticPublished;
         lifetime.Cancel();
         selection?.Cancel();
@@ -289,29 +287,8 @@ public sealed class WidgetIntegrationCoordinator : IAsyncDisposable
         if (args.State.Failure is { } failure) _ = PublishFailureAsync(failure.Message);
     }
 
-    private void OnInvalidated(object? sender, WidgetPresentationInvalidatedEventArgs args)
-    {
-        var frame = CurrentFrame;
-        if (frame is null || !string.Equals(frame.Authority.WidgetId, args.Invalidation.WidgetId, StringComparison.Ordinal))
-            return;
-        _ = RefreshAsync(frame.Authority);
-    }
-
     private void OnDiagnosticPublished(object? sender, WidgetPresentationDiagnosticEventArgs args) =>
         _ = scheduler.InvokeAsync(() => ViewModel.StatusText = args.Diagnostic.Message);
-
-    private async Task RefreshAsync(WidgetPresentationAuthority authority)
-    {
-        try
-        {
-            var frame = await session.RefreshAsync(authority, lifetime.Token).ConfigureAwait(false);
-            await PublishFrameAsync(frame, lifetime.Token).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OutOfMemoryException and not OperationCanceledException)
-        {
-            await PublishFailureAsync(exception.Message).ConfigureAwait(false);
-        }
-    }
 
     private Task PublishFrameAsync(WidgetPresentationFrame frame, CancellationToken cancellationToken) =>
         scheduler.InvokeAsync(() =>

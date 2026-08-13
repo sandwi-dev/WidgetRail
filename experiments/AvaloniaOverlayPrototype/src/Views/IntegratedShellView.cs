@@ -38,6 +38,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private readonly TextBox modalTextBox;
     private readonly Dictionary<string, Button> trayButtons = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> focusMemory = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string WidgetId, bool Compact), string> responsiveFocusMemory = [];
     private readonly List<IntegratedTransitionSample> transitionSamples = [];
     private readonly object admissionGate = new();
     private readonly bool reducedMotion;
@@ -539,9 +540,12 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         if (renderedFrame is null || admittedPresentation is null || activeAdmission is not null) return;
         var wasCompact = args.PreviousSize.Width <= 700 || args.PreviousSize.Height <= 430;
         if (wasCompact == IsCompact) return;
-        RememberCurrentFocus();
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control;
+        var focusedInPage = focused is not null && ActivePage is not null && IsWithin(focused, ActivePage);
+        if (focusedInPage) RememberFocus(focused, wasCompact);
         renderer.SetCompact(admittedPresentation.SemanticRoot, IsCompact);
         admittedPresentation.Page.UpdateLayout();
+        if (focusedInPage && !IsFocusable(focused!)) RestoreResponsiveFocus(IsCompact);
     }
 
     private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs args)
@@ -551,13 +555,37 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
     private void RememberCurrentFocus() => RememberFocus(TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control);
 
-    private void RememberFocus(Control? control)
+    private void RememberFocus(Control? control, bool? compact = null)
     {
         if (control is null || ActivePage is null || !IsWithin(control, ActivePage)) return;
         var widgetId = coordinator.ViewModel.SelectedWidgetId;
         var persistenceId = control.GetValue(SemanticTreeRenderer.FocusPersistenceIdProperty);
         if (!string.IsNullOrWhiteSpace(widgetId) && !string.IsNullOrWhiteSpace(persistenceId))
+        {
             focusMemory[widgetId] = persistenceId;
+            responsiveFocusMemory[(widgetId, compact ?? IsCompact)] = persistenceId;
+        }
+    }
+
+    private void RestoreResponsiveFocus(bool compact)
+    {
+        if (ActivePage is null || coordinator.ViewModel.SelectedWidgetId is not { } widgetId) return;
+        Control? target = null;
+        if (responsiveFocusMemory.TryGetValue((widgetId, compact), out var remembered))
+        {
+            target = ActivePage.GetVisualDescendants().OfType<Control>()
+                .FirstOrDefault(control =>
+                    string.Equals(control.GetValue(SemanticTreeRenderer.FocusPersistenceIdProperty), remembered,
+                        StringComparison.Ordinal) && IsFocusable(control));
+        }
+        target ??= FindInitialFocus();
+        suppressFocusMemory = true;
+        try
+        {
+            if (target?.Focus(NavigationMethod.Directional) == true) return;
+            SelectedTrayButton()?.Focus(NavigationMethod.Directional);
+        }
+        finally { suppressFocusMemory = false; }
     }
 
     private Control? FindInitialFocus()

@@ -1,4 +1,5 @@
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
@@ -90,6 +91,30 @@ public sealed class IntegrationAdapterTests
             Assert.AreEqual(replacement.Authority, fake.Actions[^1].Authority);
             Assert.AreEqual("launch", fake.Actions[^1].Action.ActionId);
         });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Coordinator_leaves_invalidation_refresh_to_session_and_stale_loser_is_not_visible()
+    {
+        var initial = Frame("invalidation.widget", 1, ButtonTree("open"));
+        var fake = new FakePresentationSession(initial)
+        {
+            RefreshFailure = new InvalidOperationException("An older snapshot completed after the current snapshot."),
+        };
+        await using var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+        await coordinator.InitializeAsync();
+
+        fake.Invalidate(initial.Authority.WidgetId, revision: 1);
+        var latest = Frame(initial.Authority.WidgetId, 2, ButtonTree("latest"));
+        fake.Publish(latest);
+        await WaitForAsync(() => Equals(coordinator.CurrentFrame?.Authority, latest.Authority));
+        await Task.Delay(50);
+
+        Assert.AreEqual(0, fake.RefreshCalls, "The session is the sole invalidation refresh owner.");
+        Assert.AreEqual(latest.Authority, coordinator.CurrentFrame?.Authority);
+        Assert.IsFalse(coordinator.ViewModel.HasFailure);
+        Assert.DoesNotContain("older snapshot", coordinator.ViewModel.StatusText, StringComparison.OrdinalIgnoreCase);
     }
 
     [TestMethod]
@@ -205,6 +230,76 @@ public sealed class IntegrationAdapterTests
         Assert.IsTrue(renderer.SetCompact(semantic, false));
         CollectionAssert.AreEqual(new[] { "expanded" }, VisibleSemanticIds(semantic));
         Assert.AreEqual(1, renderer.TrackedRenderCount);
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Responsive_visibility_moves_hidden_focus_to_visible_scope_then_restores_exact_mode_identity()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var root = new ViewNode
+            {
+                Id = "responsive-root",
+                Kind = ViewNodeKind.Stack,
+                Children =
+                [
+                    new ViewNode
+                    {
+                        Id = "expanded-action", FocusPersistenceId = "focus-expanded",
+                        Kind = ViewNodeKind.Button, Text = "Expanded action", ActionId = "expanded",
+                        VisibleWhen = ResponsiveVisibility.ExpandedOnly,
+                    },
+                    new ViewNode
+                    {
+                        Id = "compact-action", FocusPersistenceId = "focus-compact",
+                        Kind = ViewNodeKind.Button, Text = "Compact action", ActionId = "compact",
+                        VisibleWhen = ResponsiveVisibility.CompactOnly,
+                    },
+                ],
+            };
+            var fake = new FakePresentationSession(Frame("responsive-focus.widget", 1, root));
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => shell.AdmittedWidgetId == "responsive-focus.widget");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var expanded = SemanticControl(shell, "expanded-action");
+            Assert.IsTrue(expanded.Focus(NavigationMethod.Directional));
+            shell.SetEvidenceViewport(new Avalonia.Size(420, 340));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+            var compact = SemanticControl(shell, "compact-action");
+            Assert.AreSame(compact, window.FocusManager?.GetFocusedElement());
+            Assert.IsTrue(compact.IsEffectivelyVisible);
+            Assert.IsFalse(expanded.IsEffectivelyVisible);
+            var peer = ControlAutomationPeer.CreatePeerForElement(window);
+            Assert.IsNotNull(peer);
+            Assert.IsFalse(AutomationPeers(peer).Any(candidate =>
+                string.Equals(candidate.GetAutomationId(), AutomationProperties.GetAutomationId(expanded),
+                    StringComparison.Ordinal)));
+            foreach (var direction in new[]
+                     {
+                         NavigationDirection.Up, NavigationDirection.Down,
+                         NavigationDirection.Left, NavigationDirection.Right,
+                     })
+            {
+                Assert.AreNotSame(expanded,
+                    GameBarAlternative.AvaloniaPrototype.Navigation.FocusNavigator.FindTarget(
+                        window.FocusManager, compact, direction, [shell.ActivePage!]));
+            }
+
+            shell.SetEvidenceViewport(new Avalonia.Size(978, 466));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            Assert.AreSame(expanded, window.FocusManager?.GetFocusedElement());
+            Assert.IsTrue(expanded.IsEffectivelyVisible);
+            Assert.AreEqual(1, shell.TrackedRenderCount);
+            window.Close();
+        });
     }
 
     [TestMethod]
@@ -490,6 +585,18 @@ public sealed class IntegrationAdapterTests
         .Where(id => id is "compact" or "expanded")
         .ToArray();
 
+    private static Control SemanticControl(IntegratedShellView shell, string id) =>
+        shell.ActivePage!.GetVisualDescendants().OfType<Control>()
+            .First(control => string.Equals(
+                control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty), id, StringComparison.Ordinal));
+
+    private static IEnumerable<AutomationPeer> AutomationPeers(AutomationPeer root)
+    {
+        yield return root;
+        foreach (var child in root.GetChildren())
+            foreach (var descendant in AutomationPeers(child)) yield return descendant;
+    }
+
     private static WidgetPresentationFrame Frame(string widgetId, long sequence, ViewNode root)
     {
         var descriptor = Descriptor(widgetId);
@@ -591,8 +698,10 @@ public sealed class IntegrationAdapterTests
         public List<(string WidgetId, WidgetLifecycleState State)> Lifecycles { get; } = [];
         public List<(WidgetPresentationAuthority Authority, ControllerInputEvent Input)> ControllerInputs { get; } = [];
         public event EventHandler<WidgetPresentationChangedEventArgs>? PresentationChanged;
-        public event EventHandler<WidgetPresentationInvalidatedEventArgs>? Invalidated { add { } remove { } }
+        public event EventHandler<WidgetPresentationInvalidatedEventArgs>? Invalidated;
         public event EventHandler<WidgetPresentationDiagnosticEventArgs>? DiagnosticPublished { add { } remove { } }
+        public int RefreshCalls { get; private set; }
+        public Exception? RefreshFailure { get; init; }
 
         public Task<WidgetPresentationCatalog> ListWidgetsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new WidgetPresentationCatalog(1, byId.Values.Select(frame => frame.Descriptor).ToArray()));
@@ -608,7 +717,11 @@ public sealed class IntegrationAdapterTests
             Lifecycles.Add((target.Descriptor.Id, state));
             return Task.CompletedTask;
         }
-        public Task<WidgetPresentationFrame> RefreshAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken = default) => Task.FromResult(current);
+        public Task<WidgetPresentationFrame> RefreshAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken = default)
+        {
+            RefreshCalls++;
+            return RefreshFailure is null ? Task.FromResult(current) : Task.FromException<WidgetPresentationFrame>(RefreshFailure);
+        }
         public Task<WidgetLifecycleState> RestartAsync(WidgetPresentationTarget target, CancellationToken cancellationToken = default) => Task.FromResult(WidgetLifecycleState.Interactive);
         public Task<WidgetOperationAdmission> SendActionAsync(WidgetPresentationAuthority authority, WidgetActionEvent action, CancellationToken cancellationToken = default)
         {
@@ -630,5 +743,9 @@ public sealed class IntegrationAdapterTests
             PresentationChanged?.Invoke(this, new WidgetPresentationChangedEventArgs(
                 new WidgetPresentationState(replacement.Authority.WidgetId, replacement, null, 0)));
         }
+
+        public void Invalidate(string widgetId, long revision) => Invalidated?.Invoke(
+            this,
+            new WidgetPresentationInvalidatedEventArgs(new WidgetPresentationInvalidation(widgetId, revision)));
     }
 }

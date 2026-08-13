@@ -2,8 +2,15 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 15-test focused Avalonia integration suite. Its ignored exact-commit
+only the 17-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
+
+Focused evidence also keeps invalidation refresh under the retained session as
+the sole owner: an out-of-order stale refresh loser is not started by the AVP
+coordinator, the latest frame remains current, and `HasFailure` stays false.
+Responsive focus evidence starts on an expanded-only action, compacts to a
+visible page fallback while excluding the hidden branch from UIA/XYFocus, then
+expands and restores the exact valid identity without creating another render tree.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
