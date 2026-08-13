@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 22:13 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 22:56 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -14,7 +14,9 @@ evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local accepted product baseline: b73eaa5.
+- Local accepted product baseline: 01af13c.
+- DLV-219 is accepted and integrated through main 01af13c; its focused
+  Release Settings suite passed 60/60.
 - DLV-213 is accepted and integrated through main b73eaa5 (implementation
   commits cc3bc0e and b73eaa5).
 - DLV-212 is accepted and integrated through main 5a6ce0b.
@@ -25,9 +27,10 @@ evidence, not implementation authority.
 - Spotify 0.2.15 is installed, selected, and enabled through the supported
   Community package path. Its new unsigned content identity has no inherited
   capability grant, so live account behavior remains behind explicit consent.
-- The accepted b73eaa5 Release is visibly running from the main output as PID
-  23556, launched 2026-08-12 22:15 -07:00 with `OverlayHost.exe --show` after
-  coherent packaging. After each newly accepted visible milestone,
+- The accepted 01af13c Release is visibly running from the main output as PID
+  17592, launched 2026-08-12 22:55 -07:00 with `OverlayHost.exe --show` after
+  coherent packaging. Its startup interval admitted ordinary first snapshots
+  while cycling through the tray with no fatal error. After each newly accepted visible milestone,
   rebuild/copy the exact Release artifacts into main, replace that exact
   planner-owned process gracefully, visibly launch `OverlayHost.exe --show`,
   exercise every first page when controllable, and inspect the exact
