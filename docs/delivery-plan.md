@@ -19,8 +19,9 @@ implementation work.
   rejected the candidate; it is not an accepted release candidate.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
-  gracefully closed so the isolated reviewed AVP candidate could own the
-  physical Guide/controller test. The AVP candidate is visible as PID 4328.
+  gracefully closed for the isolated physical test. The rejected AVP-004
+  candidate and its owned test process tree are also stopped, leaving no overlay
+  visible until the corrected candidate is ready.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -431,7 +432,9 @@ reviewed ProductVersion/SHA provenance.
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
 children. The obsolete AVP-002 process ignored two graceful close paths and was
-then force-stopped by exact PID; AVP-004 remains the sole overlay executable.
+then force-stopped by exact PID. AVP-004 also failed to exit through its normal
+close path within eight seconds, so its exact owned process tree was stopped to
+unlock the copied runtime. No production or user data was removed.
 The correction must still diagnose controller admission with one instance and
 must not dismiss the user's report as only process contention.
 
@@ -456,7 +459,9 @@ Correction assignment:
   add a second C# controller reader or synthesize keyboard input.
 - Add a single-instance prototype guard or an equivalent bounded launch
   preflight so an obsolete AVP candidate cannot silently compete for Guide and
-  controller ownership during later physical tests.
+  controller ownership during later physical tests. Normal window close must
+  also terminate the candidate, WidgetBridge, and owned workers within a bounded
+  interval; retain a process-tree shutdown assertion.
 - Replace the tautological containment gate with rendered-geometry assertions
   for useful page-width allocation, minimum readable text/control dimensions,
   non-overlapping shell regions, effective visibility, and a bounded maximum
