@@ -776,9 +776,10 @@ public sealed class GameLauncherTests
             "game-launcher.experiences.back",
             "game-launcher.experiences.back"));
         var selected = Snapshot(widget, 682);
-        Assert.IsTrue(Nodes(selected.Root).Any(node =>
-            node.StyleClasses.Contains("game-launcher-experience--carousel",
-                StringComparer.Ordinal)));
+        Assert.AreEqual(WidgetAdvancedPresentationPreset.Carousel,
+            selected.AdvancedPresentation?.Preset);
+        Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
+            selected.ProtocolVersion);
         Assert.AreEqual(origin.Id, selected.InitialFocusId);
         await Background(widget);
 
@@ -789,9 +790,11 @@ public sealed class GameLauncherTests
         await Bounded(restarted.WhenWarmStateIdleAsync(),
             "restarted experience warm state");
         Assert.AreEqual("carousel", restarted.Organization.ExperienceId);
-        Assert.IsTrue(Nodes(Snapshot(restarted, 683).Root).Any(node =>
-            node.StyleClasses.Contains("game-launcher-experience--carousel",
-                StringComparer.Ordinal)));
+        var restartedSnapshot = Snapshot(restarted, 683);
+        Assert.AreEqual(WidgetAdvancedPresentationPreset.Carousel,
+            restartedSnapshot.AdvancedPresentation?.Preset);
+        Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
+            restartedSnapshot.ProtocolVersion);
         await Background(restarted);
     }
 

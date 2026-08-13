@@ -4278,10 +4278,25 @@ The adjacent internal tray gesture state/action names now say `Restart` rather
 than `Refresh`; its 700 ms timing, Y tap/release/cancellation behavior, generic
 worker-restart authority, help text, and public protocol are unchanged.
 
-Focused Release evidence passes Widget SDK 91/91, Widget SDK compatibility
-12/12, the two-identity installed bridge declaration fixture 1/1, native bridge
-catalog parsing, and 1,695 projection/layout/render/focus/UIA checks. The
-ordinary packaged host also admits and invokes actions in two installed
-Community packages whose complete identities and authored shapes differ. The
-one clean exact-commit canonical protocol-boundary result is retained in the
-milestone report after its required run; no capture evidence is used.
+The maintained Game Launcher projection and its bundled and supported
+`Export-CommunityReference` manifests now consume protocol v16 with the typed
+declaration, preset, and all six slot roles. The retired private profile/slot
+style markers are absent. The exact exported candidate, not a lookalike test
+package, is installed beside an unrelated differently named and shaped fixture
+through the ordinary package route. The production host admits both through the
+generic contract, preserves their authored action/focus/collection/Back/UIA
+semantics, and also admits the currently packaged Game Launcher without an
+advanced-presentation fallback.
+
+Focused corrected Release evidence passes Widget SDK 91/91, Widget SDK
+compatibility 12/12, installed bridge declaration 1/1, native bridge catalog
+parsing, Game Launcher 90/90, the Full Application Community reference 4/4,
+the exact CLI export case, verifier self-test, 1,695 native
+projection/layout/render/focus/UIA checks, and the three-candidate ordinary-host
+run described above. The `0b756df` clean-commit aggregate attempt failed in the
+verification-runner self-test before any product step because
+`FullApplicationWidget.Tests` was missing from `verification-steps.json`; that
+attempt is not passing evidence. The project is now listed with its bounded
+MSTest.Sdk invocation. The corrected aggregate is run once only after this
+correction is committed, and its exact result belongs to the milestone report;
+no capture evidence is used.

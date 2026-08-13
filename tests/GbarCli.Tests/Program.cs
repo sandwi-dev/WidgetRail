@@ -931,6 +931,10 @@ static async Task ExternalGameLauncherCommunityReference()
         await File.ReadAllBytesAsync(Path.Combine(widget, "manifest.json")));
     Assert.Equal("org.gbar.community.reference.game-launcher", manifest.Id);
     Assert.Equal("org.gbar.community.reference", manifest.Publisher);
+    Assert.Equal(WidgetAdvancedPresentationKind.LauncherExperience,
+        manifest.AdvancedPresentation?.Kind);
+    Assert.Equal(WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion,
+        manifest.AdvancedPresentation?.SchemaVersion);
     Assert.True(manifest.Permissions.SequenceEqual(["system.apps.library.read.v1"]),
         "The Community reference did not declare its required app-library permission.");
     Assert.True(manifest.OptionalPermissions.Order(StringComparer.Ordinal).SequenceEqual(

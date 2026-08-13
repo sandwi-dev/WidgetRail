@@ -1,3 +1,4 @@
+using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
@@ -9,8 +10,6 @@ namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
 /// </summary>
 internal static class GameLauncherExperienceProjection
 {
-    internal const string MarkerClass = "game-launcher-experience";
-
     internal static WidgetView Project(
         WidgetView view,
         GameLauncherExperience experience)
@@ -33,25 +32,48 @@ internal static class GameLauncherExperienceProjection
 
         var details = UI.Stack("game-launcher.slot.details-panel",
                 root.Children[0], hero)
-            .Classes("game-launcher-slot", "game-launcher-slot--details-panel");
-        rail = rail.AddClasses("game-launcher-slot", "game-launcher-slot--game-rail");
-        var collections = root.Children[2].AddClasses(
-            "game-launcher-slot", "game-launcher-slot--collection-tabs");
-        var sources = root.Children[1].AddClasses(
-            "game-launcher-slot", "game-launcher-slot--source-status");
+            .InAdvancedPresentationSlot(
+                WidgetAdvancedPresentationSlot.DetailsPanel);
+        rail = rail.InAdvancedPresentationSlot(
+            WidgetAdvancedPresentationSlot.PrimaryCollection);
+        var collections = root.Children[2].InAdvancedPresentationSlot(
+            WidgetAdvancedPresentationSlot.CollectionNavigation);
+        var sources = UI.Stack(
+                "game-launcher.slot.source-status", root.Children[1])
+            .InAdvancedPresentationSlot(
+                WidgetAdvancedPresentationSlot.SourceStatus);
         var operations = UI.Stack("game-launcher.content", operationChildren)
-            .Classes("game-launcher-content", "game-launcher-main",
-                "game-launcher-slot", "game-launcher-slot--operation-status");
+            .Classes("game-launcher-content", "game-launcher-main")
+            .InAdvancedPresentationSlot(
+                WidgetAdvancedPresentationSlot.OperationStatus);
         var hints = UI.Row("game-launcher.slot.controller-hints",
                 existingHints ?? UI.Stack("game-launcher.hints.empty"))
-            .Classes("game-launcher-footer", "game-launcher-slot",
-                "game-launcher-slot--controller-hints");
+            .Classes("game-launcher-footer")
+            .InAdvancedPresentationSlot(
+                WidgetAdvancedPresentationSlot.ControllerHints);
 
         var projectedRoot = UI.Stack(
                 $"game-launcher.experience.{GameLauncherExperienceIdentity.Id(experience)}",
                 details, rail, collections, sources, operations, hints)
-            .Classes(MarkerClass,
-                $"game-launcher-experience--{GameLauncherExperienceIdentity.Id(experience)}");
-        return view with { Root = projectedRoot };
+            .Classes("game-launcher-widget");
+        return view with
+        {
+            Root = projectedRoot,
+            AdvancedPresentation = new(
+                WidgetAdvancedPresentationKind.LauncherExperience,
+                Preset(experience)),
+        };
     }
+
+    private static WidgetAdvancedPresentationPreset Preset(
+        GameLauncherExperience experience) => experience switch
+        {
+            GameLauncherExperience.CoverWall =>
+                WidgetAdvancedPresentationPreset.CoverWall,
+            GameLauncherExperience.Carousel =>
+                WidgetAdvancedPresentationPreset.Carousel,
+            GameLauncherExperience.CompactGrid =>
+                WidgetAdvancedPresentationPreset.CompactGrid,
+            _ => WidgetAdvancedPresentationPreset.HeroRail,
+        };
 }
