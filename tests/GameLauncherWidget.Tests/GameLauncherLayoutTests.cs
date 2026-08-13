@@ -80,23 +80,27 @@ public sealed class GameLauncherLayoutTests
                 StringComparer.Ordinal).Count(), $"{scenario.Name}: duplicate semantic ID");
 
             var root = snapshot.Root;
-            var projected = root.StyleClasses.Contains(
-                GameLauncherExperienceProjection.MarkerClass, StringComparer.Ordinal);
+            var projected = snapshot.AdvancedPresentation is not null;
             Assert.AreEqual(projected ? 6 : 4, root.Children.Count,
                 $"{scenario.Name}: fixed/main root ownership changed");
             if (projected)
             {
+                Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
+                    snapshot.ProtocolVersion,
+                    $"{scenario.Name}: advanced presentation did not negotiate v16");
+                Assert.AreEqual(WidgetAdvancedPresentationKind.LauncherExperience,
+                    snapshot.AdvancedPresentation!.Kind,
+                    $"{scenario.Name}: advanced presentation kind changed");
                 CollectionAssert.AreEquivalent(new[]
                 {
-                    "game-launcher-slot--details-panel",
-                    "game-launcher-slot--game-rail",
-                    "game-launcher-slot--collection-tabs",
-                    "game-launcher-slot--source-status",
-                    "game-launcher-slot--operation-status",
-                    "game-launcher-slot--controller-hints",
-                }, root.Children.SelectMany(child => child.StyleClasses)
-                    .Where(value => value.StartsWith(
-                        "game-launcher-slot--", StringComparison.Ordinal)).ToArray(),
+                    WidgetAdvancedPresentationSlot.DetailsPanel,
+                    WidgetAdvancedPresentationSlot.PrimaryCollection,
+                    WidgetAdvancedPresentationSlot.CollectionNavigation,
+                    WidgetAdvancedPresentationSlot.SourceStatus,
+                    WidgetAdvancedPresentationSlot.OperationStatus,
+                    WidgetAdvancedPresentationSlot.ControllerHints,
+                }, root.Children.Select(child =>
+                    child.AdvancedPresentationSlot!.Value).ToArray(),
                     $"{scenario.Name}: semantic launcher slots changed");
             }
             else
@@ -284,12 +288,26 @@ public sealed class GameLauncherLayoutTests
                 collection, organization, GameLauncherRoute.Library, []));
             var snapshot = new PresentationWidget(view).RenderSnapshot(
                 "game-launcher.experience", 1);
-            Assert.IsTrue(snapshot.Root.StyleClasses.Contains(
-                GameLauncherExperienceProjection.MarkerClass, StringComparer.Ordinal));
-            Assert.IsTrue(snapshot.Root.StyleClasses.Contains(
-                "game-launcher-experience--" +
-                    GameLauncherExperienceIdentity.Id(experience),
-                StringComparer.Ordinal));
+            Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
+                snapshot.ProtocolVersion);
+            Assert.AreEqual(WidgetAdvancedPresentationKind.LauncherExperience,
+                snapshot.AdvancedPresentation?.Kind);
+            Assert.AreEqual(experience switch
+            {
+                GameLauncherExperience.CoverWall =>
+                    WidgetAdvancedPresentationPreset.CoverWall,
+                GameLauncherExperience.Carousel =>
+                    WidgetAdvancedPresentationPreset.Carousel,
+                GameLauncherExperience.CompactGrid =>
+                    WidgetAdvancedPresentationPreset.CompactGrid,
+                _ => WidgetAdvancedPresentationPreset.HeroRail,
+            }, snapshot.AdvancedPresentation?.Preset);
+            CollectionAssert.AreEquivalent(
+                Enum.GetValues<WidgetAdvancedPresentationSlot>(),
+                Nodes(snapshot.Root)
+                    .Where(node => node.AdvancedPresentationSlot is not null)
+                    .Select(node => node.AdvancedPresentationSlot!.Value)
+                    .ToArray());
             var nodes = Nodes(snapshot.Root).ToArray();
             var actions = nodes.Where(node => !string.IsNullOrEmpty(node.ActionId))
                 .Select(node => $"{node.Id}\0{node.ActionId}").Order().ToArray();

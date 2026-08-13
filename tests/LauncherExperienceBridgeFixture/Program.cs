@@ -1,6 +1,9 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetRuntime;
 
@@ -13,6 +16,12 @@ internal static class Program
         "org.gbar.firstparty.game-launcher",
         "org.gbar.firstparty",
         "game-launcher.default");
+    private static string InstalledIdentity(string packageId, string version)
+    {
+        var hash = SHA256.HashData(
+            Encoding.UTF8.GetBytes($"{packageId}@{version}"));
+        return $"installed.{Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant()}";
+    }
 
     public static async Task<int> Main(string[] args)
     {
@@ -99,6 +108,31 @@ internal static class Program
                 PlatformCapabilities.AppLibraryLaunchV1,
                 ConsentDecision.Grant,
                 shutdown.Token).ConfigureAwait(false);
+            var installedSnapshot = await new
+                GameBarAlternative.WidgetCatalog.WidgetCatalog(installedCatalogRoot)
+                .DiscoverAsync(shutdown.Token).ConfigureAwait(false);
+            var communityCandidate = installedSnapshot.Widgets.SingleOrDefault(widget =>
+                widget.ActiveVersion.Manifest.Id ==
+                    "org.gbar.community.reference.game-launcher");
+            if (communityCandidate is not null)
+            {
+                var manifest = communityCandidate.ActiveVersion.Manifest;
+                var identity = new BrokerWidgetIdentity(
+                    manifest.Id,
+                    InstalledWidgetAuthority.PublisherId(
+                        communityCandidate.ActiveVersion),
+                    InstalledIdentity(manifest.Id, manifest.Version));
+                await consent.SetDecisionAsync(
+                    identity,
+                    PlatformCapabilities.AppLibraryReadV1,
+                    ConsentDecision.Grant,
+                    shutdown.Token).ConfigureAwait(false);
+                await consent.SetDecisionAsync(
+                    identity,
+                    PlatformCapabilities.AppLibraryLaunchV1,
+                    ConsentDecision.Grant,
+                    shutdown.Token).ConfigureAwait(false);
+            }
 
             var simulator = new SimulatedPlatformBrokerBackend();
             await using var backend = new CompositePlatformBrokerBackend(
@@ -269,6 +303,8 @@ internal static class Program
             cancellationToken.ThrowIfCancellationRequested();
             if (!CurrentGames.Any(game => game.ProviderAppId == appId))
                 throw new BrokerException("app_not_found", "Seeded game was not found.");
+            File.AppendAllText(diagnosticPath,
+                $"launch app={appId}{Environment.NewLine}");
             return Task.CompletedTask;
         }
     }

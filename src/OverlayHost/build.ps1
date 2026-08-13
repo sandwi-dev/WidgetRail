@@ -1049,6 +1049,27 @@ function Invoke-AdvancedPresentationHostTests {
     if (-not (Test-Path -LiteralPath $fixture)) {
         throw 'AdvancedPresentationCommunityFixture publish omitted its executable.'
     }
+    $gbarOutput = Join-Path $advancedPresentationCommunityFixtureOutput 'gbar'
+    & dotnet publish `
+        (Join-Path $projectDirectory '..\..\tools\GbarCli\GbarCli.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $gbarOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "gbar publish for the DLV-212 export failed with exit code $LASTEXITCODE."
+    }
+    $gbar = Join-Path $gbarOutput 'gbar.exe'
+    & dotnet publish `
+        (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $launcherExperienceBridgeFixtureOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
+    }
+    $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
+    if (-not (Test-Path -LiteralPath $gbar) -or
+        -not (Test-Path -LiteralPath $fixtureBridge)) {
+        throw 'The exported-candidate host fixture omitted gbar or its seeded bridge.'
+    }
     $arguments = $common + @(
         (Join-Path $projectDirectory 'AdvancedPresentationHostTests.cpp'),
         (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
@@ -1062,11 +1083,38 @@ function Invoke-AdvancedPresentationHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "AdvancedPresentationHostTests build failed with exit code $LASTEXITCODE."
     }
-    & (Join-Path $outputDirectory 'AdvancedPresentationHostTests.exe') `
-        --installation $outputDirectory `
-        --community-fixture $fixture
-    if ($LASTEXITCODE -ne 0) {
-        throw "AdvancedPresentationHostTests failed with exit code $LASTEXITCODE."
+    $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    $runRoot = Join-Path $temporaryRoot ("gba-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
+    $candidateSource = Join-Path $runRoot 'GameLauncherCommunity'
+    $candidatePackage = Join-Path $runRoot 'org.gbar.community.reference.game-launcher-0.1.0.gbarwidget'
+    New-Item -ItemType Directory -Path $runRoot | Out-Null
+    try {
+        & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1') `
+            -Gbar $gbar -Output $candidateSource
+        if ($LASTEXITCODE -ne 0) {
+            throw "Game Launcher Community export failed with exit code $LASTEXITCODE."
+        }
+        & $gbar pack $candidateSource --configuration $Configuration --output $candidatePackage
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $candidatePackage)) {
+            throw "Game Launcher Community pack failed with exit code $LASTEXITCODE."
+        }
+        & (Join-Path $outputDirectory 'AdvancedPresentationHostTests.exe') `
+            --installation $outputDirectory `
+            --community-fixture $fixture `
+            --candidate-package $candidatePackage `
+            --fixture-bridge $fixtureBridge
+        if ($LASTEXITCODE -ne 0) {
+            throw "AdvancedPresentationHostTests failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        $resolvedRunRoot = [System.IO.Path]::GetFullPath($runRoot)
+        if (-not $resolvedRunRoot.StartsWith(
+                $temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Refusing to remove an exported-candidate path outside the temporary root.'
+        }
+        if (Test-Path -LiteralPath $resolvedRunRoot) {
+            Remove-Item -LiteralPath $resolvedRunRoot -Recurse -Force
+        }
     }
 }
 

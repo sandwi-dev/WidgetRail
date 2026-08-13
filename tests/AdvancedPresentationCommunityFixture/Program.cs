@@ -17,10 +17,6 @@ internal static class Program
     private static readonly Package[] Packages =
     [
         new(
-            "org.random.alpha.surface", "org.random", "Alpha Surface",
-            "AlphaSurface.dll",
-            "GameBarAlternative.Tests.AdvancedPresentationCommunityFixture.AlphaSurfaceWidget"),
-        new(
             "net.unrelated.bravo.deck", "net.unrelated", "Bravo Deck",
             "BravoDeck.dll",
             "GameBarAlternative.Tests.AdvancedPresentationCommunityFixture.BravoDeckWidget"),
@@ -28,10 +24,17 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        if (args.Length != 2 || args[0] != "--install")
+        if (args.Length != 4 || args[0] != "--install" ||
+            args[2] != "--candidate-package")
             throw new ArgumentException(
-                "Usage: AdvancedPresentationCommunityFixture --install <catalog-root>");
+                "Usage: AdvancedPresentationCommunityFixture --install <catalog-root> " +
+                "--candidate-package <gbarwidget>");
         var catalogRoot = Path.GetFullPath(args[1]);
+        var candidatePackage = Path.GetFullPath(args[3]);
+        if (!File.Exists(candidatePackage))
+            throw new FileNotFoundException(
+                "The exported Game Launcher candidate package was absent.",
+                candidatePackage);
         Directory.CreateDirectory(catalogRoot);
         var temporaryRoot = Path.Combine(
             Path.GetTempPath(), $"gba-dlv213-community-{Guid.NewGuid():N}");
@@ -39,6 +42,14 @@ internal static class Program
         try
         {
             var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+            var candidate = await catalog.InstallAsync(candidatePackage)
+                .ConfigureAwait(false);
+            if (candidate.Manifest.Id !=
+                "org.gbar.community.reference.game-launcher")
+                throw new InvalidOperationException(
+                    "The supplied candidate was not the supported Game Launcher export.");
+            await catalog.SetEnabledAsync(candidate.Manifest.Id, true)
+                .ConfigureAwait(false);
             foreach (var package in Packages)
             {
                 var archivePath = Path.Combine(temporaryRoot, $"{package.Id}.gbarwidget");
@@ -154,9 +165,6 @@ public abstract class AdvancedPresentationFixtureWidget(
         return ValueTask.CompletedTask;
     }
 }
-
-public sealed class AlphaSurfaceWidget() : AdvancedPresentationFixtureWidget(
-    "alpha", WidgetAdvancedPresentationPreset.HeroRail, "alpha-style");
 
 public sealed class BravoDeckWidget() : AdvancedPresentationFixtureWidget(
     "q7", WidgetAdvancedPresentationPreset.CompactGrid, "bravo-theme");

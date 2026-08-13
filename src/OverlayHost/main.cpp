@@ -6323,7 +6323,7 @@ private:
                                    : std::wstring_view{},
                         *snapshot);
                 if (result.succeeded) {
-                    const auto launcherGameNavigationCount =
+                    const auto projectedNavigationCount =
                         launcherProjection.presentationActive
                             ? result.navigationRects.size() : 0U;
                     std::wstring launcherRailPrevious;
@@ -6433,8 +6433,8 @@ private:
                                 (renderedFocusId.empty()
                                     ? std::wstring{L"none"}
                                     : std::wstring{renderedFocusId}) +
-                                L" game-navigation=" + std::to_wstring(
-                                    launcherGameNavigationCount) +
+                                L" projected-navigation=" + std::to_wstring(
+                                    projectedNavigationCount) +
                                 L" rail-previous=" +
                                 (launcherRailPrevious.empty()
                                     ? std::wstring{L"none"}

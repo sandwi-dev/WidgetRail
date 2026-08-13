@@ -49,6 +49,10 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'styles\default.gbss') `
     "type": "GameBarAlternative.FirstPartyWidgets.GameLauncher.GameLauncherWidget"
   },
   "presentation": { "icon": "play" },
+  "advancedPresentation": {
+    "schemaVersion": 1,
+    "kind": "launcherExperience"
+  },
   "permissions": [ "system.apps.library.read.v1" ],
   "optionalPermissions": [
     "system.apps.library.launch.v1",
