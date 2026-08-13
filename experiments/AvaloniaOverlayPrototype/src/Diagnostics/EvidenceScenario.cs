@@ -86,7 +86,9 @@ internal static class EvidenceScenario
                     shell,
                     new Size(1440, 810),
                     widget.Id,
-                    TimeSpan.FromSeconds(5));
+                    TimeSpan.FromSeconds(5),
+                    phase => memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
+                        $"widget:{widget.Id}:initial-1440:{phase}", process, window, shell)));
                 var frame = admitted.Frame;
                 var nodes = Flatten(frame.Snapshot.Root).ToArray();
                 foreach (var kind in nodes.Select(node => node.Kind)) allNodeKinds.Add(kind);
@@ -129,7 +131,12 @@ internal static class EvidenceScenario
                         shell,
                         fixture,
                         widget.Id,
-                        TimeSpan.FromSeconds(5));
+                        TimeSpan.FromSeconds(5),
+                        phase => memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
+                            $"widget:{widget.Id}:logical-size:{fixture.Width}x{fixture.Height}:{phase}",
+                            process,
+                            window,
+                            shell)));
                     memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                         $"widget:{widget.Id}:logical-size:{fixture.Width}x{fixture.Height}", process, window, shell));
                     var fixtureFrame = fixtureCapture.Frame;
@@ -150,6 +157,7 @@ internal static class EvidenceScenario
                         controls.Count,
                         controls.Count(control => control.HonestlyScrollClipped),
                         fixtureCapture.MissingExpectedIds,
+                        fixtureCapture.ProbedFocusableIds,
                         fixtureCapture.UnreachableFocusableIds,
                         controls.All(control => control.BoundsHaveArea &&
                             (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
@@ -345,7 +353,8 @@ internal static class EvidenceScenario
         IntegratedShellView shell,
         Size fixture,
         string expectedWidgetId,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        Action<string>? recordProbeResidency = null)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
@@ -381,7 +390,15 @@ internal static class EvidenceScenario
                 continue;
             }
 
+            if (recordProbeResidency is not null)
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => recordProbeResidency("before-focus-reachability-probe"),
+                    DispatcherPriority.Render);
             var reachability = await ProbeFocusableReachabilityAsync(shell, seed);
+            if (recordProbeResidency is not null)
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => recordProbeResidency("after-focus-reachability-probe"),
+                    DispatcherPriority.Render);
             if (reachability is null)
             {
                 await Task.Delay(20);
@@ -423,6 +440,7 @@ internal static class EvidenceScenario
                     controls,
                     seed.ExpectedIds,
                     missingExpectedIds,
+                    reachability.ProbedFocusableIds,
                     reachability.UnreachableFocusableIds,
                     geometry);
             }, DispatcherPriority.Render);
@@ -438,12 +456,13 @@ internal static class EvidenceScenario
         IntegratedShellView shell,
         ResponsiveFixtureSeed seed)
     {
-        var focusableIds = Flatten(seed.Frame.Snapshot.Root)
+        var focusableNodes = Flatten(seed.Frame.Snapshot.Root)
             .Where(node => node.IsFocusable && seed.ExpectedIds.Contains(node.Id))
-            .Select(node => node.Id)
-            .Distinct(StringComparer.Ordinal)
+            .Where(node => seed.Controls.All(control =>
+                !string.Equals(control.NodeId, node.Id, StringComparison.Ordinal) || !control.Contained))
+            .DistinctBy(node => node.Id, StringComparer.Ordinal)
             .ToArray();
-        if (focusableIds.Length == 0) return new FocusableReachabilityResult([], []);
+        if (focusableNodes.Length == 0) return new FocusableReachabilityResult([], [], []);
 
         var restoration = await Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -466,43 +485,64 @@ internal static class EvidenceScenario
         var unreachable = new List<string>();
         try
         {
-            foreach (var nodeId in focusableIds)
+            foreach (var node in focusableNodes)
             {
-                var control = await Dispatcher.UIThread.InvokeAsync(() =>
+                var target = await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     if (!IsCurrent(seed, shell)) return null;
-                    var target = seed.SemanticRoot.GetVisualDescendants().OfType<Control>()
+                    var control = seed.SemanticRoot.GetVisualDescendants().OfType<Control>()
                         .Prepend(seed.SemanticRoot)
                         .FirstOrDefault(candidate => string.Equals(
                             candidate.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty),
-                            nodeId,
+                            node.Id,
                             StringComparison.Ordinal));
-                    if (target is null) return null;
-                    target.Focus(Avalonia.Input.NavigationMethod.Directional);
-                    target.BringIntoView();
-                    return target;
+                    if (control is null) return null;
+                    var focusAccepted = node.IsDisabled is true ||
+                        control.Focus(Avalonia.Input.NavigationMethod.Directional);
+                    var current = TopLevel.GetTopLevel(shell)?.FocusManager?.GetFocusedElement() as Control;
+                    var focusOwned = node.IsDisabled is true || focusAccepted && ReferenceEquals(current, control) &&
+                        string.Equals(
+                            current.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty),
+                            node.Id,
+                            StringComparison.Ordinal);
+                    control.BringIntoView();
+                    return new FocusableProbeTarget(control, node.IsDisabled is true, focusOwned);
                 }, DispatcherPriority.Input);
-                if (control is null)
+                if (target is null)
                 {
                     if (!await Dispatcher.UIThread.InvokeAsync(() => IsCurrent(seed, shell))) return null;
-                    unreachable.Add(nodeId);
+                    unreachable.Add(node.Id);
                     continue;
                 }
 
-                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-                var evidence = await Dispatcher.UIThread.InvokeAsync(() =>
+                var observation = await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     if (!IsCurrent(seed, shell)) return null;
+                    // BringIntoView and focus ownership are layout concerns. Updating the admitted
+                    // root here avoids rasterizing a transient compositor surface for every
+                    // below-fold target; the coherent fixture capture still receives its ordinary
+                    // render turn after the probe and restoration complete.
                     seed.SemanticRoot.UpdateLayout();
                     var nodes = Flatten(seed.Frame.Snapshot.Root)
                         .ToDictionary(node => node.Id, StringComparer.Ordinal);
-                    return CreateSemanticControlEvidence(shell, control, nodes);
+                    var current = TopLevel.GetTopLevel(shell)?.FocusManager?.GetFocusedElement() as Control;
+                    var focusStillOwned = target.Disabled || target.FocusOwned &&
+                        ReferenceEquals(current, target.Control) &&
+                        string.Equals(
+                            current.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty),
+                            node.Id,
+                            StringComparison.Ordinal);
+                    return new FocusableProbeObservation(
+                        CreateSemanticControlEvidence(shell, target.Control, nodes),
+                        target.Control.IsEffectivelyVisible,
+                        focusStillOwned);
                 }, DispatcherPriority.Render);
-                if (evidence is null) return null;
-                revealed.Add(evidence);
-                if (!evidence.BoundsHaveArea || !evidence.Contained ||
-                    !evidence.StandardUiaIdentity || !evidence.EffectivelyVisible)
-                    unreachable.Add(nodeId);
+                if (observation is null) return null;
+                revealed.Add(observation.Evidence);
+                if (!observation.Evidence.BoundsHaveArea || !observation.Evidence.Contained ||
+                    !observation.Evidence.StandardUiaIdentity || !observation.ActuallyVisible ||
+                    !observation.FocusOwned)
+                    unreachable.Add(node.Id);
             }
         }
         finally
@@ -511,14 +551,15 @@ internal static class EvidenceScenario
             {
                 foreach (var (scroller, offset) in restoration.Offsets) scroller.Offset = offset;
                 restoration.FocusedControl?.Focus(Avalonia.Input.NavigationMethod.Unspecified);
+                seed.SemanticRoot.UpdateLayout();
             }, DispatcherPriority.Input);
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         }
 
         var stillCurrent = await Dispatcher.UIThread.InvokeAsync(() => IsCurrent(seed, shell));
         return stillCurrent
             ? new FocusableReachabilityResult(
                 revealed,
+                focusableNodes.Select(node => node.Id).ToArray(),
                 unreachable.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())
             : null;
     }
@@ -931,6 +972,7 @@ internal static class EvidenceScenario
         int VisibleRequiredSemanticControls,
         int HonestlyScrollClippedControls,
         IReadOnlyList<string> MissingExpectedIds,
+        IReadOnlyList<string> ProbedFocusableIds,
         IReadOnlyList<string> UnreachableFocusableIds,
         bool ReachableOrScrollClipped,
         double PageHostWidthDip,
@@ -951,6 +993,7 @@ internal static class EvidenceScenario
         IReadOnlyList<SemanticControlEvidence> Controls,
         IReadOnlySet<string> ExpectedIds,
         IReadOnlyList<string> MissingExpectedIds,
+        IReadOnlyList<string> ProbedFocusableIds,
         IReadOnlyList<string> UnreachableFocusableIds,
         GeometryEvidence Geometry);
 
@@ -967,7 +1010,18 @@ internal static class EvidenceScenario
 
     private sealed record FocusableReachabilityResult(
         IReadOnlyList<SemanticControlEvidence> RevealedControls,
+        IReadOnlyList<string> ProbedFocusableIds,
         IReadOnlyList<string> UnreachableFocusableIds);
+
+    private sealed record FocusableProbeTarget(
+        Control Control,
+        bool Disabled,
+        bool FocusOwned);
+
+    private sealed record FocusableProbeObservation(
+        SemanticControlEvidence Evidence,
+        bool ActuallyVisible,
+        bool FocusOwned);
 
     internal sealed record GeometryEvidence(
         double PageHostWidthDip,

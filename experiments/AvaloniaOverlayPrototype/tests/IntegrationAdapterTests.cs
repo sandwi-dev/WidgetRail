@@ -469,6 +469,7 @@ public sealed class IntegrationAdapterTests
                 capture.Controls.Select(control => control.NodeId).ToArray());
             Assert.IsTrue(capture.ExpectedIds.SetEquals(["replacement-action"]));
             Assert.IsEmpty(capture.MissingExpectedIds);
+            Assert.IsEmpty(capture.ProbedFocusableIds);
             Assert.IsEmpty(capture.UnreachableFocusableIds);
             window.Close();
         });
@@ -523,6 +524,14 @@ public sealed class IntegrationAdapterTests
                     Text = "Below-fold action",
                     ActionId = "open",
                 })
+                .Append(new ViewNode
+                {
+                    Id = "below-fold-disabled",
+                    Kind = ViewNodeKind.Button,
+                    Text = "Disabled below-fold action",
+                    ActionId = "disabled",
+                    IsDisabled = true,
+                })
                 .ToArray();
             var frame = Frame("outer-scroll.widget", 1, new ViewNode
             {
@@ -543,18 +552,39 @@ public sealed class IntegrationAdapterTests
             var outer = shell.ActivePage as ScrollViewer;
             Assert.IsNotNull(outer);
             var originalOffset = outer.Offset;
+            var enabledTarget = SemanticControl(shell, "below-fold-action");
+            var disabledTarget = SemanticControl(shell, "below-fold-disabled");
+            var enabledFocusCount = 0;
+            var disabledFocusCount = 0;
+            enabledTarget.GotFocus += (_, _) => enabledFocusCount++;
+            disabledTarget.GotFocus += (_, _) => disabledFocusCount++;
+            var residencyPhases = new List<string>();
 
             var capture = await EvidenceScenario.CaptureResponsiveFixtureAsync(
                 shell,
                 new Avalonia.Size(420, 340),
                 frame.Authority.WidgetId,
-                TimeSpan.FromSeconds(3));
+                TimeSpan.FromSeconds(3),
+                residencyPhases.Add);
 
             Assert.IsEmpty(capture.MissingExpectedIds);
             Assert.IsEmpty(capture.UnreachableFocusableIds);
+            CollectionAssert.AreEquivalent(
+                new[] { "below-fold-action", "below-fold-disabled" },
+                capture.ProbedFocusableIds.ToArray());
             var action = capture.Controls.Single(control => control.NodeId == "below-fold-action");
             Assert.IsTrue(action.Contained);
             Assert.IsTrue(action.StandardUiaIdentity);
+            var disabled = capture.Controls.Single(control => control.NodeId == "below-fold-disabled");
+            Assert.IsTrue(disabled.Contained);
+            Assert.IsTrue(disabled.StandardUiaIdentity);
+            Assert.AreEqual(1, enabledFocusCount,
+                "An enabled below-fold target must receive actual Avalonia focus during its probe.");
+            Assert.AreEqual(0, disabledFocusCount,
+                "A disabled below-fold target must be proven through visibility/UIA without focus ownership.");
+            CollectionAssert.AreEqual(
+                new[] { "before-focus-reachability-probe", "after-focus-reachability-probe" },
+                residencyPhases);
             Assert.IsGreaterThanOrEqualTo(0.92, capture.Geometry.SemanticWidthUtilization);
             Assert.AreEqual(originalOffset, outer.Offset);
             Assert.AreSame(selectedTray, window.FocusManager?.GetFocusedElement());
