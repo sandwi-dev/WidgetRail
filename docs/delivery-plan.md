@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 21:22 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 22:13 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -14,7 +14,9 @@ evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline before this reviewer-only planning update: af44da8.
+- Local accepted product baseline: b73eaa5.
+- DLV-213 is accepted and integrated through main b73eaa5 (implementation
+  commits cc3bc0e and b73eaa5).
 - DLV-212 is accepted and integrated through main 5a6ce0b.
 - DLV-209 is accepted and integrated through main 56a09fb.
 - DLV-197 is integrated as 6e2c7ff, but its private Game Launcher path is
@@ -167,89 +169,21 @@ Task: Implementation agent — platform lane
 
 Branch: codex/impl-platform-community
 
-### Current assignment — DLV-213 correction: generic Community advanced presentation
+### Current assignment — DLV-215: generic full-trust Community application runtime
 
-State: commit 0b756df is independently rejected pending one bounded correction.
-Its generic protocol/SDK/bridge/native contract and two unrelated Community
-fixtures are promising, but it did not migrate or exercise the required
-DLV-212 Game Launcher candidate. The actual bundled and exported Game Launcher
-still omit the manifest declaration and emit the retired private profile/slot
-style markers. Integrating the commit would therefore retire its current
-advanced layout and fall back to the ordinary declarative surface. The clean
-exact-commit canonical attempt also stopped before product steps because the
-verifier manifest omits the already-present FullApplicationWidget.Tests
-project, while implementation-status currently implies that required result is
-complete.
+State: Assigned from accepted main b73eaa5. DLV-213 is accepted: any qualifying
+Community package can use the typed protocol-v16 advanced presentation without
+identity recognition. Its exact-commit aggregate was provenance-clean but
+failed later in unrelated WidgetActionFailureHostTests when the fixture did not
+obtain a visible HWND; direct SDK, Game Launcher, Full Application, native, and
+ordinary-host package evidence passed, so the unchanged aggregate is not rerun.
 
-Correct on top of 0b756df without redesigning the generic contract:
-
-- Migrate the one maintained Game Launcher presentation source and both bundled
-  and Export-CommunityReference manifests to the typed protocol-v16 declaration,
-  preset, and six slot roles. Delete the retired style-marker admission metadata
-  and update its focused tests; do not fork domain behavior or add identity
-  recognition.
-- Replace one synthetic installed-host consumer with the exact supported
-  DLV-212 exported Community candidate and retain the second differently named,
-  differently shaped fixture. Prove both are admitted through the same generic
-  declaration and preserve exact action, focus, collection, Back, and UIA
-  semantics. Also prove the currently packaged Game Launcher no longer falls
-  back solely because it lacks the declaration.
-- Add the already-existing FullApplicationWidget.Tests project to the verifier
-  manifest with its documented bounded MSTest.Sdk 4.3.2 invocation, then run the
-  required canonical aggregate once from the corrected clean commit. Do not
-  migrate other tests or rerun an unchanged aggregate.
-- Correct implementation-status to report the failed 0b756df aggregate honestly
-  and then record only the corrected evidence. Rename the now-generic
-  game-navigation diagnostic if it counts all navigation nodes.
-
-This is the serialized protocol consumer correction and may touch the exact
-managed Game Launcher projection/export/manifests/tests despite platform lane
-ownership. It may not change Game Launcher providers, capabilities, stores,
-launch authority, organization state, full-trust runtime, or any Spotify code.
-Tier 1 affected SDK/bridge/native/Game Launcher/verifier self-test; Tier 2 exact
-exported candidate plus second-package ordinary-host route; Tier 3 once from the
-corrected clean commit. Stop for a substantial conflict or if the candidate can
-consume the contract only through first-party identity or a private bridge.
-
-The underlying DLV-213 objective remains:
-
-Define the smallest versioned public manifest/SDK/protocol declaration by which
-any installed Community widget can opt into a closed host-owned advanced
-presentation made from validated semantic slots. The host admits it from the
-package declaration and current snapshot—not from Game Launcher ID, publisher,
-assembly/type, element IDs, style classes, or memorized tree shape.
-
-Launcher Experience packs remain data-only and Settings/host-owned. Preserve
-snapshot/message/tree/string/update/native/GPU bounds, accessibility finality,
-last-good fallback, and the one shared renderer/window/compositor.
-
-Remove or generalize the private widget-facing selection seam introduced by
-DLV-197. Do not expose global Settings mutation as ambient Community authority.
-If a package needs a Settings route, use one generic allowlisted host-navigation
-intent rather than a Launcher special case. As a bounded adjacent cleanup,
-rename the internal tray gesture Refresh identifiers to Restart; this changes
-no behavior, timing, input mapping, or public contract.
-
-Prove admission and identical focus/action/UIA/Back semantics with the DLV-212
-candidate and a second randomly named Community fixture whose publisher,
-assembly/type, element IDs, and styles differ. Prove missing declaration,
-malformed slots, stale generation, oversized input, incompatible version,
-revoked consent where applicable, and package replacement fail closed while
-the ordinary declarative surface remains usable.
-
-Verification: Tier 1 manifest/SDK/protocol/bridge/projection/renderer/
-accessibility suites; Tier 2 two installed Community packages through the
-ordinary host; Tier 3 once for the public protocol boundary. Document a
-copyable author contract and migration.
-
-Stop if the design recognizes the known widget or grants Community code
-host-global mutation authority. No Game Launcher domain code, first-party
-catalog removal, raw paths/URLs/scripts, second renderer/window, provider
-expansion, capture, or credentials.
+Implement DLV-215 exactly as the first Platform Ready item below. Baseline is
+b73eaa5. Keep DLV-210 Ready and do not start it before committing DLV-215.
 
 ### Platform Ready queue
 
-1. **After accepted DLV-213 — DLV-215: add the generic full-trust Community
+1. **Assigned as current work — DLV-215: add the generic full-trust Community
    application runtime.**
 
    Add one explicit versioned manifest/runtime entrypoint for an immutable
@@ -379,6 +313,7 @@ expansion, capture, or credentials.
 
 | Assignment | Integrated main | Result |
 | --- | --- | --- |
+| DLV-213 | b73eaa5 | Generic protocol-v16 Community advanced presentation; exact exported Game Launcher and unrelated package use the same identity-independent host contract. |
 | DLV-212 | 5a6ce0b | External public-SDK Game Launcher portability proof; final domain autonomy remains DLV-217. |
 | DLV-209 | 56a09fb | Generic tray Hold Y restart and truthful guidance. |
 | DLV-208 | 8e38df5 | Spotify 0.2.15 package and generic sandboxed snapshot proof; historical rollback is not a gate. |
