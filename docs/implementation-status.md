@@ -5199,3 +5199,10 @@ supported package helper produced a 13-file, 1,952,494-byte immutable 0.2.0
 archive. Documentation validation reaches only the seven pre-existing broken
 links in reviewer-owned delivery-plan history; no implementation-owned document
 failure was reported.
+The one clean exact-commit Tier-3 checkpoint at `7aa229e` is retained under
+`artifacts/verification/20260813T131146Z-a314fbcd`; it stopped in the runner
+self-test before product execution because the new MSTest project was absent
+from the verification manifest. The appended verifier registration is proven by
+the bounded 3/3 step at
+`artifacts/verification/20260813T131228Z-bb1ba3ef`; the canonical aggregate was
+not repeated.
