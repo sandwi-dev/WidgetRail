@@ -545,6 +545,15 @@ The completed product must provide:
 
 Authentication or user credentials must not block unrelated assigned work.
 
+This repository is presently a pre-release single-user product. Do not preserve
+legacy package generations, obsolete implementations, compatibility adapters,
+or persisted-state formats merely because they already exist. Rollback or
+backward compatibility is required only when the current delivery assignment
+explicitly names it or removal presents a demonstrated data-loss/safety risk.
+For an intentional breaking change, prefer the best current design and a narrow
+documented state reset or migration over retaining inferior code. Never broaden
+an assignment into legacy repair without planner authorization.
+
 ## Widget developer experience
 
 The public framework should support basic, capability-backed, media, multipage,
@@ -559,8 +568,8 @@ Assigned developer-experience work should move toward:
 - Deterministic semantic scenarios.
 - Interactive fake-service testing.
 - Responsive preview and capture.
-- Packaging, installation, enable/disable, version selection, rollback, and
-  removal.
+- Packaging, installation, enable/disable, current-version selection, and
+  removal. Add rollback only when an assignment explicitly requires it.
 - GitHub-hosted sharing without repository-local SDK project references.
 - Clear diagnostics for manifests, capabilities, IDs, focus, actions, styles,
   protocols, and package contents.

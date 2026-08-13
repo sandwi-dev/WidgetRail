@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 19:25 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 19:31 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -258,38 +258,14 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-211: retain the genuine Spotify rollback
+### Current assignment — none; waiting only for accepted DLV-205
 
-**State:** Assigned as the bounded correction to rejected DLV-208 `1c31a52`.
-The lane is clean and idle, so begin immediately without waiting for DLV-205.
-
-**Baseline/dependencies:** widgets commit `1c31a52`, accepted main `04fbdc0`.
-Own only the existing Spotify package/update fixture, exact accepted 0.2.14
-artifact provenance, retained DLV-208 evidence, and directly affected Spotify/
-status docs. Do not change the accepted 0.2.15 payload or layout unless this
-exact correction exposes a separate defect.
-
-**Developer-visible outcome:** the freshly launched overlay selects immutable
-Spotify 0.2.15 with its vertical rail while the actual previously accepted
-0.2.14 remains available as a byte-identical inactive rollback.
-
-**Objective/acceptance:** DLV-208 correctly proves 0.2.15 archive/selected digest,
-installed DLL and GBSS provenance, selection/enabling, and generic AppContainer
-snapshot. Its rollback fixture is false: it invokes current source with
-`-Version 0.2.14`, producing 0.2.15 payload/style under the old label. Seed the
-isolated catalog from the exact accepted 0.2.14 archive already retained by the
-accepted baseline; never rebuild old content. Assert the old archive, payload,
-style, and catalog content identities before and after the supported 0.2.15
-disable/install/select/enable update, including inactive rollback state. Retain
-the existing 0.2.15 provenance and first-snapshot checks. Refresh the bounded
-acceptance record and remove every false claim about the manufactured rollback.
-
-**Verification/stop:** rerun only the affected package/install/AppContainer
-route and any changed narrow contract test; do not repeat the green 50-case
-responsive suite unless production presentation changed. No provider/auth,
-public SDK/protocol, renderer/native layout, aggregate, screenshot harness, or
-new visual design. Stop if the accepted 0.2.14 artifact cannot be recovered
-without inventing or overwriting immutable content.
+**State:** DLV-208 `1c31a52` is accepted by explicit product decision and is
+being integrated. Its 0.2.15 archive, installed DLL/GBSS provenance, selection,
+and generic AppContainer first snapshot are valid. The isolated fixture did not
+prove that its generated 0.2.14 seed was the historical package, but the user
+does not require predecessor rollback; that evidence gap is waived and DLV-211
+is canceled before edits. Do not spend lane time repairing unused old versions.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -594,7 +570,7 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after DLV-211 and accepted platform DLV-205 — DLV-207: managed
+1. **Ready after accepted platform DLV-205 — DLV-207: managed
    Launcher Experience switch action.** Connect the existing managed picker to
    the accepted single trusted private bridge exactly as previously assigned:
    installed validated versions plus Hero Rail recovery, unchanged game,
@@ -835,7 +811,7 @@ not manufacture a third native refactor merely to fill queue depth.
 
 1. User visual verdict on PID 39636 reopened Spotify packaging/layout, generic
    Hold Y restart, and the Game Launcher Hero Rail all-artwork-unavailable
-   fallback. Retest the new accepted Release after DLV-211/209/210, alongside
+   fallback. Retest the new accepted Release after DLV-208/209/210, alongside
    switching borders/flicker and Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
@@ -853,6 +829,7 @@ not manufacture a third native refactor merely to fill queue depth.
 
 | Assignment | Implementation | Integrated main | Result |
 | --- | --- | --- | --- |
+| DLV-208 | `1c31a52` | pending current integration | Spotify 0.2.15 packages the accepted vertical rail; installed DLL/GBSS provenance and generic AppContainer snapshot pass. Historical 0.2.14 rollback identity is explicitly not a release gate. |
 | DLV-195–204 corrected authoring cluster | final widgets `93e3ae7` | `04fbdc0` | Full-application loading/reset focus validates, one documented self-contained external repository completes offline onboarding and refreshed compatibility reporting, and its shortest edit/build/validate/preview/scenario/pack loop proves the changed semantic result. |
 | DLV-194/199 corrected pair | `bd81c8f`/`7cfd4b4` | `73117f7`/`c4cf0af` | A copied external repository restores the exact content-versioned SDK from its fixture-local feed into a fresh `NUGET_PACKAGES` root for build and pack; the nupkg contains exactly the two public runtime DLLs. |
 | DLV-193 | `edad30d` | `70a33e3` | Tap-Y reorder is retained and eligible descriptor-advertised 700 ms hold Refresh routes exactly once through the ordinary host bridge with truthful guide/accessibility text and cancellation on ownership changes. |

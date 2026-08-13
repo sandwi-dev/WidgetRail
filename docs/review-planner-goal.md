@@ -477,6 +477,14 @@ product milestone. The user owns live visual defect reports. Capture-tool
 engineering requires a separate user- or planner-authorized assignment whose
 objective is the capture system itself.
 
+This is a pre-release single-user product. Legacy package versions, rollback
+generations, and backward-compatible persisted state are not default release
+gates. Preserve them only when the current assignment explicitly requires it or
+discarding them creates a demonstrated data-loss/safety risk. Prefer deleting
+obsolete code and resetting or migrating local overlay/widget state for an
+intentional breaking change over delaying visible current-version work to
+repair an unused predecessor. Any reset must be narrow, explicit, and reported.
+
 ## Review cadence and scope rotation
 
 After each accepted milestone, reassess the affected surface. At least every
@@ -489,7 +497,7 @@ Rotate deeper review across:
 2. Architecture, ownership, concurrency, and lifecycle correctness.
 3. Controller UX, responsive layout, and accessibility.
 4. Performance, resource bounds, and hidden/idle behavior.
-5. Test credibility, packaging, installation, rollback, and documentation.
+5. Test credibility, current-version packaging/installation, and documentation.
 6. Security only within the bounded rule below.
 
 Do not manufacture new findings to fill a cycle. Record no material change when
