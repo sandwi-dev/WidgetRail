@@ -4341,3 +4341,33 @@ snapshot through the authenticated supervisor. The documentation contract
 currently remains red only on five links rooted in the reviewer-owned archived
 delivery-plan file `2026-08-12T21-06-00-07-00.md`; no DLV-215 documentation file
 is named by that failure.
+
+### Generic Hero Rail terminal-artwork recovery (DLV-210)
+
+The native Launcher Experience projection now derives one closed artwork state
+from ordinary opaque cache handles. Hero Rail keeps its existing presentation
+for pending, available, and mixed results. After all tracked rail artwork is
+terminally unavailable, it atomically selects a code-owned composition that
+keeps source/title, Search and collections, one equal-width horizontal game
+rail, operation state, and one controller-help hierarchy inside the admitted
+body. It does not fabricate artwork or recognize a widget, package, provider,
+game, element, or style identity.
+
+The recovery frame changes only presentation copies. The canonical snapshot
+retains exact action IDs, collection item keys, anchor, pagination actions,
+active scope, and authored focus edges. Terminal artwork nodes use the shared
+Play fallback while their oversized presentation boxes compact; the six-card
+rail receives equal host-owned widths and remains horizontally revealable.
+Production diagnostics now retain the generic artwork state plus exact body and
+rail bounds for temporal verification.
+
+Focused Release evidence passes 2,890 native checks across the exact 978x466
+compact body plus standard/wide profiles and pending/available/mixed/
+all-terminal states. The matrix retains all 32 exact action/SavedId/focus edges
+and asserts pointer, focus, and UIA geometry containment. The packaged
+`--no-artwork-only` production-host route passes with 32 seeded ordinary catalog
+items, six terminal visible handles, equal-width contained cards, reachable
+Search/collection/help semantics, stable visible focus identities, and a clean
+post-route projection/composition log. The legacy combined host route remains
+red before this scenario at its existing compact `experiences.open` expectation;
+it is not claimed as DLV-210 passing evidence and was not weakened or removed.

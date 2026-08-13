@@ -261,6 +261,26 @@ Recipe BuiltInRecipe(const Preset preset) {
     return recipe;
 }
 
+Recipe BuiltInNoArtworkHeroRailRecipe() {
+    const auto profile = [] {
+        return Overlay({
+            Leaf(Slot::HeroBackground, {0, 0, 1, 1}),
+            Leaf(Slot::SourceStatus, {0.04F, 0.03F, 0.27F, 0.10F}),
+            Leaf(Slot::CollectionTabs, {0.33F, 0.03F, 0.63F, 0.25F}),
+            Leaf(Slot::DetailsPanel, {0.04F, 0.15F, 0.27F, 0.20F}),
+            Leaf(Slot::GameRail, {0.04F, 0.37F, 0.92F, 0.37F},
+                 Orientation::Horizontal),
+            Leaf(Slot::OperationStatus, {0.04F, 0.76F, 0.44F, 0.20F}),
+            Leaf(Slot::ControllerHints, {0.50F, 0.76F, 0.46F, 0.20F}),
+        });
+    };
+    Recipe recipe;
+    recipe.branches.emplace(Branch::Compact, profile());
+    recipe.branches.emplace(Branch::Standard, profile());
+    recipe.branches.emplace(Branch::Wide, profile());
+    return recipe;
+}
+
 LayoutResult ResolveLayout(
     const Recipe* recipe,
     const Preset preset,

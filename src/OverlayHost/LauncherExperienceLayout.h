@@ -84,6 +84,12 @@ struct LayoutResult final {
 
 [[nodiscard]] Recipe BuiltInRecipe(Preset preset);
 
+/// Code-owned Hero Rail recovery composition used only after the ordinary
+/// trusted-artwork pipeline reports that every tracked rail image is
+/// terminally unavailable. It keeps every semantic slot while reclaiming the
+/// otherwise empty artwork region.
+[[nodiscard]] Recipe BuiltInNoArtworkHeroRailRecipe();
+
 /// Resolves a previously validated recipe against the live logical work area.
 /// Native compatibility is checked again so an incompatible revision is
 /// replaced atomically by the matching code-owned preset.
