@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 18:42 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 19:18 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -211,6 +211,15 @@ That snapshot is historical evidence, not implementation authority.
   child identities, the separate switch run lacks exact provenance, one docs
   statement misdescribes the isolated profile, and retained-complete timing is
   not ordered after the retained paint. DLV-206 owns that correction.
+- The user has now reproduced two visible regressions on accepted PID 39636.
+  Hold Y no longer restarts the selected add-on: DLV-193 replaced the generic
+  F5-equivalent path with a private descriptor opt-in, and the shipped catalog
+  opts in only Settings. Spotify also still shows the superseded horizontal-tab
+  composition because the accepted DLV-144 vertical-rail source/style changes
+  retained immutable package version `0.2.14`; the active installed `0.2.14`
+  payload/style predate that correction. DLV-208 and DLV-209 are now the first
+  executable visible corrections. Neither regression is closed by semantic
+  first-page admission or the prior deterministic hold fixture.
 
 ## Execution protocol
 
@@ -249,31 +258,35 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-207: managed Launcher Experience switch action
+### Current assignment — DLV-208: publish the accepted Spotify layout
 
-**State:** Awaiting platform DLV-205 acceptance. Widgets DLV-201 through DLV-204
-are accepted and integrated through main `04fbdc0`; the widgets branch is clean.
-Do not begin this milestone until the planner explicitly supplies the accepted
-private bridge commit at a clean boundary.
+**State:** Assigned immediately from the clean widgets boundary `93e3ae7` after
+the user's accepted-Release reproduction. This visible regression outranks the
+blocked DLV-207 continuation.
 
-**Baseline/dependencies:** accepted main `04fbdc0` plus corrected platform
-DLV-205. Own only the existing Game Launcher experience-picker action/presentation,
-its managed tests, installed route, and directly affected public/status docs.
+**Baseline/dependencies:** accepted main `04fbdc0`. Own only Spotify package
+version/publication inputs, its existing presentation/style verification,
+installed-package provenance, and directly affected Spotify/status docs. The
+accepted vertical-rail source at DLV-144 is the product behavior to publish.
 
-**Developer-visible outcome:** the Game Launcher can switch to an exact installed
-Launcher Experience or recover Hero Rail from its controller UI without opening
-Settings, while the same game, collection, Play authority, and focus remain.
+**Developer-visible outcome:** the freshly launched overlay runs a new immutable
+Spotify package whose compact view again uses the intended left vertical rail
+for Player, Queue, Playlists, and Devices instead of the stale horizontal tabs.
 
-**Objective/acceptance:** connect the already-authored managed Switch experience
-action to the one accepted private host bridge. Display only installed validated
-versions plus built-in recovery, preserve one selection authority, and retain
-exact game/collection/action/focus identity across success, stale denial,
-failure, and recovery. Do not expose a public widget capability or duplicate
-Settings/catalog state.
+**Objective/acceptance:** bump the immutable Spotify package version, build it
+through the supported Community package path, and prove the installed selected
+payload plus GBSS come from the accepted current source. Do not redesign the
+layout. Preserve configuration/consent/private state, playback/navigation/focus,
+responsive compact/expanded behavior, and package rollback. Add a regression
+that fails when changed package content retains an already-installed immutable
+version, or otherwise make the existing version/provenance check cover this
+exact release path. The planner will install/select/launch only the accepted
+package from integrated main.
 
-**Verification/stop:** Tier 1 Game Launcher plus one ordinary installed bridge
-route. No public protocol/SDK, pack schema, raw path, executable/remote content,
-gallery, native redesign, aggregate, or capture.
+**Verification/stop:** Tier 1 Spotify responsive/layout and package checks plus
+one isolated install/select/worker route. No provider/authentication behavior,
+public SDK/protocol, renderer/native layout, aggregate, screenshot harness, or
+new visual design.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -578,12 +591,17 @@ for adoption.
 
 ### Widgets Ready queue
 
-No later widgets Ready assignment is safe before DLV-205. The next requested
-visible feature is DLV-207 itself; M2 external enrichment requires credentials
-and legal/API choices, M3 content operations require a separately reviewed
-trusted provider, and the video widget remains blocked by its resource gate.
-Do not manufacture another internal authoring milestone while the visible
-selection bridge correction is underway.
+1. **Ready after DLV-208 and accepted platform DLV-205 — DLV-207: managed
+   Launcher Experience switch action.** Connect the existing managed picker to
+   the accepted single trusted private bridge exactly as previously assigned:
+   installed validated versions plus Hero Rail recovery, unchanged game,
+   collection, Play/SavedId authority, and focus, with no public capability or
+   duplicate Settings/catalog owner.
+
+No later widgets assignment is safe after DLV-207. M2 enrichment requires
+credentials and legal/API choices, M3 content operations require a separately
+reviewed trusted provider, and the video widget remains blocked by its resource
+gate. Do not manufacture another internal authoring milestone.
 
 ## Platform lane
 
@@ -729,7 +747,20 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-205 — DLV-206: retain truthful performance provenance.**
+1. **Ready after DLV-205 — DLV-209: restore generic tray hold restart.**
+   Restore the user's original host-owned interaction: with tray focus, tap Y
+   toggles reorder and a 700 ms hold revalidates then restarts the exact selected
+   bridge widget through the same worker-restart authority as F5. It must work
+   for every current bundled or installed bridge widget without a descriptor or
+   widget-authored Refresh opt-in. The hold consumes release, cancels on the
+   existing selection/focus/lifecycle/device transitions, and exposes truthful
+   progress/help. Remove the incorrect Settings-only contextual-action special
+   path and its claims; do not forward tray Y into widget code. Prove exact-once
+   restart for Settings and one installed Community widget through the ordinary
+   packaged host path, plus ineligible/non-bridge/reorder/cancellation cases.
+   Tier 1 gesture/placement/bridge checks and the smallest packaged host route;
+   no input remap, protocol/SDK, widget edit, aggregate, or capture.
+2. **Ready after DLV-209 — DLV-206: retain truthful performance provenance.**
    Correct rejected DLV-200 without expanding measurement scope. Retain one
    bounded sanitized committed artifact or summary containing root PID/start
    time, exact commit/executable SHA, scenario/process-profile IDs, child
@@ -740,8 +771,9 @@ missing private seam rather than adding parallel presentation authority.
    Rerun only the affected bounded measurement/temporal routes. No aggregate,
    speculative optimization, budget change, capture, or managed widget work.
 
-Only one platform correction is Ready. After DLV-206 the visible managed
-continuation moves to widgets DLV-207; other native product areas require a
+Two platform corrections are Ready, with the user-reproduced visible DLV-209
+ahead of evidence-only DLV-206. After DLV-206 the visible managed continuation
+moves to widgets DLV-207; other native product areas require a
 user-authorized rich-media
 budget, a documented audio endpoint setter, physical hardware/display evidence,
 or the managed continuation that moves to the widgets lane after DLV-205. Do
@@ -769,21 +801,23 @@ not manufacture a third native refactor merely to fill queue depth.
 | Live Spotify Web Playback | Premium eligibility, allowlist, OAuth, EME, and account. | User-authorized account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth plan and user-authorized account. |
 | Physical controller/display/audio/Bluetooth/game/Narrator matrix | Requires user hardware or interactive physical evidence. | Retained named packaged/manual results. |
-| Game Launcher Switch experience managed action | DLV-191 stopped cleanly: built-in widget picker has no path to the single trusted installed-pack selection owner in Settings/private host. | Platform DLV-197 supplies one private host-mediated selection/recovery bridge, then planner assigns the managed action continuation. |
+| Game Launcher Switch experience managed action | DLV-191 stopped cleanly: built-in widget picker has no path to the single trusted installed-pack selection owner in Settings/private host. | Accept DLV-205's exact continuity correction for the DLV-197 private bridge, then run managed DLV-207. |
 | Manual artwork/background override | DLV-192 stopped cleanly: title/category/hidden/preferred state exists, but there is no user-authorized trusted opaque artwork/background selection seam. | A separately reviewed trusted selection/binding design; do not invent raw paths or a misleading partial override. |
 
 ## Verification queue
 
-1. User visual verdict on PID 39248 for cold dashboard position, Spotify first-
-   page fit, switching borders/flicker, and Game Launcher/Games & Apps layout.
+1. User visual verdict on PID 39636 reopened Spotify packaging/layout and generic
+   Hold Y restart; retest the new accepted Release after DLV-208/209, alongside
+   switching borders/flicker and Game Launcher/Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.
 3. Game Launcher shortcuts/top controls/last-row continuation and exact launch.
 4. Spotify seek/list traversal, pagination/reverse focus, transient failure,
    OAuth/Web Playback/device behavior when an authorized account exists.
 5. YT Music real companion pairing/reconnection and physical controller.
-6. Physical Y-hold exactly-once tray refresh, Narrator/MSAA, mixed-DPI/display,
-   Bluetooth/audio hardware, and game foreground input.
+6. Physical Y-hold generic add-on restart is a reproduced regression owned by
+   DLV-209; Narrator/MSAA, mixed-DPI/display, Bluetooth/audio hardware, and game
+   foreground input remain manual.
 7. Packaged widget-switch transparency/temporal continuity and long-run resource
    baselines at a named release checkpoint.
 
