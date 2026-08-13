@@ -9,19 +9,18 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `a74add9`, including accepted DLV-216, the
+- Production code: local main `9688455`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
-  the isolated AVP-004 implementation now reopened after its failed physical
-  verdict. No production renderer cutover is implied.
-- Latest reviewed Avalonia implementation: source `1868e97` on
-  `codex/avalonia-prototype`, integrated through main `a74add9`. Its automated
-  evidence passed, but the user's live AVP-004 visual/controller verdict
-  rejected the candidate; it is not an accepted release candidate.
+  the independently accepted AVP-004 source correction through `b998d62`,
+  integrated as `9688455`. No production renderer cutover is implied.
+- Latest reviewed Avalonia implementation: source `b998d62` on
+  `codex/avalonia-prototype`, integrated through main `9688455`. Automated
+  source acceptance is complete; physical display/controller acceptance is
+  pending on the exact visibly launched main candidate.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
-  gracefully closed for the isolated physical test. The rejected AVP-004
-  candidate and its owned test process tree are also stopped, leaving no overlay
-  visible until the corrected candidate is ready.
+  kept closed during the isolated physical test. The exact main AVP-004 copied
+  runtime is visibly running as PID 33332 for user testing.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -81,7 +80,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004 physical-acceptance correction assigned from `1868e97`; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Source `b998d62` accepted and integrated as `9688455`; exact candidate PID 33332 awaits physical AVP-004 verdict; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -469,6 +468,19 @@ still above 500 MiB, release/reuse the measured Avalonia/Skia scroll/resize
 surfaces rather than moving the sample or weakening the gate. Do not launch
 until independent acceptance; the mandatory physical eight-widget display and
 controller walkthrough remains last.
+
+Final correction `b998d62` bounds the probe to initially absent/non-contained
+focusable controls, requires real `FocusManager` ownership for enabled targets,
+and retains honest before/after residency checkpoints. Independent review
+accepted it for integration and launch. It is integrated on main as `9688455`.
+The exact integrated-main lifecycle passes 24/24 focused tests, all eight
+widgets and 32 responsive fixtures, transition/resource/shutdown gates, and
+measures the candidate at 483.58 MiB (699.59 MiB for the separately reported
+complete process tree). The copied runtime is visibly running as PID 33332.
+Controller trace truthfully records the native visible lease but no connected
+physical controller or routed input. AVP-004 therefore remains open only for
+the user's eight-widget visual, Guide, and physical controller verdict; do not
+start AVP-005 or production cutover.
 
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
