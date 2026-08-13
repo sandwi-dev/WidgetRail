@@ -716,6 +716,24 @@ missing private seam rather than adding parallel presentation authority.
    Settings plus one ordinary host route; no pack schema, public protocol,
    executable/remote content, gallery, capture, or aggregate. After acceptance,
    planner assigns the managed action continuation to widgets.
+2. **Ready after DLV-197 — DLV-200: accepted-host performance checkpoint.**
+   Measure the ordinary packaged host at the exact branch commit across one
+   bounded hidden/idle interval, visible dashboard idle, and an eight-widget
+   switch/focus cycle. Retain PID/commit provenance and CPU, GPU/render,
+   host/worker memory, process count, input-to-complete-presentation latency,
+   first-admitted activation, and background publication evidence against the
+   existing documented budgets. If no violation reproduces, commit evidence/
+   directly affected status docs only. If one reproduces, correct only its
+   existing platform owner with before/after evidence; stop before managed
+   widget/protocol/budget changes. Tier 1 affected native suites plus the named
+   bounded performance route; no aggregate, screenshot, physical hardware, or
+   speculative optimization.
+
+Only two independent platform Ready milestones are currently safe. The next
+named native product areas after DLV-200 require a user-authorized rich-media
+budget, a documented audio endpoint setter, physical hardware/display evidence,
+or the managed continuation that moves to the widgets lane after DLV-197. Do
+not manufacture a third native refactor merely to fill queue depth.
 
 ## Serialized integration queue
 
