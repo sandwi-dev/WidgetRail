@@ -38,6 +38,14 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         long InvalidationRevision,
         long StatePublicationRevision);
 
+    private sealed record BridgeFailurePublication(
+        long CatalogRevision,
+        BridgeWidgetDescriptor Descriptor,
+        long SessionGeneration,
+        long? StatePublicationRevision,
+        WidgetPresentationAuthority? LastGoodAuthority,
+        WidgetPresentationFailure Failure);
+
     private WidgetPresentationSession(
         BridgePresentationTransport transport,
         WidgetPresentationSessionOptions options)
@@ -53,6 +61,8 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     public event EventHandler<WidgetPresentationInvalidatedEventArgs>? Invalidated;
     public event EventHandler<WidgetPresentationArtworkEventArgs>? ArtworkResolved;
     public event EventHandler<WidgetPresentationDiagnosticEventArgs>? DiagnosticPublished;
+
+    internal Func<Task>? BridgeFailureCapturedForTesting { get; set; }
 
     public static async Task<WidgetPresentationSession> ConnectAsync(
         string pipeName,
@@ -443,21 +453,6 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         var widgetId = ReadString(payload, "widgetId");
         var reason = ReadString(payload, "reason");
         var runtimeGeneration = ReadOptionalString(payload, "runtimeGeneration");
-        WidgetPresentationFrame? lastGood;
-        lock (_gate)
-        {
-            lastGood = _states.GetValueOrDefault(widgetId)?.LastGood;
-            if (runtimeGeneration is null)
-                _sessionGenerations[widgetId] =
-                    _sessionGenerations.GetValueOrDefault(widgetId) + 1;
-        }
-        if (runtimeGeneration is not null && lastGood is not null &&
-            !string.Equals(runtimeGeneration, lastGood.Authority.RuntimeGeneration,
-                StringComparison.Ordinal))
-        {
-            RecordDiagnostic("stale_failure", "A stale worker failure was rejected.", widgetId);
-            return;
-        }
         var failure = new WidgetPresentationFailure(
             widgetId,
             reason,
@@ -469,11 +464,144 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             ReadOptionalString(payload, "diagnosticCode"),
             ReadOptionalInt32(payload, "restartsUsed"),
             ReadOptionalBoolean(payload, "canRestart"));
-        PublishState(new WidgetPresentationState(
-            widgetId,
-            lastGood,
-            failure,
-            GetState(widgetId)?.InvalidationRevision ?? 0));
+        if (runtimeGeneration is null)
+        {
+            PublishTerminalBridgeFailure(failure);
+            return;
+        }
+
+        BridgeFailurePublication? publication;
+        lock (_gate)
+        {
+            var state = _states.GetValueOrDefault(widgetId);
+            if (!_descriptors.TryGetValue(widgetId, out var descriptor) ||
+                !string.Equals(
+                    descriptor.RuntimeGeneration,
+                    runtimeGeneration,
+                    StringComparison.Ordinal) ||
+                (state?.LastGood is { } lastGood &&
+                 !string.Equals(
+                     lastGood.Authority.RuntimeGeneration,
+                     runtimeGeneration,
+                     StringComparison.Ordinal)))
+            {
+                publication = null;
+            }
+            else
+            {
+                publication = new BridgeFailurePublication(
+                    _catalogRevision,
+                    descriptor,
+                    _sessionGenerations.GetValueOrDefault(widgetId),
+                    state?.PublicationRevision,
+                    state?.LastGood?.Authority,
+                    failure);
+            }
+        }
+        if (publication is null)
+        {
+            RecordDiagnostic("stale_failure", "A stale worker failure was rejected.", widgetId);
+            return;
+        }
+        var captured = BridgeFailureCapturedForTesting?.Invoke();
+        if (captured is null)
+            PublishBridgeFailure(publication);
+        else
+            _ = PublishBridgeFailureAfterCaptureAsync(publication, captured);
+    }
+
+    private async Task PublishBridgeFailureAfterCaptureAsync(
+        BridgeFailurePublication publication,
+        Task captured)
+    {
+        try
+        {
+            await captured.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+            PublishBridgeFailure(publication);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            RecordDiagnostic(
+                "failure_publication_aborted",
+                "A bridge failure publication was aborted.",
+                publication.Descriptor.Id);
+        }
+    }
+
+    private void PublishBridgeFailure(BridgeFailurePublication publication)
+    {
+        WidgetPresentationState? committed = null;
+        var startPublications = false;
+        lock (_gate)
+        {
+            var hasState = _states.TryGetValue(publication.Descriptor.Id, out var current);
+            var stateMatches = publication.StatePublicationRevision is { } stateRevision
+                ? hasState &&
+                  current!.PublicationRevision == stateRevision &&
+                  current.LastGood?.Authority == publication.LastGoodAuthority
+                : !hasState;
+            if (_catalogRevision == publication.CatalogRevision &&
+                _descriptors.TryGetValue(publication.Descriptor.Id, out var descriptor) &&
+                descriptor == publication.Descriptor &&
+                _sessionGenerations.GetValueOrDefault(publication.Descriptor.Id) ==
+                    publication.SessionGeneration &&
+                stateMatches)
+            {
+                committed = CommitStateLocked(
+                    new WidgetPresentationState(
+                        publication.Descriptor.Id,
+                        current?.LastGood,
+                        publication.Failure,
+                        current?.InvalidationRevision ?? 0),
+                    publish: true);
+                startPublications = TakePublicationOwnershipLocked();
+            }
+        }
+        if (committed is null)
+        {
+            RecordDiagnostic(
+                "stale_failure",
+                "A stale worker failure was rejected.",
+                publication.Descriptor.Id);
+            return;
+        }
+        if (startPublications) DrainStatePublications();
+    }
+
+    private void PublishTerminalBridgeFailure(WidgetPresentationFailure failure)
+    {
+        var startPublications = false;
+        var committed = false;
+        lock (_gate)
+        {
+            if (_descriptors.ContainsKey(failure.WidgetId))
+            {
+                var current = _states.GetValueOrDefault(failure.WidgetId);
+                _sessionGenerations[failure.WidgetId] = checked(
+                    _sessionGenerations.GetValueOrDefault(failure.WidgetId) + 1);
+                _ = CommitStateLocked(
+                    new WidgetPresentationState(
+                        failure.WidgetId,
+                        current?.LastGood,
+                        failure,
+                        current?.InvalidationRevision ?? 0),
+                    publish: true);
+                startPublications = TakePublicationOwnershipLocked();
+                committed = true;
+            }
+        }
+        if (!committed)
+        {
+            RecordDiagnostic(
+                "stale_failure",
+                "A stale worker failure was rejected.",
+                failure.WidgetId);
+            return;
+        }
+        if (startPublications) DrainStatePublications();
     }
 
     private void HandleArtwork(JsonElement payload)
@@ -689,17 +817,6 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         }
         if (startPublications) DrainStatePublications();
         return frame;
-    }
-
-    private void PublishState(WidgetPresentationState state)
-    {
-        var startPublications = false;
-        lock (_gate)
-        {
-            _ = CommitStateLocked(state, publish: true);
-            startPublications = TakePublicationOwnershipLocked();
-        }
-        if (startPublications) DrainStatePublications();
     }
 
     private WidgetPresentationState CommitStateLocked(
