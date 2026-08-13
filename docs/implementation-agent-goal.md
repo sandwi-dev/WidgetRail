@@ -21,16 +21,18 @@ prompt:
   affected public feature documentation.
 - `platform` owns the native host, renderer, input, focus, accessibility,
   window/surface management, and directly affected native documentation.
-- `avalonia-prototype` owns only `experiments/AvaloniaOverlayPrototype`, its
-  focused tests, measurements, retained experimental evidence, and directly
-  affected prototype documentation. It must not modify production behavior or
-  use the prototype to silently establish a migration decision.
-- Temporary AVP-004 tasks use the lane identity and exclusive work package
-  named in `docs/delivery-plan.md` (for example `avalonia-system-pages`). They
-  remain inside `experiments/AvaloniaOverlayPrototype`, may edit only their
-  assigned feature directory and tests, and must not edit shared shell,
-  navigation, design-system, project/solution, measurement, or integration
-  files. The standing `avalonia-prototype` task is the AVP-004 integration lead.
+- `avalonia-prototype` owns the Avalonia candidate, generic semantic adapter,
+  shell wiring, focused tests, measurements, retained evidence, and directly
+  affected migration documentation. It consumes existing production contracts;
+  it must not rewrite widget domain behavior or silently switch the production
+  launcher before an accepted cutover assignment.
+- Temporary AVP-004 tasks use only the exclusive extraction package named in
+  `docs/delivery-plan.md`: either the managed presentation-session/bridge-client
+  facade or the narrow native GameInput/Win32 platform boundary. They may edit
+  only their explicit file list and focused tests. They must not create
+  per-widget Avalonia pages, fork the protocol, add another bridge transport,
+  implement a second C# GameInput owner, or edit another AVP work package. The
+  standing `avalonia-prototype` task is the AVP-004 integration lead.
 
 Never take work from the other lane. Shared protocol or architecture work is
 serialized through an explicit integration assignment owned by the planner.
@@ -77,14 +79,15 @@ For each implementation lane, the delivery plan contains:
 A `Ready` milestone is already assigned and authorized. It does not require
 another message from the planning agent.
 
-AVP-004 is one parent milestone with independently committed, file-exclusive
-work packages. A temporary AVP-004 task executes only the exact suffixed work
-package assigned to its lane and stops after its coherent commit. It does not
-take another package, merge another branch, or wire itself into shared shell
-files. The AVP-004 integration lead owns the common foundation, accepts planner-
-approved page commits in the recorded order, resolves only small mechanical
-integration conflicts, completes shared wiring/polish/evidence, and produces
-the final integrated AVP-004 candidate.
+AVP-004 is one reuse-first parent milestone with independently committed,
+file-exclusive work packages. A temporary AVP-004 task executes only its exact
+managed-session or native-platform extraction and stops after its coherent
+commit. It does not take another package, merge another branch, or wire itself
+into the Avalonia shell. The integration lead incorporates planner-approved
+extractions in the recorded order, implements one generic current-protocol-to-
+Avalonia adapter, connects real widgets through the retained `WidgetBridge`
+backend, completes shared wiring/polish/evidence, and produces the final
+candidate.
 
 Before starting an assignment:
 
@@ -249,6 +252,14 @@ Code should demonstrate:
 - Stable typed identifiers and actions rather than hidden string protocols.
 - Domain behavior in widgets and reusable rendering, focus, input, lifecycle,
   accessibility, and security behavior in the platform.
+- During Avalonia migration, direct reuse of the existing protocol, SDK,
+  runtime, catalog, package, bridge-backend, lifecycle, trust, persistence,
+  provider, and widget-domain owners. Replace only the presentation edge: the
+  native C++ bridge client/renderer becomes a managed typed presentation
+  facade plus one generic Avalonia semantic adapter.
+- One authoritative native GameInput/Guide owner behind narrow interop. Never
+  duplicate it in C#, and never expose the quarantined legacy compatibility
+  mechanism outside its current removable adapter.
 - Intentional protocol compatibility and documented cross-process changes.
 - Consolidation or deletion instead of layering helpers over unclear ownership.
 
@@ -492,7 +503,7 @@ The commit subject must begin with the assignment ID:
 
 Temporary AVP-004 work packages use their full suffixed ID, for example:
 
-`[AVP-004-SYSTEM] implement system control pages`
+`[AVP-004-SESSION] extract managed presentation session`
 
 Commit locally. Do not push.
 

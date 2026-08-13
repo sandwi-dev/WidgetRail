@@ -94,7 +94,15 @@ evidence, not implementation authority.
   small Windows UIA/Appium-class packaged suite for critical real-window flows.
   Headless evidence never replaces controller, compositor, DPI, or physical
   display testing. Windows-only input/window/media integration remains behind
-  narrow adapters; the XInput AVP is not yet a production GameInput decision.
+  narrow adapters. The AVP XInput adapter is retired by migration; the existing
+  native Microsoft GameInput/Guide implementation is authoritative.
+- Retain the presentation-neutral `WidgetBridge` backend and its authenticated
+  protocol. Replace only the native C++ presentation-side `WidgetBridgeClient`
+  with a typed managed presentation-session facade. Avalonia controls never
+  parse bridge transport or connect directly to widget processes.
+- AVP-004 uses one generic current-`WidgetProtocol` semantic-tree adapter. It
+  must not rebuild Settings, Audio Mixer, Network, media, library, Spotify,
+  YT Music, or Game Launcher as domain-specific Avalonia pages.
 - Hold DLV-216, DLV-217, and DLV-218 during AVP-001 and the architecture
   decision. Those milestones assume the current declarative presentation path
   and would create avoidable migration or deletion work.
@@ -365,12 +373,19 @@ increase with no clear owner.
 
 ### Current assignment — AVP-004: complete polished overlay prototype
 
-State: Replanning; no AVP-004 implementation is currently authorized. The
-standing Avalonia task was paused with its uncommitted foundation work
-preserved. The initial page-rebuild plan below is superseded because it would
-recreate working platform and widget behavior instead of proving a migration.
-Do not create temporary AVP-004 tasks or continue the foundation until this
-section is replaced by a reuse-first integration assignment.
+State: Assigned as a reuse-first migration program; implementation remains
+paused until the planner reconciles and preserves the standing task's existing
+uncommitted foundation work against this assignment. Do not discard, clean,
+commit, or silently repurpose that work. If incompatible changes cannot be
+separated without loss, stop for the user.
+
+Architecture contract: [Avalonia presentation migration
+plan](avalonia-migration-plan.md).
+
+Baseline: local main `9d3ad8e`; accepted Avalonia branch commit `2a3c722`.
+The current production overlay and accepted native Release remain authoritative
+through the entire candidate build. No production cutover or renderer deletion
+is part of AVP-004.
 
 Binding migration direction:
 
@@ -393,9 +408,109 @@ Binding migration direction:
   the current production behavior and tests rather than copy its implementation
   into the experiment.
 
-The planner must replace the remaining historical AVP-004 work-package detail
-below before execution. It is retained temporarily only as a feature-parity
-inventory, not implementation authority.
+#### AVP-004-SESSION — managed presentation-session extraction
+
+Owner: temporary `avalonia-session` task on `codex/avp004-session`, created
+only after the planner records exact exclusive files from a clean accepted
+baseline. It may perform a behavior-preserving extraction from the current
+managed bridge/runtime code and add focused tests. It does not edit Avalonia
+shell/pages, native host/input, widget implementations, public widget
+semantics, catalog authority, or reviewer documents.
+
+Objective: expose a typed managed presentation facade over the retained
+`WidgetBridge` backend. It owns descriptor enumeration, lifecycle, validated
+latest snapshot/last-good failure publication, exact action admission inputs,
+quick actions, artwork results, restart/invalidation, and bounded diagnostics.
+It must reuse the existing authenticated bridge transport and protocol rather
+than add another pipe, JSON model, process path, or direct widget connection.
+
+Acceptance: focused bridge/runtime tests prove identical sandboxed and
+full-trust session behavior, generation/snapshot/action/input-scope identity,
+stale rejection, lifecycle drain, restart, last-good failure, and bounded
+transport. No Avalonia type crosses this facade. Commit once and stop.
+
+#### AVP-004-PLATFORM — native platform interop extraction
+
+Owner: temporary `avalonia-platform` task on `codex/avp004-platform`, created
+only after exact file ownership excludes the active production platform
+assignment. It may extract, not redesign, supported native input/window policy
+and add focused parity tests. It does not edit WidgetBridge/runtime, Avalonia
+views, widgets, providers, Community packages, or reviewer documents.
+
+Objective: expose one narrow versioned native boundary for the existing
+Microsoft GameInput owner and essential Win32 overlay integration: supported
+Guide callback, background/exclusive policy, device/reconnect/repeat/neutral
+state, visibility quarantine, debounce/toggle, targeting, DPI/work-area
+placement, and focus/visibility events. The Avalonia shell owns the only
+presentation window/focus tree. Do not create a second overlay HWND or managed
+GameInput reader. Keep the legacy Guide compatibility adapter quarantined.
+
+Acceptance: current production tests plus focused interop parity tests prove
+Guide show/hide, device loss/reconnect, no double toggle, hidden/focus reset,
+placement containment, and clean shutdown. Production native behavior remains
+unchanged while the candidate is incomplete. Commit once and stop.
+
+#### AVP-004-INTEGRATION — generic Avalonia migration candidate
+
+Owner: standing `avalonia-prototype` task on `codex/avalonia-prototype` after
+planner acceptance of both extraction commits. Integration order is SESSION,
+PLATFORM, then candidate wiring. Substantial conflicts stop.
+
+Objective: replace the AVP fake remote contract and fake widget pages with
+direct use of current `WidgetProtocol`, the managed presentation session, and
+the native platform boundary. Implement one generic adapter for every current
+`ViewNodeKind`, responsive visibility/surface hint, stable focus/action/input-
+scope identity, scrolling/pagination/anchors, quick actions, artwork, and
+generic advanced-presentation slot. Use standard Avalonia controls/UIA,
+compiled bindings, styles/control themes, virtualization, `FocusManager`/
+`XYFocus`, and explicit UI-thread publication.
+
+All currently installed bundled and Community widgets must enter through their
+ordinary catalog/package/runtime/bridge/domain implementations. The candidate
+may add generic control templates; it may not hand-author a widget page or
+branch on package, publisher, assembly/type, widget ID, element ID, style
+class, provider, store, Spotify, YT Music, or Game Launcher identity.
+
+Required acceptance:
+
+1. One simple widget, one provider-backed widget, one 10,000-item/full-
+   application widget, and one Community package pass end-to-end first; final
+   AVP-004 evidence covers every installed tray widget through the same adapter.
+2. Guide, D-pad/stick, A, B, tray cycling, entry/exit, hold Y, contextual
+   actions, slider adjustment/spatial exit, scroll return, reconnect/device
+   loss, focus loss, hide/show, and per-widget focus memory match production
+   policy without a second input or focus authority.
+3. Exact runtime generation, snapshot, element, action, active input scope,
+   collection item, and focus-persistence identity survive rendering,
+   virtualization, responsive reflow, replacement, and action dispatch.
+4. Compact 420x340 and 978x466, standard, wide, and 100/125/150-percent render
+   scaling keep essential controls reachable by reflow/scrolling. Standard
+   Avalonia UIA is the only accessibility tree.
+5. The accepted AVP motion/design quality remains: stationary tray, native
+   start/mid/end transitions, reduced motion, no intentional black fallback,
+   coherent tokens, loading/empty/error/disabled/busy states, and polished
+   first pages. The user owns the physical visual/controller verdict.
+6. Verification is proportional: focused suites per extraction, one final
+   bounded AVP Release suite, one ordinary Windows bridge/runtime lifecycle,
+   and one exact-final-commit measurement. No product aggregate merely for AVP.
+7. Retain exact commit/runtime hashes, dependency versions, startup/switch
+   samples, visible/hidden memory and CPU, realized-container maxima, and
+   honest unavailable GPU data. Visible memory stays below 500 MiB; investigate
+   anything above 350 MiB before acceptance.
+
+Stop for credentials, destructive handling of the preserved uncommitted work,
+undocumented new input/window APIs, a second transport/authority, public
+protocol expansion not generically required, substantial conflicts, or a
+production cutover. AVP-005 and native-renderer/GBSS deletion remain out of
+scope.
+
+#### Superseded AVP-004 page inventory — not implementation authority
+
+The historical material below is retained only as a parity checklist until the
+next threshold-triggered compaction. Its fake services, page lanes, file
+ownership, integration order, and out-of-scope production-reuse statements are
+void. Implement the behaviors through real widget snapshots and the generic
+adapter above; do not execute any `AVP-004-SYSTEM`, `MEDIA`, or `LIBRARY` task.
 
 Objective: turn the isolated Avalonia experiment into a cohesive, polished,
 controller-first prototype of the complete current overlay rather than another

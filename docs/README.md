@@ -37,6 +37,10 @@ planner and implementation turns do not spend context on closed evidence.
   exists.
 - [Platform architecture](platform-architecture.md) — process boundaries,
   data flow, and current implementation limits.
+- [Avalonia presentation migration plan](avalonia-migration-plan.md) — accepted
+  reuse-first target architecture: retain the runtime and WidgetBridge backend,
+  replace the native presentation client/renderer with one managed semantic
+  adapter, and reuse the production native GameInput/Guide platform owner.
 - [Widget quickstart](widget-quickstart.md) — scaffold, build, validate, list
   bounded scenario declarations, render trusted code, replay, and run a
   controller widget through the isolated `gbar dev` watch loop with
@@ -167,7 +171,9 @@ planner and implementation turns do not spend context on closed evidence.
 ## Product and research
 
 - [Product brief](product-brief.md)
-- [Architecture and technology research](architecture-plan.md)
+- [Architecture and technology research](architecture-plan.md) — historical
+  native-first research; the accepted presentation migration direction is the
+  [Avalonia migration plan](avalonia-migration-plan.md).
 - [Plugin-platform research](plugin-platform.md)
 - [PS5 control-center interaction research](ps5-control-center-research.md)
 - [Visual design system](visual-design-system.md)

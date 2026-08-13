@@ -8,8 +8,12 @@ integration owner for Game Bar Alternative. Operate two production lanes plus
 an isolated Avalonia evaluation program that steadily produce a polished,
 maintainable, accessible, security-conscious, and performance-conscious product
 resembling work from a cohesive senior engineering team. The Avalonia program
-normally has one lane; AVP-004 is explicitly authorized to use one integration
-lead plus up to three temporary file-exclusive implementation lanes.
+normally has one lane. AVP-004 is explicitly authorized to use one integration
+lead plus at most two temporary file-exclusive extraction lanes: one managed
+presentation-session/bridge-client boundary and one native GameInput/Win32
+platform boundary. Domain-page lanes are prohibited because AVP-004 renders
+the existing semantic widget contract generically rather than rebuilding
+widgets as Avalonia pages.
 
 This is a continuing product-delivery goal. Do not mark it complete merely
 because one assignment, queue cluster, review cycle, or heartbeat finishes.
@@ -28,8 +32,9 @@ At the beginning of every goal continuation or scheduled heartbeat:
    - `Implementation agent — widgets lane`
    - `Implementation agent — platform lane`
    - `Implementation agent — Avalonia prototype lane`
-   During AVP-004 also locate every temporary `AVP-004 — ...` task recorded in
-   the live delivery plan; do not assume those tasks survive a restart.
+   During AVP-004 also locate every temporary `AVP-004 — ...` extraction task
+   recorded in the live delivery plan; do not assume those tasks survive a
+   restart.
 5. Inspect compact task progress and any new completion report or commit.
 6. Reconcile observed state with the delivery plan before taking action.
 
@@ -99,16 +104,17 @@ Maintain:
   ordered independent Ready milestones when evidence permits.
 - One `platform` lane with at most one Assigned milestone and at least three
   ordered independent Ready milestones when evidence permits.
-- An isolated `avalonia-prototype` program that normally has at most one
+- An `avalonia-prototype` migration program that normally has at most one
   Assigned AVP milestone. For AVP-004 only, the planner may operate one
-  integration lead plus up to three temporary file-exclusive page lanes under
-  the same parent AVP ID. Each task must have an explicit work package, branch,
-  baseline, exclusive directory ownership, and integration order. No temporary
-  lane may edit shared shell/navigation/design-system files or another page
-  lane's directory. The program owns only the isolated evaluation project,
-  measurements, and its directly affected experimental documentation. It must
-  not modify production host, widget, protocol, catalog, or package behavior
-  before an explicit migration decision is accepted by the user.
+  integration lead plus at most two temporary file-exclusive extraction lanes
+  under the same parent AVP ID: a managed presentation-session facade and a
+  narrow native platform interop component. Each task must have an explicit
+  work package, branch, baseline, exclusive file ownership, and integration
+  order. No task may rewrite widget domain behavior, create per-widget Avalonia
+  pages, fork `WidgetProtocol`, add another bridge transport, or implement a
+  second C# GameInput owner. Production changes are limited to explicitly
+  assigned behavior-preserving extraction boundaries; the current production
+  host remains authoritative until an independently accepted cutover.
 - A serialized integration queue for cross-lane protocol, architecture, or
   shared-file work.
 - A blocked queue with exact unblocking evidence.
@@ -458,11 +464,12 @@ Then repeat the loop.
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
 - The standing Avalonia integration lead uses `codex/avalonia-prototype`.
-  AVP-004 temporary tasks use planner-recorded `codex/avp004-*` branches and
-  separate Codex worktrees created only after the corrected AVP-003 baseline
-  and AVP-004 foundation commit are accepted. The page tasks do not merge one
-  another or main. The integration lead incorporates accepted page commits in
-  the delivery-plan order and owns all shared wiring and final polish.
+  AVP-004 temporary tasks, when needed, use planner-recorded `codex/avp004-*`
+  branches and separate Codex worktrees. They are limited to the managed
+  presentation-session extraction and native platform interop extraction. No
+  temporary task owns a widget/domain page. The integration lead incorporates
+  accepted extraction commits in delivery-plan order and owns the generic
+  adapter, Avalonia shell wiring, final polish, and evidence.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.
 - Shared protocol/architecture work is assigned serially to one lead lane after
@@ -585,6 +592,24 @@ Preserve the product direction already recorded in the roadmap:
   process rather than product host code.
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
+- The accepted Avalonia direction is a presentation migration, not a platform
+  rewrite. Retain `WidgetProtocol`, `WidgetSdk`, catalog/package/runtime,
+  `WidgetBridge` backend, lifecycle/trust/persistence/providers, and existing
+  widget domain implementations. Replace the native C++ presentation-side
+  bridge client and renderer with a typed managed presentation-session facade
+  plus one generic semantic-tree-to-Avalonia adapter. Avalonia controls never
+  parse bridge transport messages or communicate directly with widget
+  processes.
+- Retain the production native Microsoft GameInput/Guide owner behind narrow
+  interop: documented system-button callback, background/exclusive Guide
+  policy, device lifecycle, debounce/toggle, targeting, DPI, and placement.
+  Do not create a second managed GameInput authority. Keep the legacy Guide
+  compatibility path quarantined and removable.
+- Replace native layout/paint/motion/widget-UIA and eventually GBSS only after
+  equivalent Avalonia behavior is accepted. Standard Avalonia controls/UIA,
+  styles/control themes, `FocusManager`/`XYFocus`, compiled bindings, and
+  virtualization become the presentation owners. Do not retain both renderers
+  indefinitely merely for pre-release compatibility.
 - Lightweight idle/hidden operation suitable for use while gaming.
 - While the product remains an explicitly single-user pre-release development
   build, prefer a clean current overlay-owned persistence schema over retaining
