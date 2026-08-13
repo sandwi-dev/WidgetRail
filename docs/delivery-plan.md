@@ -270,11 +270,25 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — DLV-212: make managed Game Launcher publicly portable
+### Current assignment — none; awaiting integrated DLV-213
 
-**State:** Assigned from clean widgets commit `1c31a52`. The lane was idle after
-DLV-208 and may begin this assignment immediately. DLV-211 remains canceled;
-do not spend time repairing unused Spotify rollback generations.
+**State:** DLV-212 is accepted and integrated through main `5a6ce0b`. The
+widgets lane is intentionally waiting at a clean boundary because DLV-214 must
+consume the generic public presentation contract delivered by platform
+DLV-213. Do not begin the Community cutover, unrelated widget work, or legacy
+Spotify rollback work while that dependency is open.
+
+### Accepted milestone — DLV-212: managed Game Launcher public portability
+
+**State:** Done and accepted through main `5a6ce0b`. The external Community
+candidate restores the exact packaged SDK from a fresh cache, builds,
+validates, packs, installs disabled as Community, and runs through the generic
+AppContainer worker. SDK friend access is removed; sanitized launch observation
+is now a bounded public contract with malformed-response validation and no raw
+process, executable, provider, or OS identity. The 10,000-item route covers
+cursor paging, Search, collection/organization state, navigation, private
+state, and exact SavedId-to-current-AppId launch revalidation. The currently
+bundled package remains unchanged until DLV-213 and the atomic DLV-214 cutover.
 
 **Baseline/dependencies:** widgets branch `1c31a52`; accepted product
 `6e2c7ff`. This is the managed/public-SDK gate for the user's decision that Game
@@ -872,8 +886,8 @@ Game Launcher bridge or manufacture unrelated refactors.
 
 ## Serialized integration queue
 
-1. DLV-212 closes managed public-SDK portability without changing the live
-   built-in package. Integrate it before platform DLV-213 begins.
+1. DLV-212 is accepted and integrated through `5a6ce0b`; it closes managed
+   public-SDK portability without changing the live built-in package.
 2. DLV-213 owns the generic advanced-presentation manifest/SDK/protocol/native
    boundary. Integrate it before widgets DLV-214 performs the atomic Community
    package cutover. No lane may implement a parallel private bridge.

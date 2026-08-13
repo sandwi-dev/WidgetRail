@@ -115,9 +115,12 @@ framework boundary. The widget is still first-party-identified, built into the
 runtime catalog, project-references the SDK, has SDK friend-assembly access,
 and depends on a known Launcher Experience projection. A sophisticated
 Community widget cannot claim parity while any of those exceptions remain.
-DLV-212 through DLV-214 now own the managed portability proof, generic native
-admission contract, and final Community package cutover. Games & Apps remains
-the bundled first-party launcher surface.
+Accepted DLV-212, integrated as `5a6ce0b`, now closes the managed portability
+gate: the external candidate uses the packaged public SDK, has no SDK friend or
+project-reference exception, installs as Community, and runs through the
+generic AppContainer worker. DLV-213 and DLV-214 still own generic native
+admission and the final Community package cutover. Games & Apps remains the
+bundled first-party launcher surface.
 
 Independent evidence passes 1,588 native checks, the managed Game Launcher
 68/68, and two explicit production-host scenarios. A test-only trusted provider
@@ -298,8 +301,8 @@ its change is accepted.
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
 | Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, transition verdict DLV-188, and DLV-193 are integrated through `70a33e3`; DLV-208 publishes Spotify 0.2.15. The machine restart ended the prior accepted PID, and the user proved semantic first-page admission did not validate generic tray Hold Y restart. | DLV-209 restores generic exact-worker restart. The next accepted integrated milestone must rebuild and visibly relaunch the overlay; visual appearance and physical interaction remain the user's verdict. |
-| Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are implemented. DLV-160 proves the supported CLI-to-production lifecycle. | The implementation is first-party-coupled and therefore does not prove the public framework. DLV-212–214 must establish clean public-SDK portability, generic native admission, and ordinary Community package operation. Manual artwork/background remains blocked on a trusted selection seam. |
-| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. The corrected DLV-194–204 chain is integrated through `04fbdc0`, including a valid full-application reference, self-contained external setup, refreshed provenance, and the shortest semantic author loop. | DLV-212–214 must make the sophisticated Game Launcher reference genuinely Community-owned. External publication/update governance and a separately hosted third-party repository remain later gates. |
+| Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are implemented. DLV-160 proves the supported CLI-to-production lifecycle; DLV-212 proves the managed implementation is publicly portable. | The live implementation remains first-party-coupled in native admission and packaging. DLV-213–214 must establish generic native admission and ordinary Community package operation. Manual artwork/background remains blocked on a trusted selection seam. |
+| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. The corrected DLV-194–204 chain is integrated through `04fbdc0`; accepted DLV-212 (`5a6ce0b`) adds a clean packaged-SDK Community build and generic-worker proof for the full Game Launcher implementation. | DLV-213–214 must make that sophisticated reference genuinely Community-owned in the shipped product. External publication/update governance and a separately hosted third-party repository remain later gates. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
 | Accessibility | Deterministic semantic and real-host UIA coverage is substantial. DLV-180 adds exact TextEntry focus/Invoke; DLV-168 closes tray Invoke completion while keeping widget descendants generation-bound. | Physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
