@@ -164,9 +164,11 @@ neutral-gating behavior. The focused Release suite passed 18/18 in the
 implementation worktree. One exact-main measurement from `09b40da` retained
 executable SHA-256 `9ABB793D55D32D4E39B19E93E22B8EE0102D8A602E7333801B9590BB8FBE696B`,
 about 253.79 MiB visible private memory, 191.20 MiB hidden private memory,
-0.146% hidden CPU, and passing frame/transition diagnostics. Physical controller
-feel, focus rings, transparency, and compositor behavior remain the user's
-live verdict. Do not start AVP-003 automatically.
+0.146% hidden CPU, and passing frame/transition diagnostics. The user's
+2026-08-13 live verdict accepted the controller feel, focus behavior, visual
+quality, and smoothness. AVP-002 therefore closes the isolated visual,
+controller-routing, and spatial-navigation feasibility gates. This verdict
+authorizes AVP-003 only; it is not a production migration decision.
 
 Historical assignment detail follows until the next triggered control-plane
 compaction:
@@ -265,38 +267,84 @@ measurement requires production-host edits, privileged installation, external
 credentials, or undocumented window manipulation. Do not start AVP-003
 automatically; the planner and user test AVP-002 first.
 
+### Current assignment — AVP-003: production-stack architecture slice
+
+State: Assigned after the user's accepted AVP-002 live verdict. Lane baseline:
+exact Avalonia branch commit `93e6e70`; accepted main equivalent `09b40da`.
+Dependencies: AVP-001 and AVP-002 accepted. Concurrency: isolated experiment
+only; it may run while production lanes continue because it owns no production
+file. Stop at one reviewable commit and do not start AVP-004 automatically.
+
+Refactor only the isolated experiment into one representative production-shaped
+vertical slice. Use CommunityToolkit.Mvvm with compiled bindings for typed
+immutable shell/page state and commands; keep focus, controller input, window
+lifecycle, and navigation policy in presentation services rather than view
+models. First record the current code-behind responsibility map, then leave the
+shell/page view models independently testable without a Window or controller.
+
+Use direct Microsoft dependency-injection abstractions only for explicit
+singleton/scoped/transient ownership and only if a measured comparison shows an
+acceptable startup/private-memory delta versus the existing manual composition.
+Do not add a generic-host bootstrap, configuration framework, or logging stack.
+Keep the current visual language on Avalonia styles/control themes over the
+built-in Fluent control base; do not adopt FluentAvalonia, SukiUI, ReactiveUI,
+DynamicData, Serilog, EF Core, or another navigation/theme framework.
+
+Replace the prototype transition with a native Avalonia page/composition
+transition and retain start/midpoint/completion evidence. Replace the small Game
+Launcher fixture with a selectable, virtualized 10,000-item list or grid using
+ordinary Avalonia virtualization. Prove bounded realized-container count,
+stable semantic item identity across recycling, exact focused-item restoration,
+scroll down/back, controller spatial movement, and standard UIA without creating
+a custom accessibility tree or manual container cache.
+
+Define one small experiment-owned, UI-framework-neutral semantic snapshot/action
+contract and project a fake asynchronous remote widget through an adapter into
+typed Avalonia view models. Neither that contract nor the fake widget may
+reference Avalonia, controls, view models, XAML, or UI-thread types. Prove a
+delayed update, latest-wins replacement, retained last-good failure state,
+action dispatch, and deactivation cancellation without importing the production
+Widget SDK or renderer.
+
+Acceptance criteria:
+
+1. AXAML uses compiled bindings and typed data templates. A separate invalid
+   fixture proves an incorrect binding fails the bounded build; do not break the
+   real project merely to demonstrate this.
+2. View models own immutable presentation state and commands only. Focus,
+   controller routing, page transitions, window visibility, and UIA remain
+   Avalonia presentation concerns with the accepted AVP-002 behavior intact.
+3. The 10,000-item surface remains responsive and virtualized. Retained evidence
+   records total items, realized containers, focused semantic identity before and
+   after recycling, scroll-return result, private memory, and switch latency.
+4. The fake remote projection remains UI-framework-neutral and demonstrates
+   bounded latest-wins lifecycle, last-good failure, and exact action identity.
+5. Standard Avalonia UIA remains the only accessibility tree. Keyboard and the
+   accepted XInput adapter continue through one semantic router and the same
+   focused controls.
+6. Verification is proportional: during implementation run only changed focused
+   tests; at the final clean boundary run one bounded Release build and focused
+   MSTest.Sdk 4.3.2 unit/headless/UIA suite, then one exact-commit ordinary
+   Windows measurement. Do not build an exhaustive navigation matrix or run the
+   production aggregate.
+7. Retain exact commit/executable provenance, dependency versions, startup,
+   visible/hidden memory and CPU, transition samples, realized-container count,
+   and unavailable GPU evidence. The planner launches the copied candidate once
+   for the user's live verdict.
+
+Out of scope: any production host/SDK/widget/catalog/package edit, GBSS adapter
+or removal, Community package migration, real remote package execution,
+database/web/video surface, NativeAOT, installer/publishing work, broad design-
+system polish, AVP-004, or a final migration decision. Stop if the architecture
+requires Avalonia types in the public widget contract, a second focus/UIA tree,
+production edits, privileged installation, credentials, or a material resource
+increase with no clear owner.
+
 ### Avalonia Ready queue
 
-1. **Held until the user accepts the live AVP-002 controller feel — AVP-003: production-stack
-   architecture slice.**
-
-   Refactor only the isolated experiment into one representative production-
-   shaped vertical slice. Use CommunityToolkit.Mvvm with compiled bindings for
-   typed immutable shell/page state and commands; keep focus and input in
-   presentation services rather than view models. Use direct Microsoft DI for
-   explicit singleton/scoped/transient ownership only if a measured comparison
-   shows acceptable startup/memory cost versus manual composition. Keep the
-   current custom visual language on Avalonia styles/control themes over the
-   built-in Fluent control base; do not adopt FluentAvalonia or SukiUI unless a
-   named missing control has a better measured result. Replace the prototype
-   page transition with an Avalonia page/composition transition and compare
-   UI-thread versus composition-thread timing. Replace the 16-item fixture with
-   a virtualized, selectable 10,000-item list/grid and prove focus identity,
-   recycling, scroll return, memory, and accessibility. Keep the semantic
-   widget snapshot/action contract UI-framework-neutral and demonstrate one
-   fake remote projection mapping into typed Avalonia view models without
-   exposing Avalonia types to a Community application.
-
-   Acceptance must include bounded Release build, focused MSTest.Sdk 4.3.2
-   unit/headless/UIA evidence, compiled-binding build failures for an invalid
-   fixture, dependency/startup/memory/process provenance, hidden-idle behavior,
-   transition timing, virtualized realized-item counts, and a planner/user live
-   launch. No production edits, GBSS adapter, Community package migration,
-   ReactiveUI/DynamicData, database, web surface, NativeAOT, installer change,
-   or AVP-004 work. Do not start automatically.
-
-AVP-004 through AVP-006 remain planned architecture experiments and will be
-assigned only after AVP-003 proves the bounded production-shaped stack.
+AVP-004 through AVP-006 remain held architecture experiments. The planner will
+define and assign the next experiment only after AVP-003 is independently
+reviewed and the user tests its copied runtime.
 
 ## Widgets lane
 
