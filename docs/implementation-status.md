@@ -4183,3 +4183,11 @@ scenario in the AppContainer preview worker, and uninstalls every isolated
 package version. The consumer and archive contain no checkout-relative path,
 and the route performs no external network, publication, signing, credential,
 or production-catalog operation.
+
+DLV-198 records a bounded executable compatibility report for the current
+versioned SDK/gbar/template release unit and a planner-ready migration and
+deprecation proposal. The rebuilt SDK and CLI share exact
+`0.1.0-dev+51512b2e82dd0dd0758b6cc38bda7f6ebdd29478` provenance, the reviewed API
+contains 2,997 symbols, and the existing compatibility suite remains the
+executable classifier. This milestone changes no API baseline, protocol,
+template, version, resolver, publication, signing, or compatibility policy.

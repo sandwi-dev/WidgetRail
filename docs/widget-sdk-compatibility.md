@@ -15,6 +15,12 @@ This is a local pre-release contract. It does not publish a NuGet package,
 promise post-1.0 semantic-version compatibility, sign the SDK, or change the
 runtime wire protocol.
 
+The current bounded artifact report and a non-operative migration/deprecation
+proposal are recorded in the
+[Widget SDK governance proposal](widget-sdk-governance-proposal.md). That page
+does not change compatibility behavior; it gives the planner an explicit policy
+decision and evidence shape to accept, revise, or reject.
+
 ## Check the current public surface
 
 Run the SDK tests and compatibility check from the repository root:
