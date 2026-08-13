@@ -74,7 +74,7 @@ implementation work.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-216 active from `4f502c4` |
+| Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 Assigned from accepted main `47d8ffe` |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
 | Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Clean and held at `2a3c722` |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | AVP-004-SESSION active from `436d890` |
@@ -86,9 +86,9 @@ extractions are independently accepted and integrated.
 
 ## Widgets lane
 
-### Current assignment — DLV-216: autonomous Spotify Community application
+### Accepted and integrated — DLV-216: autonomous Spotify Community application
 
-State: Assigned and active.
+State: Accepted as source commit `452c7dd` and integrated locally as `47d8ffe`.
 
 Baseline: accepted product code `4f502c4`. The fresh branch must not replay
 DLV-219 or merge the retired widgets branch.
@@ -125,9 +125,30 @@ and stop for independent review.
 Out of scope: native/Avalonia rendering, capture work, publication, credentials,
 legacy-core deletion, Game Launcher, or new product-specific APIs.
 
-### Ready after accepted DLV-216 — DLV-217: autonomous Game Launcher flagship
+Acceptance and launch evidence:
 
-Baseline: the accepted and integrated DLV-216 result.
+- Independent review accepted the ordinary full-trust, capability-free package
+  boundary, package-owned Spotify domain/backend, preserved configuration and
+  credential identity, generic runtime usage, and bounded child teardown.
+- The accepted `0.3.0` Community package was rebuilt and installed through the
+  supported CLI. Eight obsolete `0.2.8` through `0.2.15` catalog generations
+  were uninstalled first because the catalog version cap was reached; the user
+  explicitly does not require legacy versions.
+- Main Release artifacts were refreshed and
+  `src/OverlayHost/out/Release/OverlayHost.exe --show` is visibly running as PID
+  26780. The fresh startup tail through 05:28:04 shows the ordinary production
+  owner, DirectComposition, GameInput, appearance/catalog application, complete
+  placement, and foreground controller lease without a fresh error/failure.
+- Non-blocking follow-up for DLV-218 or later: split/rename the package-owned
+  1,019-line backend after frozen core removal and add a direct playback-child
+  termination assertion without reopening a core Spotify dependency.
+
+### Current assignment — DLV-217: autonomous Game Launcher flagship
+
+State: Assigned. Begin from clean accepted main `47d8ffe`; do not merge or
+replay the retired widgets branch.
+
+Baseline: accepted and integrated DLV-216 result `47d8ffe`.
 
 Objective:
 
@@ -399,6 +420,7 @@ cutover remain out of scope.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-216 | Spotify is an ordinary autonomous full-trust Community application; accepted package `0.3.0` is installed and the refreshed production Release is visibly running. |
 | DLV-220 | Corrected retired gesture revocation evidence; 1-2 events and every sequence exactly 92. |
 | DLV-210 | Contained generic Hero Rail for terminal artwork without changing SavedId/action/focus authority. |
 | DLV-215 | Generic explicitly consented full-trust Community application runtime. |
