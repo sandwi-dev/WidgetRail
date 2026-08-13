@@ -442,6 +442,16 @@ Back, tray/content, slider/scroll, reconnect, focus-loss, and hide/show events.
 Offscreen captures are renderer evidence only; final physical controller/display
 acceptance remains planner/user-owned.
 
+Planner inspection of the `f516f98` captures also rejects visual polish even
+apart from the red geometry rows. The narrow-column collapse is fixed, but tray
+labels are truncated, the last tray item is partially clipped, guide/tray chrome
+consumes excessive vertical space, pages retain large unstructured empty areas,
+and Settings/Audio/Network/loading states lack a coherent card/action hierarchy.
+The next correction must remain generic: adaptive tray sizing with truthful
+scroll affordance, balanced responsive typography/spacing/content widths,
+reusable section/card/action/loading themes, and strong visible focus. Do not
+create widget-specific Avalonia pages or identity/tree-shape branches.
+
 Process reconciliation found two actual overlay executables: obsolete AVP-002
 PID 6868 and AVP-004 PID 4328, plus the expected AVP-004 WidgetBridge and worker
 children. The obsolete AVP-002 process ignored two graceful close paths and was
