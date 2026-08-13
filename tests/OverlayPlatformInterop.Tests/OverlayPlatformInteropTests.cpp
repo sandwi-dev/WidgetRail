@@ -6,9 +6,13 @@
 #include <Xinput.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
+#include <condition_variable>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
+#include <thread>
 
 namespace {
 
@@ -18,12 +22,28 @@ struct CallbackProbe final {
     std::atomic_uint32_t eventSignals{};
     std::atomic_uint32_t diagnosticSignals{};
     std::atomic_uint32_t postShutdownSignals{};
-    std::atomic_bool shutdownStarted{};
+    std::atomic_bool shutdownReturned{};
+    std::mutex holdMutex;
+    std::condition_variable holdChanged;
+    bool holdNextEvent{};
+    bool heldEventEntered{};
+    bool releaseHeldEvent{};
 };
 
 void GBA_OVERLAY_PLATFORM_CALL OnEventAvailable(void* context) noexcept {
     auto& probe = *static_cast<CallbackProbe*>(context);
-    if (probe.shutdownStarted.load(std::memory_order_acquire)) {
+    {
+        std::unique_lock lock(probe.holdMutex);
+        if (probe.holdNextEvent) {
+            probe.heldEventEntered = true;
+            probe.holdChanged.notify_all();
+            probe.holdChanged.wait(lock, [&probe] {
+                return probe.releaseHeldEvent;
+            });
+            probe.holdNextEvent = false;
+        }
+    }
+    if (probe.shutdownReturned.load(std::memory_order_acquire)) {
         probe.postShutdownSignals.fetch_add(1, std::memory_order_relaxed);
     }
     probe.eventSignals.fetch_add(1, std::memory_order_relaxed);
@@ -33,7 +53,7 @@ void GBA_OVERLAY_PLATFORM_CALL OnDiagnostic(
     void* context,
     const wchar_t*) noexcept {
     auto& probe = *static_cast<CallbackProbe*>(context);
-    if (probe.shutdownStarted.load(std::memory_order_acquire)) {
+    if (probe.shutdownReturned.load(std::memory_order_acquire)) {
         probe.postShutdownSignals.fetch_add(1, std::memory_order_relaxed);
     }
     probe.diagnosticSignals.fetch_add(1, std::memory_order_relaxed);
@@ -263,35 +283,115 @@ int main() {
               hasEvent == GBA_OVERLAY_PLATFORM_TRUE,
           "the callback signal corresponds to a drainable public-ABI event");
 
-    callbackProbe.shutdownStarted.store(true, std::memory_order_release);
-    const auto eventSignalsBeforeShutdown =
+    Check(GbaOverlayPlatformSetWindowState(
+              handle,
+              GBA_OVERLAY_PLATFORM_FALSE,
+              GBA_OVERLAY_PLATFORM_FALSE) == GbaOverlayPlatformStatus::Ok,
+          "the callback-race fixture starts from a closed visible lease");
+
+    {
+        std::scoped_lock lock(callbackProbe.holdMutex);
+        callbackProbe.holdNextEvent = true;
+        callbackProbe.heldEventEntered = false;
+        callbackProbe.releaseHeldEvent = false;
+    }
+    std::atomic_uint32_t producerStatus{
+        static_cast<std::uint32_t>(GbaOverlayPlatformStatus::InvalidArgument)};
+    std::thread producer([&] {
+        producerStatus.store(
+            static_cast<std::uint32_t>(GbaOverlayPlatformSetWindowState(
+                handle,
+                GBA_OVERLAY_PLATFORM_TRUE,
+                GBA_OVERLAY_PLATFORM_TRUE)),
+            std::memory_order_release);
+    });
+    {
+        std::unique_lock lock(callbackProbe.holdMutex);
+        Check(callbackProbe.holdChanged.wait_for(
+                  lock,
+                  std::chrono::seconds(2),
+                  [&callbackProbe] {
+                      return callbackProbe.heldEventEntered;
+                  }),
+              "the built DLL enters and holds a registered callback");
+    }
+
+    std::thread shutdown([&] {
+        GbaOverlayPlatformShutdown(handle);
+        callbackProbe.shutdownReturned.store(true, std::memory_order_release);
+    });
+    bool callbackAdmissionClosed = false;
+    const auto closeDeadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < closeDeadline) {
+        if (GbaOverlayPlatformInitialize(handle) ==
+            GbaOverlayPlatformStatus::ShutDown) {
+            callbackAdmissionClosed = true;
+            break;
+        }
+        std::this_thread::yield();
+    }
+    Check(callbackAdmissionClosed &&
+              !callbackProbe.shutdownReturned.load(std::memory_order_acquire),
+          "shutdown atomically closes admission but waits for the held callback");
+
+    std::atomic_bool secondShutdownReturned{};
+    std::thread secondShutdown([&] {
+        GbaOverlayPlatformShutdown(handle);
+        secondShutdownReturned.store(true, std::memory_order_release);
+    });
+    const auto signalsWhileHeld =
         callbackProbe.eventSignals.load(std::memory_order_acquire);
-    const auto diagnosticSignalsBeforeShutdown =
-        callbackProbe.diagnosticSignals.load(std::memory_order_acquire);
-    GbaOverlayPlatformShutdown(handle);
-    GbaOverlayPlatformShutdown(handle);
-    Check(GbaOverlayPlatformInitialize(handle) ==
-              GbaOverlayPlatformStatus::ShutDown,
-          "clean shutdown is idempotent and cannot resurrect callback ownership");
     Check(GbaOverlayPlatformSetWindowState(
               handle,
               GBA_OVERLAY_PLATFORM_TRUE,
               GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::ShutDown &&
+              callbackProbe.eventSignals.load(std::memory_order_acquire) ==
+                  signalsWhileHeld &&
+              !secondShutdownReturned.load(std::memory_order_acquire),
+          "closed admission rejects callbacks and concurrent shutdown waits for completion");
+
+    {
+        std::scoped_lock lock(callbackProbe.holdMutex);
+        callbackProbe.releaseHeldEvent = true;
+    }
+    callbackProbe.holdChanged.notify_all();
+    producer.join();
+    shutdown.join();
+    secondShutdown.join();
+    Check(producerStatus.load(std::memory_order_acquire) ==
+              static_cast<std::uint32_t>(GbaOverlayPlatformStatus::Ok) &&
+              callbackProbe.shutdownReturned.load(std::memory_order_acquire) &&
+              secondShutdownReturned.load(std::memory_order_acquire),
+          "the accounted callback leaves before both shutdown callers return");
+
+    const auto eventSignalsAfterShutdown =
+        callbackProbe.eventSignals.load(std::memory_order_acquire);
+    const auto diagnosticSignalsAfterShutdown =
+        callbackProbe.diagnosticSignals.load(std::memory_order_acquire);
+    GbaOverlayPlatformShutdown(handle);
+    Check(GbaOverlayPlatformInitialize(handle) ==
+              GbaOverlayPlatformStatus::ShutDown &&
+              GbaOverlayPlatformSetWindowState(
+                  handle,
+                  GBA_OVERLAY_PLATFORM_TRUE,
+                  GBA_OVERLAY_PLATFORM_TRUE) ==
+                  GbaOverlayPlatformStatus::ShutDown &&
               GbaOverlayPlatformDrainEvent(
                   handle, 1'030, &event, &hasEvent) ==
                   GbaOverlayPlatformStatus::ShutDown &&
               callbackProbe.eventSignals.load(std::memory_order_acquire) ==
-                  eventSignalsBeforeShutdown &&
+                  eventSignalsAfterShutdown &&
               callbackProbe.diagnosticSignals.load(std::memory_order_acquire) ==
-                  diagnosticSignalsBeforeShutdown &&
+                  diagnosticSignalsAfterShutdown &&
               callbackProbe.postShutdownSignals.load(
                   std::memory_order_acquire) == 0,
-          "shutdown drains callback ownership and rejects post-shutdown signaling");
+          "no callback is admitted or invoked after shutdown returns");
     GbaOverlayPlatformDestroy(handle);
     Check(callbackProbe.eventSignals.load(std::memory_order_acquire) ==
-              eventSignalsBeforeShutdown &&
+              eventSignalsAfterShutdown &&
               callbackProbe.diagnosticSignals.load(std::memory_order_acquire) ==
-                  diagnosticSignalsBeforeShutdown &&
+                  diagnosticSignalsAfterShutdown &&
               callbackProbe.postShutdownSignals.load(
                   std::memory_order_acquire) == 0,
           "destroy after idempotent shutdown produces no callback or freed-context use");

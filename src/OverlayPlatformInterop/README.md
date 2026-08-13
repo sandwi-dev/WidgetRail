@@ -18,8 +18,10 @@ offset. Focused verification links through the generated import library and
 loads the built DLL rather than compiling a private copy of its implementation.
 
 Shutdown is idempotent. It stops and unregisters both GameInput callbacks,
+atomically closes callback admission and accounts entrants under one mutex,
 waits for any callback already in flight to leave the opaque owner, clears
-queued events, and only then permits destroy to release the owner.
+queued events, and only then marks shutdown complete and permits destroy to
+release the owner. Concurrent shutdown callers wait for that completed state.
 
 The legacy XInput Guide ordinal remains implemented only by
 `OverlayHost/GuideInputCompatibility.*` and is consumed privately by this

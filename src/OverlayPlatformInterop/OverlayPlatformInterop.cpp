@@ -93,15 +93,22 @@ void PublishEvent(
 } // namespace
 
 struct GbaOverlayPlatformHandle final {
+    enum class CallbackGateState {
+        Open,
+        Closing,
+        Closed,
+    };
+
     explicit GbaOverlayPlatformHandle(
         const GbaOverlayPlatformCreateOptions& createOptions) noexcept
         : options(createOptions) {}
 
     GbaOverlayPlatformCreateOptions options{};
     mutable std::mutex mutex;
-    mutable std::mutex callbackDrainMutex;
+    mutable std::mutex callbackMutex;
     std::condition_variable callbackDrain;
-    std::atomic_uint32_t callbacksInFlight{};
+    std::uint32_t callbacksInFlight{};
+    CallbackGateState callbackGateState{CallbackGateState::Open};
     std::deque<RawEvent> events;
     bool initialized{};
     std::atomic_bool shutDown{};
@@ -144,24 +151,43 @@ struct GbaOverlayPlatformHandle final {
     }
 
     [[nodiscard]] bool TryEnterCallback() noexcept {
-        if (shutDown.load(std::memory_order_acquire)) return false;
-        callbacksInFlight.fetch_add(1, std::memory_order_acq_rel);
-        if (!shutDown.load(std::memory_order_acquire)) return true;
-        LeaveCallback();
-        return false;
+        std::scoped_lock lock(callbackMutex);
+        if (callbackGateState != CallbackGateState::Open) return false;
+        ++callbacksInFlight;
+        return true;
     }
 
     void LeaveCallback() noexcept {
-        if (callbacksInFlight.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        std::scoped_lock lock(callbackMutex);
+        if (--callbacksInFlight == 0) {
             callbackDrain.notify_all();
         }
     }
 
+    [[nodiscard]] bool BeginShutdown() noexcept {
+        std::unique_lock lock(callbackMutex);
+        if (callbackGateState != CallbackGateState::Open) {
+            callbackDrain.wait(lock, [this] {
+                return callbackGateState == CallbackGateState::Closed;
+            });
+            return false;
+        }
+        callbackGateState = CallbackGateState::Closing;
+        shutDown.store(true, std::memory_order_release);
+        return true;
+    }
+
     void WaitForCallbacks() noexcept {
-        std::unique_lock lock(callbackDrainMutex);
+        std::unique_lock lock(callbackMutex);
         callbackDrain.wait(lock, [this] {
-            return callbacksInFlight.load(std::memory_order_acquire) == 0;
+            return callbacksInFlight == 0;
         });
+    }
+
+    void FinishShutdown() noexcept {
+        std::scoped_lock lock(callbackMutex);
+        callbackGateState = CallbackGateState::Closed;
+        callbackDrain.notify_all();
     }
 
     [[nodiscard]] bool RequiresLegacyPolling() const noexcept {
@@ -454,8 +480,7 @@ GbaOverlayPlatformInitialize(GbaOverlayPlatformHandle* handle) noexcept {
 
 void GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformShutdown(
     GbaOverlayPlatformHandle* handle) noexcept {
-    if (!handle || handle->shutDown.exchange(
-            true, std::memory_order_acq_rel)) return;
+    if (!handle || !handle->BeginShutdown()) return;
     if (handle->gameInput && handle->guideCallback != 0) {
         handle->gameInput->StopCallback(handle->guideCallback);
         handle->gameInput->UnregisterCallback(handle->guideCallback);
@@ -479,6 +504,7 @@ void GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformShutdown(
         handle->compatibilityDeviceTrackingAvailable = false;
     }
     handle->initialized = false;
+    handle->FinishShutdown();
 }
 
 void GBA_OVERLAY_PLATFORM_CALL GbaOverlayPlatformDestroy(
