@@ -63,5 +63,5 @@ Confirm-InvalidCompiledBindingFails
 Invoke-BoundedDotnet -Label 'AVP-003 focused Release tests' -Arguments @(
     'test', '--project', (Join-Path $prototypeRoot 'tests\AvaloniaOverlayPrototype.Tests.csproj'),
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '20'
+    '--output', 'Detailed', '--minimum-expected-tests', '23'
 )

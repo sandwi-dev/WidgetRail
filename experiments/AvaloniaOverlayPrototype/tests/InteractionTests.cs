@@ -5,7 +5,11 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
 using GameBarAlternative.AvaloniaPrototype.Lifecycle;
+using GameBarAlternative.AvaloniaPrototype.Composition;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
+using GameBarAlternative.AvaloniaPrototype.Presentation;
+using GameBarAlternative.AvaloniaPrototype.Remote;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 using GameBarAlternative.AvaloniaPrototype.Views;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -132,7 +136,58 @@ public sealed class InteractionTests
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
             Assert.AreEqual(0, replacement.ApplicationScrollControl!.Offset.Y, 0.01);
-            Assert.AreEqual("game-00001", replacement.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
+            Assert.AreEqual(replacement.ViewModel.State.Items[0].Id.Value,
+                replacement.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(15_000)]
+    public async Task Latest_wins_reorder_restores_the_same_semantic_item_and_AutomationId_after_recycling()
+    {
+        await RunOnUiThreadAsync(async () =>
+        {
+            var endpoint = new ReorderingRemoteWidgetEndpoint();
+            using var composition = PrototypeComposition.Create(endpoint);
+            using var shell = new PrototypeShellView(composition);
+            var window = new Window { Width = 900, Height = 420, Content = shell };
+            window.Show();
+
+            var navigation = shell.NavigateAsync(PrototypeRoute.GameLauncher);
+            await endpoint.WaitForRequestsAsync(1);
+            endpoint.Requests[0].Completion.SetResult(CreateOrderedSnapshot(1, targetIndex: 500, insertedPrefix: 0));
+            await navigation;
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            var page = (GameLauncherPage)shell.ActivePage!;
+            var targetId = new RemoteWidgetItemId("stable/α:item");
+            Assert.IsTrue(page.FocusIndex(500));
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            var automationBefore = page.FocusedAutomationId(window.FocusManager?.GetFocusedElement() as Control);
+            Assert.AreEqual(targetId.Value, page.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
+            Assert.AreEqual(SemanticAutomationIdentity.ForLauncherItem(targetId), automationBefore);
+
+            var stale = page.ViewModel.RefreshAsync();
+            var newest = page.ViewModel.RefreshAsync();
+            await endpoint.WaitForRequestsAsync(3);
+            await Task.Run(() => endpoint.Requests[2].Completion.SetResult(
+                CreateOrderedSnapshot(3, targetIndex: 810, insertedPrefix: 10)));
+            await newest;
+            endpoint.Requests[1].Completion.SetResult(CreateOrderedSnapshot(2, targetIndex: 1, insertedPrefix: 1));
+            await stale;
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.AreEqual(3L, composition.RemoteProjection.State.LastGoodSnapshot?.Revision);
+            Assert.AreEqual(810, page.ViewModel.State.Items.ToList().FindIndex(item => item.Id == targetId),
+                "The latest replacement must insert/reorder items ahead of the focused semantic item.");
+            Assert.AreEqual(targetId.Value, page.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Control));
+            Assert.AreEqual(automationBefore, page.FocusedAutomationId(window.FocusManager?.GetFocusedElement() as Control),
+                "Automation identity must derive from RemoteWidgetItemId rather than list position.");
+            Assert.IsTrue(page.RealizedContainerCount is >= 1 and <= 100);
             window.Close();
         });
     }
@@ -140,5 +195,63 @@ public sealed class InteractionTests
     private static async Task RunOnUiThreadAsync(Func<Task> action)
     {
         await Dispatcher.UIThread.InvokeAsync(action);
+    }
+
+    private static RemoteWidgetSnapshot CreateOrderedSnapshot(long revision, int targetIndex, int insertedPrefix)
+    {
+        var target = new RemoteWidgetItemSnapshot(
+            new RemoteWidgetItemId("stable/α:item"),
+            "Stable target",
+            "Retains identity through reorder",
+            [new RemoteWidgetDeclaredAction(GameLauncherViewModel.OpenActionId, "Open")]);
+        var items = Enumerable.Range(0, 1_000)
+            .Select(index => new RemoteWidgetItemSnapshot(
+                new RemoteWidgetItemId($"fixture-{index:D4}"),
+                $"Fixture {index:D4}",
+                "Installed",
+                [new RemoteWidgetDeclaredAction(GameLauncherViewModel.OpenActionId, "Open")]))
+            .ToList();
+        for (var index = 0; index < insertedPrefix; index++)
+        {
+            items.Insert(index, new RemoteWidgetItemSnapshot(
+                new RemoteWidgetItemId($"inserted-{revision}-{index}"),
+                $"Inserted {index}",
+                "New",
+                [new RemoteWidgetDeclaredAction(GameLauncherViewModel.OpenActionId, "Open")]));
+        }
+
+        items.Insert(targetIndex, target);
+        return new RemoteWidgetSnapshot(revision, items, $"Revision {revision}");
+    }
+
+    private sealed class ReorderingRemoteWidgetEndpoint : IRemoteWidgetEndpoint
+    {
+        public List<PendingRequest> Requests { get; } = [];
+
+        public Task<RemoteWidgetSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+        {
+            var request = new PendingRequest(cancellationToken);
+            Requests.Add(request);
+            return request.Completion.Task;
+        }
+
+        public Task InvokeAsync(RemoteWidgetAction action, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public async Task WaitForRequestsAsync(int count)
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
+            while (Requests.Count < count && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(5);
+            }
+
+            Assert.AreEqual(count, Requests.Count);
+        }
+    }
+
+    private sealed record PendingRequest(CancellationToken CancellationToken)
+    {
+        public TaskCompletionSource<RemoteWidgetSnapshot> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

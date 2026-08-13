@@ -6,12 +6,13 @@
 | --- | --- | --- | --- |
 | Window visibility and controller activation | `MainWindow` | `MainWindow` | Presentation lifecycle remains outside view models. |
 | Keyboard/controller semantic routing | `SemanticInputRouter` | `SemanticInputRouter` | One accepted route still owns Slider, Button, tray, and virtualized-item behavior. |
-| Spatial focus and remembered focus | `PrototypeShellView` / `FocusNavigator` | Same presentation services, plus narrow `GameLauncherPage` container realization | View models never inspect controls or focus. |
+| Spatial focus and remembered focus | `PrototypeShellView` / `FocusNavigator` | Same presentation services, plus narrow `GameLauncherPage` container realization and reversible semantic-ID encoding | View models never inspect controls or focus; list position never defines identity. |
 | Route admission/history/loading | `NavigationCoordinator` / `PrototypeShellView` | Same services | `PrototypeShellViewModel` exposes immutable selected/loading state and route-request commands but cannot admit a page. |
 | Page transition | Custom opacity children in `PageTransitionPresenter` | Avalonia `TransitioningContentControl` / `CrossFade` wrapper | Avalonia owns the actual transition; the wrapper owns cancellation and diagnostic timing only. |
 | Representative page state/actions | Mostly AXAML literals and code-behind | CommunityToolkit view models over immutable records | State and commands are independently testable without a Window or controller. |
 | Launcher collection | Sixteen code-created Buttons | Bound 10,000-item `ListBox` / `VirtualizingStackPanel` | Avalonia owns selection, recycling, scrolling, and standard UIA containers. |
-| Remote snapshot/action lifecycle | None | UI-neutral `RemoteWidgetProjection` and `IRemoteWidgetEndpoint` | Latest-wins, last-good failure, exact action, and deactivation cancellation do not reference Avalonia. |
+| Remote snapshot/action lifecycle | None | UI-neutral `RemoteWidgetProjection` and `IRemoteWidgetEndpoint` | Latest-wins, last-good failure, bounded declared item actions, exact current tuple admission, and deactivation cancellation do not reference Avalonia. |
+| Remote-to-bound-state publication | Implicit continuation context | Presentation-owned `AvaloniaUiScheduler` injected into `GameLauncherViewModel` | Worker completions explicitly marshal ObservableObject mutation to Avalonia's UI thread without leaking Avalonia into the remote contract. |
 | Object construction | Ad-hoc field construction | `PrototypeComposition` | One explicit manual root owns singleton projection/view models and transient pages. |
 
 The result deliberately does not move focus, controller, window, transition,
@@ -19,6 +20,14 @@ navigation, or UIA policy into view models. The launcher page contains only the
 presentation-specific bridge needed to realize/focus standard recycled
 containers and translate their stable item identity into the shared semantic
 router.
+
+Launcher AutomationIds are `launcher.game.id.` plus unpadded base64url of the
+exact UTF-8 `RemoteWidgetItemId`. Raw IDs are limited to 128 UTF-8 bytes, encoded
+IDs to 188 characters, decode is canonical/reversible, and duplicate raw IDs
+are rejected per snapshot. This avoids lossy sanitization and hash collisions
+while preserving the raw semantic ID in the view model. Declared action IDs are
+limited to 64 UTF-8 bytes, at most eight unique actions per item, and only an
+exact item/action tuple from the latest good snapshot is admitted.
 
 ## Manual composition versus direct Microsoft DI
 

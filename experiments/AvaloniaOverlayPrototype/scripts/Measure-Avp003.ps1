@@ -65,8 +65,11 @@ $virtualized = $measurement.virtualizedCollection
 if ($virtualized.totalItems -ne 10000) { throw 'The measured launcher did not contain exactly 10,000 items.' }
 if ($virtualized.maximumRealizedContainers -lt 1 -or $virtualized.maximumRealizedContainers -gt 100) { throw 'Realized-container count was not bounded.' }
 if (-not $virtualized.semanticIdentityPreserved -or -not $virtualized.focusAndScrollReturnPassed -or
-    -not $virtualized.returnedToTop -or -not $virtualized.exactRemoteActionDispatched) {
-    throw 'Virtualized semantic identity, focus/scroll return, or exact remote action evidence failed.'
+    -not $virtualized.automationIdentityPreserved -or -not $virtualized.stableIdReorderPassed -or
+    -not $virtualized.returnedToTop -or -not $virtualized.exactRemoteActionDispatched -or
+    -not $virtualized.unknownItemActionRejected -or -not $virtualized.undeclaredItemActionRejected -or
+    -not $virtualized.workerPublicationMarshalled) {
+    throw 'Virtualized identity/reorder, action authority, scheduler publication, focus/scroll return, or exact action evidence failed.'
 }
 
 Write-Host "Retained AVP-003 measurement: $measurementPath"

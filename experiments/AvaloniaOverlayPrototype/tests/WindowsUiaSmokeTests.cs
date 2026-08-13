@@ -2,6 +2,8 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Automation;
+using GameBarAlternative.AvaloniaPrototype.Presentation;
+using GameBarAlternative.AvaloniaPrototype.Remote;
 
 namespace GameBarAlternative.AvaloniaPrototype.Tests;
 
@@ -64,7 +66,10 @@ public sealed class WindowsUiaSmokeTests
             Assert.AreEqual(ControlType.List, applicationList.Current.ControlType);
             Assert.IsTrue(applicationList.TryGetCurrentPattern(ScrollPattern.Pattern, out _),
                 "The ordinary virtualized ListBox must expose standard UIA scrolling.");
-            var firstApplication = WaitForAutomationId(window, "launcher.game.00001", TimeSpan.FromSeconds(5));
+            var firstApplication = WaitForAutomationId(
+                window,
+                SemanticAutomationIdentity.ForLauncherItem(new RemoteWidgetItemId("game-00001")),
+                TimeSpan.FromSeconds(5));
             Assert.IsNotNull(firstApplication);
             Assert.AreEqual(ControlType.ListItem, firstApplication.Current.ControlType);
             Assert.IsFalse(string.IsNullOrWhiteSpace(firstApplication.Current.Name));

@@ -35,17 +35,23 @@ than a physical-compositor claim.
 Game Launcher is an ordinary selectable `ListBox` backed by a
 `VirtualizingStackPanel` and 10,000 typed items. No manual container cache or
 custom accessibility tree exists. Prepared standard `ListBoxItem` containers
-receive stable semantic AutomationIds; the presentation page scrolls/realizes
-only the requested item and the shared keyboard/controller semantic router
-moves or invokes that focused container. Last focused semantic identity and
-scroll position survive page replacement and container recycling.
+receive stable AutomationIds derived reversibly from the exact raw
+`RemoteWidgetItemId` using bounded base64url encoding, never list position. The
+presentation page scrolls/realizes only the requested item and the shared
+keyboard/controller semantic router moves or invokes that focused container.
+Latest-wins insertion/reordering, page replacement, and container recycling
+retain the same raw item ID, AutomationId, focus, and scroll position.
 
 `RemoteWidgetContract.cs`, `FakeRemoteWidgetEndpoint`, and
 `RemoteWidgetProjection` contain no Avalonia, XAML, control, view-model, or UI
 thread types. The projection owns one active generation, latest-wins request
-cancellation, last-good retention on failure, exact typed actions, and
-deactivation cancellation. `GameLauncherViewModel` adapts that state into typed
-immutable presentation records.
+cancellation, last-good retention on failure, exact typed actions declared per
+item by the latest good snapshot, and deactivation cancellation. Unknown items
+and undeclared actions are rejected before reaching the endpoint.
+`GameLauncherViewModel` adapts that state into typed immutable presentation
+records. Its presentation-owned `AvaloniaUiScheduler` explicitly marshals every
+remote-driven bound-state mutation to Avalonia's UI thread; the remote contract
+remains UI-framework-neutral.
 
 The accepted AVP-002 input behavior remains: XInput is still a deliberately
 narrow Windows prototype adapter because it gave maintained deployment and
@@ -57,7 +63,7 @@ is not the production GameInput decision.
 ## Focused verification and evidence
 
 From the repository root, run the bounded final Release build, invalid-binding
-proof, and 20-test MSTest.Sdk 4.3.2 unit/headless/UIA suite once:
+proof, and 23-test MSTest.Sdk 4.3.2 unit/headless/UIA suite once:
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp003.ps1 -TimeoutSeconds 180
@@ -65,9 +71,11 @@ powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verif
 
 The suite covers immutable commands, UI-neutral remote types, delayed/latest-
 wins/failure/action/deactivation behavior, bounded 10,000-item realization,
-semantic identity and focus/scroll return, shared controller movement, accepted
-tray/slider/lifecycle behavior, real render-scale fixtures, native transition
-samples, and standard Windows UIA List/ListItem/Scroll/Selection semantics.
+semantic ID/AutomationId restoration through latest-wins reorder and recycling,
+snapshot-owned action rejection, worker-to-UI publication scheduling, shared
+controller movement, accepted tray/slider/lifecycle behavior, real render-scale
+fixtures, native transition samples, and standard Windows UIA
+List/ListItem/Scroll/Selection semantics.
 
 After the clean AVP-003 commit, run exactly one ordinary Windows measurement:
 
@@ -79,8 +87,9 @@ The ignored exact-commit runtime and measurement are retained under
 `experiments/AvaloniaOverlayPrototype/artifacts/avp003`. The measurement records
 source commit, executable ProductVersion/SHA-256, package versions, startup,
 visible/hidden private memory and CPU, page-switch latency, native transition
-samples, total/realized items, semantic focus before/after recycling,
-focus/scroll return, and exact fake action identity.
+samples, total/realized items, raw semantic and encoded Automation identity
+before/after reorder and recycling, focus/scroll return, unknown/undeclared
+action rejection, exact valid action identity, and worker/UI scheduler threads.
 
 ## Visible planner/user launch
 

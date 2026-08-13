@@ -1,3 +1,5 @@
+using Avalonia.Threading;
+using GameBarAlternative.AvaloniaPrototype.Presentation;
 using GameBarAlternative.AvaloniaPrototype.Remote;
 using GameBarAlternative.AvaloniaPrototype.ViewModels;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -13,7 +15,7 @@ public sealed class RemoteProjectionTests
     {
         var endpoint = new ControlledRemoteWidgetEndpoint();
         using var projection = new RemoteWidgetProjection(endpoint);
-        using var viewModel = new GameLauncherViewModel(projection);
+        using var viewModel = new GameLauncherViewModel(projection, new ImmediatePresentationScheduler());
 
         var first = viewModel.ActivateAsync();
         Assert.AreEqual(1, endpoint.Requests.Count);
@@ -37,7 +39,13 @@ public sealed class RemoteProjectionTests
         var selected = viewModel.State.Items[0];
         await viewModel.InvokeItemAsync(selected);
         Assert.AreEqual(1, endpoint.Actions.Count);
-        Assert.AreEqual(new RemoteWidgetAction(selected.Id, "open"), endpoint.Actions[0]);
+        Assert.AreEqual(new RemoteWidgetAction(selected.Id, GameLauncherViewModel.OpenActionId), endpoint.Actions[0]);
+
+        await AssertRejectedAsync(() => projection.InvokeAsync(
+            new RemoteWidgetAction(new RemoteWidgetItemId("unknown-item"), GameLauncherViewModel.OpenActionId)));
+        await AssertRejectedAsync(() => projection.InvokeAsync(
+            new RemoteWidgetAction(selected.Id, new RemoteWidgetActionId("delete"))));
+        Assert.AreEqual(1, endpoint.Actions.Count, "Rejected item/action tuples must not reach the endpoint.");
 
         var cancelled = viewModel.RefreshAsync();
         var pending = endpoint.Requests[3];
@@ -47,6 +55,69 @@ public sealed class RemoteProjectionTests
         await cancelled;
         Assert.AreEqual(2L, projection.State.LastGoodSnapshot?.Revision);
         Assert.IsFalse(projection.State.IsLoading);
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Worker_completion_publishes_bound_state_only_through_the_Avalonia_scheduler()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var endpoint = new ControlledRemoteWidgetEndpoint();
+            using var projection = new RemoteWidgetProjection(endpoint);
+            var scheduler = new AvaloniaUiScheduler();
+            using var viewModel = new GameLauncherViewModel(projection, scheduler);
+            var publicationThreads = new List<int>();
+            var allPublicationsHadUiAccess = true;
+            viewModel.PropertyChanged += (_, _) =>
+            {
+                publicationThreads.Add(Environment.CurrentManagedThreadId);
+                allPublicationsHadUiAccess &= Dispatcher.UIThread.CheckAccess();
+            };
+
+            var activation = viewModel.ActivateAsync();
+            Assert.AreEqual(1, endpoint.Requests.Count);
+            var workerThread = 0;
+            await Task.Run(() =>
+            {
+                workerThread = Environment.CurrentManagedThreadId;
+                endpoint.Requests[0].Completion.SetResult(Snapshot(1, "Worker result"));
+            });
+            await activation;
+
+            Assert.IsFalse(Dispatcher.UIThread.CheckAccess() && Environment.CurrentManagedThreadId == workerThread);
+            Assert.IsTrue(publicationThreads.Count > 0);
+            Assert.IsTrue(allPublicationsHadUiAccess, "Every bound ObservableObject mutation must occur with Avalonia UI-thread access.");
+            Assert.AreNotEqual(workerThread, scheduler.LastExecutionThreadId);
+            Assert.IsGreaterThan(0, scheduler.MarshalledInvocationCount,
+                "A worker completion must be explicitly marshalled by the presentation scheduler.");
+            Assert.AreEqual("Worker result", viewModel.State.Items[0].Title);
+        });
+    }
+
+    [TestMethod]
+    public void Semantic_automation_identity_is_bounded_reversible_and_collision_safe()
+    {
+        RemoteWidgetItemId[] ids =
+        [
+            new("game/one"),
+            new("game?one"),
+            new("é"),
+            new("e\u0301"),
+            new(new string('x', RemoteWidgetItemId.MaximumUtf8Bytes)),
+        ];
+        var encoded = ids.Select(SemanticAutomationIdentity.ForLauncherItem).ToArray();
+        Assert.AreEqual(encoded.Length, encoded.Distinct(StringComparer.Ordinal).Count());
+        foreach (var pair in ids.Zip(encoded))
+        {
+            Assert.IsTrue(pair.Second.StartsWith(SemanticAutomationIdentity.LauncherItemPrefix, StringComparison.Ordinal));
+            Assert.IsLessThanOrEqualTo(SemanticAutomationIdentity.MaximumAutomationIdLength, pair.Second.Length);
+            Assert.IsTrue(SemanticAutomationIdentity.TryDecodeLauncherItem(pair.Second, out var decoded));
+            Assert.AreEqual(pair.First, decoded);
+        }
+
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            _ = new RemoteWidgetItemId(new string('x', RemoteWidgetItemId.MaximumUtf8Bytes + 1)));
     }
 
     [TestMethod]
@@ -103,7 +174,26 @@ public sealed class RemoteProjectionTests
     }
 
     private static RemoteWidgetSnapshot Snapshot(long revision, string title) =>
-        new(revision, [new RemoteWidgetItemSnapshot(new RemoteWidgetItemId("game-00001"), title, "Fixture")], $"Revision {revision}");
+        new(
+            revision,
+            [new RemoteWidgetItemSnapshot(
+                new RemoteWidgetItemId("game-00001"),
+                title,
+                "Fixture",
+                [new RemoteWidgetDeclaredAction(GameLauncherViewModel.OpenActionId, "Open")])],
+            $"Revision {revision}");
+
+    private static async Task AssertRejectedAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+            Assert.Fail("Undeclared remote action was admitted.");
+        }
+        catch (ArgumentException)
+        {
+        }
+    }
 
     private sealed class ControlledRemoteWidgetEndpoint : IRemoteWidgetEndpoint
     {
@@ -129,5 +219,16 @@ public sealed class RemoteProjectionTests
     {
         public TaskCompletionSource<RemoteWidgetSnapshot> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class ImmediatePresentationScheduler : IPresentationScheduler
+    {
+        public bool CheckAccess() => true;
+
+        public Task InvokeAsync(Action action)
+        {
+            action();
+            return Task.CompletedTask;
+        }
     }
 }

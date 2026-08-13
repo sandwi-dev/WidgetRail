@@ -2,6 +2,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GameBarAlternative.AvaloniaPrototype.Remote;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 using GameBarAlternative.AvaloniaPrototype.Views;
 using System.Diagnostics;
 using System.Reflection;
@@ -147,6 +148,8 @@ internal static class EvidenceScenario
         firstPage.FocusIndex(9_000);
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         var focusedBefore = firstPage.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
+        var automationBefore = firstPage.FocusedAutomationId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
+        var focusedIndexBefore = firstPage.ViewModel.State.Items.ToList().FindIndex(item => item.Id.Value == focusedBefore);
         var farOffset = firstPage.ApplicationScrollControl?.Offset.Y ?? 0;
         var maximumRealized = firstPage.RealizedContainerCount;
 
@@ -156,13 +159,24 @@ internal static class EvidenceScenario
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         var returnedPage = (GameLauncherPage)window.ShellView.ActivePage!;
         var focusedAfter = returnedPage.FocusedSemanticId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
+        var automationAfter = returnedPage.FocusedAutomationId(window.FocusManager?.GetFocusedElement() as Avalonia.Controls.Control);
+        var focusedIndexAfter = returnedPage.ViewModel.State.Items.ToList().FindIndex(item => item.Id.Value == focusedAfter);
         var restoredOffset = returnedPage.ApplicationScrollControl?.Offset.Y ?? 0;
         maximumRealized = Math.Max(maximumRealized, returnedPage.RealizedContainerCount);
 
         var selected = returnedPage.ViewModel.SelectedItem ?? throw new InvalidOperationException("Launcher selection was not restored.");
         await returnedPage.ViewModel.InvokeItemAsync(selected);
         var exactAction = window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint fake &&
-            fake.Actions.LastOrDefault() == new RemoteWidgetAction(selected.Id, "open");
+            fake.Actions.LastOrDefault() == new RemoteWidgetAction(selected.Id, GameLauncherViewModel.OpenActionId);
+        var unknownItemRejected = await IsRejectedAsync(() => window.Composition.RemoteProjection.InvokeAsync(
+            new RemoteWidgetAction(new RemoteWidgetItemId("measurement-unknown"), GameLauncherViewModel.OpenActionId)));
+        var undeclaredActionRejected = await IsRejectedAsync(() => window.Composition.RemoteProjection.InvokeAsync(
+            new RemoteWidgetAction(selected.Id, new RemoteWidgetActionId("measurement-wrong-action"))));
+        var scheduler = window.Composition.PresentationScheduler;
+        var workerPublicationMarshalled = window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint scheduledFake &&
+            scheduledFake.LastSnapshotCompletionThreadId != 0 &&
+            scheduledFake.LastSnapshotCompletionThreadId != scheduler.LastExecutionThreadId &&
+            scheduler.MarshalledInvocationCount > 0;
 
         returnedPage.FocusIndex(0);
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
@@ -174,11 +188,36 @@ internal static class EvidenceScenario
             focusedBefore ?? "unavailable",
             focusedAfter ?? "unavailable",
             focusedBefore is not null && focusedBefore == focusedAfter,
+            automationBefore ?? "unavailable",
+            automationAfter ?? "unavailable",
+            automationBefore is not null && automationBefore == automationAfter,
+            focusedIndexBefore,
+            focusedIndexAfter,
+            focusedIndexBefore >= 0 && focusedIndexAfter >= 0 && focusedIndexBefore != focusedIndexAfter,
             farOffset,
             restoredOffset,
             restoredOffset > 0,
             returnedToTop,
-            exactAction);
+            exactAction,
+            unknownItemRejected,
+            undeclaredActionRejected,
+            window.Composition.RemoteEndpoint is FakeRemoteWidgetEndpoint workerFake ? workerFake.LastSnapshotCompletionThreadId : 0,
+            scheduler.LastExecutionThreadId,
+            scheduler.MarshalledInvocationCount,
+            workerPublicationMarshalled);
+    }
+
+    private static async Task<bool> IsRejectedAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
     }
 
     private static async Task<ResourceSample> SampleAsync(Process process, TimeSpan duration)
@@ -243,9 +282,21 @@ internal static class EvidenceScenario
         string FocusedSemanticIdBeforeRecycling,
         string FocusedSemanticIdAfterReturn,
         bool SemanticIdentityPreserved,
+        string FocusedAutomationIdBeforeReorder,
+        string FocusedAutomationIdAfterReorder,
+        bool AutomationIdentityPreserved,
+        int FocusedIndexBeforeReorder,
+        int FocusedIndexAfterReorder,
+        bool StableIdReorderPassed,
         double FarScrollOffset,
         double RestoredScrollOffset,
         bool FocusAndScrollReturnPassed,
         bool ReturnedToTop,
-        bool ExactRemoteActionDispatched);
+        bool ExactRemoteActionDispatched,
+        bool UnknownItemActionRejected,
+        bool UndeclaredItemActionRejected,
+        int RemoteCompletionThreadId,
+        int PresentationPublicationThreadId,
+        int MarshalledPublicationCount,
+        bool WorkerPublicationMarshalled);
 }

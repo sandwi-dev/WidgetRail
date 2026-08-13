@@ -1,14 +1,58 @@
+using System.Text;
+
 namespace GameBarAlternative.AvaloniaPrototype.Remote;
 
-public readonly record struct RemoteWidgetItemId(string Value)
+public readonly record struct RemoteWidgetItemId
 {
+    public const int MaximumUtf8Bytes = 128;
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    public RemoteWidgetItemId(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        var bytes = StrictUtf8.GetByteCount(value);
+        if (bytes > MaximumUtf8Bytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), $"Item identity must not exceed {MaximumUtf8Bytes} UTF-8 bytes.");
+        }
+
+        Value = value;
+    }
+
+    public string Value { get; }
+
     public override string ToString() => Value;
 }
+
+public readonly record struct RemoteWidgetActionId
+{
+    public const int MaximumUtf8Bytes = 64;
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    public RemoteWidgetActionId(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        var bytes = StrictUtf8.GetByteCount(value);
+        if (bytes > MaximumUtf8Bytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), $"Action identity must not exceed {MaximumUtf8Bytes} UTF-8 bytes.");
+        }
+
+        Value = value;
+    }
+
+    public string Value { get; }
+
+    public override string ToString() => Value;
+}
+
+public sealed record RemoteWidgetDeclaredAction(RemoteWidgetActionId Id, string Name);
 
 public sealed record RemoteWidgetItemSnapshot(
     RemoteWidgetItemId Id,
     string Title,
-    string Subtitle);
+    string Subtitle,
+    IReadOnlyList<RemoteWidgetDeclaredAction> Actions);
 
 public sealed record RemoteWidgetSnapshot(
     long Revision,
@@ -17,7 +61,7 @@ public sealed record RemoteWidgetSnapshot(
 
 public sealed record RemoteWidgetAction(
     RemoteWidgetItemId ItemId,
-    string ActionId);
+    RemoteWidgetActionId ActionId);
 
 public interface IRemoteWidgetEndpoint
 {
@@ -33,6 +77,8 @@ public sealed record RemoteWidgetProjectionState(
 
 public sealed class RemoteWidgetProjection : IDisposable
 {
+    public const int MaximumSnapshotItems = 10_000;
+    public const int MaximumActionsPerItem = 8;
     private readonly object gate = new();
     private readonly IRemoteWidgetEndpoint endpoint;
     private CancellationTokenSource activeLifetime = CreateCancelledLifetime();
@@ -94,7 +140,8 @@ public sealed class RemoteWidgetProjection : IDisposable
 
         try
         {
-            var snapshot = await endpoint.GetSnapshotAsync(ownedRequest.Token);
+            var snapshot = await endpoint.GetSnapshotAsync(ownedRequest.Token).ConfigureAwait(false);
+            ValidateSnapshot(snapshot);
             PublishIfCurrent(ownedGeneration, ownedRequest, new(snapshot, false, null));
         }
         catch (OperationCanceledException) when (ownedRequest.IsCancellationRequested)
@@ -129,10 +176,10 @@ public sealed class RemoteWidgetProjection : IDisposable
                 throw new InvalidOperationException("The remote projection is inactive.");
             }
 
-            if (string.IsNullOrWhiteSpace(action.ItemId.Value) || string.IsNullOrWhiteSpace(action.ActionId) ||
-                state.LastGoodSnapshot?.Items.Any(item => item.Id == action.ItemId) != true)
+            var item = state.LastGoodSnapshot?.Items.FirstOrDefault(candidate => candidate.Id == action.ItemId);
+            if (item is null || item.Actions.All(declared => declared.Id != action.ActionId))
             {
-                throw new ArgumentException("The action must identify an item from the last good snapshot.", nameof(action));
+                throw new ArgumentException("The action must be an exact item/action tuple declared by the latest good snapshot.", nameof(action));
             }
 
             activeToken = activeLifetime.Token;
@@ -211,6 +258,48 @@ public sealed class RemoteWidgetProjection : IDisposable
 
     private bool IsCurrent(long ownedGeneration, CancellationTokenSource ownedRequest) =>
         active && !ownedRequest.IsCancellationRequested && ownedGeneration == generation && ReferenceEquals(request, ownedRequest);
+
+    private static void ValidateSnapshot(RemoteWidgetSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Items.Count > MaximumSnapshotItems)
+        {
+            throw new InvalidDataException($"Remote snapshot exceeded {MaximumSnapshotItems} items.");
+        }
+
+        var itemIds = new HashSet<RemoteWidgetItemId>();
+        foreach (var item in snapshot.Items)
+        {
+            if (string.IsNullOrWhiteSpace(item.Id.Value))
+            {
+                throw new InvalidDataException("Remote snapshot contained an empty item identity.");
+            }
+
+            if (!itemIds.Add(item.Id))
+            {
+                throw new InvalidDataException($"Remote snapshot repeated item identity '{item.Id}'.");
+            }
+
+            if (item.Actions.Count > MaximumActionsPerItem)
+            {
+                throw new InvalidDataException($"Remote item '{item.Id}' exceeded {MaximumActionsPerItem} declared actions.");
+            }
+
+            var actionIds = new HashSet<RemoteWidgetActionId>();
+            foreach (var action in item.Actions)
+            {
+                if (string.IsNullOrWhiteSpace(action.Id.Value))
+                {
+                    throw new InvalidDataException($"Remote item '{item.Id}' contained an empty action identity.");
+                }
+
+                if (!actionIds.Add(action.Id))
+                {
+                    throw new InvalidDataException($"Remote item '{item.Id}' repeated action identity '{action.Id}'.");
+                }
+            }
+        }
+    }
 
     private static CancellationTokenSource CreateCancelledLifetime()
     {

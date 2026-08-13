@@ -7,6 +7,7 @@ using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Navigation;
 using GameBarAlternative.AvaloniaPrototype.Remote;
 using GameBarAlternative.AvaloniaPrototype.Views;
+using GameBarAlternative.AvaloniaPrototype.ViewModels;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Reflection;
 
@@ -171,7 +172,7 @@ public sealed class ControllerInputTests
             await Task.Delay(30);
             var remote = (FakeRemoteWidgetEndpoint)window.Composition.RemoteEndpoint;
             Assert.AreEqual(1, remote.Actions.Count);
-            Assert.AreEqual(new RemoteWidgetAction(new RemoteWidgetItemId("game-00002"), "open"), remote.Actions[0],
+            Assert.AreEqual(new RemoteWidgetAction(new RemoteWidgetItemId("game-00002"), GameLauncherViewModel.OpenActionId), remote.Actions[0],
                 "Controller A must dispatch the exact focused semantic item through the shared router once.");
             Poll(adapter, source, Snapshot(connected: true, slot: 1, a: true), 3_500);
             await Task.Delay(20);

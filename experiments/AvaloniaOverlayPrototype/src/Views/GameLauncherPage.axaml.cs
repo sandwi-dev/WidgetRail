@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -5,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using GameBarAlternative.AvaloniaPrototype.ViewModels;
+using GameBarAlternative.AvaloniaPrototype.Presentation;
 
 namespace GameBarAlternative.AvaloniaPrototype.Views;
 
@@ -12,7 +14,9 @@ public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage,
 {
     private int pendingFocusIndex = -1;
 
-    public GameLauncherPage() : this(new GameLauncherViewModel(new Remote.RemoteWidgetProjection(new Remote.FakeRemoteWidgetEndpoint())))
+    public GameLauncherPage() : this(new GameLauncherViewModel(
+        new Remote.RemoteWidgetProjection(new Remote.FakeRemoteWidgetEndpoint()),
+        new AvaloniaUiScheduler()))
     {
     }
 
@@ -22,6 +26,8 @@ public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage,
         ViewModel = viewModel;
         DataContext = viewModel;
         ApplicationListControl.ContainerPrepared += ContainerPrepared;
+        AttachedToVisualTree += PageAttachedToVisualTree;
+        DetachedFromVisualTree += PageDetachedFromVisualTree;
     }
 
     public GameLauncherViewModel ViewModel { get; }
@@ -68,13 +74,12 @@ public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage,
 
     public bool TryRestoreSemanticFocus(string automationId)
     {
-        var index = ViewModel.State.Items
-            .Select((item, position) => (item, position))
-            .FirstOrDefault(entry => string.Equals(entry.item.AutomationId, automationId, StringComparison.Ordinal))
-            .position;
-        return index >= 0 && index < ViewModel.State.Items.Count &&
-            string.Equals(ViewModel.State.Items[index].AutomationId, automationId, StringComparison.Ordinal) &&
-            FocusIndex(index);
+        if (!SemanticAutomationIdentity.TryDecodeLauncherItem(automationId, out var itemId))
+        {
+            return false;
+        }
+
+        return FocusItem(itemId);
     }
 
     public bool FocusIndex(int index)
@@ -103,6 +108,37 @@ public sealed partial class GameLauncherPage : UserControl, IPrototypeFocusPage,
         var index = container is null ? -1 : ApplicationListControl.IndexFromContainer(container);
         return index >= 0 && index < ViewModel.State.Items.Count ? ViewModel.State.Items[index].Id.Value : null;
     }
+
+    public string? FocusedAutomationId(Control? focused) =>
+        focused is null || FindContainer(focused) is not { } container
+            ? null
+            : AutomationProperties.GetAutomationId(container);
+
+    private bool FocusItem(Remote.RemoteWidgetItemId itemId)
+    {
+        var index = ViewModel.State.Items
+            .Select((item, position) => (item, position))
+            .FirstOrDefault(entry => entry.item.Id == itemId)
+            .position;
+        return index >= 0 && index < ViewModel.State.Items.Count &&
+            ViewModel.State.Items[index].Id == itemId && FocusIndex(index);
+    }
+
+    private void ViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(GameLauncherViewModel.State) || ViewModel.SelectedItem is not { } selected)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => FocusItem(selected.Id), DispatcherPriority.Normal);
+    }
+
+    private void PageAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+        ViewModel.PropertyChanged += ViewModelPropertyChanged;
+
+    private void PageDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e) =>
+        ViewModel.PropertyChanged -= ViewModelPropertyChanged;
 
     private void ContainerPrepared(object? sender, ContainerPreparedEventArgs e)
     {
