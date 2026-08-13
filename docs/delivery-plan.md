@@ -418,6 +418,22 @@ managed bridge/runtime code and add focused tests. It does not edit Avalonia
 shell/pages, native host/input, widget implementations, public widget
 semantics, catalog authority, or reviewer documents.
 
+Exclusive files:
+
+- new `src/WidgetPresentationSession/**`;
+- new `tests/WidgetPresentationSession.Tests/**`;
+- `src/WidgetBridge/BridgeProtocol.cs`;
+- `src/WidgetBridge/WidgetBridge.csproj`;
+- `src/WidgetBridge/AssemblyInfo.cs`;
+- `tests/WidgetBridge.Tests/BridgeTestFrameReader.cs`;
+- `tests/WidgetBridge.Tests/WidgetBridge.Tests.csproj`; and
+- `tests/WidgetBridge.Tests/Program.cs`.
+
+The task may add documentation only inside its new project directories. If the
+existing server requires another production-file edit to share the wire
+contract safely, stop and request one exact expansion before touching it. Do
+not duplicate the wire schema merely to stay inside the file list.
+
 Objective: expose a typed managed presentation facade over the retained
 `WidgetBridge` backend. It owns descriptor enumeration, lifecycle, validated
 latest snapshot/last-good failure publication, exact action admission inputs,
@@ -437,6 +453,30 @@ only after exact file ownership excludes the active production platform
 assignment. It may extract, not redesign, supported native input/window policy
 and add focused parity tests. It does not edit WidgetBridge/runtime, Avalonia
 views, widgets, providers, Community packages, or reviewer documents.
+
+Exclusive files:
+
+- new `src/OverlayPlatformInterop/**`;
+- new `tests/OverlayPlatformInterop.Tests/**`;
+- `src/OverlayHost/GuideInputCompatibility.cpp` and `.h`;
+- `src/OverlayHost/GuideInputCompatibilityTests.cpp`;
+- `src/OverlayHost/ControllerNavigation.cpp` and `.h`;
+- `src/OverlayHost/ControllerNavigationTests.cpp`;
+- `src/OverlayHost/ControllerInputOwnershipTests.cpp`;
+- `src/OverlayHost/OverlayState.cpp` and `.h`;
+- `src/OverlayHost/OverlayStateTests.cpp`;
+- `src/OverlayHost/OverlayTargeting.cpp` and `.h`;
+- `src/OverlayHost/OverlayTargetingTests.cpp`;
+- `src/OverlayHost/OverlayPlacement.cpp` and `.h`;
+- `src/OverlayHost/OverlayPlacementTests.cpp`;
+- `src/OverlayHost/main.cpp`; and
+- `src/OverlayHost/build.ps1`.
+
+The task may add documentation only inside its new project directories. It may
+move policy into the new boundary and leave behavior-preserving production
+callers in the listed files, but it may not copy a second active GameInput,
+Guide, targeting, placement, visibility, or focus authority. Any additional
+existing-file requirement stops for one exact planner expansion.
 
 Objective: expose one narrow versioned native boundary for the existing
 Microsoft GameInput owner and essential Win32 overlay integration: supported
