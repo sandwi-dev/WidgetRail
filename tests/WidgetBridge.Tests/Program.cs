@@ -10,6 +10,7 @@ using GameBarAlternative.PlatformSettings;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
+using GameBarAlternative.WidgetPresentationSession;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
@@ -97,6 +98,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
+    ("Managed presentation session preserves sandboxed authority lifecycle and last-good state", ManagedPresentationSessionPreservesSandboxedAuthority),
+    ("Managed presentation session preserves the ordinary full-trust runtime", ManagedPresentationSessionPreservesFullTrustRuntime),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
@@ -2802,6 +2805,303 @@ static async Task SnapshotAndQuickAction()
         updatedResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.Equal(0.6D, FindNode(updated.Root, "volume").Value);
     Assert.Equal("physical,automation,physical", FindNode(updated.Root, "busy-button").Text);
+}
+
+static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
+{
+    using var temporary = TemporaryCatalog.Create();
+    var catalog = BridgeCatalog.Load(temporary.Path);
+    var pipeName = $"gba-session-sandboxed-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    var session = await WidgetPresentationSession.ConnectAsync(
+        pipeName,
+        new WidgetPresentationSessionOptions
+        {
+            ClientName = "WidgetBridge.Tests.AVP004.Session",
+            MaximumMessageBytes = 64 * 1024,
+            MaximumRetainedDiagnostics = 8,
+        });
+    try
+    {
+        var listed = await session.ListWidgetsAsync();
+        Assert.Equal(0L, listed.Revision);
+        Assert.SequenceEqual(["test-widget"], listed.Widgets.Select(widget => widget.Id));
+        var target = session.GetTarget("test-widget");
+        var initial = await session.EstablishPresentationAsync(
+            target, WidgetLifecycleState.Interactive);
+        Assert.Equal(target.Descriptor.RuntimeGeneration, initial.Authority.RuntimeGeneration);
+        Assert.Equal(
+            target.Descriptor.PresentationGeneration,
+            initial.Authority.PresentationGeneration);
+        Assert.Equal(initial.Snapshot.Sequence, initial.Authority.SnapshotSequence);
+        Assert.Equal(initial.Snapshot.ActiveInputScopeId, initial.Authority.ActiveInputScopeId);
+        Assert.Equal(5, initial.RenderStyles.Count);
+
+        var refreshed = WaitForPresentationAsync(
+            session,
+            state => state.LastGood is { } frame &&
+                     frame.Authority.SnapshotSequence > initial.Authority.SnapshotSequence);
+        var admission = await session.SendActionAsync(
+            initial.Authority,
+            new WidgetActionEvent(
+                "refresh",
+                "button",
+                Sequence: 10,
+                MonotonicTimestampMicroseconds: 1_000,
+                InputScopeId: initial.Authority.ActiveInputScopeId));
+        Assert.Equal(WidgetOperationAdmission.Enqueued, admission);
+        var latest = (await refreshed).LastGood!;
+        Assert.Equal("unknown", FindNode(latest.Snapshot.Root, "busy-button").Text);
+
+        var input = new ControllerInputEvent(
+            ControllerButton.RightBumper,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget,
+            FocusedElementId: "button",
+            Sequence: 11,
+            MonotonicTimestampMicroseconds: 2_000,
+            ActiveInputScopeId: latest.Authority.ActiveInputScopeId,
+            SnapshotSequence: latest.Authority.SnapshotSequence);
+        var controllerRefresh = WaitForPresentationAsync(
+            session,
+            state => state.LastGood is { } frame &&
+                     frame.Authority.SnapshotSequence > latest.Authority.SnapshotSequence);
+        Assert.True(await session.SendControllerInputAsync(latest.Authority, input),
+            "Managed controller input was not handled through the bridge.");
+        latest = (await controllerRefresh).LastGood!;
+
+        var quickRefresh = WaitForPresentationAsync(
+            session,
+            state => state.LastGood is { } frame &&
+                     frame.Authority.SnapshotSequence > latest.Authority.SnapshotSequence);
+        var quickAdmission = await session.InvokeQuickActionAsync(
+            target, "hover-refresh", 12, 3_000);
+        Assert.Equal(WidgetOperationAdmission.Enqueued, quickAdmission);
+        latest = (await quickRefresh).LastGood!;
+
+        var failureState = WaitForPresentationAsync(
+            session,
+            state => state.Failure is { ActionId: "fail" });
+        var failureAdmission = await session.SendActionAsync(
+            latest.Authority,
+            new WidgetActionEvent(
+                "fail",
+                "button",
+                Sequence: 13,
+                MonotonicTimestampMicroseconds: 4_000,
+                InputScopeId: latest.Authority.ActiveInputScopeId));
+        Assert.Equal(WidgetOperationAdmission.Enqueued, failureAdmission);
+        var failed = await failureState;
+        Assert.Equal(latest, failed.LastGood);
+        Assert.Equal(latest.Authority.RuntimeGeneration, failed.Failure!.RuntimeGeneration);
+        Assert.Equal("Action failed.", failed.Failure.Message);
+
+        var staleInput = input with
+        {
+            SnapshotSequence = latest.Authority.SnapshotSequence + 1,
+            ActiveInputScopeId = latest.Authority.ActiveInputScopeId,
+        };
+        var staleException = await Assert.ThrowsAsync<WidgetPresentationSessionException>(
+            () => session.SendControllerInputAsync(latest.Authority, staleInput));
+        Assert.Equal("snapshot_stale", staleException.Code);
+
+        var restoredState = await session.RestartAsync(target);
+        Assert.Equal(WidgetLifecycleState.Interactive, restoredState);
+        Assert.True(session.GetState("test-widget")?.LastGood is null,
+            "Restart retained stale presentation authority.");
+        var staleAction = await Assert.ThrowsAsync<WidgetPresentationSessionException>(
+            () => session.SendActionAsync(
+                latest.Authority,
+                new WidgetActionEvent(
+                    "refresh", "button",
+                    InputScopeId: latest.Authority.ActiveInputScopeId)));
+        Assert.Equal("presentation_stale", staleAction.Code);
+        var restarted = await session.EstablishPresentationAsync(
+            target, WidgetLifecycleState.Interactive);
+        Assert.Equal("test.instance", restarted.Authority.WidgetInstanceId);
+        Assert.True(session.Diagnostics.Count <= 8,
+            "Managed presentation diagnostics exceeded their configured bound.");
+    }
+    finally
+    {
+        await session.DisposeAsync();
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+}
+
+static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
+{
+    using var temporary = new TemporaryDirectory("gba-session-full-trust");
+    var repositoryRoot = FindRepositoryRoot();
+    var fixtureOutput = Path.Combine(
+        repositoryRoot,
+        "tests",
+        "FullTrustAlphaFixture",
+        "bin",
+        "Release",
+        "net8.0",
+        "win-x64");
+    var package = CreateFullTrustSessionPackage(
+        temporary.Path,
+        fixtureOutput,
+        "FullTrustAlphaFixture.exe",
+        "dev.avp004.session-full-trust");
+    var installedRoot = Path.Combine(temporary.Path, "installed");
+    var installedCatalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(installedRoot);
+    var installed = await installedCatalog.InstallAsync(
+        package, WidgetPackageTrustApproval.FullTrustCurrentUser);
+    await installedCatalog.SetEnabledAsync(
+        installed.Id, true, WidgetPackageTrustApproval.FullTrustCurrentUser);
+
+    var trustedWorker = Path.Combine(temporary.Path, "trusted-worker.exe");
+    File.Copy(Environment.ProcessPath!, trustedWorker);
+    var trustedCatalogPath = Path.Combine(temporary.Path, "trusted-catalog.json");
+    await File.WriteAllTextAsync(trustedCatalogPath, """
+        {
+          "catalogVersion": 1,
+          "widgets": [],
+          "bundledWidgets": [],
+          "genericWorkerExecutable": "trusted-worker.exe"
+        }
+        """);
+    var load = await BridgeCatalog.LoadWithInstalledAsync(
+        trustedCatalogPath, installedRoot, trustedWorker);
+    Assert.Equal(0, load.Warnings.Count);
+    var configured = load.Catalog.GetConfigured(installed.Id);
+    Assert.Equal(WidgetExecutionTrust.FullTrustCurrentUser, configured.ExecutionTrust);
+
+    var pipeName = $"gba-session-full-trust-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipeName, load.Catalog, 64 * 1024);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    var session = await WidgetPresentationSession.ConnectAsync(
+        pipeName,
+        new WidgetPresentationSessionOptions
+        {
+            ClientName = "WidgetBridge.Tests.AVP004.FullTrust",
+            MaximumMessageBytes = 64 * 1024,
+        });
+    try
+    {
+        _ = await session.ListWidgetsAsync();
+        var target = session.GetTarget(installed.Id);
+        var frame = await session.EstablishPresentationAsync(
+            target, WidgetLifecycleState.Interactive);
+        var result = FindNode(frame.Snapshot.Root, "alpha-result").Text ?? string.Empty;
+        Assert.True(
+            result.Contains("child=True", StringComparison.Ordinal) &&
+            result.Contains("file=True", StringComparison.Ordinal) &&
+            result.Contains("database=True", StringComparison.Ordinal) &&
+            result.Contains("https=True", StringComparison.Ordinal),
+            "The managed presentation session changed full-trust runtime behavior.");
+
+        var failedState = WaitForPresentationAsync(
+            session,
+            state => state.Failure is { CanRestart: true });
+        var admission = await session.SendActionAsync(
+            frame.Authority,
+            new WidgetActionEvent(
+                "crash",
+                "alpha-crash",
+                Sequence: 1,
+                MonotonicTimestampMicroseconds: 1_000,
+                InputScopeId: frame.Authority.ActiveInputScopeId));
+        Assert.Equal(WidgetOperationAdmission.Enqueued, admission);
+        var failed = await failedState;
+        Assert.Equal(frame, failed.LastGood);
+        Assert.True(failed.Failure!.CanRestart,
+            "Full-trust restart authority was not preserved by the facade.");
+        var staleAfterFailure = await Assert.ThrowsAsync<WidgetPresentationSessionException>(
+            () => session.SendActionAsync(
+                frame.Authority,
+                new WidgetActionEvent(
+                    "crash", "alpha-crash",
+                    InputScopeId: frame.Authority.ActiveInputScopeId)));
+        Assert.Equal("presentation_stale", staleAfterFailure.Code);
+
+        var recovered = await session.EstablishPresentationAsync(
+            target, WidgetLifecycleState.Interactive);
+        Assert.True(
+            FindNode(recovered.Snapshot.Root, "alpha-result").Text?.Contains(
+                "run=", StringComparison.Ordinal) == true,
+            "The full-trust session did not recover a typed snapshot.");
+        Assert.True(session.GetState(installed.Id)?.Failure is null,
+            "A successful full-trust refresh did not clear the retained failure.");
+    }
+    finally
+    {
+        await session.DisposeAsync();
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+}
+
+static async Task<WidgetPresentationState> WaitForPresentationAsync(
+    WidgetPresentationSession session,
+    Func<WidgetPresentationState, bool> predicate)
+{
+    if (session.GetState("test-widget") is { } current && predicate(current)) return current;
+    var completion = new TaskCompletionSource<WidgetPresentationState>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    void Changed(object? sender, WidgetPresentationChangedEventArgs eventArgs)
+    {
+        if (predicate(eventArgs.State)) completion.TrySetResult(eventArgs.State);
+    }
+    session.PresentationChanged += Changed;
+    try
+    {
+        return await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+    finally
+    {
+        session.PresentationChanged -= Changed;
+    }
+}
+
+static string CreateFullTrustSessionPackage(
+    string destination,
+    string fixtureOutput,
+    string executable,
+    string id)
+{
+    if (!Directory.Exists(fixtureOutput))
+        throw new InvalidOperationException("The full-trust fixture was not built.");
+    var package = Path.Combine(destination, $"{id}.gbarwidget");
+    var manifest = new WidgetManifest
+    {
+        Id = id,
+        Publisher = "dev.avp004",
+        Name = "AVP-004 full-trust session fixture",
+        Version = "1.0.0",
+        HostApi = new HostApiRange("1.0", 1),
+        Entrypoint = new WidgetEntrypoint(
+            WidgetEntrypointRuntimes.FullTrustApplicationV1,
+            Executable: $"payload/{executable}"),
+        Permissions = [],
+        OptionalPermissions = [],
+        Architectures = ["x64"],
+    };
+    using var stream = new FileStream(
+        package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+    using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+    WriteArchiveEntry(archive, "manifest.json", ManifestJson.Serialize(manifest));
+    foreach (var file in Directory.EnumerateFiles(fixtureOutput)
+                 .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase))
+                 .Order(StringComparer.Ordinal))
+        WriteArchiveEntry(
+            archive,
+            "payload/" + Path.GetFileName(file),
+            File.ReadAllBytes(file));
+    return package;
+}
+
+static string FindRepositoryRoot()
+{
+    for (var current = new DirectoryInfo(AppContext.BaseDirectory);
+         current is not null;
+         current = current.Parent)
+        if (Directory.Exists(Path.Combine(current.FullName, "src", "WidgetBridge")))
+            return current.FullName;
+    throw new InvalidOperationException("Repository root was not found.");
 }
 
 static ViewNode FindNode(ViewNode node, string id)
