@@ -534,6 +534,16 @@ Preserve the product direction already recorded in the roadmap:
 - A normalized trusted game-library platform with opaque launch authority,
   cursor-backed virtualization, lazy artwork, host-owned query, and store
   adapters outside ordinary widget authority.
+- Keep Games & Apps as a bundled first-party widget. Game Launcher is the
+  flagship Community-widget proof and must be built, packaged, installed,
+  consented, selected, updated, and run through the same supported path
+  available to an independent author. It may not depend on a first-party
+  package ID, built-in catalog entry, build-time runtime copy, SDK friend
+  assembly, private widget bridge, or package/publisher/style/element-name
+  special case. Any advanced presentation, library, artwork, storage, or host
+  interaction it needs must be a generic, versioned, documented contract
+  available to every qualifying Community widget under the same validation,
+  consent, resource, and authority rules.
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
 - Lightweight idle/hidden operation suitable for use while gaming.

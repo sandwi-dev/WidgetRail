@@ -101,14 +101,23 @@ production-host lifecycle scenario. Planner PID 25004 reproduces the expected
 first absolute content bounds `1785,1164,1549,236`, admits all eight first
 pages inside the host, and emits no product failure in the exact interval.
 
-### Game Launcher production projection accepted end to end
+### Game Launcher projection works, but its trust tier contradicts the framework goal
 
 DLV-134 `e847502`, DLV-145 `7a566be`, and correction DLV-146 `8c6adb4` are
 accepted and integrated as `f88aa58`, `3a22bf9`, and `4aa7284`. The managed
 widget retains one controller-reachable persisted built-in selection and six
-non-authorizing semantic slots. The native projection owner admits only that
-exact first-party shape and preserves the original SavedId, action, focus,
-cursor, collection, instance, sequence, input scope, and Back authority.
+non-authorizing semantic slots. The native projection preserves the original
+SavedId, action, focus, cursor, collection, instance, sequence, input scope,
+and Back authority.
+
+That evidence proves the implementation behavior, not the intended public
+framework boundary. The widget is still first-party-identified, built into the
+runtime catalog, project-references the SDK, has SDK friend-assembly access,
+and depends on a known Launcher Experience projection. A sophisticated
+Community widget cannot claim parity while any of those exceptions remain.
+DLV-212 through DLV-214 now own the managed portability proof, generic native
+admission contract, and final Community package cutover. Games & Apps remains
+the bundled first-party launcher surface.
 
 Independent evidence passes 1,588 native checks, the managed Game Launcher
 68/68, and two explicit production-host scenarios. A test-only trusted provider
@@ -288,9 +297,9 @@ its change is accepted.
 
 | Area | Current assessment | Principal remaining gate |
 | --- | --- | --- |
-| Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, transition verdict DLV-188, and DLV-193 are integrated through `70a33e3`; accepted main is visibly running as PID 39636. Semantic first-page admission passed, but the user proved it did not validate the intended Spotify package/layout or generic tray Hold Y restart. | DLV-208 publishes the already-accepted Spotify layout and DLV-209 restores generic exact-worker restart. Visual appearance and physical interaction remain the user's live verdict. |
-| Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are integrated through `70a33e3`. DLV-160 proves the complete supported CLI-to-production lifecycle, safe start, last-good reload, recovery, and removal. | DLV-205 must prove collection/action continuity for the private trusted bridge before managed DLV-207 can expose Switch experience. Manual artwork/background remains blocked on a trusted selection seam. |
-| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. The corrected DLV-194–204 chain is integrated through `04fbdc0`, including a valid full-application reference, self-contained external setup, refreshed provenance, and the shortest semantic author loop. | External publication/update governance and a truly separately hosted third-party repository remain; current local authoring no longer blocks visible product work. |
+| Visible UI and controller behavior | DLV-168, the corrected DLV-172–190 cluster, transition verdict DLV-188, and DLV-193 are integrated through `70a33e3`; DLV-208 publishes Spotify 0.2.15. The machine restart ended the prior accepted PID, and the user proved semantic first-page admission did not validate generic tray Hold Y restart. | DLV-209 restores generic exact-worker restart. The next accepted integrated milestone must rebuild and visibly relaunch the overlay; visual appearance and physical interaction remain the user's verdict. |
+| Launcher platform | Data-only packs, four responsive presets, normalized managed presentation, supported local sources, organization/details/search/availability/offline launch, scalable exact categories/titles, author tooling, installed selection, recovery, and custom-pack matrix are implemented. DLV-160 proves the supported CLI-to-production lifecycle. | The implementation is first-party-coupled and therefore does not prove the public framework. DLV-212–214 must establish clean public-SDK portability, generic native admission, and ordinary Community package operation. Manual artwork/background remains blocked on a trusted selection seam. |
+| Widget SDK and author journey | Strong local lifecycle/state/navigation/capability/scaffold/package foundations. The corrected DLV-194–204 chain is integrated through `04fbdc0`, including a valid full-application reference, self-contained external setup, refreshed provenance, and the shortest semantic author loop. | DLV-212–214 must make the sophisticated Game Launcher reference genuinely Community-owned. External publication/update governance and a separately hosted third-party repository remain later gates. |
 | Installed-widget security | Bounded threat-model gate is closed and frozen. Full-application widgets retain private scale while shared-host traffic/resources stay bounded. | New implementation only for reproducible P0, demonstrated threat violation, or planned-release blocker. |
 | Reliability | Typed lifecycle, stale-result, bounded retry, retained-last-good, and failure routes are widely tested. | Packaged repeated crash/provider failure and restart evidence for flagship widgets. |
 | Accessibility | Deterministic semantic and real-host UIA coverage is substantial. DLV-180 adds exact TextEntry focus/Invoke; DLV-168 closes tray Invoke completion while keeping widget descendants generation-bound. | Physical Narrator/MSAA, controller, scaling, and assistive-technology evidence. |
@@ -318,19 +327,18 @@ its change is accepted.
 
 ## Immediate review priorities
 
-1. Publish the already-accepted Spotify vertical-rail source as a new immutable
-   installed version under DLV-208. This is an artifact-graph/release defect,
-   not permission to redesign Spotify again.
-2. Finish active platform DLV-205, then restore generic F5-equivalent tray Hold
-   Y restart under DLV-209 before returning to DLV-206 performance provenance.
-   DLV-193's Settings-only contextual opt-in contradicts the requested product
-   behavior and the user's current physical result.
-3. Once DLV-205 is accepted, unblock widgets DLV-207 after DLV-208 so the
-   visible Game Launcher Switch experience action reaches the trusted bridge.
+1. Resume preserved platform DLV-209 and restore generic F5-equivalent tray
+   Hold Y restart. DLV-193's Settings-only contextual opt-in contradicts the
+   requested product behavior and the user's physical result.
+2. Run DLV-212–214 as the serialized Game Launcher trust-tier correction:
+   external public-SDK portability, generic native presentation admission, and
+   atomic Community package cutover. Games & Apps remains bundled.
+3. Do not integrate or extend the superseded Game Launcher private picker path;
+   host-owned Settings selection may survive only behind the generic contract.
 4. Keep DLV-135 semantic/offscreen preview distinct from live custom-pack
    selection; DLV-149/150 must integrate as one visible outcome.
-5. Keep PID 39636 visible for the user's dashboard, Spotify, Settings, and Game Launcher
-   library verdict.
+5. Relaunch the next accepted integrated Release after the restart for the
+   user's dashboard, Spotify, Settings, Games & Apps, and Game Launcher verdict.
 6. DLV-176/177 now prove cancellation-ignoring late failures cannot mutate a
    later Active generation or replacement session; keep them held until the
    contiguous Launcher prefix is accepted. Then rotate the next deeper audit to

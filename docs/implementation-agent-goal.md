@@ -561,6 +561,19 @@ large-collection, and full application-scale widgets without requiring authors
 to reproduce framework plumbing or compress their private application into a
 small-widget execution quota.
 
+Games & Apps remains a bundled first-party product widget. Game Launcher is a
+Community reference application, not another built-in. Its acceptance requires
+the same external-consumer path an independent author receives: a public SDK
+artifact rather than friend/internal access, a non-first-party manifest and
+package, ordinary install/consent/enable/select/update/remove behavior, and the
+generic worker/capability/renderer path. Do not authorize Game Launcher by its
+package ID, publisher, assembly, type, element IDs, style classes, or known
+tree shape. When it needs an advanced host feature, implement one generic,
+versioned, documented manifest/SDK/protocol contract with equal validation,
+consent, bounds, failure behavior, and accessibility semantics for every
+qualifying Community widget. A private or first-party-only seam does not count
+as framework support and cannot satisfy the flagship proof.
+
 Assigned developer-experience work should move toward:
 
 - Scaffolding.

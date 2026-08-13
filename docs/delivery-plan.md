@@ -1,6 +1,6 @@
 # Delivery plan
 
-Status: reviewer-owned two-lane execution queue, 2026-08-12 19:31 -07:00
+Status: reviewer-owned two-lane execution queue, 2026-08-12 19:57 -07:00
 
 Planning owner: independent review and delivery-planning agent
 
@@ -13,7 +13,7 @@ That snapshot is historical evidence, not implementation authority.
 
 ## Current accepted baseline
 
-- Local product baseline: `8e38df5`; worktree clean when this plan was
+- Local product baseline: `6e2c7ff`; worktree clean when this plan was
   published.
 - Latest implementation integrations: DLV-168 as `06dc8d0`, the fully
   corrected DLV-172-through-DLV-190 widgets cluster as `ae1dee8`, DLV-160 as
@@ -21,7 +21,12 @@ That snapshot is historical evidence, not implementation authority.
   DLV-194/199 external-SDK proof pair as `73117f7`/`c4cf0af`.
 - Latest widgets integrations are the corrected DLV-195/196/198/201/202/203
   chain through `ee0c445`, DLV-204 as `04fbdc0`, and DLV-208 as `8e38df5`.
-- Visible accepted Release: PID 40224, launched at 19:25 after DLV-208.
+- DLV-197 is integrated as `6e2c7ff`. DLV-205 `a70b223` independently proves
+  the missing collection/action continuity but is not integrated: its private
+  Game Launcher path is superseded by the Community conversion below and must
+  not receive more product investment.
+- No accepted Release is currently running after the machine restart. The last
+  visible accepted Release was PID 40224, launched at 19:25 after DLV-208.
   Spotify 0.2.15 is installed, selected, and enabled through the supported
   Community package path. Exact UIA activation reaches the new package with no
   fresh startup/product error, but its new unsigned content identity correctly
@@ -207,12 +212,11 @@ That snapshot is historical evidence, not implementation authority.
   DLV-204 is accepted and integrated as `04fbdc0`; the same external repository
   proves edit, build, validate, declaration preview, isolated semantic scenario,
   and pack with no catalog or authority expansion.
-- DLV-197 `fa628d6` is rejected and held. Its private trusted selection bridge
-  and stale-version denial are architecturally sound, but the ordinary-host
-  fixture compares game, input-scope, and focus identities while claiming
-  collection and exact action/SavedId preservation it never measures. It also
-  omits the required implementation-status evidence. DLV-205 owns the bounded
-  test/docs correction; no production redesign is requested.
+- DLV-197 is integrated as `6e2c7ff`. DLV-205 `a70b223` later proved the missing
+  collection and exact action/SavedId continuity, but is not separately
+  integrated because the user corrected the product boundary: Game Launcher
+  must be a Community reference. DLV-212–214 supersede widget-facing private
+  selection work and remove first-party coupling instead of extending it.
 - DLV-200 `0c65e79`/`d9e2005` is rejected and held. The bounded measurement
   harness is reasonable and missing private-working-set/GPU metrics are
   truthfully unavailable, but durable evidence omits root PID/start time and
@@ -266,14 +270,50 @@ Task: `Implementation agent — widgets lane`
 
 Branch: `codex/impl-widgets`
 
-### Current assignment — none; waiting only for accepted DLV-205
+### Current assignment — DLV-212: make managed Game Launcher publicly portable
 
-**State:** DLV-208 `1c31a52` is accepted by explicit product decision and is
-being integrated. Its 0.2.15 archive, installed DLL/GBSS provenance, selection,
-and generic AppContainer first snapshot are valid. The isolated fixture did not
-prove that its generated 0.2.14 seed was the historical package, but the user
-does not require predecessor rollback; that evidence gap is waived and DLV-211
-is canceled before edits. Do not spend lane time repairing unused old versions.
+**State:** Assigned from clean widgets commit `1c31a52`. The lane was idle after
+DLV-208 and may begin this assignment immediately. DLV-211 remains canceled;
+do not spend time repairing unused Spotify rollback generations.
+
+**Baseline/dependencies:** widgets branch `1c31a52`; accepted product
+`6e2c7ff`. This is the managed/public-SDK gate for the user's decision that Game
+Launcher is a Community reference while Games & Apps remains bundled. Platform
+DLV-209 is concurrent and owns its dirty tray-restart files; do not touch native
+host placement/input, `widget-catalog.json`, or `OverlayHost/build.ps1`.
+
+**Objective:** make the existing Game Launcher managed application compile,
+validate, and run from a clean external consumer using the exact packaged
+public SDK rather than repository project/friend access. Remove the
+`InternalsVisibleTo("GameLauncherWidget")` exception. Replace each internal API
+dependency with an existing public contract or the smallest generic documented
+public SDK contract that any Community widget can use. Produce a deterministic
+non-first-party Community manifest/package candidate through supported author
+tooling without yet removing the currently bundled runtime entry.
+
+**Acceptance:** a copied self-contained repository with a fresh NuGet cache has
+no checkout path, `ProjectReference`, first-party ID/publisher, internal/friend
+access, or unpublished assembly assumption. It restores the exact SDK package,
+builds, validates, packs, and runs the ordinary generic AppContainer scenario
+with declared app-library permissions. The scenario exercises loading, a large
+cursor-backed library page, Search, collection navigation, details/Back,
+private state, and exact opaque launch revalidation. The resulting archive is
+classified Community. Keep the current installed first-party package unchanged
+until the generic native gate and atomic final cutover; do not duplicate its
+state or make the candidate visible in the default tray.
+
+**Architecture/verification:** retain one managed source of Game Launcher
+domain behavior; an export/package adapter may assemble an external repository
+but may not fork the implementation. Tier 1 Game Launcher and affected SDK/CLI
+Release suites; Tier 2 the clean external build/validate/pack/AppContainer
+route. No native renderer/projection, host catalog/build packaging, private
+Launcher Experience bridge extension, provider redesign, aggregate, capture,
+credential, or publication.
+
+**Stop:** a required feature can be supplied only through package identity,
+publisher, assembly/type name, known element/style IDs, private WidgetBridge,
+raw provider authority, or a native contract. Record the exact missing generic
+seam for DLV-213 rather than retaining or hiding the exception.
 
 ### Accepted milestones — DLV-169/170/171: visible widget audits
 
@@ -578,17 +618,37 @@ for adoption.
 
 ### Widgets Ready queue
 
-1. **Ready after accepted platform DLV-205 — DLV-207: managed
-   Launcher Experience switch action.** Connect the existing managed picker to
-   the accepted single trusted private bridge exactly as previously assigned:
-   installed validated versions plus Hero Rail recovery, unchanged game,
-   collection, Play/SavedId authority, and focus, with no public capability or
-   duplicate Settings/catalog owner.
+1. **Awaiting integrated DLV-213 — DLV-214: cut Game Launcher over to the
+   ordinary Community product path.** Consume the accepted generic advanced-
+   presentation contract at a clean boundary, then make the DLV-212 candidate
+   the only shipped Game Launcher. Install/select it through the supported
+   Community catalog and remove `org.gbar.firstparty.game-launcher`, the
+   built-in tray/catalog entry, `runtime/GameLauncher` build copy, first-party
+   conformance classification, SDK friend access, and private widget-facing
+   Launcher Experience selection path. Move or export the maintained source as
+   a clearly documented Community reference without creating a second domain
+   implementation. Games & Apps remains bundled and unchanged.
 
-No later widgets assignment is safe after DLV-207. M2 enrichment requires
-credentials and legal/API choices, M3 content operations require a separately
-reviewed trusted provider, and the video widget remains blocked by its resource
-gate. Do not manufacture another internal authoring milestone.
+   Use one explicit pre-release state reset for the retired first-party package
+   if identity migration would add compatibility machinery; never touch
+   provider data, accounts, credentials, or user files. Prove clean SDK restore,
+   build, validate, pack, install, permission consent state, enable/select,
+   generic AppContainer execution, current-version update, disable/remove/
+   reinstall, and exact library/search/organization/launch behavior. Settings
+   must list Game Launcher as Community and Games & Apps as Built-in. Repository
+   searches must find no production admission based on Game Launcher ID,
+   publisher, assembly/type, element/style IDs, or known tree shape. Tier 1
+   affected managed/SDK/catalog/CLI suites; Tier 2 ordinary packaged host with
+   the installed Community package; Tier 3 once because this closes the public
+   cross-process/package conversion. No credentials, publication, provider
+   expansion, capture gate, or legacy rollback work.
+
+DLV-207 is canceled: connecting Game Launcher's picker to a trusted private
+bridge would prove the opposite of the Community-widget requirement. Launcher
+Experience selection may remain host-owned in Settings, but a Community widget
+can consume it only through DLV-213's generic declared presentation contract.
+After DLV-214, M2 enrichment still requires credentials/legal API choices and
+M3 operations require separately reviewed trusted providers.
 
 ## Platform lane
 
@@ -596,26 +656,28 @@ Task: `Implementation agent — platform lane`
 
 Branch: `codex/impl-platform-switch`
 
-### Current assignment — DLV-205: prove collection and action continuity
+### Current assignment — DLV-209: restore generic tray hold restart
 
-**State:** Assigned after clean platform commits DLV-197 `fa628d6` and rejected
-DLV-200 prefix `0c65e79`/`d9e2005`. Correct DLV-197 first; do not modify its
-production bridge unless the missing evidence exposes a defect.
+**State:** In progress on platform commit `a70b223`. The restart preserved the
+dirty assignment worktree in the documented input/placement/build/test/docs
+files plus `tests/TrayRefreshCommunityFixture`. Resume those exact changes; do
+not discard or mix them with the new Game Launcher direction. DLV-205
+`a70b223` is independently accepted, but its correction is not separately
+integrated because the private widget-facing Launcher path is superseded by
+DLV-212–214.
 
-**Baseline/dependencies:** platform branch `d9e2005`; accepted product
-`04fbdc0`. Own only the existing Launcher Experience ordinary-host fixture and
-directly affected implementation-status documentation.
+**Objective/acceptance:** with tray focus, tap Y toggles reorder and a 700 ms
+hold revalidates then restarts the exact selected bridge widget through the same
+worker-restart authority as F5. It works for every current bundled or installed
+bridge widget without a descriptor or widget-authored Refresh opt-in. Release
+is consumed after hold; capture cancels on selection, focus, lifecycle, device,
+or shell transition. Guidance and accessibility describe restart truthfully.
+Prove exact-once restart for Settings and one installed Community fixture plus
+ineligible/non-bridge/reorder/cancellation cases.
 
-**Objective/acceptance:** retain and compare a real collection semantic identity
-and the focused game's exact action/SavedId authority across exact selection,
-stale denial, and built-in recovery. Prefer invoking the same Play authority
-before/after through the trusted fixture when that is the strongest evidence.
-Keep the existing game, widget instance, input scope, and focus checks. Add a
-truthful DLV-197 status entry with actual Tier-1/Tier-2 results and limitations.
-
-**Verification/stop:** focused Launcher Experience host/bridge checks plus the
-existing ordinary-host selection route. No production redesign, managed widget,
-public protocol/SDK, pack schema, aggregate, or capture.
+**Verification/stop:** Tier 1 gesture/placement/bridge checks and the smallest
+packaged host route. No input remap, public protocol/SDK, managed widget, Game
+Launcher Community conversion, aggregate, capture, or unrelated refactor.
 
 ### Accepted milestone — DLV-160: author-to-production pack lifecycle
 
@@ -734,29 +796,49 @@ missing private seam rather than adding parallel presentation authority.
 
 ### Platform Ready queue
 
-1. **Ready after DLV-205 — DLV-209: restore generic tray hold restart.**
-   Restore the user's original host-owned interaction: with tray focus, tap Y
-   toggles reorder and a 700 ms hold revalidates then restarts the exact selected
-   bridge widget through the same worker-restart authority as F5. It must work
-   for every current bundled or installed bridge widget without a descriptor or
-   widget-authored Refresh opt-in. The hold consumes release, cancels on the
-   existing selection/focus/lifecycle/device transitions, and exposes truthful
-   progress/help. Remove the incorrect Settings-only contextual-action special
-   path and its claims; do not forward tray Y into widget code. Prove exact-once
-   restart for Settings and one installed Community widget through the ordinary
-   packaged host path, plus ineligible/non-bridge/reorder/cancellation cases.
-   Tier 1 gesture/placement/bridge checks and the smallest packaged host route;
-   no input remap, protocol/SDK, widget edit, aggregate, or capture.
-2. **Ready after DLV-209 — DLV-210: repair the live Hero Rail no-artwork layout.**
-   The user's accepted PID 39636 shows the built-in Hero Rail compact branch as
+1. **Ready after DLV-209 and integrated DLV-212 — DLV-213: replace known
+   Game Launcher projection with a generic Community presentation contract.**
+   Define the smallest versioned public manifest/SDK/protocol declaration by
+   which any installed Community widget can opt into a closed host-owned
+   advanced presentation made from validated semantic slots. The host admits
+   it from the package's validated declaration and current snapshot, not Game
+   Launcher ID, publisher, assembly/type, element IDs, style classes, or a
+   memorized tree shape. Launcher Experience packs remain data-only and
+   Settings/host-owned; they grant no data, launch, provider, file, script, or
+   action authority. Existing snapshot/message/tree/string/update/native/GPU
+   bounds, accessibility finality, last-good fallback, and the one shared
+   renderer/window/compositor remain authoritative.
+
+   Remove or generalize the private widget-facing selection seam introduced by
+   DLV-197; do not expose global Settings mutation as ambient Community
+   authority. If a widget needs to request a host settings route, use one
+   generic allowlisted host-navigation intent rather than a Launcher ID special
+   case. Prove admission and identical focus/action/UIA/Back semantics with the
+   DLV-212 candidate and a second randomly named Community fixture whose
+   publisher, assembly/type, element IDs, and style classes differ. Prove
+   missing declaration, malformed slots, stale generation, oversized input,
+   incompatible version, revoked consent where applicable, and package
+   replacement fail closed while the ordinary declarative surface stays usable.
+
+   This is the serialized cross-process contract owner. Tier 1 manifest/SDK/
+   protocol/bridge/projection/renderer/accessibility suites; Tier 2 two
+   installed Community packages through the ordinary host; Tier 3 once for the
+   public protocol boundary. Document a copyable author contract and migration.
+   No Game Launcher domain code, first-party catalog removal, raw paths/URLs/
+   scripts, second renderer/window, provider expansion, capture, or credentials.
+   Stop if the design works only by recognizing the known widget or by granting
+   Community code host-global mutation authority.
+2. **Ready after integrated DLV-214 — DLV-210: repair the generic Hero Rail
+   no-artwork layout.**
+   The user's accepted PID 39636 showed the original Hero Rail compact branch as
    a disconnected source/search header, a large empty hero region, compressed
    text-only cards whose widths follow title length, clipped controls, and two
    competing controller-help layers. The exact 19:07 live interval admits a
    978x466 Game Launcher viewport and reports terminal unavailability for all
    six visible trusted artwork handles; this is a real product frame, not a
-   malformed capture. Own the native Launcher Experience composition/fallback
-   path and make the code-owned Hero Rail remain professional and completely
-   usable when every visible game lacks cover artwork. Keep title, source
+   malformed capture. Own the generic Launcher Experience composition/fallback
+   path and make Hero Rail remain professional and completely usable when every
+   visible item lacks cover artwork. Keep title, source
    status, Search/collections, one bounded equal-width game rail, operation
    status, and one readable non-overlapping controller-guidance hierarchy
    inside the admitted body. Reclaim or purposefully compose the empty hero
@@ -782,23 +864,26 @@ missing private seam rather than adding parallel presentation authority.
    Rerun only the affected bounded measurement/temporal routes. No aggregate,
    speculative optimization, budget change, capture, or managed widget work.
 
-Two platform corrections are Ready, with the user-reproduced visible DLV-209
-ahead of evidence-only DLV-206. After DLV-206 the visible managed continuation
-moves to widgets DLV-207; other native product areas require a
-user-authorized rich-media
-budget, a documented audio endpoint setter, physical hardware/display evidence,
-or the managed continuation that moves to the widgets lane after DLV-205. Do
-not manufacture a third native refactor merely to fill queue depth.
+DLV-209 resumes first. DLV-213 is the required public-framework correction and
+must precede the final DLV-214 Community cutover; DLV-210 then fixes the same
+visible no-artwork fallback through the generic path. Evidence-only DLV-206
+remains behind those product outcomes. Do not extend the superseded private
+Game Launcher bridge or manufacture unrelated refactors.
 
 ## Serialized integration queue
 
-1. DLV-134/DLV-145/DLV-146 are accepted and integrated through `4aa7284`.
-2. DLV-147/DLV-153/DLV-151 are accepted through `b92e0ff`; DLV-148 and DLV-154
+1. DLV-212 closes managed public-SDK portability without changing the live
+   built-in package. Integrate it before platform DLV-213 begins.
+2. DLV-213 owns the generic advanced-presentation manifest/SDK/protocol/native
+   boundary. Integrate it before widgets DLV-214 performs the atomic Community
+   package cutover. No lane may implement a parallel private bridge.
+3. DLV-134/DLV-145/DLV-146 are accepted and integrated through `4aa7284`.
+4. DLV-147/DLV-153/DLV-151 are accepted through `b92e0ff`; DLV-148 and DLV-154
    are accepted through `d78fc98`.
-3. Hold DLV-149 `f282237` until DLV-150 consumes its selection/recovery state;
+5. Hold DLV-149 `f282237` until DLV-150 consumes its selection/recovery state;
    integrate
    the pair as one visible outcome.
-4. External metadata/artwork, Amazon adapters, trusted content operations,
+6. External metadata/artwork, Amazon adapters, trusted content operations,
    and pack gallery/update work remain later scoped milestones.
 
 ## Blocked work
@@ -812,14 +897,15 @@ not manufacture a third native refactor merely to fill queue depth.
 | Live Spotify Web Playback | Premium eligibility, allowlist, OAuth, EME, and account. | User-authorized account and retained manual evidence. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is not supported by the Data API. | Approved minimum-scope OAuth plan and user-authorized account. |
 | Physical controller/display/audio/Bluetooth/game/Narrator matrix | Requires user hardware or interactive physical evidence. | Retained named packaged/manual results. |
-| Game Launcher Switch experience managed action | DLV-191 stopped cleanly: built-in widget picker has no path to the single trusted installed-pack selection owner in Settings/private host. | Accept DLV-205's exact continuity correction for the DLV-197 private bridge, then run managed DLV-207. |
+| Game Launcher Switch experience managed action | DLV-191 correctly exposed that the built-in widget needed a private path to the host-owned Settings selection owner. That design is now rejected for a Community reference. | DLV-213 must provide only a generic declared presentation/host-navigation contract; DLV-214 removes the private widget-facing path. |
 | Manual artwork/background override | DLV-192 stopped cleanly: title/category/hidden/preferred state exists, but there is no user-authorized trusted opaque artwork/background selection seam. | A separately reviewed trusted selection/binding design; do not invent raw paths or a misleading partial override. |
 
 ## Verification queue
 
-1. User visual verdict on PID 39636 reopened Spotify packaging/layout, generic
-   Hold Y restart, and the Game Launcher Hero Rail all-artwork-unavailable
-   fallback. Retest the new accepted Release after DLV-208/209/210, alongside
+1. The prior PID 39636/40224 evidence reopened Spotify packaging/layout,
+   generic Hold Y restart, and the Game Launcher Hero Rail all-artwork-
+   unavailable fallback. Retest the next accepted Release after DLV-209 and
+   the DLV-212–214 Community cutover, then DLV-210, alongside
    switching borders/flicker and Games & Apps layout.
 2. Physical Audio Mixer LB/RB/X tray actions and reverse traversal. Planner's
    current four-session keyboard path reaches every row and returns to Master.

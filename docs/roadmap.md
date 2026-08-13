@@ -134,7 +134,7 @@ Remaining:
 - A third-party GitHub repository onboarding proof.
 - A full application-scale reference sample.
 
-### Phase 3 — polished first-party widgets and flagship features: active
+### Phase 3 — polished product widgets and flagship Community references: active
 
 Visible defects and explicitly requested features outrank internal cleanup.
 The current exact queue is in `delivery-plan.md`; the feature intent is below.
@@ -153,7 +153,13 @@ The current exact queue is in `delivery-plan.md`; the feature intent is below.
 
 The authoritative product specification is
 [`game-launcher-requirements.md`](game-launcher-requirements.md). It is intended
-to exceed Spotify in complexity and acts as the full-application widget proof.
+to exceed Spotify in complexity and acts as the full-application Community-
+widget proof. Games & Apps remains bundled first-party functionality. Game
+Launcher must be an independently installable Community package using only
+public SDK artifacts, generic manifest/protocol contracts, ordinary capability
+consent, and the supported package catalog. Its source may remain a maintained
+reference in this repository, but its runtime receives no first-party identity,
+built-in registration, SDK friend access, or native recognition special case.
 
 ### M1 — trusted installed library and console-home presentation
 
@@ -175,11 +181,19 @@ Current dependency chain:
 
 1. Normalize and validate the managed presentation contract.
 2. Import supported Windows/Xbox games and then bounded opt-in local stores.
-3. Accept the strict data-only Launcher Experience catalog and native presets.
-4. Add launcher-scoped style/artwork/recovery ownership.
-5. Project production Game Launcher state into every experience.
-6. Deliver author CLI, preview, pack, inspect, install, select, rollback, and
-   removal for experience packs.
+3. Define one generic versioned advanced-presentation declaration usable by
+   any qualifying Community widget; never recognize Game Launcher by identity,
+   publisher, assembly, element IDs, style classes, or a private tree shape.
+4. Accept the strict data-only Launcher Experience catalog and native presets
+   through that generic declaration.
+5. Add launcher-scoped style/artwork/recovery ownership without granting the
+   widget new data or action authority.
+6. Package, install, consent, enable, select, update, and remove Game Launcher
+   through the ordinary Community path, then project its state into every
+   declared experience.
+7. Deliver author CLI, preview, pack, inspect, install, select, and removal for
+   experience packs. Legacy rollback is required only by an explicit release
+   assignment.
 
 ### M2 — safe optional enrichment
 

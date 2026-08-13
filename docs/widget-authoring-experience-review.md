@@ -109,6 +109,26 @@ the scalable path.
 
 ### Open platform work
 
+#### Flagship proof currently has the wrong trust tier
+
+Game Launcher was intended to prove that an independent author can build a
+full application-scale widget. The current implementation instead lives under
+`src/FirstPartyWidgets`, uses `org.gbar.firstparty.game-launcher`, is copied into
+the built-in runtime catalog, references the SDK project directly, retains an
+SDK `InternalsVisibleTo("GameLauncherWidget")` exception, and reaches a native
+Launcher Experience path designed around its known first-party projection.
+That is useful product code, but it is not evidence that the public framework
+supports the same result.
+
+Games & Apps should remain bundled. Convert Game Launcher into a Community
+reference in three explicit gates: close managed public-SDK portability gaps in
+a clean external consumer; replace every identity/shape/private presentation
+dependency with one generic documented contract; then install and run the
+actual reference through ordinary Community package, consent, selection,
+update, and removal flows. Acceptance must include a differently named fixture
+using the same advanced contract so a renamed Game Launcher is not the only
+consumer that passes.
+
 - Externally published and versioned SDK/template artifacts.
 - Public compatibility, deprecation, migration, and update policy.
 - Verified publisher/acquisition provenance and update discovery.
