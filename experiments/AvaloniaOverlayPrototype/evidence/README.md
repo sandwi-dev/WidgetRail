@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 17-test focused Avalonia integration suite. Its ignored exact-commit
+only the 18-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -11,11 +11,17 @@ coordinator, the latest frame remains current, and `HasFailure` stays false.
 Responsive focus evidence starts on an expanded-only action, compacts to a
 visible page fallback while excluding the hidden branch from UIA/XYFocus, then
 expands and restores the exact valid identity without creating another render tree.
+The focused geometry regression loads the actual prototype theme and asserts
+useful page/root width, readable and effectively visible controls, bounded
+unintended horizontal empty area, and non-overlapping content/guide/tray regions
+at every supported size/scale. A prototype-only mutex regression rejects a
+competing second owner.
 
 After the coherent commit, `scripts/Measure-Avp004.ps1` performs exactly one
 fresh exact-commit Windows lifecycle. It packages the existing native platform,
 bridge, catalog, workers and domain payloads beside the framework-dependent
-Avalonia executable, then writes `artifacts/avp004/measurement.json`.
+Avalonia executable, then writes `artifacts/avp004/measurement.json` and the
+bounded native `input-trace.json`.
 
 The JSON binds the source commit to executable ProductVersion and SHA-256. It
 records every installed descriptor and exact runtime/presentation/session/
@@ -23,7 +29,12 @@ instance/snapshot/input-scope identity, semantic node kinds, standard UIA and
 bounded realization counts, compact/978/standard/wide containment or honest
 ScrollViewer clipping, native CrossFade start/mid/end surface diagnostics, the
 active monitor render scale, native GameInput/legacy-policy state, startup and
-switch timing, and visible/hidden candidate plus complete process-tree CPU/private memory.
+switch timing, useful-width/readability/non-overlap geometry, and visible/hidden
+candidate plus complete process-tree CPU/private memory.
+The ordinary traversal also writes eight 978x466 offscreen renderer PNGs under
+`artifacts/avp004/offscreen-captures` and records each file's logical/pixel size,
+render scale, and SHA-256. It does not change taskbar behavior or use a targetable
+walkthrough mode.
 Ordinary lifecycle node kinds remain separate from the focused generic mapping
 proof; the retained final assertion combines both without overstating ordinary emission.
 
@@ -35,6 +46,9 @@ fixtures. Production launches still apply retained native DPI/work-area
 placement after exact frame admission. The final sample separately reports the
 Avalonia candidate and every live bridge, widget-worker, and provider/application
 helper; the hard 500-MiB assignment applies to the visible candidate.
+After sampling, exact evidence records the WidgetBridge/worker descendant set
+and requires normal shell/session/process-tree shutdown in under eight seconds,
+with no forced termination and no remaining owned PID.
 
 Ownership checkpoints retain candidate private memory, managed live bytes and GC
 heap size, live render-tree count, decoded bitmap count/bytes, pending artwork,

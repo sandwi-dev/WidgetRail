@@ -51,6 +51,7 @@ public interface IPresentationSessionClient : IAsyncDisposable
 internal sealed class PresentationSessionClient(
     GameBarAlternative.WidgetPresentationSession.WidgetPresentationSession session) : IPresentationSessionClient
 {
+    private int disposed;
     public event EventHandler<WidgetPresentationChangedEventArgs>? PresentationChanged
     {
         add => session.PresentationChanged += value;
@@ -122,5 +123,7 @@ internal sealed class PresentationSessionClient(
         CancellationToken cancellationToken = default) =>
         session.ResolveArtworkAsync(authority, artworkHandle, cancellationToken);
 
-    public ValueTask DisposeAsync() => session.DisposeAsync();
+    public ValueTask DisposeAsync() => Interlocked.Exchange(ref disposed, 1) == 0
+        ? session.DisposeAsync()
+        : ValueTask.CompletedTask;
 }

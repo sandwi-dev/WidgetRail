@@ -6,9 +6,10 @@ internal sealed record PrototypeArguments(
     string? FocusedVerificationCommit,
     int ExitAfterSeconds,
     string? InstallationPath,
-    bool ReducedMotion)
+    bool ReducedMotion,
+    string? InputTracePath)
 {
-    private static PrototypeArguments current = new(null, null, null, 0, null, false);
+    private static PrototypeArguments current = new(null, null, null, 0, null, false, null);
 
     public static PrototypeArguments Current => current;
 
@@ -20,6 +21,7 @@ internal sealed record PrototypeArguments(
         var exitAfterSeconds = 0;
         string? installationPath = null;
         var reducedMotion = false;
+        string? inputTracePath = null;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -47,6 +49,9 @@ internal sealed record PrototypeArguments(
                 case "--reduced-motion":
                     reducedMotion = true;
                     break;
+                case "--input-trace" when index + 1 < args.Count:
+                    inputTracePath = Path.GetFullPath(args[++index]);
+                    break;
             }
         }
 
@@ -56,6 +61,7 @@ internal sealed record PrototypeArguments(
             focusedVerificationCommit,
             exitAfterSeconds,
             installationPath,
-            reducedMotion);
+            reducedMotion,
+            inputTracePath);
     }
 }

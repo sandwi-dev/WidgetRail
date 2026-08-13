@@ -66,7 +66,7 @@ Confirm-InvalidCompiledBindingFails
 Invoke-BoundedDotnet -Label 'AVP-004 focused Release tests' -Arguments @(
     'test', '--project', $testProject,
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '17')
+    '--output', 'Detailed', '--minimum-expected-tests', '20')
 
 $worktreeState = (& git -C $repositoryRoot status --porcelain)
 if ($worktreeState.Count -ne 0) {
@@ -82,5 +82,10 @@ New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
     currentNodeKinds = @(
         'Stack', 'Row', 'Scroll', 'Text', 'Button', 'Progress', 'Slider',
         'Spacer', 'Image', 'Icon', 'LoadingIndicator', 'ActionSurface', 'Grid', 'TextEntry')
+    controllerRouteCategories = @(
+        'connected-visible-lease', 'guide', 'dpad', 'left-stick', 'a', 'b',
+        'tray', 'content', 'slider', 'scroll', 'repeat', 'reconnect',
+        'focus-loss', 'hide-show')
+    controllerProofKind = 'deterministic exact-commit shared-router/focus/lifecycle regressions; physical verdict excluded'
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $focusedProofPath -Encoding utf8
 Write-Host "Retained exact-commit focused proof: $focusedProofPath"

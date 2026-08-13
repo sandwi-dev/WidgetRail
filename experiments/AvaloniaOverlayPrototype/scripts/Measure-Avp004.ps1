@@ -10,6 +10,7 @@ $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $prototypeRoot '..\..
 $artifactRoot = Join-Path $prototypeRoot 'artifacts\avp004'
 $runtimeRoot = Join-Path $artifactRoot 'runtime-win-x64'
 $measurementPath = Join-Path $artifactRoot 'measurement.json'
+$inputTracePath = Join-Path $artifactRoot 'input-trace.json'
 $focusedProofPath = Join-Path $artifactRoot 'focused-verification.json'
 $project = Join-Path $prototypeRoot 'src\AvaloniaOverlayPrototype.csproj'
 $productOutput = Join-Path $repositoryRoot 'src\OverlayHost\out\Release'
@@ -27,7 +28,12 @@ function Invoke-BoundedProcess {
     $startInfo.FileName = $FilePath
     $startInfo.WorkingDirectory = $WorkingDirectory
     $startInfo.UseShellExecute = $false
-    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add($argument) }
+    # Measure-Avp004 is launched by Windows PowerShell 5.1, whose .NET Framework
+    # ProcessStartInfo does not expose ArgumentList. Quote the bounded fixed
+    # argument vector exactly as the focused verifier does.
+    $startInfo.Arguments = ($Arguments | ForEach-Object {
+        '"' + $_.Replace('"', '\"') + '"'
+    }) -join ' '
     $process = [System.Diagnostics.Process]::Start($startInfo)
     if ($null -eq $process) { throw "$Label could not start." }
     try {
@@ -78,6 +84,7 @@ $executable = Join-Path $resolvedRuntime 'AvaloniaOverlayPrototype.exe'
 Invoke-BoundedProcess -FilePath $executable -Arguments @(
     '--installation', $resolvedRuntime,
     '--evidence', $measurementPath,
+    '--input-trace', $inputTracePath,
     '--source-commit', $sourceCommit,
     '--focused-verification-commit', $focusedProof.sourceCommit) -WorkingDirectory $resolvedRuntime `
     -Label 'AVP-004 ordinary catalog/runtime lifecycle'
@@ -93,11 +100,38 @@ if ($measurement.executableProductVersion -notmatch [Regex]::Escape($sourceCommi
 }
 if (-not $measurement.allInstalledWidgetsPassed) { throw 'One or more installed widgets failed the generic adapter lifecycle.' }
 if (-not $measurement.responsiveEvidencePassed) { throw 'Responsive containment/ScrollViewer evidence failed.' }
+if (($measurement.responsiveFixtures | Where-Object { -not $_.geometryPassed }).Count -ne 0) {
+    throw 'One or more responsive fixtures failed useful-width/readability/non-overlap geometry.'
+}
 if (-not $measurement.transitionSurfaceDiagnosticsPassed) { throw 'Transition start/mid/end surface evidence failed.' }
 if (-not $measurement.nodeKindCoverage.retainedFinalVerificationPassed) { throw 'Combined ordinary lifecycle and focused generic node-kind verification failed.' }
 if (-not $measurement.resourceOwnership.supersededResourcesReleased) { throw 'Superseded render or artwork resources remained owned at the visible sample.' }
 if (-not $measurement.candidatePrivateMemoryUnder500MiB) { throw 'Visible Avalonia candidate exceeded 500 MiB.' }
 if ($measurement.pageTransition -ne 'CrossFade') { throw 'The candidate did not retain Avalonia CrossFade.' }
+if (-not $measurement.shutdownEvidence.boundedNormalShutdownPassed -or
+    $measurement.shutdownEvidence.processTree.forcedTerminationUsed -or
+    $measurement.shutdownEvidence.processTree.remainingProcessIds.Count -ne 0 -or
+    $measurement.shutdownEvidence.totalDurationMilliseconds -ge 8000) {
+    throw 'Candidate, WidgetBridge, or an owned worker did not complete bounded normal process-tree shutdown.'
+}
+if (-not (Test-Path -LiteralPath $inputTracePath)) { throw 'Native input trace evidence was not retained.' }
+$inputTrace = Get-Content -Raw -LiteralPath $inputTracePath | ConvertFrom-Json
+if ($inputTrace.sourceCommit -ne $sourceCommit -or -not $inputTrace.nativeVisibleLeaseObserved) {
+    throw 'Native GameInput visible-lease trace provenance is missing or stale.'
+}
+$requiredControllerCategories = @(
+    'connected-visible-lease', 'guide', 'dpad', 'left-stick', 'a', 'b',
+    'tray', 'content', 'slider', 'scroll', 'repeat', 'reconnect',
+    'focus-loss', 'hide-show')
+if (-not $inputTrace.routedSemanticInputObserved -or
+    -not $inputTrace.deterministicSharedRouterProofObserved -or
+    $inputTrace.handledCategories.Count -ne $requiredControllerCategories.Count -or
+    ($requiredControllerCategories | Where-Object { $_ -notin $inputTrace.handledCategories }).Count -ne 0) {
+    throw 'Exact-commit shared-router controller categories were not all retained as handled.'
+}
+if ($inputTrace.nativeRoutedSemanticInputObserved -and -not $inputTrace.nativeConnectedVisibleLeaseObserved) {
+    throw 'Native routed input was recorded without a connected visible GameInput lease.'
+}
 
 Write-Host "Retained AVP-004 measurement: $measurementPath"
 Write-Host "Copied visible launch: & '$executable' --installation '$resolvedRuntime'"

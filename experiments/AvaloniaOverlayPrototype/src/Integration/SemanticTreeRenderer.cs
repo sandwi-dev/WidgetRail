@@ -64,6 +64,7 @@ public sealed class SemanticTreeRenderer : IDisposable
         var root = currentFrame.Snapshot.AdvancedPresentation is { } advanced
             ? RenderAdvanced(currentFrame.Snapshot.Root, advanced, context)
             : RenderNode(currentFrame.Snapshot.Root, context);
+        PrepareSemanticRootForHost(root);
         ApplyFocusNeighbors(context);
         ownedRenders.Add(root, context);
         return root;
@@ -158,7 +159,9 @@ public sealed class SemanticTreeRenderer : IDisposable
 
         context.RealizedControlCount++;
         ApplyIdentity(control, node, context);
+        ApplySemanticThemeClass(control, node.Kind);
         ApplyStyle(control, node, context);
+        EnforceInteractiveMinimum(control, node.Kind);
         if (node.IsFocusable)
         {
             context.FocusableById[node.Id] = control;
@@ -168,11 +171,29 @@ public sealed class SemanticTreeRenderer : IDisposable
         return control;
     }
 
+    private static void EnforceInteractiveMinimum(Control control, ViewNodeKind kind)
+    {
+        if (kind is not ViewNodeKind.Button and not ViewNodeKind.Slider and
+            not ViewNodeKind.ActionSurface and not ViewNodeKind.TextEntry)
+            return;
+        control.MinWidth = Math.Max(44, control.MinWidth);
+        control.MinHeight = Math.Max(36, control.MinHeight);
+    }
+
     private Control RenderStack(ViewNode node, Orientation orientation, RenderContext context)
     {
         Panel panel = orientation == Orientation.Vertical
-            ? new StackPanel { Orientation = orientation, Spacing = 8 }
-            : new WrapPanel { Orientation = orientation };
+            ? new StackPanel
+            {
+                Orientation = orientation,
+                Spacing = 10,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            }
+            : new WrapPanel
+            {
+                Orientation = orientation,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
         foreach (var child in node.Children)
         {
             var rendered = RenderNode(child, context);
@@ -193,6 +214,9 @@ public sealed class SemanticTreeRenderer : IDisposable
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Stretch,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
                 Content = RenderStack(node, Orientation.Horizontal, context),
             };
         }
@@ -206,8 +230,10 @@ public sealed class SemanticTreeRenderer : IDisposable
         {
             Content = node.Text ?? node.AccessibilityLabel ?? "Action",
             IsEnabled = node.IsDisabled is not true,
+            MinWidth = 44,
             MinHeight = 44,
             HorizontalContentAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         button.Click += async (_, _) =>
         {
@@ -227,6 +253,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             SmallChange = node.Step is > 0 ? node.Step.Value : 1,
             IsEnabled = node.IsDisabled is not true,
             MinHeight = 40,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         var applying = false;
         slider.ValueChanged += async (_, _) =>
@@ -300,6 +327,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             IsEnabled = node.IsDisabled is not true,
             MinHeight = 44,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         button.Click += async (_, _) =>
         {
@@ -315,19 +343,25 @@ public sealed class SemanticTreeRenderer : IDisposable
             return CreateVirtualizedList(node, context);
 
         var minimum = Math.Max(96, node.GridMinimumColumnWidth ?? 180);
-        var columns = Math.Clamp((int)Math.Floor(760 / minimum), 1, node.GridMaximumColumns ?? 8);
-        var grid = new Grid();
-        for (var column = 0; column < columns; column++)
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-        for (var index = 0; index < node.Children.Count; index++)
+        var maximumColumns = Math.Max(1, node.GridMaximumColumns ?? 8);
+        var grid = new UniformGrid
         {
-            if (index % columns == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            var child = RenderNode(node.Children[index], context);
-            Grid.SetColumn(child, index % columns);
-            Grid.SetRow(child, index / columns);
+            Columns = 1,
+            Rows = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        foreach (var childNode in node.Children)
+        {
+            var child = RenderNode(childNode, context);
             child.Margin = new Thickness(4);
             grid.Children.Add(child);
         }
+        grid.SizeChanged += (_, args) =>
+        {
+            var availableWidth = Math.Max(0, args.NewSize.Width);
+            var columns = Math.Clamp((int)Math.Floor((availableWidth + 8) / (minimum + 8)), 1, maximumColumns);
+            if (grid.Columns != columns) grid.Columns = columns;
+        };
         return grid;
     }
 
@@ -342,6 +376,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         {
             ColumnDefinitions = new ColumnDefinitions("2*,3*"),
             RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
         };
         Add(WidgetAdvancedPresentationSlot.DetailsPanel, 0, 0);
         Add(WidgetAdvancedPresentationSlot.PrimaryCollection, 1, 0, rowSpan: 2);
@@ -381,6 +417,7 @@ public sealed class SemanticTreeRenderer : IDisposable
                 ? node.TextEntryPlaceholder ?? node.Text ?? "Enter text"
                 : node.TextEntryValue,
             IsEnabled = node.IsDisabled is not true,
+            MinWidth = 44,
             MinHeight = 44,
             HorizontalContentAlignment = HorizontalAlignment.Left,
         };
@@ -419,16 +456,42 @@ public sealed class SemanticTreeRenderer : IDisposable
             control, control.IsFocused ? styles.Focused : styles.Base);
     }
 
+    private static void ApplySemanticThemeClass(Control control, ViewNodeKind kind)
+    {
+        control.Classes.Add("semantic");
+        control.Classes.Add(kind switch
+        {
+            ViewNodeKind.Stack => "semantic-stack",
+            ViewNodeKind.Row => "semantic-row",
+            ViewNodeKind.Scroll => "semantic-scroll",
+            ViewNodeKind.Text => "semantic-text",
+            ViewNodeKind.Button => "semantic-button",
+            ViewNodeKind.Progress => "semantic-progress",
+            ViewNodeKind.Slider => "semantic-slider",
+            ViewNodeKind.Spacer => "semantic-spacer",
+            ViewNodeKind.Image => "semantic-image",
+            ViewNodeKind.Icon => "semantic-icon",
+            ViewNodeKind.LoadingIndicator => "semantic-loading",
+            ViewNodeKind.ActionSurface => "semantic-action-surface",
+            ViewNodeKind.Grid => "semantic-grid",
+            ViewNodeKind.TextEntry => "semantic-text-entry",
+            _ => "semantic-control",
+        });
+
+        if (kind is not ViewNodeKind.Icon and not ViewNodeKind.LoadingIndicator and not ViewNodeKind.Spacer)
+            control.HorizontalAlignment = HorizontalAlignment.Stretch;
+    }
+
     private static void ApplyComputedStyle(
         Control control,
         IReadOnlyDictionary<string, BridgeComputedStyleValue> values)
     {
-        if (TryNumber(values, "min-width") is { } minWidth) control.MinWidth = minWidth;
-        if (TryNumber(values, "min-height") is { } minHeight) control.MinHeight = minHeight;
-        if (TryNumber(values, "max-width") is { } maxWidth) control.MaxWidth = maxWidth;
-        if (TryNumber(values, "max-height") is { } maxHeight) control.MaxHeight = maxHeight;
-        if (TryNumber(values, "width") is { } width) control.Width = width;
-        if (TryNumber(values, "height") is { } height) control.Height = height;
+        ApplyLength(control, values, "min-width");
+        ApplyLength(control, values, "min-height");
+        ApplyLength(control, values, "max-width");
+        ApplyLength(control, values, "max-height");
+        ApplyLength(control, values, "width");
+        ApplyLength(control, values, "height");
         if (TryNumber(values, "opacity") is { } opacity) control.Opacity = Math.Clamp(opacity, 0, 1);
         if (TryNumber(values, "gap") is { } spacing && control is StackPanel stack) stack.Spacing = spacing;
         if (values.TryGetValue("background", out var background) && TryBrush(background.Text) is { } backgroundBrush)
@@ -473,6 +536,45 @@ public sealed class SemanticTreeRenderer : IDisposable
             paddingControl.Padding = new Thickness(padding);
     }
 
+    private static void PrepareSemanticRootForHost(Control root)
+    {
+        // Widget style still owns internal presentation, but the Avalonia page host owns the admitted
+        // root's outer viewport. Carrying legacy renderer max-width or viewport-unit constraints into
+        // this boundary recreates the narrow centered columns seen in the physical prototype.
+        root.Width = double.NaN;
+        root.MinWidth = 0;
+        root.MaxWidth = double.PositiveInfinity;
+        root.HorizontalAlignment = HorizontalAlignment.Stretch;
+        root.VerticalAlignment = VerticalAlignment.Stretch;
+    }
+
+    private static void ApplyLength(
+        Control control,
+        IReadOnlyDictionary<string, BridgeComputedStyleValue> values,
+        string property)
+    {
+        if (!values.TryGetValue(property, out var value) || value.Number is not { } number ||
+            !double.IsFinite(number) || number < 0)
+            return;
+
+        var relative = value.Unit is "%" or "vw" or "vh";
+        switch (property)
+        {
+            case "min-width": control.MinWidth = relative ? 0 : number; break;
+            case "min-height": control.MinHeight = relative ? 0 : number; break;
+            case "max-width": control.MaxWidth = relative ? double.PositiveInfinity : number; break;
+            case "max-height": control.MaxHeight = relative ? double.PositiveInfinity : number; break;
+            case "width":
+                control.Width = relative ? double.NaN : number;
+                if (relative) control.HorizontalAlignment = HorizontalAlignment.Stretch;
+                break;
+            case "height":
+                control.Height = relative ? double.NaN : number;
+                if (relative) control.VerticalAlignment = VerticalAlignment.Stretch;
+                break;
+        }
+    }
+
     private static void ApplyFocusNeighbors(RenderContext context)
     {
         foreach (var (control, neighbors) in context.PendingNeighbors)
@@ -508,6 +610,7 @@ public sealed class SemanticTreeRenderer : IDisposable
             SelectionMode = SelectionMode.Single,
             MinHeight = 80,
             MaxHeight = 540,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
             // Avalonia 12.1.1 does not expose the newer BufferFactor property; its supported
             // VirtualizingStackPanel default is the desired zero additional viewport buffer.

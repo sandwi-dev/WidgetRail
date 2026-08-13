@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -19,7 +18,7 @@ public static class HeadlessAvaloniaFixture
         _ = context;
         dispatcherThread = new Thread(() =>
         {
-            AppBuilder.Configure<TestApplication>()
+            AppBuilder.Configure<App>()
                 .UseSkia()
                 .UseHeadless(new AvaloniaHeadlessPlatformOptions
                 {
@@ -47,10 +46,5 @@ public static class HeadlessAvaloniaFixture
         dispatcherThread?.Join(TimeSpan.FromSeconds(5));
         Ready.Dispose();
         Shutdown.Dispose();
-    }
-
-    private sealed class TestApplication : Application
-    {
-        public override void Initialize() => Styles.Add(new FluentTheme());
     }
 }

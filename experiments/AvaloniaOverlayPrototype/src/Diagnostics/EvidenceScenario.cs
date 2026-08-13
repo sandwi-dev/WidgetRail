@@ -9,6 +9,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -56,6 +57,10 @@ internal static class EvidenceScenario
 
             var widgetSamples = new List<WidgetEvidence>();
             var responsiveSamples = new List<ResponsiveEvidence>();
+            var offscreenCaptures = new List<OffscreenCaptureEvidence>();
+            var captureRoot = Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(arguments.EvidencePath))!,
+                "offscreen-captures");
             var allNodeKinds = new HashSet<ViewNodeKind>();
             var memoryOwnershipCheckpoints = new List<MemoryOwnershipCheckpoint>
             {
@@ -79,7 +84,10 @@ internal static class EvidenceScenario
                 var frame = shell.Coordinator.CurrentFrame!;
                 var nodes = Flatten(frame.Snapshot.Root).ToArray();
                 foreach (var kind in nodes.Select(node => node.Kind)) allNodeKinds.Add(kind);
-                var semanticControls = CaptureSemanticControls(shell, frame.Snapshot.Root);
+                var semanticControls = CaptureSemanticControls(shell, frame.Snapshot.Root, shell.IsCompact);
+                var requiredSemanticIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
+                var allRequiredObserved = requiredSemanticIds.All(requiredId =>
+                    semanticControls.Any(control => string.Equals(control.NodeId, requiredId, StringComparison.Ordinal)));
                 widgetSamples.Add(new WidgetEvidence(
                     widget.Id,
                     widget.Name,
@@ -95,7 +103,7 @@ internal static class EvidenceScenario
                     shell.RealizedSemanticControls,
                     semanticControls.Count,
                     semanticControls.Count(control => control.StandardUiaIdentity),
-                    semanticControls.All(control => control.BoundsHaveArea &&
+                    allRequiredObserved && semanticControls.All(control => control.BoundsHaveArea &&
                         (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
                     frame.Snapshot.AdvancedPresentation?.Kind.ToString(),
                     frame.Snapshot.AdvancedPresentation?.Preset.ToString(),
@@ -115,7 +123,9 @@ internal static class EvidenceScenario
                     await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
                     memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                         $"widget:{widget.Id}:logical-size:{fixture.Width}x{fixture.Height}", process, window, shell));
-                    var controls = CaptureSemanticControls(shell, frame.Snapshot.Root);
+                    var controls = CaptureSemanticControls(shell, frame.Snapshot.Root, shell.IsCompact);
+                    var expectedIds = ExpectedNonVirtualizedRequiredIds(frame.Snapshot.Root, shell.IsCompact);
+                    var geometry = CaptureGeometry(shell, controls, expectedIds);
                     responsiveSamples.Add(new ResponsiveEvidence(
                         widget.Id,
                         fixture.Width,
@@ -129,7 +139,27 @@ internal static class EvidenceScenario
                         controls.Count,
                         controls.Count(control => control.HonestlyScrollClipped),
                         controls.All(control => control.BoundsHaveArea &&
-                            (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity)));
+                            (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
+                        geometry.PageHostWidthDip,
+                        geometry.SemanticRootWidthDip,
+                        geometry.PageWidthUtilization,
+                        geometry.SemanticWidthUtilization,
+                        geometry.MinimumReadableControlWidthDip,
+                        geometry.MinimumReadableControlHeightDip,
+                        geometry.ShellRegionsDoNotOverlap,
+                        geometry.EffectiveVisibilityPassed,
+                        geometry.MaximumHorizontalEmptyAreaRatio,
+                        geometry.Passed));
+                    if (fixture == new Size(978, 466))
+                    {
+                        offscreenCaptures.Add(await CaptureOffscreenAsync(
+                            shell,
+                            widget.Id,
+                            widget.Name,
+                            captureRoot,
+                            window.RenderScaling,
+                            offscreenCaptures.Count + 1));
+                    }
                 }
                 await WaitUntilAsync(
                     () => shell.PendingArtworkRequestCount == 0,
@@ -190,7 +220,7 @@ internal static class EvidenceScenario
                 transitions.All(sample => sample.TransparentShellRoot &&
                     sample.OpaqueBlackFallbackAbsent && sample.AvaloniaSurfaceCoveragePresent &&
                     sample.VisualChildCount > 0);
-            var responsivePassed = responsiveSamples.All(sample => sample.ReachableOrScrollClipped);
+            var responsivePassed = responsiveSamples.All(sample => sample.ReachableOrScrollClipped && sample.GeometryPassed);
             var allWidgetsPassed = widgetSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
                 widgetSamples.All(sample => !sample.HasFailure && sample.RequiredSemanticControlsPassed);
             var focusedMappingProofPassed = !string.IsNullOrWhiteSpace(arguments.SourceCommit) &&
@@ -218,6 +248,18 @@ internal static class EvidenceScenario
                 "Generic_renderer_maps_every_current_node_kind_to_standard_Avalonia_controls_and_UIA",
                 focusedMappingProofPassed);
 
+            var installedWidgetCount = shell.Coordinator.ViewModel.Widgets.Count;
+            var pageTransition = shell.TransitionPresenter.PageTransition?.GetType().Name ??
+                (arguments.ReducedMotion ? "ReducedMotion" : "unavailable");
+            if (focusedMappingProofPassed)
+                window.RecordFocusedControllerProof(ControllerEvidenceCategories);
+            await window.ShutdownAsync();
+            var shutdownEvidence = window.LastShutdownEvidence ?? new CandidateShutdownEvidence(
+                false,
+                false,
+                new Integration.ProcessTreeShutdownEvidence([], [], false, false, 0),
+                0);
+
             var artifact = new MeasurementArtifact(
                 "AVP-004-INTEGRATION",
                 arguments.SourceCommit ?? "unavailable",
@@ -232,16 +274,16 @@ internal static class EvidenceScenario
                 firstCompleteFrameMilliseconds,
                 window.NativeGameInputAvailable,
                 window.NativeLegacyGuidePollingRequired,
-                shell.Coordinator.ViewModel.Widgets.Count,
+                installedWidgetCount,
                 widgetSamples,
                 allWidgetsPassed,
                 nodeKindCoverage,
                 responsiveSamples,
                 responsivePassed,
+                offscreenCaptures,
                 transitions,
                 transitionPassed,
-                shell.TransitionPresenter.PageTransition?.GetType().Name ??
-                    (arguments.ReducedMotion ? "ReducedMotion" : "unavailable"),
+                pageTransition,
                 visibleIdle,
                 hiddenAfterUse,
                 resourceOwnership,
@@ -252,6 +294,7 @@ internal static class EvidenceScenario
                 candidateVisibleMiB < 500,
                 totalVisibleMiB < 500,
                 hiddenAfterUse.NormalizedCpuPercent < 0.5,
+                shutdownEvidence,
                 "OverlayPlatformInterop ABI v1 (production GameInput Guide/controller/placement owner; no Avalonia-owned XInput reader)",
                 "WidgetPresentationSession over the existing authenticated WidgetBridge transport",
                 new[]
@@ -266,10 +309,10 @@ internal static class EvidenceScenario
             var evidencePath = Path.GetFullPath(arguments.EvidencePath);
             Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
             await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(artifact, JsonOptions));
-            await window.ShutdownAsync();
             desktop.Shutdown(allWidgetsPassed && responsivePassed && transitionPassed &&
                 nodeKindCoverage.RetainedFinalVerificationPassed &&
-                resourceOwnership.SupersededResourcesReleased && candidateVisibleMiB < 500 ? 0 : 1);
+                resourceOwnership.SupersededResourcesReleased && candidateVisibleMiB < 500 &&
+                shutdownEvidence.BoundedNormalShutdownPassed ? 0 : 1);
         }
         catch (Exception exception)
         {
@@ -289,14 +332,16 @@ internal static class EvidenceScenario
 
     private static List<SemanticControlEvidence> CaptureSemanticControls(
         IntegratedShellView shell,
-        ViewNode root)
+        ViewNode root,
+        bool compact)
     {
         var nodes = Flatten(root).ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var declaredVisible = DeclaredVisibleRequiredIds(root, compact);
         var shellBounds = new Rect(shell.Bounds.Size);
         return shell.GetVisualDescendants().OfType<Control>()
-            .Where(control => control.IsEffectivelyVisible &&
-                control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is { } id &&
+            .Where(control => control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is { } id &&
                 nodes.TryGetValue(id, out var node) &&
+                declaredVisible.Contains(id) &&
                 node.Kind is ViewNodeKind.Text or ViewNodeKind.Button or ViewNodeKind.Slider or
                     ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry)
             .Select(control =>
@@ -307,8 +352,14 @@ internal static class EvidenceScenario
                 var area = bounds.Width > 0 && bounds.Height > 0;
                 var contained = area && shellBounds.Contains(bounds.TopLeft) && shellBounds.Contains(bounds.BottomRight);
                 var hasScrollAncestor = control.GetVisualAncestors().OfType<ScrollViewer>().Any();
+                var effectivelyReachable = control.IsEffectivelyVisible ||
+                    area && !contained && hasScrollAncestor;
                 var automationId = AutomationProperties.GetAutomationId(control);
                 var automationName = AutomationProperties.GetName(control);
+                var node = nodes[nodeId];
+                var readable = node.Kind == ViewNodeKind.Text
+                    ? bounds.Height >= 14 && bounds.Width >= ((node.Text?.Length ?? 0) >= 20 ? 120 : 8)
+                    : bounds.Width >= 44 && bounds.Height >= 36;
                 return new SemanticControlEvidence(
                     nodeId,
                     control.GetType().Name,
@@ -320,8 +371,149 @@ internal static class EvidenceScenario
                     contained,
                     area && !contained && hasScrollAncestor,
                     !string.IsNullOrWhiteSpace(automationId) && !string.IsNullOrWhiteSpace(automationName),
-                    automationId ?? string.Empty);
-            }).ToList();
+                    automationId ?? string.Empty,
+                    effectivelyReachable,
+                    readable);
+            })
+            .Where(control => control.EffectivelyVisible)
+            .ToList();
+    }
+
+    private static IReadOnlySet<string> DeclaredVisibleRequiredIds(ViewNode root, bool compact)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        Add(root, true);
+        return ids;
+
+        void Add(ViewNode node, bool ancestorVisible)
+        {
+            var visible = ancestorVisible && node.VisibleWhen switch
+            {
+                ResponsiveVisibility.CompactOnly => compact,
+                ResponsiveVisibility.ExpandedOnly => !compact,
+                _ => true,
+            };
+            if (!visible) return;
+            if (node.Kind is ViewNodeKind.Text or ViewNodeKind.Button or ViewNodeKind.Slider or
+                ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry)
+                ids.Add(node.Id);
+            foreach (var child in node.Children) Add(child, visible);
+        }
+    }
+
+    private static readonly string[] ControllerEvidenceCategories =
+    [
+        "connected-visible-lease", "guide", "dpad", "left-stick", "a", "b",
+        "tray", "content", "slider", "scroll", "repeat", "reconnect",
+        "focus-loss", "hide-show",
+    ];
+
+    private static GeometryEvidence CaptureGeometry(
+        IntegratedShellView shell,
+        IReadOnlyList<SemanticControlEvidence> controls,
+        IReadOnlySet<string> expectedIds)
+    {
+        var page = BoundsInShell(shell.PageHostElement, shell);
+        var guide = BoundsInShell(shell.ControllerGuideElement, shell);
+        var tray = BoundsInShell(shell.TrayElement, shell);
+        var semantic = shell.ActiveSemanticRoot ?? throw new InvalidOperationException("No admitted semantic root.");
+        var semanticBounds = BoundsInShell(semantic, shell);
+        var availableSemanticWidth = Math.Max(1, page.Width - shell.PageHostElement.Padding.Left -
+            shell.PageHostElement.Padding.Right - shell.PageHostElement.BorderThickness.Left -
+            shell.PageHostElement.BorderThickness.Right);
+        var pageWidthUtilization = page.Width / Math.Max(1, shell.Bounds.Width);
+        var semanticWidthUtilization = semanticBounds.Width / availableSemanticWidth;
+        var maximumHorizontalEmptyAreaRatio = 1 - Math.Min(1, semanticWidthUtilization);
+        var onScreenControls = controls.Where(control => control.Contained).ToArray();
+        var minimumWidth = onScreenControls.Length == 0 ? 0 : onScreenControls.Min(control => control.Width);
+        var minimumHeight = onScreenControls.Length == 0 ? 0 : onScreenControls.Min(control => control.Height);
+        var readable = onScreenControls.All(control => control.Readable);
+        var regionsDoNotOverlap = !Overlaps(page, guide) && !Overlaps(page, tray) && !Overlaps(guide, tray);
+        var allExpectedObserved = expectedIds.All(expectedId =>
+            controls.Any(control => string.Equals(control.NodeId, expectedId, StringComparison.Ordinal)));
+        var effectiveVisibility = semantic.IsEffectivelyVisible && allExpectedObserved &&
+            controls.All(control => control.EffectivelyVisible);
+        var passed = pageWidthUtilization >= 0.88 && semanticWidthUtilization >= 0.92 &&
+            maximumHorizontalEmptyAreaRatio <= 0.08 && readable && regionsDoNotOverlap && effectiveVisibility;
+        return new GeometryEvidence(
+            page.Width,
+            semanticBounds.Width,
+            pageWidthUtilization,
+            semanticWidthUtilization,
+            minimumWidth,
+            minimumHeight,
+            regionsDoNotOverlap,
+            effectiveVisibility,
+            maximumHorizontalEmptyAreaRatio,
+            passed);
+    }
+
+    private static IReadOnlySet<string> ExpectedNonVirtualizedRequiredIds(ViewNode root, bool compact)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        Add(root, ancestorVisible: true, virtualizedAncestor: false);
+        return ids;
+
+        void Add(ViewNode node, bool ancestorVisible, bool virtualizedAncestor)
+        {
+            var visible = ancestorVisible && node.VisibleWhen switch
+            {
+                ResponsiveVisibility.CompactOnly => compact,
+                ResponsiveVisibility.ExpandedOnly => !compact,
+                _ => true,
+            };
+            if (!visible) return;
+            if (!virtualizedAncestor && node.Kind is ViewNodeKind.Text or ViewNodeKind.Button or
+                ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry)
+                ids.Add(node.Id);
+            var virtualized = virtualizedAncestor ||
+                node.Kind is ViewNodeKind.Scroll or ViewNodeKind.Grid && node.Children.Count > 64;
+            foreach (var child in node.Children) Add(child, visible, virtualized);
+        }
+    }
+
+    private static Rect BoundsInShell(Control control, IntegratedShellView shell)
+    {
+        var origin = control.TranslatePoint(default, shell) ?? default;
+        return new Rect(origin, control.Bounds.Size);
+    }
+
+    private static bool Overlaps(Rect left, Rect right) =>
+        left.Left < right.Right && left.Right > right.Left &&
+        left.Top < right.Bottom && left.Bottom > right.Top;
+
+    private static async Task<OffscreenCaptureEvidence> CaptureOffscreenAsync(
+        IntegratedShellView shell,
+        string widgetId,
+        string widgetName,
+        string outputRoot,
+        double renderScaling,
+        int ordinal)
+    {
+        Directory.CreateDirectory(outputRoot);
+        var scaling = renderScaling > 0 ? renderScaling : 1;
+        var pixelSize = new PixelSize(
+            Math.Max(1, (int)Math.Ceiling(shell.Bounds.Width * scaling)),
+            Math.Max(1, (int)Math.Ceiling(shell.Bounds.Height * scaling)));
+        using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96 * scaling, 96 * scaling));
+        bitmap.Render(shell);
+        var safeId = string.Concat(widgetId.Select(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '-' or '_' ? character : '-'));
+        var fileName = $"{ordinal:D2}-{safeId}.png";
+        var path = Path.Combine(outputRoot, fileName);
+        await using (var stream = File.Create(path)) bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+        await using var hashStream = File.OpenRead(path);
+        var sha256 = Convert.ToHexString(await SHA256.HashDataAsync(hashStream));
+        return new OffscreenCaptureEvidence(
+            widgetId,
+            widgetName,
+            fileName,
+            shell.Bounds.Width,
+            shell.Bounds.Height,
+            scaling,
+            pixelSize.Width,
+            pixelSize.Height,
+            sha256);
     }
 
     private static Process[] FindCandidateProcesses(Process root, int? bridgeProcessId)
@@ -453,6 +645,7 @@ internal static class EvidenceScenario
         NodeKindCoverageEvidence NodeKindCoverage,
         IReadOnlyList<ResponsiveEvidence> ResponsiveFixtures,
         bool ResponsiveEvidencePassed,
+        IReadOnlyList<OffscreenCaptureEvidence> OffscreenCaptures,
         IReadOnlyList<IntegratedTransitionSample> TransitionSurfaceSamples,
         bool TransitionSurfaceDiagnosticsPassed,
         string PageTransition,
@@ -466,6 +659,7 @@ internal static class EvidenceScenario
         bool CandidatePrivateMemoryUnder500MiB,
         bool ProcessTreePrivateMemoryUnder500MiB,
         bool HiddenRenderingEffectivelyIdle,
+        CandidateShutdownEvidence ShutdownEvidence,
         string ControllerDependency,
         string SessionDependency,
         IReadOnlyList<string> UnavailableOrManualEvidence);
@@ -536,7 +730,40 @@ internal static class EvidenceScenario
         bool CompactBranch,
         int VisibleRequiredSemanticControls,
         int HonestlyScrollClippedControls,
-        bool ReachableOrScrollClipped);
+        bool ReachableOrScrollClipped,
+        double PageHostWidthDip,
+        double SemanticRootWidthDip,
+        double PageWidthUtilization,
+        double SemanticWidthUtilization,
+        double MinimumReadableControlWidthDip,
+        double MinimumReadableControlHeightDip,
+        bool ShellRegionsDoNotOverlap,
+        bool EffectiveVisibilityPassed,
+        double MaximumHorizontalEmptyAreaRatio,
+        bool GeometryPassed);
+
+    private sealed record GeometryEvidence(
+        double PageHostWidthDip,
+        double SemanticRootWidthDip,
+        double PageWidthUtilization,
+        double SemanticWidthUtilization,
+        double MinimumReadableControlWidthDip,
+        double MinimumReadableControlHeightDip,
+        bool ShellRegionsDoNotOverlap,
+        bool EffectiveVisibilityPassed,
+        double MaximumHorizontalEmptyAreaRatio,
+        bool Passed);
+
+    private sealed record OffscreenCaptureEvidence(
+        string WidgetId,
+        string WidgetName,
+        string FileName,
+        double LogicalWidthDip,
+        double LogicalHeightDip,
+        double RenderScaling,
+        int PixelWidth,
+        int PixelHeight,
+        string Sha256);
 
     private sealed record SemanticControlEvidence(
         string NodeId,
@@ -549,7 +776,9 @@ internal static class EvidenceScenario
         bool Contained,
         bool HonestlyScrollClipped,
         bool StandardUiaIdentity,
-        string AutomationId);
+        string AutomationId,
+        bool EffectivelyVisible,
+        bool Readable);
 
     private sealed record ProcessResource(
         string Role,

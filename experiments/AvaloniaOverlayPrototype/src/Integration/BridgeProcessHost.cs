@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.ComponentModel;
+using GameBarAlternative.AvaloniaPrototype.Lifecycle;
 using GameBarAlternative.WidgetPresentationSession;
 
 namespace GameBarAlternative.AvaloniaPrototype.Integration;
@@ -7,6 +9,8 @@ internal sealed class BridgeProcessHost : IAsyncDisposable
 {
     private readonly Process process;
     private readonly IPresentationSessionClient session;
+    private IReadOnlyList<int>? ownedProcessIds;
+    private bool stopped;
 
     private BridgeProcessHost(Process process, IPresentationSessionClient session)
     {
@@ -17,6 +21,15 @@ internal sealed class BridgeProcessHost : IAsyncDisposable
     public IPresentationSessionClient Session => session;
 
     public int ProcessId => process.Id;
+    public ProcessTreeShutdownEvidence? LastShutdownEvidence { get; private set; }
+
+    public IReadOnlyList<int> CaptureOwnedProcessTree()
+    {
+        if (ownedProcessIds is not null) return ownedProcessIds;
+        try { ownedProcessIds = OwnedProcessTree.CaptureDescendants(process.Id); }
+        catch (Win32Exception) { ownedProcessIds = [process.Id]; }
+        return ownedProcessIds;
+    }
 
     public static async Task<BridgeProcessHost> StartAsync(
         string installationRoot,
@@ -70,24 +83,62 @@ internal sealed class BridgeProcessHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await session.DisposeAsync().ConfigureAwait(false);
-        await StopOwnedProcessAsync(process).ConfigureAwait(false);
-        process.Dispose();
+        await StopProcessAsync().ConfigureAwait(false);
     }
 
-    private static async Task StopOwnedProcessAsync(Process ownedProcess)
+    public async Task<ProcessTreeShutdownEvidence> StopProcessAsync()
     {
-        if (ownedProcess.HasExited) return;
-        try
+        if (stopped)
+            return LastShutdownEvidence ?? new ProcessTreeShutdownEvidence([], [], true, false, 0);
+        stopped = true;
+        LastShutdownEvidence = await StopOwnedProcessAsync(process, CaptureOwnedProcessTree()).ConfigureAwait(false);
+        process.Dispose();
+        return LastShutdownEvidence;
+    }
+
+    private static async Task<ProcessTreeShutdownEvidence> StopOwnedProcessAsync(
+        Process ownedProcess,
+        IReadOnlyList<int>? capturedIds = null)
+    {
+        var elapsed = Stopwatch.StartNew();
+        IReadOnlyList<int> ownedIds = capturedIds ?? [ownedProcess.Id];
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(4);
+        while (ownedIds.Any(OwnedProcessTree.IsRunning) && DateTime.UtcNow < deadline)
+            await Task.Delay(50).ConfigureAwait(false);
+
+        var remaining = ownedIds.Where(OwnedProcessTree.IsRunning).ToArray();
+        var forced = remaining.Length > 0;
+        if (forced)
         {
-            await ownedProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-        }
-        catch (TimeoutException)
-        {
-            if (!ownedProcess.HasExited)
+            if (!ownedProcess.HasExited) ownedProcess.Kill(entireProcessTree: true);
+            foreach (var processId in remaining.Where(processId => processId != ownedProcess.Id))
             {
-                ownedProcess.Kill(entireProcessTree: true);
-                await ownedProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                try
+                {
+                    using var child = Process.GetProcessById(processId);
+                    if (!child.HasExited) child.Kill(entireProcessTree: true);
+                }
+                catch (ArgumentException) { }
+                catch (InvalidOperationException) { }
             }
+            var forcedDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);
+            while (ownedIds.Any(OwnedProcessTree.IsRunning) && DateTime.UtcNow < forcedDeadline)
+                await Task.Delay(25).ConfigureAwait(false);
         }
+        elapsed.Stop();
+        var finalRemaining = ownedIds.Where(OwnedProcessTree.IsRunning).ToArray();
+        return new ProcessTreeShutdownEvidence(
+            ownedIds,
+            finalRemaining,
+            !forced && finalRemaining.Length == 0,
+            forced,
+            elapsed.Elapsed.TotalMilliseconds);
     }
 }
+
+internal sealed record ProcessTreeShutdownEvidence(
+    IReadOnlyList<int> OwnedProcessIds,
+    IReadOnlyList<int> RemainingProcessIds,
+    bool BoundedNormalShutdownPassed,
+    bool ForcedTerminationUsed,
+    double DurationMilliseconds);

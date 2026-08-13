@@ -1,12 +1,18 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System.IO;
+using System.Text.Json;
+using GameBarAlternative.AvaloniaPrototype.Diagnostics;
 using GameBarAlternative.AvaloniaPrototype.Integration;
+using GameBarAlternative.AvaloniaPrototype.Lifecycle;
 using GameBarAlternative.AvaloniaPrototype.Presentation;
 using GameBarAlternative.AvaloniaPrototype.Platform;
 using GameBarAlternative.AvaloniaPrototype.Views;
@@ -15,6 +21,7 @@ using GameBarAlternative.WidgetPresentationSession;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetRuntime;
 using GameBarAlternative.WidgetSdk;
+using GameBarAlternative.WidgetStyling;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace GameBarAlternative.AvaloniaPrototype.Tests;
@@ -38,7 +45,7 @@ public sealed class IntegrationAdapterTests
             var controls = control.GetVisualDescendants().OfType<Control>().Prepend(control).ToArray();
 
             CollectionAssert.IsSubsetOf(
-                new[] { typeof(StackPanel), typeof(WrapPanel), typeof(ListBox), typeof(TextBlock),
+                new[] { typeof(StackPanel), typeof(WrapPanel), typeof(UniformGrid), typeof(ListBox), typeof(TextBlock),
                     typeof(Button), typeof(ProgressBar), typeof(Slider), typeof(Border), typeof(Image) },
                 controls.Select(item => item.GetType()).Distinct().ToArray());
             foreach (var semantic in controls.Where(item =>
@@ -304,28 +311,110 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(20_000)]
-    public async Task Generic_renderer_is_contained_or_scrollable_at_compact_standard_wide_and_real_Avalonia_scales()
+    public async Task Generic_shell_allocates_useful_width_readable_controls_and_non_overlapping_regions_at_supported_layouts_and_scales()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
+            var fake = new FakePresentationSession(Frame("responsive.widget", 9, GeometryTree()));
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 1440, Height = 810, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => shell.AdmittedWidgetId == "responsive.widget");
+
             foreach (var size in new[] { new Avalonia.Size(420, 340), new Avalonia.Size(978, 466), new Avalonia.Size(1440, 810) })
             foreach (var scale in new[] { 1d, 1.25d, 1.5d })
             {
-                var semantic = Renderer().Render(Frame("responsive.widget", 9, AllKindsTree()), size.Width <= 700);
-                var scroll = new ScrollViewer { Content = semantic };
-                var window = new Window { Width = size.Width, Height = size.Height, Content = scroll };
                 window.SetRenderScaling(scale);
-                window.Show();
+                shell.SetEvidenceViewport(size);
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 using var rendered = window.CaptureRenderedFrame();
                 Assert.IsNotNull(rendered);
-                Assert.AreEqual((int)Math.Ceiling(size.Width * scale), rendered.PixelSize.Width);
-                Assert.AreEqual((int)Math.Ceiling(size.Height * scale), rendered.PixelSize.Height);
-                Assert.IsTrue(semantic.GetVisualDescendants().OfType<Button>().Any());
-                Assert.IsTrue(semantic.GetVisualDescendants().OfType<Slider>().Any());
-                window.Close();
+
+                var page = BoundsInShell(shell.PageHostElement, shell);
+                var guide = BoundsInShell(shell.ControllerGuideElement, shell);
+                var tray = BoundsInShell(shell.TrayElement, shell);
+                var semantic = shell.ActiveSemanticRoot!;
+                var semanticBounds = BoundsInShell(semantic, shell);
+                Assert.IsGreaterThanOrEqualTo(size.Width * 0.88, page.Width,
+                    $"The page host must receive useful width at {size} / {scale}x.");
+                Assert.IsFalse(Overlaps(page, guide), $"Content and controller guide overlap at {size} / {scale}x.");
+                Assert.IsFalse(Overlaps(page, tray), $"Content and tray overlap at {size} / {scale}x.");
+                Assert.IsFalse(Overlaps(guide, tray), $"Controller guide and tray overlap at {size} / {scale}x.");
+                var availableSemanticWidth = Math.Max(1, page.Width - shell.PageHostElement.Padding.Left -
+                    shell.PageHostElement.Padding.Right - 2);
+                var horizontalEmptyRatio = 1 - Math.Min(1, semanticBounds.Width / availableSemanticWidth);
+                Assert.IsLessThanOrEqualTo(0.08, horizontalEmptyRatio,
+                    $"The semantic root left too much unintended horizontal empty area at {size} / {scale}x.");
+
+                foreach (var id in new[] { "long-copy", "primary-action", "volume" })
+                {
+                    var control = SemanticControl(shell, id);
+                    Assert.IsTrue(control.IsEffectivelyVisible, $"{id} is not effectively visible at {size} / {scale}x.");
+                    Assert.IsGreaterThanOrEqualTo(id == "long-copy" ? 120 : 44, control.Bounds.Width,
+                        $"{id} is not readable at {size} / {scale}x.");
+                    Assert.IsGreaterThanOrEqualTo(id == "long-copy" ? 16 : 36, control.Bounds.Height,
+                        $"{id} has an unusable height at {size} / {scale}x.");
+                }
+
+                var grid = semantic.GetVisualDescendants().OfType<UniformGrid>().Single();
+                Assert.IsGreaterThanOrEqualTo(1, grid.Columns);
+                Assert.IsLessThanOrEqualTo(4, grid.Columns);
             }
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Generic_shell_translates_viewport_units_and_keeps_outer_root_allocation_host_owned()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var root = GeometryTree();
+            var rootStyle = new Dictionary<string, BridgeComputedStyleValue>
+            {
+                ["width"] = Length(100, "vw"),
+                ["height"] = Length(100, "vh"),
+                ["min-width"] = Length(280, "px"),
+                ["max-width"] = Length(560, "px"),
+            };
+            var childStyle = new Dictionary<string, BridgeComputedStyleValue>
+            {
+                ["width"] = Length(100, "%"),
+            };
+            var compactInteractiveStyle = new Dictionary<string, BridgeComputedStyleValue>
+            {
+                ["width"] = Length(40, "px"),
+                ["min-width"] = Length(0, "px"),
+            };
+            var styles = new Dictionary<string, BridgeNodeRenderStyles>
+            {
+                [root.Id] = Style(rootStyle),
+                ["layout-row"] = Style(childStyle),
+                ["primary-action"] = Style(compactInteractiveStyle),
+            };
+            var fake = new FakePresentationSession(Frame("styled-responsive.widget", 10, root, styles));
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => shell.AdmittedWidgetId == "styled-responsive.widget");
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var page = BoundsInShell(shell.PageHostElement, shell);
+            var semantic = BoundsInShell(shell.ActiveSemanticRoot!, shell);
+            var row = BoundsInShell(SemanticControl(shell, "layout-row"), shell);
+            var action = SemanticControl(shell, "primary-action");
+            Assert.IsGreaterThanOrEqualTo(page.Width * 0.92, semantic.Width);
+            Assert.IsGreaterThanOrEqualTo(semantic.Width * 0.92, row.Width);
+            Assert.IsGreaterThan(100, semantic.Height, "100vh must not become a literal 100-DIP root height.");
+            Assert.IsGreaterThanOrEqualTo(44, action.Bounds.Width,
+                "GBSS min-width:0 must not erase the host interactive readability minimum.");
+            window.Close();
         });
     }
 
@@ -353,6 +442,44 @@ public sealed class IntegrationAdapterTests
             fake.ControllerInputs.Single().Input.SnapshotSequence);
         Assert.AreEqual(second.Authority.ActiveInputScopeId,
             fake.ControllerInputs.Single().Input.ActiveInputScopeId);
+        Assert.IsTrue(MainWindow.CanRouteNativeInput(visible: true, shellAvailable: true),
+            "The native visible lease must route even when foreground activation is unavailable.");
+        Assert.IsFalse(MainWindow.CanRouteNativeInput(visible: false, shellAvailable: true));
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Input_trace_separates_native_physical_observation_from_exact_shared_router_category_proof()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"avp004-input-{Guid.NewGuid():N}.json");
+        try
+        {
+            var trace = new InputTraceRecorder(path);
+            trace.Record("native-controller-state", true, false,
+                detail: "connected=False;primed=False;readPath=GameInputVisibleLease;foregroundExclusive=False");
+            foreach (var category in new[]
+                     {
+                         "connected-visible-lease", "guide", "dpad", "left-stick", "a", "b",
+                         "tray", "content", "slider", "scroll", "repeat", "reconnect",
+                         "focus-loss", "hide-show",
+                     })
+                trace.Record("focused-controller-route-proof", true, false, handled: true,
+                    category: category, proofSource: "focused-exact-commit");
+
+            await trace.FlushAsync("exact-commit");
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            var root = document.RootElement;
+            Assert.IsTrue(root.GetProperty("NativeVisibleLeaseObserved").GetBoolean());
+            Assert.IsFalse(root.GetProperty("NativeConnectedVisibleLeaseObserved").GetBoolean());
+            Assert.IsFalse(root.GetProperty("NativeRoutedSemanticInputObserved").GetBoolean());
+            Assert.IsTrue(root.GetProperty("DeterministicSharedRouterProofObserved").GetBoolean());
+            Assert.IsTrue(root.GetProperty("RoutedSemanticInputObserved").GetBoolean());
+            Assert.HasCount(14, root.GetProperty("HandledCategories").EnumerateArray().ToArray());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [TestMethod]
@@ -381,10 +508,12 @@ public sealed class IntegrationAdapterTests
             await WaitForAsync(() => shell.AdmittedWidgetId == "beta.widget");
             Assert.AreSame(shell.TrayButtons[1], window.FocusManager?.GetFocusedElement());
             Assert.AreEqual(trayBounds, ((Control)shell.TrayButtons[1].GetVisualParent()!).Bounds);
-            Assert.IsTrue(shell.TryEnterContent(shell.TrayButtons[1]));
+            Assert.IsTrue(shell.RouteKeyboard(GameBarAlternative.AvaloniaPrototype.Input.SemanticInput.Up,
+                shell.TrayButtons[1]), "Tray Up must enter the selected widget through the shared semantic router.");
             var contentFocus = window.FocusManager?.GetFocusedElement() as Control;
             Assert.AreEqual("action", contentFocus?.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty));
-            Assert.IsTrue(shell.RestoreTrayFocus(contentFocus));
+            Assert.IsTrue(shell.RouteKeyboard(GameBarAlternative.AvaloniaPrototype.Input.SemanticInput.Down,
+                contentFocus), "Down from the final widget control must return to the selected tray item.");
             Assert.AreSame(shell.TrayButtons[1], window.FocusManager?.GetFocusedElement());
             CollectionAssert.AreEqual(
                 Enum.GetValues<GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase>(),
@@ -573,6 +702,18 @@ public sealed class IntegrationAdapterTests
         });
     }
 
+    [TestMethod]
+    public void Prototype_single_instance_guard_rejects_a_second_owner_for_the_same_bounded_name()
+    {
+        var name = $@"Local\GameBarAlternative.AvaloniaOverlayPrototype.Tests.{Guid.NewGuid():N}";
+        Assert.IsTrue(PrototypeInstanceGuard.TryAcquire(out var first, name));
+        using (first)
+        {
+            Assert.IsFalse(PrototypeInstanceGuard.TryAcquire(out var second, name));
+            Assert.IsNull(second);
+        }
+    }
+
     private static SemanticTreeRenderer Renderer() => new(
         _ => Task.CompletedTask,
         (_, _, _) => Task.FromResult<ReadOnlyMemory<byte>>(Array.Empty<byte>()),
@@ -597,7 +738,11 @@ public sealed class IntegrationAdapterTests
             foreach (var descendant in AutomationPeers(child)) yield return descendant;
     }
 
-    private static WidgetPresentationFrame Frame(string widgetId, long sequence, ViewNode root)
+    private static WidgetPresentationFrame Frame(
+        string widgetId,
+        long sequence,
+        ViewNode root,
+        IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null)
     {
         var descriptor = Descriptor(widgetId);
         var authority = new WidgetPresentationAuthority(
@@ -614,8 +759,23 @@ public sealed class IntegrationAdapterTests
                 InitialFocusId = Flatten(root).FirstOrDefault(node => node.IsFocusable)?.Id,
                 Root = root,
             },
-            new Dictionary<string, BridgeNodeRenderStyles>());
+            renderStyles ?? new Dictionary<string, BridgeNodeRenderStyles>());
     }
+
+    private static BridgeComputedStyleValue Length(double number, string unit) => new()
+    {
+        Kind = GbssValueKind.Length,
+        Text = $"{number}{unit}",
+        Number = number,
+        Unit = unit,
+    };
+
+    private static BridgeNodeRenderStyles Style(IReadOnlyDictionary<string, BridgeComputedStyleValue> values) => new()
+    {
+        Base = values,
+        Focused = values,
+        Pressed = values,
+    };
 
     private static BridgeWidgetDescriptor Descriptor(string id) => new()
     {
@@ -653,6 +813,50 @@ public sealed class IntegrationAdapterTests
             new ViewNode { Id = "entry", Kind = ViewNodeKind.TextEntry, ActionId = "commit", TextEntryPlaceholder = "Text" },
         ],
     };
+
+    private static ViewNode GeometryTree() => new()
+    {
+        Id = "layout-root", Kind = ViewNodeKind.Stack, InputScopeId = "root-scope",
+        Children =
+        [
+            new ViewNode
+            {
+                Id = "long-copy", Kind = ViewNodeKind.Text,
+                Text = "Network and playback status remain readable across the complete admitted viewport.",
+            },
+            new ViewNode
+            {
+                Id = "layout-row", Kind = ViewNodeKind.Row,
+                Children =
+                [
+                    new ViewNode { Id = "row-label", Kind = ViewNodeKind.Text, Text = "Volume" },
+                    new ViewNode { Id = "volume", Kind = ViewNodeKind.Slider, Minimum = 0, Maximum = 100, Value = 50, Step = 5, ValueChangedActionId = "volume" },
+                    new ViewNode { Id = "primary-action", Kind = ViewNodeKind.Button, Text = "Apply", ActionId = "apply" },
+                ],
+            },
+            new ViewNode
+            {
+                Id = "layout-grid", Kind = ViewNodeKind.Grid,
+                GridMinimumColumnWidth = 180, GridMaximumColumns = 4,
+                Children = Enumerable.Range(0, 8).Select(index => new ViewNode
+                {
+                    Id = $"tile-{index}", Kind = ViewNodeKind.ActionSurface, ActionId = "open",
+                    Children = [new ViewNode { Id = $"tile-label-{index}", Kind = ViewNodeKind.Text, Text = $"Item {index}" }],
+                }).ToArray(),
+            },
+        ],
+    };
+
+    private static Rect BoundsInShell(Control control, IntegratedShellView shell)
+    {
+        var origin = control.TranslatePoint(default, shell);
+        Assert.IsNotNull(origin);
+        return new Rect(origin.Value, control.Bounds.Size);
+    }
+
+    private static bool Overlaps(Rect left, Rect right) =>
+        left.Left < right.Right && left.Right > right.Left &&
+        left.Top < right.Bottom && left.Bottom > right.Top;
 
     private static IEnumerable<ViewNode> CollectionItems(int count, string prefix = "item") =>
         Enumerable.Range(0, count).Select(index => new ViewNode

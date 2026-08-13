@@ -29,7 +29,12 @@ native component remains the sole GameInput/Guide/device/repeat/neutral/
 foreground/placement owner, while Avalonia supplies its one HWND and one focus
 tree. Controller directions, A/B, contextual actions, tray Y short/hold,
 keyboard input, tray navigation, sliders, and Back converge on the shared shell
-and managed presentation session. The old AVP-002 Vortice dependency is retired.
+and managed presentation session. The Avalonia host now admits the native
+visible GameInput lease even when Windows declines foreground activation; it
+still attempts activation once on Guide show, restores managed focus, and never
+adds a second reader or foreground-steal loop. A bounded JSON trace records
+native lease/connection changes and semantic routing decisions. The old
+AVP-002 Vortice dependency is retired.
 
 The shell retains a stationary scrolling tray, page focus memory, Avalonia
 FocusManager/XYFocus spatial movement, same-HWND text-entry modal, status and
@@ -45,13 +50,29 @@ UIA and XYFocus. Non-Scroll roots receive a host ScrollViewer so compact content
 Advanced presentation uses only the closed protocol kind/preset/slot enums and
 never package, widget, element, provider, or tree-shape identity.
 
+The presentation boundary translates GBSS percentage/viewport lengths into
+Avalonia stretch semantics and keeps each admitted semantic root's outer
+allocation host-owned, so legacy `100vw`/`100vh` and root max-width declarations
+cannot collapse the page into a literal 100-DIP or capped column. Rows wrap, ordinary grids recompute standard
+Avalonia `UniformGrid` columns from their real arranged width, action surfaces
+and virtualized lists stretch, and no fixed 760-DIP column assumption remains.
+Content, controller guide, and compact stationary tray occupy separate grid
+rows. The reusable semantic theme supplies consistent surface, typography,
+tile, button, slider, list, focus, selection, artwork, and status treatment
+without a GBSS renderer or widget-identity branch.
+
+The executable holds a named prototype-only single-instance mutex. Normal close
+has an eight-second outer bound, records the exact WidgetBridge/worker descendant
+set, and fails retained acceptance if graceful shell/session/process-tree
+shutdown needs forced termination or leaves an owned PID alive.
+
 See [architecture-decision.md](architecture-decision.md) for the responsibility
 map and retained manual-composition decision.
 
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (17 tests):
+MSTest.Sdk 4.3.2 suite (20 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -66,7 +87,11 @@ start/mid/end transition surface diagnostics, same/new-widget supersession,
 artwork cancellation/disposal, slider quantization, ABI layout, and the absence
 of Vortice. It also proves session-owned out-of-order invalidation coalescing and
 compact/expanded focus migration, hidden-branch UIA/XYFocus exclusion, and exact
-mode-identity restoration with one render tree. The suite retains an ignored exact-commit focused proof consumed by
+mode-identity restoration with one render tree. Geometry coverage asserts useful
+page/root width, readable controls, effective visibility, bounded unintended
+horizontal empty area, and non-overlapping content/guide/tray regions at the
+supported sizes/scales; a direct guard test rejects a second prototype owner.
+The suite retains an ignored exact-commit focused proof consumed by
 the final measurement.
 
 After the coherent commit, run exactly one ordinary exact-commit measurement:
@@ -81,6 +106,17 @@ bridge/runtime/domain path and same adapter, exercises 420x340, 978x466,
 standard, and wide logical Avalonia viewports over one backing surface, records
 UIA/containment/scroll clipping and transition phases, then separately samples
 the candidate and complete bridge/worker process tree visible and hidden.
+Every responsive record also retains page/root width utilization, minimum
+readable dimensions, shell-region overlap, effective visibility, and maximum
+unintended horizontal empty-area ratio. Final evidence includes the exact owned
+process-tree normal-shutdown verdict and native visible-lease trace. The same
+ordinary traversal renders one 978x466 offscreen PNG per installed widget with
+logical/pixel size, render scale, and SHA-256 provenance; no taskbar or
+targetability mode is used.
+The input artifact separately records actual native lease/controller observations
+and an exact-commit deterministic shared-router proof for Guide, D-pad/stick,
+A/B, tray/content, slider/scroll, repeat, reconnect, focus-loss, and hide/show.
+It does not convert that deterministic proof into a physical-controller claim.
 Ownership checkpoints separate managed live/heap bytes, decoded
 bitmap count/bytes, tracked render trees, pending artwork, and remaining
 native/Skia/render-target/other unattributed candidate memory. The ignored exact runtime and JSON are under
@@ -93,8 +129,8 @@ native/Skia/render-target/other unattributed candidate memory. The ignored exact
   --installation .\experiments\AvaloniaOverlayPrototype\artifacts\avp004\runtime-win-x64
 ```
 
-Close the production OverlayHost before physical evaluation so only one process
-owns the extracted platform service. Physical Guide/controller feel, compositor
+The prototype refuses a second instance instead of silently competing for the
+extracted platform service. Physical Guide/controller feel, compositor
 transparency, mixed-monitor DPI/clipping, and credential-gated Community behavior
 remain planner/user verdicts. The candidate records whether the visible process
 is below 350 MiB and enforces the assigned 500-MiB candidate ceiling. The

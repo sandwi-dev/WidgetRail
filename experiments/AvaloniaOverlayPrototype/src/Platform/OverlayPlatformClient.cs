@@ -11,10 +11,24 @@ public sealed record OverlayPlatformInput(
     ControllerEventPhase Phase = ControllerEventPhase.Pressed,
     bool Connected = true);
 
+public enum OverlayControllerReadPath
+{
+    None,
+    GameInputVisibleLease,
+    XInputCompatibility,
+}
+
+public sealed record OverlayControllerObservation(
+    bool Connected,
+    bool Primed,
+    bool ForegroundExclusive,
+    OverlayControllerReadPath ReadPath);
+
 public interface IOverlayPlatformClient : IDisposable
 {
     event EventHandler? GuideToggleRequested;
     event EventHandler<OverlayPlatformInput>? InputReceived;
+    event EventHandler<OverlayControllerObservation>? ControllerStateObserved;
     bool HasGameInput { get; }
     bool RequiresLegacyGuidePolling { get; }
     void Attach(nint windowHandle);
@@ -61,6 +75,7 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
     private nint handle;
     private bool attached;
     private bool wasConnected;
+    private OverlayControllerObservation? lastObservation;
     private bool disposed;
 
     internal static IReadOnlyDictionary<string, int> ManagedAbiLayoutSizes { get; } =
@@ -107,6 +122,7 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
 
     public event EventHandler? GuideToggleRequested;
     public event EventHandler<OverlayPlatformInput>? InputReceived;
+    public event EventHandler<OverlayControllerObservation>? ControllerStateObserved;
 
     public bool HasGameInput => handle != 0 && hasGameInput(handle) != 0;
     public bool RequiresLegacyGuidePolling => handle != 0 && requiresLegacyPolling(handle) != 0;
@@ -141,6 +157,21 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
         var frame = NewControllerFrame();
         ThrowIfFailed(readController(handle, foregroundConfirmed ? 1u : 0u, NowMilliseconds(), ref frame), "read controller");
         var connected = frame.Connected != 0;
+        var observation = new OverlayControllerObservation(
+            connected,
+            frame.Primed != 0,
+            frame.ForegroundExclusive != 0,
+            frame.ReadPath switch
+            {
+                1 => OverlayControllerReadPath.GameInputVisibleLease,
+                2 => OverlayControllerReadPath.XInputCompatibility,
+                _ => OverlayControllerReadPath.None,
+            });
+        if (observation != lastObservation)
+        {
+            lastObservation = observation;
+            ControllerStateObserved?.Invoke(this, observation);
+        }
         if (connected != wasConnected)
         {
             wasConnected = connected;
