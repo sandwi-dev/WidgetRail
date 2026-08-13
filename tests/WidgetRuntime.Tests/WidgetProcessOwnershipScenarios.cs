@@ -306,7 +306,8 @@ internal static class WidgetProcessOwnershipScenarios
         await companion.Revoked.Task;
         await ThrowsAnyAsync(async () => await input);
         Equal(1, companion.GrantedAuthorities.Count);
-        Equal(92L, companion.RevokedInputSequences.Single());
+        True(companion.RevokedInputSequences.Contains(92L),
+            "The cancellation-ignoring retired gesture grant was not revoked.");
     }
 
     private static async Task AssertStalePublicationSuppressedAsync(

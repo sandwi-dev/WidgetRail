@@ -4331,9 +4331,15 @@ denial, crash/restart with retained state, replacement generation, drain,
 disable, and removal. No package, provider, OAuth, assembly/type, element/style,
 or tree-shape special case is present.
 
-Focused Release evidence passes Widget SDK 92/92, Widget Catalog 35/35,
-Widget Runtime 75/75, sandbox WorkerHost 10/10, Widget Bridge 86/86, gbar CLI
-65/65, Settings 61/61, and the native WidgetBridgeCatalog fixture. The copied
+Pre-commit focused Release evidence passed Widget SDK 92/92, Widget Catalog
+35/35, Widget Runtime 75/75, sandbox WorkerHost 10/10, Widget Bridge 86/86,
+gbar CLI 65/65, Settings 61/61, and the native WidgetBridgeCatalog fixture. The
+clean exact-commit Tier 3 run for `ed39a70` stopped at Widget Runtime 74/75:
+the cancellation-ignoring retired gesture-grant case observed two permitted
+idempotent revocations and its invalid `.Single()` assertion failed. The
+retained result is
+`artifacts/verification/20260813T063409Z-37fcbe6e/verification-result.json`;
+it is explicitly not passing aggregate evidence. The copied
 external consumer restores only the generated local SDK package, contains no
 repository `ProjectReference`, emits only the narrow application runtime plus
 SDK/protocol dependencies, and completes its child/file/database/fake-HTTPS
@@ -4341,6 +4347,23 @@ snapshot through the authenticated supervisor. The documentation contract
 currently remains red only on five links rooted in the reviewer-owned archived
 delivery-plan file `2026-08-12T21-06-00-07-00.md`; no DLV-215 documentation file
 is named by that failure.
+
+### Exact-commit full-trust Runtime verification correction (DLV-220)
+
+DLV-220 preserves the accepted DLV-215 runtime architecture and corrects only
+the cancellation-ignoring retired gesture-grant fixture. Session retirement may
+issue one best-effort revoke while the input request unwinds and a second revoke
+after a cancellation-ignoring grant actually completes. Both target the same
+input sequence and are intentionally idempotent; the fixture now requires the
+matching revocation without inventing an exact transport-call count.
+
+Focused Release evidence passes Widget Runtime 75/75 and the packaged ordinary
+full-trust lifecycle 1/1. The latter installs and runs two unrelated package
+executables, exercises child/file/database/fake-HTTPS work, restart, replacement,
+drain, disable, and removal through the normal catalog and supervisor. The one
+clean exact-correction-commit Tier 3 result is retained separately and reported
+with its exact commit provenance; these focused results are not described as an
+aggregate pass.
 
 ### Generic Hero Rail terminal-artwork recovery (DLV-210)
 
