@@ -231,6 +231,13 @@ GBSS deletion, or native-host retirement is authorized.
 
 Owner: temporary task on `codex/avp004-session`.
 
+State: correction assigned after rejecting `705e4e9`. An invalidation refresh
+may currently publish failure with an obsolete last-good frame after a restart,
+catalog replacement/removal, or newer snapshot. The correction must make
+failure publication an exact-authority compare-and-commit, discard stale
+failures, add deterministic races for all three cases, and retain focused
+session plus ordinary bridge provenance. Do not integrate the rejected commit.
+
 Exclusive files:
 
 - new `src/WidgetPresentationSession/**`;
@@ -265,6 +272,14 @@ Verification: focused bridge/session suites only. Commit one
 ### AVP-004-PLATFORM — native platform interop extraction
 
 Owner: temporary task on `codex/avp004-platform`.
+
+State: correction assigned after rejecting `8fa9fc9`. A rapid Guide reopen
+during close motion can leave the extracted platform marked invisible because
+the successful show path restores its visible lease only when the HWND was
+previously hidden. The correction must restore that lease after every
+successful show/place, prove close-motion reopen parity, define fixed-width or
+explicitly verified managed ABI scalar/layout semantics, and exercise the
+built DLL plus real callback shutdown. Do not integrate the rejected commit.
 
 Exclusive files:
 
