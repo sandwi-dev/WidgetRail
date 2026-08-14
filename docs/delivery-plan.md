@@ -61,17 +61,15 @@ Snapshots are evidence only. This file is the sole authority for current work.
   harness defect does not invalidate DLV-224 product behavior. Repair it only
   through the bounded platform assignment below; do not reinterpret an
   unchanged rerun as product evidence.
-- DLV-235 source `b0ea2b4` is independently accepted above accepted DLV-234
-  `9435050` and DLV-233 `1323c8a`; the contiguous DLV-231/233/234/235 chain is
-  not yet integrated. The first planner cherry-pick stopped at an append
-  conflict in implementation-owned `docs/implementation-status.md`; the
-  subsequently authorized branch merge exposed substantial additional
-  conflicts in reviewer docs, two production-host fixtures, and `build.ps1`.
-  The platform task preserved that unresolved merge without resolving,
-  aborting, staging, or starting DLV-232. User direction is required before
-  destructive recovery or choosing between the conflicting implementations.
-  DLV-234
-  treats every incomplete bridge frame read or
+- The user authorized the proposed merge recovery. The planner verified and
+  aborted only the failed merge, preserved the original platform branch at
+  `bdf6d88`, and created clean main-based branch
+  `codex/impl-platform-integration`. The platform task reconstructed the four
+  accepted changes in order as DLV-231 `fbd2f02`, DLV-233 `4b8e0b7`, DLV-234
+  `348df2e`, and DLV-235 `5440e7b`; stable patch identities match the previously
+  accepted product/test commits, reviewer-owned documents were unchanged, the
+  implementation-status append was reconciled once, and main fast-forwarded
+  through `5440e7b`. DLV-234 treats every incomplete bridge frame read or
   write as transport-tainting, tears down the one owned bridge process, and
   establishes one replacement before the next request. Its deterministic
   partial-header/body cancellation cases, 12 coordinator scenarios, native
@@ -180,7 +178,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted cumulative DLV-231/233/234/235 source is preserved through `b0ea2b4`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | Substantial merge conflict preserved against main `d4766e8`; DLV-232 not started and blocked pending user recovery direction |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | Clean boundary; DLV-232 is the assigned next executable platform milestone |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -319,7 +317,7 @@ job teardown, and temporary cleanup checks. The focused packaged route passed
 with the ordinary planner-owned host present; no source fallback, weakened
 window check, product runtime change, or Tier-3 rerun occurred.
 
-### Accepted pending integration — DLV-231: slow-worker dashboard responsiveness
+### Done — DLV-231: slow-worker dashboard responsiveness
 
 Baseline: accepted DLV-227 integrated into local main `856bbbb`. Owner:
 platform lane. This is the next visible/release-risk milestone after two bounded
@@ -366,12 +364,12 @@ Stop if the correction needs another transport, another focus/input owner,
 widget-specific native behavior, an unbounded wait/cache, or a material public
 protocol decision.
 
-Implementation source commit `2a379ac` reproduces the serialized slow-worker
+Implementation source commit `2a379ac`, reconstructed and integrated as
+`fbd2f02`, reproduces the serialized slow-worker
 starvation, adds request-generation revocation, and reports green focused
 coordinator/bridge/production-host evidence. Its original frame-alignment and
 failure-precedence blockers are closed cumulatively by accepted DLV-234
-`9435050` and DLV-235 `b0ea2b4`. The complete chain is accepted pending the
-implementation-owned status-file merge and planner integration below.
+`348df2e` and DLV-235 `5440e7b`. The complete chain is accepted and integrated.
 
 ### Done — DLV-233: self-contained Audio scroll host fixture
 
@@ -407,8 +405,8 @@ Required implementation and acceptance:
 Stop for a product/runtime change, a source-worktree/PATH fallback, weakened
 window/input/scroll assertions, or a broader installation-framework decision.
 
-Accepted as implementation commit `1323c8a`, not yet integrated because its
-branch ancestry includes rejected DLV-231. One shared test-support policy now
+Accepted as implementation commit `1323c8a`, reconstructed and integrated as
+`4b8e0b7` in the accepted cumulative chain. One shared test-support policy now
 validates and copies `OverlayPlatformInterop.dll`, proves byte-size-identical
 copy and precise pre-launch omission failure, and rejects a PATH containing the
 admitted Release installation. `AudioMixerScrollHostTestsOnly` passes its
@@ -467,8 +465,8 @@ second concurrent transport/process authority, a public protocol change, loss
 of authenticated session/catalog semantics, unbounded reconnect/retry, or a
 material lifecycle redesign.
 
-Accepted as implementation commit `9435050`, not yet integrated because its
-branch ancestry includes rejected DLV-231. `ReadExact` now reports completed
+Accepted as implementation commit `9435050`, reconstructed and integrated as
+`348df2e` in the accepted cumulative chain. `ReadExact` now reports completed
 bytes and every incomplete header/body read, invalid frame length, or failed
 write taints the sole transport. The next request closes that pipe, performs
 bounded teardown of the one owned bridge process, and launches one replacement
@@ -523,8 +521,8 @@ Stop for a public protocol/status-model decision, another failure cache or
 authority, service-specific behavior, weakened failure/UIA assertions, or a
 material lifecycle redesign.
 
-Accepted as implementation commit `b0ea2b4`, not yet integrated pending user
-direction on the preserved substantial merge conflict. The existing typed
+Accepted as implementation commit `b0ea2b4` and reconstructed/integrated as
+`5440e7b`. The existing typed
 `connectionFailed` event is carried across a private bridge adapter seam and
 mapped to session stage `Start`; sanitized diagnostic text remains
 presentation-only and the public protocol is unchanged. A same-runtime Start
@@ -543,7 +541,7 @@ restored play/pause focus/action/status behavior, bounded hide/reopen feedback,
 and normal zero-process cleanup. No Tier-3 aggregate, capture work, public
 protocol change, widget-domain change, or unrelated full build occurred.
 
-### Blocked pending integration — DLV-232: generic worker crash isolation and recovery
+### Assigned — DLV-232: generic worker crash isolation and recovery
 
 Baseline: accepted DLV-235 cumulative platform correction. Visible objective: one
 credential-free Community worker may crash repeatedly without closing the
@@ -739,13 +737,16 @@ Release rather than manufacture speculative style changes.
    `C0F0F3...D7478`. That process exited normally for the DLV-230 package
    refresh. Accepted DLV-233 corrects only the temporary-install fixture above
    DLV-231. Accepted DLV-234 closes the cumulative transport blocker and
-   accepted DLV-235 closes the remaining failure-state blocker. The platform
-   attempted clean-boundary merge against planner main `d4766e8` exposed
-   conflicts in `docs/delivery-plan.md`, `docs/engineering-quality-review.md`,
-   `docs/implementation-status.md`, `WidgetActionFailureHostTests.cpp`,
-   `WidgetSwitchHostTests.cpp`, and `build.ps1`. The platform task preserved the
-   unresolved merge and did not begin DLV-232. Do not resolve, abort, or choose
-   an integration path without user direction.
+   accepted DLV-235 closes the remaining failure-state blocker. After explicit
+   user recovery approval, the planner aborted only the failed merge, preserved
+   the original branch, and the platform task reconstructed the accepted chain
+   from clean main. Stable patch identities match the previously accepted
+   product/test commits. Main is integrated through `5440e7b`; the native
+   Release rebuilt successfully and is visibly running as PID 30064 with
+   SHA-256 `C06C7D...AA96`. Exact-session logs show admitted transitions,
+   bounded stale-completion rejection, and no crash, forced replacement, or
+   bridge transport failure. Computer control again omitted the no-taskbar
+   window, so no eight-page live visual pass is claimed. DLV-232 is now assigned.
 8. The accepted YT Music 0.2.9 package builds, validates, and packs from main,
    but the live catalog already contains eight immutable YT Music versions and
    rejects installation with `installed_widget_version_limit`. The failed
@@ -765,6 +766,12 @@ Release rather than manufacture speculative style changes.
   clean. It exited normally for DLV-230 packaging. The computer-control service
   omitted the no-taskbar OverlayHost, so no live first-page visual pass is
   claimed.
+- The integrated DLV-231/233/234/235 Release is visibly running as PID 30064
+  from exact main `5440e7b`, SHA-256
+  `C06C7DE2D67AEDFC09D90FC366E30C0893411834966CC4937466A62B1FDEAA96`.
+  Exact-session logs are free of crash, forced-replacement, and bridge transport
+  failures. Computer control omitted the tool window, so all eight first pages
+  remain physically uninspected by the planner and the user verdict is pending.
 - Physical controller/display evidence remains required for changed navigation,
   focus reveal, or visual presentation. It is not Avalonia acceptance debt.
 - Live Spotify account/Premium/Web Playback/EME/OAuth are credential-gated.
@@ -784,23 +791,22 @@ Release rather than manufacture speculative style changes.
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
 | Native uninstall reconciliation | Synthetic catalog removal emitted no managed revision/native event. | Deterministic disabled/nonresident removal event. |
-| DLV-231/233/234/235 cumulative platform integration | The authorized merge of main `d4766e8` into the platform branch exposed substantial conflicts across reviewer docs, implementation status, two production-host fixtures, and `build.ps1`; the unresolved merge is preserved and DLV-232 has not started. | User direction authorizing the safest recovery path: abort only this failed merge, create a clean integration branch from main, and have the platform task cherry-pick the four accepted DLV commits plus resolve its owned implementation-status append and any remaining product conflicts under review. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is unsupported by Data API. | Approved minimum-scope OAuth plan and authorized account. |
 
 ## Recent accepted milestones
 
 | Milestone | Accepted result |
 | --- | --- |
-| DLV-235 | `b0ea2b4`, accepted but not yet integrated: typed worker-start failure precedence survives lifecycle retarget/revocation, explicit Retry owns one fresh generation, only valid snapshot admission clears it, and focused bridge/coordinator/PATH-isolated production-host evidence is green with normal zero-process cleanup. |
-| DLV-234 | `9435050`, accepted in the cumulative chain pending integration: incomplete frame reads/writes taint the sole transport, bounded owned-process replacement restores framing, direct empty/header/body-prefix cancellation recovery is green, and focused coordinator/bridge/eight-widget evidence retains responsive input plus zero-process cleanup. |
-| DLV-233 | `1323c8a`, accepted in the cumulative chain pending integration: shared precise native-dependency validation/copy, PATH-isolated self-contained Audio host route, and unchanged strict visible-HWND/UIA/reverse-scroll/focus behavior. |
+| DLV-235 | `b0ea2b4`, reconstructed and integrated as `5440e7b`: typed worker-start failure precedence survives lifecycle retarget/revocation, explicit Retry owns one fresh generation, only valid snapshot admission clears it, and focused bridge/coordinator/PATH-isolated production-host evidence is green with normal zero-process cleanup. |
+| DLV-234 | `9435050`, reconstructed and integrated as `348df2e`: incomplete frame reads/writes taint the sole transport, bounded owned-process replacement restores framing, direct empty/header/body-prefix cancellation recovery is green, and focused coordinator/bridge/eight-widget evidence retains responsive input plus zero-process cleanup. |
+| DLV-233 | `1323c8a`, reconstructed and integrated as `4b8e0b7`: shared precise native-dependency validation/copy, PATH-isolated self-contained Audio host route, and unchanged strict visible-HWND/UIA/reverse-scroll/focus behavior. |
 | DLV-230 | `7323468`, integrated as `fe2e52c`: YT Music 0.2.9 full-width raised media panel, one responsive tree, 60/60 widget and 82 native renderer checks; visible install awaits bounded catalog cleanup approval. |
 | DLV-229 | `1a8c201`, integrated as `1ddedb4`: explicit Preferred/Preferred Network envelope with real preferred first-page scan-state visibility and constrained focus reveal. |
 | DLV-228 | `2784401`, integrated as `220a415`: generic parent-relative Audio width, stretched rows/cards, and sliders owning the flexible remainder at compact and preferred widths. |
 | DLV-226 | `2276b4c`, integrated as `9755406`: truthful eight-widget axis-policy table; only static Settings root adopts Content height. |
 | DLV-225 | `3e887ee`, integrated as `3eb0eaf`: bounded content-sized Settings root, root-only non-growing category list, preserved one/two-column focus/reveal, and no identity-specific host rule. |
 | DLV-227 | `86a2a23`, integrated as `856bbbb`: self-contained native dependency copy/validation, precise pre-launch omission failure, PATH-isolated focused execution, and unchanged strict HWND/UIA/job-cleanup behavior. |
-| DLV-206 | `da74ded`, integrated as `5cbd4cf`: truthful per-scenario process/commit/SHA/metric provenance, separate eight-widget identity, and post-paint composition ordering with bounded focused evidence. |
+| DLV-231 | `2a379ac`, reconstructed and integrated as `fbd2f02`: delayed/nonresponsive requests remain generation-bound and revocable while tray focus, selection, close, and later valid admission stay responsive; cumulative DLV-234/235 corrections close framing and failure-precedence blockers. |
 
 Do not mark the continuing delivery goal complete because these milestones
 closed. Continue until the user pauses/replaces it or all useful lanes reach a
