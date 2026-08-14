@@ -10,21 +10,20 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baselines
 
-- Production code: local main product baseline `acc062d`, including DLV-216,
+- Production code: local main product baseline `54c25c6`, including DLV-216,
   AVP-004 SESSION then PLATFORM extractions, generic Avalonia integration
   through `16b33d9`, generic controller-first redesign through `9db36b5`, and
-  widget-owned surface envelopes through source `5ffd435`, integrated as
-  `25c6639` then `acc062d`. Planner documents continue through main `1744274`.
+  widget-owned surface envelopes through source `5ffd435`, plus accepted
+  crash-safe trace and stable monitor anchoring through source `26b5d3a`,
+  integrated as `c8296df`, `2e62a5b`, then `54c25c6`. Planner documents include
+  the pre-integration assignment through `3c76fd1`.
   Production renderer cutover is not authorized.
-- Latest accepted Avalonia source: `5ffd435` on
-  `codex/avalonia-prototype`, integrated through main `acc062d`. Its focused
-  30/30 suite, eight authored envelopes, 32/32 work-area responsive rows, 33
-  transition samples with invariant absolute tray/guide bounds, 330.96-MiB
-  candidate sample, and bounded shutdown are accepted.
-- Crash-safe trace commits `988324c` and `e0a078c` remain unintegrated. The
-  latter closes synchronous UI-thread persistence with a bounded background
-  coalescer, but its exact run exposes the active mixed-DPI placement defect
-  below. All dependent work remains unintegrated.
+- Latest accepted Avalonia source: `26b5d3a` on
+  `codex/avalonia-prototype`, integrated through main `54c25c6`. Exact evidence
+  passes 33/33 focused tests, 8/8 widgets with eight distinct envelopes, 32/32
+  responsive fixtures, 33 fixed-chrome transition samples, one retained screen
+  identity across 58 ordinary placements, 449.26-MiB candidate private memory,
+  exact 11/11 trace flush, and 140.76-ms normal no-force shutdown.
 - The integrated-main Avalonia candidate crashed during physical testing and is
   closed. No candidate or owned WidgetBridge process remains running. The
   packaged production Release is also closed during isolated candidate work.
@@ -83,7 +82,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community-launcher`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-217 accepted through `d57fd06`; integration awaits explicit user approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype`; `C:\Users\dwive\.codex\worktrees\fe54\GameBarAlternative` | `e0a078c` rejected; stable visible-session monitor/work-area/DPI anchor correction Assigned |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype`; `C:\Users\dwive\.codex\worktrees\fe54\GameBarAlternative` | Accepted through `26b5d3a`, integrated as `54c25c6`; physical relaunch/verdict pending |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated first as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated second as `b5c4c6c` |
 
@@ -161,14 +160,13 @@ boundary for Microsoft GameInput/Guide, device/reconnect/repeat/neutral,
 visibility/focus, debounce/toggle, targeting, DPI/work-area placement, and
 shutdown. The legacy Guide compatibility adapter remains quarantined.
 
-## Assigned — AVP-004-REDESIGN: crash-safe trace and stable monitor anchor
+## Accepted and integrated — AVP-004-REDESIGN: crash-safe trace and stable monitor anchor
 
 Owner: standing Avalonia prototype task on `codex/avalonia-prototype`.
 
-Baseline: clean source `e0a078c14f39ef890e7511c722f391f4c2f14528`, based on
-accepted widget-envelope source `5ffd435`. Commits `988324c` and `e0a078c` are
-reviewed but rejected/unintegrated until this correction is accepted. Planner
-main is `1744274` before this document update.
+Accepted source: `26b5d3a0861410429284fbc0ef38751512b1631b`, based on
+`988324c` then `e0a078c` atop accepted widget-envelope source `5ffd435`.
+Integrated main commits are `c8296df`, `2e62a5b`, then `54c25c6`.
 
 ### Physical crash evidence
 
@@ -290,14 +288,15 @@ and new screen identity, screen bounds, work area, scaling, and reason.
   repeats materially below one replacement per event, survives one deterministic
   denied replacement, and flushes the exact latest revision within two seconds.
 - Candidate private memory remains below 500 MiB, with process-tree memory
-  separately reported; one tracked render, zero pending/owned artwork, hidden
-  idle, and bounded normal no-force zero-process shutdown remain green.
+  separately reported; one tracked render, zero pending artwork, no superseded
+  resource ownership, hidden idle, and bounded normal no-force zero-process
+  shutdown remain green.
 - Worktree is clean. Scope stays under `experiments/AvaloniaOverlayPrototype`
   and directly affected prototype evidence/docs. No production cutover.
 
-After independent source acceptance, the planner integrates the full accepted
-prefix in order, rebuilds/copies from exact main, and launches visibly with a
-manual live trace. The user then repeats all eight first pages, stationary
+Independent source acceptance and ordered integration are complete. The planner
+now rebuilds/copies from exact main and launches visibly with a manual live
+trace. The user then repeats all eight first pages, stationary
 chrome, motion, Guide, D-pad/stick, A/B/Y, sliders, scrolling, focus restoration,
 mixed-monitor stability, and normal close. Synthetic evidence cannot accept the
 physical gate.
@@ -309,9 +308,9 @@ gate.
 
 ## Serialized integration order
 
-1. SESSION `7de4269` then PLATFORM `849e970` are already accepted/integrated.
-2. Review the final AVP crash/anchor correction independently. If accepted,
-   integrate `988324c`, `e0a078c`, then the correction in linear order.
+1. SESSION `7de4269` then PLATFORM `849e970` are accepted/integrated.
+2. Crash/anchor sources `988324c`, `e0a078c`, and `26b5d3a` are accepted and
+   integrated in linear order through main `54c25c6`.
 3. Refresh the exact integrated-main candidate and obtain physical acceptance.
 4. Do not begin AVP-005 or production cutover before explicit user approval.
 5. DLV-217 integration remains a separate user-approval decision.
@@ -332,7 +331,7 @@ gate.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
-| AVP-005 / production cutover | AVP-004 physical verdict is open after crash and monitor-hop defects. | Accepted exact crash/anchor build plus user display/controller approval. |
+| AVP-005 / production cutover | Corrected AVP-004 source is integrated, but the physical verdict is open. | Exact `54c25c6` copied-runtime launch plus user display/controller/normal-close approval. |
 | DLV-217 local integration | Exact aggregate is 40/41 with one known reviewer-history link red. | Explicit user approval to integrate despite that honest documentation-only red step. |
 | Trusted fixed-video/PiP | Paused WebView2 measured about 348.7 MiB private and 4% CPU against prior gate. | User changes budget or authorizes content/process experiment. |
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
@@ -344,6 +343,7 @@ gate.
 
 | Milestone | Accepted result |
 | --- | --- |
+| AVP-004 crash/anchor correction | `26b5d3a`, integrated through `54c25c6`: background coalesced trace persistence and one stable visible-session monitor/DPI anchor. |
 | AVP-004 envelope redesign | `5ffd435`, integrated through `acc062d`: eight authored envelopes, fixed chrome, atomic HWND geometry, 32 responsive rows, 33 transitions. |
 | AVP-004 controller redesign | `16b33d9`, integrated through `09f038f`: generic renderer/controller baseline and truthful Y trace routing. |
 | AVP-004 generic presentation correction | `9db36b5`, integrated through `289f7d6`: readable generic layout, tray reveal, scroll semantics. |
