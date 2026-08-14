@@ -583,6 +583,26 @@ Preserve the product direction already recorded in the roadmap:
   accessibility, rendering, motion, window, GBSS, bridge, and widget-domain
   owners. Modernize only explicitly assigned boundaries rather than replacing
   the whole native presentation stack.
+- Treat a complete `WidgetSnapshot` as a versioned last-admitted presentation
+  checkpoint, not an expiry cache entry. Ordinary provider invalidation records
+  bounded refresh demand and never deletes the checkpoint; only restart,
+  removal/runtime replacement, generation/protocol incompatibility, trust
+  revocation, or unsafe corruption may hard-remove it. Keep semantic retention,
+  host-resolved appearance/resources, and host interaction state as separate
+  validity domains.
+- Evolve post-checkpoint publication through the small generic operation set in
+  `docs/widget-snapshot-cache-design.md`: typed document/node property updates,
+  keyed child insert/remove/move, subtree replacement, and complete-checkpoint
+  fallback. The SDK normally computes updates automatically; a new UI element
+  adds property validation and impact classification, not another mutation
+  family. Sandboxed and full-trust Community applications use the same bounded
+  overlay admission path.
+- An identical newer publication may advance sequence/action authority without
+  layout or paint. A changed publication invalidates only the affected
+  authority, accessibility, resource, paint, layout, or surface projection;
+  full-widget layout/redraw remains a correctness fallback rather than the only
+  update mechanism. Preserve the existing focus, scroll, pressed, slider,
+  accessibility, renderer, Taffy, compositor, and HWND owners.
 - The assigned Taffy work replaces only declarative geometry computation with
   one generic pinned layout engine behind a narrow panic-safe C ABI. Flex and
   Responsive Grid semantics may move to Taffy; scrolling, clipping, pixel/DPI

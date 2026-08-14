@@ -234,6 +234,24 @@ Code should demonstrate:
 - Stable typed identifiers and actions rather than hidden string protocols.
 - Domain behavior in widgets and reusable rendering, focus, input, lifecycle,
   accessibility, and security behavior in the platform.
+- A complete `WidgetSnapshot` is a versioned last-admitted presentation
+  checkpoint, not an expiry cache entry. Ordinary invalidation tracks bounded
+  refresh demand without deleting that checkpoint. Keep semantic checkpoint
+  validity, host-resolved appearance/resources, and host-owned focus, scroll,
+  press, slider, layout, accessibility-provider, and composition state in their
+  explicit existing owners.
+- Post-checkpoint updates use only the generic versioned operations authorized
+  by `docs/widget-snapshot-cache-design.md`: typed document/node property
+  changes, keyed child insert/remove/move, subtree replacement, and complete-
+  checkpoint fallback. SDK authors normally publish immutable views and let the
+  SDK choose the smallest safe update. Do not add per-control mutation messages,
+  make authors construct wire patches, or exempt full-trust applications from
+  the same bounded host admission.
+- Identical semantic publications may advance current sequence/action authority
+  without layout or paint. Property impact classification drives bounded
+  authority, accessibility, resource, paint, layout, and surface invalidation;
+  unknown impacts fall back safely to subtree or checkpoint replacement rather
+  than being guessed as paint-only.
 - The accepted production Taffy engine is the sole declarative Flex/Responsive
   Grid geometry owner. Directly reuse the existing protocol, SDK, runtime,
   catalog, package, bridge-backend, lifecycle, trust, persistence, provider,
