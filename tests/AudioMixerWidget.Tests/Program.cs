@@ -1,10 +1,18 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using GameBarAlternative.FirstPartyWidgets.AudioMixer;
+using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
+
+if (args is ["--export-renderer-fixture", var rendererFixturePath])
+{
+    await ExportRendererFixture(rendererFixturePath);
+    return 0;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -1319,7 +1327,7 @@ static async Task ShippedAssetsValidate()
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     AssertResponsiveLayoutBudget(compiled.Theme!);
     var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.gbss"));
-    Assert.Contains("width: 100vw", style);
+    Assert.Contains("width: 100%", style);
     Assert.Contains("max-width: 560px", style);
     Assert.Contains(".audio-session-list", style);
     Assert.True(!style.Contains("max-height: 340px", StringComparison.Ordinal),
@@ -1369,6 +1377,13 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
     Assert.True(Pixels(sessionState.Get("width")!, 280) >= 44,
         "The trailing session state can collapse into clipped character fragments.");
     Assert.Equal("0", list.Get("flex-shrink")!.Text);
+    Assert.Equal("100%", root.Get("width")!.Text);
+    Assert.Equal("100%", card.Get("width")!.Text);
+    Assert.Equal("100%", controls.Get("width")!.Text);
+    Assert.Equal("100%", list.Get("width")!.Text);
+    Assert.Equal("0px", slider.Get("min-width")!.Text);
+    Assert.Equal("1", slider.Get("flex-grow")!.Text);
+    Assert.Equal("1", slider.Get("flex-shrink")!.Text);
 
     foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
     {
@@ -1404,14 +1419,15 @@ static double Pixels(GbssComputedValue value, double viewport)
     if (unit is null)
     {
         unit = value.Text.EndsWith("px", StringComparison.Ordinal) ? "px" :
-            value.Text.EndsWith("vw", StringComparison.Ordinal) ? "vw" : null;
+            value.Text.EndsWith("vw", StringComparison.Ordinal) ? "vw" :
+            value.Text.EndsWith('%') ? "%" : null;
         if (unit is not null && double.TryParse(value.Text[..^unit.Length], out var parsed))
             number = parsed;
     }
     return unit switch
     {
         "px" => number ?? throw new InvalidOperationException("Length has no numeric value."),
-        "vw" => (number ?? 0) * viewport / 100,
+        "vw" or "%" => (number ?? 0) * viewport / 100,
         _ => throw new InvalidOperationException($"Unsupported test length '{value.Text}'."),
     };
 }
@@ -1434,6 +1450,57 @@ static double HorizontalSpacing(GbssComputedValue value, double viewport)
         4 => Pixels(Part(parts[1]), viewport) + Pixels(Part(parts[3]), viewport),
         _ => throw new InvalidOperationException($"Unsupported spacing list '{value.Text}'."),
     };
+}
+
+static async Task ExportRendererFixture(string outputPath)
+{
+    var game = Session("game", "Space Game", 0.72, active: true);
+    var chat = Session("chat", "Voice Chat", 0.48);
+    var state = new AudioMixerPresentationState(
+        AudioMixerViewState.Ready,
+        [
+            new(game, AudioMixerSessionControlIds.For(game), false, false),
+            new(chat, AudioMixerSessionControlIds.For(chat), false, false),
+        ],
+        new WidgetAudioOutput(0.6, false),
+        [
+            new("output", "Speakers", WidgetAudioDeviceDirection.Output, true),
+            new("input", "Microphone", WidgetAudioDeviceDirection.Input, true),
+        ],
+        new WidgetAudioInput(0.5, false),
+        AudioOptionalSectionState.Healthy,
+        AudioOptionalSectionState.Healthy,
+        AudioMixerPreferredFocusTarget.MasterOutput,
+        null,
+        "Master output · 2 audio sessions · live updates",
+        false);
+    var snapshot = AudioMixerPresentation.Render(state)
+        .CreateSnapshot("audio.renderer", 1);
+    Assert.Valid(snapshot);
+    var project = ProjectDirectory();
+    var package = GbssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.gbss"),
+        Path.Combine(project, "styles"));
+    var compiled = GbssThemeCompiler.Compile(package);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    var payload = JsonSerializer.Serialize(new
+    {
+        snapshot = snapshotDocument.RootElement.Clone(),
+        renderStyles,
+    }, options);
+    var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+    await File.WriteAllTextAsync(outputPath, payload);
+    Console.WriteLine($"Exported Audio Mixer renderer fixture to {outputPath}.");
 }
 
 static AudioMixerWidget Create(FakeCapabilityClient fake)

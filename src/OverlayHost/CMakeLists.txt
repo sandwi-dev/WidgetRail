@@ -503,6 +503,21 @@ if(GBA_BUILD_TESTS)
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
     gba_link_taffy(SettingsContentRendererTests)
 
+    # Real managed Audio Mixer first-page coverage for generic stretch/flex
+    # width consumption. The target consumes a test-generated bridge response.
+    add_executable(AudioMixerWidthRendererTests
+        AudioMixerWidthRendererTests.cpp WidgetBridgeClient.cpp
+        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(AudioMixerWidthRendererTests PRIVATE cxx_std_20)
+    target_compile_options(AudioMixerWidthRendererTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(AudioMixerWidthRendererTests PRIVATE
+        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(AudioMixerWidthRendererTests PRIVATE
+        windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
+    gba_link_taffy(AudioMixerWidthRendererTests)
+
     add_executable(LauncherExperienceTests
         LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
         LauncherExperienceProjection.cpp

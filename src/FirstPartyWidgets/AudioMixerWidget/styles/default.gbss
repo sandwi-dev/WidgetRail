@@ -1,5 +1,5 @@
 .audio-mixer-widget {
-  width: 100vw;
+  width: 100%;
   min-width: 280px;
   max-width: 560px;
   gap: 8px;
@@ -48,6 +48,7 @@
 .audio-master-card,
 .audio-device-card,
 .audio-session-card {
+  width: 100%;
   gap: 6px;
   padding: 9px 10px;
   border-color: var(--border, rgba(246, 240, 226, 0.12));
@@ -73,6 +74,7 @@
 }
 
 .audio-device-row {
+  width: 100%;
   gap: 8px;
   min-height: 44px;
   align: center;
@@ -114,6 +116,7 @@
 .audio-sessions-heading,
 .audio-session-heading,
 .audio-volume-control-row {
+  width: 100%;
   gap: 8px;
   align: center;
   justify: space-between;
@@ -136,6 +139,7 @@
 .audio-sessions-heading { flex-shrink: 0; }
 
 .audio-session-list {
+  width: 100%;
   flex-shrink: 0;
   gap: 2px;
   padding: 1px 3px 1px 1px;
@@ -173,8 +177,9 @@
 
 .audio-volume-slider {
   height: 44px;
-  min-width: 132px;
+  min-width: 0px;
   flex-grow: 1;
+  flex-shrink: 1;
   color: var(--accent);
   background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
   border-color: var(--border, rgba(246, 240, 226, 0.12));

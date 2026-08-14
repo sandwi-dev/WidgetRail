@@ -4631,3 +4631,20 @@ harness still requires the now-full-trust Spotify package to declare a managed-
 worker assembly. Documentation validation likewise reaches only nine existing
 broken links in reviewer-owned delivery-plan history snapshots. Neither red
 result was weakened or reinterpreted as surface-policy evidence.
+
+### Audio Mixer admitted-width consumption (DLV-228)
+
+Audio Mixer now authors percentage width on its root, cards, device/control
+rows, and session list. Master, microphone, and per-session sliders retain one
+flexible `flex-grow`/`flex-shrink` track with no obsolete fixed minimum, while
+mute icons and percentage values keep their bounded widths. Labels, values,
+actions, focus IDs/edges, one whole-widget Scroll, compact reflow, and the
+Preferred 520x520 surface policy are unchanged; the native host has no Audio
+identity rule.
+
+Focused Release evidence passes Audio Mixer 45/45 and the generic native
+renderer's 4,851 checks. A dedicated real managed snapshot plus production
+GBSS/bridge/Taffy scenario passes 41 checks at 320- and 520-DIP widths: root,
+cards, headings, session list, and control rows consume their exact admitted
+inner widths; master, microphone, and session sliders take the exact remainder;
+and the focused session remains scroll-revealed.
