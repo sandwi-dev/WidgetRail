@@ -45,7 +45,7 @@ public sealed class IntegrationAdapterTests
             var controls = control.GetVisualDescendants().OfType<Control>().Prepend(control).ToArray();
 
             CollectionAssert.IsSubsetOf(
-                new[] { typeof(StackPanel), typeof(WrapPanel), typeof(UniformGrid), typeof(ListBox), typeof(TextBlock),
+                new[] { typeof(WrapPanel), typeof(UniformGrid), typeof(ScrollViewer), typeof(TextBlock),
                     typeof(Button), typeof(ProgressBar), typeof(Slider), typeof(Border), typeof(Image) },
                 controls.Select(item => item.GetType()).Distinct().ToArray());
             foreach (var semantic in controls.Where(item =>
@@ -57,6 +57,21 @@ public sealed class IntegrationAdapterTests
             }
             Assert.AreEqual(Enum.GetValues<ViewNodeKind>().Length,
                 Flatten(frame.Snapshot.Root).Select(node => node.Kind).Distinct().Count());
+            var nodes = Flatten(frame.Snapshot.Root).ToDictionary(node => node.Id, StringComparer.Ordinal);
+            foreach (var node in nodes.Values)
+                _ = ControllerComponentCompiler.Compile(node, ReferenceEquals(node, frame.Snapshot.Root));
+            foreach (var semantic in controls.Where(item =>
+                         item.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is string))
+            {
+                var nodeId = semantic.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty)!;
+                var node = nodes[nodeId];
+                var component = ControllerComponentCompiler.Compile(
+                    node, ReferenceEquals(node, frame.Snapshot.Root));
+                CollectionAssert.Contains(semantic.Classes.ToArray(),
+                    "component-" + component.Kind.ToString().ToLowerInvariant());
+                Assert.AreEqual(component.NavigationZone,
+                    semantic.GetValue(ComponentProperties.NavigationZoneProperty));
+            }
             Assert.IsTrue(controls.OfType<TextBlock>().All(item => !item.IsHitTestVisible));
             Assert.IsTrue(controls.OfType<Image>().All(item => !item.IsHitTestVisible));
         });
@@ -188,7 +203,7 @@ public sealed class IntegrationAdapterTests
             window.Show();
             await shell.InitializeAsync();
             await WaitForAsync(() => shell.AdmittedWidgetId == "reorder.widget");
-            var list = (ListBox)shell.ActivePage!;
+            var list = shell.ActivePage!.GetVisualDescendants().OfType<ListBox>().Single();
             var focusedNode = initialItems[150];
             list.ScrollIntoView(focusedNode);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
@@ -346,8 +361,13 @@ public sealed class IntegrationAdapterTests
                 var availableSemanticWidth = Math.Max(1, page.Width - shell.PageHostElement.Padding.Left -
                     shell.PageHostElement.Padding.Right - 2);
                 var horizontalEmptyRatio = 1 - Math.Min(1, semanticBounds.Width / availableSemanticWidth);
+                var allocationChain = string.Join(" -> ", semantic.GetVisualAncestors().OfType<Control>()
+                    .TakeWhile(item => !ReferenceEquals(item, shell.PageHostElement))
+                    .Select(item => $"{item.GetType().Name}:{item.Bounds.Width:F1}/m={item.Margin}"));
                 Assert.IsLessThanOrEqualTo(0.08, horizontalEmptyRatio,
-                    $"The semantic root left too much unintended horizontal empty area at {size} / {scale}x.");
+                    $"The semantic root left too much unintended horizontal empty area at {size} / {scale}x " +
+                    $"(page={page.Width:F1}, semantic={semanticBounds.Width:F1}, padding={shell.PageHostElement.Padding}, " +
+                    $"mode={shell.ContentMode}, chain={allocationChain}).");
 
                 foreach (var id in new[] { "long-copy", "primary-action", "volume" })
                 {
@@ -369,7 +389,62 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task Generic_intrinsic_layout_keeps_headings_action_rows_glyphs_and_advanced_slots_readable()
+    public async Task Surface_hints_change_only_content_mode_while_shell_tray_guide_and_transition_owner_stay_invariant()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var compact = Frame("compact.widget", 1, ButtonTree("compact"),
+                surface: new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Compact,
+                    PreferredWidth = 420,
+                    PreferredHeight = 340,
+                });
+            var wide = Frame("wide.widget", 1, ButtonTree("wide"),
+                surface: new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Wide,
+                    PreferredWidth = 1440,
+                    PreferredHeight = 810,
+                });
+            var fake = new FakePresentationSession(compact, wide);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 978, Height = 466, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => shell.AdmittedWidgetId == compact.Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var shellBounds = shell.Bounds;
+            var trayBounds = BoundsInShell(shell.TrayElement, shell);
+            var guideBounds = BoundsInShell(shell.ControllerGuideElement, shell);
+            var trayParent = shell.TrayElement.GetVisualParent();
+            var guideParent = shell.ControllerGuideElement.GetVisualParent();
+            Assert.AreEqual(ContentResponsiveMode.Compact, shell.ContentMode);
+
+            await coordinator.SelectWidgetAsync(wide.Authority.WidgetId);
+            await WaitForAsync(() => shell.AdmittedWidgetId == wide.Authority.WidgetId);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.AreEqual(ContentResponsiveMode.Wide, shell.ContentMode);
+            Assert.AreEqual(shellBounds, shell.Bounds);
+            Assert.AreEqual(trayBounds, BoundsInShell(shell.TrayElement, shell));
+            Assert.AreEqual(guideBounds, BoundsInShell(shell.ControllerGuideElement, shell));
+            Assert.AreSame(trayParent, shell.TrayElement.GetVisualParent());
+            Assert.AreSame(guideParent, shell.ControllerGuideElement.GetVisualParent());
+            Assert.IsFalse(shell.TrayElement.GetVisualAncestors().Any(item => item is TransitioningContentControl));
+            Assert.IsFalse(shell.ControllerGuideElement.GetVisualAncestors().Any(item => item is TransitioningContentControl));
+            Assert.IsTrue(shell.ActivePage!.GetVisualAncestors()
+                .Any(item => ReferenceEquals(item, shell.TransitionPresenter)));
+            Assert.IsInstanceOfType<TransitioningContentControl>(shell.TransitionPresenter);
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Typed_component_compiler_keeps_intrinsic_action_rows_glyphs_and_advanced_slots_readable()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -403,21 +478,6 @@ public sealed class IntegrationAdapterTests
                     },
                 ],
             };
-            var ordinaryStyles = new Dictionary<string, BridgeNodeRenderStyles>
-            {
-                [ordinaryRoot.Id] = Style(new Dictionary<string, BridgeComputedStyleValue>
-                {
-                    ["height"] = Length(100, "vh"),
-                }),
-                ["intrinsic-heading"] = Style(new Dictionary<string, BridgeComputedStyleValue>
-                {
-                    ["font-size"] = Number(24), ["line-height"] = Number(1.2), ["max-lines"] = Number(1),
-                }),
-                ["intrinsic-glyph-action"] = Style(new Dictionary<string, BridgeComputedStyleValue>
-                {
-                    ["width"] = Length(46, "px"), ["height"] = Length(46, "px"),
-                }),
-            };
             var advancedRoot = AdvancedPresetTree();
             var smallScrollRoot = new ViewNode
             {
@@ -434,7 +494,7 @@ public sealed class IntegrationAdapterTests
                     ],
                 }).ToArray(),
             };
-            var ordinary = Frame("intrinsic.widget", 1, ordinaryRoot, ordinaryStyles);
+            var ordinary = Frame("intrinsic.widget", 1, ordinaryRoot);
             var advanced = Frame(
                 "advanced.widget",
                 1,
@@ -454,7 +514,9 @@ public sealed class IntegrationAdapterTests
 
             var heading = (TextBlock)SemanticControl(shell, "intrinsic-heading");
             Assert.IsGreaterThanOrEqualTo(heading.LineHeight - 1, heading.Bounds.Height,
-                "An authored heading must retain its intrinsic line height.");
+                "Typed body text must retain its intrinsic line height.");
+            Assert.IsFalse(heading.Classes.Contains("page-heading"),
+                "Authored style-class strings must not become hidden presentation roles.");
             var actions = Enumerable.Range(0, 5)
                 .Select(index => BoundsInShell(SemanticControl(shell, $"intrinsic-action-{index}"), shell))
                 .ToArray();
@@ -686,7 +748,7 @@ public sealed class IntegrationAdapterTests
             await WaitForAsync(() => Equals(shell.AdmittedAuthority, frame.Authority));
             var selectedTray = shell.TrayButtons.Single();
             selectedTray.Focus(NavigationMethod.Directional);
-            var outer = shell.ActivePage as ScrollViewer;
+            var outer = shell.ActivePage!.GetVisualDescendants().OfType<ScrollViewer>().Single();
             Assert.IsNotNull(outer);
             var originalOffset = outer.Offset;
             var enabledTarget = SemanticControl(shell, "below-fold-action");
@@ -731,7 +793,81 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
-    public async Task Generic_shell_translates_viewport_units_and_keeps_outer_root_allocation_host_owned()
+    public async Task Root_stack_hoists_direct_vertical_scroll_into_one_virtualized_reachable_owner()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var root = new ViewNode
+            {
+                Id = "hoisted-root", Kind = ViewNodeKind.Stack, InputScopeId = "root-scope",
+                Children =
+                [
+                    new ViewNode
+                    {
+                        Id = "hoisted-header", Kind = ViewNodeKind.Stack,
+                        Children =
+                        [
+                            new ViewNode { Id = "hoisted-eyebrow", Kind = ViewNodeKind.Text, Text = "CONTROL CENTER" },
+                            new ViewNode { Id = "hoisted-title", Kind = ViewNodeKind.Text, Text = "Network Controls" },
+                            new ViewNode { Id = "hoisted-status", Kind = ViewNodeKind.Text, Text = "Connected" },
+                        ],
+                    },
+                    new ViewNode
+                    {
+                        Id = "hoisted-card", Kind = ViewNodeKind.Row,
+                        Children = [new ViewNode { Id = "hoisted-card-copy", Kind = ViewNodeKind.Text, Text = "Current connection" }],
+                    },
+                    new ViewNode { Id = "hoisted-details", Kind = ViewNodeKind.Button, Text = "Connection details", ActionId = "details" },
+                    new ViewNode
+                    {
+                        Id = "hoisted-tabs", Kind = ViewNodeKind.Row,
+                        Children =
+                        [
+                            new ViewNode { Id = "hoisted-wifi", Kind = ViewNodeKind.Button, Text = "Wi-Fi", ActionId = "wifi" },
+                            new ViewNode { Id = "hoisted-bluetooth", Kind = ViewNodeKind.Button, Text = "Bluetooth", ActionId = "bluetooth" },
+                        ],
+                    },
+                    new ViewNode
+                    {
+                        Id = "hoisted-body", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
+                        Children = Enumerable.Range(0, 20).Select(index => new ViewNode
+                        {
+                            Id = $"hoisted-item-{index}", Kind = ViewNodeKind.Button,
+                            Text = $"Connection {index}", ActionId = "open",
+                        }).ToArray(),
+                    },
+                ],
+            };
+            var frame = Frame("hoisted.widget", 1, root,
+                surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Compact });
+            var fake = new FakePresentationSession(frame);
+            var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
+            var window = new Window { Width = 420, Height = 340, Content = shell };
+            window.Show();
+            await shell.InitializeAsync();
+            await WaitForAsync(() => Equals(shell.AdmittedAuthority, frame.Authority));
+
+            var capture = await EvidenceScenario.CaptureResponsiveFixtureAsync(
+                shell, new Avalonia.Size(420, 340), frame.Authority.WidgetId, TimeSpan.FromSeconds(3));
+
+            Assert.IsTrue(capture.UnreachableFocusableIds.Count == 0,
+                $"Unreachable: {string.Join(',', capture.UnreachableFocusableIds)}; " +
+                $"probed: {string.Join(',', capture.ProbedFocusableIds)}");
+            Assert.IsEmpty(capture.MissingExpectedIds,
+                "Controls contained in the coherent seed capture must survive later virtualization probes.");
+            Assert.IsTrue(capture.ProbedFocusableIds.Any(id => id is
+                "hoisted-details" or "hoisted-wifi" or "hoisted-bluetooth"));
+            var page = shell.ActivePage!;
+            Assert.HasCount(1, page.GetVisualDescendants().OfType<ListBox>());
+            Assert.HasCount(1, page.GetVisualDescendants().OfType<ScrollViewer>());
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Generic_shell_ignores_widget_geometry_styles_and_keeps_outer_root_allocation_host_owned()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -775,14 +911,16 @@ public sealed class IntegrationAdapterTests
             var action = SemanticControl(shell, "primary-action");
             Assert.IsGreaterThanOrEqualTo(page.Width * 0.92, semantic.Width);
             Assert.IsGreaterThanOrEqualTo(semantic.Width * 0.92, row.Width);
-            Assert.IsGreaterThan(100, semantic.Height, "100vh must not become a literal 100-DIP root height.");
+            Assert.IsGreaterThan(100, semantic.Height, "Widget height styles must not become outer-shell geometry.");
+            Assert.IsGreaterThan(560, semantic.Width,
+                "Widget max-width styling must not collapse the generic controller page into a desktop column.");
             Assert.IsGreaterThanOrEqualTo(44, action.Bounds.Width,
                 "GBSS min-width:0 must not erase the host interactive readability minimum.");
             Assert.IsTrue(action is Button
             {
                 Background: ISolidColorBrush { Color.A: > 0 },
                 BorderBrush: ISolidColorBrush { Color.A: > 0 },
-            }, "Transparent semantic buttons must retain the reusable Avalonia action-surface treatment.");
+            }, "Raw transparent widget styles must not erase the reusable Avalonia component theme.");
             window.Close();
         });
     }
@@ -937,6 +1075,7 @@ public sealed class IntegrationAdapterTests
             var trayBounds = ((Control)shell.TrayButtons[0].GetVisualParent()!).Bounds;
             var selected = shell.TrayButtons[0];
             selected.Focus(NavigationMethod.Directional);
+            Assert.AreEqual(ShellNavigationRegion.Tray, shell.NavigationRegion);
             Assert.IsTrue(shell.TryCycleTray(selected, 1));
             await WaitForAsync(() => shell.AdmittedWidgetId == "beta.widget");
             Assert.AreSame(shell.TrayButtons[1], window.FocusManager?.GetFocusedElement());
@@ -945,9 +1084,13 @@ public sealed class IntegrationAdapterTests
                 shell.TrayButtons[1]), "Tray Up must enter the selected widget through the shared semantic router.");
             var contentFocus = window.FocusManager?.GetFocusedElement() as Control;
             Assert.AreEqual("action", contentFocus?.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty));
+            Assert.AreEqual(ShellNavigationRegion.Content, shell.NavigationRegion);
+            Assert.AreEqual(ControllerNavigationZone.Component,
+                contentFocus?.GetValue(ComponentProperties.NavigationZoneProperty));
             Assert.IsTrue(shell.RouteKeyboard(GameBarAlternative.AvaloniaPrototype.Input.SemanticInput.Down,
                 contentFocus), "Down from the final widget control must return to the selected tray item.");
             Assert.AreSame(shell.TrayButtons[1], window.FocusManager?.GetFocusedElement());
+            Assert.AreEqual(ShellNavigationRegion.Tray, shell.NavigationRegion);
             CollectionAssert.AreEqual(
                 Enum.GetValues<GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase>(),
                 shell.TransitionSamples.Where(sample => sample.WidgetId == "beta.widget")
@@ -1177,7 +1320,8 @@ public sealed class IntegrationAdapterTests
         ViewNode root,
         IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null,
         string? displayName = null,
-        WidgetAdvancedPresentationView? advanced = null)
+        WidgetAdvancedPresentationView? advanced = null,
+        WidgetSurfaceHints? surface = null)
     {
         var descriptor = Descriptor(widgetId, displayName);
         var authority = new WidgetPresentationAuthority(
@@ -1192,6 +1336,7 @@ public sealed class IntegrationAdapterTests
                 WidgetInstanceId = descriptor.InstanceId,
                 ActiveInputScopeId = "root-scope",
                 InitialFocusId = Flatten(root).FirstOrDefault(node => node.IsFocusable)?.Id,
+                Surface = surface,
                 Root = root,
                 AdvancedPresentation = advanced,
             },
@@ -1250,7 +1395,7 @@ public sealed class IntegrationAdapterTests
         Children =
         [
             new ViewNode { Id = "row", Kind = ViewNodeKind.Row, Children = [new ViewNode { Id = "text", Kind = ViewNodeKind.Text, Text = "Text" }] },
-            new ViewNode { Id = "scroll", Kind = ViewNodeKind.Scroll, Children = [new ViewNode { Id = "button", Kind = ViewNodeKind.Button, Text = "Button", ActionId = "button" }] },
+            new ViewNode { Id = "scroll", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Horizontal, Children = [new ViewNode { Id = "button", Kind = ViewNodeKind.Button, Text = "Button", ActionId = "button" }] },
             new ViewNode { Id = "progress", Kind = ViewNodeKind.Progress, Value = 50, Minimum = 0, Maximum = 100 },
             new ViewNode { Id = "slider", Kind = ViewNodeKind.Slider, Value = 25, Minimum = 0, Maximum = 100, Step = 5, ValueChangedActionId = "change" },
             new ViewNode { Id = "spacer", Kind = ViewNodeKind.Spacer },

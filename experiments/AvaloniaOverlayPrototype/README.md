@@ -1,4 +1,4 @@
-# Avalonia Overlay Prototype — AVP-004-INTEGRATION
+# Avalonia Overlay Prototype — AVP-004-REDESIGN
 
 This .NET 10/Avalonia 12.1.1 candidate replaces only the production
 presentation boundary. It is not a production cutover. The default executable
@@ -8,8 +8,12 @@ second HWND.
 
 The candidate launches the existing packaged `WidgetBridge`, connects through
 `WidgetPresentationSession`, and admits the ordinary bundled and installed
-Community catalog. One `SemanticTreeRenderer` maps every current
-`WidgetProtocol.ViewNodeKind` to standard Avalonia controls. Ordinary installed
+Community catalog. One `SemanticTreeRenderer` plus a closed
+`ControllerComponentCompiler` maps every current `WidgetProtocol.ViewNodeKind`
+and its typed axis/orientation/responsive/advanced-slot properties to standard
+Avalonia controls and ControlThemes. Widget identity, IDs, text, providers,
+tree shape, authored style classes, and bridge-computed geometry never select a
+component or layout. Ordinary installed
 catalog evidence reports only the kinds those snapshots actually emit; final
 coverage combines it with the exact-commit focused all-kind mapping test rather
 than claiming absent ordinary Slider/Spacer/ActionSurface nodes. It preserves raw
@@ -36,24 +40,34 @@ adds a second reader or foreground-steal loop. A bounded JSON trace records
 native lease/connection changes and semantic routing decisions. The old
 AVP-002 Vortice dependency is retired.
 
-The shell retains a stationary scrolling tray, page focus memory, Avalonia
-FocusManager/XYFocus spatial movement, same-HWND text-entry modal, status and
-controller-guide layers, native `TransitioningContentControl`/`CrossFade`, and
-reduced motion. A latest-wins admission pump serializes transitions, coalesces
+The shell has one stable work-area-relative outer geometry. Widget surface hints
+select only the content responsive mode and cannot resize or reposition the
+HWND, tray, or guide. Its scrolling tray, controller guide, status, and modal
+remain invariant layers outside the content-only native
+`TransitioningContentControl`/`CrossFade`. A first-class tray/content/modal state
+machine uses Avalonia FocusManager/XYFocus and typed component zones for tray
+cycling, explicit content entry/exit, sliders, collection navigation, and
+per-widget focus memory. A latest-wins admission pump serializes transitions, coalesces
 same-widget snapshots, and admits authority/focus only while the exact
 destination remains current. Superseded trees are removed, artwork is canceled,
 and decoded bitmaps are disposed. Responsive visibility uses the current logical surface;
 focus remains only on effectively visible controls, remembers valid identities
 per compact/expanded mode, and falls back within the current page or selected
 tray when a branch becomes hidden. Hidden responsive branches remain outside
-UIA and XYFocus. Non-Scroll roots receive a host ScrollViewer so compact content stays reachable.
+UIA and XYFocus. An explicit semantic Scroll or large Grid owns its requested
+axis; otherwise the page supplies the single vertical scrolling owner. When a
+vertical root stack contains a direct semantic vertical Scroll, its siblings and
+the Scroll children are compiled into one recycling page-level list. This keeps
+headers, tabs, and collection items reachable without nesting another catch-all
+scroller around the semantic owner.
 Advanced presentation uses only the closed protocol kind/preset/slot enums and
 never package, widget, element, provider, or tree-shape identity.
 
-The presentation boundary translates GBSS percentage/viewport lengths into
-Avalonia stretch semantics and keeps each admitted semantic root's outer
-allocation host-owned, so legacy `100vw`/`100vh` and root max-width declarations
-cannot collapse the page into a literal 100-DIP or capped column. Rows wrap, ordinary grids recompute standard
+The presentation boundary deliberately does not apply bridge-computed layout or
+authored style-class roles. Avalonia owns intrinsic measurement and each
+admitted semantic root's outer allocation, so legacy `100vw`/`100vh` and root
+max-width declarations cannot collapse the page into a literal 100-DIP or capped
+desktop column. Rows wrap, ordinary grids recompute standard
 Avalonia `UniformGrid` columns from their real arranged width, action surfaces
 and virtualized lists stretch, and no fixed 760-DIP column assumption remains.
 Content, controller guide, and compact stationary tray occupy separate grid
@@ -63,10 +77,10 @@ without a GBSS renderer or widget-identity branch.
 The tray sizes labels to their ordinary text, scrolls horizontally when eight
 items do not fit, and brings the exact selected item fully into view instead of
 clipping it. Compact chrome leaves more vertical space to the admitted page.
-Transparent semantic buttons fall back to the reusable Avalonia action-surface
-treatment, while generic heading, card, primary/secondary/danger action,
-loading/empty, list-selection, and focus styles establish hierarchy without
-changing widget identity, data, or action authority.
+Buttons, action surfaces, sections, collections, status, loading, text entry,
+sliders, page headers, list selection, and focus receive reusable
+controller-first themes derived only from typed semantic kinds. Raw widget
+styling cannot erase interactive minimums or create hidden presentation roles.
 
 The executable holds a named prototype-only single-instance mutex. Normal close
 has an eight-second outer bound, records the exact WidgetBridge/worker descendant
@@ -79,13 +93,15 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (26 tests):
+MSTest.Sdk 4.3.2 suite (28 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
 ```
 
-The focused suite covers every node kind, latest-frame exact action authority,
+The focused suite covers every node kind and compiled component kind/zone,
+stable shell/tray/guide geometry across conflicting snapshot hints,
+content-only transition ownership, latest-frame exact action authority,
 explicit worker-to-UI publication, 10,000-item bounded realization, stable
 collection/UIA identity, compact/standard/wide layouts at actual Avalonia
 100/125/150-percent render scales, lifecycle switch/hide/show, exact controller
@@ -184,18 +200,18 @@ height-constrained and recycling with uniform 88-DIP rows and Avalonia 12.1.1's
 supported zero-extra-viewport buffer default (that version does not expose the
 newer `BufferFactor` property);
 decorative text/icons/images skip hit testing; superseded pages are removed
-rather than retained at opacity zero; clipping is limited to the real page-host
-boundary that prevents semantic content from painting into shell chrome;
+rather than retained at opacity zero; avoidable semantic and page-body clipping
+is not used;
 and compiled bindings remain enabled. No `BitmapCache` or Skia GPU-cache increase
 was added because both can increase memory and require supporting measurement.
 Phase isolation associated the private-byte jump with CrossFade overlapping
 top-level resize and with whole-tree compact/expanded reprojection—not the
 managed heap, decoded artwork, pending artwork, tracked trees, or an observable
-Skia cache. Production placement now applies after exact frame admission, while
-responsive visibility switches only protocol-declared nodes in place with
-`IsVisible`. Production launches still apply native DPI/work-area surface hints;
-the exact responsive matrix records each real logical viewport and its fixed
-backing-surface dimensions.
+Skia cache. Native DPI/work-area placement is independent of frame admission,
+while responsive visibility switches only protocol-declared nodes in place with
+`IsVisible`. Snapshot surface hints never become native placement input. The
+exact responsive matrix records each real logical viewport and its fixed backing
+surface dimensions.
 
 The generic Avalonia boundary keeps ordinary roots and small semantic
 collections at intrinsic height inside the host scroll viewport, while the

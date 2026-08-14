@@ -36,6 +36,9 @@ public sealed partial class MainWindow : Window
     private bool shutdownRequested;
     private bool shutdownComplete;
     private string? platformWidgetId;
+    private PixelRect? stableWorkArea;
+    private double stableRenderScaling;
+    private bool applyingShellPlacement;
 
     public MainWindow()
     {
@@ -66,6 +69,7 @@ public sealed partial class MainWindow : Window
         {
             if (args.Property == IsVisibleProperty) _ = ApplyVisibilityAsync(IsVisible);
         };
+        PositionChanged += (_, _) => ApplyStableShellPlacement();
     }
 
     public IntegratedShellView? IntegratedShell => integratedShell;
@@ -177,6 +181,7 @@ public sealed partial class MainWindow : Window
             platform.ControllerStateObserved += OnControllerStateObserved;
             if (TryGetPlatformHandle()?.Handle is { } handle && handle != 0)
                 platform.Attach(handle);
+            ApplyStableShellPlacement();
             platform.SetWindowState(IsVisible, IsActive);
             inputTrace.Record("native-platform-ready", IsVisible, IsActive, detail:
                 $"gameInput={platform.HasGameInput};legacyGuide={platform.RequiresLegacyGuidePolling}");
@@ -410,24 +415,41 @@ public sealed partial class MainWindow : Window
         }
         platform.SetWindowState(IsVisible, false);
         platform.SetWindowState(IsVisible, IsActive);
-        var hints = frame.Snapshot.Surface;
-        var desiredWidth = hints?.PreferredWidth ?? (hints?.Mode == WidgetSurfaceMode.Compact ? 420 : 978);
-        var desiredHeight = hints?.PreferredHeight ?? (hints?.Mode == WidgetSurfaceMode.Compact ? 340 : 466);
+        ApplyStableShellPlacement();
+    }
+
+    private void ApplyStableShellPlacement()
+    {
+        if (applyingShellPlacement || platform is null || Screens.ScreenFromWindow(this) is not { } screen)
+            return;
         var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
+        if (stableWorkArea == screen.WorkingArea &&
+            Math.Abs(stableRenderScaling - scaling) < 0.001 &&
+            LastComputedPlacement is not null) return;
+        var geometry = ShellGeometryPolicy.Resolve(screen.WorkingArea, scaling);
         var placement = platform.ComputePlacement(
             screen.WorkingArea,
             (uint)Math.Round(96 * scaling),
-            desiredWidth,
-            desiredHeight);
+            geometry.WidthDip,
+            geometry.HeightDip);
         if (placement is not { } value) return;
+        stableWorkArea = screen.WorkingArea;
+        stableRenderScaling = scaling;
         LastComputedPlacement = value;
         if (!string.IsNullOrWhiteSpace(PrototypeArguments.Current.EvidencePath)) return;
-        Position = value.Position;
-        Width = value.Width / scaling;
-        Height = value.Height / scaling;
+        applyingShellPlacement = true;
+        try
+        {
+            Position = value.Position;
+            Width = value.Width / scaling;
+            Height = value.Height / scaling;
+        }
+        finally { applyingShellPlacement = false; }
     }
 
     internal PixelRect? LastComputedPlacement { get; private set; }
+    internal static ShellGeometry ResolveStableShellGeometry(PixelRect workArea, double scaling) =>
+        ShellGeometryPolicy.Resolve(workArea, scaling);
 
     private static string ResolveInstallationRoot(string? requested)
     {

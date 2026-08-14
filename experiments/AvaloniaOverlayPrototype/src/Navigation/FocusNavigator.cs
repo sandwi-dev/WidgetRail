@@ -14,7 +14,9 @@ public static class FocusNavigator
     {
         var focusManager = TopLevel.GetTopLevel(focused)?.FocusManager;
         var target = FindTarget(focusManager, focused, direction, searchRoots);
-        return target is not null && focusManager!.Focus(target, NavigationMethod.Directional);
+        if (target is null || !focusManager!.Focus(target, NavigationMethod.Directional)) return false;
+        target.BringIntoView();
+        return true;
     }
 
     internal static Control? FindTarget(

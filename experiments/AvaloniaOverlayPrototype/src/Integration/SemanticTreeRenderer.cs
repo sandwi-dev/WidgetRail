@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -12,7 +11,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using GameBarAlternative.AvaloniaPrototype.Presentation;
-using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetPresentationSession;
 using GameBarAlternative.WidgetProtocol;
 
@@ -63,7 +61,7 @@ public sealed class SemanticTreeRenderer : IDisposable
         latest = context;
         var root = currentFrame.Snapshot.AdvancedPresentation is { } advanced
             ? RenderAdvanced(currentFrame.Snapshot.Root, advanced, context)
-            : RenderNode(currentFrame.Snapshot.Root, context);
+            : RenderNode(currentFrame.Snapshot.Root, context, isRoot: true);
         PrepareSemanticRootForHost(root, currentFrame.Snapshot.AdvancedPresentation is not null);
         ApplyFocusNeighbors(context);
         ownedRenders.Add(root, context);
@@ -72,6 +70,12 @@ public sealed class SemanticTreeRenderer : IDisposable
 
     public int GetRealizedControlCount(Control semanticRoot) =>
         ownedRenders.TryGetValue(semanticRoot, out var context) ? context.RealizedControlCount : 0;
+
+    public bool OwnsVerticalScroll(Control semanticRoot) =>
+        ownedRenders.TryGetValue(semanticRoot, out var context) && context.OwnsVerticalScroll;
+
+    public bool OwnsHorizontalScroll(Control semanticRoot) =>
+        ownedRenders.TryGetValue(semanticRoot, out var context) && context.OwnsHorizontalScroll;
 
     public bool SetCompact(Control semanticRoot, bool compact)
     {
@@ -105,12 +109,12 @@ public sealed class SemanticTreeRenderer : IDisposable
         latest = null;
     }
 
-    private Control RenderNode(ViewNode node, RenderContext context)
+    private Control RenderNode(ViewNode node, RenderContext context, bool isRoot = false)
     {
         Control control = node.Kind switch
         {
-            ViewNodeKind.Stack => RenderStack(node, Orientation.Vertical, context),
-            ViewNodeKind.Row => RenderStack(node, Orientation.Horizontal, context),
+            ViewNodeKind.Stack => RenderStack(node, Orientation.Vertical, context, isRoot),
+            ViewNodeKind.Row => RenderStack(node, Orientation.Horizontal, context, isRoot),
             ViewNodeKind.Scroll => RenderScroll(node, context),
             ViewNodeKind.Text => new TextBlock
             {
@@ -139,13 +143,7 @@ public sealed class SemanticTreeRenderer : IDisposable
                 VerticalAlignment = VerticalAlignment.Center,
                 IsHitTestVisible = false,
             },
-            ViewNodeKind.LoadingIndicator => new ProgressBar
-            {
-                IsIndeterminate = true,
-                Width = IndicatorSize(node.IndicatorSize),
-                Height = IndicatorSize(node.IndicatorSize),
-                IsHitTestVisible = false,
-            },
+            ViewNodeKind.LoadingIndicator => RenderLoading(node),
             ViewNodeKind.ActionSurface => RenderActionSurface(node, context),
             ViewNodeKind.Grid => RenderGrid(node, context),
             ViewNodeKind.TextEntry => RenderTextEntry(node),
@@ -161,7 +159,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         context.RealizedControlCount++;
         ApplyIdentity(control, node, context);
         ApplySemanticThemeClass(control, node.Kind);
-        ApplyStyle(control, node, context);
+        ControllerComponentCompiler.Apply(control, ControllerComponentCompiler.Compile(node, isRoot));
+        ApplySemanticState(control, node);
         EnforceInteractiveMinimum(control, node.Kind);
         if (node.IsFocusable)
         {
@@ -181,47 +180,90 @@ public sealed class SemanticTreeRenderer : IDisposable
         control.MinHeight = Math.Max(36, control.MinHeight);
     }
 
-    private Control RenderStack(ViewNode node, Orientation orientation, RenderContext context)
+    private Control RenderStack(
+        ViewNode node,
+        Orientation orientation,
+        RenderContext context,
+        bool isRoot = false)
     {
-        Panel panel = orientation == Orientation.Vertical
-            ? new StackPanel
-            {
-                Orientation = orientation,
-                Spacing = 10,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-            }
-            : new WrapPanel
-            {
-                Orientation = orientation,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-            };
-        foreach (var child in node.Children)
+        if (isRoot && orientation == Orientation.Vertical &&
+            node.Children.Any(IsDirectVerticalScroll))
         {
-            var rendered = RenderNode(child, context);
-            rendered.Margin = orientation == Orientation.Horizontal
-                ? new Thickness(0, 0, 8, 8)
-                : new Thickness(0, 0, 0, 8);
-            panel.Children.Add(rendered);
+            context.OwnsVerticalScroll = true;
+            var flattened = node.Children
+                .SelectMany(child => IsDirectVerticalScroll(child) ? child.Children : new[] { child })
+                .ToArray();
+            return CreateVirtualizedList(node with { Children = flattened }, context);
         }
 
-        return panel;
+        var children = node.Children.Select(child => RenderNode(child, context)).ToArray();
+        Panel panel;
+        if (orientation == Orientation.Vertical && node.Children.Any(OwnsVerticalAxis))
+        {
+            var grid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+            for (var index = 0; index < children.Length; index++)
+            {
+                var ownsAxis = OwnsVerticalAxis(node.Children[index]);
+                grid.RowDefinitions.Add(new RowDefinition(ownsAxis ? GridLength.Star : GridLength.Auto));
+                Grid.SetRow(children[index], index);
+                children[index].Margin = index == children.Length - 1
+                    ? default
+                    : new Thickness(0, 0, 0, 12);
+                grid.Children.Add(children[index]);
+            }
+            panel = grid;
+        }
+        else if (orientation == Orientation.Vertical)
+        {
+            var stack = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Spacing = 12,
+            };
+            foreach (var child in children) stack.Children.Add(child);
+            panel = stack;
+        }
+        else
+        {
+            var row = new WrapPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            foreach (var child in children)
+            {
+                child.Margin = new Thickness(0, 0, 10, 10);
+                row.Children.Add(child);
+            }
+            panel = row;
+        }
+
+        if (isRoot) return panel;
+        return new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = panel,
+        };
     }
 
     private Control RenderScroll(ViewNode node, RenderContext context)
     {
         if (node.ScrollAxis == ScrollAxis.Horizontal)
         {
+            context.OwnsHorizontalScroll = true;
             return new ScrollViewer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                VerticalContentAlignment = VerticalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Top,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                Content = RenderStack(node, Orientation.Horizontal, context),
+                Content = BuildChildrenPanel(node.Children, Orientation.Horizontal, context),
             };
         }
 
+        context.OwnsVerticalScroll = true;
         return CreateVirtualizedList(node, context);
     }
 
@@ -293,6 +335,25 @@ public sealed class SemanticTreeRenderer : IDisposable
         return slider;
     }
 
+    private static Control RenderLoading(ViewNode node)
+    {
+        var indicator = new ProgressBar
+        {
+            IsIndeterminate = true,
+            Width = IndicatorSize(node.IndicatorSize),
+            Height = IndicatorSize(node.IndicatorSize),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+        };
+        return new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = indicator,
+        };
+    }
+
     private Control RenderImage(ViewNode node, RenderContext context)
     {
         var image = new Image
@@ -339,7 +400,8 @@ public sealed class SemanticTreeRenderer : IDisposable
 
     private Button RenderActionSurface(ViewNode node, RenderContext context)
     {
-        var content = RenderStack(node, node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal
+        var content = BuildChildrenPanel(node.Children,
+            node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal
             ? Orientation.Horizontal
             : Orientation.Vertical, context);
         var button = new Button
@@ -361,7 +423,10 @@ public sealed class SemanticTreeRenderer : IDisposable
     private Control RenderGrid(ViewNode node, RenderContext context)
     {
         if (node.Children.Count > 64)
+        {
+            context.OwnsVerticalScroll = true;
             return CreateVirtualizedList(node, context);
+        }
 
         var minimum = Math.Max(96, node.GridMinimumColumnWidth ?? 180);
         var maximumColumns = Math.Max(1, node.GridMaximumColumns ?? 8);
@@ -410,6 +475,9 @@ public sealed class SemanticTreeRenderer : IDisposable
         ApplyLayout(context.Compact);
         context.ResponsiveLayoutUpdates.Add(ApplyLayout);
         layout.SizeChanged += (_, args) => ApplyLayout(context.Compact || args.NewSize.Width <= 760);
+        ControllerComponentCompiler.Apply(layout,
+            new ControllerComponent(ControllerComponentKind.AdvancedSlotSurface,
+                ControllerNavigationZone.Page));
         return layout;
 
         void ApplyLayout(bool stacked)
@@ -488,17 +556,65 @@ public sealed class SemanticTreeRenderer : IDisposable
             AutomationProperties.SetHelpText(control, node.AccessibilityValue);
     }
 
-    private void ApplyStyle(Control control, ViewNode node, RenderContext context)
+    private static void ApplySemanticState(Control control, ViewNode node)
     {
-        foreach (var styleClass in node.StyleClasses.Where(IsSafeClass)) control.Classes.Add(styleClass);
-        if (!context.Frame.RenderStyles.TryGetValue(node.Id, out var styles)) return;
-        ApplyComputedStyle(control, styles.Base);
-        control.GotFocus += (_, _) => ApplyComputedStyle(control, styles.Focused);
-        control.LostFocus += (_, _) => ApplyComputedStyle(control, styles.Base);
-        control.PointerPressed += (_, _) => ApplyComputedStyle(control, styles.Pressed);
-        control.PointerReleased += (_, _) => ApplyComputedStyle(
-            control, control.IsFocused ? styles.Focused : styles.Base);
+        control.Classes.Set("selected", node.IsSelected is true);
+        control.Classes.Set("busy", node.IsBusy is true);
+        control.Classes.Set("disabled", node.IsDisabled is true);
     }
+
+    private Panel BuildChildrenPanel(
+        IReadOnlyList<ViewNode> nodes,
+        Orientation orientation,
+        RenderContext context)
+    {
+        if (orientation == Orientation.Vertical)
+        {
+            if (nodes.Any(OwnsVerticalAxis))
+            {
+                var grid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+                for (var index = 0; index < nodes.Count; index++)
+                {
+                    var ownsAxis = OwnsVerticalAxis(nodes[index]);
+                    grid.RowDefinitions.Add(new RowDefinition(ownsAxis ? GridLength.Star : GridLength.Auto));
+                    var rendered = RenderNode(nodes[index], context);
+                    Grid.SetRow(rendered, index);
+                    rendered.Margin = index == nodes.Count - 1 ? default : new Thickness(0, 0, 0, 10);
+                    grid.Children.Add(rendered);
+                }
+                return grid;
+            }
+            var stack = new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                Spacing = 10,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+            foreach (var child in nodes) stack.Children.Add(RenderNode(child, context));
+            return stack;
+        }
+
+        var row = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        foreach (var child in nodes)
+        {
+            var rendered = RenderNode(child, context);
+            rendered.Margin = new Thickness(0, 0, 10, 10);
+            row.Children.Add(rendered);
+        }
+        return row;
+    }
+
+    private static bool OwnsVerticalAxis(ViewNode node) =>
+        node.Kind == ViewNodeKind.Scroll && node.ScrollAxis is not ScrollAxis.Horizontal ||
+        node.Kind == ViewNodeKind.Grid && node.Children.Count > 64 ||
+        node.Children.Any(OwnsVerticalAxis);
+
+    private static bool IsDirectVerticalScroll(ViewNode node) =>
+        node.Kind == ViewNodeKind.Scroll && node.ScrollAxis is not ScrollAxis.Horizontal;
 
     private static void ApplySemanticThemeClass(Control control, ViewNodeKind kind)
     {
@@ -526,112 +642,17 @@ public sealed class SemanticTreeRenderer : IDisposable
             control.HorizontalAlignment = HorizontalAlignment.Stretch;
     }
 
-    private static void ApplyComputedStyle(
-        Control control,
-        IReadOnlyDictionary<string, BridgeComputedStyleValue> values)
-    {
-        ApplyLength(control, values, "min-width");
-        ApplyLength(control, values, "min-height");
-        ApplyLength(control, values, "max-width");
-        ApplyLength(control, values, "max-height");
-        ApplyLength(control, values, "width");
-        ApplyLength(control, values, "height");
-        if (TryNumber(values, "opacity") is { } opacity) control.Opacity = Math.Clamp(opacity, 0, 1);
-        if (TryNumber(values, "gap") is { } spacing && control is StackPanel stack) stack.Spacing = spacing;
-        if (values.TryGetValue("background", out var background) && TryBrush(background.Text) is { } backgroundBrush)
-        {
-            if (control is Border border) border.Background = backgroundBrush;
-            else if (control is Panel panel) panel.Background = backgroundBrush;
-            else if (control is Button && backgroundBrush is ISolidColorBrush { Color.A: 0 })
-                control.ClearValue(TemplatedControl.BackgroundProperty);
-            else if (control is TemplatedControl backgroundControl) backgroundControl.Background = backgroundBrush;
-        }
-        if (values.TryGetValue("color", out var foreground) && TryBrush(foreground.Text) is { } foregroundBrush)
-        {
-            if (control is TextBlock textBlock) textBlock.Foreground = foregroundBrush;
-            else if (control is TemplatedControl foregroundControl) foregroundControl.Foreground = foregroundBrush;
-        }
-        if (values.TryGetValue("border-color", out var borderColor) && TryBrush(borderColor.Text) is { } borderBrush)
-        {
-            if (control is Border border) border.BorderBrush = borderBrush;
-            else if (control is Button && borderBrush is ISolidColorBrush { Color.A: 0 })
-                control.ClearValue(TemplatedControl.BorderBrushProperty);
-            else if (control is TemplatedControl borderControl) borderControl.BorderBrush = borderBrush;
-        }
-        if (TryNumber(values, "border-width") is { } borderWidth)
-        {
-            if (control is Border border) border.BorderThickness = new Thickness(borderWidth);
-            else if (control is TemplatedControl thicknessControl) thicknessControl.BorderThickness = new Thickness(borderWidth);
-        }
-        if (TryNumber(values, "corner-radius") is { } radius)
-        {
-            if (control is Border border) border.CornerRadius = new CornerRadius(radius);
-            else if (control is TemplatedControl radiusControl) radiusControl.CornerRadius = new CornerRadius(radius);
-        }
-        if (control is TextBlock text)
-        {
-            if (TryNumber(values, "font-size") is { } fontSize) text.FontSize = fontSize;
-            if (TryNumber(values, "line-height") is { } lineHeight)
-                text.LineHeight = lineHeight <= 4 ? text.FontSize * lineHeight : lineHeight;
-            if (TryNumber(values, "max-lines") is { } maxLines)
-            {
-                text.MaxLines = Math.Max(1, (int)Math.Floor(maxLines));
-                if (text.MaxLines == 1) text.TextWrapping = TextWrapping.NoWrap;
-            }
-            if (values.TryGetValue("text-overflow", out var overflow) &&
-                string.Equals(overflow.Text, "ellipsis", StringComparison.OrdinalIgnoreCase))
-                text.TextTrimming = TextTrimming.CharacterEllipsis;
-            if (values.TryGetValue("text-align", out var alignment))
-                text.TextAlignment = alignment.Text switch
-                {
-                    "center" => TextAlignment.Center,
-                    "right" => TextAlignment.Right,
-                    "justify" => TextAlignment.Justify,
-                    _ => TextAlignment.Left,
-                };
-        }
-        if (TryNumber(values, "padding") is { } padding && control is TemplatedControl paddingControl)
-            paddingControl.Padding = new Thickness(padding);
-    }
-
     internal static void PrepareSemanticRootForHost(Control root, bool? fillViewport = null)
     {
-        // Widget style still owns internal presentation, but the Avalonia page host owns the admitted
-        // root's outer viewport. Carrying legacy renderer max-width or viewport-unit constraints into
-        // this boundary recreates the narrow centered columns seen in the physical prototype.
+        // The typed component compiler owns presentation and the Avalonia page host owns the admitted
+        // root's outer viewport. Carrying legacy max-width or viewport-unit constraints into this
+        // boundary recreates the narrow centered columns seen in the physical prototype.
         root.Width = double.NaN;
         root.MinWidth = 0;
         root.MaxWidth = double.PositiveInfinity;
         root.HorizontalAlignment = HorizontalAlignment.Stretch;
         if (fillViewport is not null)
             root.VerticalAlignment = fillViewport.Value ? VerticalAlignment.Stretch : VerticalAlignment.Top;
-    }
-
-    private static void ApplyLength(
-        Control control,
-        IReadOnlyDictionary<string, BridgeComputedStyleValue> values,
-        string property)
-    {
-        if (!values.TryGetValue(property, out var value) || value.Number is not { } number ||
-            !double.IsFinite(number) || number < 0)
-            return;
-
-        var relative = value.Unit is "%" or "vw" or "vh";
-        switch (property)
-        {
-            case "min-width": control.MinWidth = relative ? 0 : number; break;
-            case "min-height": control.MinHeight = relative ? 0 : number; break;
-            case "max-width": control.MaxWidth = relative ? double.PositiveInfinity : number; break;
-            case "max-height": control.MaxHeight = relative ? double.PositiveInfinity : number; break;
-            case "width":
-                control.Width = relative ? double.NaN : number;
-                if (relative) control.HorizontalAlignment = HorizontalAlignment.Stretch;
-                break;
-            case "height":
-                control.Height = relative ? double.NaN : number;
-                if (relative) control.VerticalAlignment = VerticalAlignment.Stretch;
-                break;
-        }
     }
 
     private static void ApplyFocusNeighbors(RenderContext context)
@@ -734,20 +755,6 @@ public sealed class SemanticTreeRenderer : IDisposable
         _ => true,
     };
 
-    private static bool IsSafeClass(string value) => value.Length is > 0 and <= 128 &&
-        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
-
-    private static double? TryNumber(
-        IReadOnlyDictionary<string, BridgeComputedStyleValue> values,
-        string name) => values.TryGetValue(name, out var value) && value.Number is { } number &&
-        double.IsFinite(number) && number >= 0 ? number : null;
-
-    private static IBrush? TryBrush(string text)
-    {
-        try { return Brush.Parse(text); }
-        catch (FormatException) { return null; }
-    }
-
     private static double IndicatorSize(LoadingIndicatorSize? size) => size switch
     {
         LoadingIndicatorSize.Compact => 18,
@@ -764,6 +771,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         public List<(Control Control, FocusNeighbors Neighbors)> PendingNeighbors { get; } = [];
         public List<(Control Control, ResponsiveVisibility Visibility)> ResponsiveControls { get; } = [];
         public List<Action<bool>> ResponsiveLayoutUpdates { get; } = [];
+        public bool OwnsVerticalScroll { get; set; }
+        public bool OwnsHorizontalScroll { get; set; }
         public int RealizedControlCount { get; set; }
     }
 

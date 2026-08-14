@@ -419,6 +419,7 @@ internal static class EvidenceScenario
 
                 var controls = CaptureSemanticControls(
                         shell, seed.SemanticRoot, seed.Frame.Snapshot.Root, seed.Compact)
+                    .Concat(seed.Controls)
                     .Concat(reachability.RevealedControls)
                     .GroupBy(control => control.NodeId, StringComparer.Ordinal)
                     .Select(group => group.OrderByDescending(control => control.Contained).First())
@@ -496,6 +497,25 @@ internal static class EvidenceScenario
                             candidate.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty),
                             node.Id,
                             StringComparison.Ordinal));
+                    var semanticListMatch = shell.ActivePage?.GetVisualDescendants().OfType<ListBox>()
+                        .Select(candidate => new
+                        {
+                            List = candidate,
+                            Item = candidate.ItemsSource?.OfType<ViewNode>().FirstOrDefault(item =>
+                                ReferenceEquals(item, node) || Flatten(item).Any(child => ReferenceEquals(child, node))),
+                        })
+                        .FirstOrDefault(match => match.Item is not null);
+                    if (semanticListMatch?.Item is { } semanticListItem)
+                    {
+                        semanticListMatch.List.ScrollIntoView(semanticListItem);
+                        semanticListMatch.List.UpdateLayout();
+                        control = seed.SemanticRoot.GetVisualDescendants().OfType<Control>()
+                            .Prepend(seed.SemanticRoot)
+                            .FirstOrDefault(candidate => string.Equals(
+                                candidate.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty),
+                                node.Id,
+                                StringComparison.Ordinal));
+                    }
                     if (control is null) return null;
                     var focusAccepted = node.IsDisabled is true ||
                         control.Focus(Avalonia.Input.NavigationMethod.Directional);

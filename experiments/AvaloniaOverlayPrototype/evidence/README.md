@@ -1,8 +1,8 @@
-# AVP-004-INTEGRATION retained evidence
+# AVP-004-REDESIGN retained evidence
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 26-test focused Avalonia integration suite. Its ignored exact-commit
+only the 28-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -16,10 +16,15 @@ useful page/root width, readable and effectively visible controls, bounded
 unintended horizontal empty area, and non-overlapping content/guide/tray regions
 at every supported size/scale. A prototype-only mutex regression rejects a
 competing second owner.
-The shared-shell polish regression additionally uses all eight representative
+The redesign regressions additionally prove that contradictory compact/wide
+snapshot surface hints change content mode without moving the shell, tray, or
+guide; that only content is inside the native transition presenter; and that
+every semantic kind receives a closed typed component kind/navigation zone.
+The shared-shell polish regression uses all eight representative
 tray labels and requires the selected first and final items to be fully scrolled into view,
-untruncated label content, and bounded guide/tray height. Transparent semantic
-buttons are also proven to retain a visible reusable Avalonia surface and border.
+untruncated label content, and bounded guide/tray height. Raw widget geometry and
+transparent style declarations are ignored at the Avalonia component boundary;
+interactive controls retain visible reusable surfaces, borders, and minimums.
 Direct intrinsic-layout evidence requires non-overlapping action rows, complete
 heading line boxes, content-sized ordinary small-scroll rows, meaningful compact
 button glyphs, and readable generic advanced-preset slot allocation. The large
@@ -33,6 +38,12 @@ size threshold applies only to `Grid`. A generic outer-ScrollViewer probe brings
 only absent/non-contained expected focusable identities into view. Enabled
 targets must return successful focus and own the FocusManager's exact identity;
 disabled targets prove visible contained bounds and UIA without a focus claim.
+The direct root-stack regression proves that a typed vertical Scroll plus header,
+detail action, and tabs compiles into one recycling scroll owner and that
+virtualized ancestor items are revealed before descendant focus is asserted.
+The retained row combines the coherent seed-contained controls with the bounded
+revealed controls, so probing a later recycled item cannot erase an identity
+that was already proven contained before the probe.
 Prior focus and offsets are restored once. Pre/post-probe ownership checkpoints
 retain managed, available Skia, render-target, and native/unattributed residency.
 The evidence viewport reapplies the existing host-owned root allocation invariant
@@ -68,8 +79,9 @@ The responsive traversal retains one 1440 x 810 compositor backing surface and
 applies 420 x 340, 978 x 466, 1180 x 680, and 1440 x 810 as real Avalonia shell
 viewports. This preserves layout, reflow, scrolling, UIA, and render-scaling
 evidence without repeatedly reallocating an HWND/swap-chain surface for logical
-fixtures. Production launches still apply retained native DPI/work-area
-placement after exact frame admission. The final sample separately reports the
+fixtures. Production launches apply retained native DPI/work-area placement
+independently of frame admission; snapshot surface hints never become native
+placement input. The final sample separately reports the
 Avalonia candidate and every live bridge, widget-worker, and provider/application
 helper; the hard 500-MiB assignment applies to the visible candidate.
 After sampling, exact evidence records the WidgetBridge/worker descendant set

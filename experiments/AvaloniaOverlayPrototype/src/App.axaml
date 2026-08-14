@@ -16,6 +16,49 @@
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFF4F8FC" />
     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FFB9C7D8" />
     <SolidColorBrush x:Key="AccentBrush" Color="#FF7BB8F4" />
+    <SolidColorBrush x:Key="AccentStrongBrush" Color="#FF9ED0FF" />
+    <SolidColorBrush x:Key="StatusSurfaceBrush" Color="#E91E2E41" />
+    <ControlTheme x:Key="ControllerTileTheme"
+                  TargetType="Button"
+                  BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="MinHeight" Value="52" />
+      <Setter Property="Padding" Value="16,11" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceInteractiveBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </ControlTheme>
+    <ControlTheme x:Key="ControllerCardTheme"
+                  TargetType="Button"
+                  BasedOn="{StaticResource ControllerTileTheme}">
+      <Setter Property="MinHeight" Value="68" />
+      <Setter Property="Padding" Value="18,14" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </ControlTheme>
+    <ControlTheme x:Key="ControllerTextEntryTheme"
+                  TargetType="Button"
+                  BasedOn="{StaticResource ControllerTileTheme}">
+      <Setter Property="MinHeight" Value="50" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+    </ControlTheme>
+    <ControlTheme x:Key="ControllerTrayButtonTheme"
+                  TargetType="Button"
+                  BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Height" Value="56" />
+      <Setter Property="MinWidth" Value="118" />
+      <Setter Property="MaxWidth" Value="190" />
+      <Setter Property="Padding" Value="13,8" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceInteractiveBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </ControlTheme>
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
@@ -53,6 +96,7 @@
     <Style Selector="Button.selected">
       <Setter Property="Background" Value="{DynamicResource SurfaceSelectedBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource FocusBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
     </Style>
     <Style Selector="TextBox">
       <Setter Property="MinHeight" Value="44" />
@@ -95,75 +139,61 @@
     <Style Selector="Button.semantic-action-surface:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource SurfaceCardHoverBrush}" />
     </Style>
-    <Style Selector="Button.setting-row">
-      <Setter Property="MinHeight" Value="58" />
-      <Setter Property="Padding" Value="16,12" />
-      <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-    </Style>
-    <Style Selector="Button.primary-button, Button.primary-action">
-      <Setter Property="Background" Value="{DynamicResource SurfaceSelectedBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.secondary-button, Button.secondary-action">
-      <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
-    </Style>
-    <Style Selector="Button.danger-button">
-      <Setter Property="Background" Value="#B65E2935" />
-      <Setter Property="BorderBrush" Value="#FFD98A96" />
-    </Style>
-    <Style Selector="Button.transport-action">
-      <Setter Property="MinWidth" Value="48" />
-      <Setter Property="HorizontalContentAlignment" Value="Center" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
     <Style Selector="TextBlock.semantic-text">
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="LineHeight" Value="21" />
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
-    <Style Selector="TextBlock.page-heading">
-      <Setter Property="FontSize" Value="26" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="LineHeight" Value="32" />
-      <Setter Property="Margin" Value="0,0,0,4" />
-    </Style>
-    <Style Selector="TextBlock.section-heading">
-      <Setter Property="FontSize" Value="18" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="LineHeight" Value="24" />
-      <Setter Property="Margin" Value="0,8,0,2" />
-    </Style>
-    <Style Selector="TextBlock.page-help, TextBlock.diagnostic-line, TextBlock.loading-detail">
-      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Style Selector="TextBlock.component-bodytext">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="LineHeight" Value="23" />
       <Setter Property="TextWrapping" Value="Wrap" />
-      <Setter Property="LineHeight" Value="20" />
+      <Setter Property="TextTrimming" Value="None" />
+      <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
-    <Style Selector="TextBlock.loading-detail">
-      <Setter Property="TextAlignment" Value="Center" />
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="MaxWidth" Value="620" />
-    </Style>
-    <Style Selector="TextBlock.gbar-section-header__title">
-      <Setter Property="FontSize" Value="24" />
+    <Style Selector="TextBlock.shell-eyebrow">
+      <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentStrongBrush}" />
+      <Setter Property="LetterSpacing" Value="1.2" />
+    </Style>
+    <Style Selector="TextBlock.shell-widget-title">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="LineHeight" Value="26" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
-    <Style Selector="TextBlock.gbar-section-header__description">
-      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    <Style Selector="Border.component-section">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
-    <Style Selector="TextBlock.gbar-tile__title">
-      <Setter Property="FontSize" Value="17" />
-      <Setter Property="FontWeight" Value="SemiBold" />
+    <Style Selector="Border.component-advancedslotsurface">
+      <Setter Property="Padding" Value="16" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceCardBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
     </Style>
-    <Style Selector="TextBlock.gbar-tile__subtitle, TextBlock.gbar-tile__metadata, TextBlock.gbar-settings-row__description">
-      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-      <Setter Property="TextWrapping" Value="Wrap" />
+    <Style Selector="Border.component-status">
+      <Setter Property="MinHeight" Value="72" />
+      <Setter Property="Padding" Value="18" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="{DynamicResource StatusSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Border.component-actionrow">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="ListBox.component-collection">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
     <Style Selector="Slider">
       <Setter Property="MinWidth" Value="160" />
@@ -175,12 +205,6 @@
     <Style Selector="ProgressBar.semantic-loading">
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="Margin" Value="12" />
-    </Style>
-    <Style Selector="StackPanel.is-loading, StackPanel.is-empty">
-      <Setter Property="HorizontalAlignment" Value="Center" />
-      <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="MaxWidth" Value="680" />
-      <Setter Property="MinWidth" Value="320" />
     </Style>
     <Style Selector="Image.semantic-image">
       <Setter Property="MaxHeight" Value="320" />
