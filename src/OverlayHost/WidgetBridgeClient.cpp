@@ -84,6 +84,8 @@ constexpr uint32_t kMaximumDescriptorQuickActions = 16;
 constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
+constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = 17;
 
 constexpr uint32_t kMaximumShellStyles = 12;
 constexpr uint32_t kMaximumShellProperties = 64;
@@ -1106,7 +1108,22 @@ void ApplyComputedStyles(WidgetNode& node, const JsonObject& styles) {
 
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     WidgetSnapshot snapshot;
-    snapshot.protocolVersion = static_cast<int>(source.GetNamedNumber(L"protocolVersion"));
+    if (source.HasKey(L"protocolVersion")) {
+        const auto encodedVersion = source.GetNamedValue(L"protocolVersion");
+        if (encodedVersion.ValueType() != JsonValueType::Number) {
+            throw winrt::hresult_invalid_argument(
+                L"Widget snapshot protocolVersion must be a number.");
+        }
+        const double protocolVersion = encodedVersion.GetNumber();
+        if (!std::isfinite(protocolVersion) ||
+            std::floor(protocolVersion) != protocolVersion ||
+            protocolVersion < kMinimumWidgetSnapshotProtocolVersion ||
+            protocolVersion > kMaximumWidgetSnapshotProtocolVersion) {
+            throw winrt::hresult_invalid_argument(
+                L"Widget snapshot protocolVersion is unsupported.");
+        }
+        snapshot.protocolVersion = static_cast<int>(protocolVersion);
+    }
     snapshot.sequence = static_cast<long long>(source.GetNamedNumber(L"sequence"));
     snapshot.instanceId = std::wstring(std::wstring_view(source.GetNamedString(L"widgetInstanceId")));
     snapshot.activeInputScopeId =

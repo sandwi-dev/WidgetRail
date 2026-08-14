@@ -229,6 +229,8 @@ Fixture SpotifyFixture(const Profile& profile) {
 
 enum class CursorLayout { List, Grid };
 
+std::vector<std::string> CursorKeys(int first, int count);
+
 struct CursorFrame final {
     gba::WidgetSnapshot snapshot;
     gba::RenderResult render;
@@ -294,6 +296,60 @@ std::size_t SnapshotNodeCount(const gba::WidgetNode& node) {
     std::size_t count = 1;
     for (const auto& child : node.children) count += SnapshotNodeCount(child);
     return count;
+}
+
+std::string WithSnapshotPrefix(
+    std::string response,
+    const std::string_view prefix) {
+    constexpr std::string_view marker{R"json({"snapshot":{)json"};
+    const auto offset = response.find(marker);
+    Check(offset != std::string::npos,
+          "cursor response exposes the expected snapshot object");
+    response.insert(offset + marker.size(), prefix);
+    return response;
+}
+
+void VerifyNativeSnapshotProtocolVersions() {
+    const auto legacyResponse = CursorSnapshotResponse(
+        CursorLayout::List, 390, CursorKeys(0, 1), "", "", "item.0", 1);
+    std::wstring error;
+    auto retained = gba::testing::ParseWidgetSnapshotResponse(legacyResponse, error);
+    Check(retained && error.empty() && retained->protocolVersion == 1,
+          "omitted native snapshot protocolVersion preserves legacy v1");
+
+    const auto versionedResponse = WithSnapshotPrefix(
+        legacyResponse,
+        R"json("protocolVersion":17,"surface":{"mode":"standard","widthMode":"fillAvailable","heightMode":"content","preferredWidth":880,"preferredHeight":520,"minimumWidth":420,"minimumHeight":280},)json");
+    auto versioned = gba::testing::ParseWidgetSnapshotResponse(
+        versionedResponse, error);
+    Check(versioned && error.empty() && versioned->protocolVersion == 17 &&
+              versioned->surface &&
+              versioned->surface->widthMode == L"fillAvailable" &&
+              versioned->surface->heightMode == L"content",
+          "present protocol v17 retains independent surface-axis metadata");
+
+    const auto rejectWithoutReplacing = [&](const std::string_view prefix,
+                                             const std::string_view message) {
+        auto candidate = gba::testing::ParseWidgetSnapshotResponse(
+            WithSnapshotPrefix(legacyResponse, prefix), error);
+        Check(!candidate && !error.empty(), message);
+        if (candidate) retained = std::move(candidate);
+        Check(retained && retained->sequence == 390 &&
+                  retained->protocolVersion == 1,
+              "invalid native snapshot preserves the retained legacy presentation");
+    };
+    rejectWithoutReplacing(
+        R"json("protocolVersion":"17",)json",
+        "non-numeric native snapshot protocolVersion fails closed");
+    rejectWithoutReplacing(
+        R"json("protocolVersion":16.5,)json",
+        "fractional native snapshot protocolVersion fails closed");
+    rejectWithoutReplacing(
+        R"json("protocolVersion":0,)json",
+        "below-range native snapshot protocolVersion fails closed");
+    rejectWithoutReplacing(
+        R"json("protocolVersion":18,)json",
+        "above-range native snapshot protocolVersion fails closed");
 }
 
 CursorFrame RenderCursorFrame(
@@ -927,6 +983,7 @@ int wmain(const int argc, wchar_t** argv) {
               "Spotify busy playback action reaches UIA as unavailable");
 
         VerifyCursorCollectionComposition(host, client.Get(), root.Get());
+        VerifyNativeSnapshotProtocolVersions();
 
         // Re-publish the compact Settings tree after two unrelated widget
         // generations. Exact semantic identity, not stale provider position,
