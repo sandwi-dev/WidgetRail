@@ -70,6 +70,7 @@ $expectedPhases = @(
     'explicit-required-and-optional-consent',
     'simulated-companion-pairing-and-secret-write',
     'dashboard-and-open-widget-controller-routing',
+    'transient-last-good-connected-idle-and-recovery',
     'background-suspend-and-visible-resume',
     'worker-crash-and-bounded-restart',
     'host-force-reload-fresh-worker',

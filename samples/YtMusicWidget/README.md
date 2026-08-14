@@ -182,7 +182,7 @@ The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
 `gbar pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.7.gbarwidget
+artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.8.gbarwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -197,7 +197,7 @@ commands used by any addon publisher:
 ```powershell
 $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar install `
-  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.7.gbarwidget
+  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.8.gbarwidget
 & $gbar enable org.gbar.samples.ytmusic
 & $gbar list
 ```
@@ -226,7 +226,7 @@ the public validator and packer:
 
 ```powershell
 .\samples\YtMusicWidget\Build-CommunityPackage.ps1 `
-  -Configuration Release -Version 0.2.7 `
+  -Configuration Release -Version 0.2.8 `
   -OutputDirectory .\artifacts\community-addons\ytmusic-update
 ```
 
@@ -235,7 +235,7 @@ To review or test version behavior with the public CLI:
 ```powershell
 & $gbar disable org.gbar.samples.ytmusic
 & $gbar version list org.gbar.samples.ytmusic
-& $gbar version select org.gbar.samples.ytmusic 0.2.7
+& $gbar version select org.gbar.samples.ytmusic 0.2.8
 & $gbar enable org.gbar.samples.ytmusic
 ```
 
@@ -265,9 +265,11 @@ YTMDesktop2 pairing, physical controller playtest, shell pixels, or production
 Credential Manager purge.
 
 The rich media surface prefers 760 x 440 logical DIPs, but its compact budget
-is 480 x 340. Artwork, metadata, progress, and controller targets use flexible
-widths inside that bound so the host can safely clamp the window for 720p,
-portrait, high-DPI, and enlarged-text work areas. Surface hints remain hints:
+is 480 x 340. One responsive media tree keeps artwork left of a cohesive
+metadata, progress, primary-control, and secondary-control column when width
+permits. At the compact budget that same wrapping row places artwork above a
+full-width details column; the vertical viewport keeps every controller target
+reachable. Surface hints remain hints:
 the host owns the final work-area/DPI scale and may choose a smaller safe size.
 
 The test executable has no test-framework or other NuGet dependencies. Its

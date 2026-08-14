@@ -4497,3 +4497,22 @@ coordinated-geometry, and motion-commit times are respectively 2.999, 1.796,
 repackage/display/controller verdict remains intentionally queued until this
 native milestone and the concurrent widget presentation milestone are both
 accepted and integrated.
+
+### Responsive YT Music controller composition (DLV-223)
+
+YT Music 0.2.8 keeps one semantic media tree and moves progress plus both
+controller rows into the same metadata column as title, artist, and album. At
+the 760-DIP preferred width that column sits to the right of the 128-DIP
+artwork. At the 480-DIP compact budget, the generic wrapping Row moves the
+artwork above a full-width details column inside the existing vertical Scroll.
+Action IDs, explicit focus edges, LB/RB/X/Y shortcuts, quick-action authority,
+selected/busy states, and artwork fallback are unchanged. No native renderer,
+surface-axis protocol, lifecycle, companion, or authentication owner changed.
+
+Focused Release evidence passes YT Music 60/60, the isolated Community
+validate/pack/install/consent/AppContainer/update/rollback/remove route, and
+4,777 existing generic native renderer checks covering wrapped controller
+targets, focus reveal, and bounded geometry. The isolated package evidence is
+retained at `artifacts/acceptance/ytmusic-community-addon.json`; the real user
+catalog remained read-only. A coherent Release containing both DLV-222 and
+DLV-223 still needs the user's physical composition and tray-spacing verdict.

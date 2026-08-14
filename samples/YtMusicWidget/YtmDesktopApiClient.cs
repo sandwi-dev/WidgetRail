@@ -11,7 +11,7 @@ namespace GameBarAlternative.Samples.YtMusicWidget;
 /// </summary>
 public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
 {
-    public const string PackageVersion = "0.2.7";
+    public const string PackageVersion = "0.2.8";
     public const int CompanionPort = 13091;
     public const string BearerSecretSlot = "ytmdesktop2.bearer";
     private static readonly TimeSpan PairingApprovalTimeout = TimeSpan.FromSeconds(40);

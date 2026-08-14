@@ -148,64 +148,64 @@ internal static class YtMusicPresentation
                             UI.Text(FormatTime(snapshot.DurationSeconds),
                                     "duration-text", "Track duration")
                                 .Classes("time"))
-                            .Classes("progress-row"))
+                            .Classes("progress-row"),
+                        UI.Row("primary-actions",
+                            UI.Button("", "previous", "previous")
+                                .Icon(WidgetGlyph.Previous, "Previous track")
+                                .FocusRight("play-pause").FocusDown("shuffle")
+                                .Classes("transport-action"),
+                            UI.Button("", "toggle-playback", "play-pause")
+                                .Icon(snapshot.IsPlaying ? WidgetGlyph.Pause : WidgetGlyph.Play,
+                                    playLabel)
+                                .FocusLeft("previous").FocusRight("next").FocusDown("like")
+                                .Classes("play-action",
+                                    snapshot.IsPlaying ? "is-playing" : "is-paused"),
+                            UI.Button("", "next", "next")
+                                .Icon(WidgetGlyph.Next, "Next track")
+                                .FocusLeft("play-pause").FocusRight("refresh").FocusDown("dislike")
+                                .Classes("transport-action"),
+                            UI.Button("", YtMusicActionPolicy.RefreshId, "refresh")
+                                .Icon(WidgetGlyph.Refresh, "Refresh now playing")
+                                .FocusLeft("next").FocusDown("repeat")
+                                .Classes("refresh-action")),
+                        UI.Row("secondary-actions",
+                            UI.Button("", "shuffle", "shuffle")
+                                .Icon(WidgetGlyph.Shuffle,
+                                    shuffleEnabled ? "Turn shuffle off" : "Turn shuffle on")
+                                .Selected(shuffleEnabled)
+                                .Busy(pendingCommands.Contains(YtMusicCommand.Shuffle))
+                                .FocusUp("previous").FocusRight("like")
+                                .Classes("secondary-action",
+                                    shuffleEnabled ? "is-active" : "is-inactive"),
+                            UI.Button("", "like", "like")
+                                .Icon(WidgetGlyph.Like,
+                                    snapshot.IsLiked ? "Unlike track" : "Like track")
+                                .Selected(snapshot.IsLiked).Busy(ratingBusy)
+                                .FocusUp("play-pause").FocusLeft("shuffle").FocusRight("dislike")
+                                .Classes("secondary-action",
+                                    snapshot.IsLiked ? "is-active" : "is-inactive"),
+                            UI.Button("", "dislike", "dislike")
+                                .Icon(WidgetGlyph.Dislike,
+                                    snapshot.IsDisliked ? "Remove dislike" : "Dislike track")
+                                .Selected(snapshot.IsDisliked).Busy(ratingBusy)
+                                .FocusUp("next").FocusLeft("like").FocusRight("repeat")
+                                .Classes("secondary-action",
+                                    snapshot.IsDisliked ? "is-active" : "is-inactive"),
+                            UI.Button("", "repeat", "repeat")
+                                .Icon(repeatMode == YtMusicRepeatMode.One
+                                        ? WidgetGlyph.RepeatOne
+                                        : WidgetGlyph.Repeat,
+                                    RepeatAccessibilityLabel(repeatMode))
+                                .Selected(repeatMode != YtMusicRepeatMode.Off)
+                                .Busy(pendingCommands.Contains(YtMusicCommand.Repeat))
+                                .FocusUp("refresh").FocusLeft("dislike")
+                                .Classes("secondary-action",
+                                    repeatMode == YtMusicRepeatMode.Off
+                                        ? "is-inactive"
+                                        : "is-active",
+                                    $"repeat-{repeatMode.ToString().ToLowerInvariant()}")))
                         .Classes("media-details"))
-                    .Classes("media-layout"),
-                UI.Row("primary-actions",
-                    UI.Button("", "previous", "previous")
-                        .Icon(WidgetGlyph.Previous, "Previous track")
-                        .FocusRight("play-pause").FocusDown("shuffle")
-                        .Classes("transport-action"),
-                    UI.Button("", "toggle-playback", "play-pause")
-                        .Icon(snapshot.IsPlaying ? WidgetGlyph.Pause : WidgetGlyph.Play,
-                            playLabel)
-                        .FocusLeft("previous").FocusRight("next").FocusDown("like")
-                        .Classes("play-action",
-                            snapshot.IsPlaying ? "is-playing" : "is-paused"),
-                    UI.Button("", "next", "next")
-                        .Icon(WidgetGlyph.Next, "Next track")
-                        .FocusLeft("play-pause").FocusRight("refresh").FocusDown("dislike")
-                        .Classes("transport-action"),
-                    UI.Button("", YtMusicActionPolicy.RefreshId, "refresh")
-                        .Icon(WidgetGlyph.Refresh, "Refresh now playing")
-                        .FocusLeft("next").FocusDown("repeat")
-                        .Classes("refresh-action")),
-                UI.Row("secondary-actions",
-                    UI.Button("", "shuffle", "shuffle")
-                        .Icon(WidgetGlyph.Shuffle,
-                            shuffleEnabled ? "Turn shuffle off" : "Turn shuffle on")
-                        .Selected(shuffleEnabled)
-                        .Busy(pendingCommands.Contains(YtMusicCommand.Shuffle))
-                        .FocusUp("previous").FocusRight("like")
-                        .Classes("secondary-action",
-                            shuffleEnabled ? "is-active" : "is-inactive"),
-                    UI.Button("", "like", "like")
-                        .Icon(WidgetGlyph.Like,
-                            snapshot.IsLiked ? "Unlike track" : "Like track")
-                        .Selected(snapshot.IsLiked).Busy(ratingBusy)
-                        .FocusUp("play-pause").FocusLeft("shuffle").FocusRight("dislike")
-                        .Classes("secondary-action",
-                            snapshot.IsLiked ? "is-active" : "is-inactive"),
-                    UI.Button("", "dislike", "dislike")
-                        .Icon(WidgetGlyph.Dislike,
-                            snapshot.IsDisliked ? "Remove dislike" : "Dislike track")
-                        .Selected(snapshot.IsDisliked).Busy(ratingBusy)
-                        .FocusUp("next").FocusLeft("like").FocusRight("repeat")
-                        .Classes("secondary-action",
-                            snapshot.IsDisliked ? "is-active" : "is-inactive"),
-                    UI.Button("", "repeat", "repeat")
-                        .Icon(repeatMode == YtMusicRepeatMode.One
-                                ? WidgetGlyph.RepeatOne
-                                : WidgetGlyph.Repeat,
-                            RepeatAccessibilityLabel(repeatMode))
-                        .Selected(repeatMode != YtMusicRepeatMode.Off)
-                        .Busy(pendingCommands.Contains(YtMusicCommand.Repeat))
-                        .FocusUp("refresh").FocusLeft("dislike")
-                        .Classes("secondary-action",
-                            repeatMode == YtMusicRepeatMode.Off
-                                ? "is-inactive"
-                                : "is-active",
-                            $"repeat-{repeatMode.ToString().ToLowerInvariant()}")))
+                    .Classes("media-layout"))
                 .Shortcut(ControllerButton.LeftBumper, "previous")
                 .Shortcut(ControllerButton.X, "toggle-playback")
                 .Shortcut(ControllerButton.RightBumper, "next")
