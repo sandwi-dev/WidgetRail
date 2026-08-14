@@ -9,7 +9,7 @@ using GameBarAlternative.FirstPartyWidgets.MediaSessions;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
 using GameBarAlternative.FirstPartyWidgets.Settings;
 using GameBarAlternative.Tests.FullApplicationWidgetFixture;
-using GameBarAlternative.Samples.SpotifyWidget;
+using SpotifySampleWidget = GameBarAlternative.Samples.SpotifyWidget.SpotifyWidget;
 using GameBarAlternative.Samples.YtMusicWidget;
 using GameBarAlternative.Samples.FullApplicationWidget;
 using GameBarAlternative.GbarCli;
@@ -3749,11 +3749,14 @@ static void AssertWorkerArguments(
     string packageRoot,
     WidgetManifest manifest)
 {
+    var assembly = manifest.Entrypoint?.Assembly ??
+        throw new InvalidOperationException(
+            $"{manifest.Id} does not declare a managed-worker assembly.");
     Assert.SequenceEqual(
     [
         "--package-root", Path.GetFullPath(packageRoot),
         "--widget-assembly", Path.GetFullPath(
-            manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar),
+            assembly.Replace('/', Path.DirectorySeparatorChar),
             packageRoot),
         "--widget-type", manifest.Entrypoint.Type,
     ], configured.WorkerArguments);
@@ -3852,7 +3855,7 @@ file sealed class Deployment : IDisposable
                 new PackageSpec("network-controls", "src/FirstPartyWidgets/NetworkControlsWidget", "NetworkControls", WidgetGlyph.Wifi,
                     typeof(NetworkControlsWidget), "Conformance Wi-Fi"),
                 new PackageSpec("spotify", "samples/SpotifyWidget", "Spotify",
-                    WidgetGlyph.Music, typeof(SpotifyWidget), "Conformance Spotify Song"),
+                    WidgetGlyph.Music, typeof(SpotifySampleWidget), "Conformance Spotify Song"),
                 };
             if (includeEvidencePackages)
             {
@@ -3875,8 +3878,11 @@ file sealed class Deployment : IDisposable
                     Path.Combine(bundleRoot, "manifest.json"));
                 File.Copy(Path.Combine(projectRoot, "styles", "default.gbss"),
                     Path.Combine(bundleRoot, "styles", "default.gbss"));
+                var assembly = manifest.Entrypoint?.Assembly ??
+                    throw new InvalidOperationException(
+                        $"{manifest.Id} does not declare a managed-worker assembly.");
                 File.Copy(spec.WidgetType.Assembly.Location,
-                    Path.Combine(bundleRoot, manifest.Entrypoint.Assembly.Replace('/', Path.DirectorySeparatorChar)));
+                    Path.Combine(bundleRoot, assembly.Replace('/', Path.DirectorySeparatorChar)));
                 if (spec.WidgetType == typeof(FullApplicationWidget))
                 {
                     var outputDirectory = Path.GetDirectoryName(spec.WidgetType.Assembly.Location)

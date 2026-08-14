@@ -6,6 +6,39 @@ This repository contains working native and managed components. It is not yet
 a production overlay, signed public-distribution trust boundary, end-user
 installer, or marketplace.
 
+DLV-221 replaces the production hand-written Flex and Responsive Grid geometry
+solver with pinned Taffy 0.12.2 while retaining the original native overlay,
+renderer, Widget SDK/protocol, process model, scrolling/clipping, DPI snapping,
+motion, focus, controller routing, UI Automation, and single-HWND placement.
+The repository-owned Rust static library is built for x64 MSVC with Rust 1.97.1
+and `cargo --locked`; its checked-in versioned C ABI carries only bounded POD
+styles/tree data, one synchronous intrinsic-measurement callback, error codes,
+and bulk layout results. Panics are contained as errors, C++ and Rust assert the
+same ABI record sizes, and no allocator, string, Rust type, input owner, or
+widget identity crosses the seam. The superseded production solver and any
+dual-runtime path are removed.
+
+Focused Release evidence passes 5 Rust bridge tests, 250 linked layout checks,
+4,839 renderer checks, 589 shared-component geometry checks, 107 controller-
+navigation checks, 17 controller-owner checks, 49 focus checks, 24 surface-focus
+checks, 2,086 slider checks, 485 accessibility checks across the tree,
+projection, provider, host, and real-HWND/UIA layers, and the real single-HWND
+eight-identity widget-switch cycle. That cycle committed all eight complete
+surfaces with maximum draw/commit/coordinated-geometry times of 2.904/1.688/
+1.930 ms and zero shell-motion commit time. Three bounded churn samples pass
+with 0.772 ms maximum projection p95, 0% hidden/visible-idle CPU, and 1.35 MiB
+maximum private working set. The isolated production hidden-state observation
+records zero timer, Guide-fallback, paint, and D2D-frame work; the complete
+three-process tree used 132.1 MiB working set. The Release host is 2,164,224
+bytes and the intermediate Rust static archive is 4,184,950 bytes.
+
+The older auth-free standalone exporter and visible performance fixture have
+baseline gaps unrelated to layout: the exporter still assumes Spotify's
+retired managed AppContainer entrypoint after its full-application cutover, and
+the performance fixture cannot establish a visible lifecycle for any current
+widget. DLV-221 does not weaken or mislabel those routes. Physical controller
+and display validation remains a separate user-owned ship gate.
+
 DLV-131 adds a launcher-only `LauncherExperienceCatalog` without changing global
 `ThemeCatalog` semantics. Its strict schema accepts only the eight documented
 host-owned launcher slots, bounded region/grid/stack/overlay/inset recipes,

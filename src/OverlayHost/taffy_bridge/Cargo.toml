@@ -1,0 +1,17 @@
+[package]
+name = "gba-taffy-layout"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+taffy = { version = "=0.12.2", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "content_size"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "debuginfo"

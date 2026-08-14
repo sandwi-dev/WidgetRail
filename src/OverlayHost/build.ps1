@@ -7,6 +7,8 @@ param(
     [switch]$SkipTests,
     [switch]$SkipPackaging,
     [switch]$SemanticChurnTestsOnly,
+    [switch]$DeclarativeLayoutTestsOnly,
+    [switch]$DeclarativeRendererTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
     [switch]$PinnedPlacementTestsOnly,
     [switch]$ProcessOwnerTestsOnly,
@@ -91,6 +93,35 @@ if (-not (Test-Path -LiteralPath (Join-Path $sdkBin 'mt.exe'))) {
 $env:PATH = "$sdkBin;$compilerBin;$env:PATH"
 
 $outputDirectory = Join-Path $projectDirectory "out\$Configuration"
+$cargo = Get-Command cargo -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+if (-not $cargo) {
+    $cargoCandidate = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
+    if (Test-Path -LiteralPath $cargoCandidate) { $cargo = $cargoCandidate }
+}
+if (-not $cargo) {
+    throw 'Rust Cargo was not found. Install the pinned toolchain declared by taffy_bridge\rust-toolchain.toml.'
+}
+$taffyManifest = Join-Path $projectDirectory 'taffy_bridge\Cargo.toml'
+$taffyTargetDirectory = Join-Path $outputDirectory 'cargo'
+$taffyProfile = if ($Configuration -eq 'Release') { 'release' } else { 'debug' }
+$taffyArguments = @(
+    'build', '--locked', '--manifest-path', $taffyManifest,
+    '--target', 'x86_64-pc-windows-msvc')
+if ($Configuration -eq 'Release') { $taffyArguments += '--release' }
+$previousCargoTargetDirectory = $env:CARGO_TARGET_DIR
+try {
+    $env:CARGO_TARGET_DIR = $taffyTargetDirectory
+    & $cargo $taffyArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Pinned Taffy static-library build failed with exit code $LASTEXITCODE."
+    }
+} finally {
+    $env:CARGO_TARGET_DIR = $previousCargoTargetDirectory
+}
+$taffyLibrary = Join-Path $taffyTargetDirectory "x86_64-pc-windows-msvc\$taffyProfile\gba_taffy_layout.lib"
+if (-not (Test-Path -LiteralPath $taffyLibrary)) {
+    throw "Pinned Taffy static library was not produced at '$taffyLibrary'."
+}
 $platformDirectory = [System.IO.Path]::GetFullPath(
     (Join-Path $projectDirectory '..\OverlayPlatformInterop'))
 $platformTestDirectory = [System.IO.Path]::GetFullPath(
@@ -152,6 +183,8 @@ $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refre
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $launcherExperienceBridgeFixtureOutput = Join-Path $outputDirectory 'obj\launcher-experience-bridge-fixture'
 New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $advancedPresentationHostTestObjectDirectory, $advancedPresentationCommunityFixtureOutput, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $launcherExperienceBridgeFixtureOutput | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
+    -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -167,7 +200,11 @@ $libraryArguments = @(
     "/LIBPATH:$gameInputPackage\native\lib\$Architecture",
     "/LIBPATH:$($vcTools.FullName)\lib\$Architecture",
     "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\ucrt\$Architecture",
-    "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\um\$Architecture"
+    "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\um\$Architecture",
+    $taffyLibrary,
+    'ntdll.lib',
+    'userenv.lib',
+    'ws2_32.lib'
 )
 $common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
     $optimization + $includeArguments
@@ -309,6 +346,51 @@ function Invoke-SemanticChurnPerformanceTests {
     & (Join-Path $outputDirectory 'SemanticChurnPerformanceTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "SemanticChurnPerformanceTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-DeclarativeLayoutTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'DeclarativeLayoutTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        "/Fo:$layoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeLayoutTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeLayoutTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeLayoutTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeLayoutTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-DeclarativeRendererTests {
+    $arguments = $common + @(
+        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
+        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
+        "/Fo:$rendererTestObjectDirectory\",
+        "/Fe:$outputDirectory\DeclarativeRendererTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'DeclarativeRendererTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -900,6 +982,22 @@ if ($SemanticChurnTestsOnly) {
         throw 'SemanticChurnTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-SemanticChurnPerformanceTests
+    return
+}
+
+if ($DeclarativeLayoutTestsOnly) {
+    if ($SkipTests) {
+        throw 'DeclarativeLayoutTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-DeclarativeLayoutTests
+    return
+}
+
+if ($DeclarativeRendererTestsOnly) {
+    if ($SkipTests) {
+        throw 'DeclarativeRendererTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-DeclarativeRendererTests
     return
 }
 

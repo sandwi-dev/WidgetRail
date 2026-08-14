@@ -43,7 +43,13 @@ void Near(
     const float expected,
     const std::string_view message,
     const float tolerance = 0.01F) {
-    Check(std::abs(actual - expected) <= tolerance, message);
+    ++checks;
+    if (std::abs(actual - expected) > tolerance) {
+        std::cerr << "FAIL: " << message << " (actual=" << actual
+                  << ", expected=" << expected
+                  << ", tolerance=" << tolerance << ")\n";
+        std::exit(EXIT_FAILURE);
+    }
 }
 
 WidgetNode Node(const wchar_t* id, const wchar_t* kind) {
@@ -1062,8 +1068,11 @@ void TranslatedFocusConvergesInsideScrollViewport() {
     const auto result = renderer.Render(
         nullptr, snapshot, L"translated.focus",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
-    Check(result.scrollOffsets.at(L"scroll") > 40.0F,
-          "focus follow accounts for presentation translation, not only static layout");
+    if (result.scrollOffsets.at(L"scroll") <= 40.0F) {
+        std::cerr << "FAIL: focus follow accounts for presentation translation, not only static layout"
+                  << " (scrollOffset=" << result.scrollOffsets.at(L"scroll") << ")\n";
+        std::exit(EXIT_FAILURE);
+    }
     const auto visible = result.focusRects.at(L"translated.focus");
     Check(visible.y >= -0.01F && visible.y + visible.height <= 80.01F,
           "translated focused control converges inside its scroll viewport");
@@ -1702,9 +1711,22 @@ void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
         Check(setupResult.elementRects.at(L"spotify.setup-title").height >=
                   20.0F * scenario.textScale,
               "Spotify setup title retains its complete intrinsic line height");
-        Check(setupResult.elementRects.at(L"spotify.setup-step-2").height >
-                  20.0F * scenario.textScale,
-              "Spotify setup step retains its wrapped intrinsic height");
+        const auto setupStepHeight =
+            setupResult.elementRects.at(L"spotify.setup-step-2").height;
+        if (setupStepHeight <= 20.0F * scenario.textScale) {
+            std::cerr << "FAIL: Spotify setup step retains its wrapped intrinsic height"
+                      << " (width=" << scenario.width
+                      << ", textScale=" << scenario.textScale
+                      << ", height=" << setupStepHeight
+                      << ", stepWidth="
+                      << setupResult.elementRects.at(L"spotify.setup-step-2").width
+                      << ", cardWidth="
+                      << setupResult.elementRects.at(L"spotify.setup-card").width
+                      << ", rootWidth="
+                      << setupResult.elementRects.at(L"spotify.setup-root").width
+                      << ")\n";
+            std::exit(EXIT_FAILURE);
+        }
         Check(setupResult.elementRects.at(L"spotify.setup-command").height >
                   28.0F * scenario.textScale,
               "Spotify setup command retains wrapped text plus padding");

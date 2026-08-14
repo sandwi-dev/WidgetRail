@@ -1,4 +1,5 @@
 #include "DeclarativeLayout.h"
+#include "TaffyLayoutBridge.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,34 +29,15 @@ struct Edges {
     float left{};
 };
 
-struct MeasuredNode {
-    Size size;
-};
-
-struct FlexItem {
-    const LayoutElement* element{};
-    Edges margin;
-    float main{};
-    float minimumMain{};
-    float maximumMain{kMaximumCoordinate};
-    float grow{};
-    float shrink{};
-};
-
-struct FlexLine {
-    std::size_t begin{};
-    std::size_t end{};
-    float margins{};
-    float cross{};
-};
-
-struct GridMetrics {
-    std::size_t columns{};
-    float columnWidth{};
-    float contentHeight{};
-    std::vector<float> rowHeights;
-    std::vector<float> childHeights;
-    std::vector<Edges> childMargins;
+struct RawBox {
+    Rect border;
+    Rect content;
+    Rect descendants;
+    bool hasDescendants{};
+    bool overflowX{};
+    bool overflowY{};
+    float maximumScrollOffset{};
+    float admittedScrollOffset{};
 };
 
 [[nodiscard]] float ClampFinite(
@@ -108,53 +90,93 @@ public:
     Engine(
         const IntrinsicMeasureCallback& measureIntrinsic,
         LayoutOptions options,
-        Rect viewport)
+        const Rect viewport)
         : measureIntrinsic_(measureIntrinsic),
           options_(options),
           viewport_(SanitizeViewport(viewport)) {
         if (!std::isfinite(options_.pixelScale) ||
             options_.pixelScale < 0.25F ||
             options_.pixelScale > 8.0F) {
-            AddIssue({}, "invalid_pixel_scale", "Pixel scale was replaced with 1.", LayoutIssueSeverity::Warning);
+            AddIssue({}, "invalid_pixel_scale", "Pixel scale was replaced with 1.",
+                LayoutIssueSeverity::Warning);
             options_.pixelScale = 1.0F;
         }
-        options_.compactWidth = ClampFinite(options_.compactWidth, 960.0F, 1.0F, kMaximumCoordinate);
-        options_.compactHeight = ClampFinite(options_.compactHeight, 540.0F, 1.0F, kMaximumCoordinate);
+        options_.compactWidth = ClampFinite(
+            options_.compactWidth, 960.0F, 1.0F, kMaximumCoordinate);
+        options_.compactHeight = ClampFinite(
+            options_.compactHeight, 540.0F, 1.0F, kMaximumCoordinate);
         const auto responsiveWidth = options_.responsiveViewport
-            ? ClampFinite(options_.responsiveViewport->width, viewport_.width, 0.0F, kMaximumCoordinate)
+            ? ClampFinite(options_.responsiveViewport->width, viewport_.width,
+                0.0F, kMaximumCoordinate)
             : viewport_.width;
         const auto responsiveHeight = options_.responsiveViewport
-            ? ClampFinite(options_.responsiveViewport->height, viewport_.height, 0.0F, kMaximumCoordinate)
+            ? ClampFinite(options_.responsiveViewport->height, viewport_.height,
+                0.0F, kMaximumCoordinate)
             : viewport_.height;
-        result_.compactMode =
-            responsiveWidth < options_.compactWidth || responsiveHeight < options_.compactHeight;
+        result_.compactMode = responsiveWidth < options_.compactWidth ||
+            responsiveHeight < options_.compactHeight;
     }
 
     [[nodiscard]] LayoutResult Run(const LayoutElement& root) {
         std::set<std::string, std::less<>> ids;
-        std::size_t nodes = 0;
-        Preflight(root, 1, ids, nodes);
+        std::size_t nodeCount{};
+        Preflight(root, 1, ids, nodeCount);
         if (!result_.valid()) return std::move(result_);
+        if (gba_taffy_abi_version() != GBA_TAFFY_ABI_VERSION) {
+            AddIssue({}, "taffy_abi_mismatch",
+                "The native host and Taffy static library use different ABI versions.",
+                LayoutIssueSeverity::Error);
+            return std::move(result_);
+        }
 
         const auto rootMargin = ResolveSpacing(root.margin, root.id, true);
-        Rect available{
-            viewport_.x + rootMargin.left,
-            viewport_.y + rootMargin.top,
-            std::max(0.0F, viewport_.width - Horizontal(rootMargin)),
-            std::max(0.0F, viewport_.height - Vertical(rootMargin)),
+        const auto availableWidth = std::max(0.0F,
+            viewport_.width - Horizontal(rootMargin));
+        const auto availableHeight = std::max(0.0F,
+            viewport_.height - Vertical(rootMargin));
+        const auto rootIndex = Flatten(
+            root, std::nullopt, ScrollAxis::None, availableWidth);
+        auto& rootInput = inputs_[rootIndex];
+        if (options_.fillAutoRoot && !root.width)
+            rootInput.width = Present(availableWidth);
+        else if (rootInput.width.present)
+            rootInput.width.value = std::min(rootInput.width.value, availableWidth);
+        if (options_.fillAutoRoot && !root.height)
+            rootInput.height = Present(availableHeight);
+        else if (rootInput.height.present)
+            rootInput.height.value = std::min(rootInput.height.value, availableHeight);
+
+        outputs_.resize(inputs_.size());
+        const auto compute = [&]() {
+            return gba_taffy_compute(
+                inputs_.data(), inputs_.size(), childIndices_.data(),
+                childIndices_.size(), rootIndex, availableWidth, availableHeight,
+                &MeasureThunk, this, outputs_.data(), outputs_.size());
         };
-        const auto measured = Measure(root, available.width, available.height);
-        auto rootWidth = root.width.has_value()
-            ? ResolveOptional(root.width, root.id, "width", 0.0F, kMaximumCoordinate).value_or(0.0F)
-            : (options_.fillAutoRoot ? available.width : measured.size.width);
-        auto rootHeight = root.height.has_value()
-            ? ResolveOptional(root.height, root.id, "height", 0.0F, kMaximumCoordinate).value_or(0.0F)
-            : (options_.fillAutoRoot ? available.height : measured.size.height);
-        ApplyAspectRatio(root, rootWidth, rootHeight, root.width.has_value(), root.height.has_value());
-        ClampDimensions(root, rootWidth, rootHeight);
-        rootWidth = std::min(rootWidth, available.width);
-        rootHeight = std::min(rootHeight, available.height);
-        (void)LayoutNode(root, {available.x, available.y, rootWidth, rootHeight}, viewport_);
+        auto status = compute();
+        if (status == GBA_TAFFY_OK && !options_.fillAutoRoot && !root.width &&
+            root.layoutMode != LayoutMode::ResponsiveGrid) {
+            const auto& first = outputs_[rootIndex];
+            const auto shrinkWidth = std::clamp(
+                first.contentWidth + first.padding.left + first.padding.right,
+                0.0F, availableWidth);
+            if (shrinkWidth > kEpsilon &&
+                shrinkWidth < first.width - kEpsilon) {
+                rootInput.width = Present(shrinkWidth);
+                status = compute();
+            }
+        }
+        if (status != GBA_TAFFY_OK) {
+            AddIssue(root.id, "taffy_layout_failed",
+                "Taffy rejected or failed the validated semantic layout tree (code " +
+                    std::to_string(status) + ").",
+                LayoutIssueSeverity::Error);
+            return std::move(result_);
+        }
+
+        raw_.resize(inputs_.size());
+        (void)BuildRaw(rootIndex, viewport_.x, viewport_.y);
+        Publish(rootIndex, 0.0F, 0.0F, viewport_);
         return std::move(result_);
     }
 
@@ -169,7 +191,9 @@ private:
         if (!std::isfinite(value.x) || !std::isfinite(value.y) ||
             !std::isfinite(value.width) || !std::isfinite(value.height) ||
             value.width < 0.0F || value.height < 0.0F) {
-            AddIssue({}, "invalid_viewport", "Non-finite or negative viewport values were safely clamped.", LayoutIssueSeverity::Warning);
+            AddIssue({}, "invalid_viewport",
+                "Non-finite or negative viewport values were safely clamped.",
+                LayoutIssueSeverity::Warning);
         }
         return result;
     }
@@ -180,18 +204,25 @@ private:
         std::set<std::string, std::less<>>& ids,
         std::size_t& nodes) {
         if (++nodes > kMaximumNodes) {
-            if (nodes == kMaximumNodes + 1)
-                AddIssue(element.id, "tree_too_large", "Layout tree exceeds 4096 elements.", LayoutIssueSeverity::Error);
+            if (nodes == kMaximumNodes + 1) {
+                AddIssue(element.id, "tree_too_large",
+                    "Layout tree exceeds 4096 elements.",
+                    LayoutIssueSeverity::Error);
+            }
             return;
         }
         if (depth > kMaximumDepth) {
-            AddIssue(element.id, "tree_too_deep", "Layout tree exceeds 64 levels.", LayoutIssueSeverity::Error);
+            AddIssue(element.id, "tree_too_deep",
+                "Layout tree exceeds 64 levels.", LayoutIssueSeverity::Error);
             return;
         }
         if (element.id.empty() || element.id.size() > 128) {
-            AddIssue(element.id, "invalid_id", "Every layout element requires a 1-128 byte stable ID.", LayoutIssueSeverity::Error);
+            AddIssue(element.id, "invalid_id",
+                "Every layout element requires a 1-128 byte stable ID.",
+                LayoutIssueSeverity::Error);
         } else if (!ids.insert(element.id).second) {
-            AddIssue(element.id, "duplicate_id", "Layout element IDs must be unique.", LayoutIssueSeverity::Error);
+            AddIssue(element.id, "duplicate_id",
+                "Layout element IDs must be unique.", LayoutIssueSeverity::Error);
         }
         if ((element.scrollAxis == ScrollAxis::Vertical &&
              element.direction != LayoutDirection::Column) ||
@@ -209,7 +240,7 @@ private:
                 LayoutIssueSeverity::Error);
         }
         if (element.layoutMode == LayoutMode::ResponsiveGrid) {
-            if (!element.gridMinimumColumnWidth.has_value() ||
+            if (!element.gridMinimumColumnWidth ||
                 !std::isfinite(*element.gridMinimumColumnWidth) ||
                 *element.gridMinimumColumnWidth < kMinimumGridColumnWidth ||
                 *element.gridMinimumColumnWidth > kMaximumGridColumnWidth) {
@@ -217,7 +248,7 @@ private:
                     "Responsive grid minimum column width must be finite and between 44 and 1600 DIPs.",
                     LayoutIssueSeverity::Error);
             }
-            if (element.gridMaximumColumns.has_value() &&
+            if (element.gridMaximumColumns &&
                 (*element.gridMaximumColumns < 1 ||
                  *element.gridMaximumColumns > kMaximumGridColumns)) {
                 AddIssue(element.id, "invalid_grid_maximum_columns",
@@ -231,838 +262,312 @@ private:
                     LayoutIssueSeverity::Error);
             }
         } else if (element.layoutMode != LayoutMode::Flex ||
-                   element.gridMinimumColumnWidth.has_value() ||
-                   element.gridMaximumColumns.has_value()) {
+                   element.gridMinimumColumnWidth ||
+                   element.gridMaximumColumns) {
             AddIssue(element.id, "grid_property_not_allowed",
                 "Grid column properties require responsive-grid layout mode.",
                 LayoutIssueSeverity::Error);
         }
-        for (const auto& child : element.children) Preflight(child, depth + 1, ids, nodes);
+        for (const auto& child : element.children)
+            Preflight(child, depth + 1, ids, nodes);
     }
 
-    [[nodiscard]] MeasuredNode Measure(
-        const LayoutElement& element,
-        const float maximumWidth,
-        const float maximumHeight) {
-        const auto padding = ResolveSpacing(element.padding, element.id, false);
-        const auto innerMaximumWidth = std::max(0.0F, maximumWidth - Horizontal(padding));
-        const auto innerMaximumHeight = std::max(0.0F, maximumHeight - Vertical(padding));
-        float width = 0.0F;
-        float height = 0.0F;
+    [[nodiscard]] static GbaTaffyOptionalFloat Present(const float value) noexcept {
+        return {1U, value};
+    }
 
-        if (element.layoutMode == LayoutMode::ResponsiveGrid) {
-            const auto metrics = MeasureGrid(
-                element, innerMaximumWidth, innerMaximumHeight);
-            width = (element.children.empty() ? 0.0F : innerMaximumWidth) +
-                Horizontal(padding);
-            height = metrics.contentHeight + Vertical(padding);
-        } else if (element.children.empty()) {
-            Size intrinsic{};
-            if (measureIntrinsic_) {
-                // Intrinsic height depends on the width the leaf will actually
-                // receive. In particular, text measured against the parent
-                // width and only afterwards clamped by its own max-width is
-                // measured as one line but painted into a narrower, wrapped
-                // box. Preserve the parent's available constraint while
-                // applying authored outer width constraints before asking the
-                // renderer for line metrics. Padding is outside that intrinsic
-                // content width.
-                auto intrinsicOuterWidth = maximumWidth;
-                if (const auto explicitWidth = ResolveOptional(
-                        element.width, element.id, "width", 0.0F, kMaximumCoordinate)) {
-                    intrinsicOuterWidth = std::min(intrinsicOuterWidth, *explicitWidth);
-                }
-                if (const auto maximumElementWidth = ResolveOptional(
-                        element.maxWidth, element.id, "maxWidth", 0.0F, kMaximumCoordinate)) {
-                    intrinsicOuterWidth = std::min(intrinsicOuterWidth, *maximumElementWidth);
-                }
-                const auto intrinsicMaximumWidth = std::max(
-                    0.0F, intrinsicOuterWidth - Horizontal(padding));
-                intrinsic = measureIntrinsic_(element, {
-                    intrinsicMaximumWidth,
-                    innerMaximumHeight,
-                    result_.compactMode,
-                });
-                const auto cleanWidth = ClampFinite(intrinsic.width, 0.0F, 0.0F, kMaximumCoordinate);
-                const auto cleanHeight = ClampFinite(intrinsic.height, 0.0F, 0.0F, kMaximumCoordinate);
-                if (cleanWidth != intrinsic.width || cleanHeight != intrinsic.height) {
-                    AddIssue(element.id, "invalid_intrinsic_size",
-                        "Intrinsic measurement returned non-finite, negative, or excessive geometry.",
-                        LayoutIssueSeverity::Warning);
-                }
-                intrinsic = {cleanWidth, cleanHeight};
-            }
-            width = intrinsic.width + Horizontal(padding);
-            height = intrinsic.height + Vertical(padding);
-        } else if (element.direction == LayoutDirection::Row &&
-                   element.wrap == WrapBehavior::Wrap) {
-            const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
-            const auto crossGap = ResolveNumber(
-                element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
-            std::vector<FlexItem> items;
-            items.reserve(element.children.size());
-            for (const auto& child : element.children) {
-                const auto childMargin = ResolveSpacing(child.margin, child.id, true);
-                const auto childMeasured = Measure(child, innerMaximumWidth, innerMaximumHeight).size;
-                const auto basis = ResolveOptional(
-                    child.flexBasis, child.id, "flexBasis", 0.0F, kMaximumCoordinate);
-                const auto explicitWidth = ResolveOptional(
-                    child.width, child.id, "width", 0.0F, kMaximumCoordinate);
-                const auto preferred = basis.value_or(explicitWidth.value_or(childMeasured.width));
-                auto minimum = ResolveOptional(
-                    child.minWidth, child.id, "minWidth", 0.0F, kMaximumCoordinate).value_or(0.0F);
-                auto maximum = ResolveOptional(
-                    child.maxWidth, child.id, "maxWidth", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
-                if (maximum < minimum) {
-                    AddIssue(child.id, "inverted_constraints",
-                        "Maximum size was raised to the minimum size.",
-                        LayoutIssueSeverity::Warning);
-                    maximum = minimum;
-                }
-                items.push_back({
-                    &child,
-                    childMargin,
-                    std::clamp(preferred, minimum, maximum),
-                    minimum,
-                    maximum,
-                    ResolveNumber(child.flexGrow, child.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F),
-                    ResolveNumber(child.flexShrink, child.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F),
-                });
-            }
-            auto lines = BuildWrappedLines(items, innerMaximumWidth, gap);
-            float largestMain{};
-            float totalCross{};
-            for (auto& line : lines) {
-                const auto lineCount = line.end - line.begin;
-                const auto lineGaps = lineCount > 1
-                    ? gap * static_cast<float>(lineCount - 1)
-                    : 0.0F;
-                DistributeFlex(items,
-                    std::max(0.0F, innerMaximumWidth - line.margins - lineGaps),
-                    line.begin, line.end);
-                float lineMain = line.margins + lineGaps;
-                for (auto index = line.begin; index < line.end; ++index) {
-                    lineMain += items[index].main;
-                    line.cross = std::max(line.cross,
-                        ResolveRowCrossSize(items[index], innerMaximumHeight) +
-                        Vertical(items[index].margin));
-                }
-                largestMain = std::max(largestMain, lineMain);
-                totalCross += line.cross;
-            }
-            if (lines.size() > 1)
-                totalCross += crossGap * static_cast<float>(lines.size() - 1);
-            width = largestMain + Horizontal(padding);
-            height = totalCross + Vertical(padding);
-        } else if (element.direction == LayoutDirection::Row) {
-            const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
-            std::vector<FlexItem> items;
-            items.reserve(element.children.size());
-            float margins{};
-            for (const auto& child : element.children) {
-                const auto childMargin = ResolveSpacing(child.margin, child.id, true);
-                const auto childMeasured = Measure(
-                    child, innerMaximumWidth, innerMaximumHeight).size;
-                const auto basis = ResolveOptional(
-                    child.flexBasis, child.id, "flexBasis", 0.0F, kMaximumCoordinate);
-                const auto explicitWidth = ResolveOptional(
-                    child.width, child.id, "width", 0.0F, kMaximumCoordinate);
-                const auto preferred = basis.value_or(
-                    explicitWidth.value_or(childMeasured.width));
-                auto minimum = ResolveOptional(
-                    child.minWidth, child.id, "minWidth", 0.0F, kMaximumCoordinate)
-                    .value_or(0.0F);
-                auto maximum = ResolveOptional(
-                    child.maxWidth, child.id, "maxWidth", 0.0F, kMaximumCoordinate)
-                    .value_or(kMaximumCoordinate);
-                if (maximum < minimum) {
-                    AddIssue(child.id, "inverted_constraints",
-                        "Maximum size was raised to the minimum size.",
-                        LayoutIssueSeverity::Warning);
-                    maximum = minimum;
-                }
-                items.push_back({
-                    &child,
-                    childMargin,
-                    std::clamp(preferred, minimum, maximum),
-                    minimum,
-                    maximum,
-                    ResolveNumber(
-                        child.flexGrow, child.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F),
-                    ResolveNumber(
-                        child.flexShrink, child.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F),
-                });
-                margins += Horizontal(childMargin);
-            }
-            const auto totalGap = items.size() > 1
-                ? gap * static_cast<float>(items.size() - 1)
-                : 0.0F;
-            const auto naturalMain = [&] {
-                float value = margins + totalGap;
-                for (const auto& item : items) value += item.main;
-                return value;
-            }();
-            // Horizontal flex changes the width used to measure wrapped text.
-            // Compute the row's cross size from those final flex widths rather
-            // than the pre-flex one-line estimates, while retaining the row's
-            // existing intrinsic main-size contract.
-            DistributeFlex(items, std::max(0.0F,
-                innerMaximumWidth - margins - totalGap));
-            float largestCross = 0.0F;
-            for (const auto& item : items) {
-                largestCross = std::max(
-                    largestCross,
-                    ResolveRowCrossSize(item, innerMaximumHeight) + Vertical(item.margin));
-            }
-            width = naturalMain + Horizontal(padding);
-            height = largestCross + Vertical(padding);
-        } else {
-            const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
-            float totalMain = 0.0F;
-            float largestCross = 0.0F;
-            for (const auto& child : element.children) {
-                const auto childMargin = ResolveSpacing(child.margin, child.id, true);
-                const auto childMeasured = Measure(
-                    child, innerMaximumWidth, innerMaximumHeight).size;
-                totalMain += childMeasured.height + Vertical(childMargin);
-                largestCross = std::max(
-                    largestCross, childMeasured.width + Horizontal(childMargin));
-            }
-            if (element.children.size() > 1)
-                totalMain += gap * static_cast<float>(element.children.size() - 1);
-            width = largestCross + Horizontal(padding);
-            height = totalMain + Vertical(padding);
+    [[nodiscard]] GbaTaffyOptionalFloat ResolveOptionalForBridge(
+        const std::optional<float> value,
+        const std::string_view id,
+        const std::string_view name,
+        const float minimum,
+        const float maximum) {
+        if (!value) return {};
+        return Present(ResolveNumber(*value, id, name, minimum, maximum, minimum));
+    }
+
+    [[nodiscard]] static GbaTaffyEdges ToBridge(const Edges value) noexcept {
+        return {value.top, value.right, value.bottom, value.left};
+    }
+
+    [[nodiscard]] std::uint32_t Flatten(
+        const LayoutElement& element,
+        const std::optional<LayoutDirection> parentDirection,
+        const ScrollAxis parentScrollAxis,
+        const float inheritedMaximumWidth) {
+        const auto index = static_cast<std::uint32_t>(inputs_.size());
+        elements_.push_back(&element);
+        inputs_.emplace_back();
+        const auto resolvedPadding = ResolveSpacing(
+            element.padding, element.id, false);
+        auto ownMaximumWidth = inheritedMaximumWidth;
+        if (element.width)
+            ownMaximumWidth = std::min(ownMaximumWidth, ClampFinite(
+                *element.width, 0.0F, 0.0F, kMaximumCoordinate));
+        if (element.maxWidth)
+            ownMaximumWidth = std::min(ownMaximumWidth, ClampFinite(
+                *element.maxWidth, 0.0F, 0.0F, kMaximumCoordinate));
+        const auto contentMaximumWidth = std::max(
+            0.0F, ownMaximumWidth - Horizontal(resolvedPadding));
+        measurementMaximumWidths_.push_back(contentMaximumWidth);
+        std::vector<std::uint32_t> directChildren;
+        directChildren.reserve(element.children.size());
+        for (const auto& child : element.children)
+            directChildren.push_back(Flatten(
+                child, element.direction, element.scrollAxis,
+                contentMaximumWidth));
+
+        auto& input = inputs_[index];
+        input.childStart = static_cast<std::uint32_t>(childIndices_.size());
+        input.childCount = static_cast<std::uint32_t>(directChildren.size());
+        childIndices_.insert(
+            childIndices_.end(), directChildren.begin(), directChildren.end());
+        input.layoutMode = element.layoutMode == LayoutMode::ResponsiveGrid
+            ? GBA_TAFFY_GRID : GBA_TAFFY_FLEX;
+        input.direction = element.direction == LayoutDirection::Row
+            ? GBA_TAFFY_ROW : GBA_TAFFY_COLUMN;
+        input.wrap = element.wrap == WrapBehavior::Wrap
+            ? GBA_TAFFY_WRAP : GBA_TAFFY_NO_WRAP;
+        input.mainAlignment = static_cast<std::uint32_t>(element.mainAxisAlignment);
+        input.crossAlignment = static_cast<std::uint32_t>(element.crossAxisAlignment);
+        input.overflow = (element.overflow == OverflowBehavior::Clip ||
+                          element.scrollAxis != ScrollAxis::None)
+            ? GBA_TAFFY_OVERFLOW_CLIP : GBA_TAFFY_OVERFLOW_VISIBLE;
+        input.width = ResolveOptionalForBridge(
+            element.width, element.id, "width", 0.0F, kMaximumCoordinate);
+        input.height = ResolveOptionalForBridge(
+            element.height, element.id, "height", 0.0F, kMaximumCoordinate);
+        input.minWidth = ResolveOptionalForBridge(
+            element.minWidth, element.id, "minWidth", 0.0F, kMaximumCoordinate);
+        input.minHeight = ResolveOptionalForBridge(
+            element.minHeight, element.id, "minHeight", 0.0F, kMaximumCoordinate);
+        // The established native contract uses zero as the unauthored flex/grid
+        // minimum. CSS "auto" minimums would let max-content text force cards
+        // wider than their admitted widget viewport.
+        if (!input.minWidth.present) input.minWidth = Present(0.0F);
+        input.maxWidth = ResolveOptionalForBridge(
+            element.maxWidth, element.id, "maxWidth", 0.0F, kMaximumCoordinate);
+        input.maxWidth = Present(ownMaximumWidth);
+        input.maxHeight = ResolveOptionalForBridge(
+            element.maxHeight, element.id, "maxHeight", 0.0F, kMaximumCoordinate);
+        input.flexBasis = ResolveOptionalForBridge(
+            element.flexBasis, element.id, "flexBasis", 0.0F, kMaximumCoordinate);
+        input.aspectRatio = ResolveOptionalForBridge(
+            element.aspectRatio, element.id, "aspectRatio", kMinimumRatio, kMaximumRatio);
+        // Taffy applies aspect ratio from an authored main size, while the
+        // existing contract allows flex-basis to supply that main size. Mirror
+        // the typed basis into size only for this generic aspect-ratio case;
+        // flexbox still owns final distribution.
+        if (input.aspectRatio.present && input.flexBasis.present && parentDirection) {
+            if (*parentDirection == LayoutDirection::Row && !input.width.present)
+                input.width = input.flexBasis;
+            else if (*parentDirection == LayoutDirection::Column && !input.height.present)
+                input.height = input.flexBasis;
         }
-
-        const auto explicitWidth = ResolveOptional(element.width, element.id, "width", 0.0F, kMaximumCoordinate);
-        const auto explicitHeight = ResolveOptional(element.height, element.id, "height", 0.0F, kMaximumCoordinate);
-        if (explicitWidth) width = *explicitWidth;
-        if (explicitHeight) height = *explicitHeight;
-        ApplyAspectRatio(element, width, height, explicitWidth.has_value(), explicitHeight.has_value());
-        ClampDimensions(element, width, height);
-        return {{width, height}};
-    }
-
-    [[nodiscard]] std::size_t ResolveGridColumnCount(
-        const LayoutElement& element,
-        const float availableWidth,
-        const float columnGap) {
-        if (element.children.empty()) return 0;
-        const auto minimumColumnWidth = ResolveOptional(
-            element.gridMinimumColumnWidth,
-            element.id,
-            "gridMinimumColumnWidth",
-            kMinimumGridColumnWidth,
-            kMaximumGridColumnWidth).value_or(kMinimumGridColumnWidth);
-        const auto denominator = minimumColumnWidth + columnGap;
-        const auto fit = denominator > kEpsilon
-            ? static_cast<std::size_t>(std::max(
-                1.0F,
-                std::floor((availableWidth + columnGap + kEpsilon) / denominator)))
-            : std::size_t{1};
-        const auto authoredMaximum = element.gridMaximumColumns.value_or(kMaximumGridColumns);
-        return std::max<std::size_t>(1, std::min({
-            fit,
-            authoredMaximum,
-            kMaximumGridColumns,
-            element.children.size(),
-        }));
-    }
-
-    [[nodiscard]] GridMetrics MeasureGrid(
-        const LayoutElement& element,
-        const float availableWidth,
-        const float availableHeight) {
-        GridMetrics metrics;
-        if (element.children.empty()) return metrics;
-
-        const auto columnGap = ResolveNumber(
+        input.padding = ToBridge(resolvedPadding);
+        input.margin = ToBridge(ResolveSpacing(element.margin, element.id, true));
+        const auto mainGap = ResolveNumber(
             element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
-        const auto rowGap = ResolveNumber(
-            element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
-        metrics.columns = ResolveGridColumnCount(element, availableWidth, columnGap);
-        const auto totalColumnGap = metrics.columns > 1
-            ? columnGap * static_cast<float>(metrics.columns - 1)
-            : 0.0F;
-        metrics.columnWidth = std::max(
-            0.0F, availableWidth - totalColumnGap) /
-            static_cast<float>(metrics.columns);
-        const auto rowCount =
-            (element.children.size() + metrics.columns - 1) / metrics.columns;
-        metrics.rowHeights.assign(rowCount, 0.0F);
-        metrics.childHeights.reserve(element.children.size());
-        metrics.childMargins.reserve(element.children.size());
-
-        for (std::size_t index = 0; index < element.children.size(); ++index) {
-            const auto& child = element.children[index];
-            const auto margin = ResolveSpacing(child.margin, child.id, true);
-            const auto childWidth = std::max(
-                0.0F, metrics.columnWidth - Horizontal(margin));
-            const auto measured = Measure(child, childWidth, availableHeight).size;
-            auto childHeight = measured.height;
-            if (child.aspectRatio.has_value() && !child.height.has_value()) {
-                const auto ratio = ResolveOptional(
-                    child.aspectRatio,
-                    child.id,
-                    "aspectRatio",
-                    kMinimumRatio,
-                    kMaximumRatio).value_or(1.0F);
-                childHeight = childWidth / ratio;
-            }
-            auto minimum = ResolveOptional(
-                child.minHeight, child.id, "minHeight", 0.0F, kMaximumCoordinate)
-                .value_or(0.0F);
-            auto maximum = ResolveOptional(
-                child.maxHeight, child.id, "maxHeight", 0.0F, kMaximumCoordinate)
-                .value_or(kMaximumCoordinate);
-            if (maximum < minimum) {
-                AddIssue(child.id, "inverted_constraints",
-                    "Maximum size was raised to the minimum size.",
-                    LayoutIssueSeverity::Warning);
-                maximum = minimum;
-            }
-            childHeight = std::clamp(childHeight, minimum, maximum);
-            metrics.childHeights.push_back(childHeight);
-            metrics.childMargins.push_back(margin);
-            const auto row = index / metrics.columns;
-            metrics.rowHeights[row] = std::max(
-                metrics.rowHeights[row], childHeight + Vertical(margin));
-        }
-
-        for (const auto rowHeight : metrics.rowHeights)
-            metrics.contentHeight += rowHeight;
-        if (metrics.rowHeights.size() > 1)
-            metrics.contentHeight +=
-                rowGap * static_cast<float>(metrics.rowHeights.size() - 1);
-        return metrics;
-    }
-
-    [[nodiscard]] std::vector<FlexLine> BuildWrappedLines(
-        const std::vector<FlexItem>& items,
-        const float availableMain,
-        const float gap) const {
-        std::vector<FlexLine> lines;
-        if (items.empty()) return lines;
-
-        std::size_t lineBegin{};
-        float occupied{};
-        float margins{};
-        for (std::size_t index = 0; index < items.size(); ++index) {
-            const auto outer = items[index].main + Horizontal(items[index].margin);
-            const auto proposed = occupied + (index > lineBegin ? gap : 0.0F) + outer;
-            if (index > lineBegin && proposed > availableMain + kEpsilon) {
-                lines.push_back({lineBegin, index, margins, 0.0F});
-                lineBegin = index;
-                occupied = outer;
-                margins = Horizontal(items[index].margin);
-            } else {
-                occupied = proposed;
-                margins += Horizontal(items[index].margin);
-            }
-        }
-        lines.push_back({lineBegin, items.size(), margins, 0.0F});
-        return lines;
-    }
-
-    [[nodiscard]] float ResolveRowCrossSize(
-        const FlexItem& item,
-        const float availableCross) {
-        const auto& child = *item.element;
-        const auto remeasured = Measure(child, item.main, availableCross).size;
-        auto cross = remeasured.height;
-        if (child.aspectRatio.has_value() && !child.height.has_value()) {
-            const auto ratio = ResolveOptional(
-                child.aspectRatio, child.id, "aspectRatio", kMinimumRatio, kMaximumRatio)
-                .value_or(1.0F);
-            cross = item.main / ratio;
-        }
-        auto minimum = ResolveOptional(
-            child.minHeight, child.id, "minHeight", 0.0F, kMaximumCoordinate).value_or(0.0F);
-        auto maximum = ResolveOptional(
-            child.maxHeight, child.id, "maxHeight", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
-        if (maximum < minimum) maximum = minimum;
-        cross = std::clamp(cross, minimum, maximum);
-        return std::min(cross,
-            std::max(minimum, availableCross - Vertical(item.margin)));
-    }
-
-    [[nodiscard]] Rect LayoutNode(
-        const LayoutElement& element,
-        Rect assigned,
-        const Rect ancestorClip) {
-        assigned = SnapRect(SanitizeRect(assigned));
-        const auto padding = ResolveSpacing(element.padding, element.id, false);
-        Rect content{
-            assigned.x + padding.left,
-            assigned.y + padding.top,
-            std::max(0.0F, assigned.width - Horizontal(padding)),
-            std::max(0.0F, assigned.height - Vertical(padding)),
-        };
-        content = SnapRect(content);
-        LayoutBox box{
-            assigned,
-            content,
-            Intersect(ancestorClip, assigned),
-            false,
-            false,
-            !Contains(ancestorClip, assigned),
-            element.scrollAxis,
-            0.0F,
-            0.0F,
-        };
-        result_.boxes[element.id] = box;
-        if (element.children.empty()) return assigned;
-
-        if (element.layoutMode == LayoutMode::ResponsiveGrid)
-            return LayoutGrid(element, assigned, content, ancestorClip, box);
-
-        const auto gap = ResolveNumber(element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
-        const auto row = element.direction == LayoutDirection::Row;
-        const auto scrollsMainAxis =
-            (row && element.scrollAxis == ScrollAxis::Horizontal) ||
-            (!row && element.scrollAxis == ScrollAxis::Vertical);
-        const auto availableMain = row ? content.width : content.height;
-        const auto availableCross = row ? content.height : content.width;
-        std::vector<FlexItem> items;
-        items.reserve(element.children.size());
-        float margins = 0.0F;
-
-        for (const auto& child : element.children) {
-            const auto margin = ResolveSpacing(child.margin, child.id, true);
-            // A responsive grid is viewport-relative even when nested inside
-            // a horizontal scroller. Giving it the scroller's unbounded
-            // content constraint would manufacture a million-DIP grid and a
-            // bogus scroll extent instead of reflowing its columns.
-            const auto childMaximumWidth =
-                element.scrollAxis == ScrollAxis::Horizontal &&
-                    child.layoutMode != LayoutMode::ResponsiveGrid
-                ? kMaximumCoordinate
-                : content.width;
-            const auto measured = Measure(
-                child,
-                childMaximumWidth,
-                element.scrollAxis == ScrollAxis::Vertical
-                    ? kMaximumCoordinate : content.height).size;
-            const auto explicitMain = row ? child.width : child.height;
-            const auto basis = ResolveOptional(child.flexBasis, child.id, "flexBasis", 0.0F, kMaximumCoordinate);
-            const auto preferred = basis.value_or(
-                explicitMain.has_value()
-                    ? ResolveOptional(explicitMain, child.id, row ? "width" : "height", 0.0F, kMaximumCoordinate).value_or(0.0F)
-                    : (row ? measured.width : measured.height));
-            auto minimum = ResolveOptional(row ? child.minWidth : child.minHeight, child.id,
-                row ? "minWidth" : "minHeight", 0.0F, kMaximumCoordinate).value_or(0.0F);
-            auto maximum = ResolveOptional(row ? child.maxWidth : child.maxHeight, child.id,
-                row ? "maxWidth" : "maxHeight", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
-            if (maximum < minimum) {
-                AddIssue(child.id, "inverted_constraints", "Maximum size was raised to the minimum size.", LayoutIssueSeverity::Warning);
-                maximum = minimum;
-            }
-            const auto grow = ResolveNumber(child.flexGrow, child.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F);
-            const auto shrink = ResolveNumber(child.flexShrink, child.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F);
-            // An auto-height intrinsic leaf (text, button, icon, image, and
-            // other renderer-measured content) must not be flexed below the
-            // height it was measured to paint. Doing so assigns DirectWrite a
-            // shorter box than its wrapped line metrics and collapses
-            // controller controls below their interaction contract. An
-            // authored min-height is still only a lower bound (44 DIPs is a
-            // common controller target); it is not permission to discard a
-            // taller wrapped label plus padding. Authors can opt into a fixed,
-            // potentially clipped box with an explicit height or flex-basis.
-            // Keep row widths shrinkable so text can reflow responsively
-            // instead of imposing a CSS-like min-content width on every label.
-            if (!row && child.children.empty() && !child.height.has_value() &&
-                !child.flexBasis.has_value()) {
-                minimum = std::max(minimum, std::min(measured.height, maximum));
-            }
-            const auto main = std::clamp(preferred, minimum, maximum);
-            items.push_back({&child, margin, main, minimum, maximum, grow, shrink});
-            margins += row ? Horizontal(margin) : Vertical(margin);
-        }
-
-        if (row && element.wrap == WrapBehavior::Wrap) {
-            return LayoutWrappedRow(
-                element, assigned, content, ancestorClip, box,
-                items, gap, availableMain, availableCross);
-        }
-
-        const auto totalGap =
-            items.size() > 1 ? gap * static_cast<float>(items.size() - 1) : 0.0F;
-        auto targetForItems = std::max(0.0F, availableMain - margins - totalGap);
-        if (scrollsMainAxis) {
-            float naturalMain{};
-            for (const auto& item : items) naturalMain += item.main;
-            targetForItems = std::max(targetForItems, naturalMain);
-        }
-        DistributeFlex(items, targetForItems);
-
-        const auto childClip = element.overflow == OverflowBehavior::Clip ||
-                element.scrollAxis != ScrollAxis::None
-            ? Intersect(ancestorClip, content)
-            : ancestorClip;
-        float occupiedMain = margins + totalGap;
-        for (const auto& item : items) occupiedMain += item.main;
-        if (scrollsMainAxis) {
-            box.maximumScrollOffset = std::max(0.0F, occupiedMain - availableMain);
-            box.scrollOffset = ResolveNumber(
-                element.scrollOffset,
-                element.id,
-                "scrollOffset",
-                0.0F,
-                box.maximumScrollOffset,
-                0.0F);
-        }
-        const float remainingMain = std::max(0.0F, availableMain - occupiedMain);
-        float leadingMain = 0.0F;
-        float distributedGap = gap;
-        switch (element.mainAxisAlignment) {
-        case MainAxisAlignment::Center:
-            leadingMain = remainingMain * 0.5F;
-            break;
-        case MainAxisAlignment::End:
-            leadingMain = remainingMain;
-            break;
-        case MainAxisAlignment::SpaceBetween:
-            if (items.size() > 1)
-                distributedGap += remainingMain / static_cast<float>(items.size() - 1);
-            break;
-        case MainAxisAlignment::SpaceAround:
-            if (!items.empty()) {
-                const float share = remainingMain / static_cast<float>(items.size());
-                leadingMain = share * 0.5F;
-                distributedGap += share;
-            }
-            break;
-        default:
-            break;
-        }
-        auto cursor = (row ? content.x : content.y) + leadingMain - box.scrollOffset;
-        Rect descendants{};
-        bool haveDescendants = false;
-        for (auto& item : items) {
-            const auto& child = *item.element;
-            const auto beforeMargin = row ? item.margin.left : item.margin.top;
-            const auto afterMargin = row ? item.margin.right : item.margin.bottom;
-            const auto crossBefore = row ? item.margin.top : item.margin.left;
-            const auto crossAfter = row ? item.margin.bottom : item.margin.right;
-            cursor += beforeMargin;
-
-            const auto remeasured = Measure(
-                child,
-                row ? item.main : (element.scrollAxis == ScrollAxis::Horizontal
-                    ? kMaximumCoordinate : availableCross),
-                row ? (element.scrollAxis == ScrollAxis::Vertical
-                    ? kMaximumCoordinate : availableCross) : item.main).size;
-            auto cross = row ? remeasured.height : remeasured.width;
-            const auto explicitCross = row ? child.height : child.width;
-            // Cross-axis alignment belongs to the container. A child's own
-            // `align` value controls its descendants and must not opt that
-            // child out of its parent's stretch behavior.
-            const bool stretch = element.crossAxisAlignment == CrossAxisAlignment::Stretch;
-            if (stretch && !explicitCross.has_value() && !child.aspectRatio.has_value())
-                cross = std::max(0.0F, availableCross - crossBefore - crossAfter);
-            if (child.aspectRatio.has_value() && !explicitCross.has_value()) {
-                const auto ratio = ResolveOptional(child.aspectRatio, child.id, "aspectRatio", kMinimumRatio, kMaximumRatio).value_or(1.0F);
-                cross = row ? item.main / ratio : item.main * ratio;
-            }
-            auto crossMinimum = ResolveOptional(row ? child.minHeight : child.minWidth, child.id,
-                row ? "minHeight" : "minWidth", 0.0F, kMaximumCoordinate).value_or(0.0F);
-            auto crossMaximum = ResolveOptional(row ? child.maxHeight : child.maxWidth, child.id,
-                row ? "maxHeight" : "maxWidth", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
-            if (crossMaximum < crossMinimum) crossMaximum = crossMinimum;
-            cross = std::clamp(cross, crossMinimum, crossMaximum);
-            cross = std::min(cross, std::max(crossMinimum, availableCross - crossBefore - crossAfter));
-
-            const float crossRoom = std::max(0.0F,
-                availableCross - crossBefore - crossAfter - cross);
-            float crossOffset = crossBefore;
-            if (element.crossAxisAlignment == CrossAxisAlignment::Center)
-                crossOffset += crossRoom * 0.5F;
-            else if (element.crossAxisAlignment == CrossAxisAlignment::End)
-                crossOffset += crossRoom;
-            Rect childRect = row
-                ? Rect{cursor, content.y + crossOffset, item.main, cross}
-                : Rect{content.x + crossOffset, cursor, cross, item.main};
-            const auto childBounds = LayoutNode(child, childRect, childClip);
-            descendants = haveDescendants ? Union(descendants, childBounds) : childBounds;
-            haveDescendants = true;
-            cursor += item.main + afterMargin + distributedGap;
-        }
-
-        if (haveDescendants) {
-            box.overflowX = descendants.x < content.x - kEpsilon ||
-                descendants.x + descendants.width > content.x + content.width + kEpsilon;
-            box.overflowY = descendants.y < content.y - kEpsilon ||
-                descendants.y + descendants.height > content.y + content.height + kEpsilon;
-            if (element.scrollAxis == ScrollAxis::Horizontal)
-                box.overflowX = box.maximumScrollOffset > kEpsilon;
-            else if (element.scrollAxis == ScrollAxis::Vertical)
-                box.overflowY = box.maximumScrollOffset > kEpsilon;
-            result_.boxes[element.id] = box;
-            return Union(assigned, descendants);
-        }
-        return assigned;
-    }
-
-    [[nodiscard]] Rect LayoutGrid(
-        const LayoutElement& element,
-        const Rect assigned,
-        const Rect content,
-        const Rect ancestorClip,
-        LayoutBox box) {
-        const auto columnGap = ResolveNumber(
-            element.gap, element.id, "gap", 0.0F, kMaximumSpacing, 0.0F);
-        const auto rowGap = ResolveNumber(
-            element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
-        const auto metrics = MeasureGrid(element, content.width, content.height);
-        if (metrics.columns == 0) return assigned;
-
-        const auto childClip = element.overflow == OverflowBehavior::Clip
-            ? Intersect(ancestorClip, content)
-            : ancestorClip;
-        auto rowCursor = content.y;
-        Rect descendants{};
-        bool haveDescendants = false;
-        for (std::size_t index = 0; index < element.children.size(); ++index) {
-            const auto& child = element.children[index];
-            const auto row = index / metrics.columns;
-            const auto column = index % metrics.columns;
-            const auto& margin = metrics.childMargins[index];
-            const auto availableChildWidth = std::max(
-                0.0F, metrics.columnWidth - Horizontal(margin));
-            const auto availableChildHeight = std::max(
-                0.0F, metrics.rowHeights[row] - Vertical(margin));
-            auto childHeight = metrics.childHeights[index];
-            if (element.crossAxisAlignment == CrossAxisAlignment::Stretch &&
-                !child.height.has_value() && !child.aspectRatio.has_value()) {
-                childHeight = availableChildHeight;
-            } else {
-                childHeight = std::min(childHeight, availableChildHeight);
-            }
-            const auto remainingCross = std::max(
-                0.0F, availableChildHeight - childHeight);
-            auto crossOffset = margin.top;
-            if (element.crossAxisAlignment == CrossAxisAlignment::Center)
-                crossOffset += remainingCross * 0.5F;
-            else if (element.crossAxisAlignment == CrossAxisAlignment::End)
-                crossOffset += remainingCross;
-
-            const Rect childRect{
-                content.x +
-                    static_cast<float>(column) * (metrics.columnWidth + columnGap) +
-                    margin.left,
-                rowCursor + crossOffset,
-                availableChildWidth,
-                childHeight,
-            };
-            const auto childBounds = LayoutNode(child, childRect, childClip);
-            descendants = haveDescendants ? Union(descendants, childBounds) : childBounds;
-            haveDescendants = true;
-
-            const auto isLastColumn = column + 1 == metrics.columns;
-            const auto isLastChild = index + 1 == element.children.size();
-            if (isLastColumn || isLastChild)
-                rowCursor += metrics.rowHeights[row] + rowGap;
-        }
-
-        if (haveDescendants) {
-            box.overflowX = descendants.x < content.x - kEpsilon ||
-                descendants.x + descendants.width >
-                    content.x + content.width + kEpsilon;
-            box.overflowY = descendants.y < content.y - kEpsilon ||
-                descendants.y + descendants.height >
-                    content.y + content.height + kEpsilon;
-            result_.boxes[element.id] = box;
-            return Union(assigned, descendants);
-        }
-        return assigned;
-    }
-
-    [[nodiscard]] Rect LayoutWrappedRow(
-        const LayoutElement& element,
-        const Rect assigned,
-        const Rect content,
-        const Rect ancestorClip,
-        LayoutBox box,
-        std::vector<FlexItem>& items,
-        const float gap,
-        const float availableMain,
-        const float availableCross) {
         const auto crossGap = ResolveNumber(
             element.crossGap, element.id, "crossGap", 0.0F, kMaximumSpacing, 0.0F);
-        auto lines = BuildWrappedLines(items, availableMain, gap);
-        for (auto& line : lines) {
-            const auto count = line.end - line.begin;
-            const auto lineGaps = count > 1
-                ? gap * static_cast<float>(count - 1)
-                : 0.0F;
-            DistributeFlex(items,
-                std::max(0.0F, availableMain - line.margins - lineGaps),
-                line.begin, line.end);
-            for (auto index = line.begin; index < line.end; ++index) {
-                line.cross = std::max(line.cross,
-                    ResolveRowCrossSize(items[index], availableCross) +
-                    Vertical(items[index].margin));
-            }
+        if (element.layoutMode == LayoutMode::ResponsiveGrid ||
+            element.direction == LayoutDirection::Row) {
+            input.columnGap = mainGap;
+            input.rowGap = crossGap;
+        } else {
+            input.columnGap = crossGap;
+            input.rowGap = mainGap;
         }
-
-        const auto childClip = element.overflow == OverflowBehavior::Clip
-            ? Intersect(ancestorClip, content)
-            : ancestorClip;
-        auto crossCursor = content.y;
-        Rect descendants{};
-        bool haveDescendants = false;
-
-        for (const auto& line : lines) {
-            const auto count = line.end - line.begin;
-            const auto baseGaps = count > 1
-                ? gap * static_cast<float>(count - 1)
-                : 0.0F;
-            float occupiedMain = line.margins + baseGaps;
-            for (auto index = line.begin; index < line.end; ++index)
-                occupiedMain += items[index].main;
-
-            const auto remainingMain = std::max(0.0F, availableMain - occupiedMain);
-            float leadingMain{};
-            float distributedGap = gap;
-            switch (element.mainAxisAlignment) {
-            case MainAxisAlignment::Center:
-                leadingMain = remainingMain * 0.5F;
-                break;
-            case MainAxisAlignment::End:
-                leadingMain = remainingMain;
-                break;
-            case MainAxisAlignment::SpaceBetween:
-                if (count > 1)
-                    distributedGap += remainingMain / static_cast<float>(count - 1);
-                break;
-            case MainAxisAlignment::SpaceAround:
-                if (count > 0) {
-                    const auto share = remainingMain / static_cast<float>(count);
-                    leadingMain = share * 0.5F;
-                    distributedGap += share;
-                }
-                break;
-            default:
-                break;
-            }
-
-            auto mainCursor = content.x + leadingMain;
-            for (auto index = line.begin; index < line.end; ++index) {
-                auto& item = items[index];
-                const auto& child = *item.element;
-                mainCursor += item.margin.left;
-                auto cross = ResolveRowCrossSize(item, availableCross);
-                const bool stretch =
-                    element.crossAxisAlignment == CrossAxisAlignment::Stretch;
-                if (stretch && !child.height.has_value() &&
-                    !child.aspectRatio.has_value()) {
-                    cross = std::max(0.0F,
-                        line.cross - item.margin.top - item.margin.bottom);
-                }
-                const auto crossRoom = std::max(0.0F,
-                    line.cross - item.margin.top - item.margin.bottom - cross);
-                auto crossOffset = item.margin.top;
-                if (element.crossAxisAlignment == CrossAxisAlignment::Center)
-                    crossOffset += crossRoom * 0.5F;
-                else if (element.crossAxisAlignment == CrossAxisAlignment::End)
-                    crossOffset += crossRoom;
-
-                const Rect childRect{
-                    mainCursor,
-                    crossCursor + crossOffset,
-                    item.main,
-                    cross,
-                };
-                const auto childBounds = LayoutNode(child, childRect, childClip);
-                descendants = haveDescendants ? Union(descendants, childBounds) : childBounds;
-                haveDescendants = true;
-                mainCursor += item.main + item.margin.right + distributedGap;
-            }
-            crossCursor += line.cross + crossGap;
+        input.flexGrow = ResolveNumber(
+            element.flexGrow, element.id, "flexGrow", 0.0F, kMaximumFlex, 0.0F);
+        input.flexShrink = ResolveNumber(
+            element.flexShrink, element.id, "flexShrink", 0.0F, kMaximumFlex, 1.0F);
+        if (parentScrollAxis != ScrollAxis::None) {
+            // Scroll content retains its authored/measured main extent; the
+            // host scrolls overflow rather than asking flexbox to compress it
+            // back into the viewport.
+            input.flexShrink = 0.0F;
         }
-
-        if (haveDescendants) {
-            box.overflowX = descendants.x < content.x - kEpsilon ||
-                descendants.x + descendants.width > content.x + content.width + kEpsilon;
-            box.overflowY = descendants.y < content.y - kEpsilon ||
-                descendants.y + descendants.height > content.y + content.height + kEpsilon;
-            result_.boxes[element.id] = box;
-            return Union(assigned, descendants);
+        if (parentDirection == LayoutDirection::Column &&
+            element.children.empty() && measureIntrinsic_ &&
+            !element.height && !element.flexBasis) {
+            // Vertical text/control content must scroll or clip rather than be
+            // compressed below its measured paint/control height. Horizontal
+            // text remains shrinkable so it can reflow at its final width.
+            input.flexShrink = 0.0F;
         }
-        return assigned;
+        input.gridMinimumColumnWidth = element.gridMinimumColumnWidth.value_or(0.0F);
+        input.gridMaximumColumns = static_cast<std::uint32_t>(
+            element.gridMaximumColumns.value_or(kMaximumGridColumns));
+        input.stretchCrossAxis = element.stretchCrossAxis ? 1U : 0U;
+        if (element.layoutMode == LayoutMode::ResponsiveGrid &&
+            parentScrollAxis == ScrollAxis::Horizontal &&
+            !element.width) {
+            input.flexGrow = std::max(1.0F, input.flexGrow);
+            input.flexShrink = 0.0F;
+        }
+        return index;
     }
 
-    void DistributeFlex(std::vector<FlexItem>& items, const float target) {
-        DistributeFlex(items, target, 0, items.size());
+    [[nodiscard]] static GbaTaffyMeasuredSize MeasureThunk(
+        void* context,
+        const std::uint32_t nodeIndex,
+        const GbaTaffyMeasureInput input) noexcept {
+        return static_cast<Engine*>(context)->Measure(nodeIndex, input);
     }
 
-    void DistributeFlex(
-        std::vector<FlexItem>& items,
-        const float target,
-        const std::size_t begin,
-        const std::size_t end) {
-        for (int pass = 0; pass < 16; ++pass) {
-            float used = 0.0F;
-            for (auto index = begin; index < end; ++index) used += items[index].main;
-            const auto free = target - used;
-            if (std::abs(free) <= kEpsilon) break;
-
-            float weight = 0.0F;
-            for (auto index = begin; index < end; ++index) {
-                const auto& item = items[index];
-                if (free > 0.0F && item.grow > 0.0F && item.main < item.maximumMain - kEpsilon)
-                    weight += item.grow;
-                else if (free < 0.0F && item.shrink > 0.0F && item.main > item.minimumMain + kEpsilon)
-                    weight += item.shrink * std::max(item.main, 1.0F);
+    [[nodiscard]] GbaTaffyMeasuredSize Measure(
+        const std::uint32_t nodeIndex,
+        const GbaTaffyMeasureInput input) noexcept {
+        if (nodeIndex >= elements_.size()) return {};
+        const auto& element = *elements_[nodeIndex];
+        if (!element.children.empty() || !measureIntrinsic_) return {};
+        const auto maximumWidth = input.knownWidth.present
+            ? input.knownWidth.value
+            : (input.availableWidthMode == GBA_TAFFY_AVAILABLE_DEFINITE
+                ? input.availableWidth : measurementMaximumWidths_[nodeIndex]);
+        const auto maximumHeight =
+            (input.knownHeight.present && element.height)
+            ? input.knownHeight.value
+            : (input.availableHeightMode == GBA_TAFFY_AVAILABLE_DEFINITE
+                ? input.availableHeight : kMaximumCoordinate);
+        try {
+            const auto measured = measureIntrinsic_(element, {
+                std::max(0.0F, maximumWidth),
+                std::max(0.0F, maximumHeight),
+                result_.compactMode,
+            });
+            const auto width = input.knownWidth.present
+                ? input.knownWidth.value
+                : ClampFinite(measured.width, 0.0F, 0.0F, kMaximumCoordinate);
+            const auto cleanMeasuredHeight = ClampFinite(
+                measured.height, 0.0F, 0.0F, kMaximumCoordinate);
+            const auto height = input.knownHeight.present
+                ? (element.height
+                    ? input.knownHeight.value
+                    : std::max(input.knownHeight.value, cleanMeasuredHeight))
+                : cleanMeasuredHeight;
+            if ((!input.knownWidth.present && width != measured.width) ||
+                (!input.knownHeight.present && height != measured.height)) {
+                AddIssue(element.id, "invalid_intrinsic_size",
+                    "Intrinsic measurement returned non-finite, negative, or excessive geometry.",
+                    LayoutIssueSeverity::Warning);
             }
-            if (weight <= kEpsilon) break;
-
-            bool clampedAny = false;
-            for (auto index = begin; index < end; ++index) {
-                auto& item = items[index];
-                const auto itemWeight = free > 0.0F
-                    ? (item.main < item.maximumMain - kEpsilon ? item.grow : 0.0F)
-                    : (item.main > item.minimumMain + kEpsilon
-                        ? item.shrink * std::max(item.main, 1.0F)
-                        : 0.0F);
-                if (itemWeight <= 0.0F) continue;
-                const auto proposed = item.main + free * (itemWeight / weight);
-                const auto bounded = std::clamp(proposed, item.minimumMain, item.maximumMain);
-                clampedAny |= std::abs(proposed - bounded) > kEpsilon;
-                item.main = bounded;
-            }
-            if (!clampedAny) break;
+            return {width, height};
+        } catch (...) {
+            AddIssue(element.id, "intrinsic_measure_failed",
+                "Intrinsic measurement failed and was replaced with an empty size.",
+                LayoutIssueSeverity::Warning);
+            return {};
         }
     }
 
-    void ApplyAspectRatio(
-        const LayoutElement& element,
-        float& width,
-        float& height,
-        const bool widthExplicit,
-        const bool heightExplicit) {
-        const auto ratio = ResolveOptional(
-            element.aspectRatio,
-            element.id,
-            "aspectRatio",
-            kMinimumRatio,
-            kMaximumRatio);
-        if (!ratio) return;
-        if (widthExplicit && !heightExplicit) height = width / *ratio;
-        else if (heightExplicit && !widthExplicit) width = height * *ratio;
-        else if (!heightExplicit && width > 0.0F) height = width / *ratio;
-        else if (!widthExplicit && height > 0.0F) width = height * *ratio;
+    [[nodiscard]] Rect BuildRaw(
+        const std::uint32_t index,
+        const float parentX,
+        const float parentY) {
+        const auto& output = outputs_[index];
+        auto& raw = raw_[index];
+        raw.border = {
+            parentX + output.x,
+            parentY + output.y,
+            std::max(0.0F, output.width),
+            std::max(0.0F, output.height),
+        };
+        raw.content = {
+            raw.border.x + output.padding.left,
+            raw.border.y + output.padding.top,
+            std::max(0.0F, raw.border.width - output.padding.left - output.padding.right),
+            std::max(0.0F, raw.border.height - output.padding.top - output.padding.bottom),
+        };
+
+        const auto& input = inputs_[index];
+        for (std::uint32_t offset = 0; offset < input.childCount; ++offset) {
+            const auto childIndex = childIndices_[input.childStart + offset];
+            const auto childBounds = BuildRaw(
+                childIndex, raw.border.x, raw.border.y);
+            raw.descendants = raw.hasDescendants
+                ? Union(raw.descendants, childBounds) : childBounds;
+            raw.hasDescendants = true;
+        }
+
+        const auto& element = *elements_[index];
+        auto contentRight = raw.content.x + std::max(
+            raw.content.width, output.contentWidth);
+        auto contentBottom = raw.content.y + std::max(
+            raw.content.height, output.contentHeight);
+        if (raw.hasDescendants) {
+            contentRight = std::max(
+                contentRight, raw.descendants.x + raw.descendants.width);
+            contentBottom = std::max(
+                contentBottom, raw.descendants.y + raw.descendants.height);
+        }
+        raw.overflowX = contentRight > raw.content.x + raw.content.width + kEpsilon ||
+            (raw.hasDescendants && raw.descendants.x < raw.content.x - kEpsilon);
+        raw.overflowY = contentBottom > raw.content.y + raw.content.height + kEpsilon ||
+            (raw.hasDescendants && raw.descendants.y < raw.content.y - kEpsilon);
+        if (element.scrollAxis == ScrollAxis::Horizontal) {
+            raw.maximumScrollOffset = std::max(
+                0.0F, contentRight - (raw.content.x + raw.content.width));
+        } else if (element.scrollAxis == ScrollAxis::Vertical) {
+            raw.maximumScrollOffset = std::max(
+                0.0F, contentBottom - (raw.content.y + raw.content.height));
+        }
+        raw.admittedScrollOffset = std::clamp(
+            ResolveNumber(element.scrollOffset, element.id, "scrollOffset",
+                0.0F, kMaximumCoordinate, 0.0F),
+            0.0F, raw.maximumScrollOffset);
+        return raw.hasDescendants ? Union(raw.border, raw.descendants) : raw.border;
     }
 
-    void ClampDimensions(const LayoutElement& element, float& width, float& height) {
-        auto minWidth = ResolveOptional(element.minWidth, element.id, "minWidth", 0.0F, kMaximumCoordinate).value_or(0.0F);
-        auto minHeight = ResolveOptional(element.minHeight, element.id, "minHeight", 0.0F, kMaximumCoordinate).value_or(0.0F);
-        auto maxWidth = ResolveOptional(element.maxWidth, element.id, "maxWidth", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
-        auto maxHeight = ResolveOptional(element.maxHeight, element.id, "maxHeight", 0.0F, kMaximumCoordinate).value_or(kMaximumCoordinate);
-        if (maxWidth < minWidth) maxWidth = minWidth;
-        if (maxHeight < minHeight) maxHeight = minHeight;
-        width = std::clamp(ClampFinite(width, 0.0F, 0.0F, kMaximumCoordinate), minWidth, maxWidth);
-        height = std::clamp(ClampFinite(height, 0.0F, 0.0F, kMaximumCoordinate), minHeight, maxHeight);
+    void Publish(
+        const std::uint32_t index,
+        const float translatedX,
+        const float translatedY,
+        const Rect ancestorClip) {
+        const auto& element = *elements_[index];
+        const auto& raw = raw_[index];
+        const Rect border{
+            raw.border.x - translatedX,
+            raw.border.y - translatedY,
+            raw.border.width,
+            raw.border.height,
+        };
+        const Rect content{
+            raw.content.x - translatedX,
+            raw.content.y - translatedY,
+            raw.content.width,
+            raw.content.height,
+        };
+        LayoutBox box;
+        box.borderBox = SnapRect(border);
+        box.contentBox = SnapRect(content);
+        box.visibleBox = SnapRect(Intersect(border, ancestorClip));
+        box.clippedByAncestor = !Contains(ancestorClip, border);
+        box.overflowX = raw.overflowX;
+        box.overflowY = raw.overflowY;
+        box.scrollAxis = element.scrollAxis;
+        box.scrollOffset = raw.admittedScrollOffset;
+        box.maximumScrollOffset = raw.maximumScrollOffset;
+        result_.boxes[element.id] = box;
+
+        auto childClip = ancestorClip;
+        if (element.overflow == OverflowBehavior::Clip ||
+            element.scrollAxis != ScrollAxis::None) {
+            childClip = Intersect(ancestorClip, content);
+        }
+        auto childTranslatedX = translatedX;
+        auto childTranslatedY = translatedY;
+        if (element.scrollAxis == ScrollAxis::Horizontal)
+            childTranslatedX += raw.admittedScrollOffset;
+        else if (element.scrollAxis == ScrollAxis::Vertical)
+            childTranslatedY += raw.admittedScrollOffset;
+
+        const auto& input = inputs_[index];
+        for (std::uint32_t offset = 0; offset < input.childCount; ++offset) {
+            Publish(childIndices_[input.childStart + offset],
+                childTranslatedX, childTranslatedY, childClip);
+        }
     }
 
     [[nodiscard]] Edges ResolveSpacing(
@@ -1070,15 +575,17 @@ private:
         const std::string_view id,
         const bool allowNegative) {
         if (spacing.count > 4) {
-            AddIssue(id, "invalid_spacing", "Spacing count was outside 0-4 and was ignored.", LayoutIssueSeverity::Warning);
+            AddIssue(id, "invalid_spacing",
+                "Spacing count was outside 0-4 and was ignored.",
+                LayoutIssueSeverity::Warning);
             return {};
         }
         const auto minimum = allowNegative ? -kMaximumSpacing : 0.0F;
         std::array<float, 4> clean{};
         for (std::size_t index = 0; index < spacing.count; ++index) {
-            clean[index] = ResolveNumber(
-                spacing.values[index], id, allowNegative ? "margin" : "padding",
-                minimum, kMaximumSpacing, 0.0F);
+            clean[index] = ResolveNumber(spacing.values[index], id,
+                allowNegative ? "margin" : "padding", minimum,
+                kMaximumSpacing, 0.0F);
         }
         switch (spacing.count) {
         case 0: return {};
@@ -1087,16 +594,6 @@ private:
         case 3: return {clean[0], clean[1], clean[2], clean[1]};
         default: return {clean[0], clean[1], clean[2], clean[3]};
         }
-    }
-
-    [[nodiscard]] std::optional<float> ResolveOptional(
-        const std::optional<float> value,
-        const std::string_view id,
-        const std::string_view name,
-        const float minimum,
-        const float maximum) {
-        if (!value) return std::nullopt;
-        return ResolveNumber(*value, id, name, minimum, maximum, minimum);
     }
 
     [[nodiscard]] float ResolveNumber(
@@ -1109,19 +606,11 @@ private:
         const auto result = ClampFinite(value, fallback, minimum, maximum);
         if (!std::isfinite(value) || result != value) {
             AddIssue(id, "value_clamped",
-                std::string{name} + " was non-finite or outside its safe range.",
+                std::string{name} +
+                    " was non-finite or outside its safe range.",
                 LayoutIssueSeverity::Warning);
         }
         return result;
-    }
-
-    [[nodiscard]] Rect SanitizeRect(const Rect value) {
-        return {
-            ClampFinite(value.x, 0.0F, -kMaximumCoordinate, kMaximumCoordinate),
-            ClampFinite(value.y, 0.0F, -kMaximumCoordinate, kMaximumCoordinate),
-            ClampFinite(value.width, 0.0F, 0.0F, kMaximumCoordinate),
-            ClampFinite(value.height, 0.0F, 0.0F, kMaximumCoordinate),
-        };
     }
 
     [[nodiscard]] float Snap(const float value) const noexcept {
@@ -1133,7 +622,8 @@ private:
         const auto top = Snap(value.y);
         const auto right = Snap(value.x + value.width);
         const auto bottom = Snap(value.y + value.height);
-        return {left, top, std::max(0.0F, right - left), std::max(0.0F, bottom - top)};
+        return {left, top, std::max(0.0F, right - left),
+            std::max(0.0F, bottom - top)};
     }
 
     void AddIssue(
@@ -1141,14 +631,11 @@ private:
         const std::string_view code,
         const std::string_view message,
         const LayoutIssueSeverity severity) {
-        const auto key = std::string{id} + "\n" + std::string{code} + "\n" + std::string{message};
+        const auto key = std::string{id} + "\n" + std::string{code} +
+            "\n" + std::string{message};
         if (!issueKeys_.insert(key).second) return;
-        result_.issues.push_back({
-            severity,
-            std::string{id},
-            std::string{code},
-            std::string{message},
-        });
+        result_.issues.push_back({severity, std::string{id},
+            std::string{code}, std::string{message}});
     }
 
     const IntrinsicMeasureCallback& measureIntrinsic_;
@@ -1156,6 +643,12 @@ private:
     LayoutResult result_;
     std::set<std::string, std::less<>> issueKeys_;
     Rect viewport_;
+    std::vector<const LayoutElement*> elements_;
+    std::vector<float> measurementMaximumWidths_;
+    std::vector<GbaTaffyNodeInput> inputs_;
+    std::vector<std::uint32_t> childIndices_;
+    std::vector<GbaTaffyNodeOutput> outputs_;
+    std::vector<RawBox> raw_;
 };
 
 } // namespace
@@ -1164,7 +657,8 @@ BoxSpacing BoxSpacing::One(const float all) noexcept {
     return {{all, 0.0F, 0.0F, 0.0F}, 1};
 }
 
-BoxSpacing BoxSpacing::Two(const float vertical, const float horizontal) noexcept {
+BoxSpacing BoxSpacing::Two(
+    const float vertical, const float horizontal) noexcept {
     return {{vertical, horizontal, 0.0F, 0.0F}, 2};
 }
 
@@ -1184,12 +678,14 @@ BoxSpacing BoxSpacing::Four(
 }
 
 bool LayoutResult::valid() const noexcept {
-    return std::none_of(issues.begin(), issues.end(), [](const LayoutIssue& issue) {
-        return issue.severity == LayoutIssueSeverity::Error;
-    });
+    return std::none_of(issues.begin(), issues.end(),
+        [](const LayoutIssue& issue) {
+            return issue.severity == LayoutIssueSeverity::Error;
+        });
 }
 
-const LayoutBox* LayoutResult::Find(const std::string_view stableId) const noexcept {
+const LayoutBox* LayoutResult::Find(
+    const std::string_view stableId) const noexcept {
     const auto found = boxes.find(stableId);
     return found == boxes.end() ? nullptr : &found->second;
 }

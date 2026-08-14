@@ -10,6 +10,14 @@ Build and run tests from PowerShell:
 .\build.ps1 -Configuration Debug
 ```
 
+The native build requires the pinned stable MSVC Rust toolchain declared in
+`taffy_bridge/rust-toolchain.toml`. `build.ps1` and CMake invoke Cargo with the
+checked-in lockfile and statically link Taffy; packaged binaries do not require
+Rust at runtime. `DeclarativeLayout` retains validation, native DirectWrite
+measurement, scrolling, clipping, DPI snapping, focus, controller, UIA, and
+rendering ownership while Taffy computes Flexbox and CSS Grid geometry. See
+[`docs/third-party-dependencies.md`](../../docs/third-party-dependencies.md).
+
 Production-HWND fixtures launch with an isolated `--process-profile` and drive
 the same keyboard/controller focus path as the product. In particular, the
 Audio Mixer scroll fixture reveals clipped session targets by navigation before

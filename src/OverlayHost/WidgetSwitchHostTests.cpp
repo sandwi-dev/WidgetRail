@@ -70,6 +70,8 @@ public:
         const fs::path& fixtureWorker) {
         Require(fs::is_regular_file(source / L"OverlayHost.exe"),
                 "--installation does not contain OverlayHost.exe");
+        Require(fs::is_regular_file(source / L"OverlayPlatformInterop.dll"),
+                "--installation does not contain OverlayPlatformInterop.dll");
         Require(fs::is_directory(source / L"runtime"),
                 "--installation does not contain runtime");
         Require(fs::is_regular_file(fixtureWorker),
@@ -91,6 +93,8 @@ public:
         }
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
+        fs::copy_file(source / L"OverlayPlatformInterop.dll",
+                      root_ / L"OverlayPlatformInterop.dll");
         fs::copy(source / L"runtime", root_ / L"runtime",
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";

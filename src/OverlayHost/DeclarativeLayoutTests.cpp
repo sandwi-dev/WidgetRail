@@ -35,7 +35,12 @@ void Check(const bool condition, const std::string_view message) {
 }
 
 void Near(const float actual, const float expected, const std::string_view message) {
-    Check(std::abs(actual - expected) <= 0.01F, message);
+    ++checks;
+    if (std::abs(actual - expected) > 0.01F) {
+        std::cerr << "FAIL: " << message << " (actual=" << actual
+                  << ", expected=" << expected << ")\n";
+        std::exit(EXIT_FAILURE);
+    }
 }
 
 LayoutElement Element(const std::string_view id, const LayoutDirection direction = LayoutDirection::Column) {

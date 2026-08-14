@@ -331,6 +331,24 @@ try {
         "/LIBPATH:$($vcTools.FullName)/lib/x64", "/LIBPATH:$sdkRoot/Lib/$($sdk.Name)/ucrt/x64",
         "/LIBPATH:$sdkRoot/Lib/$($sdk.Name)/um/x64")
     $overlaySource = Join-Path $repoRoot 'src/OverlayHost'
+    $cargo = (Get-Command cargo -ErrorAction SilentlyContinue).Source
+    if (-not $cargo) {
+        $cargoCandidate = Join-Path $env:USERPROFILE '.cargo/bin/cargo.exe'
+        if (Test-Path -LiteralPath $cargoCandidate) { $cargo = $cargoCandidate }
+    }
+    if (-not $cargo) { throw 'Rust Cargo was not found for the pinned Taffy evidence build.' }
+    $taffyManifest = Join-Path $overlaySource 'taffy_bridge/Cargo.toml'
+    $taffyTarget = Join-Path $nativeBuildDirectory 'cargo'
+    $taffyArguments = @('build', '--locked', '--manifest-path', $taffyManifest,
+        '--target', 'x86_64-pc-windows-msvc')
+    if ($Configuration -eq 'Release') { $taffyArguments += '--release' }
+    $taffyEnvironment = @{ CARGO_TARGET_DIR = $taffyTarget }
+    $null = Invoke-BoundedProcess -Stage 'taffy-static-library-build' -FilePath $cargo -TimeoutSeconds 300 -EnvironmentVariables $taffyEnvironment -ArgumentList $taffyArguments
+    $taffyProfile = if ($Configuration -eq 'Release') { 'release' } else { 'debug' }
+    $taffyLibrary = Join-Path $taffyTarget "x86_64-pc-windows-msvc/$taffyProfile/gba_taffy_layout.lib"
+    if (-not (Test-Path -LiteralPath $taffyLibrary)) {
+        throw "Pinned Taffy evidence library was not produced at '$taffyLibrary'."
+    }
     $captureExecutable = Join-Path $nativeBuildDirectory 'OverlayEvidenceCapture.exe'
     $retainedRenderer = Join-Path $toolDirectory 'OverlayEvidenceCapture.exe'
     $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
@@ -344,7 +362,7 @@ try {
         '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING') + $optimization + $includeArguments +
         @($rendererSourceNames | ForEach-Object { Join-Path $overlaySource $_ }) + @(
             "/Fo:$objectDirectory/", "/Fe:$captureExecutable", '/link', '/SUBSYSTEM:CONSOLE') +
-        $libraryArguments + @('d2d1.lib', 'dwrite.lib', 'windowsapp.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib')
+        $libraryArguments + @($taffyLibrary, 'ntdll.lib', 'userenv.lib', 'ws2_32.lib', 'd2d1.lib', 'dwrite.lib', 'windowsapp.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib')
     $null = Invoke-BoundedProcess -Stage 'native-renderer-build' -FilePath $cl -TimeoutSeconds 300 `
         -ArgumentList $compilerArguments
     Copy-Item -LiteralPath $captureExecutable -Destination $retainedRenderer
@@ -386,7 +404,22 @@ try {
         -TimeoutSeconds 20 -Quiet -ArgumentList @('status', '--porcelain=v1', '--untracked-files=all')).StdOut
     $dotnetVersion = (Invoke-BoundedProcess -Stage 'dotnet-version' -FilePath $dotnet `
         -TimeoutSeconds 20 -Quiet -ArgumentList @('--version')).StdOut.Trim()
+    $cargoVersion = (Invoke-BoundedProcess -Stage 'cargo-version' -FilePath $cargo `
+        -TimeoutSeconds 20 -Quiet -ArgumentList @('--version')).StdOut.Trim()
+    $rustc = Join-Path (Split-Path -Parent $cargo) 'rustc.exe'
+    if (-not (Test-Path -LiteralPath $rustc)) { $rustc = (Get-Command rustc -ErrorAction Stop).Source }
+    $rustcVersion = (Invoke-BoundedProcess -Stage 'rustc-version' -FilePath $rustc `
+        -TimeoutSeconds 20 -Quiet -ArgumentList @('--version')).StdOut.Trim()
     $sourceFiles = @($rendererSourceNames | ForEach-Object {
+        $path = Join-Path $overlaySource $_
+        [ordered]@{ path = "src/OverlayHost/$_"; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
+    }) + @(@(
+        'TaffyLayoutBridge.h',
+        'taffy_bridge/Cargo.toml',
+        'taffy_bridge/Cargo.lock',
+        'taffy_bridge/rust-toolchain.toml',
+        'taffy_bridge/src/lib.rs'
+    ) | ForEach-Object {
         $path = Join-Path $overlaySource $_
         [ordered]@{ path = "src/OverlayHost/$_"; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
     }) + @(
@@ -432,6 +465,9 @@ try {
             toolchain = [ordered]@{
                 configuration = $Configuration
                 dotnetSdk = $dotnetVersion
+                cargo = $cargoVersion
+                rustc = $rustcVersion
+                taffy = '0.12.2'
                 msvcToolset = $vcTools.Name
                 msvcCompilerFileVersion = (Get-Item -LiteralPath $cl).VersionInfo.FileVersion
                 windowsSdk = $sdk.Name

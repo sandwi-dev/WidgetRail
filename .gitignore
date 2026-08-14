@@ -4,6 +4,7 @@ out/
 build/
 **/bin/
 **/obj/
+**/target/
 *.user
 *.suo
 *.VC.db

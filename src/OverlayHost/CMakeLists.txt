@@ -10,6 +10,41 @@ endif()
 
 option(GBA_BUILD_TESTS "Build the dependency-free state-machine tests" ON)
 
+set(GBA_TAFFY_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge/Cargo.toml")
+set(GBA_TAFFY_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge/Cargo.lock")
+set(GBA_TAFFY_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo")
+find_program(GBA_CARGO_EXECUTABLE cargo
+    HINTS "$ENV{USERPROFILE}/.cargo/bin"
+    REQUIRED)
+
+add_custom_target(GbaTaffyRust
+    COMMAND "${CMAKE_COMMAND}" -E env
+        "CARGO_TARGET_DIR=${GBA_TAFFY_TARGET_DIR}"
+        "${GBA_CARGO_EXECUTABLE}" build --locked
+        --manifest-path "${GBA_TAFFY_MANIFEST}"
+        --target x86_64-pc-windows-msvc
+        $<$<NOT:$<CONFIG:Debug>>:--release>
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge"
+    COMMENT "Building pinned Taffy static layout library"
+    VERBATIM
+    COMMAND_EXPAND_LISTS)
+
+add_library(GbaTaffyLayout STATIC IMPORTED GLOBAL)
+set_target_properties(GbaTaffyLayout PROPERTIES
+    IMPORTED_LOCATION_DEBUG
+        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/debug/gba_taffy_layout.lib"
+    IMPORTED_LOCATION_RELEASE
+        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/gba_taffy_layout.lib"
+    IMPORTED_LOCATION_RELWITHDEBINFO
+        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/gba_taffy_layout.lib"
+    IMPORTED_LOCATION_MINSIZEREL
+        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/gba_taffy_layout.lib")
+
+function(gba_link_taffy target_name)
+    add_dependencies(${target_name} GbaTaffyRust)
+    target_link_libraries(${target_name} PRIVATE GbaTaffyLayout ntdll userenv ws2_32)
+endfunction()
+
 # Widget labels and controller guides intentionally contain non-ASCII source
 # text. Apply UTF-8 to every native target so CMake and the canonical build.ps1
 # path compile identical literals (including test executables).
@@ -90,6 +125,7 @@ target_link_libraries(OverlayHost PRIVATE
     uiautomationcore
     advapi32
 )
+gba_link_taffy(OverlayHost)
 
 if(GBA_BUILD_TESTS)
     enable_testing()
@@ -130,6 +166,7 @@ if(GBA_BUILD_TESTS)
     add_executable(DeclarativeLayoutTests DeclarativeLayoutTests.cpp DeclarativeLayout.cpp)
     target_compile_features(DeclarativeLayoutTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeLayoutTests PRIVATE /W4 /permissive- /EHsc)
+    gba_link_taffy(DeclarativeLayoutTests)
     add_test(NAME DeclarativeLayoutTests COMMAND DeclarativeLayoutTests)
 
     add_executable(NativeIconsTests NativeIconsTests.cpp NativeIcons.cpp)
@@ -191,6 +228,7 @@ if(GBA_BUILD_TESTS)
     target_link_libraries(WidgetSurfaceCoordinatorTests PRIVATE
         user32 gdi32 d2d1 dwrite shcore winhttp windowscodecs psapi
         ole32 oleaut32 uiautomationcore)
+    gba_link_taffy(WidgetSurfaceCoordinatorTests)
     add_test(NAME WidgetSurfaceCoordinatorTests COMMAND WidgetSurfaceCoordinatorTests)
 
     add_executable(PinnedSurfacePlacementTests
@@ -335,6 +373,7 @@ if(GBA_BUILD_TESTS)
         GBA_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(RealHostAccessibilityTests PRIVATE
         windowsapp user32 ole32 oleaut32 uiautomationcore d2d1 dwrite winhttp windowscodecs)
+    gba_link_taffy(RealHostAccessibilityTests)
     add_test(NAME RealHostAccessibilityTests COMMAND RealHostAccessibilityTests)
 
     # Cross-process production-host coverage. This target is invoked by
@@ -431,6 +470,7 @@ if(GBA_BUILD_TESTS)
     target_compile_definitions(DeclarativeRendererTests PRIVATE
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
+    gba_link_taffy(DeclarativeRendererTests)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
 
     add_executable(LauncherExperienceTests
@@ -446,6 +486,7 @@ if(GBA_BUILD_TESTS)
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(LauncherExperienceTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32)
+    gba_link_taffy(LauncherExperienceTests)
     add_test(NAME LauncherExperienceTests COMMAND LauncherExperienceTests)
 
     add_executable(SemanticChurnPerformanceTests
@@ -458,6 +499,7 @@ if(GBA_BUILD_TESTS)
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(SemanticChurnPerformanceTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32 psapi)
+    gba_link_taffy(SemanticChurnPerformanceTests)
     add_test(NAME SemanticChurnPerformanceTests COMMAND SemanticChurnPerformanceTests)
 
     add_executable(SharedComponentGeometryTests
@@ -469,6 +511,7 @@ if(GBA_BUILD_TESTS)
         GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(SharedComponentGeometryTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32)
+    gba_link_taffy(SharedComponentGeometryTests)
     add_test(NAME SharedComponentGeometryTests COMMAND SharedComponentGeometryTests)
 
     add_executable(RemoteImageCacheTests
