@@ -86,7 +86,7 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `16` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `17` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
@@ -94,7 +94,7 @@ v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
 explicit focus persistence v13; cursor collections and opaque artwork handles
 v14; host-owned bounded TextEntry v15; and declared advanced-presentation
-semantic slots v16.
+semantic slots v16; and independent surface-axis sizing v17.
 Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
@@ -692,6 +692,25 @@ DPI, interface scale, or accessibility scale requires it.
 Surface hints belong to one `WidgetView`, so a compact status page and a wide
 media page can publish different modes. Every view must still reflow and use
 Scroll for overflow after host clamping.
+
+The current production widgets provide concrete policy references. Their
+first-page contracts are intentionally stable unless a row notes otherwise:
+
+| Widget | Width / height policy | Preferred DIPs | Minimum DIPs | Rationale |
+| --- | --- | ---: | ---: | --- |
+| Settings | Preferred / Content on root; Preferred / Preferred on nested pages | 880x520 | 520x360 | The bounded root category grid is intrinsic; changing nested inventories and diagnostics remain stable. |
+| Audio Mixer | Preferred / Preferred | 520x520 | 320x360 | Provider-driven session rows must not resize the surface as sessions change. |
+| Network Controls | Preferred / Preferred | 560x700 | 320x420 | Scan and connection state plus discovered networks are dynamic and scrollable. |
+| Games & Apps | Preferred / Preferred | 820x600 library; 820x280 bounded state page | 420x300 library; 420x250 state page | Library/catalog content is paged and dynamic; bounded status pages keep explicit stable extents. |
+| Game Launcher | Preferred / Preferred | 980x700 | 420x340 | Its large cursor collection, hero rail, and details routes share one stable envelope. |
+| Now Playing | Preferred / Preferred | 580x400 | 360x330 | Media-session availability and metadata change independently of host placement. |
+| Spotify | Preferred / Preferred | 980x560 | 620x400 | Playback, queue, devices, and cursor collections are provider-driven. |
+| YT Music | Preferred / Preferred | 760x440 | 480x340 | One responsive tree reflows at compact width while playback state remains live. |
+
+These values are authored content envelopes, not HWND dimensions. Do not copy a
+row merely to imitate another widget: choose Content only when direct evidence
+shows a bounded, mostly static tree benefits from intrinsic sizing without
+live-data resize churn.
 
 For a multipage root that changes between compact tabs and an expanded rail,
 prefer `UI.NavigationShell`. Author the destination model and page content

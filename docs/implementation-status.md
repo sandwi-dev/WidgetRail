@@ -4612,3 +4612,22 @@ The older standalone `OverlayPlacementTests` target is not counted as evidence:
 on this accepted baseline it has a pre-existing unresolved
 `ComputeOverlayPlacement` link symbol, while the DLV-225 production-renderer
 scenario and DLV-224 placement owner remain unchanged.
+
+### Eight-widget surface-policy audit (DLV-226)
+
+The current Settings, Audio Mixer, Network Controls, Games & Apps, Game
+Launcher, Now Playing, Spotify, and YT Music first-page surface contracts are
+now tabulated in the public authoring guide. The audit retains Preferred width
+and height for every provider/list-driven surface so changing sessions,
+networks, catalog pages, playback, or remote collections cannot resize the host.
+Settings root remains the sole directly supported Content-height adoption;
+deeper Settings pages remain Preferred. No widget, protocol, host, focus,
+scroll, or placement behavior changed in this milestone.
+
+Focused Release evidence passes Widget SDK 93/93, Settings 61/61, Spotify
+50/50, and YT Music 60/60. The older first-party conformance group is retained
+honestly at 1/6: its five failures occur before widget admission because the
+harness still requires the now-full-trust Spotify package to declare a managed-
+worker assembly. Documentation validation likewise reaches only nine existing
+broken links in reviewer-owned delivery-plan history snapshots. Neither red
+result was weakened or reinterpreted as surface-policy evidence.
