@@ -61,6 +61,15 @@ Snapshots are evidence only. This file is the sole authority for current work.
   harness defect does not invalidate DLV-224 product behavior. Repair it only
   through the bounded platform assignment below; do not reinterpret an
   unchanged rerun as product evidence.
+- DLV-233 source `1323c8a` is independently accepted for its assigned
+  test-infrastructure objective. The PATH-isolated Audio Mixer production-host
+  route now uses the same validated adjacent-native-dependency policy as the
+  accepted action-failure fixture and passes without source-Release fallback.
+  Its precautionary action-failure run passed that shared dependency boundary
+  and then retained a separate cumulative DLV-231 functional red: the primary
+  worker-start failure was not retained. DLV-235 owns that correction after the
+  already-started DLV-234 frame-safety work. Nothing above rejected DLV-231 may
+  integrate until both corrections are accepted.
 
 ## Avalonia disposition — failed and closed
 
@@ -159,7 +168,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, rejected DLV-231 source is preserved as `2a379ac` above accepted DLV-206/DLV-227; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-233 in progress; DLV-234 is the next bounded correction before DLV-232 |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, rejected DLV-231 source is preserved as `2a379ac` with accepted DLV-233 source `1323c8a` above it; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-234 in progress; DLV-235 is the next bounded correction before DLV-232 |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -357,7 +366,7 @@ written. DLV-234 owns the bounded framing-recovery correction after the already
 started independent DLV-233 fixture milestone. Preserve `2a379ac` and do not
 integrate it or dependent commits until that correction is accepted.
 
-### Assigned — DLV-233: self-contained Audio scroll host fixture
+### Done — DLV-233: self-contained Audio scroll host fixture
 
 Baseline: committed DLV-231 source `2a379ac` on the platform lane; this
 assignment is independent of the rejected framing recovery and may finish at
@@ -391,7 +400,18 @@ Required implementation and acceptance:
 Stop for a product/runtime change, a source-worktree/PATH fallback, weakened
 window/input/scroll assertions, or a broader installation-framework decision.
 
-### Ready correction after DLV-233 — DLV-234: recover frame alignment after request cancellation
+Accepted as implementation commit `1323c8a`, not yet integrated because its
+branch ancestry includes rejected DLV-231. One shared test-support policy now
+validates and copies `OverlayPlatformInterop.dll`, proves byte-size-identical
+copy and precise pre-launch omission failure, and rejects a PATH containing the
+admitted Release installation. `AudioMixerScrollHostTestsOnly` passes its
+complete authenticated visible-HWND/UIA/live reverse-edge scroll and focus
+route from the self-contained temporary install. No Audio product/runtime code,
+source-worktree fallback, assertion weakening, aggregate, or capture work was
+added. A precautionary `WidgetActionFailureHostTestsOnly` run passed the shared
+dependency setup before reaching the separately queued DLV-235 functional red.
+
+### Assigned — DLV-234: recover frame alignment after request cancellation
 
 Baseline: committed DLV-233 above rejected DLV-231 `2a379ac`. Owner: platform
 session/bridge transport only. Dependencies: finish and commit the already
@@ -440,7 +460,48 @@ second concurrent transport/process authority, a public protocol change, loss
 of authenticated session/catalog semantics, unbounded reconnect/retry, or a
 material lifecycle redesign.
 
-### Ready after DLV-234 — DLV-232: generic worker crash isolation and recovery
+### Ready correction after DLV-234 — DLV-235: retain the primary worker-start failure
+
+Baseline: accepted cumulative DLV-234 correction above accepted DLV-233 source.
+Owner: platform session/failure-state routing only. Dependencies: finish and
+commit the already-started DLV-234; do not begin DLV-232 first.
+
+Visible objective: when opening a widget fails to start its worker, retain and
+present that primary actionable failure until an explicit Retry or later valid
+admission supersedes it. Automatic background lifecycle work, missing-cache
+diagnostics, request revocation, or bridge recovery must not erase or replace
+the primary failure.
+
+Required implementation and acceptance:
+
+- Reproduce the exact PATH-isolated `WidgetActionFailureHostTests` red retained
+  after DLV-233: `The primary worker-start failure was not retained by the
+  host.` Correlate the ordinary session events/log ordering before changing
+  production; do not attribute it to the shared dependency helper after that
+  boundary has already passed.
+- Keep one existing lifecycle/session/bridge/failure owner. Bind failure
+  precedence and replacement to the current widget/session/generation without
+  another cache, status channel, retry loop, transport, or widget identity
+  branch. A secondary hidden/background missing-cache diagnostic may not
+  replace a current primary startup failure.
+- Preserve DLV-231/DLV-234 cancellation, frame-safe sole-transport recovery,
+  stale-result rejection, last-good presentation, tray/controller/B
+  responsiveness, bounded process cleanup, and explicit Retry semantics.
+- Add one deterministic directly affected regression proving the primary
+  worker-start failure survives the automatic lifecycle/revocation sequence,
+  an explicit Retry starts one fresh generation, and a later valid snapshot is
+  the only success path that clears it.
+- Run `WidgetActionFailureHostTestsOnly` to completion from the PATH-isolated
+  temporary installation plus only directly affected coordinator/session/
+  bridge cases. Retain exact failure/status/UIA/live-region behavior and normal
+  zero-process teardown. No Tier-3 aggregate, capture work, widget-domain
+  change, or unrelated full build.
+
+Stop for a public protocol/status-model decision, another failure cache or
+authority, service-specific behavior, weakened failure/UIA assertions, or a
+material lifecycle redesign.
+
+### Ready after DLV-235 — DLV-232: generic worker crash isolation and recovery
 
 Baseline: accepted DLV-234 cumulative platform correction. Visible objective: one
 credential-free Community worker may crash repeatedly without closing the
@@ -634,8 +695,9 @@ Release rather than manufacture speculative style changes.
    `OverlayPlatformInterop.dll`. A full `-SkipTests` package refresh succeeded;
    the coherent accepted Release is visibly running as PID 44528 with SHA-256
    `C0F0F3...D7478`. That process exited normally for the DLV-230 package
-   refresh. DLV-233 corrects only the temporary-install fixture after the
-   already-started DLV-231 milestone.
+   refresh. Accepted DLV-233 corrects only the temporary-install fixture after
+   rejected DLV-231; DLV-234 and DLV-235 must close the cumulative transport
+   and failure-state blockers before that platform chain can integrate.
 8. The accepted YT Music 0.2.9 package builds, validates, and packs from main,
    but the live catalog already contains eight immutable YT Music versions and
    rejects installation with `installed_widget_version_limit`. The failed
@@ -674,13 +736,14 @@ Release rather than manufacture speculative style changes.
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
 | Native uninstall reconciliation | Synthetic catalog removal emitted no managed revision/native event. | Deterministic disabled/nonresident removal event. |
-| `AudioMixerScrollHostTests` self-contained launch | Its temporary installation copies `OverlayHost.exe` and `runtime` but omits required adjacent `OverlayPlatformInterop.dll`, so authenticated readiness is never published in a clean launch. | DLV-233 reuses the admitted dependency copy/validation policy, passes from a PATH-isolated temporary install, and preserves the strict live scroll/focus assertions. |
+| DLV-231 cumulative platform integration | DLV-231 can reuse a partially consumed bridge frame after cancellation, and the cumulative action-failure fixture does not retain the primary worker-start failure. | Accepted DLV-234 frame-safe sole-transport recovery followed by accepted DLV-235 failure-precedence/retry evidence. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is unsupported by Data API. | Approved minimum-scope OAuth plan and authorized account. |
 
 ## Recent accepted milestones
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-233 | `1323c8a`, accepted but not integrated above rejected DLV-231: shared precise native-dependency validation/copy, PATH-isolated self-contained Audio host route, and unchanged strict visible-HWND/UIA/reverse-scroll/focus behavior. |
 | DLV-230 | `7323468`, integrated as `fe2e52c`: YT Music 0.2.9 full-width raised media panel, one responsive tree, 60/60 widget and 82 native renderer checks; visible install awaits bounded catalog cleanup approval. |
 | DLV-229 | `1a8c201`, integrated as `1ddedb4`: explicit Preferred/Preferred Network envelope with real preferred first-page scan-state visibility and constrained focus reveal. |
 | DLV-228 | `2784401`, integrated as `220a415`: generic parent-relative Audio width, stretched rows/cards, and sliders owning the flexible remainder at compact and preferred widths. |
@@ -690,7 +753,6 @@ Release rather than manufacture speculative style changes.
 | DLV-206 | `da74ded`, integrated as `5cbd4cf`: truthful per-scenario process/commit/SHA/metric provenance, separate eight-widget identity, and post-paint composition ordering with bounded focused evidence. |
 | DLV-224 | `912aea9`, integrated as `02750ba`: independent Preferred/Content/FillAvailable axes, bounded Taffy intrinsic sizing, legacy native v1 omission preserved, malformed versions fail closed, and 286/286 direct native parser/accessibility checks. |
 | DLV-222 | `e8af5be`, integrated by `073e423`: generic Taffy stretch correction, authored variable surfaces, bottom-anchored panel/guide/tray, stable full-capacity tray band, and green focused plus eight-widget linked-host evidence. |
-| DLV-223 | `6b916e8`: responsive YT Music 0.2.8 composition plus real managed-snapshot/GBSS-to-native-renderer proof at 760x440 and 480x340; 79/79 dedicated checks. |
 
 Do not mark the continuing delivery goal complete because these milestones
 closed. Continue until the user pauses/replaces it or all useful lanes reach a
