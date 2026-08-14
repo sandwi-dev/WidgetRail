@@ -65,6 +65,10 @@ user decision. The native overlay is the sole production presentation path.
 - User-visible defects and requested features outrank internal refactors.
 - Run focused affected Release suites. Use one bounded linked-host group when a
   language/process boundary changes. Run Tier 3 only at a named checkpoint.
+- After one bounded attempt and diagnosis of an unreliable integration case,
+  stop rerunning or redesigning its harness. Retain direct production-path
+  review and disclose the untested residual risk; do not delay a small coherent
+  milestone to manufacture synthetic coverage for every theoretical branch.
 - Screenshots are optional support. Do not build or repair capture tooling for
   an ordinary product assignment; use live user review.
 - New managed test projects use MSTest.Sdk 4.3.2. Existing executable suites

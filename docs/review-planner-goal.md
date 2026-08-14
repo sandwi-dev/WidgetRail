@@ -497,6 +497,15 @@ product milestone. The user owns live visual defect reports. Capture-tool
 engineering requires a separate user- or planner-authorized assignment whose
 objective is the capture system itself.
 
+The same stop rule applies to unreliable process, platform, hardware, timing,
+and integration scenarios. After one bounded attempt and one bounded diagnosis,
+do not redesign the harness or repeat the scenario merely to obtain a green
+result. Review the affected production authority, lifecycle, failure, cleanup,
+and fallback paths directly; retain the concrete source-level reasoning and
+state the untested residual risk. A small change does not require synthetic
+coverage for every theoretical branch. Multi-component changes may receive one
+focused linked-boundary run, but not an open-ended integration campaign.
+
 This is a pre-release single-user product. Legacy package versions, rollback
 generations, and backward-compatible persisted state are not default release
 gates. Preserve them only when the current assignment explicitly requires it or

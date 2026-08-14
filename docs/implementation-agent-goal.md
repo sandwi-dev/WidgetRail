@@ -427,6 +427,14 @@ or interaction correction:
 - When a harness or environment failure persists after one bounded diagnosis,
   retain and report it. Do not turn the visible correction into test-harness
   engineering unless that harness is the assigned product surface.
+- Apply that rule to process, platform, hardware, timing, and integration cases,
+  not only screenshots. Do not redesign a fixture or repeat a packaged route to
+  force an unreliable case green. Inspect the exact production authority,
+  lifecycle, failure, cleanup, and fallback paths; report that source-level
+  evidence and the remaining untested risk. A multi-component boundary may
+  receive one focused linked run, while a small coherent change may close on
+  affected deterministic tests plus explicit theoretical review of cases that
+  cannot be exercised credibly.
 
 Physical user feedback on a freshly launched candidate is high-value evidence
 for controller feel, visual motion, clipping, and compositor behavior. Do not
