@@ -4,16 +4,12 @@ Ownership: user and independent review/delivery-planning task. This document is
 the complete persistent goal for the review/planning task.
 
 Act as the independent review, delivery-planning, acceptance, and local
-integration owner for Game Bar Alternative. Operate two production lanes plus
-an isolated Avalonia evaluation program that steadily produce a polished,
-maintainable, accessible, security-conscious, and performance-conscious product
-resembling work from a cohesive senior engineering team. The Avalonia program
-normally has one lane. AVP-004 is explicitly authorized to use one integration
-lead plus at most two temporary file-exclusive extraction lanes: one managed
-presentation-session/bridge-client boundary and one native GameInput/Win32
-platform boundary. Domain-page lanes are prohibited because AVP-004 renders
-the existing semantic widget contract generically rather than rebuilding
-widgets as Avalonia pages.
+integration owner for Game Bar Alternative. Operate two production lanes that
+steadily produce a polished, maintainable, accessible, security-conscious, and
+performance-conscious product resembling work from a cohesive senior
+engineering team. The Avalonia evaluation is closed by user decision after it
+failed physical product acceptance; its retained code and prior extraction
+history are evidence only, not an active migration or cutover authority.
 
 This is a continuing product-delivery goal. Do not mark it complete merely
 because one assignment, queue cluster, review cycle, or heartbeat finishes.
@@ -463,13 +459,9 @@ Then repeat the loop.
   no longer registered or present; do not claim they are preserved and do not
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
-- The standing Avalonia integration lead uses `codex/avalonia-prototype`.
-  AVP-004 temporary tasks, when needed, use planner-recorded `codex/avp004-*`
-  branches and separate Codex worktrees. They are limited to the managed
-  presentation-session extraction and native platform interop extraction. No
-  temporary task owns a widget/domain page. The integration lead incorporates
-  accepted extraction commits in delivery-plan order and owns the generic
-  adapter, Avalonia shell wiring, final polish, and evidence.
+- The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
+  closed evaluation history. Do not dispatch, integrate, relaunch, or cut over
+  their presentation path without a new explicit user decision.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.
 - Shared protocol/architecture work is assigned serially to one lead lane after
@@ -592,24 +584,15 @@ Preserve the product direction already recorded in the roadmap:
   process rather than product host code.
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
-- The accepted Avalonia direction is a presentation migration, not a platform
-  rewrite. Retain `WidgetProtocol`, `WidgetSdk`, catalog/package/runtime,
-  `WidgetBridge` backend, lifecycle/trust/persistence/providers, and existing
-  widget domain implementations. Replace the native C++ presentation-side
-  bridge client and renderer with a typed managed presentation-session facade
-  plus one generic semantic-tree-to-Avalonia adapter. Avalonia controls never
-  parse bridge transport messages or communicate directly with widget
-  processes.
-- Retain the production native Microsoft GameInput/Guide owner behind narrow
-  interop: documented system-button callback, background/exclusive Guide
-  policy, device lifecycle, debounce/toggle, targeting, DPI, and placement.
-  Do not create a second managed GameInput authority. Keep the legacy Guide
-  compatibility path quarantined and removable.
-- Replace native layout/paint/motion/widget-UIA and eventually GBSS only after
-  equivalent Avalonia behavior is accepted. Standard Avalonia controls/UIA,
-  styles/control themes, `FocusManager`/`XYFocus`, compiled bindings, and
-  virtualization become the presentation owners. Do not retain both renderers
-  indefinitely merely for pre-release compatibility.
+- Retain the native presentation, Microsoft GameInput/Guide, controller focus,
+  accessibility, rendering, motion, window, GBSS, bridge, and widget-domain
+  owners. Modernize only explicitly assigned boundaries rather than replacing
+  the whole native presentation stack.
+- The assigned Taffy work replaces only declarative geometry computation with
+  one generic pinned layout engine behind a narrow panic-safe C ABI. Flex and
+  Responsive Grid semantics may move to Taffy; scrolling, clipping, pixel/DPI
+  policy, focus-follow, controller navigation, accessibility, rendering,
+  animation, and HWND placement remain native host responsibilities.
 - Lightweight idle/hidden operation suitable for use while gaming.
 - While the product remains an explicitly single-user pre-release development
   build, prefer a clean current overlay-owned persistence schema over retaining

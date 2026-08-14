@@ -25,7 +25,8 @@ prompt:
   shell wiring, focused tests, measurements, retained evidence, and directly
   affected migration documentation. It consumes existing production contracts;
   it must not rewrite widget domain behavior or silently switch the production
-  launcher before an accepted cutover assignment.
+  launcher before an accepted cutover assignment. This lane is currently
+  closed by user decision and may not resume without a new explicit assignment.
 - Temporary AVP-004 tasks use only the exclusive extraction package named in
   `docs/delivery-plan.md`: either the managed presentation-session/bridge-client
   facade or the narrow native GameInput/Win32 platform boundary. They may edit
@@ -252,11 +253,11 @@ Code should demonstrate:
 - Stable typed identifiers and actions rather than hidden string protocols.
 - Domain behavior in widgets and reusable rendering, focus, input, lifecycle,
   accessibility, and security behavior in the platform.
-- During Avalonia migration, direct reuse of the existing protocol, SDK,
-  runtime, catalog, package, bridge-backend, lifecycle, trust, persistence,
-  provider, and widget-domain owners. Replace only the presentation edge: the
-  native C++ bridge client/renderer becomes a managed typed presentation
-  facade plus one generic Avalonia semantic adapter.
+- During native layout modernization, directly reuse the existing protocol,
+  SDK, runtime, catalog, package, bridge-backend, lifecycle, trust,
+  persistence, provider, widget-domain, renderer, accessibility, focus, input,
+  and window owners. A third-party layout engine owns geometry calculation
+  only and remains behind one narrow typed boundary.
 - One authoritative native GameInput/Guide owner behind narrow interop. Never
   duplicate it in C#, and never expose the quarantined legacy compatibility
   mechanism outside its current removable adapter.

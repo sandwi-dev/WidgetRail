@@ -27,6 +27,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The integrated-main Avalonia candidate crashed during physical testing and is
   closed. No candidate or owned WidgetBridge process remains running. The
   packaged production Release is also closed during isolated candidate work.
+- The user ended the Avalonia evaluation on 2026-08-14 after repeated physical
+  layout, shell, controller-routing, and reliability failures. AVP-005 and an
+  Avalonia production cutover are cancelled. The accepted prototype remains
+  retained as historical/reference code only; the production native renderer
+  and its original controller navigation remain authoritative.
 
 ## Execution rules
 
@@ -59,13 +64,15 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - Sandboxed packages retain AppContainer/capability boundaries. Explicitly
   consented full-trust applications use the generic full-trust runtime.
 - Launcher Experience packs remain data-only and host-owned.
-- Avalonia replaces only the presentation boundary. Retain Widget SDK/protocol,
-  catalog/package/runtime, WidgetBridge/authenticated transport,
-  lifecycle/trust/persistence/providers, domain implementations, and Community
-  process boundaries.
-- One generic Avalonia semantic adapter renders every current widget. Per-widget
-  Avalonia pages, hidden role strings, identity branches, or tree-shape special
-  cases are prohibited.
+- The native presentation boundary remains authoritative. Retain Widget
+  SDK/protocol, catalog/package/runtime, WidgetBridge/authenticated transport,
+  lifecycle/trust/persistence/providers, domain implementations, Community
+  process boundaries, native rendering/accessibility, and the original
+  controller focus/navigation owner.
+- Replace only the native declarative geometry calculator with one generic
+  Taffy-backed engine. Do not add per-widget native layouts, hidden role
+  strings, identity branches, tree-shape special cases, another renderer,
+  another focus graph, or another input owner.
 - Each view owns its semantic content and validated preferred/minimum logical
   envelope through `WidgetSurfaceHints`. The host clamps only to the actual
   monitor work area, accessibility, safe insets, and safety constraints.
@@ -81,7 +88,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community-launcher`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-217 accepted through `d57fd06`; integration awaits explicit user approval for the known reviewer-doc-only red aggregate step |
-| Platform | Implementation agent — platform lane | `codex/impl-platform-community`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle at accepted `fcd301a` |
+| Platform | Native Taffy layout integration | `codex/taffy-layout-integration`; `C:\Users\dwive\Projects\GameBarAlternative` | DLV-221 assigned from clean main `5bf4df1` by explicit user request |
 | Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype`; `C:\Users\dwive\.codex\worktrees\fe54\GameBarAlternative` | Accepted through `26b5d3a`, integrated as `54c25c6`; physical relaunch/verdict pending |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated first as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated second as `b5c4c6c` |
@@ -118,7 +125,83 @@ visible AVP correction.
 
 ## Platform lane
 
-### Current assignment — none
+### Assigned — DLV-221: replace custom native geometry with Taffy
+
+Baseline: clean local main `5bf4df1`. Owner: native platform/layout lane.
+
+Objective: replace the hand-written Flex and Responsive Grid geometry in
+`DeclarativeLayout` with a pinned released Taffy Rust static library behind a
+narrow stable C ABI, while preserving the public semantic widget contract,
+native renderer, original controller navigation/focus, scrolling, clipping,
+accessibility, motion, window placement, and all domain/process boundaries.
+
+Required architecture:
+
+- Add one repository-owned Rust `staticlib` bridge using a pinned released
+  Taffy crate, locked dependencies, and a pinned stable MSVC Rust toolchain.
+  Do not depend on the moving draft upstream C-bindings branch.
+- Expose opaque tree ownership, integer node handles, bounded POD style/tree
+  input, a bounded DirectWrite-compatible intrinsic-measure callback, explicit
+  error codes, and bulk layout-result output. No Rust panic, allocation owner,
+  string, container, or implementation type crosses the C ABI.
+- Keep persistent layout nodes keyed by the existing stable semantic identity
+  where practical; do not serialize or use IPC across this in-process seam.
+- Map typed Row/Column, wrap, grow/shrink, min/max, margin/padding/gap,
+  alignment, aspect ratio, overflow inputs, and Responsive Grid track/placement
+  semantics generically. Never branch on widget/package identity, text,
+  element ID, provider, style role, or known tree shape.
+- Taffy owns geometry only. Host code retains scroll offset/extents,
+  ancestor clipping and visible rectangles, pixel/DPI policy, focus-follow,
+  controller navigation, accessibility projection, rendering, animation, and
+  HWND placement.
+- Integrate Cargo into the existing CMake/MSVC build with `--locked`, clear
+  missing-toolchain diagnostics, x64 Release/Debug selection, and no runtime
+  Rust installation requirement in the packaged product. Generated C headers
+  are checked in and production builds do not require nightly Rust or cbindgen.
+- Keep the current engine only as a temporary differential oracle during the
+  assignment. Delete the superseded production algorithm and dual-runtime path
+  before acceptance so maintenance does not permanently double.
+
+Acceptance:
+
+- Existing declarative-layout validation and diagnostics remain truthful and
+  deterministic; unsupported/invalid input fails before unsafe native/Rust
+  allocation and retains current last-good presentation behavior.
+- Focused differential fixtures cover representative intrinsic text,
+  Row/Column Flex, wrapped lines, Responsive Grid, min/max/aspect ratio,
+  overflow/scroll extents, clipping, DPI pixel snapping, and malformed/bounded
+  inputs before the old calculator is removed.
+- The existing compact, standard, wide, ultrawide, and accessibility-oriented
+  native widget/layout fixtures pass without clipping or unreachable essential
+  controls. Original D-pad/stick/A/B/Y, slider, scroll, focus restoration, UIA,
+  and action routing semantics remain unchanged.
+- A deterministic Rust unit suite covers ABI conversion, tree lifecycle,
+  grid/flex calculation, intrinsic measurement, failure codes, panic
+  containment, and bulk-result bounds. C++ tests cover the real linked bridge.
+- Measure layout compute time, allocation/tree churn, binary size, hidden/idle
+  behavior, and native host memory against the current engine. Stop for a
+  material regression rather than weakening the product budget.
+- Tier 1: affected Rust tests, native DeclarativeLayout, renderer, focus,
+  controller-navigation, scrolling, accessibility, responsive-grid, and
+  production OverlayHost Release build.
+- Tier 2: one bounded real C++/Rust linked-host group covering all eight current
+  widgets and the supported surface matrix.
+- Tier 3: one exact-commit canonical aggregate because this changes the core
+  native layout engine and repository build graph. Do not run it during the
+  edit loop.
+- Update implementation/build documentation and the dependency/license
+  inventory. Commit locally as one coherent `[DLV-221]` milestone; never push.
+
+Out of scope: Widget SDK/protocol/schema changes, widget-domain rewrites,
+per-widget geometry, controller/focus redesign, renderer replacement, Avalonia
+revival/removal, credentials, external publication, or adopting upstream draft
+C bindings as an unpinned dependency.
+
+Stop and ask the user if released Taffy cannot express a required current
+layout semantic without a widget-specific rule, if a stable panic-safe C ABI
+cannot be maintained, if supported Windows packaging requires an undocumented
+or moving toolchain, or if physical behavior requires a material product
+decision.
 
 DLV-215 `ed39a70`, DLV-210 `ebb6ad7`, and corrected DLV-220 `fcd301a` are
 accepted and integrated through product baseline `4f502c4`.
@@ -308,13 +391,13 @@ gate.
 
 ## Serialized integration order
 
-1. SESSION `7de4269` then PLATFORM `849e970` are accepted/integrated.
-2. Crash/anchor sources `988324c`, `e0a078c`, and `26b5d3a` are accepted and
-   integrated in linear order through main `54c25c6`.
-3. Refresh the exact integrated-main candidate and obtain physical acceptance.
-4. Do not begin AVP-005 or production cutover before explicit user approval.
-5. DLV-217 integration remains a separate user-approval decision.
-6. DLV-218 follows integrated DLV-216 and DLV-217; DLV-206 follows DLV-218.
+1. AVP extraction and correction history remains integrated through main
+   `54c25c6`, but the Avalonia evaluation and cutover are closed.
+2. DLV-221 proceeds independently from clean main `5bf4df1` and changes only
+   the authoritative native layout/build boundary.
+3. DLV-217 integration remains a separate user-approval decision and must not
+   be mixed into DLV-221.
+4. DLV-218 follows integrated DLV-216 and DLV-217; DLV-206 follows DLV-218.
 
 ## Manual and packaged verification queue
 
@@ -331,7 +414,7 @@ gate.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
-| AVP-005 / production cutover | Corrected AVP-004 source is integrated, but the physical verdict is open. | Exact `54c25c6` copied-runtime launch plus user display/controller/normal-close approval. |
+| AVP-005 / production cutover | Cancelled by the user after the Avalonia experiment failed its physical product goal. | No unblocking evidence; do not resume without a new explicit user decision. |
 | DLV-217 local integration | Exact aggregate is 40/41 with one known reviewer-history link red. | Explicit user approval to integrate despite that honest documentation-only red step. |
 | Trusted fixed-video/PiP | Paused WebView2 measured about 348.7 MiB private and 4% CPU against prior gate. | User changes budget or authorizes content/process experiment. |
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
