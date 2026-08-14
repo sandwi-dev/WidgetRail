@@ -9,24 +9,26 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `1be1f86`, including accepted DLV-216, the
+- Production code: local main `acc062d`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
   the independently accepted AVP-004 source correction through `16b33d9`,
   integrated as `09f038f`, plus the accepted isolated AVP-004-REDESIGN source
-  `0d4b75b` and correction `9db36b5`, integrated as `e67e0e8` then `289f7d6`.
-  No production renderer cutover is implied.
-- Latest reviewed Avalonia implementation baseline: source `9db36b5` on
-  `codex/avalonia-prototype`, integrated through main `289f7d6`. Its focused
-  29/29 suite, all eight widgets, 32/32 responsive fixtures, 24/24 transition
-  phases, 489.02-MiB candidate gate, and bounded normal shutdown are accepted.
-  The source evidence remains valid, but the user's physical verdict rejects
-  its global monitor-relative shell footprint and homogeneous composition.
-  AVP-004-REDESIGN is reopened for widget-owned content envelopes and fixed
-  screen-space chrome; AVP-005 and production cutover remain unauthorized.
+  `0d4b75b` and correction `9db36b5`, integrated as `e67e0e8` then `289f7d6`,
+  plus the accepted widget-envelope redesign source `bf7cafd` and correction
+  `5ffd435`, integrated as `25c6639` then `acc062d`. No production renderer
+  cutover is implied.
+- Latest reviewed Avalonia implementation baseline: source `5ffd435` on
+  `codex/avalonia-prototype`, integrated through main `acc062d`. Its focused
+  30/30 suite, all eight authored envelopes, 32/32 work-area responsive rows,
+  33 start/mid/completion transition samples with invariant absolute tray and
+  guide bounds, 330.96-MiB candidate gate, and bounded normal shutdown are
+  accepted. The copied integrated-main candidate is launched for the required
+  physical display/controller verdict; AVP-005 and production cutover remain
+  unauthorized.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
-  currently closed during isolated Avalonia work. No Avalonia candidate or
-  owned WidgetBridge process is currently running.
+  currently closed during isolated Avalonia work. The isolated Avalonia
+  candidate from integrated main `acc062d` is running visibly as PID `10236`.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -770,6 +772,41 @@ before edits outside the prototype if concrete evidence shows a missing generic
 surface semantic; do not encode a hidden role, identity check, or tree-shape
 heuristic. The planner will serialize a public SDK/protocol assignment only for
 an exact demonstrated gap.
+
+Source `bf7cafd` plus bounded correction `5ffd435` are independently accepted
+and integrated as main `25c6639` then `acc062d`. The redesign deletes the
+monitor-relative shell presets and admits each view's existing preferred and
+minimum `WidgetSurfaceHints` as its content envelope. The fixed tray and guide
+remain bottom-center host chrome; the single HWND wraps the content-plus-chrome
+union and applies x/y/width/height atomically through the sole platform client.
+When a physical work area cannot satisfy both preferred axes, the generic
+resolver clamps only the unavailable axis and leaves the ordinary scroll owner
+responsible for reachability; normal work areas retain the authored pair.
+
+Exact source evidence at `5ffd435cf56ddaf9170d372edf9c8ab1228347ae`
+is green for 30/30 focused tests, all eight widgets and eight materially
+distinct authored envelopes, the unchanged 32-row matrix at 420x340, 978x466,
+1180x680, and 1440x810, and 33 start/mid/completion transition samples. Both
+compact-to-wide and wide-to-compact transitions retain identical absolute tray
+and guide rectangles. The candidate uses one tracked render, zero decoded or
+pending artwork, 330.96 MiB private memory under the unchanged 500-MiB gate,
+and a 172.20-ms normal no-force shutdown with zero remaining processes. The
+complete ordinary process tree is separately and honestly reported at 593.08
+MiB. Source/ProductVersion/SHA provenance is exact; no second HWND, focus tree,
+transport, controller reader, widget identity branch, or production cutover was
+introduced.
+
+The exact integrated-main runtime was rebuilt and copied from `acc062d`, with
+ProductVersion `4.0.0+acc062d5f78abcaf5d3be200e8636e9d551450d8` and
+executable SHA-256
+`C7C0DDB0B1DE122FD27B081593D2B0C8C6A8ACA9440F8269D8B7A3D5CE503FE6`.
+It is launched visibly as PID `10236` with manual trace
+`artifacts/avp004/manual-session-input-trace.json`. Automated/source acceptance
+is complete, but AVP-004-REDESIGN remains physically open until the user
+approves independent widget sizing, stationary chrome throughout transitions,
+all eight first pages, clipping, motion, Guide, D-pad/stick, A/B/Y, sliders,
+scrolling, focus restoration, and normal close. Do not authorize AVP-005 or
+production cutover before that verdict.
 
 Redesign commit `0d4b75b` is rejected pending one bounded correction. Its
 generic compiler, fixed outer shell, controller state model, 28/28 focused

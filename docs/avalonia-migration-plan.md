@@ -225,12 +225,14 @@ AVP-004 is a reuse-first migration proof, not eight reconstructed pages.
    user accepts the candidate and the delivery plan assigns an explicit
    cutover/deletion milestone.
 
-The accepted production baseline for this work is local main `4f502c4`. It
-includes the generic full-trust Community runtime, the corrected runtime race
-evidence, and the generic Hero Rail recovery. The standing Avalonia branch is
-clean at accepted AVP-003 commit `2a3c722`; it has no uncommitted foundation
-changes to reconcile. DLV-216 and DLV-217 may proceed independently because
-their package-owned domain implementations are retained by this architecture.
+The accepted integrated baseline for this work is local main `acc062d`. It
+retains the production catalog/runtime/bridge/domain and Community boundaries
+while integrating the independently accepted AVP-004 widget-envelope source
+through `5ffd435`. Automated/source gates are green, and the exact copied
+candidate is launched for the still-required physical controller/display
+verdict. AVP-005 and production cutover remain unauthorized. Production lanes
+may proceed independently because their package-owned domain implementations
+are retained by this architecture.
 
 ## Acceptance gates
 
