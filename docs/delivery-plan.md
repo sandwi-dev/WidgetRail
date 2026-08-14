@@ -10,8 +10,10 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main contains accepted DLV-224 through correction integration
-  `02750ba` over provisional product commit `c2b6456`. The correction preserves
+- Local main contains accepted DLV-206 integration `5cbd4cf` over corrected
+  DLV-224 integration `02750ba` and provisional product commit `c2b6456`.
+  DLV-206 corrects performance/temporal evidence provenance without expanding
+  its measurement scope. The DLV-224 correction preserves
   omitted native snapshot versions as legacy v1 while rejecting present
   malformed, fractional, or unsupported versions before conversion. Accepted
   DLV-222 `e8af5be` and DLV-223 through `6b916e8` remain integrated beneath it;
@@ -149,7 +151,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-225 assigned after integrating accepted main `02750ba` |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, clean through DLV-224 correction `912aea9`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-206 assigned; DLV-227 is next Ready |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted DLV-206 is preserved as `da74ded`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-227 assigned after accepted DLV-206 integration `5cbd4cf` |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -232,7 +234,7 @@ unchanged and honestly red at the known pre-product verifier-manifest check.
 Independent main packaging reproduced the complete artifact graph and the 286-
 check parser route, then stopped at the unrelated DLV-227 fixture defect.
 
-### Assigned — DLV-206: truthful performance provenance
+### Done — DLV-206: truthful performance provenance
 
 Correct the rejected DLV-200 evidence without expanding measurement scope:
 retain root PID/start, exact commit/SHA, scenario/profile, child roles, and
@@ -240,7 +242,22 @@ available/unavailable metrics; give the eight-widget run separate provenance;
 anchor composition lookup after paint; remove false ordinary-host-live wording.
 Run only affected bounded performance/temporal routes.
 
-### Ready after DLV-206 — DLV-227: self-contained production-host fixture
+Accepted as implementation commit `da74ded` and integrated into main as
+`5cbd4cf`. The private Hidden/Visible scenarios now use distinct ephemeral
+profiles and retain exact root PID/start, commit, executable SHA-256, dirty
+state, observed roles, and explicit available/unavailable metrics. The clean
+artifact at
+`artifacts/performance/overlay-performance-20260814-174027276-892473c1`
+records commit `da74ded`, executable SHA-256 `3697ce...b4d8`, `dirty=false`,
+and 21 summarized samples per scenario. The separate eight-widget route
+retains its own root/process/profile/commit/SHA/child-role evidence and accepts
+composition only after the complete matching paint record. Focused evidence is
+green for 23 harness assertions, the native Release build, and eight production
+widgets with seven switches. Unavailable GPU/presentation, private-working-set,
+scheduler, DWM/game, and long-run metrics remain stated as unavailable rather
+than converted into claims.
+
+### Assigned — DLV-227: self-contained production-host fixture
 
 Baseline: accepted corrected DLV-224 integrated into local main. Owner: platform
 lane. This is bounded test-infrastructure reliability work and must follow the
@@ -370,9 +387,10 @@ package lifecycle evidence; physical composition remains the final verdict.
    fixture failure honestly.
 5. DLV-225 now adopts Content height in Settings. DLV-226 audits later policies,
    followed by the explicit Audio, Network, and YT Music visible corrections.
-6. DLV-206 may run independently on the platform lane now. DLV-217 integration
-   remains a separate explicit user decision, and DLV-218 may begin only after
-   DLV-217 is integrated.
+6. DLV-206 is accepted and integrated as main `5cbd4cf`; DLV-227 now repairs
+   the isolated temporary-installation fixture. DLV-217 integration remains a
+   separate explicit user decision, and DLV-218 may begin only after DLV-217 is
+   integrated.
 
 ## Manual and packaged verification queue
 
@@ -405,6 +423,7 @@ package lifecycle evidence; physical composition remains the final verdict.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-206 | `da74ded`, integrated as `5cbd4cf`: truthful per-scenario process/commit/SHA/metric provenance, separate eight-widget identity, and post-paint composition ordering with bounded focused evidence. |
 | DLV-224 | `912aea9`, integrated as `02750ba`: independent Preferred/Content/FillAvailable axes, bounded Taffy intrinsic sizing, legacy native v1 omission preserved, malformed versions fail closed, and 286/286 direct native parser/accessibility checks. |
 | DLV-222 | `e8af5be`, integrated by `073e423`: generic Taffy stretch correction, authored variable surfaces, bottom-anchored panel/guide/tray, stable full-capacity tray band, and green focused plus eight-widget linked-host evidence. |
 | DLV-223 | `6b916e8`: responsive YT Music 0.2.8 composition plus real managed-snapshot/GBSS-to-native-renderer proof at 760x440 and 480x340; 79/79 dedicated checks. |
