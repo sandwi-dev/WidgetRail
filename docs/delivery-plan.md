@@ -719,6 +719,32 @@ extension rather than encoding a hidden role or tree-shape heuristic; the
 planner will serialize a generic SDK/protocol assignment if concrete evidence
 shows the current typed properties are insufficient.
 
+Redesign commit `0d4b75b` is rejected pending one bounded correction. Its
+generic compiler, fixed outer shell, controller state model, 28/28 focused
+suite, 24/24 transitions, 426.95 MiB candidate, and bounded shutdown are sound,
+but exact responsive evidence is red and the retained selected Spotify tray
+item is visibly clipped. Correct all three concrete defects without reopening
+the architecture:
+
+- A typed Text node with empty display text and a nonempty accessibility label
+  currently renders at zero area, making all four Network Controls fixtures
+  fail reachability. Render a generic visible label fallback and add a direct
+  empty-text/accessibility-label regression; do not exclude the node or weaken
+  geometry evidence.
+- Tray selection reveal runs only when selection changes. Re-reveal the selected
+  item after tray viewport/profile sizing settles and prove selected first/last
+  containment across 420, 978, 1180, and 1440 widths.
+- The mixed fixed-content/direct-Scroll compiler flattens the Scroll node to its
+  children and loses that typed node's semantic/UIA identity and
+  `VisibleWhen`. Preserve those semantics in the single outer scrolling owner
+  and prove compact/expanded visibility without a Network or known-tree-shape
+  branch.
+
+Run the changed-tip focused suite and one exact measurement. Require every
+installed/responsive row green at the new exact SHA before independent review.
+Do not integrate or launch `0d4b75b`; physical display/controller acceptance
+remains mandatory after the correction is accepted.
+
 Objective:
 
 - Replace AVP fake remote state and representative domain pages with direct use
