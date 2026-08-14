@@ -646,15 +646,16 @@ Acceptance:
   the current transition and terminal disposition, and cannot materially affect
   input-to-selection or hidden/idle behavior.
 - Run only affected selection, lifecycle, session-coordinator, delayed/cold
-  widget, and diagnostic tests plus the native Release build. Then visibly
-  launch the accepted Release and reproduce ordinary tray cycling long enough
-  to retain one automatic-admission case and, if it occurs, one A-required
-  case. No Tier-3 aggregate, provider change, capture-harness work, or speculative
-  behavioral correction.
+  widget, and diagnostic tests plus the native Release build. The planner then
+  visibly launches the accepted instrumented Release for a joint user test. The
+  implementation task and planner must not spend time attempting to reproduce
+  the intermittent product symptom independently. No Tier-3 aggregate, provider
+  change, capture-harness work, or speculative behavioral correction.
 - The planner independently reviews the correlated evidence and only then
   authors a separate bounded correction assignment for the proven failing
-  branch. Absence of a reproduced A-required interval is an honest evidence
-  result, not permission to claim the product defect fixed.
+  branch. The user will exercise ordinary tray cycling and provide the exact
+  test interval; absence of an A-required interval during that joint test is an
+  honest evidence result, not permission to claim the product defect fixed.
 
 Stop for a public protocol/schema change, unbounded or per-frame logging,
 snapshot-content retention, UI-thread file/serialization work, another
@@ -927,10 +928,11 @@ Release rather than manufacture speculative style changes.
 
 ## Manual and packaged verification queue
 
-- Reproduce the intermittent tray-selection admission defect after accepted
-  DLV-237 is launched. Correlate one automatic-admission transition and, if it
-  recurs, one transition that remains on inert pixels until A; only that retained
-  evidence authorizes root-cause assignment selection.
+- Jointly test the intermittent tray-selection admission defect after accepted
+  DLV-237 is launched. The user performs ordinary tray cycling and reports the
+  exact interval; the planner correlates the resulting trace. Neither lane nor
+  the planner performs a separate reproduction campaign. Only retained evidence
+  from the joint test authorizes root-cause assignment selection.
 - User verdict on each freshly launched accepted native Release remains
   authoritative for panel/tray cohesion, controller feel, motion, Audio slider
   sizing, Network first-page visibility, Settings dead space, and YT Music
