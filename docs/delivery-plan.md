@@ -10,9 +10,10 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main: `6b916e8`. Its latest product implementation milestone is
-  accepted DLV-223 through `6b916e8`; accepted DLV-221 `8836e07` remains the
-  Taffy engine baseline. The user physically reviewed the rebuilt DLV-221
+- Local main: `073e423`. Its latest product implementation milestones are
+  accepted DLV-222 `e8af5be` and DLV-223 through `6b916e8`; accepted DLV-221
+  `8836e07` remains the Taffy engine baseline. The user physically reviewed the
+  rebuilt DLV-221
   Release, found the integration substantially correct, and accepted Taffy as
   the native declarative geometry engine.
 - DLV-221 preserves the existing Widget SDK/protocol, package/catalog/runtime,
@@ -132,7 +133,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Awaiting DLV-224 integration; no executable widget assignment |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, created clean from main `8e2587c`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-222 Active |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, integrated cleanly with accepted main through merge `073e423`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-224 Assigned after planner baseline refresh |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -141,68 +142,19 @@ and must not be mixed with this UI correction cluster.
 
 ## Platform lane
 
-### Assigned — DLV-222: restore native surface anchoring and correct Taffy stretch
+### Done — DLV-222: restore native surface anchoring and correct Taffy stretch
 
-Baseline: clean local main `8e2587c` with product implementation baseline
-`8836e07`. Owner: native platform/layout lane.
+Accepted as `e8af5be` and integrated with DLV-223 through merge `073e423`.
+Generic Taffy translation now separates child alignment from inherited parent
+stretch; authored widget envelopes drive the one HWND; variable content is
+bottom-anchored around fixed guide/tray chrome; and the bounded 560-DIP tray
+band retains the current eight items at controller-safe sizes. Focused evidence
+is green for Rust/Taffy, layout, renderer, placement, tray, controller, slider,
+focus, accessibility/UIA, Audio Mixer 45/45, Network Controls 24/24, and the
+real eight-widget linked-host group with clean shutdown and bounded composition
+timing. Packaged physical review remains pending on the coherent Release.
 
-Visible objective: fix the detached panel/tray relationship, Audio Mixer dead
-row width, and Network's insufficient first-page height without widget-specific
-native rules or moving the tray.
-
-Required implementation:
-
-- In `DeclarativeRenderer` and the Taffy bridge, separate a container's
-  `align-items`/child alignment from that node's own `align-self`. Ordinary auto-
-  width children stretch in a stretching parent even when their own children
-  are centered. Definite width, aspect ratio, or another explicit generic
-  sizing rule may bound the node.
-- Add a direct regression in which a Row with centered children still fills its
-  parent and a `flex-grow: 1` slider consumes the remaining row width. Cover
-  nested column/row behavior and constrained widths without Audio/package IDs.
-- Stop bypassing the already-resolved widget `windowWidthDip/windowHeightDip`
-  with the fixed `1180x700` widget extent. Restore validated widget-owned
-  preferred envelopes while preserving one bottom-centered work-area placement
-  and one fixed composition owner.
-- Bottom-anchor variable-height content. Restore an explicit invariant between
-  the visible panel bottom, controller guide, and tray rather than ending the
-  card at a top-anchored `footerY` and describing the result as detached.
-- Keep tray and guide absolute screen bounds unchanged through compact,
-  standard, wide, and height-only widget switches. Width changes remain centered
-  on the same screen anchor. Clamp only to the active monitor work area and
-  accessibility/safe margins.
-- Allow the existing Network `560x700` preferred panel to receive its authored
-  height when the work area permits. At constrained height, retain scrolling
-  and focus reveal rather than clipping or moving chrome.
-- Preserve composition continuity and one HWND. Do not revive Avalonia, add a
-  second panel/tray window, or modify widget presentations in this milestone.
-
-Acceptance:
-
-- Generic layout tests prove parent stretch versus child centering and exact
-  remaining-space slider growth.
-- Placement tests prove a fixed panel-to-guide and guide-to-tray offset, stable
-  absolute tray/guide bounds across every current widget extent, and work-area
-  containment at mixed DPI/interface scale.
-- The real eight-widget switch group retains one renderer, one tray capacity,
-  controller focus memory, no clipping, and normal shutdown.
-- Audio Mixer sliders reach their intended row width. Network's first-page
-  `Ready to scan` state is visible at the preferred envelope and remains
-  reachable by scrolling when constrained.
-- Tier 1: Rust bridge/layout, DeclarativeLayout, DeclarativeRenderer,
-  OverlayPlacement, tray, focus, controller navigation, slider, accessibility,
-  and Release host build.
-- Tier 2: one bounded linked-host all-eight-widget switch/placement group. No
-  canonical aggregate; DLV-221 already paid the core-engine checkpoint and the
-  known manifest defect is unchanged.
-- Rebuild/package the exact accepted Release and leave it visibly running for
-  the user's panel/tray, Audio, Network, motion, and controller verdict.
-
-Out of scope: public protocol/schema changes, Settings/YT semantic changes,
-widget identities in native code, another layout engine, another HWND/focus/
-input owner, Avalonia work, credentials, or verifier-manifest repair.
-
-### Ready after DLV-222 integration — DLV-224: symmetric surface-axis sizing
+### Assigned — DLV-224: symmetric surface-axis sizing
 
 Baseline: accepted DLV-222 integrated into local main. Owner: serialized
 cross-component assignment led by the platform lane. No widgets-lane task may
@@ -328,13 +280,12 @@ surface/conformance checks only.
 
 ## Serialized integration order
 
-1. DLV-221 is accepted and integrated as product commit `8836e07`; current
-   planner-owned local main is `8e2587c`.
-2. DLV-222 platform geometry/stretch and DLV-223 YT Music composition run
-   concurrently from `8e2587c`; their file ownership must not overlap.
-3. Review and integrate accepted DLV-222 and DLV-223 independently. Rebuild one
-   coherent Release after both are present for the named physical verdict.
-4. DLV-224 is the sole serialized shared protocol/native assignment. Pause any
+1. DLV-221 is accepted and integrated as product commit `8836e07`.
+2. DLV-222 `e8af5be` and DLV-223 through `6b916e8` are accepted and integrated
+   coherently through merge `073e423`.
+3. Rebuild/package and visibly launch that coherent Release for the named
+   physical tray, Audio, Network, and YT Music verdict.
+4. DLV-224 is now the sole serialized shared protocol/native assignment. Pause any
    widget work touching `WidgetSurfaceHints` until it is accepted/integrated.
 5. DLV-225 adopts Content height in Settings. DLV-226 audits later policies.
 6. DLV-217 integration remains a separate explicit user decision. DLV-218 may
@@ -371,6 +322,7 @@ surface/conformance checks only.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-222 | `e8af5be`, integrated by `073e423`: generic Taffy stretch correction, authored variable surfaces, bottom-anchored panel/guide/tray, stable full-capacity tray band, and green focused plus eight-widget linked-host evidence. |
 | DLV-223 | `6b916e8`: responsive YT Music 0.2.8 composition plus real managed-snapshot/GBSS-to-native-renderer proof at 760x440 and 480x340; 79/79 dedicated checks. |
 | DLV-221 | `8836e07`: pinned Taffy 0.12.2 static geometry engine, narrow Rust/C ABI, old custom solver removed, focused native/Rust/eight-widget/performance evidence accepted; canonical aggregate retained red at the pre-product manifest self-check. |
 | DLV-217 | Autonomous Game Launcher accepted through `d57fd06`; integration awaits explicit approval for the known documentation-only red aggregate step. |
