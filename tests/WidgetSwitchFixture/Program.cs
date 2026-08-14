@@ -129,6 +129,7 @@ internal static class Program
                 return new("network", "Network Controls", "network-surface", 0, new WidgetSurfaceHints
                 {
                     Mode = WidgetSurfaceMode.Compact,
+                    WidthMode = WidgetSurfaceAxisMode.FillAvailable,
                     PreferredWidth = 560,
                     PreferredHeight = 700,
                     MinimumWidth = 320,
@@ -183,6 +184,7 @@ internal static class Program
                 return new("settings", "Settings", "settings-surface", 0, new WidgetSurfaceHints
                 {
                     Mode = WidgetSurfaceMode.Standard,
+                    HeightMode = WidgetSurfaceAxisMode.Content,
                     PreferredWidth = 700,
                     PreferredHeight = 650,
                     MinimumWidth = 420,

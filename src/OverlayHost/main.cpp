@@ -2997,6 +2997,15 @@ private:
             return OverlayShowResult::Failed;
         }
         const auto bodyTarget = DesiredWidgetSurfaceTarget();
+        const auto surfaceRequest = CurrentWidgetSurfaceRequest();
+        const auto axisName = [](const gba::WidgetSurfaceAxisMode mode) {
+            switch (mode) {
+            case gba::WidgetSurfaceAxisMode::Content: return L"content";
+            case gba::WidgetSurfaceAxisMode::FillAvailable: return L"fillAvailable";
+            case gba::WidgetSurfaceAxisMode::Preferred:
+            default: return L"preferred";
+            }
+        };
         AppendDiagnostic(
             L"Overlay work-area placement work=" +
             std::to_wstring(work.left) + L"," + std::to_wstring(work.top) + L"," +
@@ -3016,7 +3025,15 @@ private:
             L" shell=" +
             (state_.surface() == gba::Surface::Widget ? L"shared" : L"dashboard") +
             L" body-preferred=" + std::to_wstring(bodyTarget.panelWidthDip) + L"x" +
-            std::to_wstring(bodyTarget.panelHeightDip));
+            std::to_wstring(bodyTarget.panelHeightDip) +
+            L" intrinsic-passes=" +
+            std::to_wstring(bodyTarget.intrinsicMeasurementPasses) +
+            L" surface-axis=" + axisName(surfaceRequest
+                ? surfaceRequest->widthMode
+                : gba::WidgetSurfaceAxisMode::Preferred) + L"/" +
+            axisName(surfaceRequest
+                ? surfaceRequest->heightMode
+                : gba::WidgetSurfaceAxisMode::Preferred));
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
@@ -3143,6 +3160,14 @@ private:
             : 1.0F;
     }
 
+    struct WidgetSurfaceResolutionCache final {
+        std::wstring instanceId;
+        long long sequence{};
+        gba::WidgetSurfaceRequest request;
+        gba::WidgetSurfaceConstraints constraints;
+        gba::ResolvedWidgetSurface resolved;
+    };
+
     [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
     WidgetSurfaceRequestForSnapshot(const gba::WidgetSnapshot& snapshot) const {
         if (!snapshot.surface) return std::nullopt;
@@ -3160,6 +3185,17 @@ private:
             // untrusted transport boundary.
             request.mode = gba::WidgetSurfaceMode::Adaptive;
         }
+        const auto widthMode = snapshot.surface->widthMode
+            ? gba::ParseWidgetSurfaceAxisMode(
+                *snapshot.surface->widthMode, snapshot.protocolVersion)
+            : std::optional{gba::WidgetSurfaceAxisMode::Preferred};
+        const auto heightMode = snapshot.surface->heightMode
+            ? gba::ParseWidgetSurfaceAxisMode(
+                *snapshot.surface->heightMode, snapshot.protocolVersion)
+            : std::optional{gba::WidgetSurfaceAxisMode::Preferred};
+        if (!widthMode || !heightMode) return std::nullopt;
+        request.widthMode = *widthMode;
+        request.heightMode = *heightMode;
         const auto toFloat = [](const std::optional<double> value) -> std::optional<float> {
             if (!value || !std::isfinite(*value) ||
                 *value > std::numeric_limits<float>::max() ||
@@ -3203,8 +3239,120 @@ private:
     }
 
     [[nodiscard]] gba::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
-        return gba::ResolveWidgetSurfaceTarget(
-            CurrentWidgetSurfaceRequest(), CurrentTextScale());
+        const auto request = CurrentWidgetSurfaceRequest();
+        if (!request ||
+            (request->widthMode == gba::WidgetSurfaceAxisMode::Preferred &&
+             request->heightMode == gba::WidgetSurfaceAxisMode::Preferred)) {
+            return gba::ResolveWidgetSurfaceTarget(request, CurrentTextScale());
+        }
+
+        HWND monitorTarget = window_;
+        if (platform_) {
+            const HWND remembered = reinterpret_cast<HWND>(
+                GbaOverlayPlatformRememberedForegroundTarget(platform_));
+            monitorTarget = reinterpret_cast<HWND>(
+                GbaOverlayPlatformResolveForegroundTarget(
+                    platform_, reinterpret_cast<std::uintptr_t>(window_),
+                    PlatformBoolean(remembered && IsWindow(remembered))));
+        }
+        const HMONITOR monitor = MonitorFromWindow(
+            monitorTarget, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO monitorInfo{sizeof(monitorInfo)};
+        if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo))
+            return gba::ResolveWidgetSurfaceTarget(request, CurrentTextScale());
+        UINT dpi = 96;
+        UINT dpiY = 96;
+        if (FAILED(GetDpiForMonitor(
+                monitor, MDT_EFFECTIVE_DPI, &dpi, &dpiY)) ||
+            dpi == 0 || dpiY == 0) {
+            dpi = 96;
+        }
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const gba::WidgetSurfaceConstraints constraints{
+            {monitorInfo.rcWork.left, monitorInfo.rcWork.top,
+             monitorInfo.rcWork.right, monitorInfo.rcWork.bottom},
+            dpi,
+            interfaceScale,
+            CurrentTextScale(),
+        };
+
+        const gba::WidgetSnapshot* measurementSnapshot{};
+        if (state_.surface() == gba::Surface::Widget) {
+            const auto* admitted = SnapshotFor(state_.activeWidget());
+            measurementSnapshot = admitted
+                ? InteractionSnapshotFor(state_.activeWidget())
+                : committedWidgetPresentationSnapshot_
+                    ? &*committedWidgetPresentationSnapshot_
+                    : nullptr;
+        }
+        const auto sameRequest = [](const gba::WidgetSurfaceRequest& left,
+                                    const gba::WidgetSurfaceRequest& right) {
+            return left.mode == right.mode &&
+                left.widthMode == right.widthMode &&
+                left.heightMode == right.heightMode &&
+                left.preferredWidthDip == right.preferredWidthDip &&
+                left.preferredHeightDip == right.preferredHeightDip &&
+                left.minimumWidthDip == right.minimumWidthDip &&
+                left.minimumHeightDip == right.minimumHeightDip;
+        };
+        const auto sameConstraints = [](const gba::WidgetSurfaceConstraints& left,
+                                        const gba::WidgetSurfaceConstraints& right) {
+            return left.workArea.left == right.workArea.left &&
+                left.workArea.top == right.workArea.top &&
+                left.workArea.right == right.workArea.right &&
+                left.workArea.bottom == right.workArea.bottom &&
+                left.dpi == right.dpi &&
+                left.interfaceScale == right.interfaceScale &&
+                left.textScale == right.textScale &&
+                left.margins.side == right.margins.side &&
+                left.margins.top == right.margins.top &&
+                left.margins.bottom == right.margins.bottom;
+        };
+        const std::wstring_view instanceId = measurementSnapshot
+            ? std::wstring_view{measurementSnapshot->instanceId}
+            : std::wstring_view{};
+        const long long sequence = measurementSnapshot
+            ? measurementSnapshot->sequence
+            : -1;
+        if (widgetSurfaceResolutionCache_ &&
+            widgetSurfaceResolutionCache_->instanceId == instanceId &&
+            widgetSurfaceResolutionCache_->sequence == sequence &&
+            sameRequest(widgetSurfaceResolutionCache_->request, *request) &&
+            sameConstraints(widgetSurfaceResolutionCache_->constraints, constraints)) {
+            return widgetSurfaceResolutionCache_->resolved;
+        }
+        gba::WidgetSurfaceIntrinsicMeasure measure;
+        if (measurementSnapshot && declarativeRenderer_ &&
+            (request->widthMode == gba::WidgetSurfaceAxisMode::Content ||
+             request->heightMode == gba::WidgetSurfaceAxisMode::Content)) {
+            const bool intrinsicWidth =
+                request->widthMode == gba::WidgetSurfaceAxisMode::Content;
+            measure = [this, measurementSnapshot, dpi, interfaceScale, intrinsicWidth](
+                const float maximumWidthDip,
+                const float maximumHeightDip)
+                -> std::optional<gba::WidgetSurfaceIntrinsicExtent> {
+                gba::DeclarativeRenderOptions options;
+                options.pixelScale = static_cast<float>(dpi) / 96.0F * interfaceScale;
+                options.accessibility = CurrentAccessibilityPolicy();
+                options.surfaceBackground = effectivePanelBackground_;
+                const auto measured = declarativeRenderer_->MeasureContent(
+                    *measurementSnapshot,
+                    {maximumWidthDip, maximumHeightDip},
+                    intrinsicWidth,
+                    options);
+                if (!measured.succeeded) return std::nullopt;
+                return gba::WidgetSurfaceIntrinsicExtent{
+                    measured.extent.width, measured.extent.height};
+            };
+        }
+        const auto resolved = gba::ResolveWidgetSurface(
+            request, constraints, measure).value_or(
+            gba::ResolveWidgetSurfaceTarget(request, CurrentTextScale()));
+        widgetSurfaceResolutionCache_ = WidgetSurfaceResolutionCache{
+            std::wstring{instanceId}, sequence, *request, constraints, resolved};
+        return resolved;
     }
 
     [[nodiscard]] gba::OverlayPresentationExtent DesiredPresentationExtentDip() const {
@@ -6644,6 +6792,8 @@ private:
     std::wstring pendingContentRevealWidget_;
     bool committedWidgetSurfaceAvailable_{};
     std::optional<gba::WidgetSurfaceRequest> committedWidgetSurfaceRequest_;
+    mutable std::optional<WidgetSurfaceResolutionCache>
+        widgetSurfaceResolutionCache_;
     std::wstring committedWidgetPresentationWidget_;
     std::optional<gba::WidgetSnapshot> committedWidgetPresentationSnapshot_;
     std::wstring committedWidgetPresentationFocusId_;

@@ -106,6 +106,17 @@ public static class ViewSnapshotValidator
                     $"Surface hints require protocol version {ProtocolConstants.SurfaceHintsVersion} or later.");
             if (!Enum.IsDefined(snapshot.Surface.Mode))
                 Add("$.surface.mode", "invalid_surface_mode", "The surface mode is not supported.");
+            if (!Enum.IsDefined(snapshot.Surface.WidthMode))
+                Add("$.surface.widthMode", "invalid_surface_axis_mode",
+                    "The surface width mode is not supported.");
+            if (!Enum.IsDefined(snapshot.Surface.HeightMode))
+                Add("$.surface.heightMode", "invalid_surface_axis_mode",
+                    "The surface height mode is not supported.");
+            if ((snapshot.Surface.WidthMode != WidgetSurfaceAxisMode.Preferred ||
+                 snapshot.Surface.HeightMode != WidgetSurfaceAxisMode.Preferred) &&
+                snapshot.ProtocolVersion < ProtocolConstants.SurfaceAxisSizingVersion)
+                Add("$.surface", "feature_requires_version",
+                    $"Surface axis sizing requires protocol version {ProtocolConstants.SurfaceAxisSizingVersion} or later.");
             CheckPair(snapshot.Surface.PreferredWidth, snapshot.Surface.PreferredHeight,
                 "preferred", ProtocolConstants.MinimumSurfaceWidth,
                 ProtocolConstants.MaximumSurfaceWidth,

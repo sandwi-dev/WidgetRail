@@ -436,6 +436,151 @@ int main() {
     CheckNear(invalidTextTarget.windowWidthDip, standardTarget.windowWidthDip,
               "invalid text scale fails safely to the standard scale");
 
+    Check(ParseWidgetSurfaceAxisMode(L"preferred", 2) ==
+              WidgetSurfaceAxisMode::Preferred,
+          "legacy protocol accepts the omitted/default Preferred axis");
+    Check(!ParseWidgetSurfaceAxisMode(L"content", 16),
+          "legacy protocol rejects Content axis metadata");
+    Check(ParseWidgetSurfaceAxisMode(L"content", 17) ==
+              WidgetSurfaceAxisMode::Content,
+          "protocol v17 parses Content once into the native request");
+    Check(ParseWidgetSurfaceAxisMode(L"fillAvailable", 17) ==
+              WidgetSurfaceAxisMode::FillAvailable,
+          "protocol v17 parses FillAvailable once into the native request");
+    Check(!ParseWidgetSurfaceAxisMode(L"fill-remaining", 17),
+          "unknown native axis metadata fails closed");
+    Check(!ParseWidgetSurfaceAxisMode(L"", 17),
+          "present-but-empty native axis metadata fails closed");
+
+    WidgetSurfaceRequest contentRequest{WidgetSurfaceMode::Standard};
+    contentRequest.widthMode = WidgetSurfaceAxisMode::Content;
+    contentRequest.heightMode = WidgetSurfaceAxisMode::Content;
+    contentRequest.preferredWidthDip = 880.0F;
+    contentRequest.preferredHeightDip = 520.0F;
+    contentRequest.minimumWidthDip = 420.0F;
+    contentRequest.minimumHeightDip = 280.0F;
+    const WidgetSurfaceConstraints ordinaryWork{
+        {0, 0, 1920, 1080}, 96, 1.0F, 1.0F};
+    unsigned int measureCalls{};
+    float measuredAtWidth{};
+    float measuredAtHeight{};
+    const auto smallerContent = ResolveWidgetSurface(
+        contentRequest, ordinaryWork,
+        [&](const float width, const float height)
+            -> std::optional<WidgetSurfaceIntrinsicExtent> {
+            ++measureCalls;
+            measuredAtWidth = width;
+            measuredAtHeight = height;
+            return WidgetSurfaceIntrinsicExtent{300.0F, 100.0F};
+        });
+    Check(smallerContent && measureCalls == 1 &&
+              smallerContent->intrinsicMeasurementPasses == 1,
+          "Content axes perform exactly one intrinsic pass before final layout");
+    CheckNear(measuredAtWidth, 878.0F,
+              "intrinsic width is bounded by preferred minus fixed panel inset");
+    CheckNear(measuredAtHeight, 464.0F,
+              "intrinsic height is bounded by preferred minus host footer chrome");
+    CheckNear(smallerContent->panelWidthDip, 420.0F,
+              "content smaller than authored width clamps to the minimum");
+    CheckNear(smallerContent->panelHeightDip, 280.0F,
+              "content smaller than authored height clamps to the minimum");
+
+    const auto betweenContent = ResolveWidgetSurface(
+        contentRequest, ordinaryWork,
+        [](float, float) -> std::optional<WidgetSurfaceIntrinsicExtent> {
+            return WidgetSurfaceIntrinsicExtent{600.0F, 340.0F};
+        });
+    Check(betweenContent.has_value(), "between-bounds content resolves");
+    CheckNear(betweenContent->panelWidthDip, 602.0F,
+              "between-bounds intrinsic width adds only fixed panel chrome");
+    CheckNear(betweenContent->panelHeightDip, 396.0F,
+              "between-bounds intrinsic height adds the fixed guide reservation");
+
+    const auto overflowingContent = ResolveWidgetSurface(
+        contentRequest, ordinaryWork,
+        [](float, float) -> std::optional<WidgetSurfaceIntrinsicExtent> {
+            return WidgetSurfaceIntrinsicExtent{2'000.0F, 1'000.0F};
+        });
+    Check(overflowingContent.has_value(), "overflowing content resolves");
+    CheckNear(overflowingContent->panelWidthDip, 880.0F,
+              "intrinsic overflow is capped at authored preferred width");
+    CheckNear(overflowingContent->panelHeightDip, 520.0F,
+              "intrinsic overflow is capped at authored preferred height");
+
+    const auto invalidMeasurement = ResolveWidgetSurface(
+        contentRequest, ordinaryWork,
+        [](float, float) -> std::optional<WidgetSurfaceIntrinsicExtent> {
+            return WidgetSurfaceIntrinsicExtent{
+                std::numeric_limits<float>::quiet_NaN(), 340.0F};
+        });
+    Check(invalidMeasurement &&
+              invalidMeasurement->intrinsicMeasurementPasses == 1,
+          "non-finite intrinsic output fails safely after one bounded pass");
+    CheckNear(invalidMeasurement->panelWidthDip, 880.0F,
+              "invalid intrinsic output preserves the validated preferred width");
+    CheckNear(invalidMeasurement->panelHeightDip, 520.0F,
+              "invalid intrinsic output preserves the validated preferred height");
+
+    WidgetSurfaceRequest fillRequest = contentRequest;
+    fillRequest.widthMode = WidgetSurfaceAxisMode::FillAvailable;
+    fillRequest.heightMode = WidgetSurfaceAxisMode::FillAvailable;
+    measureCalls = 0;
+    const auto fill = ResolveWidgetSurface(
+        fillRequest, ordinaryWork,
+        [&](float, float) -> std::optional<WidgetSurfaceIntrinsicExtent> {
+            ++measureCalls;
+            return WidgetSurfaceIntrinsicExtent{};
+        });
+    Check(fill && measureCalls == 0 && fill->intrinsicMeasurementPasses == 0,
+          "FillAvailable axes consume work authority without intrinsic layout");
+    CheckNear(fill->windowWidthDip, 1872.0F,
+              "FillAvailable width consumes the safe admitted work extent");
+    CheckNear(fill->windowHeightDip, 1024.0F,
+              "FillAvailable height consumes the safe admitted work extent");
+
+    WidgetSurfaceRequest mixedRequest = contentRequest;
+    mixedRequest.widthMode = WidgetSurfaceAxisMode::Preferred;
+    const auto mixed = ResolveWidgetSurface(
+        mixedRequest,
+        WidgetSurfaceConstraints{{0, 0, 1280, 720}, 96, 1.0F, 1.0F},
+        [](float, float) -> std::optional<WidgetSurfaceIntrinsicExtent> {
+            return WidgetSurfaceIntrinsicExtent{400.0F, 900.0F};
+        });
+    Check(mixed.has_value(), "independent Preferred/Content axes resolve");
+    CheckNear(mixed->panelWidthDip, 880.0F,
+              "Preferred width remains stable when height is Content");
+    CheckNear(mixed->panelHeightDip, 486.0F,
+              "Content height is capped by the admitted work area");
+
+    WidgetSurfaceRequest invalidAxis = contentRequest;
+    invalidAxis.widthMode = static_cast<WidgetSurfaceAxisMode>(999);
+    Check(!ResolveWidgetSurface(invalidAxis, ordinaryWork),
+          "invalid native axis mode rejects the surface admission");
+
+    const auto preferredGeometry = ComputeOverlaySurfaceGeometry(
+        952.0F, 698.0F, 880.0F, 520.0F);
+    const auto contentGeometry = ComputeOverlaySurfaceGeometry(
+        betweenContent->windowWidthDip, betweenContent->windowHeightDip,
+        betweenContent->panelWidthDip, betweenContent->panelHeightDip);
+    const auto preferredPlacement = ComputeOverlayPlacement(
+        ordinaryWork.workArea, 96, 952.0F, 698.0F);
+    const auto contentPlacement = ComputeOverlayPlacement(
+        ordinaryWork.workArea, 96,
+        betweenContent->windowWidthDip, betweenContent->windowHeightDip);
+    Check(preferredGeometry && contentGeometry &&
+              preferredPlacement && contentPlacement,
+          "Preferred and Content transitions both resolve anchored geometry");
+    CheckNear(
+        static_cast<float>(preferredPlacement->y) + preferredGeometry->trayY,
+        static_cast<float>(contentPlacement->y) + contentGeometry->trayY,
+        "surface transitions keep the tray at one screen coordinate");
+    CheckNear(
+        static_cast<float>(preferredPlacement->y) + preferredGeometry->footerY +
+            preferredGeometry->footerHeight,
+        static_cast<float>(contentPlacement->y) + contentGeometry->footerY +
+            contentGeometry->footerHeight,
+        "surface transitions keep the guide/panel bottom screen anchor fixed");
+
     const auto compact720p = ResolveWidgetSurface(
         compactRequest,
         WidgetSurfaceConstraints{{0, 0, 1280, 720}, 96, 1.0F, 1.0F});

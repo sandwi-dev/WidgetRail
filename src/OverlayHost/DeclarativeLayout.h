@@ -157,6 +157,14 @@ struct LayoutOptions {
     // Supply the full output viewport when the root rect is a smaller panel.
     std::optional<Size> responsiveViewport;
     bool fillAutoRoot{true};
+    // When present, controls the inline axis independently from the legacy
+    // fillAutoRoot setting. Content-width measurement leaves it automatic;
+    // Content-height measurement keeps the admitted width definite.
+    std::optional<bool> fillAutoRootWidth;
+    // Content surface admission keeps width definite but lets Taffy resolve
+    // the root's automatic block extent. The caller still supplies a finite
+    // viewport ceiling and clamps the returned extent before final layout.
+    bool intrinsicRootHeight{};
 };
 
 struct LayoutResult {

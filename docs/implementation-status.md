@@ -4516,3 +4516,40 @@ targets, focus reveal, and bounded geometry. The isolated package evidence is
 retained at `artifacts/acceptance/ytmusic-community-addon.json`; the real user
 catalog remained read-only. A coherent Release containing both DLV-222 and
 DLV-223 still needs the user's physical composition and tray-spacing verdict.
+
+### Symmetric widget surface-axis sizing (DLV-224)
+
+Protocol v17 adds one typed `WidgetSurfaceAxisMode` shared independently by
+`WidgetSurfaceHints.WidthMode` and `HeightMode`. Both default to `Preferred` and
+are omitted from legacy wire payloads, so existing protocol-v2 views retain
+their validated preferred extents and stable live-data behavior. Explicit
+`Content` or `FillAvailable` requires v17; malformed, undefined, and
+version-incompatible values fail validation or native admission without
+replacing the retained presentation.
+
+The one existing placement owner admits work-area, DPI, interface, text-scale,
+minimum, and preferred bounds before invoking the one existing renderer for at
+most one intrinsic pass. Taffy receives the admitted width independently from
+the height policy: Content width stays automatic, while Preferred or
+FillAvailable width remains definite during Content-height measurement. The
+measured extent is finite and bounded, clamped between authored minimum and
+preferred/work-area ceilings, augmented by host chrome, cached per immutable
+snapshot and admission constraints, and followed by the ordinary final layout.
+No widget, package, page, style, or known-tree identity participates. The one
+HWND, renderer, focus graph, GameInput owner, scroll state, accessibility tree,
+and fixed bottom-center panel/guide/tray anchor remain unchanged.
+
+Focused Release evidence passes Widget SDK 93/93, SDK compatibility 12/12,
+Widget Bridge 89/89, pinned Rust/Taffy 5/5, DeclarativeLayout 250,
+DeclarativeRenderer 4,851, OverlayPlacement 112,333, and the affected native
+composition/focus/accessibility group. The final native Release builds, and the
+bounded managed-snapshot-to-production-host fixture cycles all eight widget
+workers with explicit zero-pass FillAvailable and one-pass Content admissions,
+normal focus/input ownership, fixed tray geometry, clean shutdown, and maximum
+draw/commit/coordinated-geometry/motion-commit times of 3.461/1.700/1.946/0.057
+ms. Documentation validation reaches only eight pre-existing broken links in
+reviewer-owned delivery-plan history snapshots; no DLV-224 authoring document
+is named by that failure. The required canonical checkpoint is intentionally
+run exactly once only after this coherent implementation is committed cleanly;
+its retained exact-commit result is reported separately and is not preclaimed
+here.

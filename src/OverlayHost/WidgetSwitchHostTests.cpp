@@ -728,6 +728,12 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(log.find("Composition motion start") != std::string::npos &&
                 log.find("anchor=bottom") != std::string::npos,
             "Variable widget extents omitted bottom-anchored composition continuity.");
+    Require(log.find("intrinsic-passes=0 surface-axis=fillAvailable/preferred") !=
+                std::string::npos,
+            "Production host did not admit independent FillAvailable width without measurement.");
+    Require(log.find("intrinsic-passes=1 surface-axis=preferred/content") !=
+                std::string::npos,
+            "Production host did not perform one Content-height intrinsic pass.");
     Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                 log.find("Overlay render target resized in place") == std::string::npos,
             "Production transition fell back to direct HWND presentation.");

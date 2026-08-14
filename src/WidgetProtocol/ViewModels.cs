@@ -74,6 +74,20 @@ public enum WidgetSurfaceMode
 }
 
 /// <summary>
+/// Selects one independent axis policy for the host-owned widget surface.
+/// Preferred preserves the authored stable extent, Content measures the
+/// immutable view within authored bounds, and FillAvailable consumes the safe
+/// work-area extent admitted by the host.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetSurfaceAxisMode>))]
+public enum WidgetSurfaceAxisMode
+{
+    Preferred,
+    Content,
+    FillAvailable,
+}
+
+/// <summary>
 /// A closed host-owned presentation family. It changes composition only;
 /// authored nodes retain all action, focus, collection, and accessibility identity.
 /// </summary>
@@ -129,12 +143,16 @@ public enum ResponsiveVisibility
 /// <summary>
 /// Bounded logical-DIP hints for the currently published view. The host may
 /// choose any smaller or larger safe size; widgets must remain responsive.
-/// Width/height pairs are atomic so partially specified geometry cannot leak
-/// into placement policy.
+/// Numeric width/height pairs are atomic, while the typed sizing policy for
+/// each axis is selected independently.
 /// </summary>
 public sealed record WidgetSurfaceHints
 {
     public WidgetSurfaceMode Mode { get; init; } = WidgetSurfaceMode.Adaptive;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public WidgetSurfaceAxisMode WidthMode { get; init; } = WidgetSurfaceAxisMode.Preferred;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public WidgetSurfaceAxisMode HeightMode { get; init; } = WidgetSurfaceAxisMode.Preferred;
     public double? PreferredWidth { get; init; }
     public double? PreferredHeight { get; init; }
     public double? MinimumWidth { get; init; }
@@ -356,7 +374,7 @@ public sealed record ViewSnapshot
     public required string ActiveInputScopeId { get; init; }
     public string? InitialFocusId { get; init; }
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
-    /// <summary>Version-2, host-clamped sizing hints for this exact view.</summary>
+    /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
     /// <summary>
     /// Optional protocol-v16 request for the package-declared host-owned

@@ -88,6 +88,12 @@ struct RenderResult final {
     std::optional<declarative::Rect> currentFocusOutlineClip;
 };
 
+struct ContentMeasureResult final {
+    bool succeeded{};
+    declarative::Size extent{};
+    std::vector<RenderDiagnostic> diagnostics;
+};
+
 struct ImagePlacement final {
     declarative::Rect destination;
     declarative::Rect source;
@@ -163,6 +169,16 @@ public:
         const WidgetSnapshot& snapshot,
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
+        const DeclarativeRenderOptions& options = {});
+
+    /// Performs the one bounded intrinsic host pass used only by an explicit
+    /// Content surface axis. It shares native style, DirectWrite leaf
+    /// measurement, responsive visibility, and Taffy tree preparation with
+    /// final Render, but does not paint or mutate focus/scroll ownership.
+    [[nodiscard]] ContentMeasureResult MeasureContent(
+        const WidgetSnapshot& snapshot,
+        declarative::Size admittedMaximumExtent,
+        bool intrinsicWidth,
         const DeclarativeRenderOptions& options = {});
 
     void DiscardTargetResources() noexcept;

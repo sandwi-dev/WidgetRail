@@ -6,7 +6,7 @@
 // Stable, product-owned C ABI. The Rust implementation is pinned and built as
 // a static library; no Rust types or allocator ownership cross this boundary.
 
-#define GBA_TAFFY_ABI_VERSION 1U
+#define GBA_TAFFY_ABI_VERSION 2U
 
 enum GbaTaffyResult : std::int32_t {
     GBA_TAFFY_OK = 0,
@@ -144,6 +144,7 @@ extern "C" {
     std::uint32_t rootIndex,
     float availableWidth,
     float availableHeight,
+    std::uint32_t availableHeightMode,
     GbaTaffyMeasureCallback measure,
     void* measureContext,
     GbaTaffyNodeOutput* outputs,

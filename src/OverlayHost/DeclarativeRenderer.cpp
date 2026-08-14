@@ -301,6 +301,8 @@ struct DeclarativeRenderer::RenderPass final {
     std::wstring pressedId;
     Rect viewport;
     bool compactMode{};
+    bool measurementOnly{};
+    bool intrinsicRootWidth{};
     DeclarativeRenderOptions options;
     std::unordered_map<std::string, PreparedNode> prepared;
     std::unordered_map<std::string, PresentationNode> presentation;
@@ -507,8 +509,9 @@ struct DeclarativeRenderer::RenderPass final {
             const auto key = ScrollStateKey(node.id);
             if (const auto offset = owner->scrollOffsets_.find(key);
                 offset != owner->scrollOffsets_.end()) {
-                offset->second.lastAccess = ++owner->scrollStateAccessClock_;
-                element.scrollOffset = offset->second.offset;
+                if (!measurementOnly)
+                    offset->second.lastAccess = ++owner->scrollStateAccessClock_;
+                element.scrollOffset = measurementOnly ? 0.0F : offset->second.offset;
             }
         }
         switch (style.justify()) {
@@ -1064,7 +1067,9 @@ struct DeclarativeRenderer::RenderPass final {
         return {};
     }
 
-    void BuildLayout(const bool followStaticFocus = true) {
+    void BuildLayout(
+        const bool followStaticFocus = true,
+        const bool fillAutoRoot = true) {
         // First pass gives percentage/em adaptation a deterministic parent estimate.
         prepared.clear();
         layout = {};
@@ -1077,6 +1082,10 @@ struct DeclarativeRenderer::RenderPass final {
             options.surfaceBackground);
         LayoutOptions layoutOptions;
         layoutOptions.pixelScale = options.pixelScale;
+        layoutOptions.fillAutoRoot = fillAutoRoot;
+        if (measurementOnly)
+            layoutOptions.fillAutoRootWidth = !intrinsicRootWidth;
+        layoutOptions.intrinsicRootHeight = measurementOnly;
         layoutOptions.responsiveViewport = options.responsiveViewport.value_or(
             Size{viewport.width, viewport.height});
         layout = declarative::ComputeLayout(
@@ -1102,6 +1111,17 @@ struct DeclarativeRenderer::RenderPass final {
                 return MeasureLeaf(element, constraints);
             },
             layoutOptions);
+        if (measurementOnly) {
+            for (const auto& issue : layout.issues) {
+                Add(WidenStableId(issue.elementId),
+                    std::wstring{issue.code.begin(), issue.code.end()},
+                    std::wstring{issue.message.begin(), issue.message.end()},
+                    issue.severity == declarative::LayoutIssueSeverity::Error
+                        ? RenderDiagnosticSeverity::Error
+                        : RenderDiagnosticSeverity::Warning);
+            }
+            return;
+        }
         if (ReconcileCollectionAnchors()) {
             prepared.clear();
             auto anchoredRoot = PrepareNode(
@@ -1921,6 +1941,48 @@ RenderResult DeclarativeRenderer::Render(
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
     return pass.result;
+}
+
+ContentMeasureResult DeclarativeRenderer::MeasureContent(
+    const WidgetSnapshot& snapshot,
+    const Size admittedMaximumExtent,
+    const bool intrinsicWidth,
+    const DeclarativeRenderOptions& options) {
+    ContentMeasureResult result;
+    if (!std::isfinite(admittedMaximumExtent.width) ||
+        !std::isfinite(admittedMaximumExtent.height) ||
+        admittedMaximumExtent.width <= 0.0F ||
+        admittedMaximumExtent.height <= 0.0F) {
+        result.diagnostics.push_back({
+            RenderDiagnosticSeverity::Error, {}, L"invalid_measure_extent",
+            L"Content measurement requires finite positive admitted bounds."});
+        return result;
+    }
+
+    RenderPass pass;
+    pass.owner = this;
+    pass.snapshot = &snapshot;
+    pass.viewport = {0.0F, 0.0F,
+        admittedMaximumExtent.width, admittedMaximumExtent.height};
+    pass.options = options;
+    pass.options.responsiveViewport = admittedMaximumExtent;
+    pass.compactMode = IsCompactResponsiveSurface(admittedMaximumExtent);
+    pass.measurementOnly = true;
+    pass.intrinsicRootWidth = intrinsicWidth;
+    if (!writeFactory_)
+        pass.Add({}, L"missing_write_factory",
+            L"Intrinsic text uses fallback metrics without DirectWrite.");
+    pass.BuildLayout(false, false);
+
+    const auto* root = pass.layout.Find(NarrowStableId(snapshot.root.id));
+    if (root && pass.layout.valid() &&
+        std::isfinite(root->borderBox.width) && root->borderBox.width >= 0.0F &&
+        std::isfinite(root->borderBox.height) && root->borderBox.height >= 0.0F) {
+        result.succeeded = true;
+        result.extent = {root->borderBox.width, root->borderBox.height};
+    }
+    result.diagnostics = std::move(pass.result.diagnostics);
+    return result;
 }
 
 void DeclarativeRenderer::DiscardTargetResources() noexcept {

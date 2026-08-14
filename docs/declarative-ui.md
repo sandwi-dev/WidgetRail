@@ -333,6 +333,8 @@ return new WidgetView(
     Surface: new WidgetSurfaceHints
     {
         Mode = WidgetSurfaceMode.Compact,
+        WidthMode = WidgetSurfaceAxisMode.Preferred,
+        HeightMode = WidgetSurfaceAxisMode.Content,
         PreferredWidth = 560,
         PreferredHeight = 420,
         MinimumWidth = 360,
@@ -340,19 +342,30 @@ return new WidgetView(
     });
 ```
 
-Modes are `Adaptive`, `Compact`, `Standard`, and `Wide`. Explicit preferred and
-minimum dimensions are optional logical-DIP pairs: specify both width and
-height or neither. Accepted widths are 240–1600 DIPs and heights are 180–1200
-DIPs; values must be finite, and a minimum cannot exceed its preferred value.
-These bounds protect placement math, not the monitor: the shell may render
-smaller than a requested minimum when the current work area or accessibility
-scale leaves no alternative.
+`Mode` retains the `Adaptive`, `Compact`, `Standard`, and `Wide` fallback
+dimensions. Protocol v17 adds symmetric independent `WidthMode` and
+`HeightMode` values. `Preferred` is the default and retains stable authored
+dimensions. `Content` uses one bounded Taffy intrinsic measurement clamped to
+the authored minimum/preferred range. `FillAvailable` consumes the safe
+host-admitted work-area extent. Existing protocol-v2 hints omit both axis
+fields and continue to mean `Preferred`/`Preferred`.
+
+Explicit preferred and minimum dimensions are optional logical-DIP pairs:
+specify both width and height or neither. Accepted widths are 240–1600 DIPs and
+heights are 180–1200 DIPs; values must be finite, and a minimum cannot exceed
+its preferred value. These bounds protect placement math, not the monitor: the
+shell may render smaller than a requested minimum when the current work area
+or accessibility scale leaves no alternative.
 
 Suggested host defaults are 560×420 for Compact, 880×520 for Standard, and
 1120×620 for Wide. Adaptive asks the shell to select from content/shell policy.
 Explicit values refine the selected mode but do not bypass work-area, DPI,
 text-scale, tray/footer, or minimum-control-size constraints. Widgets must
 still reflow and use Scroll for overflow after the host clamps the surface.
+The host admits responsive width before measuring intrinsic height, so wrapped
+text and responsive grids are measured against the same definite width used by
+the final layout. Surface extent changes grow upward/outward around the fixed
+bottom-center guide and tray; they do not create another window or input owner.
 
 ### Responsive visibility (protocol v9)
 

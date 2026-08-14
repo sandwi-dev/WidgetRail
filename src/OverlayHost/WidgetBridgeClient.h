@@ -331,6 +331,8 @@ struct WidgetNode final {
 
 struct WidgetSurfaceHints final {
     std::wstring mode{L"adaptive"};
+    std::optional<std::wstring> widthMode;
+    std::optional<std::wstring> heightMode;
     std::optional<double> preferredWidth;
     std::optional<double> preferredHeight;
     std::optional<double> minimumWidth;
@@ -338,6 +340,7 @@ struct WidgetSurfaceHints final {
 };
 
 struct WidgetSnapshot final {
+    int protocolVersion{1};
     long long sequence{};
     std::wstring instanceId;
     std::wstring activeInputScopeId;

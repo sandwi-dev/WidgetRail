@@ -13,6 +13,8 @@ constexpr float kMinimumPanelHeightDip = 180.0F;
 constexpr float kMaximumPanelHeightDip = 1'200.0F;
 constexpr float kShellSideReservationDip = 72.0F;
 constexpr float kShellVerticalReservationDip = 178.0F;
+constexpr float kPanelHorizontalChromeReservationDip = 2.0F;
+constexpr float kPanelVerticalChromeReservationDip = 56.0F;
 
 struct PanelExtent final {
     float width{};
@@ -63,6 +65,17 @@ struct PanelExtent final {
 }
 
 } // namespace
+
+std::optional<WidgetSurfaceAxisMode> ParseWidgetSurfaceAxisMode(
+    const std::wstring_view value,
+    const int protocolVersion) noexcept {
+    if (value == L"preferred")
+        return WidgetSurfaceAxisMode::Preferred;
+    if (protocolVersion < kWidgetSurfaceAxisProtocolVersion) return std::nullopt;
+    if (value == L"content") return WidgetSurfaceAxisMode::Content;
+    if (value == L"fillAvailable") return WidgetSurfaceAxisMode::FillAvailable;
+    return std::nullopt;
+}
 
 ResolvedWidgetSurface ResolveWidgetSurfaceTarget(
     const std::optional<WidgetSurfaceRequest>& request,
@@ -119,7 +132,8 @@ ResolvedWidgetSurface ResolveWidgetSurfaceTarget(
 
 std::optional<ResolvedWidgetSurface> ResolveWidgetSurface(
     const std::optional<WidgetSurfaceRequest>& request,
-    const WidgetSurfaceConstraints constraints) noexcept {
+    const WidgetSurfaceConstraints constraints,
+    const WidgetSurfaceIntrinsicMeasure& measureIntrinsic) noexcept {
     const long long workWidth = static_cast<long long>(constraints.workArea.right) -
                                 constraints.workArea.left;
     const long long workHeight = static_cast<long long>(constraints.workArea.bottom) -
@@ -157,21 +171,122 @@ std::optional<ResolvedWidgetSurface> ResolveWidgetSurface(
         return std::nullopt;
     }
 
-    const float windowWidth = std::min(target.windowWidthDip, maximumWindowWidthDip);
-    const float windowHeight = std::min(target.windowHeightDip, maximumWindowHeightDip);
-    const float panelWidth = std::min(
-        target.panelWidthDip,
-        std::max(0.0F, windowWidth - kShellSideReservationDip));
-    const float panelHeight = std::min(
-        target.panelHeightDip,
-        std::max(0.0F, windowHeight - kShellVerticalReservationDip));
+    const float maximumPanelWidthDip = std::max(
+        0.0F, maximumWindowWidthDip - kShellSideReservationDip);
+    const float maximumPanelHeightDip = std::max(
+        0.0F, maximumWindowHeightDip - kShellVerticalReservationDip);
+    float panelWidth = std::min(target.panelWidthDip, maximumPanelWidthDip);
+    float panelHeight = std::min(target.panelHeightDip, maximumPanelHeightDip);
+    unsigned int measurementPasses{};
+
+    if (request &&
+        (request->widthMode != WidgetSurfaceAxisMode::Preferred ||
+         request->heightMode != WidgetSurfaceAxisMode::Preferred)) {
+        const auto validAxisMode = [](const WidgetSurfaceAxisMode mode) noexcept {
+            return mode == WidgetSurfaceAxisMode::Preferred ||
+                mode == WidgetSurfaceAxisMode::Content ||
+                mode == WidgetSurfaceAxisMode::FillAvailable;
+        };
+        if (!validAxisMode(request->widthMode) ||
+            !validAxisMode(request->heightMode)) return std::nullopt;
+
+        const float extraTextScale = std::max(
+            0.0F, SanitizedTextScale(constraints.textScale) - 1.0F);
+        float minimumPanelWidthDip = kMinimumPanelWidthDip;
+        float minimumPanelHeightDip = kMinimumPanelHeightDip;
+        const bool minimumValid = ValidPair(
+            request->minimumWidthDip, request->minimumHeightDip,
+            kMinimumPanelWidthDip, kMaximumPanelWidthDip,
+            kMinimumPanelHeightDip, kMaximumPanelHeightDip);
+        const bool preferredValid = ValidPair(
+            request->preferredWidthDip, request->preferredHeightDip,
+            kMinimumPanelWidthDip, kMaximumPanelWidthDip,
+            kMinimumPanelHeightDip, kMaximumPanelHeightDip);
+        const bool minimumConsistent = minimumValid &&
+            (!preferredValid ||
+             (*request->minimumWidthDip <= *request->preferredWidthDip &&
+              *request->minimumHeightDip <= *request->preferredHeightDip));
+        if (minimumConsistent) {
+            minimumPanelWidthDip = std::clamp(
+                *request->minimumWidthDip * (1.0F + extraTextScale * 0.5F),
+                kMinimumPanelWidthDip, kMaximumPanelWidthDip);
+            minimumPanelHeightDip = std::clamp(
+                *request->minimumHeightDip * (1.0F + extraTextScale),
+                kMinimumPanelHeightDip, kMaximumPanelHeightDip);
+        }
+        minimumPanelWidthDip = std::min(minimumPanelWidthDip, maximumPanelWidthDip);
+        minimumPanelHeightDip = std::min(minimumPanelHeightDip, maximumPanelHeightDip);
+
+        std::optional<WidgetSurfaceIntrinsicExtent> measured;
+        if ((request->widthMode == WidgetSurfaceAxisMode::Content ||
+             request->heightMode == WidgetSurfaceAxisMode::Content) &&
+            measureIntrinsic && maximumPanelWidthDip > 0.0F &&
+            maximumPanelHeightDip > 0.0F) {
+            const float admittedMeasureWidth = request->widthMode ==
+                    WidgetSurfaceAxisMode::FillAvailable
+                ? maximumPanelWidthDip
+                : panelWidth;
+            const float admittedMeasureHeight = request->heightMode ==
+                    WidgetSurfaceAxisMode::FillAvailable
+                ? maximumPanelHeightDip
+                : panelHeight;
+            measured = measureIntrinsic(
+                std::max(0.0F,
+                    admittedMeasureWidth - kPanelHorizontalChromeReservationDip),
+                std::max(0.0F,
+                    admittedMeasureHeight - kPanelVerticalChromeReservationDip));
+            measurementPasses = 1;
+            if (measured &&
+                (!std::isfinite(measured->widthDip) || measured->widthDip < 0.0F ||
+                 !std::isfinite(measured->heightDip) || measured->heightDip < 0.0F)) {
+                measured.reset();
+            }
+        }
+
+        const auto resolveAxis = [](
+            const WidgetSurfaceAxisMode mode,
+            const float preferred,
+            const float minimum,
+            const float available,
+            const std::optional<float> intrinsic) noexcept {
+            switch (mode) {
+            case WidgetSurfaceAxisMode::FillAvailable:
+                return available;
+            case WidgetSurfaceAxisMode::Content:
+                return std::clamp(
+                    intrinsic.value_or(preferred), minimum,
+                    std::min(preferred, available));
+            case WidgetSurfaceAxisMode::Preferred:
+            default:
+                return std::min(preferred, available);
+            }
+        };
+        panelWidth = resolveAxis(
+            request->widthMode, target.panelWidthDip, minimumPanelWidthDip,
+            maximumPanelWidthDip,
+            measured ? std::optional<float>{
+                measured->widthDip + kPanelHorizontalChromeReservationDip}
+                : std::nullopt);
+        panelHeight = resolveAxis(
+            request->heightMode, target.panelHeightDip, minimumPanelHeightDip,
+            maximumPanelHeightDip,
+            measured ? std::optional<float>{
+                measured->heightDip + kPanelVerticalChromeReservationDip}
+                : std::nullopt);
+    }
+
+    const float windowWidth = std::min(
+        maximumWindowWidthDip, panelWidth + kShellSideReservationDip);
+    const float windowHeight = std::min(
+        maximumWindowHeightDip, panelHeight + kShellVerticalReservationDip);
     return ResolvedWidgetSurface{
         windowWidth,
         windowHeight,
         panelWidth,
         panelHeight,
-        windowWidth + 0.001F < target.windowWidthDip ||
-            windowHeight + 0.001F < target.windowHeightDip,
+        maximumWindowWidthDip + 0.001F < target.windowWidthDip ||
+            maximumWindowHeightDip + 0.001F < target.windowHeightDip,
+        measurementPasses,
     };
 }
 

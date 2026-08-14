@@ -137,7 +137,9 @@ public:
         const auto rootIndex = Flatten(
             root, std::nullopt, ScrollAxis::None, availableWidth);
         auto& rootInput = inputs_[rootIndex];
-        if (options_.fillAutoRoot && !root.width)
+        const bool fillAutoRootWidth =
+            options_.fillAutoRootWidth.value_or(options_.fillAutoRoot);
+        if (fillAutoRootWidth && !root.width)
             rootInput.width = Present(availableWidth);
         else if (rootInput.width.present)
             rootInput.width.value = std::min(rootInput.width.value, availableWidth);
@@ -151,10 +153,13 @@ public:
             return gba_taffy_compute(
                 inputs_.data(), inputs_.size(), childIndices_.data(),
                 childIndices_.size(), rootIndex, availableWidth, availableHeight,
+                options_.intrinsicRootHeight
+                    ? GBA_TAFFY_AVAILABLE_MAX_CONTENT
+                    : GBA_TAFFY_AVAILABLE_DEFINITE,
                 &MeasureThunk, this, outputs_.data(), outputs_.size());
         };
         auto status = compute();
-        if (status == GBA_TAFFY_OK && !options_.fillAutoRoot && !root.width &&
+        if (status == GBA_TAFFY_OK && !fillAutoRootWidth && !root.width &&
             root.layoutMode != LayoutMode::ResponsiveGrid) {
             const auto& first = outputs_[rootIndex];
             const auto shrinkWidth = std::clamp(

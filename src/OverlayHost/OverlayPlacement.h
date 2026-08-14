@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -48,11 +49,25 @@ enum class WidgetSurfaceMode {
     Wide,
 };
 
+enum class WidgetSurfaceAxisMode {
+    Preferred,
+    Content,
+    FillAvailable,
+};
+
+inline constexpr int kWidgetSurfaceAxisProtocolVersion = 17;
+
+[[nodiscard]] std::optional<WidgetSurfaceAxisMode> ParseWidgetSurfaceAxisMode(
+    std::wstring_view value,
+    int protocolVersion) noexcept;
+
 /// Sanitized native projection of optional per-view widget surface hints.
 /// Dimensions describe the useful floating panel, not an HWND. The host owns
 /// all surrounding shell chrome and may choose a smaller safe result.
 struct WidgetSurfaceRequest final {
     WidgetSurfaceMode mode{WidgetSurfaceMode::Adaptive};
+    WidgetSurfaceAxisMode widthMode{WidgetSurfaceAxisMode::Preferred};
+    WidgetSurfaceAxisMode heightMode{WidgetSurfaceAxisMode::Preferred};
     std::optional<float> preferredWidthDip;
     std::optional<float> preferredHeightDip;
     std::optional<float> minimumWidthDip;
@@ -67,7 +82,17 @@ struct ResolvedWidgetSurface final {
     float panelWidthDip{};
     float panelHeightDip{};
     bool constrainedByWorkArea{};
+    unsigned int intrinsicMeasurementPasses{};
 };
+
+struct WidgetSurfaceIntrinsicExtent final {
+    float widthDip{};
+    float heightDip{};
+};
+
+using WidgetSurfaceIntrinsicMeasure = std::function<std::optional<WidgetSurfaceIntrinsicExtent>(
+    float admittedMaximumWidthDip,
+    float admittedMaximumHeightDip)>;
 
 struct WidgetSurfaceConstraints final {
     PhysicalRect workArea{};
@@ -89,7 +114,8 @@ struct WidgetSurfaceConstraints final {
 /// viewport against the selected monitor after DPI and interface zoom.
 [[nodiscard]] std::optional<ResolvedWidgetSurface> ResolveWidgetSurface(
     const std::optional<WidgetSurfaceRequest>& request,
-    WidgetSurfaceConstraints constraints) noexcept;
+    WidgetSurfaceConstraints constraints,
+    const WidgetSurfaceIntrinsicMeasure& measureIntrinsic = {}) noexcept;
 
 struct OverlaySurfaceGeometry final {
     float panelX{};

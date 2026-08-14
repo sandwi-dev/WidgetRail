@@ -213,7 +213,13 @@ WidgetSnapshot ProjectedProductionSnapshot(
     result.instanceId = L"game-launcher.instance.exact";
     result.activeInputScopeId = L"game-launcher.scope.exact";
     result.initialFocusId = L"launcher.game.0";
-    result.surface = gba::WidgetSurfaceHints{L"wide", 1180, 700, 640, 360};
+    gba::WidgetSurfaceHints surface;
+    surface.mode = L"wide";
+    surface.preferredWidth = 1180;
+    surface.preferredHeight = 700;
+    surface.minimumWidth = 640;
+    surface.minimumHeight = 360;
+    result.surface = std::move(surface);
     result.advancedPresentationKind = L"launcherExperience";
     result.advancedPresentationPreset = profile == L"hero-rail" ? L"heroRail" :
         profile == L"cover-wall" ? L"coverWall" :

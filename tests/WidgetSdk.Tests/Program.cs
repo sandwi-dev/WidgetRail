@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Baseline widgets remain protocol v1 compatible", BaselineProtocolCompatibility),
     ("Protocol v9 responsive branches are semantic and versioned", ResponsiveVisibilityRoundTrip),
     ("Scroll containers and surface hints fail closed", ScrollAndSurfaceValidation),
+    ("Protocol v17 surface axes are independent versioned and legacy compatible", SurfaceAxisModesRoundTrip),
     ("Duplicate stable IDs are rejected", DuplicateIdsAreRejected),
     ("Broken focus neighbors are rejected", BrokenFocusIsRejected),
     ("Invalid progress is rejected", InvalidProgressIsRejected),
@@ -1565,6 +1566,67 @@ static Task ScrollAndSurfaceValidation()
     Assert.True(invertedException.Errors.Count(error =>
         error.Code == "surface_minimum_exceeds_preferred") == 2,
         "Minimum dimensions cannot exceed preferred dimensions.");
+    return Task.CompletedTask;
+}
+
+static Task SurfaceAxisModesRoundTrip()
+{
+    var preferred = new WidgetView(
+        UI.Stack("preferred-root"),
+        Surface: new WidgetSurfaceHints
+        {
+            Mode = WidgetSurfaceMode.Standard,
+            PreferredWidth = 880,
+            PreferredHeight = 520,
+            MinimumWidth = 420,
+            MinimumHeight = 280,
+        }).CreateSnapshot("surface.preferred", 1);
+    Assert.Equal(ProtocolConstants.SurfaceHintsVersion, preferred.ProtocolVersion);
+    var preferredJson = Encoding.UTF8.GetString(SnapshotJson.Serialize(preferred));
+    Assert.True(!preferredJson.Contains("\"widthMode\"", StringComparison.Ordinal) &&
+                !preferredJson.Contains("\"heightMode\"", StringComparison.Ordinal),
+        "Default Preferred axes must preserve the protocol-v2 wire shape.");
+    var restoredPreferred = SnapshotJson.Deserialize(Encoding.UTF8.GetBytes(preferredJson));
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, restoredPreferred.Surface!.WidthMode);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, restoredPreferred.Surface.HeightMode);
+
+    var independent = new WidgetView(
+        UI.Stack("content-root", UI.Text("Measured copy", "copy")),
+        Surface: preferred.Surface! with
+        {
+            WidthMode = WidgetSurfaceAxisMode.FillAvailable,
+            HeightMode = WidgetSurfaceAxisMode.Content,
+        }).CreateSnapshot("surface.axes", 2);
+    Assert.Equal(ProtocolConstants.SurfaceAxisSizingVersion, independent.ProtocolVersion);
+    var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(independent));
+    Assert.Equal(WidgetSurfaceAxisMode.FillAvailable, restored.Surface!.WidthMode);
+    Assert.Equal(WidgetSurfaceAxisMode.Content, restored.Surface.HeightMode);
+
+    var legacy = independent with
+    {
+        ProtocolVersion = ProtocolConstants.AdvancedPresentationVersion,
+    };
+    Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+            error.Code == "feature_requires_version"),
+        "A non-Preferred surface axis must not cross the protocol-v16 boundary.");
+
+    var invalid = independent with
+    {
+        Surface = independent.Surface! with
+        {
+            WidthMode = (WidgetSurfaceAxisMode)999,
+            HeightMode = (WidgetSurfaceAxisMode)(-1),
+        },
+    };
+    Assert.Equal(2, ViewSnapshotValidator.Validate(invalid).Count(error =>
+        error.Code == "invalid_surface_axis_mode"));
+
+    var unknownField = Encoding.UTF8.GetString(SnapshotJson.Serialize(independent))
+        .Replace("\"widthMode\":\"fillAvailable\"",
+            "\"widthMode\":\"fillAvailable\",\"axisOwner\":\"widget\"",
+            StringComparison.Ordinal);
+    Assert.Throws<JsonException>(() =>
+        SnapshotJson.Deserialize(Encoding.UTF8.GetBytes(unknownField)));
     return Task.CompletedTask;
 }
 

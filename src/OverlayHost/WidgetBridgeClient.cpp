@@ -1106,6 +1106,7 @@ void ApplyComputedStyles(WidgetNode& node, const JsonObject& styles) {
 
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     WidgetSnapshot snapshot;
+    snapshot.protocolVersion = static_cast<int>(source.GetNamedNumber(L"protocolVersion"));
     snapshot.sequence = static_cast<long long>(source.GetNamedNumber(L"sequence"));
     snapshot.instanceId = std::wstring(std::wstring_view(source.GetNamedString(L"widgetInstanceId")));
     snapshot.activeInputScopeId =
@@ -1115,6 +1116,10 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         const auto hints = source.GetNamedObject(L"surface");
         WidgetSurfaceHints parsed;
         parsed.mode = OptionalString(hints, L"mode");
+        if (hints.HasKey(L"widthMode"))
+            parsed.widthMode = OptionalString(hints, L"widthMode");
+        if (hints.HasKey(L"heightMode"))
+            parsed.heightMode = OptionalString(hints, L"heightMode");
         const auto optionalNumber = [&hints](const wchar_t* name) -> std::optional<double> {
             if (!hints.HasKey(name)) return std::nullopt;
             return hints.GetNamedNumber(name);

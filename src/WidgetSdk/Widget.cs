@@ -42,6 +42,9 @@ public sealed record WidgetView(
             var required = ProtocolConstants.BaselineVersion;
             if (Surface is not null || ContainsScroll(Root))
                 required = Math.Max(required, ProtocolConstants.ScrollContainerVersion);
+            if (Surface is { WidthMode: not WidgetSurfaceAxisMode.Preferred } or
+                { HeightMode: not WidgetSurfaceAxisMode.Preferred })
+                required = Math.Max(required, ProtocolConstants.SurfaceAxisSizingVersion);
             if (ContainsSlider(Root))
                 required = Math.Max(required, ProtocolConstants.SliderVersion);
             if (ContainsActivationRequiredSlider(Root))

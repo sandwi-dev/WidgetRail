@@ -3033,6 +3033,85 @@ void TrustedArtworkTerminalFallbackIsStable() {
     cache.Shutdown();
 }
 
+void ContentMeasurementUsesResponsiveTaffyGeometry() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "create D2D factory for Content measurement");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "create DirectWrite factory for Content measurement");
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 17;
+    snapshot.instanceId = L"content-measure.runtime";
+    snapshot.activeInputScopeId = L"content.root";
+    snapshot.root = Node(L"content.root", L"grid");
+    snapshot.root.gridMinimumColumnWidth = 180.0;
+    snapshot.root.gridMaximumColumns = 3;
+    snapshot.root.baseStyle = {
+        {L"padding", LengthList(L"16px")},
+        {L"gap", LengthList(L"12px")},
+    };
+    for (int index = 0; index < 6; ++index) {
+        auto card = Node((L"content.card." + std::to_wstring(index)).c_str(), L"stack");
+        card.baseStyle = {
+            {L"padding", LengthList(L"10px")},
+            {L"gap", LengthList(L"6px")},
+        };
+        auto title = Node(
+            (L"content.title." + std::to_wstring(index)).c_str(), L"text");
+        title.text = L"A responsive card title that wraps at compact widths";
+        title.baseStyle = {
+            {L"font-size", Length(17)},
+            {L"line-height", Number(1.3)},
+            {L"max-lines", Number(4)},
+        };
+        auto action = Node(
+            (L"content.action." + std::to_wstring(index)).c_str(), L"button");
+        action.text = L"Open item";
+        action.actionId = L"open";
+        action.baseStyle = {{L"min-height", Length(44)}};
+        card.children = {std::move(title), std::move(action)};
+        snapshot.root.children.push_back(std::move(card));
+    }
+
+    const auto wide = renderer.MeasureContent(snapshot, {760.0F, 700.0F}, true);
+    const auto compact = renderer.MeasureContent(snapshot, {420.0F, 700.0F}, true);
+    Check(wide.succeeded && compact.succeeded,
+        "Content measurement accepts the generic responsive grid tree");
+    Check(wide.extent.width > 0.0F && wide.extent.width <= 760.0F,
+        "wide intrinsic grid remains inside the definite admitted width");
+    Check(compact.extent.width > 0.0F && compact.extent.width <= 420.0F &&
+              compact.extent.width < wide.extent.width,
+        "Content width may shrink while remaining inside compact admission");
+    Check(compact.extent.height > wide.extent.height,
+        "grid reflow and wrapped text increase intrinsic height at compact width");
+    Check(wide.extent.height > 44.0F && compact.extent.height > 44.0F &&
+              std::isfinite(wide.extent.height) &&
+              std::isfinite(compact.extent.height),
+        "intrinsic height remains finite and content-derived before host clamping");
+
+    const auto preferredWidth = renderer.MeasureContent(
+        snapshot, {620.0F, 700.0F}, false);
+    Check(preferredWidth.succeeded &&
+              std::abs(preferredWidth.extent.width - 620.0F) < 0.01F,
+        "Content height keeps an independent Preferred width definite");
+
+    const auto invalid = renderer.MeasureContent(
+        snapshot, {std::numeric_limits<float>::infinity(), 700.0F}, true);
+    Check(!invalid.succeeded && std::any_of(
+            invalid.diagnostics.begin(), invalid.diagnostics.end(),
+            [](const gba::RenderDiagnostic& diagnostic) {
+                return diagnostic.code == L"invalid_measure_extent";
+            }),
+        "invalid measurement bounds fail closed before Taffy allocation");
+}
+
 } // namespace
 
 int main() {
@@ -3070,6 +3149,7 @@ int main() {
     RealDirect2DSmoke();
     OffscreenScrollArtworkDoesNotEnterRemoteCache();
     TrustedArtworkTerminalFallbackIsStable();
+    ContentMeasurementUsesResponsiveTaffyGeometry();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();
     return EXIT_SUCCESS;

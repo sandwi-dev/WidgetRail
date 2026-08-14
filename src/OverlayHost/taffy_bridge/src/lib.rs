@@ -6,7 +6,7 @@ use taffy::geometry::{Point, Rect, Size};
 use taffy::prelude::*;
 use taffy::style::Overflow;
 
-const ABI_VERSION: u32 = 1;
+const ABI_VERSION: u32 = 2;
 const OK: i32 = 0;
 const INVALID_ARGUMENT: i32 = 1;
 const INVALID_TREE: i32 = 2;
@@ -229,6 +229,7 @@ fn compute_impl(
     root_index: u32,
     available_width: f32,
     available_height: f32,
+    available_height_mode: u32,
     measure: Option<MeasureCallback>,
     measure_context: *mut core::ffi::c_void,
     outputs: &mut [NodeOutput],
@@ -299,9 +300,15 @@ fn compute_impl(
     }
 
     let root = node_ids[root_index as usize];
+    let available_height = match available_height_mode {
+        0 => AvailableSpace::Definite(available_height),
+        1 => AvailableSpace::MinContent,
+        2 => AvailableSpace::MaxContent,
+        _ => return INVALID_ARGUMENT,
+    };
     let available_space = Size {
         width: AvailableSpace::Definite(available_width),
-        height: AvailableSpace::Definite(available_height),
+        height: available_height,
     };
 
     let run_layout = |tree: &mut TaffyTree<u32>| {
@@ -436,6 +443,7 @@ pub unsafe extern "C" fn gba_taffy_compute(
     root_index: u32,
     available_width: f32,
     available_height: f32,
+    available_height_mode: u32,
     measure: Option<MeasureCallback>,
     measure_context: *mut core::ffi::c_void,
     outputs: *mut NodeOutput,
@@ -460,6 +468,7 @@ pub unsafe extern "C" fn gba_taffy_compute(
             root_index,
             available_width,
             available_height,
+            available_height_mode,
             measure,
             measure_context,
             output_slice,
@@ -483,7 +492,7 @@ mod tests {
         assert_eq!(core::mem::size_of::<MeasureInput>(), 32);
         assert_eq!(core::mem::size_of::<MeasuredSize>(), 8);
         assert_eq!(core::mem::size_of::<NodeOutput>(), 40);
-        assert_eq!(gba_taffy_abi_version(), 1);
+        assert_eq!(gba_taffy_abi_version(), 2);
     }
 
     #[test]
@@ -499,6 +508,7 @@ mod tests {
                 0,
                 640.0,
                 480.0,
+                0,
                 None,
                 core::ptr::null_mut(),
                 &mut outputs,
@@ -533,6 +543,7 @@ mod tests {
                 0,
                 640.0,
                 480.0,
+                0,
                 Some(fixed_measure),
                 (&mut calls as *mut usize).cast(),
                 &mut outputs,
@@ -549,6 +560,7 @@ mod tests {
                 0,
                 640.0,
                 480.0,
+                0,
                 None,
                 core::ptr::null_mut(),
                 &mut [],
@@ -592,6 +604,7 @@ mod tests {
             0,
             500.0,
             200.0,
+            0,
             None,
             core::ptr::null_mut(),
             &mut outputs,

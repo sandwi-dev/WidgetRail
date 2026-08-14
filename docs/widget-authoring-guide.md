@@ -654,6 +654,8 @@ return new WidgetView(
     Surface: new WidgetSurfaceHints
     {
         Mode = WidgetSurfaceMode.Compact,
+        WidthMode = WidgetSurfaceAxisMode.Preferred,
+        HeightMode = WidgetSurfaceAxisMode.Content,
         PreferredWidth = 560,
         PreferredHeight = 420,
         MinimumWidth = 360,
@@ -661,9 +663,24 @@ return new WidgetView(
     });
 ```
 
-Modes are `Adaptive`, `Compact`, `Standard`, and `Wide`. The current shell's
-mode defaults are approximately 560×420, 880×520, and 1120×620 DIPs for the
-three named sizes. Adaptive delegates the initial choice to host policy.
+`Mode` supplies the existing `Adaptive`, `Compact`, `Standard`, or `Wide`
+fallback dimensions. `WidthMode` and `HeightMode` independently select how the
+host admits each axis:
+
+- `Preferred` (the default) uses the validated preferred extent and stays
+  stable as live data changes.
+- `Content` measures the immutable view with Taffy, then clamps it between the
+  authored minimum and preferred extents. Use it for deliberately intrinsic,
+  mostly static composition rather than changing provider lists.
+- `FillAvailable` consumes the safe extent admitted from the active monitor's
+  work area, DPI, interface scale, and accessibility policy.
+
+Responsive width is admitted before intrinsic height. For example,
+`Preferred` width plus `Content` height first fixes the responsive width, then
+measures wrapped text and grid reflow once, and finally lays out at the admitted
+viewport. The host performs at most one intrinsic measurement followed by the
+ordinary final layout. The tray and controller guide retain their fixed screen
+anchor while only the content envelope changes.
 
 Preferred dimensions and minimum dimensions are optional **pairs**: specify
 both width and height or neither. Widths must be finite and in 240–1600 DIPs;
