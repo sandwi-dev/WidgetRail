@@ -473,6 +473,21 @@ if(GBA_BUILD_TESTS)
     gba_link_taffy(DeclarativeRendererTests)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
 
+    # Identity-neutral real-widget responsive coverage: a managed YT Music
+    # fixture supplies its semantic snapshot and bridge-computed GBSS styles.
+    add_executable(YtMusicResponsiveRendererTests
+        YtMusicResponsiveRendererTests.cpp WidgetBridgeClient.cpp
+        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(YtMusicResponsiveRendererTests PRIVATE cxx_std_20)
+    target_compile_options(YtMusicResponsiveRendererTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(YtMusicResponsiveRendererTests PRIVATE
+        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(YtMusicResponsiveRendererTests PRIVATE
+        windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
+    gba_link_taffy(YtMusicResponsiveRendererTests)
+
     add_executable(LauncherExperienceTests
         LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
         LauncherExperienceProjection.cpp

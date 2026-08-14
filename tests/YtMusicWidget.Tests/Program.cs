@@ -1,9 +1,17 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GameBarAlternative.Samples.YtMusicWidget;
+using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
+
+if (args is ["--export-renderer-fixture", var rendererFixturePath])
+{
+    await ExportRendererFixture(rendererFixturePath);
+    return 0;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -2146,6 +2154,48 @@ static Task PackageAssetsAreValid()
         Assert.Equal("0px", row.Get("min-width")?.Text);
     }
     return Task.CompletedTask;
+}
+
+static async Task ExportRendererFixture(string outputPath)
+{
+    var widget = new YtMusicWidget(new FakeClient
+    {
+        Snapshot = PlayingSnapshot("Responsive Renderer Song") with
+        {
+            Artist = "A deliberately descriptive renderer artist",
+            Album = "A deliberately descriptive renderer album",
+        },
+    });
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.renderer", 1);
+    var validation = ViewSnapshotValidator.Validate(snapshot);
+    Assert.Equal(0, validation.Count);
+
+    var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
+    var package = GbssPackageLoader.Load(
+        "default.gbss",
+        new GbssFileSourceProvider(stylesRoot));
+    var compiled = GbssThemeCompiler.Compile(package);
+    Assert.True(compiled.IsValid,
+        string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
+    var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    var payload = JsonSerializer.Serialize(new
+    {
+        snapshot = snapshotDocument.RootElement.Clone(),
+        renderStyles,
+    }, options);
+    var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+    await File.WriteAllTextAsync(outputPath, payload);
+    Console.WriteLine($"Exported YT Music renderer fixture to {outputPath}.");
 }
 
 static YtMusicPlaybackSnapshot PlayingSnapshot(string title) => new(
