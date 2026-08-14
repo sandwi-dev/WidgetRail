@@ -48,6 +48,13 @@ Snapshots are evidence only. This file is the sole authority for current work.
   composition. Its visible 0.2.9 launch awaits the bounded catalog cleanup
   approval below, and the user's physical verdict remains the final visual
   authority.
+- The user now reports a visible tray flash while cycling widgets. Current
+  production draws the widget panel, guide, and icon tray into one shared
+  Direct2D/DirectComposition frame. A selection mutation legitimately changes
+  the old/new selected tray tiles, but later worker-snapshot admission, widget
+  content repaint, and content-envelope motion also redraw the otherwise
+  unchanged tray. DLV-236 owns a retained tray composition visual so widget-
+  only work cannot clear or repaint persistent tray pixels.
 - The coherent DLV-222/DLV-223 Release had Community YT Music 0.2.8 enabled and
   ran cleanly as planner-owned PID 27128. It exited normally through `WM_CLOSE`
   when the planner began the DLV-224 rebuild. Corrected main now compiles and
@@ -163,6 +170,14 @@ only production presentation path.
   width/height changes move the content envelope upward/outward around that
   anchor. The panel bottom, guide, and tray use explicit fixed spacing; a short
   widget may not remain top-anchored and create variable dead space.
+- Persistent host chrome must also have independent retained paint ownership.
+  The icon tray uses its own child visual/surface under the sole existing
+  DirectComposition target. Tray selection, catalog/order/overflow, appearance,
+  DPI/text scale, and device recreation may invalidate that surface; worker
+  snapshot admission, widget rendering, content reveal, scrolling, and content-
+  envelope motion may not. This is retained-layer separation inside the one
+  HWND and one accessibility/focus/input authority, not another overlay window
+  or application tree.
 - One HWND wraps the admitted content-plus-chrome union. The overlay must not
   become a monitor-sized desktop surface. Monitor work area, DPI, accessibility,
   safe insets, and bounded safety limits remain host authority.
@@ -178,7 +193,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | Clean boundary; DLV-232 is the assigned next executable platform milestone |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-232 is Assigned; DLV-236 retained tray composition is Ready only after DLV-232 acceptance and integration |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -552,12 +567,72 @@ last-good semantics, tray focus, and safe diagnostics. Use differently named
 generic fixtures, run only affected lifecycle/process/controller routes, and do
 not add service-specific behavior or rerun Tier 3.
 
-Only one later independent platform Ready milestone is currently sound. DLV-218 is
-dependency-blocked on the user's separate DLV-217 integration decision; the
-remaining current physical UI defect is owned by DLV-230; mixed-monitor,
-audio/Bluetooth, legacy-controller, and assistive-technology gates require
-hardware or user evidence. Refill the platform queue after the current UI
-cluster's physical verdict rather than manufacturing internal filler.
+### Ready after DLV-232 integration — DLV-236: retain the icon tray independently
+
+Baseline: accepted DLV-232 integrated into local main. Owner: platform native
+composition/rendering only. Do not interrupt DLV-232 or start from its
+unreviewed branch tip.
+
+Visible objective: cycling through widgets may repaint the two tray tiles whose
+selection state changes, but the persistent tray background and unchanged
+icons must not clear, flash, or repaint again when a cold/warm worker snapshot
+arrives, widget content animates, or the content envelope changes size.
+
+Required implementation:
+
+- Keep the single overlay HWND, sole DirectComposition device/target and root
+  visual tree, native renderer, accessibility provider, focus graph, hit-test
+  authority, and GameInput owner. Add retained child visual/surface ownership
+  for the host tray; do not create another HWND, top-level compositor, input
+  window, semantic tree, controller router, or widget protocol concept.
+- Separate tray invalidation from widget/content invalidation. Tray paint is
+  allowed only for selection/reorder interaction, catalog/order/overflow
+  changes, host appearance, DPI/text-scale/accessibility changes, explicit
+  animation authored for tray interaction, and graphics-device recreation.
+  Snapshot admission, provider updates, widget focus/scroll/slider paint,
+  content reveal, and content-envelope motion must leave the admitted tray
+  surface retained.
+- Preserve one atomic presentation commit. The selected tile, inert retained
+  old widget pixels, newly admitted widget content, guide state, clips,
+  transforms, and HWND placement may not expose a mismatched intermediate
+  authority. Content-size animation moves only the content envelope; compensate
+  child offsets as the one HWND changes so the tray and guide retain their fixed
+  absolute bottom-center screen rectangles.
+- Preserve premultiplied-alpha/color-key boundaries, device-loss recovery,
+  reduced-motion/high-contrast behavior, overflow controls, pointer hit tests,
+  controller selection/reorder, UIA Selection/Invoke bounds, and normal
+  resource/process cleanup. Do not add widget identity branches or change
+  widget/package/runtime code.
+
+Acceptance:
+
+- Add deterministic per-surface paint/commit evidence for all eight installed
+  widgets covering cached, cold, delayed, failed, and late-revoked snapshots.
+  Each accepted tray selection may produce one bounded tray update; subsequent
+  snapshot admission and content-motion frames must report zero tray-surface
+  redraws. Static tray regions remain pixel-identical; only the old/new selected
+  tiles or a named overflow/reorder affordance may differ.
+- Prove content-only provider, slider, scroll, focus, and live-state updates do
+  not repaint the tray. Separately prove catalog/order, appearance, DPI/text
+  scale, accessibility, and device recreation repaint/rebuild it exactly when
+  required.
+- Retain identical absolute tray/guide bounds through compact-to-wide and
+  wide-to-compact transitions, no opaque flash/dark band/transparent seam, one
+  current UIA selection, bounded draw/commit timing, and normal zero-process
+  shutdown. The user's physical widget-cycling verdict is the final flash gate.
+- Run only affected composition, placement, tray, controller, accessibility,
+  device-loss, and one bounded eight-widget host route plus the native Release
+  build. No Tier-3 aggregate, provider work, package rebuild, or capture-harness
+  expansion.
+
+Stop for a second HWND/compositor/input/focus/accessibility owner, loss of atomic
+selection/content authority, per-widget composition behavior, an undocumented
+DirectComposition dependency, or a material change to tray geometry.
+
+DLV-218 remains dependency-blocked on the user's separate DLV-217 integration
+decision. Mixed-monitor, audio/Bluetooth, legacy-controller, and assistive-
+technology gates still require hardware or user evidence; do not manufacture
+additional internal filler after DLV-236.
 
 ### Awaiting DLV-217 integration — DLV-218: remove retired domains
 
