@@ -200,8 +200,15 @@ canonical version.
 
 The Settings root uses the public protocol-v8 `UI.ResponsiveGrid` contract for
 its bounded category actions (250-DIP minimum columns, at most two columns)
-inside the existing vertical Scroll. Compact widths collapse to one row-major
-column without changing category IDs or focus order. Diagnostics uses public
+inside the existing vertical Scroll. The root requests the authored preferred
+width and content-measured height, bounded by its existing 520x360 minimum and
+880x520 preferred envelope. Its category list does not fill unused vertical
+space, so the host clamps the measured rows and authored spacing rather than a
+guessed replacement height. Compact widths collapse to one row-major column;
+when that content exceeds the height ceiling, the existing Scroll reveals every
+category without changing category IDs or focus order. Dynamic nested pages
+remain preferred-sized so changing rows and diagnostics do not resize the
+surface. Diagnostics uses public
 `UI.CodeText` for schema/revision and bounded worker-failure lines; these remain
 nonfocusable and receive the default semantic monospace class instead of a
 Settings-only font/layout escape hatch.

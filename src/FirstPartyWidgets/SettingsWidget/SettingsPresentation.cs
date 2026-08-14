@@ -84,6 +84,24 @@ internal static class SettingsPresentation
                 MinimumHeight = 360,
             });
 
+    private static WidgetView RootView(
+        StackElement header,
+        WidgetElement content,
+        string initialFocus) => new(
+            UI.Stack("settings-root", header, content).Classes("settings-widget"),
+            initialFocus,
+            ActiveInputScopeId: "settings-root",
+            Surface: new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Standard,
+                WidthMode = WidgetSurfaceAxisMode.Preferred,
+                HeightMode = WidgetSurfaceAxisMode.Content,
+                PreferredWidth = 880,
+                PreferredHeight = 520,
+                MinimumWidth = 520,
+                MinimumHeight = 360,
+            });
+
     private static WidgetView RenderRoot(
         StackElement header,
         PlatformSettingsDocument settings,
@@ -111,7 +129,7 @@ internal static class SettingsPresentation
             .Busy(busy).Classes("category-card");
         var reset = UI.Button("Reset", "open.reset", "category.reset")
             .Classes("category-card", "danger-card");
-        return View(
+        return RootView(
             header,
             UI.VerticalScroll("settings.categories",
                 UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
@@ -120,9 +138,8 @@ internal static class SettingsPresentation
                         appearance, accessibility, overlay, installedWidgets, gameSources,
                         launcherExperiences,
                         diagnostics, refresh, reset)
-                    .Classes("category-grid")).Classes("category-list"),
-            "category.appearance",
-            "settings-root");
+                    .Classes("category-grid")).Classes("root-category-list"),
+            "category.appearance");
     }
 
     private static WidgetView RenderAppearance(

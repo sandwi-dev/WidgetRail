@@ -1,13 +1,21 @@
 using System.Buffers.Binary;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GameBarAlternative.FirstPartyWidgets.Settings;
 using GameBarAlternative.PlatformBroker;
 using GameBarAlternative.PlatformDiagnostics;
 using GameBarAlternative.PlatformSettings;
+using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetCatalog;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
+
+if (args is ["--export-renderer-fixture", var rendererFixturePath])
+{
+    await ExportRendererFixture(rendererFixturePath);
+    return 0;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -110,12 +118,19 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, root.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.SurfaceAxisSizingVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
+    Assert.Equal(WidgetSurfaceAxisMode.Content, root.Surface?.HeightMode);
     Assert.Equal(880d, root.Surface?.PreferredWidth);
     Assert.Equal(520d, root.Surface?.PreferredHeight);
+    Assert.Equal(520d, root.Surface?.MinimumWidth);
+    Assert.Equal(360d, root.Surface?.MinimumHeight);
     Assert.Equal(ViewNodeKind.Scroll,
         Nodes(root.Root).Single(node => node.Id == "settings.categories").Kind);
+    Assert.True(Nodes(root.Root).Single(node => node.Id == "settings.categories")
+            .StyleClasses.Contains("root-category-list", StringComparer.Ordinal),
+        "Settings root must use its intrinsic category-list style.");
     Assert.Equal(ScrollAxis.Vertical,
         Nodes(root.Root).Single(node => node.Id == "settings.categories").ScrollAxis);
     var categoryGrid = Nodes(root.Root).Single(node => node.Id == "settings.category-grid");
@@ -127,6 +142,8 @@ static async Task ControllerScrollSurface()
 
     await Action(widget, "open.diagnostics");
     var diagnostics = Snapshot(widget);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, diagnostics.Surface?.WidthMode);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, diagnostics.Surface?.HeightMode);
     var page = Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.page");
     Assert.Equal(ViewNodeKind.Scroll, page.Kind);
     Assert.Equal(ScrollAxis.Vertical, page.ScrollAxis);
@@ -2319,6 +2336,48 @@ static async Task ShippedAssetsValidate()
         Path.Combine(project, "styles"));
     var compiled = GbssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var rootCategories = compiled.Theme!.Resolve(new GbssElement(
+        "scroll", "settings.categories",
+        new HashSet<string>(["root-category-list"], StringComparer.Ordinal)));
+    Assert.Equal(null, rootCategories.Get("flex-grow"));
+    Assert.Equal(null, rootCategories.Get("flex-basis"));
+    var nestedPage = compiled.Theme.Resolve(new GbssElement(
+        "scroll", "diagnostics.page",
+        new HashSet<string>(["settings-page"], StringComparer.Ordinal)));
+    Assert.Equal(1d, nestedPage.Get("flex-grow")?.Number);
+    Assert.Equal("0", nestedPage.Get("flex-basis")?.Text);
+}
+
+static async Task ExportRendererFixture(string outputPath)
+{
+    using var temp = new TemporaryDirectory();
+    var snapshot = Snapshot(Create(temp.Path));
+    var validation = ViewSnapshotValidator.Validate(snapshot);
+    Assert.Equal(0, validation.Count);
+    var project = ProjectDirectory();
+    var package = GbssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.gbss"),
+        Path.Combine(project, "styles"));
+    var compiled = GbssThemeCompiler.Compile(package);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    var payload = JsonSerializer.Serialize(new
+    {
+        snapshot = snapshotDocument.RootElement.Clone(),
+        renderStyles,
+    }, options);
+    var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+    await File.WriteAllTextAsync(outputPath, payload);
+    Console.WriteLine($"Exported Settings renderer fixture to {outputPath}.");
 }
 
 static SettingsWidget Create(string root)

@@ -7,17 +7,18 @@
 
 .settings-header,
 .settings-page,
-.category-list,
+.root-category-list,
 .theme-picker { gap: 8px; }
 
 .settings-header { flex-shrink: 0; }
 
-.settings-page,
-.category-list {
+.settings-page {
   flex-grow: 1;
   flex-basis: 0;
   min-height: 44px;
 }
+
+.root-category-list { min-height: 44px; }
 
 .category-grid {
   gap: 8px 10px;

@@ -4591,3 +4591,24 @@ retaining the exact visible-HWND/UIA/action-failure checks. The focused Release
 packaged segment passes with an accepted ordinary host still running; no source
 worktree fallback, PATH addition, HWND weakening, aggregate run, or product
 runtime change is involved.
+### Content-sized Settings root (DLV-225)
+
+The Settings root now requests Preferred width and Content height with its
+existing 520x360 minimum and 880x520 preferred bounds. Its bounded responsive
+category grid has a root-only scroll class that preserves two-column and
+one-column reflow without the nested-page `flex-grow`/`flex-basis` fill policy.
+Dynamic nested pages remain Preferred on both axes. Category IDs, active input
+scope, explicit focus graph, Reset styling, scoped B navigation, and the host's
+single surface/tray/guide placement authority are unchanged.
+
+Focused Release evidence passes Settings 61/61 and Widget SDK 93/93. The exact
+managed Settings snapshot and compiled production GBSS pass through the
+production native bridge parser and Taffy renderer for 44 checks: preferred
+content measures to 372 DIPs, compact one-column content grows to 580 DIPs and
+is clamped to the authored 520-DIP ceiling, Reset has no material trailing fill,
+and every root action is navigation-visible and focus-revealed at 520x360. The
+isolated Settings worker Release build succeeds with zero warnings or errors.
+The older standalone `OverlayPlacementTests` target is not counted as evidence:
+on this accepted baseline it has a pre-existing unresolved
+`ComputeOverlayPlacement` link symbol, while the DLV-225 production-renderer
+scenario and DLV-224 placement owner remain unchanged.
