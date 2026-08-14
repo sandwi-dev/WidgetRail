@@ -79,6 +79,36 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
+    public async Task Empty_typed_text_uses_accessibility_label_as_visible_readable_fallback()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            using var renderer = Renderer();
+            var node = new ViewNode
+            {
+                Id = "accessible-status",
+                Kind = ViewNodeKind.Text,
+                Text = string.Empty,
+                AccessibilityLabel = "Connection status unavailable",
+            };
+            var rendered = renderer.Render(Frame("accessible-text.widget", 1, node), isCompact: false);
+            var window = new Window { Width = 420, Height = 340, Content = rendered };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+            var text = Assert.IsInstanceOfType<TextBlock>(rendered);
+            Assert.AreEqual(node.AccessibilityLabel, text.Text);
+            Assert.AreEqual(node.AccessibilityLabel, AutomationProperties.GetName(text));
+            Assert.IsTrue(text.IsEffectivelyVisible);
+            Assert.IsGreaterThan(0, text.Bounds.Width);
+            Assert.IsGreaterThan(0, text.Bounds.Height);
+            window.Close();
+        });
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
     public async Task Coordinator_publishes_on_UI_scheduler_and_dispatches_only_latest_exact_node_action_scope()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -577,28 +607,36 @@ public sealed class IntegrationAdapterTests
             await shell.InitializeAsync();
             await WaitForAsync(() => shell.AdmittedWidgetId == frames[0].Authority.WidgetId);
 
-            await coordinator.SelectWidgetAsync(frames[^1].Authority.WidgetId);
-            await WaitForAsync(() => shell.AdmittedWidgetId == frames[^1].Authority.WidgetId);
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var fixtures = new[]
+            {
+                new Avalonia.Size(420, 340),
+                new Avalonia.Size(978, 466),
+                new Avalonia.Size(1180, 680),
+                new Avalonia.Size(1440, 810),
+            };
 
-            var viewport = BoundsInShell(shell.TrayScrollElement, shell);
-            var selected = shell.TrayButtons[^1];
-            var selectedBounds = BoundsInShell(selected, shell);
-            Assert.IsGreaterThanOrEqualTo(viewport.Left - 1, selectedBounds.Left,
-                "The selected tray item must be scrolled fully into the viewport.");
-            Assert.IsLessThanOrEqualTo(viewport.Right + 1, selectedBounds.Right,
-                "The selected tray item must not remain clipped at the right edge.");
+            async Task AssertSelectedEdgeAsync(int selectedIndex)
+            {
+                await coordinator.SelectWidgetAsync(frames[selectedIndex].Authority.WidgetId);
+                await WaitForAsync(() => shell.AdmittedWidgetId == frames[selectedIndex].Authority.WidgetId);
+                foreach (var fixture in fixtures)
+                {
+                    shell.SetEvidenceViewport(fixture);
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
-            await coordinator.SelectWidgetAsync(frames[0].Authority.WidgetId);
-            await WaitForAsync(() => shell.AdmittedWidgetId == frames[0].Authority.WidgetId);
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-            var firstSelectedBounds = BoundsInShell(shell.TrayButtons[0], shell);
-            Assert.IsGreaterThanOrEqualTo(viewport.Left - 1, firstSelectedBounds.Left,
-                "The selected first tray item must retain its leading edge.");
-            Assert.IsLessThanOrEqualTo(viewport.Right + 1, firstSelectedBounds.Right,
-                "The selected first tray item must remain fully inside the viewport.");
+                    var viewport = BoundsInShell(shell.TrayScrollElement, shell);
+                    var selectedBounds = BoundsInShell(shell.TrayButtons[selectedIndex], shell);
+                    Assert.IsGreaterThanOrEqualTo(viewport.Left - 1, selectedBounds.Left,
+                        $"Selected tray item {selectedIndex} lost its leading edge at {fixture}.");
+                    Assert.IsLessThanOrEqualTo(viewport.Right + 1, selectedBounds.Right,
+                        $"Selected tray item {selectedIndex} remained clipped after layout at {fixture}.");
+                }
+            }
+
+            await AssertSelectedEdgeAsync(frames.Length - 1);
+            await AssertSelectedEdgeAsync(0);
 
             foreach (var button in shell.TrayButtons)
             {
@@ -829,7 +867,25 @@ public sealed class IntegrationAdapterTests
                     },
                     new ViewNode
                     {
-                        Id = "hoisted-body", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
+                        Id = "hoisted-compact-body", Kind = ViewNodeKind.Scroll,
+                        ScrollAxis = ScrollAxis.Vertical,
+                        AccessibilityLabel = "Compact connections",
+                        VisibleWhen = ResponsiveVisibility.CompactOnly,
+                        Children =
+                        [
+                            new ViewNode
+                            {
+                                Id = "hoisted-compact-item", Kind = ViewNodeKind.Button,
+                                Text = "Compact connection", ActionId = "open",
+                            },
+                        ],
+                    },
+                    new ViewNode
+                    {
+                        Id = "hoisted-body", Kind = ViewNodeKind.Scroll,
+                        ScrollAxis = ScrollAxis.Vertical,
+                        AccessibilityLabel = "Expanded connections",
+                        VisibleWhen = ResponsiveVisibility.ExpandedOnly,
                         Children = Enumerable.Range(0, 20).Select(index => new ViewNode
                         {
                             Id = $"hoisted-item-{index}", Kind = ViewNodeKind.Button,
@@ -838,8 +894,7 @@ public sealed class IntegrationAdapterTests
                     },
                 ],
             };
-            var frame = Frame("hoisted.widget", 1, root,
-                surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Compact });
+            var frame = Frame("hoisted.widget", 1, root);
             var fake = new FakePresentationSession(frame);
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
@@ -859,6 +914,53 @@ public sealed class IntegrationAdapterTests
             Assert.IsTrue(capture.ProbedFocusableIds.Any(id => id is
                 "hoisted-details" or "hoisted-wifi" or "hoisted-bluetooth"));
             var page = shell.ActivePage!;
+            var outer = page.GetVisualDescendants().OfType<ListBox>().Single();
+            Assert.HasCount(1, page.GetVisualDescendants().OfType<ListBox>());
+            Assert.HasCount(1, page.GetVisualDescendants().OfType<ScrollViewer>());
+            var section = ((IEnumerable<ViewNode>)outer.ItemsSource!).First(node =>
+                node.Id == "hoisted-compact-body");
+            outer.ScrollIntoView(section);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+
+            var compactScroll = SemanticControl(shell, "hoisted-compact-body");
+            Assert.IsTrue(compactScroll.IsEffectivelyVisible);
+            Assert.IsFalse(page.GetVisualDescendants().OfType<Control>().Any(control =>
+                (control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is
+                    "hoisted-body" or "hoisted-item-0") && control.IsEffectivelyVisible));
+            var compactAutomationId = AutomationProperties.GetAutomationId(compactScroll);
+            StringAssert.StartsWith(compactAutomationId,
+                SemanticAutomationIdentity.WidgetNodePrefix.TrimEnd('.'));
+            var compactPeer = ControlAutomationPeer.CreatePeerForElement(window);
+            Assert.IsNotNull(compactPeer);
+            Assert.IsTrue(AutomationPeers(compactPeer).Any(peer =>
+                string.Equals(peer.GetAutomationId(), compactAutomationId, StringComparison.Ordinal)));
+            outer.ScrollIntoView(((IEnumerable<ViewNode>)outer.ItemsSource!).First(node =>
+                node.Id == "hoisted-compact-item"));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            Assert.IsTrue(SemanticControl(shell, "hoisted-compact-item").IsEffectivelyVisible);
+
+            shell.SetEvidenceViewport(new Avalonia.Size(978, 466));
+            var expandedSection = ((IEnumerable<ViewNode>)outer.ItemsSource!).First(node =>
+                node.Id == "hoisted-body");
+            outer.ScrollIntoView(expandedSection);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var expandedScroll = SemanticControl(shell, "hoisted-body");
+            Assert.IsTrue(expandedScroll.IsEffectivelyVisible);
+            Assert.IsFalse(page.GetVisualDescendants().OfType<Control>().Any(control =>
+                (control.GetValue(SemanticTreeRenderer.SemanticNodeIdProperty) is
+                    "hoisted-compact-body" or "hoisted-compact-item") && control.IsEffectivelyVisible));
+            var expandedAutomationId = AutomationProperties.GetAutomationId(expandedScroll);
+            StringAssert.StartsWith(expandedAutomationId,
+                SemanticAutomationIdentity.WidgetNodePrefix.TrimEnd('.'));
+            var expandedPeer = ControlAutomationPeer.CreatePeerForElement(window);
+            Assert.IsNotNull(expandedPeer);
+            Assert.IsTrue(AutomationPeers(expandedPeer).Any(peer =>
+                string.Equals(peer.GetAutomationId(), expandedAutomationId, StringComparison.Ordinal)));
+            outer.ScrollIntoView(((IEnumerable<ViewNode>)outer.ItemsSource!).First(node =>
+                node.Id == "hoisted-item-0"));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            Assert.IsTrue(SemanticControl(shell, "hoisted-item-0").IsEffectivelyVisible);
             Assert.HasCount(1, page.GetVisualDescendants().OfType<ListBox>());
             Assert.HasCount(1, page.GetVisualDescendants().OfType<ScrollViewer>());
             window.Close();

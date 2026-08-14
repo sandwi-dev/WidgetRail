@@ -75,8 +75,9 @@ rows. The reusable semantic theme supplies consistent surface, typography,
 tile, button, slider, list, focus, selection, artwork, and status treatment
 without a GBSS renderer or widget-identity branch.
 The tray sizes labels to their ordinary text, scrolls horizontally when eight
-items do not fit, and brings the exact selected item fully into view instead of
-clipping it. Compact chrome leaves more vertical space to the admitted page.
+items do not fit, and re-reveals the exact selected item after selection and
+post-layout profile/viewport changes instead of clipping it. Compact chrome
+leaves more vertical space to the admitted page.
 Buttons, action surfaces, sections, collections, status, loading, text entry,
 sliders, page headers, list selection, and focus receive reusable
 controller-first themes derived only from typed semantic kinds. Raw widget
@@ -93,7 +94,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (28 tests):
+MSTest.Sdk 4.3.2 suite (29 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -132,8 +133,13 @@ render-target, and native/unattributed residency. The evidence viewport then
 reapplies the existing host-owned semantic root allocation invariant so probing
 cannot reintroduce an authored root max-width into the retained geometry row.
 The direct tray regression uses all eight representative long/short labels and
-asserts that the selected final item is fully inside the scroll viewport, label
-content is not truncated, and guide plus tray chrome remains bounded.
+asserts that the selected first and final items remain fully inside the scroll
+viewport after layout settles at 420, 978, 1180, and 1440 widths; label content
+is not truncated, and guide plus tray chrome remains bounded. Direct renderer
+coverage also requires an empty typed Text node with an accessibility label to
+produce readable nonzero-area display text. Mixed fixed/direct-Scroll roots keep
+the typed Scroll identity and inherited compact/expanded visibility while their
+children share the one outer virtualized owner.
 The suite retains an ignored exact-commit focused proof consumed by
 the final measurement.
 

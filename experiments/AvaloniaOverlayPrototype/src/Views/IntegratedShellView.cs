@@ -64,6 +64,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private WidgetPresentationFrame? renderedFrame;
     private bool disposed;
     private bool suppressFocusMemory;
+    private int trayRevealGeneration;
     private string? admittedWidgetId;
     private ShellProfile shellProfile = ShellProfile.Standard;
     private ContentResponsiveMode contentMode = ContentResponsiveMode.Standard;
@@ -261,6 +262,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         if (ActiveSemanticRoot is { } semanticRoot)
             SemanticTreeRenderer.PrepareSemanticRootForHost(semanticRoot);
         UpdateLayout();
+        RevealSelectedTrayItem();
+        ScheduleSelectedTrayReveal();
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -650,8 +653,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     {
         foreach (var (id, button) in trayButtons)
             button.Classes.Set("selected", string.Equals(id, coordinator.ViewModel.SelectedWidgetId, StringComparison.Ordinal));
-        if (SelectedTrayButton() is { } selected)
-            Dispatcher.UIThread.Post(selected.BringIntoView, DispatcherPriority.Loaded);
+        ScheduleSelectedTrayReveal();
     }
 
     private void OnSizeChanged(object? sender, SizeChangedEventArgs args)
@@ -683,6 +685,28 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         shellGrid.RowDefinitions[2].Height = new GridLength(compact ? 26 : 32);
         shellGrid.RowDefinitions[3].Height = new GridLength(compact ? 62 : 76);
         foreach (var button in trayButtons.Values) ApplyTrayButtonSizing(button, profile);
+        ScheduleSelectedTrayReveal();
+    }
+
+    private void ScheduleSelectedTrayReveal()
+    {
+        var generation = ++trayRevealGeneration;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (disposed || generation != trayRevealGeneration) return;
+            RevealSelectedTrayItem();
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (disposed || generation != trayRevealGeneration) return;
+                RevealSelectedTrayItem();
+            }, DispatcherPriority.Render);
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void RevealSelectedTrayItem()
+    {
+        trayScroll.UpdateLayout();
+        SelectedTrayButton()?.BringIntoView();
     }
 
     private static void ApplyTrayButtonSizing(Button button, ShellProfile profile)

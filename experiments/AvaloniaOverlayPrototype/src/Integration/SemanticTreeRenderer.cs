@@ -82,13 +82,8 @@ public sealed class SemanticTreeRenderer : IDisposable
         if (!ownedRenders.TryGetValue(semanticRoot, out var context) || context.Compact == compact)
             return false;
         context.Compact = compact;
-        foreach (var (control, visibility) in context.ResponsiveControls)
-            control.IsVisible = visibility switch
-            {
-                ResponsiveVisibility.CompactOnly => compact,
-                ResponsiveVisibility.ExpandedOnly => !compact,
-                _ => true,
-            };
+        foreach (var (control, node) in context.ResponsiveControls)
+            control.IsVisible = IsVisible(node, context);
         foreach (var update in context.ResponsiveLayoutUpdates) update(compact);
         return true;
     }
@@ -118,7 +113,9 @@ public sealed class SemanticTreeRenderer : IDisposable
             ViewNodeKind.Scroll => RenderScroll(node, context),
             ViewNodeKind.Text => new TextBlock
             {
-                Text = node.Text ?? string.Empty,
+                Text = string.IsNullOrWhiteSpace(node.Text)
+                    ? node.AccessibilityLabel ?? string.Empty
+                    : node.Text,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Top,
                 IsHitTestVisible = false,
@@ -150,10 +147,10 @@ public sealed class SemanticTreeRenderer : IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(node.Kind)),
         };
 
-        if (node.VisibleWhen is { } visibility and not ResponsiveVisibility.Always)
+        if (node.VisibleWhen is not null || context.InheritedVisibilityById.ContainsKey(node.Id))
         {
             control.IsVisible = IsVisible(node, context);
-            context.ResponsiveControls.Add((control, visibility));
+            context.ResponsiveControls.Add((control, node));
         }
 
         context.RealizedControlCount++;
@@ -190,9 +187,26 @@ public sealed class SemanticTreeRenderer : IDisposable
             node.Children.Any(IsDirectVerticalScroll))
         {
             context.OwnsVerticalScroll = true;
-            var flattened = node.Children
-                .SelectMany(child => IsDirectVerticalScroll(child) ? child.Children : new[] { child })
-                .ToArray();
+            var flattened = new List<ViewNode>();
+            foreach (var child in node.Children)
+            {
+                if (!IsDirectVerticalScroll(child))
+                {
+                    flattened.Add(child);
+                    continue;
+                }
+
+                // The root ListBox is the sole vertical scrolling owner. Keep the typed Scroll
+                // node as a bounded semantic/UIA section marker, then hoist its children into
+                // that owner while inheriting the section's responsive visibility.
+                context.HoistedVerticalScrollIds.Add(child.Id);
+                flattened.Add(child);
+                foreach (var item in child.Children)
+                {
+                    context.InheritedVisibilityById[item.Id] = child.VisibleWhen;
+                    flattened.Add(item);
+                }
+            }
             return CreateVirtualizedList(node with { Children = flattened }, context);
         }
 
@@ -249,6 +263,17 @@ public sealed class SemanticTreeRenderer : IDisposable
 
     private Control RenderScroll(ViewNode node, RenderContext context)
     {
+        if (context.HoistedVerticalScrollIds.Contains(node.Id))
+        {
+            return new TextBlock
+            {
+                Text = string.Empty,
+                MinHeight = 1,
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+            };
+        }
+
         if (node.ScrollAxis == ScrollAxis.Horizontal)
         {
             context.OwnsHorizontalScroll = true;
@@ -675,7 +700,13 @@ public sealed class SemanticTreeRenderer : IDisposable
     private Control RenderVirtualizedItem(ViewNode node, RenderContext context, bool uniformHeight)
     {
         var control = RenderNode(node, context);
-        if (uniformHeight)
+        if (context.HoistedVerticalScrollIds.Contains(node.Id))
+        {
+            control.Height = double.NaN;
+            control.MinHeight = 1;
+            control.VerticalAlignment = VerticalAlignment.Top;
+        }
+        else if (uniformHeight)
         {
             control.Height = 88;
             control.VerticalAlignment = VerticalAlignment.Stretch;
@@ -748,10 +779,15 @@ public sealed class SemanticTreeRenderer : IDisposable
         finally { resources.EndArtworkRequest(); }
     }
 
-    private static bool IsVisible(ViewNode node, RenderContext context) => node.VisibleWhen switch
+    private static bool IsVisible(ViewNode node, RenderContext context) =>
+        MatchesVisibility(node.VisibleWhen, context.Compact) &&
+        (!context.InheritedVisibilityById.TryGetValue(node.Id, out var inherited) ||
+         MatchesVisibility(inherited, context.Compact));
+
+    private static bool MatchesVisibility(ResponsiveVisibility? visibility, bool compact) => visibility switch
     {
-        ResponsiveVisibility.CompactOnly => context.Compact,
-        ResponsiveVisibility.ExpandedOnly => !context.Compact,
+        ResponsiveVisibility.CompactOnly => compact,
+        ResponsiveVisibility.ExpandedOnly => !compact,
         _ => true,
     };
 
@@ -769,8 +805,10 @@ public sealed class SemanticTreeRenderer : IDisposable
         public RenderResources Resources { get; } = new();
         public Dictionary<string, Control> FocusableById { get; } = new(StringComparer.Ordinal);
         public List<(Control Control, FocusNeighbors Neighbors)> PendingNeighbors { get; } = [];
-        public List<(Control Control, ResponsiveVisibility Visibility)> ResponsiveControls { get; } = [];
+        public List<(Control Control, ViewNode Node)> ResponsiveControls { get; } = [];
         public List<Action<bool>> ResponsiveLayoutUpdates { get; } = [];
+        public HashSet<string> HoistedVerticalScrollIds { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, ResponsiveVisibility?> InheritedVisibilityById { get; } = new(StringComparer.Ordinal);
         public bool OwnsVerticalScroll { get; set; }
         public bool OwnsHorizontalScroll { get; set; }
         public int RealizedControlCount { get; set; }

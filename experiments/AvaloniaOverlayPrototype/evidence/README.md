@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 28-test focused Avalonia integration suite. Its ignored exact-commit
+only the 29-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -20,9 +20,10 @@ The redesign regressions additionally prove that contradictory compact/wide
 snapshot surface hints change content mode without moving the shell, tray, or
 guide; that only content is inside the native transition presenter; and that
 every semantic kind receives a closed typed component kind/navigation zone.
-The shared-shell polish regression uses all eight representative
-tray labels and requires the selected first and final items to be fully scrolled into view,
-untruncated label content, and bounded guide/tray height. Raw widget geometry and
+The shared-shell polish regression uses all eight representative tray labels and
+requires the selected first and final items to be fully scrolled into view after
+layout settles at 420, 978, 1180, and 1440 widths, with untruncated label content
+and bounded guide/tray height. Raw widget geometry and
 transparent style declarations are ignored at the Avalonia component boundary;
 interactive controls retain visible reusable surfaces, borders, and minimums.
 Direct intrinsic-layout evidence requires non-overlapping action rows, complete
@@ -39,8 +40,11 @@ only absent/non-contained expected focusable identities into view. Enabled
 targets must return successful focus and own the FocusManager's exact identity;
 disabled targets prove visible contained bounds and UIA without a focus claim.
 The direct root-stack regression proves that a typed vertical Scroll plus header,
-detail action, and tabs compiles into one recycling scroll owner and that
-virtualized ancestor items are revealed before descendant focus is asserted.
+detail action, and tabs compiles into one recycling scroll owner, retains its
+semantic/UIA identity and compact/expanded visibility for the hoisted section and
+children, and reveals virtualized ancestor items before descendant focus is
+asserted. A zero-display-text regression requires the typed accessibility label
+to become readable nonzero-area visible text rather than weakening geometry.
 The retained row combines the coherent seed-contained controls with the bounded
 revealed controls, so probing a later recycled item cannot erase an identity
 that was already proven contained before the probe.
