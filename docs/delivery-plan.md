@@ -63,10 +63,14 @@ Snapshots are evidence only. This file is the sole authority for current work.
   unchanged rerun as product evidence.
 - DLV-235 source `b0ea2b4` is independently accepted above accepted DLV-234
   `9435050` and DLV-233 `1323c8a`; the contiguous DLV-231/233/234/235 chain is
-  not yet integrated because the first planner cherry-pick correctly stopped
-  at an append conflict in implementation-owned `docs/implementation-status.md`.
-  The platform task will merge current main at its clean boundary and preserve
-  both evidence sections before planner fast-forward integration. DLV-234
+  not yet integrated. The first planner cherry-pick stopped at an append
+  conflict in implementation-owned `docs/implementation-status.md`; the
+  subsequently authorized branch merge exposed substantial additional
+  conflicts in reviewer docs, two production-host fixtures, and `build.ps1`.
+  The platform task preserved that unresolved merge without resolving,
+  aborting, staging, or starting DLV-232. User direction is required before
+  destructive recovery or choosing between the conflicting implementations.
+  DLV-234
   treats every incomplete bridge frame read or
   write as transport-tainting, tears down the one owned bridge process, and
   establishes one replacement before the next request. Its deterministic
@@ -176,7 +180,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted cumulative DLV-231/233/234/235 source is preserved through `b0ea2b4`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | Clean boundary; merge current main to resolve the implementation-owned status append, then DLV-232 is Assigned |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted cumulative DLV-231/233/234/235 source is preserved through `b0ea2b4`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | Substantial merge conflict preserved against main `d4766e8`; DLV-232 not started and blocked pending user recovery direction |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -519,8 +523,8 @@ Stop for a public protocol/status-model decision, another failure cache or
 authority, service-specific behavior, weakened failure/UIA assertions, or a
 material lifecycle redesign.
 
-Accepted as implementation commit `b0ea2b4`, not yet integrated pending the
-small implementation-owned status-file merge. The existing typed
+Accepted as implementation commit `b0ea2b4`, not yet integrated pending user
+direction on the preserved substantial merge conflict. The existing typed
 `connectionFailed` event is carried across a private bridge adapter seam and
 mapped to session stage `Start`; sanitized diagnostic text remains
 presentation-only and the public protocol is unchanged. A same-runtime Start
@@ -539,7 +543,7 @@ restored play/pause focus/action/status behavior, bounded hide/reopen feedback,
 and normal zero-process cleanup. No Tier-3 aggregate, capture work, public
 protocol change, widget-domain change, or unrelated full build occurred.
 
-### Assigned after integration — DLV-232: generic worker crash isolation and recovery
+### Blocked pending integration — DLV-232: generic worker crash isolation and recovery
 
 Baseline: accepted DLV-235 cumulative platform correction. Visible objective: one
 credential-free Community worker may crash repeatedly without closing the
@@ -736,8 +740,12 @@ Release rather than manufacture speculative style changes.
    refresh. Accepted DLV-233 corrects only the temporary-install fixture above
    DLV-231. Accepted DLV-234 closes the cumulative transport blocker and
    accepted DLV-235 closes the remaining failure-state blocker. The platform
-   task now owns the small append-only `docs/implementation-status.md` merge
-   with current main before planner fast-forward integration.
+   attempted clean-boundary merge against planner main `d4766e8` exposed
+   conflicts in `docs/delivery-plan.md`, `docs/engineering-quality-review.md`,
+   `docs/implementation-status.md`, `WidgetActionFailureHostTests.cpp`,
+   `WidgetSwitchHostTests.cpp`, and `build.ps1`. The platform task preserved the
+   unresolved merge and did not begin DLV-232. Do not resolve, abort, or choose
+   an integration path without user direction.
 8. The accepted YT Music 0.2.9 package builds, validates, and packs from main,
    but the live catalog already contains eight immutable YT Music versions and
    rejects installation with `installed_widget_version_limit`. The failed
@@ -776,6 +784,7 @@ Release rather than manufacture speculative style changes.
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
 | Native uninstall reconciliation | Synthetic catalog removal emitted no managed revision/native event. | Deterministic disabled/nonresident removal event. |
+| DLV-231/233/234/235 cumulative platform integration | The authorized merge of main `d4766e8` into the platform branch exposed substantial conflicts across reviewer docs, implementation status, two production-host fixtures, and `build.ps1`; the unresolved merge is preserved and DLV-232 has not started. | User direction authorizing the safest recovery path: abort only this failed merge, create a clean integration branch from main, and have the platform task cherry-pick the four accepted DLV commits plus resolve its owned implementation-status append and any remaining product conflicts under review. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is unsupported by Data API. | Approved minimum-scope OAuth plan and authorized account. |
 
 ## Recent accepted milestones
