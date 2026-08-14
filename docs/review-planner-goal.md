@@ -24,13 +24,13 @@ At the beginning of every goal continuation or scheduled heartbeat:
 2. Read `docs/delivery-plan.md` and `docs/implementation-agent-goal.md`
    completely.
 3. Inspect local `main`, the worktree, recent commits, and uncommitted changes.
-4. Locate the standing Codex tasks by project, title, lane prompt, and worktree:
+4. Locate the two standing Codex tasks by project, title, lane prompt, and
+   worktree:
    - `Implementation agent — widgets lane`
    - `Implementation agent — platform lane`
-   - `Implementation agent — Avalonia prototype lane`
-   During AVP-004 also locate every temporary `AVP-004 — ...` extraction task
-   recorded in the live delivery plan; do not assume those tasks survive a
-   restart.
+   The Avalonia lead and AVP-004 extraction tasks are closed historical tasks,
+   not startup dependencies. Do not locate, resume, message, or relaunch them
+   during normal delivery work.
 5. Inspect compact task progress and any new completion report or commit.
 6. Reconcile observed state with the delivery plan before taking action.
 
@@ -53,9 +53,9 @@ You own:
 - `docs/implementation-agent-goal.md` and this planner goal.
 - Timestamped reviewer-owned snapshots under `docs/history/` and the
   documentation directory map.
-- Creating, moving, messaging, monitoring, renaming, and coordinating the
-  standing Codex implementation tasks and the temporary AVP-004 tasks
-  explicitly authorized in the delivery plan.
+- Creating, moving, messaging, monitoring, renaming, and coordinating the two
+  standing Codex implementation tasks explicitly authorized in the delivery
+  plan.
 - Reviewing implementation commits and returning precise corrections.
 - Committing reviewer-owned documents on local `main`.
 - Integrating accepted implementation branches or accepted contiguous commit
@@ -100,17 +100,6 @@ Maintain:
   ordered independent Ready milestones when evidence permits.
 - One `platform` lane with at most one Assigned milestone and at least three
   ordered independent Ready milestones when evidence permits.
-- An `avalonia-prototype` migration program that normally has at most one
-  Assigned AVP milestone. For AVP-004 only, the planner may operate one
-  integration lead plus at most two temporary file-exclusive extraction lanes
-  under the same parent AVP ID: a managed presentation-session facade and a
-  narrow native platform interop component. Each task must have an explicit
-  work package, branch, baseline, exclusive file ownership, and integration
-  order. No task may rewrite widget domain behavior, create per-widget Avalonia
-  pages, fork `WidgetProtocol`, add another bridge transport, or implement a
-  second C# GameInput owner. Production changes are limited to explicitly
-  assigned behavior-preserving extraction boundaries; the current production
-  host remains authoritative until an independently accepted cutover.
 - A serialized integration queue for cross-lane protocol, architecture, or
   shared-file work.
 - A blocked queue with exact unblocking evidence.
@@ -129,10 +118,9 @@ different files. Distinguish that aggregate from a long file containing many
 small independent contracts or stateless facade methods, and document any such
 cohesive exception explicitly.
 
-Every production assignment must contain a stable DLV ID; every Avalonia
-evaluation assignment must contain a stable AVP ID. AVP-004 temporary work
-packages use the parent ID plus a stable suffix such as `AVP-004-SESSION`.
-Every assignment requires
+Every production assignment must contain a stable DLV ID. The closed AVP
+identifier namespace remains historical evidence and is not available for new
+work without a new explicit user decision. Every assignment requires
 its lane, baseline, dependencies, bounded objective, ownership boundary,
 in-scope and out-of-scope work,
 acceptance criteria, required verification tier, concurrency constraints, and
@@ -266,7 +254,7 @@ On every continuation, perform the following loop in order:
 ### 1. Observe
 
 - Inspect all implementation task statuses with compact waits/snapshots.
-- Inspect each branch tip, recent DLV/AVP commits, worktree cleanliness, and current
+- Inspect each active branch tip, recent DLV commits, worktree cleanliness, and current
   assignment.
 - For every user-reported regression, inspect the latest accepted OverlayHost
   session log and directly affected worker/provider logs when that surface can
@@ -283,7 +271,7 @@ On every continuation, perform the following loop in order:
 
 ### 2. Review completed work
 
-For each new DLV or AVP commit, review the actual diff and retained evidence against
+For each new DLV commit, review the actual diff and retained evidence against
 the assignment, not only the implementation task's summary.
 
 Check:
@@ -460,8 +448,9 @@ Then repeat the loop.
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
 - The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
-  closed evaluation history. Do not dispatch, integrate, relaunch, or cut over
-  their presentation path without a new explicit user decision.
+  closed failed-experiment history. They are not normal startup or review
+  surfaces. Do not dispatch, integrate, relaunch, cut over, or delete them
+  without a new explicit user decision.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.
 - Shared protocol/architecture work is assigned serially to one lead lane after
@@ -593,6 +582,22 @@ Preserve the product direction already recorded in the roadmap:
   Responsive Grid semantics may move to Taffy; scrolling, clipping, pixel/DPI
   policy, focus-follow, controller navigation, accessibility, rendering,
   animation, and HWND placement remain native host responsibilities.
+- Treat width and height as symmetric authored surface axes with explicit
+  `Preferred`, `Content`, and `FillAvailable` policies once the versioned
+  contract is integrated. Content sizing is bounded intrinsic measurement, not
+  a guessed per-page pixel height: admit the width/work-area constraint,
+  measure through Taffy, clamp between authored minimum and preferred extents,
+  add host chrome, bottom-anchor, and perform one final layout. Existing views
+  remain Preferred by default so dynamic provider data cannot resize them
+  implicitly.
+- Preserve one fixed absolute bottom-center tray/controller-guide anchor for a
+  complete visible session. Widget envelope changes grow or shrink upward and
+  outward; the panel bottom, guide, and tray keep explicit stable offsets.
+  Never fix a detached widget with an identity-specific native offset.
+- Keep container child alignment separate from the container's own sizing.
+  Centering a Row's children must not make that Row content-width inside a
+  stretching parent; explicit generic width/aspect-ratio semantics remain the
+  way to opt out of stretch.
 - Lightweight idle/hidden operation suitable for use while gaming.
 - While the product remains an explicitly single-user pre-release development
   build, prefer a clean current overlay-owned persistence schema over retaining

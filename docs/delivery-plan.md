@@ -4,209 +4,262 @@ Status: active implementation authority
 
 Historical review and assignment detail through planner commit `436d890` is in
 the [2026-08-13 snapshot](history/delivery-plan/2026-08-13T04-23-11-07-00.md).
-The complete plan immediately before this compaction is in the
+The complete pre-compaction plan is in the
 [2026-08-14 snapshot](history/delivery-plan/2026-08-14T03-24-16-07-00.md).
 Snapshots are evidence only. This file is the sole authority for current work.
 
-## Current accepted baselines
+## Current accepted baseline
 
-- Production code: local main product baseline `54c25c6`, including DLV-216,
-  AVP-004 SESSION then PLATFORM extractions, generic Avalonia integration
-  through `16b33d9`, generic controller-first redesign through `9db36b5`, and
-  widget-owned surface envelopes through source `5ffd435`, plus accepted
-  crash-safe trace and stable monitor anchoring through source `26b5d3a`,
-  integrated as `c8296df`, `2e62a5b`, then `54c25c6`. Planner documents include
-  the pre-integration assignment through `3c76fd1`.
-  Production renderer cutover is not authorized.
-- Latest accepted Avalonia source: `26b5d3a` on
-  `codex/avalonia-prototype`, integrated through main `54c25c6`. Exact evidence
-  passes 33/33 focused tests, 8/8 widgets with eight distinct envelopes, 32/32
-  responsive fixtures, 33 fixed-chrome transition samples, one retained screen
-  identity across 58 ordinary placements, 449.26-MiB candidate private memory,
-  exact 11/11 trace flush, and 140.76-ms normal no-force shutdown.
-- The integrated-main Avalonia candidate crashed during physical testing and is
-  closed. No candidate or owned WidgetBridge process remains running. The
-  packaged production Release is also closed during isolated candidate work.
-- The user ended the Avalonia evaluation on 2026-08-14 after repeated physical
-  layout, shell, controller-routing, and reliability failures. AVP-005 and an
-  Avalonia production cutover are cancelled. The accepted prototype remains
-  retained as historical/reference code only; the production native renderer
-  and its original controller navigation remain authoritative.
+- Local production main: `8836e07` (`[DLV-221] Integrate Taffy native layout
+  engine`). The user physically reviewed the rebuilt Release, found the
+  integration substantially correct, and accepted Taffy as the native
+  declarative geometry engine.
+- DLV-221 preserves the existing Widget SDK/protocol, package/catalog/runtime,
+  authenticated WidgetBridge transport, lifecycle/trust/persistence/providers,
+  widget domains, Community process boundaries, native renderer, GameInput,
+  controller focus/navigation, UI Automation, scrolling, clipping, motion,
+  and single-HWND ownership. Only generic Flex/Responsive Grid geometry moved
+  behind the pinned Taffy Rust static library and narrow panic-safe C ABI.
+- DLV-221 focused evidence is green: Rust 5/5, native declarative layout 250,
+  renderer 4,839, all eight production widgets, controller/focus/slider/UIA
+  suites, bounded semantic-churn and hidden/idle measurements, and normal
+  zero-process shutdown. The exact canonical aggregate stopped at its first
+  verifier self-test because the manifest omits the existing
+  `SpotifyCommunityApplication.Tests` project. No product test ran or failed in
+  that aggregate. Retain this honestly red infrastructure result; do not rerun
+  it unchanged or weaken the verifier.
+- The user reported five post-integration presentation issues. They are open
+  product defects even though the Taffy replacement itself is accepted:
+  variable widget-to-tray separation, Settings root dead height, Audio Mixer
+  rows/sliders not consuming width, insufficient Network first-page height,
+  and detached/weak YT Music composition.
+
+## Avalonia disposition — failed and closed
+
+The user ended the Avalonia experiment on 2026-08-14 after repeated physical
+layout, shell, controller-routing, process, and reliability failures. The
+candidate did not satisfy the primary reason for the evaluation and is a failed
+product experiment. AVP-005 and every Avalonia production cutover are
+cancelled.
+
+The accepted AVP-004 extraction and prototype commits remain in Git and
+`experiments/AvaloniaOverlayPrototype` only as historical/reference evidence.
+They are not an active lane, baseline, migration path, verification debt, or
+launch target. Do not dispatch the Avalonia lead or temporary extraction tasks,
+do not relaunch the candidate, and do not delete retained source/history unless
+the user separately authorizes repository cleanup. The native overlay is the
+only production presentation path.
 
 ## Execution rules
 
+- Operate exactly two production lanes: `widgets` and `platform`.
 - Each task implements only its lane's current Assigned milestone, then the
   first explicitly Ready same-lane milestone whose baseline is present.
-- Implementation tasks do not edit reviewer-owned documents. The planner
+- Implementation tasks never edit reviewer-owned documents. The planner
   independently reviews actual diffs and retained evidence.
-- Rejected commits remain unintegrated. Corrections stay in their existing lane
-  and do not interrupt unrelated coherent work.
+- Rejected commits remain unintegrated. Corrections stay in their lane and do
+  not interrupt unrelated coherent work.
 - Never push. Stop for credentials, destructive recovery, substantial merge
   conflicts, undocumented input/window APIs, publication, physical-only
   evidence, or a material product choice.
 - User-visible defects and requested features outrank internal refactors.
-- Screenshots are supporting evidence only. Exclude malformed captures rather
-  than expanding ordinary product work into capture-harness work.
-- Use the smallest affected Release suites, one final focused suite, and only a
-  named integration boundary. Do not run the product aggregate merely for AVP
-  work.
-- New managed test projects use MSTest.Sdk 4.3.2; existing executable suites
+- Screenshots are high-value user evidence but are not authority to build or
+  repair a capture harness. Verify the named geometry and semantic invariants,
+  rebuild and visibly launch the accepted Release, and use the user's physical
+  verdict for final presentation quality.
+- Run focused affected Release suites during implementation. Use one bounded
+  linked-host group when a language/process boundary changes. Run the canonical
+  aggregate only at a named checkpoint; never rerun an unchanged red result.
+- New managed test projects use MSTest.Sdk 4.3.2. Existing executable suites
   remain valid unless their migration is explicitly assigned.
 - Full-trust Community applications may use ordinary user-level APIs in their
-  process. Bound shared product inputs/resources, not private application CPU,
-  memory, databases, files, sockets, dependencies, or child processes.
+  own process. Bound shared product inputs/resources, not private application
+  CPU, memory, databases, files, sockets, dependencies, or child processes.
 
 ## Product and architecture decisions
 
-- Games & Apps remains bundled. Spotify and Game Launcher are ordinary
-  Community applications. Core assemblies contain no service-specific DTOs,
-  OAuth, API clients, process hosts, package identities, or known-tree rules.
-- Sandboxed packages retain AppContainer/capability boundaries. Explicitly
-  consented full-trust applications use the generic full-trust runtime.
-- Launcher Experience packs remain data-only and host-owned.
-- The native presentation boundary remains authoritative. Retain Widget
+- Games & Apps remains bundled. Spotify, Game Launcher, and YT Music are
+  ordinary Community applications. Core assemblies contain no service-specific
+  DTOs, API clients, process hosts, package identities, or known-tree rules.
+- The native presentation boundary is authoritative. Retain Widget
   SDK/protocol, catalog/package/runtime, WidgetBridge/authenticated transport,
   lifecycle/trust/persistence/providers, domain implementations, Community
   process boundaries, native rendering/accessibility, and the original
   controller focus/navigation owner.
-- Replace only the native declarative geometry calculator with one generic
-  Taffy-backed engine. Do not add per-widget native layouts, hidden role
-  strings, identity branches, tree-shape special cases, another renderer,
-  another focus graph, or another input owner.
-- Each view owns its semantic content and validated preferred/minimum logical
-  envelope through `WidgetSurfaceHints`. The host clamps only to the actual
-  monitor work area, accessibility, safe insets, and safety constraints.
-- The fixed bottom-center tray and controller guide are host chrome. Content
-  grows or shrinks upward/outward around that anchor. One HWND wraps the union;
-  the overlay must not become a monitor-sized desktop surface.
-- The production native Microsoft GameInput/Guide owner is authoritative. No
-  second C# GameInput reader, bridge transport, overlay HWND, or focus tree is
-  permitted.
+- Taffy is the sole production declarative Flex/Responsive Grid geometry engine.
+  Do not restore the deleted custom solver, add a dual-runtime path, or introduce
+  per-widget native geometry, identity branches, tree-shape special cases,
+  another renderer, another focus graph, or another input owner.
+- Taffy owns geometry calculation only. The host retains semantic validation,
+  intrinsic DirectWrite measurement, scroll offsets/extents, ancestor clipping,
+  visible rectangles, physical-pixel/DPI snapping, focus-follow, controller
+  navigation, accessibility projection, rendering, animation, and HWND
+  placement.
+- Widget surface sizing is an authored semantic contract, not a global shell
+  preset. The public contract will expose symmetric independent width and height
+  modes: `Preferred`, `Content`, and `FillAvailable`.
+  - `Preferred` uses the validated preferred axis extent and remains stable as
+    live data changes.
+  - `Content` uses the Taffy-measured intrinsic extent clamped between the
+    authored minimum and preferred extent; the preferred extent is the ceiling.
+  - `FillAvailable` consumes the safe host-admitted work-area extent.
+  - Width and height have equal API capability. A view may deliberately select
+    different policies because responsive text/grid height is computed from an
+    admitted width.
+- Content sizing uses a bounded two-pass host process: admit width/work-area
+  constraints, measure the root with automatic content height, clamp the
+  measured extent, add host chrome reservations, bottom-anchor the resulting
+  window, then perform final layout at the admitted viewport. No widget ID,
+  page ID, style class, or known tree shape participates in this algorithm.
+- The persistent tray and controller guide are host chrome at fixed absolute
+  bottom-center screen coordinates for the complete visible session. Widget
+  width/height changes move the content envelope upward/outward around that
+  anchor. The panel bottom, guide, and tray use explicit fixed spacing; a short
+  widget may not remain top-anchored and create variable dead space.
+- One HWND wraps the admitted content-plus-chrome union. The overlay must not
+  become a monitor-sized desktop surface. Monitor work area, DPI, accessibility,
+  safe insets, and bounded safety limits remain host authority.
+- Container child alignment and the container's own `align-self` are separate
+  semantics. `align: center` on a Row centers its children; it must not make the
+  Row content-width inside a stretching parent. Explicit width/aspect-ratio
+  semantics may opt a node out of cross-axis stretch generically.
+- The Microsoft GameInput/Guide owner remains authoritative. No second C#
+  GameInput reader, bridge transport, overlay HWND, or focus tree is permitted.
 
 ## Active task map
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community-launcher`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-217 accepted through `d57fd06`; integration awaits explicit user approval for the known reviewer-doc-only red aggregate step |
-| Platform | Native Taffy layout integration | `codex/taffy-layout-integration`; `C:\Users\dwive\Projects\GameBarAlternative` | DLV-221 assigned from clean main `5bf4df1` by explicit user request |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype`; `C:\Users\dwive\.codex\worktrees\fe54\GameBarAlternative` | Accepted through `26b5d3a`, integrated as `54c25c6`; physical relaunch/verdict pending |
-| AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated first as `7ec8253` |
-| AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated second as `b5c4c6c` |
+| Widgets | Implementation agent — widgets lane | Preserve accepted DLV-217 branch `codex/impl-widgets-community-launcher`; start the UI queue from clean main `8836e07` in a separate planner-authorized widget worktree/branch | DLV-223 Assigned after task/worktree rebinding |
+| Platform | Implementation agent — platform lane | Planner-authorized clean platform worktree/branch from `8836e07`; do not reuse preserved dirty/interrupted platform worktrees | DLV-222 Assigned |
 
-The extraction tasks are closed. The standing Avalonia lead owns only the
-generic integration/correction. AVP-005 and production cutover are unauthorized.
-
-## Widgets lane
-
-### Accepted and integrated — DLV-216: autonomous Spotify Community application
-
-Source `452c7dd`, integrated as `47d8ffe`. Spotify domain behavior, OAuth, Web
-API/playback, token storage, response parsing, caches, and lifecycle now belong
-to its ordinary full-trust Community package. Live account, Premium,
-allowlisting, EME, and credentials remain manual.
-
-### Accepted, awaiting explicit integration approval — DLV-217: autonomous Game Launcher
-
-Accepted linear range: `7aa229e`, `c504d2f`, `6b9d032`, `d57fd06`, based on
-`47d8ffe`. It makes discovery, optional enrichment, artwork/cache/provenance,
-collections, details/back, exact SavedId launch, and persistence package-owned
-through the public generic runtime.
-
-Exact-clean Tier 3 at `d57fd06` ran 41 steps: 40 passed, including Spotify
-Community 5/5, Game Launcher Community 6/6, and Widget Catalog trust/package
-35/35. The only red step is an unchanged reviewer-owned archived delivery-plan
-link. The implementation is accepted, but broad local integration remains
-paused until the user explicitly approves integrating despite that honestly red
-aggregate. Never describe the aggregate as fully green.
-
-The widgets queue has fewer than three Ready items because DLV-218 must follow
-both Community package cutovers and filler work would compete with the active
-visible AVP correction.
+DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
+aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
+that branch. Integration still requires the user's separate explicit approval
+and must not be mixed with this UI correction cluster.
 
 ## Platform lane
 
-### Assigned — DLV-221: replace custom native geometry with Taffy
+### Assigned — DLV-222: restore native surface anchoring and correct Taffy stretch
 
-Baseline: clean local main `5bf4df1`. Owner: native platform/layout lane.
+Baseline: clean local main `8836e07`. Owner: native platform/layout lane.
 
-Objective: replace the hand-written Flex and Responsive Grid geometry in
-`DeclarativeLayout` with a pinned released Taffy Rust static library behind a
-narrow stable C ABI, while preserving the public semantic widget contract,
-native renderer, original controller navigation/focus, scrolling, clipping,
-accessibility, motion, window placement, and all domain/process boundaries.
+Visible objective: fix the detached panel/tray relationship, Audio Mixer dead
+row width, and Network's insufficient first-page height without widget-specific
+native rules or moving the tray.
 
-Required architecture:
+Required implementation:
 
-- Add one repository-owned Rust `staticlib` bridge using a pinned released
-  Taffy crate, locked dependencies, and a pinned stable MSVC Rust toolchain.
-  Do not depend on the moving draft upstream C-bindings branch.
-- Expose opaque tree ownership, integer node handles, bounded POD style/tree
-  input, a bounded DirectWrite-compatible intrinsic-measure callback, explicit
-  error codes, and bulk layout-result output. No Rust panic, allocation owner,
-  string, container, or implementation type crosses the C ABI.
-- Keep persistent layout nodes keyed by the existing stable semantic identity
-  where practical; do not serialize or use IPC across this in-process seam.
-- Map typed Row/Column, wrap, grow/shrink, min/max, margin/padding/gap,
-  alignment, aspect ratio, overflow inputs, and Responsive Grid track/placement
-  semantics generically. Never branch on widget/package identity, text,
-  element ID, provider, style role, or known tree shape.
-- Taffy owns geometry only. Host code retains scroll offset/extents,
-  ancestor clipping and visible rectangles, pixel/DPI policy, focus-follow,
-  controller navigation, accessibility projection, rendering, animation, and
-  HWND placement.
-- Integrate Cargo into the existing CMake/MSVC build with `--locked`, clear
-  missing-toolchain diagnostics, x64 Release/Debug selection, and no runtime
-  Rust installation requirement in the packaged product. Generated C headers
-  are checked in and production builds do not require nightly Rust or cbindgen.
-- Keep the current engine only as a temporary differential oracle during the
-  assignment. Delete the superseded production algorithm and dual-runtime path
-  before acceptance so maintenance does not permanently double.
+- In `DeclarativeRenderer` and the Taffy bridge, separate a container's
+  `align-items`/child alignment from that node's own `align-self`. Ordinary auto-
+  width children stretch in a stretching parent even when their own children
+  are centered. Definite width, aspect ratio, or another explicit generic
+  sizing rule may bound the node.
+- Add a direct regression in which a Row with centered children still fills its
+  parent and a `flex-grow: 1` slider consumes the remaining row width. Cover
+  nested column/row behavior and constrained widths without Audio/package IDs.
+- Stop bypassing the already-resolved widget `windowWidthDip/windowHeightDip`
+  with the fixed `1180x700` widget extent. Restore validated widget-owned
+  preferred envelopes while preserving one bottom-centered work-area placement
+  and one fixed composition owner.
+- Bottom-anchor variable-height content. Restore an explicit invariant between
+  the visible panel bottom, controller guide, and tray rather than ending the
+  card at a top-anchored `footerY` and describing the result as detached.
+- Keep tray and guide absolute screen bounds unchanged through compact,
+  standard, wide, and height-only widget switches. Width changes remain centered
+  on the same screen anchor. Clamp only to the active monitor work area and
+  accessibility/safe margins.
+- Allow the existing Network `560x700` preferred panel to receive its authored
+  height when the work area permits. At constrained height, retain scrolling
+  and focus reveal rather than clipping or moving chrome.
+- Preserve composition continuity and one HWND. Do not revive Avalonia, add a
+  second panel/tray window, or modify widget presentations in this milestone.
 
 Acceptance:
 
-- Existing declarative-layout validation and diagnostics remain truthful and
-  deterministic; unsupported/invalid input fails before unsafe native/Rust
-  allocation and retains current last-good presentation behavior.
-- Focused differential fixtures cover representative intrinsic text,
-  Row/Column Flex, wrapped lines, Responsive Grid, min/max/aspect ratio,
-  overflow/scroll extents, clipping, DPI pixel snapping, and malformed/bounded
-  inputs before the old calculator is removed.
-- The existing compact, standard, wide, ultrawide, and accessibility-oriented
-  native widget/layout fixtures pass without clipping or unreachable essential
-  controls. Original D-pad/stick/A/B/Y, slider, scroll, focus restoration, UIA,
-  and action routing semantics remain unchanged.
-- A deterministic Rust unit suite covers ABI conversion, tree lifecycle,
-  grid/flex calculation, intrinsic measurement, failure codes, panic
-  containment, and bulk-result bounds. C++ tests cover the real linked bridge.
-- Measure layout compute time, allocation/tree churn, binary size, hidden/idle
-  behavior, and native host memory against the current engine. Stop for a
-  material regression rather than weakening the product budget.
-- Tier 1: affected Rust tests, native DeclarativeLayout, renderer, focus,
-  controller-navigation, scrolling, accessibility, responsive-grid, and
-  production OverlayHost Release build.
-- Tier 2: one bounded real C++/Rust linked-host group covering all eight current
-  widgets and the supported surface matrix.
-- Tier 3: one exact-commit canonical aggregate because this changes the core
-  native layout engine and repository build graph. Do not run it during the
-  edit loop.
-- Update implementation/build documentation and the dependency/license
-  inventory. Commit locally as one coherent `[DLV-221]` milestone; never push.
+- Generic layout tests prove parent stretch versus child centering and exact
+  remaining-space slider growth.
+- Placement tests prove a fixed panel-to-guide and guide-to-tray offset, stable
+  absolute tray/guide bounds across every current widget extent, and work-area
+  containment at mixed DPI/interface scale.
+- The real eight-widget switch group retains one renderer, one tray capacity,
+  controller focus memory, no clipping, and normal shutdown.
+- Audio Mixer sliders reach their intended row width. Network's first-page
+  `Ready to scan` state is visible at the preferred envelope and remains
+  reachable by scrolling when constrained.
+- Tier 1: Rust bridge/layout, DeclarativeLayout, DeclarativeRenderer,
+  OverlayPlacement, tray, focus, controller navigation, slider, accessibility,
+  and Release host build.
+- Tier 2: one bounded linked-host all-eight-widget switch/placement group. No
+  canonical aggregate; DLV-221 already paid the core-engine checkpoint and the
+  known manifest defect is unchanged.
+- Rebuild/package the exact accepted Release and leave it visibly running for
+  the user's panel/tray, Audio, Network, motion, and controller verdict.
 
-Out of scope: Widget SDK/protocol/schema changes, widget-domain rewrites,
-per-widget geometry, controller/focus redesign, renderer replacement, Avalonia
-revival/removal, credentials, external publication, or adopting upstream draft
-C bindings as an unpinned dependency.
+Out of scope: public protocol/schema changes, Settings/YT semantic changes,
+widget identities in native code, another layout engine, another HWND/focus/
+input owner, Avalonia work, credentials, or verifier-manifest repair.
 
-Stop and ask the user if released Taffy cannot express a required current
-layout semantic without a widget-specific rule, if a stable panic-safe C ABI
-cannot be maintained, if supported Windows packaging requires an undocumented
-or moving toolchain, or if physical behavior requires a material product
-decision.
+### Ready after DLV-222 integration — DLV-224: symmetric surface-axis sizing
 
-DLV-215 `ed39a70`, DLV-210 `ebb6ad7`, and corrected DLV-220 `fcd301a` are
-accepted and integrated through product baseline `4f502c4`.
+Baseline: accepted DLV-222 integrated into local main. Owner: serialized
+cross-component assignment led by the platform lane. No widgets-lane task may
+edit the same protocol/native files concurrently.
 
-### Ready after DLV-217 integration — DLV-218: remove retired domains
+Objective: add the generic `Preferred`, `Content`, and `FillAvailable` width and
+height policies and the bounded Taffy intrinsic-measure/admission path described
+in Product and architecture decisions.
+
+Required implementation:
+
+- Version the public `WidgetSurfaceHints` schema compatibly and add one shared
+  typed axis-mode enum used independently by width and height. Existing views
+  default to `Preferred` with unchanged behavior.
+- Validate illegal/missing values at the managed boundary and parse them once
+  into the native surface request. No stringly page/identity inference.
+- Implement content measurement with a definite admitted width, automatic
+  block extent, authored minimum/preferred clamps, host chrome reservation,
+  work-area clamping, and one final layout. Bound node counts, extents, passes,
+  errors, and retained results; preserve last-good presentation on invalid
+  submissions.
+- Prevent live-data resize churn: only a view explicitly declaring `Content`
+  uses measured sizing. `Preferred` stays stable; `FillAvailable` follows only
+  admitted work-area/accessibility changes.
+- Preserve focus, scroll offsets, transition cancellation/restoration,
+  accessibility bounds, tray stationarity, and normal close across extent
+  changes.
+- Document the contract with copyable examples and explain that responsive
+  width is normally admitted before intrinsic height.
+
+Acceptance:
+
+- Managed validator/round-trip and C++ parser tests cover every mode, defaults,
+  malformed input, bounds, and protocol-version behavior.
+- Generic two-pass tests cover content smaller than preferred, content between
+  bounds, overflow capped at preferred/work area, responsive grid reflow,
+  wrapped text, and FillAvailable on both axes.
+- Transition tests prove only the content envelope moves while tray/guide screen
+  coordinates remain fixed.
+- Tier 1 affected managed protocol/SDK, Rust/native layout, renderer, placement,
+  focus/UIA, documentation, and Release build.
+- Tier 2 one bounded managed-snapshot-to-native-host group. This public cross-
+  process schema change is the next named Tier-3 checkpoint; run the canonical
+  aggregate exactly once from the clean coherent commit and retain any unrelated
+  verifier failure honestly.
+
+Stop if intrinsic sizing requires widget-specific native knowledge, more than
+two layout passes, an unbounded retained tree, or a material change to tray,
+focus, scrolling, or accessibility authority.
+
+### Ready after DLV-224 — DLV-206: truthful performance provenance
+
+Correct the rejected DLV-200 evidence without expanding measurement scope:
+retain root PID/start, exact commit/SHA, scenario/profile, child roles, and
+available/unavailable metrics; give the eight-widget run separate provenance;
+anchor composition lookup after paint; remove false ordinary-host-live wording.
+Run only affected bounded performance/temporal routes.
+
+### Awaiting DLV-217 integration — DLV-218: remove retired domains
 
 Remove retired product-owned Spotify and private Game Launcher domain paths
 only after both autonomous Community packages are integrated. Retain generic
@@ -214,196 +267,118 @@ App Library behavior for bundled Games & Apps and consenting sandboxed users.
 Add an architecture check rejecting Community identities/domain types in core.
 Do not delete credentials, provider data, accounts, or user files.
 
-Verification: focused architecture, packages, Games & Apps, bridge/runtime,
-and one integration checkpoint because this deletes cross-process paths.
+## Widgets lane
 
-### Ready after DLV-218 — DLV-206: truthful performance provenance
+### Assigned — DLV-223: responsive YT Music controller composition
 
-Correct the rejected DLV-200 evidence without expanding measurement scope:
-retain root PID/start, exact commit/SHA, scenario/profile, child roles,
-available/unavailable metrics; give the eight-widget run separate provenance;
-anchor composition lookup after paint; remove false ordinary-host-live wording.
-Run only affected bounded performance/temporal routes. No aggregate or budget
-change.
+Baseline: clean local main `8836e07`. Owner: widgets lane, limited to the YT
+Music Community package/presentation/styles and directly affected tests/docs.
+It may proceed independently of DLV-222 because it owns no native files.
 
-## AVP-004 accepted extraction boundaries
+Visible objective: make YT Music read as one cohesive controller-native media
+panel rather than artwork and controls floating at the left of a large detached
+surface.
 
-### AVP-004-SESSION
+Required implementation:
 
-Accepted `7de4269`, integrated first as `7ec8253`. It is the sole typed managed
-presentation-session facade over authenticated WidgetBridge, owning descriptor
-enumeration, lifecycle, validated latest/last-good publication, exact action
-admission, artwork, restart/invalidation, and bounded diagnostics. No Avalonia
-type or duplicate transport/schema/domain identity crosses it.
+- Keep one semantic tree, existing public controls/actions, Community package
+  boundary, lifecycle, optimistic reconciliation, and explicit focus links.
+- At wide/standard width, compose artwork on the left and one right-hand column
+  containing title/artist/album, progress, primary transport actions, and
+  secondary actions. Align control rows within the metadata column.
+- At constrained compact width, reflow to a vertical composition with readable
+  metadata, full-width progress, centered reachable controls, and no duplicate
+  page/tree.
+- Use only typed semantic Row/Stack/Scroll and GBSS responsive behavior. No
+  widget-specific native renderer/layout rule and no fixed monitor-resolution
+  check.
+- Keep touch targets, focus order, LB/RB/X/Y shortcuts, A/B behavior, labels,
+  selected/busy states, artwork fallback, and scroll reveal truthful.
+- Do not change surface-axis protocol fields in this milestone. YT Music may opt
+  into Content height only after DLV-224 is integrated and separately reviewed.
 
-### AVP-004-PLATFORM
+Acceptance:
 
-Accepted `849e970`, integrated second as `b5c4c6c`. It is the sole narrow native
-boundary for Microsoft GameInput/Guide, device/reconnect/repeat/neutral,
-visibility/focus, debounce/toggle, targeting, DPI/work-area placement, and
-shutdown. The legacy Guide compatibility adapter remains quarantined.
+- Focused YT Music tests cover wide and constrained composition, stable semantic
+  identities, focus adjacency, shortcuts, empty/loading/error states, and
+  deterministic fakes.
+- Existing Community package isolation/install/update/remove evidence remains
+  green.
+- Native generic renderer fixtures show all authored controls within bounds at
+  representative compact/standard widths without identity-specific code.
+- Tier 1 only: YT Music package/tests, affected conformance/package checks, and
+  the smallest renderer scenario. No aggregate.
+- After DLV-222 and DLV-223 are both accepted/integrated, rebuild/package one
+  coherent Release for the user's YT Music and tray-spacing verdict.
 
-## Accepted and integrated — AVP-004-REDESIGN: crash-safe trace and stable monitor anchor
+Out of scope: host placement, Taffy/native edits, public schema changes,
+controller routing redesign, companion/auth changes, another page, or Avalonia.
 
-Owner: standing Avalonia prototype task on `codex/avalonia-prototype`.
+### Ready after DLV-224 integration — DLV-225: content-sized Settings root
 
-Accepted source: `26b5d3a0861410429284fbc0ef38751512b1631b`, based on
-`988324c` then `e0a078c` atop accepted widget-envelope source `5ffd435`.
-Integrated main commits are `c8296df`, `2e62a5b`, then `54c25c6`.
+Baseline: DLV-224 integrated into local main. Owner: widgets lane.
 
-### Physical crash evidence
+Visible objective: remove unused Settings root height through measured content,
+not a guessed replacement height.
 
-The exact integrated-main candidate crashed at 2026-08-14 02:50:51 local.
-Windows .NET Runtime event 1026 records unhandled `System.IO.IOException`:
-`Unable to remove the file to be replaced.` The stack runs from
-`InputTraceRecorder.PersistSnapshotLocked()` line 94 through the Avalonia UI
-controller callback in `MainWindow` line 315. The valid manual trace ends at
-sequence 186 with connected native visible lease and routed input, but without
-normal close.
+Required implementation:
 
-The root cause is synchronous serialization and atomic replacement of the
-complete trace on every input event. Expected sharing/replacement failure was
-allowed to escape the UI callback and terminate the candidate.
+- Set Settings root `WidthMode = Preferred` and `HeightMode = Content` with the
+  existing preferred height retained as the ceiling and minimum height retained
+  as the floor.
+- Keep deeper Settings pages `Preferred` unless direct evidence shows a page is
+  static and benefits from Content sizing. Do not make scroll-heavy pages resize
+  as rows or diagnostics change.
+- Give the root category list a distinct class/structure that does not request
+  `flex-grow: 1; flex-basis: 0`. Preserve the responsive two-column intent,
+  one-column reflow, category order, Reset styling, focus navigation, and active
+  input scope.
+- Do not hard-code a new root pixel height or add a Settings identity rule to
+  the host.
 
-### Accepted direction within the rejected prefix
+Acceptance:
 
-`988324c` removes all serialization/file I/O from `Record`, uses one background
-writer with unique temp plus atomic replacement, preserves the last good JSON,
-retries the latest pending revision after a sharing violation, and exposes a
-bounded explicit normal-shutdown flush. It is insufficient alone because it
-starts publication immediately whenever idle, so ordinary 125-ms controller
-repeat still replaces the complete trace for almost every event.
+- Taffy-measured root height equals its visible content plus authored spacing,
+  remains between minimum and preferred bounds, and leaves no material dead
+  area below Reset.
+- Compact width reflows to one column and expands height within the same content
+  policy; constrained height scrolls/reveals every category.
+- Root/deeper-page transitions keep tray/guide screen bounds fixed and preserve
+  focus/back behavior.
+- Tier 1 Settings tests, managed surface contract, focused native renderer/
+  placement scenario, and Release package. No aggregate.
 
-`e0a078c` adds a bounded 225-ms background batch window, makes `FlushAsync`
-cancel/bypass the delay and publish its captured latest revision, and proves 32
-rapid records produce one publication attempt while sequence ordering and
-locked-target recovery remain exact. This trace design is accepted and must not
-be reopened by the placement correction.
+### Ready after DLV-225 — DLV-226: eight-widget surface-policy audit
 
-### Exact placement rejection
-
-The exact `e0a078c` run is red because `MainWindow` re-evaluates
-`Screens.ScreenFromWindow(this)` on timer, position, and widget-envelope
-transitions, then overwrites stable work area/scaling. An envelope-driven HWND
-resize can select a different monitor by intersection, causing the next tick to
-adopt another work area and DPI and move/rescale again.
-
-The first six widgets retained tray bounds `1985,1305 1150x95` at 125 percent;
-YT Music alone moved to `540,1836 2760x228` at 240 percent; Spotify immediately
-returned to the original anchor. No display-topology/DPI event or stable screen
-identity was retained. The responsive artifact also labels YT Music fixtures at
-1.25 while live window bounds reflect the 2.4 monitor. This is a product defect,
-not proven external display activity, and absolute chrome/transition failures
-cannot be waived.
-
-### Bounded objective
-
-Retain one explicit screen identity, work area, and render scaling anchor for
-the complete visible overlay session. Every widget envelope transition, HWND
-position callback, timer revalidation, transition cancellation/restoration,
-and evidence-fixture restoration must resolve against that anchor. A change in
-the overlay's own size or position must never select another monitor.
-
-The anchor may change only when an explicit observed display-topology/DPI event
-requires it or the anchored screen disappears. A real change must be admitted
-atomically through the existing sole platform/window owner and record the old
-and new screen identity, screen bounds, work area, scaling, and reason.
-
-### Required implementation
-
-- Preserve the accepted 225-ms background trace batcher, explicit flush,
-  last-good atomic replacement, latest-state retry, and attempt-count seam.
-- Introduce no second monitor/window authority. The existing MainWindow and
-  OverlayPlatformClient remain the only top-level placement owners.
-- Do not infer a new screen from the overlay's own post-resize intersection.
-  `PositionChanged`, the platform timer, widget switching, and animation may
-  revalidate containment against the retained anchor but may not replace it.
-- Detect explicit topology/DPI changes only through supported Avalonia/Win32
-  events already available to this prototype. Stop before undocumented APIs.
-- Keep evidence fixtures isolated from live anchor state. After a fixture, the
-  exact visible-session anchor and placement must be restored.
-- Retain per-placement screen identity/bounds, work area, render scaling, and
-  anchor-change reason so a physical run can distinguish a real display event
-  from widget-driven movement.
-- Add one identity-neutral deterministic multi-monitor overlap/resize test:
-  compact, medium, and wide authored envelopes remain on one mixed-DPI anchor
-  through both directions; a simulated explicit topology/DPI change may
-  deliberately select/reflow once.
-- Require every responsive fixture's actual scaling/window geometry to match
-  its declared work-area constraint. Do not weaken chrome or transition gates.
-
-### Preserved redesign contract
-
-- Each admitted view owns its content structure, preferred/minimum logical
-  dimensions, responsive branches, scrolling, and focus relationships through
-  the existing semantic tree and `WidgetSurfaceHints`.
-- Tray and guide stay fixed at identical absolute screen coordinates while the
-  one HWND wraps the content-plus-chrome union. Widget switching animates only
-  content/envelope. No full-work-area backdrop.
-- The generic component compiler branches only on typed node kind/properties,
-  collection/scroll/action orientation, responsive visibility, and declared
-  advanced preset/slot. Never branch on widget/package identity, text, element
-  ID, provider, style role, or known tree shape.
-- Preserve one vertical scroll owner per axis, standard Avalonia controls/UIA,
-  exact runtime/action/input/focus identities, single bridge transport, one
-  focus tree, Community boundaries, and the existing native Guide owner.
-- Controller state remains tray Left/Right selection, Up/A content entry, B to
-  tray/close, bounded content navigation zones, slider Left/Right adjustment,
-  scroll reveal, repeat/reconnect/focus-loss/hide-show, and per-widget focus
-  memory without keyboard synthesis.
-
-### Acceptance and verification
-
-- Focused Release build and full affected AVP suite pass at the final commit.
-  Direct tests cover trace batching/flush/recovery plus stable mixed-DPI anchor
-  and explicit allowed anchor replacement.
-- One exact changed-tip measurement only. No product aggregate.
-- Exact source commit, ProductVersion, executable SHA, and flush truth match.
-- All eight ordinary widgets pass through the real catalog/session/bridge;
-  eight authored envelopes remain distinct.
-- The 32-row matrix covers each installed widget under 420x340, 978x466,
-  1180x680, and 1440x810 work-area constraints with truthful scaling,
-  reflow/reachability, and no missing/duplicate rows.
-- Start/mid/completion transition samples include compact-to-wide and
-  wide-to-compact. Absolute tray/guide bounds remain identical on the retained
-  anchor; no monitor-sized backdrop appears.
-- Trace evidence is valid JSON during the live run, batches representative
-  repeats materially below one replacement per event, survives one deterministic
-  denied replacement, and flushes the exact latest revision within two seconds.
-- Candidate private memory remains below 500 MiB, with process-tree memory
-  separately reported; one tracked render, zero pending artwork, no superseded
-  resource ownership, hidden idle, and bounded normal no-force zero-process
-  shutdown remain green.
-- Worktree is clean. Scope stays under `experiments/AvaloniaOverlayPrototype`
-  and directly affected prototype evidence/docs. No production cutover.
-
-Independent source acceptance and ordered integration are complete. The planner
-now rebuilds/copies from exact main and launches visibly with a manual live
-trace. The user then repeats all eight first pages, stationary
-chrome, motion, Guide, D-pad/stick, A/B/Y, sliders, scrolling, focus restoration,
-mixed-monitor stability, and normal close. Synthetic evidence cannot accept the
-physical gate.
-
-Out of scope: AVP-005, production cutover, GBSS deletion, widget-domain rewrites,
-public SDK/protocol changes, per-widget pages, another input/transport/HWND/focus
-owner, credentials, publication, capture-harness work, or changing any resource
-gate.
+Audit every current widget's width/height mode and authored min/preferred
+extent after the new contract is physically accepted. Change only policies
+supported by direct first-page evidence. Dynamic provider/list widgets remain
+Preferred unless resizing is demonstrably beneficial and stable. Retain a
+concise contract table in public widget-authoring documentation and run focused
+surface/conformance checks only.
 
 ## Serialized integration order
 
-1. AVP extraction and correction history remains integrated through main
-   `54c25c6`, but the Avalonia evaluation and cutover are closed.
-2. DLV-221 proceeds independently from clean main `5bf4df1` and changes only
-   the authoritative native layout/build boundary.
-3. DLV-217 integration remains a separate user-approval decision and must not
-   be mixed into DLV-221.
-4. DLV-218 follows integrated DLV-216 and DLV-217; DLV-206 follows DLV-218.
+1. DLV-221 is accepted and integrated in local main as `8836e07`.
+2. DLV-222 platform geometry/stretch and DLV-223 YT Music composition may run
+   concurrently from `8836e07`; their file ownership must not overlap.
+3. Review and integrate accepted DLV-222 and DLV-223 independently. Rebuild one
+   coherent Release after both are present for the named physical verdict.
+4. DLV-224 is the sole serialized shared protocol/native assignment. Pause any
+   widget work touching `WidgetSurfaceHints` until it is accepted/integrated.
+5. DLV-225 adopts Content height in Settings. DLV-226 audits later policies.
+6. DLV-217 integration remains a separate explicit user decision. DLV-218 may
+   begin only after DLV-217 is integrated. DLV-206 remains independent after the
+   UI/sizing cluster.
 
 ## Manual and packaged verification queue
 
-- User verdict on the latest accepted Release/candidate remains authoritative
-  for visual clipping, motion, controller feel, Guide, and monitor behavior.
-- Physical controller/display evidence remains required for AVP-004.
+- User verdict on each freshly launched accepted native Release remains
+  authoritative for panel/tray cohesion, controller feel, motion, Audio slider
+  sizing, Network first-page visibility, Settings dead space, and YT Music
+  composition.
+- Physical controller/display evidence remains required for changed navigation,
+  focus reveal, or visual presentation. It is not Avalonia acceptance debt.
 - Live Spotify account/Premium/Web Playback/EME/OAuth are credential-gated.
 - Live IGDB and SteamGridDB enrichment are credential-gated; offline launcher
   behavior must not depend on them.
@@ -414,8 +389,8 @@ gate.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
-| AVP-005 / production cutover | Cancelled by the user after the Avalonia experiment failed its physical product goal. | No unblocking evidence; do not resume without a new explicit user decision. |
-| DLV-217 local integration | Exact aggregate is 40/41 with one known reviewer-history link red. | Explicit user approval to integrate despite that honest documentation-only red step. |
+| Avalonia migration/cutover | Failed and cancelled by user decision. | None. A new experiment requires a new explicit user decision; do not resume old AVP work. |
+| DLV-217 local integration | Exact aggregate is 40/41 with one known reviewer-history-link red. | Explicit user approval to integrate despite that honest documentation-only red step. |
 | Trusted fixed-video/PiP | Paused WebView2 measured about 348.7 MiB private and 4% CPU against prior gate. | User changes budget or authorizes content/process experiment. |
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
@@ -426,11 +401,8 @@ gate.
 
 | Milestone | Accepted result |
 | --- | --- |
-| AVP-004 crash/anchor correction | `26b5d3a`, integrated through `54c25c6`: background coalesced trace persistence and one stable visible-session monitor/DPI anchor. |
-| AVP-004 envelope redesign | `5ffd435`, integrated through `acc062d`: eight authored envelopes, fixed chrome, atomic HWND geometry, 32 responsive rows, 33 transitions. |
-| AVP-004 controller redesign | `16b33d9`, integrated through `09f038f`: generic renderer/controller baseline and truthful Y trace routing. |
-| AVP-004 generic presentation correction | `9db36b5`, integrated through `289f7d6`: readable generic layout, tray reveal, scroll semantics. |
-| DLV-217 | Autonomous Game Launcher accepted through `d57fd06`; integration awaits explicit approval for the known doc-only red aggregate. |
+| DLV-221 | `8836e07`: pinned Taffy 0.12.2 static geometry engine, narrow Rust/C ABI, old custom solver removed, focused native/Rust/eight-widget/performance evidence accepted; canonical aggregate retained red at the pre-product manifest self-check. |
+| DLV-217 | Autonomous Game Launcher accepted through `d57fd06`; integration awaits explicit approval for the known documentation-only red aggregate step. |
 | DLV-216 | Autonomous Spotify Community package accepted and integrated. |
 | DLV-220 | Correct retired gesture revocation evidence. |
 | DLV-210 | Contained generic Hero Rail while retaining launch/action/focus authority. |
