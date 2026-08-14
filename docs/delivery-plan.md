@@ -203,7 +203,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-232 is Assigned; DLV-237 correlated selection/admission tracing is next Ready; DLV-236 retained tray composition follows the DLV-237 evidence review |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-232 is Assigned; DLV-238 admitted destination geometry is next Ready; DLV-237 tracing and DLV-236 retained tray composition follow in that order |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -577,10 +577,20 @@ last-good semantics, tray focus, and safe diagnostics. Use differently named
 generic fixtures, run only affected lifecycle/process/controller routes, and do
 not add service-specific behavior or rerun Tier 3.
 
-### Ready after DLV-232 integration — DLV-237: correlate deferred widget admission
+### Ready after DLV-232 integration — DLV-238: commit admitted destination geometry
 
-Baseline: accepted DLV-232 integrated into local main. Owner: platform native
-selection/lifecycle/session observability only. Do not interrupt DLV-232 or
+Baseline/owner/dependencies: accepted DLV-232 integrated into main; platform native presentation-extent and DirectComposition placement only; do not interrupt DLV-232 or start from an unreviewed tip.
+Visible objective: after a cold/asynchronous switch, retain the old widget's pixels and envelope only until the destination snapshot is admitted; the admitted widget must immediately own its authored width, height, responsive viewport, and final presented extent without waiting for A, a provider update, or another selection.
+Required correction: retire the retained extent as admission changes authority, resolve placement from the destination `DesiredPresentationExtentDip` rather than the pinned old `PresentedPresentationExtentDip`, render the new snapshot once at its destination viewport, and atomically commit that complete frame plus placement before animating old-to-new envelopes. Completion must settle through one explicit destination placement/layout; it may not clear the override with `redraw=false` while leaving old geometry current, scale a destination tree laid out at the source viewport, or add widget identities, another HWND/surface owner, or a second layout path.
+Preserve: one HWND/root compositor/focus/input/UIA authority, Taffy as sole declarative geometry engine, fixed absolute tray/guide bounds, retained inert old semantics before admission, stale/cancelled snapshot rejection, reduced-motion/device-loss fallback, clipping/scroll/focus reveal, and atomic content/geometry authority.
+Acceptance: cold and cached switches across all eight widgets, including compact-to-tall, tall-to-wide, rapid selection, delayed admission, late revoked completion, failure/last-good, and provider updates, prove that every `content=admitted rendered=<destination>` frame uses the destination surface request and that final presented equals desired without a later snapshot. The Audio Mixer to Network Controls regression must move from retained `592x698` to Network's admitted `632x878` envelope, lay Network out at its own viewport, and retain stationary tray/guide coordinates with no flash, dark band, seam, stale UIA, or intermediate input mismatch.
+Verification: focused widget-switch, extent-transition, composition-placement, surface-policy/Taffy, focus/UIA, reduced-motion/device-loss cases, one bounded eight-widget host route, and native Release build only; no Tier-3 aggregate, provider/package change, capture-harness work, or unrelated refactor.
+Stop for per-widget sizing logic, destination content rendered against source geometry, non-atomic HWND/content authority, another compositor/window/focus/input owner, or an undocumented platform dependency or material animation decision.
+
+### Ready after DLV-238 integration — DLV-237: correlate deferred widget admission
+
+Baseline: accepted DLV-238 integrated into local main. Owner: platform native
+selection/lifecycle/session observability only. Do not interrupt DLV-232/DLV-238 or
 start from its unreviewed branch tip.
 
 Visible objective: produce sufficient trustworthy evidence to identify why a
@@ -666,8 +676,8 @@ the user-visible admission behavior before the cause is established.
 
 Baseline: accepted DLV-237 integrated into local main. Owner: platform native
 composition/rendering only. Do not interrupt DLV-232 or DLV-237, and do not
-start from an unreviewed branch tip. DLV-236 remains independent of the later
-root-cause correction, but follows the DLV-237 evidence review so only one
+start from an unreviewed branch tip. DLV-236 remains independent of the DLV-238
+geometry correction, but follows the DLV-237 evidence review so only one
 selection-path milestone is in flight at a time.
 
 Visible objective: cycling through widgets may repaint the two tray tiles whose
