@@ -524,7 +524,11 @@ struct DeclarativeRenderer::RenderPass final {
         case NativeAlign::End: element.crossAxisAlignment = declarative::CrossAxisAlignment::End; break;
         default: element.crossAxisAlignment = declarative::CrossAxisAlignment::Stretch; break;
         }
-        element.stretchCrossAxis = element.crossAxisAlignment == declarative::CrossAxisAlignment::Stretch;
+        // `align` is align-items: it positions this node's children. It must
+        // not also become align-self for the node, otherwise a row which
+        // centers its children unexpectedly shrinks inside a stretching
+        // parent. Ordinary auto-sized nodes keep Taffy's inherited stretch;
+        // definite dimensions, constraints, and aspect ratio still bound it.
         if (node.kind == L"loadingIndicator") element.stretchCrossAxis = false;
         element.children.reserve(node.children.size());
         const float textScale = std::isfinite(options.accessibility.textScale) &&

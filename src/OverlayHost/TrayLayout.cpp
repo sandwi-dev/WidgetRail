@@ -15,8 +15,16 @@ std::optional<TrayLayout> ComputeTrayLayout(
         width <= 0.0F || height <= 0.0F) return std::nullopt;
 
     constexpr float preferredTileSize = 64.0F;
+    constexpr float minimumFullCatalogTileSize = 44.0F;
     constexpr float gap = 14.0F;
     constexpr float preferredOverflowSize = 36.0F;
+    // The tray is host chrome, so its coordinate envelope must not expand and
+    // contract with each widget's preferred content width. Wider surfaces
+    // center this bounded band; genuinely constrained work areas still use the
+    // established overflow path.
+    constexpr float stableTrayWidth = 560.0F;
+    const float layoutWidth = std::min(width, stableTrayWidth);
+    const float layoutOffsetX = (width - layoutWidth) * 0.5F;
     const float stripTop = band
         ? band->top
         : std::max(0.0F, height - 112.0F);
@@ -29,16 +37,28 @@ std::optional<TrayLayout> ComputeTrayLayout(
 
     const float verticalPadding = std::min(
         16.0F, std::max(0.0F, (stripHeight - preferredTileSize) * 0.5F));
-    const float horizontalPadding = std::min(14.0F, width * 0.15F);
-    const float tileSize = std::max(
+    const float horizontalPadding = std::min(14.0F, layoutWidth * 0.15F);
+    const float preferredBoundedTileSize = std::max(
         1.0F, std::min({preferredTileSize,
-                        width - horizontalPadding * 2.0F,
+                        layoutWidth - horizontalPadding * 2.0F,
                         stripHeight - verticalPadding * 2.0F}));
+    const float allCatalogTileSize =
+        (layoutWidth - horizontalPadding * 2.0F -
+         gap * static_cast<float>(widgetCount > 0 ? widgetCount - 1 : 0)) /
+        static_cast<float>(widgetCount);
+    const bool stableCatalogFits = width >= stableTrayWidth &&
+        allCatalogTileSize >= minimumFullCatalogTileSize &&
+        stripHeight - verticalPadding * 2.0F >= minimumFullCatalogTileSize;
+    const float tileSize = stableCatalogFits
+        ? std::min(preferredBoundedTileSize, allCatalogTileSize)
+        : preferredBoundedTileSize;
     const float stripPadding = std::min(
-        14.0F, std::max(0.0F, (width - tileSize) * 0.5F));
-    const auto unreservedMaximum = static_cast<std::size_t>(std::max(
-        1.0F, std::floor((width - horizontalPadding * 2.0F + gap) /
-                         (preferredTileSize + gap))));
+        14.0F, std::max(0.0F, (layoutWidth - tileSize) * 0.5F));
+    const auto unreservedMaximum = stableCatalogFits
+        ? widgetCount
+        : static_cast<std::size_t>(std::max(
+            1.0F, std::floor((layoutWidth - horizontalPadding * 2.0F + gap) /
+                             (preferredTileSize + gap))));
     const bool showOverflow = widgetCount > unreservedMaximum && width >= 192.0F;
     const float overflowSize = showOverflow
         ? std::min(preferredOverflowSize, tileSize)
@@ -49,7 +69,7 @@ std::optional<TrayLayout> ComputeTrayLayout(
     const auto maximumVisible = showOverflow
         ? static_cast<std::size_t>(std::max(
             1.0F, std::floor(
-                (width - horizontalPadding * 2.0F - overflowReserve + gap) /
+                (layoutWidth - horizontalPadding * 2.0F - overflowReserve + gap) /
                 (preferredTileSize + gap))))
         : unreservedMaximum;
     const std::size_t visibleCount = std::min(widgetCount, maximumVisible);
@@ -62,7 +82,7 @@ std::optional<TrayLayout> ComputeTrayLayout(
     const float stripWidth = tileSize * static_cast<float>(visibleCount) +
         gap * static_cast<float>(visibleCount - 1) + stripPadding * 2.0F +
         overflowReserve;
-    const float stripLeft = (width - stripWidth) * 0.5F;
+    const float stripLeft = layoutOffsetX + (layoutWidth - stripWidth) * 0.5F;
     const float tileLeft = stripLeft + stripPadding +
         (showOverflow ? overflowSize + gap : 0.0F);
 

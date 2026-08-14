@@ -6,6 +6,7 @@
 #include <array>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cwctype>
 #include <filesystem>
@@ -243,6 +244,43 @@ std::string TextField(
     return std::string(record.substr(valueStart, valueEnd - valueStart));
 }
 
+struct LoggedBounds final {
+    float x{};
+    float y{};
+    float width{};
+    float height{};
+};
+
+LoggedBounds ParseBounds(const std::string& value) {
+    LoggedBounds result;
+    std::size_t cursor{};
+    for (float* field : {&result.x, &result.y, &result.width, &result.height}) {
+        const auto end = value.find(',', cursor);
+        *field = std::stof(value.substr(cursor, end - cursor));
+        cursor = end == std::string::npos ? value.size() : end + 1;
+    }
+    return result;
+}
+
+bool SameBottomCenteredScreenBounds(
+    const std::string& firstRecord,
+    const std::string& secondRecord,
+    const std::string_view field) {
+    const auto firstShell = ParseBounds(TextField(firstRecord, "shell-bounds="));
+    const auto secondShell = ParseBounds(TextField(secondRecord, "shell-bounds="));
+    const auto first = ParseBounds(TextField(firstRecord, field));
+    const auto second = ParseBounds(TextField(secondRecord, field));
+    constexpr float tolerance = 0.01F;
+    return std::abs(
+               (first.x - firstShell.width * 0.5F) -
+               (second.x - secondShell.width * 0.5F)) <= tolerance &&
+        std::abs(
+               (first.y - firstShell.height) -
+               (second.y - secondShell.height)) <= tolerance &&
+        std::abs(first.width - second.width) <= tolerance &&
+        std::abs(first.height - second.height) <= tolerance;
+}
+
 void RunRetentionScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker);
@@ -440,13 +478,11 @@ void RunRetentionScenario(const Arguments& arguments) {
         }
         const auto destinationRecord = waitForPaint(
             before, target, target.id, "admitted");
-        Require(TextField(retainedRecord, "shell-bounds=") ==
-                    TextField(destinationRecord, "shell-bounds=") &&
-                    TextField(retainedRecord, "tray-bounds=") ==
-                    TextField(destinationRecord, "tray-bounds=") &&
-                    TextField(retainedRecord, "tray-selected-bounds=") ==
-                    TextField(destinationRecord, "tray-selected-bounds="),
-                "Retained and admitted content used different shell/tray geometry for " +
+        Require(SameBottomCenteredScreenBounds(
+                    retainedRecord, destinationRecord, "tray-bounds=") &&
+                    SameBottomCenteredScreenBounds(
+                        retainedRecord, destinationRecord, "tray-selected-bounds="),
+                "Retained and admitted content moved bottom-centered tray geometry for " +
                     WideToUtf8(target.label));
         const auto log = ReadUtf8(logPath);
         const auto admittedAt = log.find(admittedNeedle, before);
@@ -689,8 +725,9 @@ void RunRetentionScenario(const Arguments& arguments) {
                 std::string::npos &&
                 log.find(" surface=widget shell=shared ") != std::string::npos,
             "Production diagnostics omitted the alpha or shared-shell decision.");
-    Require(log.find("Composition motion start") == std::string::npos,
-            "A widget switch still transformed the host-owned shell/tray.");
+    Require(log.find("Composition motion start") != std::string::npos &&
+                log.find("anchor=bottom") != std::string::npos,
+            "Variable widget extents omitted bottom-anchored composition continuity.");
     Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                 log.find("Overlay render target resized in place") == std::string::npos,
             "Production transition fell back to direct HWND presentation.");

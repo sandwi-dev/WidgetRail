@@ -2958,8 +2958,14 @@ private:
         }
         const auto compositionContainer = ComputePlatformPlacement(
             work, dpi,
-            static_cast<float>(kPanelWidth) * interfaceScale,
-            static_cast<float>(kWidgetPanelHeight) * interfaceScale);
+            std::max(
+                desiredWidthDip * interfaceScale,
+                static_cast<float>(compositionSurface_.width()) * 96.0F /
+                    static_cast<float>(dpi)),
+            std::max(
+                desiredHeightDip * interfaceScale,
+                static_cast<float>(compositionSurface_.height()) * 96.0F /
+                    static_cast<float>(dpi)));
         if (compositionSurface_.available() && !compositionContainer) {
             AppendDiagnostic(L"Unable to compute the composition host container");
             return OverlayShowResult::Failed;
@@ -3205,13 +3211,11 @@ private:
         if (state_.surface() != gba::Surface::Widget) {
             return {kPanelWidth, kDashboardHeight};
         }
-        // Widget surface hints size only the responsive body inside host chrome.
-        // A widget-selected HWND/surface extent made the host-owned tray move,
-        // changed its capacity, and could exceed the active work area while the
-        // fixed composition container stayed behind. Keep one shared shell for
-        // every admitted or retained widget; ShowOverlay remains the sole owner
-        // that clamps this design extent to live rcWork/DPI/interface scale.
-        return {kPanelWidth, kWidgetPanelHeight};
+        const auto target = DesiredWidgetSurfaceTarget();
+        return {
+            static_cast<int>(std::lround(target.windowWidthDip)),
+            static_cast<int>(std::lround(target.windowHeightDip)),
+        };
     }
 
     [[nodiscard]] gba::OverlayPresentationExtent
@@ -6072,9 +6076,10 @@ private:
         const float panelLeft = geometry->panelX;
         const float panelTop = geometry->panelY;
         const float panelWidth = geometry->panelWidth;
-        // The footer is host chrome, not widget content. End the card at the
-        // content boundary so both widget and tray guides read as a detached
-        // shell layer and never masquerade as part of a third-party widget.
+        // The footer is host chrome, not widget content. End the authored card
+        // at the content boundary; the immediately following fixed-height
+        // guide then connects that visible panel edge to the stationary tray
+        // without masquerading as third-party widget content.
         const float visualPanelBottom = geometry->footerY;
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, visualPanelBottom),

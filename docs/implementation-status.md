@@ -4462,3 +4462,38 @@ Search/collection/help semantics, stable visible focus identities, and a clean
 post-route projection/composition log. The legacy combined host route remains
 red before this scenario at its existing compact `experiences.open` expectation;
 it is not claimed as DLV-210 passing evidence and was not weakened or removed.
+
+### Native Taffy stretch and stationary variable surfaces (DLV-222)
+
+The native declarative translation now treats GBSS `align` only as a
+container's child alignment (`align-items`). An ordinary auto-width Row or Stack
+continues to inherit its parent's Taffy stretch even when it centers its own
+children; definite dimensions, aspect ratio, and the existing generic bounds
+still constrain that node. The direct nested column/centered-row regression
+proves a flex-growing slider receives the exact remaining width at both fill and
+explicitly constrained widths, without a widget or package identity.
+
+The host again uses the admitted or retained `windowWidthDip/windowHeightDip`
+as its presentation extent. Variable content is bottom-centered inside the one
+existing DirectComposition/HWND owner, and source/destination extents use one
+transparent union container during nonblocking motion. Panel geometry is
+bottom-anchored so the visible panel edge, fixed-height controller guide, and
+tray retain their ordered offsets. The host-owned tray centers one bounded
+560-DIP coordinate band on wider surfaces; the current eight identities and a
+bounded ninth catalog addition fit at no less than the existing 44-DIP target,
+while genuinely constrained work areas keep the established overflow path.
+
+Focused Release evidence passes the pinned Rust bridge 5/5, DeclarativeLayout
+250 checks, DeclarativeRenderer 4,842, OverlayPlacement 112,303, TrayLayout 300,
+controller navigation 107, slider interaction 2,086, focus navigation 49,
+surface focus 24, and the affected accessibility/UIA layers. Audio Mixer passes
+45/45 and Network Controls passes 24/24, including the authored 560x700 surface
+and `Ready to scan` semantics. The single linked production-host fixture cycles
+all eight identities with stable bottom-centered tray bounds and full capacity,
+retained/admitted input and focus authority, work-area containment, transparent
+hit testing, normal close/reopen, and clean shutdown. Its maximum draw, commit,
+coordinated-geometry, and motion-commit times are respectively 2.999, 1.796,
+2.121, and 0.082 ms. The Release host builds without packaging; the visible
+repackage/display/controller verdict remains intentionally queued until this
+native milestone and the concurrent widget presentation milestone are both
+accepted and integrated.

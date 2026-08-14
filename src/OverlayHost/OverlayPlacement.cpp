@@ -229,16 +229,20 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     const float panelX = (viewportWidthDip - panelWidth) * 0.5F;
     const float trayY = std::max(0.0F, viewportHeightDip - 112.0F);
     const float trayBottom = std::max(trayY, viewportHeightDip - 14.0F);
-    const float panelY = std::min(
+    const float topInset = std::min(
         std::min(20.0F, viewportHeightDip * 0.05F), trayY);
     const float trayReservation = std::min(158.0F, viewportHeightDip * 0.45F);
     const float preferredPanelBottom = std::max(
-        panelY, viewportHeightDip - trayReservation);
+        topInset, viewportHeightDip - trayReservation);
     const float panelBottom = std::min(preferredPanelBottom, trayY);
-    const float availablePanelHeight = panelBottom - panelY;
+    const float availablePanelHeight = panelBottom - topInset;
     const float panelHeight = preferredPanelHeightDip
         ? std::min(*preferredPanelHeightDip, availablePanelHeight)
         : availablePanelHeight;
+    // Variable-height authored panels share one native bottom anchor. The
+    // visible panel bottom, controller guide, and tray therefore remain a
+    // single connected shell instead of leaving preference-sized dead space.
+    const float panelY = panelBottom - panelHeight;
 
     const float contentInset = std::min(
         1.0F, std::min(panelWidth, panelHeight) * 0.1F);

@@ -167,10 +167,107 @@ void ColdDashboardProfilesUseOneBottomAnchor() {
     }
 }
 
+void VariableWidgetSurfacesKeepHostChromeStationary() {
+    struct Profile final {
+        gba::PhysicalRect work;
+        unsigned int dpi;
+        float interfaceScale;
+    };
+    constexpr std::array profiles{
+        Profile{{0, 0, 1280, 680}, 96U, 1.0F},
+        Profile{{0, 0, 1920, 1040}, 96U, 1.0F},
+        Profile{{0, 0, 2560, 1400}, 144U, 1.0F},
+        Profile{{72, 48, 1920, 1080}, 96U, 1.5F},
+        Profile{{-3440, -200, 0, 1240}, 144U, 1.0F},
+    };
+
+    gba::WidgetSurfaceRequest compact{gba::WidgetSurfaceMode::Compact};
+    gba::WidgetSurfaceRequest standard{gba::WidgetSurfaceMode::Standard};
+    gba::WidgetSurfaceRequest wide{gba::WidgetSurfaceMode::Wide};
+    auto heightOnly = compact;
+    heightOnly.preferredWidthDip = 560.0F;
+    heightOnly.preferredHeightDip = 700.0F;
+    constexpr float textScale = 1.0F;
+
+    for (const auto& profile : profiles) {
+        struct ChromeBounds final {
+            float visualPanelBottom{};
+            float guideBottom{};
+            float trayTop{};
+            float trayBottom{};
+        };
+        std::optional<ChromeBounds> reference;
+        for (const auto& request : {compact, standard, wide, heightOnly}) {
+            const auto surface = gba::ResolveWidgetSurface(
+                request,
+                gba::WidgetSurfaceConstraints{
+                    profile.work, profile.dpi, profile.interfaceScale, textScale});
+            Check(surface.has_value(),
+                  "variable widget surface resolves against live work area");
+            const auto placement = gba::ComputeOverlayPlacement(
+                profile.work, profile.dpi,
+                surface->windowWidthDip * profile.interfaceScale,
+                surface->windowHeightDip * profile.interfaceScale);
+            Check(placement.has_value(),
+                  "variable widget surface receives a physical placement");
+            FullyContained(*placement, profile.work);
+            const auto metrics = gba::ComputeOverlayRenderMetrics(
+                placement->width, placement->height,
+                profile.dpi, profile.interfaceScale);
+            Check(metrics.has_value(),
+                  "variable widget placement produces render metrics");
+            const auto geometry = gba::ComputeOverlaySurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                surface->panelWidthDip, surface->panelHeightDip);
+            Check(geometry.has_value(),
+                  "variable widget placement produces host chrome geometry");
+            SurfaceContained(
+                *geometry, metrics->viewportWidthDip, metrics->viewportHeightDip);
+
+            const auto screenY = [&](const float logicalY) {
+                return static_cast<float>(placement->y) +
+                    logicalY * metrics->physicalPixelsPerDip;
+            };
+            const ChromeBounds bounds{
+                screenY(geometry->footerY),
+                screenY(geometry->footerY + geometry->footerHeight),
+                screenY(geometry->trayY),
+                screenY(geometry->trayY + geometry->trayHeight),
+            };
+            CheckNear(
+                bounds.guideBottom,
+                screenY(geometry->panelY + geometry->panelHeight),
+                "controller guide ends at the explicit panel bottom anchor",
+                0.51F);
+            Check(bounds.visualPanelBottom <= bounds.guideBottom &&
+                      bounds.guideBottom <= bounds.trayTop,
+                  "visible panel, guide, and tray remain ordered without overlap");
+            CheckNear(
+                bounds.trayTop - bounds.guideBottom,
+                46.0F * metrics->physicalPixelsPerDip,
+                "guide-to-tray offset remains the fixed host-chrome reservation",
+                0.51F);
+            if (!reference) {
+                reference = bounds;
+                continue;
+            }
+            CheckNear(bounds.visualPanelBottom, reference->visualPanelBottom,
+                      "visible panel bottom stays fixed across surface switches", 0.51F);
+            CheckNear(bounds.guideBottom, reference->guideBottom,
+                      "controller guide bottom stays fixed across surface switches", 0.51F);
+            CheckNear(bounds.trayTop, reference->trayTop,
+                      "tray top stays fixed across surface switches", 0.51F);
+            CheckNear(bounds.trayBottom, reference->trayBottom,
+                      "tray bottom stays fixed across surface switches", 0.51F);
+        }
+    }
+}
+
 } // namespace
 
 int main() {
     ColdDashboardProfilesUseOneBottomAnchor();
+    VariableWidgetSurfacesKeepHostChromeStationary();
     using namespace gba;
 
     Check(ResolveControllerGuideDensity(800.0F, 1.0F) ==

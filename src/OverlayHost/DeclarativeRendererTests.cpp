@@ -1463,6 +1463,82 @@ void SegmentedTabsSurviveConstrainedNetworkSurfaces() {
     }
 }
 
+void CenteredChildrenDoNotDisableParentStretch() {
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"generic-stretch.runtime";
+    snapshot.activeInputScopeId = L"generic-stretch";
+    snapshot.root = Node(L"stretch.root", L"stack");
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+    snapshot.root.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(0)},
+    };
+
+    auto column = Node(L"stretch.column", L"stack");
+    column.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(0)},
+    };
+    auto row = Node(L"stretch.row", L"row");
+    row.baseStyle = {
+        {L"align", Keyword(L"center")},
+        {L"gap", LengthList(L"12px")},
+        {L"min-width", Length(0)},
+        {L"min-height", Length(52)},
+    };
+    auto label = Node(L"stretch.label", L"text");
+    label.text = L"Volume";
+    label.baseStyle = {
+        {L"width", Length(80)},
+        {L"flex-shrink", Number(0)},
+    };
+    auto slider = Node(L"stretch.slider", L"slider");
+    slider.hasProgress = true;
+    slider.hasSliderRange = true;
+    slider.minimum = 0.0;
+    slider.maximum = 100.0;
+    slider.value = 50.0;
+    slider.step = 5.0;
+    slider.valueChangedActionId = L"volume.changed";
+    slider.accessibilityLabel = L"Volume";
+    slider.baseStyle = {
+        {L"min-width", Length(0)},
+        {L"min-height", Length(44)},
+        {L"flex-grow", Number(1)},
+    };
+    row.children = {std::move(label), std::move(slider)};
+    column.children = {std::move(row)};
+    snapshot.root.children = {std::move(column)};
+
+    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    const auto result = renderer.Render(
+        nullptr, snapshot, L"stretch.slider", {0.0F, 0.0F, 600.0F, 180.0F});
+    const auto root = result.elementRects.at(L"stretch.root");
+    const auto nestedColumn = result.elementRects.at(L"stretch.column");
+    const auto centeredRow = result.elementRects.at(L"stretch.row");
+    const auto sliderRect = result.focusRects.at(L"stretch.slider");
+    Near(nestedColumn.width, root.width,
+         "auto-width nested column stretches in its parent");
+    Near(centeredRow.width, nestedColumn.width,
+         "row that centers children still stretches in its parent");
+    Near(sliderRect.x + sliderRect.width,
+         centeredRow.x + centeredRow.width,
+         "flex-grow slider consumes the row's remaining width");
+    Check(sliderRect.width >= 480.0F,
+          "generic centered row gives its slider substantial remaining width");
+
+    snapshot.root.children[0].children[0].baseStyle[L"width"] = Length(320);
+    const auto constrained = renderer.Render(
+        nullptr, snapshot, L"stretch.slider", {0.0F, 0.0F, 600.0F, 180.0F});
+    const auto constrainedRow = constrained.elementRects.at(L"stretch.row");
+    const auto constrainedSlider = constrained.focusRects.at(L"stretch.slider");
+    Near(constrainedRow.width, 320.0F,
+         "definite width still bounds a centered-children row");
+    Near(constrainedSlider.x + constrainedSlider.width,
+         constrainedRow.x + constrainedRow.width,
+         "bounded row still assigns exact remaining width to the slider");
+}
+
 void CenteredWrappedStatePreservesTextFlowAndControllerTarget() {
     WidgetSnapshot snapshot;
     snapshot.instanceId = L"empty-state.runtime";
@@ -2981,6 +3057,7 @@ int main() {
     CursorCollectionPreservesKeyedViewportAnchor();
     WholeWidgetScrollRevealsAudioMixerControls();
     SegmentedTabsSurviveConstrainedNetworkSurfaces();
+    CenteredChildrenDoNotDisableParentStretch();
     CenteredWrappedStatePreservesTextFlowAndControllerTarget();
     SpotifyStateAndSetupCardsPreserveWrappedTextHeight();
     ResponsiveRowWrapFlowsThroughGbssAndNativePlanning();

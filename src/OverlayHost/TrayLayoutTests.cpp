@@ -151,6 +151,30 @@ int main() {
     const auto productionBand = [](const float height) {
         return gba::shell::TrayBand{height - 112.0F, height - 14.0F};
     };
+    const auto compactEight = gba::shell::ComputeTrayLayout(
+        592, 698, 8, 0, productionBand(698));
+    const auto wideEight = gba::shell::ComputeTrayLayout(
+        1052, 878, 8, 7, productionBand(878));
+    Check(compactEight && wideEight && compactEight->tiles.size() == 8 &&
+          wideEight->tiles.size() == 8 &&
+          !compactEight->previousOverflow && !compactEight->nextOverflow &&
+          !wideEight->previousOverflow && !wideEight->nextOverflow,
+          "current catalog retains one full tray capacity across widget widths");
+    Check(std::abs(
+              compactEight->stripBounds.width - wideEight->stripBounds.width) < 0.01F &&
+          std::abs(
+              (compactEight->stripBounds.x + compactEight->stripBounds.width * 0.5F) -
+              592.0F * 0.5F) < 0.01F &&
+          std::abs(
+              (wideEight->stripBounds.x + wideEight->stripBounds.width * 0.5F) -
+              1052.0F * 0.5F) < 0.01F,
+          "stable tray bounds remain centered on the shared screen anchor");
+    const auto compactNine = gba::shell::ComputeTrayLayout(
+        592, 698, 9, 0, productionBand(698));
+    Check(compactNine && compactNine->tiles.size() == 9 &&
+          !compactNine->previousOverflow && !compactNine->nextOverflow &&
+          compactNine->tiles.front().bounds.width >= 44.0F,
+          "bounded catalog addition retains full capacity and controller targets");
     CheckCompleteReachability(
         592, 698, 8, 0, productionBand(698),
         "Audio Mixer compact overflow reaches the complete production catalog");
