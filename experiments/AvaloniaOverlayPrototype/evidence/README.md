@@ -61,7 +61,9 @@ Avalonia executable, then writes `artifacts/avp004/measurement.json` and the
 bounded native `input-trace.json`. A planner manual session supplies its own
 `--input-trace` path; every record updates bounded in-memory sequence truth and
 signals one coalescing background publisher rather than serializing on the
-UI/input path. Unique-temp atomic replacement retains the last-good JSON during
+UI/input path. A bounded 225 ms publication window materially coalesces rapid
+GameInput repeat bursts into periodic latest-state snapshots; explicit flush
+bypasses the window while retaining the two-second bound. Unique-temp atomic replacement retains the last-good JSON during
 access denial, and a later record or bounded final flush retries the pending
 latest snapshot. Exact measurement retains and asserts the final flush result
 instead of inferring persistence from file existence. The raw neutral-priming
@@ -123,3 +125,6 @@ remain atomically distinguishable in the live trace. A Windows lock regression
 denies `FileShare.Delete`, proves interactive records do not throw and the
 last-good artifact remains valid, then releases the lock and requires every
 sequence exactly once in order with no publication temp residue.
+A deterministic clock regression separately holds the live publication window,
+records 32 repeat-like inputs, and requires one publication attempt containing
+every sequence exactly once in order after final flush.

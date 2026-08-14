@@ -1261,6 +1261,54 @@ public sealed class IntegrationAdapterTests
 
     [TestMethod]
     [Timeout(10_000)]
+    public async Task Input_trace_repeat_burst_coalesces_to_one_periodic_publication_and_flush_retains_every_sequence()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"avp004-input-burst-{Guid.NewGuid():N}.json");
+        try
+        {
+            var delay = new ControlledPublicationDelay();
+            var trace = new InputTraceRecorder(path, "burst-tip", delay.WaitAsync);
+            await delay.Started.WaitAsync(TimeSpan.FromSeconds(1));
+
+            const int repeatCount = 32;
+            for (var index = 0; index < repeatCount; index++)
+            {
+                trace.Record("native-input-routed", true, true, "content-slider",
+                    $"navigation=Down;phase=Repeat;ordinal={index}", true);
+            }
+
+            Assert.AreEqual(0, trace.PublicationAttemptCount,
+                "A repeat-like burst must remain in memory during the bounded live publication window.");
+            Assert.IsTrue(delay.RequestedDelay >= TimeSpan.FromMilliseconds(200));
+            Assert.IsTrue(delay.RequestedDelay <= TimeSpan.FromMilliseconds(250));
+
+            delay.Release();
+            await WaitForAsync(() => trace.PublicationAttemptCount == 1);
+            var finalFlush = await trace.FlushAsync("burst-tip");
+            Assert.IsTrue(finalFlush.Succeeded, finalFlush.Failure);
+            Assert.AreEqual((long)repeatCount, finalFlush.RequestedSequence);
+            Assert.AreEqual((long)repeatCount, finalFlush.PersistedSequence);
+            Assert.AreEqual(1, trace.PublicationAttemptCount,
+                "The whole repeat burst must produce one latest-state publication, not one write per input.");
+
+            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            var retained = document.RootElement.GetProperty("Entries").EnumerateArray().ToArray();
+            Assert.HasCount(repeatCount, retained);
+            CollectionAssert.AreEqual(
+                Enumerable.Range(1, repeatCount).Select(index => (long)index).ToArray(),
+                retained.Select(entry => entry.GetProperty("Sequence").GetInt64()).ToArray(),
+                "Final flush must retain every coalesced sequence exactly once and in order.");
+            Assert.IsEmpty(TraceTemporaryFiles(path));
+        }
+        finally
+        {
+            File.Delete(path);
+            foreach (var temporaryPath in TraceTemporaryFiles(path)) File.Delete(temporaryPath);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
     public async Task Y_shared_route_atomically_records_the_actual_handled_and_unhandled_results()
     {
         var path = Path.Combine(Path.GetTempPath(), $"avp004-y-route-{Guid.NewGuid():N}.json");
@@ -1967,6 +2015,26 @@ public sealed class IntegrationAdapterTests
     {
         public bool CheckAccess() => true;
         public Task InvokeAsync(Action action) { action(); return Task.CompletedTask; }
+    }
+
+    private sealed class ControlledPublicationDelay
+    {
+        private readonly TaskCompletionSource<bool> started =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> released =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Started => started.Task;
+        public TimeSpan RequestedDelay { get; private set; }
+
+        public async Task WaitAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            RequestedDelay = delay;
+            started.TrySetResult(true);
+            await released.Task.WaitAsync(cancellationToken);
+        }
+
+        public void Release() => released.TrySetResult(true);
     }
 
     private sealed class FakePresentationSession(params WidgetPresentationFrame[] frames) : IPresentationSessionClient

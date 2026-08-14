@@ -6,6 +6,7 @@ namespace GameBarAlternative.AvaloniaPrototype.Diagnostics;
 internal sealed class InputTraceRecorder
 {
     private const int MaximumEntries = 2048;
+    private static readonly TimeSpan PublicationInterval = TimeSpan.FromMilliseconds(225);
     private static readonly TimeSpan FlushTimeout = TimeSpan.FromSeconds(2);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -15,6 +16,7 @@ internal sealed class InputTraceRecorder
     };
     private readonly object gate = new();
     private readonly string? outputPath;
+    private readonly Func<TimeSpan, CancellationToken, Task> publicationDelayAsync;
     private readonly List<InputTraceEntry> entries = [];
     private string sourceCommit;
     private long sequence;
@@ -22,13 +24,23 @@ internal sealed class InputTraceRecorder
     private long persistedRevision = -1;
     private long persistedSequence;
     private Task publicationTask = Task.CompletedTask;
+    private TaskCompletionSource<bool> publicationStateChanged = CreateStateSignal();
+    private CancellationTokenSource? publicationDelayCancellation;
     private bool publisherRunning;
+    private long forceThroughRevision = -1;
+    private long persistenceFailureGeneration;
+    private int publicationAttemptCount;
     private string? lastPersistenceFailure;
 
-    public InputTraceRecorder(string? outputPath, string? sourceCommit = null)
+    public InputTraceRecorder(
+        string? outputPath,
+        string? sourceCommit = null,
+        Func<TimeSpan, CancellationToken, Task>? publicationDelayAsync = null)
     {
         this.outputPath = string.IsNullOrWhiteSpace(outputPath) ? null : Path.GetFullPath(outputPath);
         this.sourceCommit = string.IsNullOrWhiteSpace(sourceCommit) ? "manual-session" : sourceCommit;
+        this.publicationDelayAsync = publicationDelayAsync ??
+            ((delay, cancellationToken) => Task.Delay(delay, cancellationToken));
         if (this.outputPath is not null)
         {
             lock (gate) SchedulePublicationLocked();
@@ -36,6 +48,10 @@ internal sealed class InputTraceRecorder
     }
 
     public bool Enabled => outputPath is not null;
+    internal int PublicationAttemptCount
+    {
+        get { lock (gate) return publicationAttemptCount; }
+    }
 
     public void Record(
         string eventName,
@@ -69,10 +85,11 @@ internal sealed class InputTraceRecorder
         string sourceCommit,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (outputPath is null) return new(true, 0, 0, null);
-        Task publisher;
         long requestedRevision;
         long requestedSequence;
+        long startingFailureGeneration;
         lock (gate)
         {
             if (!string.Equals(this.sourceCommit, sourceCommit, StringComparison.Ordinal))
@@ -82,31 +99,56 @@ internal sealed class InputTraceRecorder
             }
             requestedRevision = revision;
             requestedSequence = sequence;
+            startingFailureGeneration = persistenceFailureGeneration;
+            if (persistedRevision >= requestedRevision && persistedSequence >= requestedSequence)
+                return SnapshotFlushResultLocked(requestedRevision, requestedSequence, null);
+            ForcePublicationLocked(requestedRevision);
             SchedulePublicationLocked();
-            publisher = publicationTask;
         }
 
-        try
+        var waitClock = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
         {
-            await publisher.WaitAsync(FlushTimeout, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (TimeoutException)
-        {
-            return SnapshotFlushResult(
-                requestedRevision,
-                requestedSequence,
-                $"Input trace publication exceeded the bounded {FlushTimeout.TotalSeconds:F0} second timeout.");
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return SnapshotFlushResult(requestedRevision, requestedSequence, exception.Message);
-        }
+            Task stateChanged;
+            lock (gate)
+            {
+                if (persistedRevision >= requestedRevision && persistedSequence >= requestedSequence)
+                    return SnapshotFlushResultLocked(requestedRevision, requestedSequence, null);
+                if (persistenceFailureGeneration > startingFailureGeneration)
+                    return SnapshotFlushResultLocked(requestedRevision, requestedSequence, lastPersistenceFailure);
+                if (!publisherRunning)
+                {
+                    ForcePublicationLocked(requestedRevision);
+                    SchedulePublicationLocked();
+                }
+                stateChanged = publicationStateChanged.Task;
+            }
 
-        return SnapshotFlushResult(requestedRevision, requestedSequence, null);
+            var remaining = FlushTimeout - waitClock.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return SnapshotFlushResult(
+                    requestedRevision,
+                    requestedSequence,
+                    $"Input trace publication exceeded the bounded {FlushTimeout.TotalSeconds:F0} second timeout.");
+            }
+
+            try
+            {
+                await stateChanged.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                return SnapshotFlushResult(
+                    requestedRevision,
+                    requestedSequence,
+                    $"Input trace publication exceeded the bounded {FlushTimeout.TotalSeconds:F0} second timeout.");
+            }
+        }
     }
 
     private InputTraceFlushResult SnapshotFlushResult(
@@ -116,14 +158,28 @@ internal sealed class InputTraceRecorder
     {
         lock (gate)
         {
-            var succeeded = persistedRevision >= requestedRevision &&
-                persistedSequence >= requestedSequence;
-            return new InputTraceFlushResult(
-                succeeded,
-                requestedSequence,
-                persistedSequence,
-                succeeded ? null : waitFailure ?? lastPersistenceFailure ?? "Latest input trace snapshot was not persisted.");
+            return SnapshotFlushResultLocked(requestedRevision, requestedSequence, waitFailure);
         }
+    }
+
+    private InputTraceFlushResult SnapshotFlushResultLocked(
+        long requestedRevision,
+        long requestedSequence,
+        string? waitFailure)
+    {
+        var succeeded = persistedRevision >= requestedRevision &&
+            persistedSequence >= requestedSequence;
+        return new InputTraceFlushResult(
+            succeeded,
+            requestedSequence,
+            persistedSequence,
+            succeeded ? null : waitFailure ?? lastPersistenceFailure ?? "Latest input trace snapshot was not persisted.");
+    }
+
+    private void ForcePublicationLocked(long requestedRevision)
+    {
+        forceThroughRevision = Math.Max(forceThroughRevision, requestedRevision);
+        publicationDelayCancellation?.Cancel();
     }
 
     private void SchedulePublicationLocked()
@@ -137,6 +193,37 @@ internal sealed class InputTraceRecorder
     {
         while (true)
         {
+            CancellationTokenSource? delayCancellation = null;
+            lock (gate)
+            {
+                if (forceThroughRevision < revision)
+                {
+                    delayCancellation = new CancellationTokenSource();
+                    publicationDelayCancellation = delayCancellation;
+                }
+            }
+
+            if (delayCancellation is not null)
+            {
+                try
+                {
+                    await publicationDelayAsync(PublicationInterval, delayCancellation.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (delayCancellation.IsCancellationRequested)
+                {
+                    // Explicit flush bypasses the live debounce window.
+                }
+                finally
+                {
+                    lock (gate)
+                    {
+                        if (ReferenceEquals(publicationDelayCancellation, delayCancellation))
+                            publicationDelayCancellation = null;
+                    }
+                    delayCancellation.Dispose();
+                }
+            }
+
             InputTraceArtifact artifact;
             long targetRevision;
             long targetSequence;
@@ -145,6 +232,7 @@ internal sealed class InputTraceRecorder
                 targetRevision = revision;
                 targetSequence = sequence;
                 artifact = CreateArtifactLocked();
+                publicationAttemptCount++;
             }
 
             try
@@ -156,7 +244,9 @@ internal sealed class InputTraceRecorder
                 lock (gate)
                 {
                     lastPersistenceFailure = $"{exception.GetType().Name}: {exception.Message}";
+                    persistenceFailureGeneration++;
                     publisherRunning = false;
+                    PulsePublicationStateLocked();
                 }
                 return;
             }
@@ -165,7 +255,9 @@ internal sealed class InputTraceRecorder
             {
                 persistedRevision = Math.Max(persistedRevision, targetRevision);
                 persistedSequence = Math.Max(persistedSequence, targetSequence);
+                if (forceThroughRevision <= targetRevision) forceThroughRevision = -1;
                 lastPersistenceFailure = null;
+                PulsePublicationStateLocked();
                 if (revision == targetRevision)
                 {
                     publisherRunning = false;
@@ -174,6 +266,16 @@ internal sealed class InputTraceRecorder
             }
         }
     }
+
+    private void PulsePublicationStateLocked()
+    {
+        var completed = publicationStateChanged;
+        publicationStateChanged = CreateStateSignal();
+        completed.TrySetResult(true);
+    }
+
+    private static TaskCompletionSource<bool> CreateStateSignal() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private InputTraceArtifact CreateArtifactLocked()
     {

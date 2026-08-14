@@ -106,7 +106,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (31 tests):
+MSTest.Sdk 4.3.2 suite (32 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -129,7 +129,10 @@ mode-identity restoration with one render tree. Geometry coverage asserts useful
 page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
-The trace regressions also hold the live target without `FileShare.Delete`,
+The trace regressions use a deterministic publication clock to prove a rapid
+32-entry repeat-like burst produces one latest-state publication after the
+bounded 225 ms live window, with explicit flush retaining every sequence once
+in order. They also hold the live target without `FileShare.Delete`,
 require denied replacement to preserve valid last-good JSON without throwing on
 the UI path, then require a bounded retry to publish every sequence exactly once
 in order with no unique-temp residue.
@@ -198,7 +201,10 @@ it does not convert a visible lease into a physical-controller or routed-input
 claim. Named focused regressions remain test evidence, not native trace events.
 When `--input-trace` is supplied, each bounded state/routing record updates
 in-memory sequence truth and signals one coalescing background publisher; the
-UI/input path never serializes or replaces the JSON file. The publisher uses a
+UI/input path never serializes or replaces the JSON file. Live publication is
+debounced for 225 ms so repeat bursts produce periodic latest-state snapshots,
+while explicit flush bypasses that delay and retains its existing two-second
+bound. The publisher uses a
 unique temporary file and atomic replacement, retaining the last-good complete
 prefix when replacement is denied. A later record or explicit bounded flush
 retries the pending latest state. Expected file-access failures remain visible

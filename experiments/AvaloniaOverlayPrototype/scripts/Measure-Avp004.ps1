@@ -57,6 +57,10 @@ if ($focusedProof.deniedReplacementRecoveryTest -ne
     'Input_trace_denied_atomic_replace_retains_last_good_and_recovers_every_sequence_once') {
     throw 'Denied input-trace replacement recovery proof is missing from the exact focused suite.'
 }
+if ($focusedProof.burstCoalescingTest -ne
+    'Input_trace_repeat_burst_coalesces_to_one_periodic_publication_and_flush_retains_every_sequence') {
+    throw 'Bounded input-trace burst coalescing proof is missing from the exact focused suite.'
+}
 
 $resolvedArtifact = [System.IO.Path]::GetFullPath($artifactRoot)
 $resolvedRuntime = [System.IO.Path]::GetFullPath($runtimeRoot)
