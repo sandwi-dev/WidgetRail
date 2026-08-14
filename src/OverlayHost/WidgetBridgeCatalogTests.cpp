@@ -547,6 +547,8 @@ int main() {
     assert(workerStartFailure->widgetId == L"music");
     assert(workerStartFailure->category ==
         gba::WidgetBridgeRuntimeFailureCategory::WorkerStart);
+    assert(workerStartFailure->safeMessage ==
+        L"Widget worker failed to start (exit_65).");
 
     error.clear();
     const auto runtimeFailure =
@@ -558,7 +560,8 @@ int main() {
     })json", error);
     assert(runtimeFailure && error.empty());
     assert(runtimeFailure->category ==
-        gba::WidgetBridgeRuntimeFailureCategory::Other);
+        gba::WidgetBridgeRuntimeFailureCategory::WorkerExited);
+    assert(runtimeFailure->safeMessage == L"Widget worker exited unexpectedly.");
 
     error.clear();
     assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({

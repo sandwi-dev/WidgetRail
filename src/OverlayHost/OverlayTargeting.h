@@ -232,6 +232,7 @@ enum class WidgetExtentAuthority {
 
 enum class WidgetContentAuthority {
     AdmittedSnapshot,
+    FailureRetainedSnapshot,
     RetainedCommittedSnapshot,
     StableStartupStatus,
 };
@@ -242,9 +243,13 @@ enum class WidgetContentAuthority {
 /// available. A stable startup status is reserved for the first widget open,
 /// when there is no prior content to retain.
 [[nodiscard]] constexpr WidgetContentAuthority ResolveWidgetContentAuthority(
-    const bool snapshotAdmitted,
+    const bool sessionSnapshotAvailable,
+    const bool failureCurrent,
     const bool committedSnapshotAvailable) noexcept {
-    if (snapshotAdmitted) return WidgetContentAuthority::AdmittedSnapshot;
+    if (failureCurrent) return sessionSnapshotAvailable
+        ? WidgetContentAuthority::FailureRetainedSnapshot
+        : WidgetContentAuthority::StableStartupStatus;
+    if (sessionSnapshotAvailable) return WidgetContentAuthority::AdmittedSnapshot;
     if (committedSnapshotAvailable)
         return WidgetContentAuthority::RetainedCommittedSnapshot;
     return WidgetContentAuthority::StableStartupStatus;

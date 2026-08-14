@@ -154,16 +154,22 @@ int main() {
               gba::WidgetExtentAuthority::CompactStartupFallback,
           "compact fallback is reserved for the first widget open");
 
-    Check(gba::ResolveWidgetContentAuthority(true, true) ==
+    Check(gba::ResolveWidgetContentAuthority(true, false, true) ==
               gba::WidgetContentAuthority::AdmittedSnapshot,
           "an admitted destination snapshot owns visible widget content");
-    Check(gba::ResolveWidgetContentAuthority(true, false) ==
+    Check(gba::ResolveWidgetContentAuthority(true, false, false) ==
               gba::WidgetContentAuthority::AdmittedSnapshot,
           "first-open content uses its admitted snapshot directly");
-    Check(gba::ResolveWidgetContentAuthority(false, true) ==
+    Check(gba::ResolveWidgetContentAuthority(true, true, true) ==
+              gba::WidgetContentAuthority::FailureRetainedSnapshot,
+          "a failed session retains only its own last-good pixels as inert content");
+    Check(gba::ResolveWidgetContentAuthority(false, true, true) ==
+              gba::WidgetContentAuthority::StableStartupStatus,
+          "a failure without last-good pixels cannot substitute another widget");
+    Check(gba::ResolveWidgetContentAuthority(false, false, true) ==
               gba::WidgetContentAuthority::RetainedCommittedSnapshot,
           "worker startup keeps one previously admitted snapshot painted");
-    Check(gba::ResolveWidgetContentAuthority(false, false) ==
+    Check(gba::ResolveWidgetContentAuthority(false, false, false) ==
               gba::WidgetContentAuthority::StableStartupStatus,
           "startup status is reserved for an open with no committed content");
 

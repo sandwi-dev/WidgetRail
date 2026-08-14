@@ -1480,9 +1480,30 @@ private:
                 // surface consume navigation or advance its worker meanwhile;
                 // Guide/F1 continue to arrive through their dedicated paths.
                 if (awaitingSuccessfulOpenPaint_) return 0;
+                (void)bridge_.PumpEvents();
+                for (auto& failure : bridge_.TakeRuntimeFailures()) {
+                    if (!sessions_.Contains(failure.widgetId)) {
+                        AppendDiagnostic(
+                            L"Dropped stale widget runtime failure for " +
+                            failure.widgetId);
+                        continue;
+                    }
+                    RecordWidgetStartupFailure(
+                        failure.widgetId,
+                        failure.safeMessage,
+                        failure.category ==
+                                gba::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                            ? gba::WidgetSessionFailureStage::Start
+                            : gba::WidgetSessionFailureStage::Lifecycle,
+                        true);
+                    if (pinnedSurfaceCoordinator_.pinned() &&
+                        pinnedSurfaceCoordinator_.widgetId() == failure.widgetId) {
+                        (void)pinnedSurfaceCoordinator_.Unpin(
+                            gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
+                    }
+                }
                 if (controllerTick && state_.surface() != gba::Surface::Hidden)
                     PollController();
-                (void)bridge_.PumpEvents();
                 for (auto& artwork : bridge_.TakeArtworkResults()) {
                     if (artwork.pngBase64.empty())
                         (void)imageCache_->FailTrustedArtwork(
@@ -2383,12 +2404,23 @@ private:
         const std::wstring_view widgetId,
         const std::wstring_view safeFailure,
         const gba::WidgetSessionFailureStage stage =
-            gba::WidgetSessionFailureStage::Snapshot) {
+            gba::WidgetSessionFailureStage::Snapshot,
+        const bool revokeCurrentGeneration = false) {
         std::wstring message = std::wstring(DisplayWidgetName(widgetId)) +
             L" failed: " + std::wstring(safeFailure) + L" Press A to retry.";
         if (message.size() > 640) message.resize(640);
-        sessions_.RecordFailure(
-            widgetId, stage, message);
+        if (revokeCurrentGeneration)
+            sessions_.RecordRuntimeFailure(widgetId, stage, message);
+        else
+            sessions_.RecordFailure(widgetId, stage, message);
+        if (state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == widgetId) {
+            sliderInteraction_.DeactivateAll();
+            (void)pressedInteraction_.Clear();
+            focusedElementId_.clear();
+            lastWidgetRenderResult_ = {};
+            ClearAccessibilityTree();
+        }
         AppendDiagnostic(message);
         InvalidateRect(window_, nullptr, FALSE);
     }
@@ -4356,7 +4388,10 @@ private:
 
     const gba::WidgetSnapshot* InteractionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
-        const auto* source = SnapshotFor(widgetId);
+        const auto presentation = sessions_.Presentation(widgetId);
+        if (presentation.authority != gba::WidgetPresentationAuthority::Current)
+            return nullptr;
+        const auto* source = presentation.snapshot;
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
         return source && descriptor
             ? &launcherExperienceProjection_.InteractionSnapshot(
@@ -5195,10 +5230,15 @@ private:
             : state_.selectedWidget();
 
         if (IsBridgeWidget(widget)) {
-            if (phase == gba::input::NavigationEventPhase::Pressed &&
-                button == L"A" &&
-                sessions_.Failure(widget)) {
-                RestartCurrentWidget();
+            if (sessions_.Failure(widget)) {
+                const auto route = gba::input::RouteFailedWidgetAction(
+                    interactiveWidget, phase, button);
+                if (route == gba::input::FailedWidgetActionRoute::Retry) {
+                    RestartCurrentWidget();
+                } else if (route ==
+                           gba::input::FailedWidgetActionRoute::HostBackToDashboard) {
+                    Dispatch(gba::Command::SampleWidgetBack);
+                }
                 return;
             }
             if (!SnapshotFor(widget)) {
@@ -5977,7 +6017,7 @@ private:
                 L"%";
         }
         std::vector<gba::ControllerGuideAction> quickActions;
-        const auto* snapshot = SnapshotFor(state_.selectedWidget());
+        const auto* snapshot = InteractionSnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
             quickActions.reserve(snapshot->quickActions.size());
             for (const auto& action : snapshot->quickActions) {
@@ -6267,24 +6307,34 @@ private:
                 renderTarget_->PushLayer(layerParameters, contentLayer.Get());
                 contentLayerPushed = true;
             }
-            const auto* admittedSnapshot = SnapshotFor(widget);
+            const auto sessionPresentation = sessions_.Presentation(widget);
             const auto contentAuthority = gba::ResolveWidgetContentAuthority(
-                admittedSnapshot != nullptr,
+                sessionPresentation.snapshot != nullptr,
+                sessionPresentation.authority ==
+                    gba::WidgetPresentationAuthority::FailureRetained,
                 committedWidgetPresentationSnapshot_.has_value() &&
                     !committedWidgetPresentationWidget_.empty());
-            const bool retainedCommittedSnapshot =
+            const bool failureRetainedSnapshot =
+                contentAuthority == gba::WidgetContentAuthority::FailureRetainedSnapshot;
+            const bool transitionRetainedSnapshot =
                 contentAuthority == gba::WidgetContentAuthority::RetainedCommittedSnapshot;
-            const auto* snapshot = retainedCommittedSnapshot
-                ? &*committedWidgetPresentationSnapshot_
-                : admittedSnapshot;
-            const std::wstring_view renderedWidget = retainedCommittedSnapshot
+            const bool inertRetainedSnapshot =
+                failureRetainedSnapshot || transitionRetainedSnapshot;
+            const auto* snapshot = failureRetainedSnapshot
+                ? sessionPresentation.snapshot
+                : transitionRetainedSnapshot
+                    ? &*committedWidgetPresentationSnapshot_
+                    : sessionPresentation.snapshot;
+            const std::wstring_view renderedWidget = transitionRetainedSnapshot
                 ? std::wstring_view{committedWidgetPresentationWidget_}
                 : widget;
-            const std::wstring_view renderedFocusId = retainedCommittedSnapshot
+            const std::wstring_view renderedFocusId = transitionRetainedSnapshot
                 ? std::wstring_view{committedWidgetPresentationFocusId_}
-                : state_.focusRegion() == gba::FocusRegion::Widget
-                    ? std::wstring_view{focusedElementId_}
-                    : std::wstring_view{};
+                : failureRetainedSnapshot
+                    ? std::wstring_view{}
+                    : state_.focusRegion() == gba::FocusRegion::Widget
+                        ? std::wstring_view{focusedElementId_}
+                        : std::wstring_view{};
             if (snapshot && declarativeRenderer_) {
                 const gba::declarative::Rect viewport{
                     geometry->widgetViewportX,
@@ -6331,7 +6381,7 @@ private:
                     accessibilityPolicy.reducedMotion,
                     accessibilityPolicy.reducedTransparency,
                 };
-                const bool collectAccessibility = !retainedCommittedSnapshot &&
+                const bool collectAccessibility = !inertRetainedSnapshot &&
                     accessibilityActive_ &&
                     descriptor &&
                     widgetAccessibilityProjection_.ShouldCollect(projectionKey);
@@ -6352,7 +6402,7 @@ private:
                 options.animationTimestampMilliseconds = presentationTime;
                 options.sliderValueOverrides = presentedSliderValues;
                 options.artworkWidgetId = std::wstring{renderedWidget};
-                if (!retainedCommittedSnapshot) {
+                if (!inertRetainedSnapshot) {
                     sliderInteraction_.RetainAdjustmentMode(
                         snapshot->instanceId,
                         snapshot->activeInputScopeId,
@@ -6360,7 +6410,7 @@ private:
                     options.pressedElementId = pressedInteraction_.ActiveElementId(
                         *snapshot, renderedFocusId);
                 }
-                if (!retainedCommittedSnapshot && options.pressedElementId.empty() &&
+                if (!inertRetainedSnapshot && options.pressedElementId.empty() &&
                     state_.focusRegion() == gba::FocusRegion::Widget) {
                     if (const auto* focused = gba::input::FindNodeInInputScope(
                             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
@@ -6416,7 +6466,7 @@ private:
                     const std::wstring semanticFocus =
                         state_.focusRegion() == gba::FocusRegion::Tray
                             ? L"tray:" + std::wstring(state_.selectedWidget())
-                            : retainedCommittedSnapshot || focusedElementId_.empty()
+                            : inertRetainedSnapshot || focusedElementId_.empty()
                                 ? L"none"
                                 : L"widget:" + focusedElementId_;
                     const bool selectedTrayItemVisible = trayLayout &&
@@ -6484,7 +6534,9 @@ private:
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
-                        (retainedCommittedSnapshot ? L"retained" : L"admitted") +
+                        (failureRetainedSnapshot
+                            ? L"failure-retained"
+                            : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
                         L"\n" + semanticFocus + trayState + launcherPresentationKey;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
@@ -6571,11 +6623,13 @@ private:
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +
                             L" content=" +
-                            (retainedCommittedSnapshot ? L"retained" : L"admitted") +
+                            (failureRetainedSnapshot
+                                ? L"failure-retained"
+                                : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                             L" rendered=" + std::wstring(renderedWidget) +
                             L" sequence=" + std::to_wstring(snapshot->sequence) +
                             L" semantics=" +
-                            (retainedCommittedSnapshot ? L"inert" : L"current") +
+                            (inertRetainedSnapshot ? L"inert" : L"current") +
                             L" input-owner=" + inputOwner +
                             L" selected=" + std::wstring(state_.selectedWidget()) +
                             L" visual-focus=" +
@@ -6620,8 +6674,8 @@ private:
                                 : std::wstring{L"missing"}));
                     }
                 }
-                declarativeMotionActive_ = !retainedCommittedSnapshot && result.animationActive;
-                if (!retainedCommittedSnapshot) {
+                declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
+                if (!inertRetainedSnapshot) {
                     if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
                         focusedElementId_, semanticSnapshot.activeInputScopeId, result);
                         visibleFocus && *visibleFocus != focusedElementId_) {
@@ -6635,7 +6689,7 @@ private:
                         InvalidateRect(window_, nullptr, FALSE);
                     }
                 }
-                if (retainedCommittedSnapshot) {
+                if (inertRetainedSnapshot) {
                     ClearAccessibilityTree();
                 } else if (accessibilityActive_ && !result.succeeded) {
                     lastWidgetRenderResult_ = result;
@@ -6643,12 +6697,12 @@ private:
                 } else {
                     lastWidgetRenderResult_ = result;
                 }
-                if (!retainedCommittedSnapshot && renderedFocusId == focusedElementId_) {
+                if (!inertRetainedSnapshot && renderedFocusId == focusedElementId_) {
                     (void)scrollEvidenceProbe_.Publish(
                         widget, semanticSnapshot, result, renderedFocusId,
                         options.pixelScale, options.accessibility.textScale);
                 }
-                if (!retainedCommittedSnapshot && collectAccessibility) {
+                if (!inertRetainedSnapshot && collectAccessibility) {
                     widgetAccessibilityTree_ = gba::accessibility::BuildWidgetTree(
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         semanticSnapshot, result,
@@ -6659,11 +6713,11 @@ private:
                     ++widgetAccessibilityRevision_;
                     widgetAccessibilityProjection_.Published(projectionKey);
                 }
-                if (!retainedCommittedSnapshot && accessibilityActive_ &&
+                if (!inertRetainedSnapshot && accessibilityActive_ &&
                     widgetAccessibilityProjection_.ObserveFrame(result.animationActive))
                     InvalidateRect(window_, nullptr, FALSE);
                 const auto lastSequence = renderedSnapshotSequences_.find(std::wstring(widget));
-                if (!retainedCommittedSnapshot &&
+                if (!inertRetainedSnapshot &&
                     (lastSequence == renderedSnapshotSequences_.end() ||
                      lastSequence->second != snapshot->sequence)) {
                     for (const auto& diagnostic : result.diagnostics) {
@@ -6676,8 +6730,10 @@ private:
                 }
             } else {
                 ClearAccessibilityTree();
-                DrawTextLine(L"Starting isolated " + std::wstring(DisplayWidgetName(widget)) +
-                                 L" widget…",
+                DrawTextLine(sessions_.Failure(widget)
+                                 ? std::wstring{L"Widget unavailable. Press A to retry."}
+                                 : L"Starting isolated " +
+                                       std::wstring(DisplayWidgetName(widget)) + L" widget…",
                              bodyFormat_.Get(),
                              D2D1::RectF(panelLeft + 30, 52,
                                          panelLeft + panelWidth - 30, 110),

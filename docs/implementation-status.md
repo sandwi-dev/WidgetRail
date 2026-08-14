@@ -4793,3 +4793,33 @@ hidden-cache diagnostic, recovers through one A-button Retry and one worker,
 restores exact play/pause UIA focus, status/live-region/action evidence, keeps
 feedback bounded across hide/reopen, and leaves no worker after normal close.
 No aggregate, capture, widget-domain, or unrelated full-build route was run.
+
+### Generic worker crash isolation and inert last-good recovery (DLV-232)
+
+The existing bridge event pump now hands each typed, sanitized runtime-failure
+event to the native session coordinator instead of retaining presentation text
+alone. A post-admission worker exit keeps that widget's own last-good snapshot
+available for visual rendering, while coordinator presentation authority marks
+it failure-current. The host immediately clears pressed/slider/focus/rendered
+hit-test/UIA state, publishes no widget quick actions, stops declarative motion,
+and paints the retained content with `semantics=inert`; it does not substitute a
+different widget's committed pixels. Shell Back remains available, but only a
+pressed A Retry or the existing generic Hold-Y route can request one fresh
+generation. Repeats and all other failed-widget actions are inert. A valid
+fresh-generation snapshot admission is the only lifecycle completion that
+clears failure and restores interactive authority, and an existing primary
+Start failure retains precedence over a later secondary runtime-exit failure.
+
+Focused Release evidence passes the native bridge runtime-failure parser,
+13 coordinator scenarios, Overlay state, Widget lifecycle, 305 action-feedback
+checks, 68 content-targeting checks, and 112 controller-navigation checks. The
+process/job cleanup fixture passes 20 checks plus its exact owner/client process
+case, and the completed native Release host compiles without packaging. Static
+review traces `WidgetProcessClient.OnProcessExited` through the typed bridge
+failure publication, bounded native event pump, coordinator failure state,
+inert rendering/input/UIA projection, fresh-generation restart/admission, and
+kill-on-job-close teardown. The actual OS/AppContainer crash induction remains
+an explicitly untested residual risk because the rejected cross-boundary crash
+oracle was not redesigned or rerun. No test-only production escape hatch,
+public protocol change, provider/domain behavior, Tier 3, capture, or packaged
+integration route was added or run.

@@ -131,12 +131,14 @@ private:
 enum class WidgetBridgeRuntimeFailureCategory {
     Other,
     WorkerStart,
+    WorkerExited,
 };
 
 struct WidgetBridgeRuntimeFailure final {
     std::wstring widgetId;
     WidgetBridgeRuntimeFailureCategory category{
         WidgetBridgeRuntimeFailureCategory::Other};
+    std::wstring safeMessage;
 };
 
 enum class WidgetHostEffectKind {
@@ -509,6 +511,8 @@ public:
         lastRuntimeFailureCategory(std::wstring_view widgetId) const noexcept;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
+    [[nodiscard]] std::vector<WidgetBridgeRuntimeFailure>
+        TakeRuntimeFailures() noexcept;
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
     [[nodiscard]] std::vector<WidgetActionFailure> TakeActionFailures() noexcept;
     [[nodiscard]] std::vector<WidgetHostEffect> TakeHostEffects() noexcept;
@@ -537,6 +541,7 @@ private:
     long long nextRequestId_{};
     WidgetInvalidationQueue invalidations_;
     WidgetActionFailureQueue actionFailures_;
+    std::vector<WidgetBridgeRuntimeFailure> runtimeFailures_;
     WidgetHostEffectQueue hostEffects_;
     WidgetArtworkResultQueue artworkResults_;
     LocalWidgetPackageInstallResultQueue localPackageInstallResults_;

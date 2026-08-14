@@ -132,6 +132,27 @@ enum class ControllerActionRoute {
     None,
 };
 
+enum class FailedWidgetActionRoute {
+    Retry,
+    HostBackToDashboard,
+    Inert,
+};
+
+/// A failed worker has no widget input authority. The host retains only the
+/// explicit recovery action and its own root Back navigation; repeats and all
+/// other buttons remain inert until a fresh snapshot is admitted.
+[[nodiscard]] constexpr FailedWidgetActionRoute RouteFailedWidgetAction(
+    const bool openWidget,
+    const NavigationEventPhase phase,
+    const std::wstring_view button) noexcept {
+    if (phase != NavigationEventPhase::Pressed)
+        return FailedWidgetActionRoute::Inert;
+    if (button == L"A") return FailedWidgetActionRoute::Retry;
+    if (openWidget && button == L"B")
+        return FailedWidgetActionRoute::HostBackToDashboard;
+    return FailedWidgetActionRoute::Inert;
+}
+
 enum class FocusedSliderButtonRoute {
     Widget,
     EnterAdjustment,

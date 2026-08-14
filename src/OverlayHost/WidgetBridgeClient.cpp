@@ -1421,11 +1421,23 @@ bool HandleAsyncEvent(
             return false;
         }
         if (runtimeFailure) {
+            const auto category = reason == L"connectionFailed"
+                ? WidgetBridgeRuntimeFailureCategory::WorkerStart
+                : reason == L"processExited"
+                    ? WidgetBridgeRuntimeFailureCategory::WorkerExited
+                    : WidgetBridgeRuntimeFailureCategory::Other;
+            const auto safeMessage = category ==
+                    WidgetBridgeRuntimeFailureCategory::WorkerStart
+                ? diagnostic.empty()
+                    ? std::wstring{L"Widget worker failed to start."}
+                    : L"Widget worker failed to start (" + diagnostic + L")."
+                : category == WidgetBridgeRuntimeFailureCategory::WorkerExited
+                    ? std::wstring{L"Widget worker exited unexpectedly."}
+                    : std::wstring{L"Widget worker became unavailable."};
             *runtimeFailure = WidgetBridgeRuntimeFailure{
                 widgetId,
-                reason == L"connectionFailed"
-                    ? WidgetBridgeRuntimeFailureCategory::WorkerStart
-                    : WidgetBridgeRuntimeFailureCategory::Other,
+                category,
+                safeMessage,
             };
         }
         status = diagnostic.empty()
@@ -2820,9 +2832,17 @@ bool WidgetBridgeClient::PumpEvents() {
                 return consumed;
             }
             std::wstring status;
-            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_)) {
+            std::optional<WidgetBridgeRuntimeFailure> runtimeFailure;
+            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_, &runtimeFailure)) {
                 Fail(std::move(status));
                 return consumed;
+            }
+            if (runtimeFailure) {
+                lastRuntimeFailure_ = *runtimeFailure;
+                constexpr std::size_t MaximumRuntimeFailures = 16;
+                if (runtimeFailures_.size() == MaximumRuntimeFailures)
+                    runtimeFailures_.erase(runtimeFailures_.begin());
+                runtimeFailures_.push_back(std::move(*runtimeFailure));
             }
             if (!status.empty()) lastError_ = std::move(status);
             consumed = true;
@@ -2831,6 +2851,15 @@ bool WidgetBridgeClient::PumpEvents() {
         Fail(L"Invalid WidgetBridge event JSON: " + std::wstring(error.message()));
     }
     return consumed;
+}
+
+std::vector<WidgetBridgeRuntimeFailure>
+WidgetBridgeClient::TakeRuntimeFailures() noexcept {
+    std::unique_lock lock(requestMutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return {};
+    std::vector<WidgetBridgeRuntimeFailure> result;
+    result.swap(runtimeFailures_);
+    return result;
 }
 
 std::vector<std::wstring> WidgetBridgeClient::TakeInvalidatedWidgetIds() noexcept {

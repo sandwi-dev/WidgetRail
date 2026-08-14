@@ -224,7 +224,9 @@ int main() {
 
     using gba::input::ControllerActionContext;
     using gba::input::ControllerActionRoute;
+    using gba::input::FailedWidgetActionRoute;
     using gba::input::RouteControllerAction;
+    using gba::input::RouteFailedWidgetAction;
     using gba::input::RouteUnhandledControllerAction;
     Check(RouteControllerAction(ControllerActionContext::Tray, L"A") ==
               ControllerActionRoute::HostActivate,
@@ -264,6 +266,26 @@ int main() {
               ControllerActionContext::RootWidgetScope, L"X") ==
               ControllerActionRoute::None,
           "unhandled non-Back actions never become host navigation");
+    Check(RouteFailedWidgetAction(
+              true, gba::input::NavigationEventPhase::Pressed, L"A") ==
+              FailedWidgetActionRoute::Retry,
+          "failed open-widget A retains the explicit recovery action");
+    Check(RouteFailedWidgetAction(
+              true, gba::input::NavigationEventPhase::Pressed, L"B") ==
+              FailedWidgetActionRoute::HostBackToDashboard,
+          "failed open-widget B remains host-owned Back navigation");
+    Check(RouteFailedWidgetAction(
+              false, gba::input::NavigationEventPhase::Pressed, L"B") ==
+              FailedWidgetActionRoute::Inert,
+          "failed dashboard B is not redirected through widget input authority");
+    Check(RouteFailedWidgetAction(
+              true, gba::input::NavigationEventPhase::Repeated, L"A") ==
+              FailedWidgetActionRoute::Inert,
+          "a held recovery button cannot start a second worker generation");
+    Check(RouteFailedWidgetAction(
+              true, gba::input::NavigationEventPhase::Pressed, L"X") ==
+              FailedWidgetActionRoute::Inert,
+          "all other failed-widget actions remain inert");
 
     using gba::input::ShouldTransferFocusToTray;
     Check(ShouldTransferFocusToTray(NavigationDirection::Down, true, false, false),

@@ -46,6 +46,17 @@ struct WidgetSessionFailure final {
     std::wstring safeMessage;
 };
 
+enum class WidgetPresentationAuthority {
+    Unavailable,
+    Current,
+    FailureRetained,
+};
+
+struct WidgetSessionPresentation final {
+    const WidgetSnapshot* snapshot{};
+    WidgetPresentationAuthority authority{WidgetPresentationAuthority::Unavailable};
+};
+
 struct WidgetSessionRuntimeChange final {
     std::wstring widgetId;
     std::wstring previousInstanceId;
@@ -135,11 +146,17 @@ public:
     [[nodiscard]] const WidgetDescriptor* FindDescriptor(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] bool Contains(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] const WidgetSnapshot* Snapshot(std::wstring_view widgetId) const noexcept;
+    [[nodiscard]] WidgetSessionPresentation Presentation(
+        std::wstring_view widgetId) const noexcept;
     [[nodiscard]] const WidgetSessionFailure* Failure(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] std::optional<WidgetLifecycleState> Lifecycle(
         std::wstring_view widgetId) const noexcept;
 
     void RecordFailure(
+        std::wstring_view widgetId,
+        WidgetSessionFailureStage stage,
+        std::wstring safeMessage);
+    void RecordRuntimeFailure(
         std::wstring_view widgetId,
         WidgetSessionFailureStage stage,
         std::wstring safeMessage);

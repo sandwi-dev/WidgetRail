@@ -18,6 +18,7 @@ namespace {
 using namespace std::chrono_literals;
 using gba::WidgetDescriptor;
 using gba::WidgetLifecycleState;
+using gba::WidgetPresentationAuthority;
 using gba::WidgetSessionCoordinator;
 using gba::WidgetSessionEventKind;
 using gba::WidgetSessionFailureStage;
@@ -178,6 +179,10 @@ void CatalogReplacementAndLastGoodSnapshot() {
     });
     assert(coordinator.Snapshot(L"alpha") &&
            coordinator.Snapshot(L"alpha")->sequence == 1);
+    const auto admittedPresentation = coordinator.Presentation(L"alpha");
+    assert(admittedPresentation.snapshot &&
+           admittedPresentation.snapshot->sequence == 1 &&
+           admittedPresentation.authority == WidgetPresentationAuthority::Current);
 
     bridge.snapshots.erase(L"alpha");
     assert(coordinator.RequestSnapshot(L"alpha"));
@@ -189,6 +194,31 @@ void CatalogReplacementAndLastGoodSnapshot() {
     assert(failure.back().failure.stage == WidgetSessionFailureStage::Snapshot);
     assert(coordinator.Snapshot(L"alpha") &&
            coordinator.Snapshot(L"alpha")->sequence == 1);
+    const auto failurePresentation = coordinator.Presentation(L"alpha");
+    assert(failurePresentation.snapshot &&
+           failurePresentation.snapshot->sequence == 1 &&
+           failurePresentation.authority ==
+               WidgetPresentationAuthority::FailureRetained);
+    coordinator.RecordRuntimeFailure(
+        L"alpha", WidgetSessionFailureStage::Start, L"primary start failure");
+    coordinator.RecordFailure(
+        L"alpha", WidgetSessionFailureStage::Lifecycle, L"secondary exit failure");
+    assert(coordinator.Failure(L"alpha") &&
+           coordinator.Failure(L"alpha")->stage == WidgetSessionFailureStage::Start &&
+           coordinator.Failure(L"alpha")->safeMessage == L"primary start failure");
+
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2);
+    assert(coordinator.RequestSnapshot(L"alpha", true));
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    const auto recoveredPresentation = coordinator.Presentation(L"alpha");
+    assert(recoveredPresentation.snapshot &&
+           recoveredPresentation.snapshot->sequence == 2 &&
+           recoveredPresentation.authority == WidgetPresentationAuthority::Current);
+    assert(!coordinator.Failure(L"alpha"));
 
     bridge.catalog = {
         Descriptor(L"alpha", L"alpha.two", L"runtime-2", L"view-2"),
@@ -204,6 +234,8 @@ void CatalogReplacementAndLastGoodSnapshot() {
            change.availableWidgetIds.front() == L"alpha");
     assert(change.runtimeChanges.size() == 2);
     assert(!coordinator.Snapshot(L"alpha"));
+    assert(coordinator.Presentation(L"alpha").authority ==
+           WidgetPresentationAuthority::Unavailable);
     assert(!coordinator.Contains(L"beta"));
 }
 

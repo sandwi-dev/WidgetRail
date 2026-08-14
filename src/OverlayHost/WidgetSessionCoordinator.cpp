@@ -205,7 +205,6 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 lifecycleTargets_.erase(request.widgetId);
             } else {
                 lifecycleStates_.insert_or_assign(request.widgetId, request.lifecycle);
-                failures_.erase(request.widgetId);
             }
             events.push_back({
                 WidgetSessionEventKind::LifecycleChanged,
@@ -239,6 +238,18 @@ const WidgetSnapshot* WidgetSessionCoordinator::Snapshot(
     return found == snapshots_.end() ? nullptr : &found->second;
 }
 
+WidgetSessionPresentation WidgetSessionCoordinator::Presentation(
+    const std::wstring_view widgetId) const noexcept {
+    const auto* snapshot = Snapshot(widgetId);
+    if (!snapshot) return {};
+    return {
+        snapshot,
+        failures_.contains(std::wstring(widgetId))
+            ? WidgetPresentationAuthority::FailureRetained
+            : WidgetPresentationAuthority::Current,
+    };
+}
+
 const WidgetSessionFailure* WidgetSessionCoordinator::Failure(
     const std::wstring_view widgetId) const noexcept {
     const auto found = failures_.find(std::wstring(widgetId));
@@ -257,8 +268,24 @@ void WidgetSessionCoordinator::RecordFailure(
     const std::wstring_view widgetId,
     const WidgetSessionFailureStage stage,
     std::wstring safeMessage) {
-    failures_.insert_or_assign(
-        std::wstring(widgetId), FailureFrom(stage, std::move(safeMessage)));
+    const auto id = std::wstring(widgetId);
+    const auto current = failures_.find(id);
+    if (current != failures_.end() &&
+        current->second.stage == WidgetSessionFailureStage::Start &&
+        stage != WidgetSessionFailureStage::Start) {
+        return;
+    }
+    failures_.insert_or_assign(id, FailureFrom(stage, std::move(safeMessage)));
+}
+
+void WidgetSessionCoordinator::RecordRuntimeFailure(
+    const std::wstring_view widgetId,
+    const WidgetSessionFailureStage stage,
+    std::wstring safeMessage) {
+    const auto id = std::wstring(widgetId);
+    RevokeRequests(id);
+    awaitingRestartSnapshot_.erase(id);
+    RecordFailure(id, stage, std::move(safeMessage));
 }
 
 void WidgetSessionCoordinator::ClearFailure(const std::wstring_view widgetId) {
