@@ -10,11 +10,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main contains accepted widgets integrations DLV-225 `3eb0eaf`, DLV-226
-  `9755406`, DLV-228 `220a415`, and DLV-229 `1ddedb4` over planner commit
-  `b3707a2`, accepted DLV-227 integration `856bbbb`, accepted DLV-206 integration
-  `5cbd4cf`, corrected DLV-224 integration `02750ba`, and provisional product
-  commit `c2b6456`.
+- Local main contains accepted DLV-230 integration `fe2e52c` over accepted
+  widgets integrations DLV-225 `3eb0eaf`, DLV-226 `9755406`, DLV-228
+  `220a415`, and DLV-229 `1ddedb4`, planner commit `b3707a2`, accepted DLV-227
+  integration `856bbbb`, accepted DLV-206 integration `5cbd4cf`, corrected
+  DLV-224 integration `02750ba`, and provisional product commit `c2b6456`.
   DLV-206 corrects performance/temporal evidence provenance without expanding
   its measurement scope. The DLV-224 correction preserves
   omitted native snapshot versions as legacy v1 while rejecting present
@@ -43,10 +43,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
   now removes the Settings root dead height through Content sizing, DLV-228
   restores Audio Mixer row/slider width consumption, and DLV-229 locks the
   Network preferred first-page admission that exposes the complete scan state.
-  DLV-222 owns the fixed panel/guide/tray spacing already integrated; DLV-230 is
-  actively correcting the remaining detached/weak YT Music composition. The
-  freshly launched packaged Release and the user's physical verdict remain the
-  final visual authority.
+  DLV-222 owns the fixed panel/guide/tray spacing already integrated; DLV-230
+  source/package validation closes the remaining detached/weak YT Music
+  composition. Its visible 0.2.9 launch awaits the bounded catalog cleanup
+  approval below, and the user's physical verdict remains the final visual
+  authority.
 - The coherent DLV-222/DLV-223 Release had Community YT Music 0.2.8 enabled and
   ran cleanly as planner-owned PID 27128. It exited normally through `WM_CLOSE`
   when the planner began the DLV-224 rebuild. Corrected main now compiles and
@@ -157,7 +158,7 @@ only production presentation path.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229 are preserved through `1a8c201`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-230 active with uncommitted YT Music files; do not review or integrate until its clean commit |
+| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
 | Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted DLV-206/DLV-227 are preserved through `86a2a23`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-231 assigned after accepted DLV-227 integration `856bbbb` |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
@@ -514,7 +515,7 @@ body-scroll offset in the preferred viewport and remain focus-revealable at the
 minimum viewport. No dynamic state was hidden and no native identity rule or
 guessed taller size was introduced.
 
-### Assigned — DLV-230: YT Music panel cohesion
+### Done — DLV-230: YT Music panel cohesion
 
 Refine the single responsive Community YT Music semantic composition so its
 content envelope feels visually attached to fixed host chrome, uses available
@@ -523,6 +524,16 @@ all eight actions, explicit focus adjacency, lifecycle, and Community
 isolation. Do not change the fixed host offsets per widget or introduce another
 page tree. Run focused YT Music, real-snapshot/native-renderer, surface, and
 package lifecycle evidence; physical composition remains the final verdict.
+
+Accepted as implementation commit `7323468` and integrated into main as
+`fe2e52c`. YT Music 0.2.9 keeps one responsive tree and uses one full-width
+raised panel for artwork, metadata, progress, and both controller rows. All
+eight actions, explicit focus adjacency, compact/preferred reflow, lifecycle,
+authentication, and Community isolation remain unchanged. YT Music 60/60, the
+real managed snapshot/production GBSS/native Taffy route 82 checks, and the
+isolated immutable-package lifecycle are green. The 0.2.9 archive SHA-256 is
+`ca334cc...9aac`. Visible launch is separately blocked by the live catalog's
+eight-version ceiling, not by product/package validation.
 
 No later widgets milestone is currently sound enough to pre-authorize. DLV-230
 closes the final named visual defect in the user-reported cluster; later widget
@@ -546,7 +557,8 @@ Release rather than manufacture speculative style changes.
    Settings root adopts bounded Content height, the eight-widget policy audit
    retains stable provider/list envelopes, Audio consumes generic admitted
    width, and Network exposes its complete preferred scan state. DLV-230 is
-   active and remains unintegrated until its clean YT Music commit is reviewed.
+   accepted and integrated as `fe2e52c`, completing the source-side visual
+   correction cluster.
 6. DLV-206 and DLV-227 are accepted and integrated through main `856bbbb`.
    The native DLV-206 Release was rebuilt from main and visibly launched as PID
    45452 with SHA-256 `bc7046...f6ea8`; DLV-227 changes only fixture/build/docs
@@ -559,8 +571,15 @@ Release rather than manufacture speculative style changes.
    an unrelated red `AudioMixerScrollHostTests` startup caused by its omitted
    `OverlayPlatformInterop.dll`. A full `-SkipTests` package refresh succeeded;
    the coherent accepted Release is visibly running as PID 44528 with SHA-256
-   `C0F0F3...D7478`. DLV-233 corrects only that temporary-install fixture after
-   the already-started DLV-231 milestone.
+   `C0F0F3...D7478`. That process exited normally for the DLV-230 package
+   refresh. DLV-233 corrects only the temporary-install fixture after the
+   already-started DLV-231 milestone.
+8. The accepted YT Music 0.2.9 package builds, validates, and packs from main,
+   but the live catalog already contains eight immutable YT Music versions and
+   rejects installation with `installed_widget_version_limit`. The failed
+   helper temporarily disabled the package; the planner immediately re-enabled
+   active 0.2.8. No coherent DLV-230 overlay is running pending user approval
+   for the exact inactive 0.2.0 generation removal.
 
 ## Manual and packaged verification queue
 
@@ -568,11 +587,12 @@ Release rather than manufacture speculative style changes.
   authoritative for panel/tray cohesion, controller feel, motion, Audio slider
   sizing, Network first-page visibility, Settings dead space, and YT Music
   composition.
-- The accepted DLV-225/226/228/229 Release is running as PID 44528. The
-  computer-control service again omitted the no-taskbar OverlayHost, so no live
-  first-page visual pass is claimed; exact-session startup, DirectComposition,
-  platform appearance, launcher experience, work-area placement, foreground,
-  and visible GameInput lease diagnostics are clean.
+- The accepted DLV-225/226/228/229 Release ran as PID 44528 and its exact-session
+  startup, DirectComposition, platform appearance, launcher experience,
+  work-area placement, foreground, and visible GameInput lease diagnostics were
+  clean. It exited normally for DLV-230 packaging. The computer-control service
+  omitted the no-taskbar OverlayHost, so no live first-page visual pass is
+  claimed.
 - Physical controller/display evidence remains required for changed navigation,
   focus reveal, or visual presentation. It is not Avalonia acceptance debt.
 - Live Spotify account/Premium/Web Playback/EME/OAuth are credential-gated.
@@ -587,6 +607,7 @@ Release rather than manufacture speculative style changes.
 | --- | --- | --- |
 | Avalonia migration/cutover | Failed and cancelled by user decision. | None. A new experiment requires a new explicit user decision; do not resume old AVP work. |
 | DLV-217 local integration | Exact aggregate is 40/41 with one known reviewer-history-link red. | Explicit user approval to integrate despite that honest documentation-only red step. |
+| DLV-230 visible 0.2.9 launch | Live YT Music catalog is at the eight-version ceiling (`0.2.0` through active `0.2.8` with 0.2.6 absent), so accepted 0.2.9 cannot install. | User approval to run the bounded destructive public operation `gbar repair remove org.gbar.samples.ytmusic 0.2.0`, then install/enable accepted 0.2.9 and visibly launch it. The operation removes only the inactive non-selected 0.2.0 package generation and preserves private data/provider secrets. |
 | Trusted fixed-video/PiP | Paused WebView2 measured about 348.7 MiB private and 4% CPU against prior gate. | User changes budget or authorizes content/process experiment. |
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
@@ -598,6 +619,7 @@ Release rather than manufacture speculative style changes.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-230 | `7323468`, integrated as `fe2e52c`: YT Music 0.2.9 full-width raised media panel, one responsive tree, 60/60 widget and 82 native renderer checks; visible install awaits bounded catalog cleanup approval. |
 | DLV-229 | `1a8c201`, integrated as `1ddedb4`: explicit Preferred/Preferred Network envelope with real preferred first-page scan-state visibility and constrained focus reveal. |
 | DLV-228 | `2784401`, integrated as `220a415`: generic parent-relative Audio width, stretched rows/cards, and sliders owning the flexible remainder at compact and preferred widths. |
 | DLV-226 | `2276b4c`, integrated as `9755406`: truthful eight-widget axis-policy table; only static Settings root adopts Content height. |
@@ -607,7 +629,6 @@ Release rather than manufacture speculative style changes.
 | DLV-224 | `912aea9`, integrated as `02750ba`: independent Preferred/Content/FillAvailable axes, bounded Taffy intrinsic sizing, legacy native v1 omission preserved, malformed versions fail closed, and 286/286 direct native parser/accessibility checks. |
 | DLV-222 | `e8af5be`, integrated by `073e423`: generic Taffy stretch correction, authored variable surfaces, bottom-anchored panel/guide/tray, stable full-capacity tray band, and green focused plus eight-widget linked-host evidence. |
 | DLV-223 | `6b916e8`: responsive YT Music 0.2.8 composition plus real managed-snapshot/GBSS-to-native-renderer proof at 760x440 and 480x340; 79/79 dedicated checks. |
-| DLV-221 | `8836e07`: pinned Taffy 0.12.2 static geometry engine, narrow Rust/C ABI, old custom solver removed, focused native/Rust/eight-widget/performance evidence accepted; canonical aggregate retained red at the pre-product manifest self-check. |
 
 Do not mark the continuing delivery goal complete because these milestones
 closed. Continue until the user pauses/replaces it or all useful lanes reach a
