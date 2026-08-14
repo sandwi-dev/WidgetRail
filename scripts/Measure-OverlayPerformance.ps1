@@ -36,8 +36,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$script:SchemaVersion = 2
-$script:HarnessVersion = '2.0.0'
+$script:SchemaVersion = 3
+$script:HarnessVersion = '2.1.0'
 $script:OverlayWindowClass = 'GameBarAlternative.OverlayHost'
 $script:PerformanceResetMessage = 0x8008
 
@@ -382,7 +382,7 @@ function Get-BuildMetadata {
 function Add-TrackedProcesses {
     param(
         [Parameter(Mandatory)][hashtable]$Tracked,
-        [Parameter(Mandatory)][object[]]$Rows,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Rows,
         [Parameter(Mandatory)][datetime]$EarliestStartUtc
     )
 
@@ -407,6 +407,25 @@ function Add-TrackedProcesses {
             # Process exit races are expected while sampling.
         }
     }
+}
+
+function Get-TrackedProcessProvenance {
+    param(
+        [Parameter(Mandatory)][hashtable]$Tracked,
+        [Parameter(Mandatory)][int]$RootProcessId
+    )
+
+    return @($Tracked.Values |
+        Sort-Object { [datetime]$_.startTimeUtc }, { [int]$_.processId } |
+        ForEach-Object {
+            [ordered]@{
+                processId = [int]$_.processId
+                startTimeUtc = ([datetime]$_.startTimeUtc).ToUniversalTime().ToString('o')
+                role = Get-ProcessRole -ProcessId ([int]$_.processId) `
+                    -RootProcessId $RootProcessId -Name ([string]$_.name)
+                name = [IO.Path]::GetFileNameWithoutExtension([string]$_.name)
+            }
+        })
 }
 
 function Get-Sample {
@@ -725,14 +744,21 @@ function Invoke-ScenarioMeasurement {
         [Parameter(Mandatory)][int]$LogicalProcessorCount,
         [Parameter(Mandatory)][string]$StartupErrorPath,
         [Parameter(Mandatory)][string]$RuntimeDiagnosticsPath,
-        [Parameter(Mandatory)][string]$RuntimeDiagnosticsNonce
+        [Parameter(Mandatory)][string]$RuntimeDiagnosticsNonce,
+        [Parameter(Mandatory)][string]$ProcessProfile,
+        [Parameter(Mandatory)]$BuildMetadata
     )
 
     # Start-Process joins ArgumentList entries into one command line. Windows
     # paths cannot contain a quote, so explicit quoting is sufficient for an
     # output directory containing spaces.
     $quotedRuntimeDiagnosticsPath = '"' + $RuntimeDiagnosticsPath + '"'
-    $arguments = @(
+    $arguments = @()
+    if ($ScenarioName -ne 'Hidden') {
+        $arguments += '--show'
+    }
+    $arguments += @(
+        '--process-profile', $ProcessProfile,
         '--performance-state', $ScenarioName.ToLowerInvariant(),
         '--performance-widget-id', $WidgetId,
         '--performance-diagnostics-path', $quotedRuntimeDiagnosticsPath,
@@ -846,6 +872,17 @@ function Invoke-ScenarioMeasurement {
             name = $ScenarioName.ToLowerInvariant()
             arguments = $arguments
             startedUtc = $launchUtc.ToString('o')
+            provenance = [ordered]@{
+                scenario = $ScenarioName.ToLowerInvariant()
+                processProfile = $ProcessProfile
+                rootProcessId = $process.Id
+                rootProcessStartUtc = $rootStartUtc.ToString('o')
+                repositoryCommit = $BuildMetadata.gitCommit
+                executableSha256 = $BuildMetadata.executableSha256
+                worktreeDirty = $BuildMetadata.gitWorktreeDirty
+                observedProcesses = @(Get-TrackedProcessProvenance `
+                    -Tracked $tracked -RootProcessId $process.Id)
+            }
             startupObservations = [ordered]@{
                 startProcessReturnedMilliseconds = [Math]::Round($launchReturnedMilliseconds, 3)
                 bridgeChildObservedMilliseconds = [Math]::Round($bridgeObserved, 3)
@@ -907,6 +944,16 @@ function ConvertTo-PerformanceMarkdown {
     $lines.Add("Build: ``$($Report.build.configuration)`` ``$($Report.build.executableSha256.Substring(0, 12))``; package $([Math]::Round($Report.build.packageBytes / 1MB, 1)) MiB")
     $lines.Add("Machine: $($Report.machine.processor.name), $($Report.machine.processor.logicalProcessorCount) logical processors, $([Math]::Round($Report.machine.totalVisibleMemoryBytes / 1GB, 1)) GiB, $($Report.machine.operatingSystem.caption) build $($Report.machine.operatingSystem.buildNumber)")
     $lines.Add('')
+    $lines.Add('Each scenario is a separate ephemeral process profile. This report does not measure, stop, or reuse an already-running ordinary-profile host.')
+    $lines.Add('')
+    $lines.Add('## Scenario provenance')
+    $lines.Add('')
+    foreach ($scenarioResult in $Report.scenarios) {
+        $roles = [string]::Join(', ', @($scenarioResult.provenance.observedProcesses |
+            ForEach-Object { "$($_.role):$($_.name):$($_.processId)" }))
+        $lines.Add("- **$($scenarioResult.name)** - root PID ``$($scenarioResult.provenance.rootProcessId)`` started ``$($scenarioResult.provenance.rootProcessStartUtc)``; profile ``$($scenarioResult.provenance.processProfile)``; commit ``$($scenarioResult.provenance.repositoryCommit)``; executable SHA-256 ``$($scenarioResult.provenance.executableSha256)``; observed roles ``$roles``.")
+    }
+    $lines.Add('')
     $lines.Add('| Scenario | Ready proxy | Working set p95 | Private bytes p95 | CPU p95 | Processes p95 | Timer msgs/s | Guide fallback msgs/s | D2D frames |')
     $lines.Add('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
     foreach ($scenarioResult in $Report.scenarios) {
@@ -926,6 +973,8 @@ function ConvertTo-PerformanceMarkdown {
     }
     $lines.Add('## Metric definitions and limits')
     $lines.Add('')
+    $lines.Add("- Available metrics: $([string]::Join(', ', $Report.metricAvailability.available)).")
+    $lines.Add("- Unavailable metrics: $([string]::Join(', ', $Report.metricAvailability.unavailable)).")
     $lines.Add('- Working set, private bytes, CPU time, handles, and threads come from bounded .NET process queries for the spawned host and descendants observed through parent-process relationships. Private working set is deliberately unavailable in this baseline because its CIM provider does not honor reliable bounded collection on this machine.')
     $lines.Add('- CPU is the target process-tree CPU-time delta divided by wall time and logical processor count. Sampling starts after the readiness proxy and configured warmup.')
     $lines.Add('- The host receives an explicit ephemeral Hidden, Visible, or Interactive startup state for the selected installed widget. This mode never writes user tray order, last-widget, or reopen-preference state.')
@@ -988,6 +1037,17 @@ function Invoke-SelfTest {
     $descendants = @(Get-DescendantRows -RootProcessId 10 -Rows $rows)
     Assert-Equal 2 $descendants.Count 'Descendant traversal included an unrelated process or missed a nested child.'
     Assert-Equal 12 ([int]$descendants[1].ProcessId) 'Nested descendant order failed.'
+    $emptyTracked = @{}
+    Add-TrackedProcesses -Tracked $emptyTracked -Rows @() -EarliestStartUtc $identityStart
+    Assert-Equal 0 $emptyTracked.Count 'Empty process-tree snapshots must be accepted during startup.'
+    $tracked = @{
+        root = [ordered]@{ processId=10; startTimeUtc=$identityStart; name='OverlayHost.exe'; executablePath='OverlayHost.exe' }
+        worker = [ordered]@{ processId=12; startTimeUtc=$identityStart.AddSeconds(1); name='WidgetWorkerHost.exe'; executablePath='WidgetWorkerHost.exe' }
+    }
+    $provenance = @(Get-TrackedProcessProvenance -Tracked $tracked -RootProcessId 10)
+    Assert-Equal 2 $provenance.Count 'Process provenance omitted an observed process.'
+    Assert-Equal 'host' $provenance[0].role 'Process provenance omitted the root role.'
+    Assert-Equal 'worker' $provenance[1].role 'Process provenance omitted the worker role.'
 
     $syntheticSamples = @(
         [pscustomobject]@{ processCount=1; discoveredProcessCount=1; totals = [pscustomobject]@{ privateWorkingSetBytes=10; privateBytes=20; workingSetBytes=30; handleCount=2; threadCount=1; normalizedCpuPercent=$null }; processes=@([pscustomobject]@{ role='host'; privateWorkingSetBytes=10; privateBytes=20 }) },
@@ -1029,7 +1089,7 @@ function Invoke-SelfTest {
     finally {
         Remove-Item -LiteralPath $runtimePath -Force -ErrorAction SilentlyContinue
     }
-    Write-Host 'Measure-OverlayPerformance self-tests passed (19 assertions).'
+    Write-Host 'Measure-OverlayPerformance self-tests passed (23 assertions).'
 }
 
 if ($SelfTest) {
@@ -1080,10 +1140,12 @@ foreach ($scenarioName in @($Scenario | Select-Object -Unique)) {
         ("runtime-{0}.txt" -f $scenarioName.ToLowerInvariant())
     $runtimeNonce = [Convert]::ToHexString(
         [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()
+    $processProfile = "performance-$runId-$($scenarioName.ToLowerInvariant())"
     $results.Add((Invoke-ScenarioMeasurement -ScenarioName $scenarioName -ExecutablePath $OverlayPath `
         -LogicalProcessorCount $machine.processor.logicalProcessorCount `
         -StartupErrorPath $startupError -RuntimeDiagnosticsPath $runtimePath `
-        -RuntimeDiagnosticsNonce $runtimeNonce))
+        -RuntimeDiagnosticsNonce $runtimeNonce -ProcessProfile $processProfile `
+        -BuildMetadata $build))
 }
 
 $report = [ordered]@{
@@ -1118,6 +1180,26 @@ $report = [ordered]@{
         presentMon = Get-OptionalToolMetadata -Name 'PresentMon.exe'
         collected = $false
         reason = 'This baseline never elevates, starts a system-wide ETW session, or downloads an external presentation tool.'
+    }
+    metricAvailability = [ordered]@{
+        available = @(
+            'process-tree normalized CPU time',
+            'working set',
+            'private bytes',
+            'process count and observed child roles',
+            'handle count',
+            'thread count',
+            'host timer messages',
+            'host paint messages',
+            'successful Direct2D EndDraw calls'
+        )
+        unavailable = @(
+            'private working set',
+            'GPU utilization and presentation activity',
+            'OS scheduler wakeups and context-switch attribution',
+            'DWM or game presentation',
+            'long-run memory and handle trends'
+        )
     }
     scenarios = @($results)
     unmeasured = @(

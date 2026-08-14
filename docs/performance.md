@@ -373,3 +373,24 @@ Until those artifacts exist, do not describe the prototype as meeting the
 performance budgets. The next reference widget can expose measured resource
 data only through a reviewed, typed performance capability; it must not become
 a private host shortcut or imply that an unimplemented capability ID is public.
+
+### Accepted-host provenance correction (DLV-206)
+
+The bounded host sampler launches a new isolated process profile for each
+scenario. It does not measure, reuse, or stop an already-running ordinary
+production-profile host. Every scenario record now retains the exact root PID
+and creation time, scenario and private profile, repository commit, executable
+SHA-256, dirty-worktree flag, and the PID/start/name/role identity of every
+observed host, bridge, worker, and other child. The report also separates the
+metrics actually available from process queries and native counters from
+private-working-set, GPU/presentation, scheduler, and long-run metrics that
+remain unavailable.
+
+The eight-widget temporal route is separate evidence. Its output records its
+own production-shaped scenario name, root PID and creation FILETIME, private
+profile, repository commit, host SHA-256, and observed child roles. Retained
+and admitted timings accept a composition record only after the corresponding
+complete paint record has ended; a prior or unrelated commit cannot satisfy
+the ordering check. These changes correct provenance and temporal ordering
+only. They add no scenario, metric provider, threshold, or product optimization,
+and numeric results are authoritative only in a retained clean-commit report.

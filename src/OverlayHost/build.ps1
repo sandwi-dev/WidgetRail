@@ -776,9 +776,18 @@ function Invoke-WidgetSwitchHostTests {
     if (-not (Test-Path -LiteralPath $fixture)) {
         throw 'Widget switch fixture publish omitted WidgetSwitchFixture.exe.'
     }
+    $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $projectDirectory '..\..'))
+    $repositoryCommit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryCommit)) {
+        throw 'Widget switch provenance could not resolve the repository commit.'
+    }
+    $hostSha256 = (Get-FileHash -LiteralPath `
+        (Join-Path $outputDirectory 'OverlayHost.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
     & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
         --installation $outputDirectory `
-        --fixture-worker $fixture
+        --fixture-worker $fixture `
+        --repository-commit $repositoryCommit `
+        --host-sha256 $hostSha256
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
     }
@@ -2185,9 +2194,18 @@ if (-not $SkipTests) {
         if (-not (Test-Path -LiteralPath $widgetSwitchFixture)) {
             throw "Widget switch fixture publish omitted WidgetSwitchFixture.exe."
         }
+        $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $projectDirectory '..\..'))
+        $repositoryCommit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryCommit)) {
+            throw 'Widget switch provenance could not resolve the repository commit.'
+        }
+        $hostSha256 = (Get-FileHash -LiteralPath `
+            (Join-Path $outputDirectory 'OverlayHost.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
             --installation $outputDirectory `
-            --fixture-worker $widgetSwitchFixture
+            --fixture-worker $widgetSwitchFixture `
+            --repository-commit $repositoryCommit `
+            --host-sha256 $hostSha256
         if ($LASTEXITCODE -ne 0) {
             throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
         }

@@ -908,6 +908,15 @@ private:
                               *performanceState_ == L"safe-start"
             ? gba::WidgetLifecycleState::Interactive
             : gba::WidgetLifecycleState::Visible;
+        const auto deadline = std::chrono::steady_clock::now() +
+            std::chrono::seconds(5);
+        do {
+            ProcessWidgetSessionEvents();
+            const auto lifecycle = sessions_.Lifecycle(*performanceWidgetId_);
+            if (lifecycle && *lifecycle == expected) return true;
+            Sleep(5);
+        } while (std::chrono::steady_clock::now() < deadline);
+        ProcessWidgetSessionEvents();
         const auto lifecycle = sessions_.Lifecycle(*performanceWidgetId_);
         if (!lifecycle || *lifecycle != expected) {
             initializationError_ =

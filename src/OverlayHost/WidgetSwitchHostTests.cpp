@@ -1,6 +1,7 @@
 #include "OverlayHostTestSupport.h"
 
 #include <ole2.h>
+#include <TlHelp32.h>
 #include <Windows.h>
 
 #include <array>
@@ -44,6 +45,8 @@ constexpr char kDevelopmentNonceUtf8[] =
 struct Arguments final {
     fs::path installation;
     fs::path fixtureWorker;
+    std::string repositoryCommit;
+    std::string hostSha256;
 };
 
 struct Target final {
@@ -197,18 +200,74 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
     Arguments result;
     for (int index = 1; index < argc; ++index) {
         const std::wstring_view argument(argv[index]);
-        if ((argument == L"--installation" || argument == L"--fixture-worker") &&
+        if ((argument == L"--installation" || argument == L"--fixture-worker" ||
+             argument == L"--repository-commit" || argument == L"--host-sha256") &&
             index + 1 < argc) {
             if (argument == L"--installation") result.installation = argv[++index];
-            else result.fixtureWorker = argv[++index];
+            else if (argument == L"--fixture-worker") result.fixtureWorker = argv[++index];
+            else if (argument == L"--repository-commit")
+                result.repositoryCommit = WideToUtf8(argv[++index]);
+            else
+                result.hostSha256 = WideToUtf8(argv[++index]);
         } else {
             Fail("Usage: WidgetSwitchHostTests --installation <dir> "
-                 "--fixture-worker <exe>");
+                 "--fixture-worker <exe> --repository-commit <sha> "
+                 "--host-sha256 <sha256>");
         }
     }
-    Require(!result.installation.empty() && !result.fixtureWorker.empty(),
-            "Both --installation and --fixture-worker are required.");
+    Require(!result.installation.empty() && !result.fixtureWorker.empty() &&
+                !result.repositoryCommit.empty() && !result.hostSha256.empty(),
+            "Installation, fixture worker, repository commit, and host SHA-256 are required.");
     return result;
+}
+
+std::uint64_t ProcessStartFileTime(const HANDLE process) {
+    FILETIME created{}, exited{}, kernel{}, user{};
+    Require(GetProcessTimes(process, &created, &exited, &kernel, &user) != FALSE,
+            Win32Error("GetProcessTimes(OverlayHost)"));
+    ULARGE_INTEGER value{};
+    value.LowPart = created.dwLowDateTime;
+    value.HighPart = created.dwHighDateTime;
+    return value.QuadPart;
+}
+
+std::string ObservedChildRoles(const DWORD rootProcessId) {
+    struct Row final {
+        DWORD processId{};
+        DWORD parentProcessId{};
+        std::wstring name;
+    };
+    std::vector<Row> rows;
+    const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    Require(snapshot != INVALID_HANDLE_VALUE,
+            Win32Error("CreateToolhelp32Snapshot(process provenance)"));
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            rows.push_back({entry.th32ProcessID, entry.th32ParentProcessID,
+                            entry.szExeFile});
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+
+    std::vector<DWORD> parents{rootProcessId};
+    std::string result;
+    for (std::size_t cursor = 0; cursor < parents.size(); ++cursor) {
+        for (const auto& row : rows) {
+            if (row.parentProcessId != parents[cursor]) continue;
+            parents.push_back(row.processId);
+            std::string role = "other-child";
+            if (_wcsicmp(row.name.c_str(), L"WidgetBridge.exe") == 0)
+                role = "bridge";
+            else if (row.name.find(L"WidgetWorker") != std::wstring::npos ||
+                     row.name.find(L"WidgetSwitchFixture") != std::wstring::npos)
+                role = "worker";
+            if (!result.empty()) result += ',';
+            result += role + ':' + WideToUtf8(row.name) + ':' +
+                std::to_string(row.processId);
+        }
+    }
+    return result.empty() ? "none-observed" : result;
 }
 
 void FenceWindow(HWND window) {
@@ -319,6 +378,9 @@ void RunRetentionScenario(const Arguments& arguments) {
     std::vector<std::uint64_t> commitTimings;
     std::vector<std::uint64_t> geometryTimings;
     std::vector<std::uint64_t> motionCommitTimings;
+    std::vector<std::uint64_t> inputToRetainedMilliseconds;
+    std::vector<std::uint64_t> inputToAdmittedMilliseconds;
+    std::uint64_t firstAdmittedActivationMilliseconds{};
     const auto recordComposition = [&](const std::size_t after,
                                        const std::wstring_view label) {
         constexpr std::string_view placementNeedle =
@@ -453,6 +515,7 @@ void RunRetentionScenario(const Arguments& arguments) {
             lineEnd == std::string::npos ? std::string::npos : lineEnd - recordAt);
     };
     const auto switchTo = [&](const Target& target, const Target& previous) {
+        const auto inputStarted = std::chrono::steady_clock::now();
         const auto before = ReadUtf8(logPath).size();
         const auto signal = installation->StartupSignal(target.id);
         std::error_code ignored;
@@ -461,13 +524,36 @@ void RunRetentionScenario(const Arguments& arguments) {
             SendKeyDownAndPostRelease(window, target.key);
         else
             SendKey(window, target.key);
+        const auto retainedRecord = waitForPaint(
+            before, target, previous.id, "retained");
+        const auto retainedLog = ReadUtf8(logPath);
+        const auto retainedAt = retainedLog.find(retainedRecord, before);
+        Require(retainedAt != std::string::npos,
+                "Retained paint trace disappeared before composition validation");
+        const auto retainedEnd = retainedLog.find('\n', retainedAt);
+        const auto afterRetainedPaint = retainedEnd == std::string::npos
+            ? retainedLog.size() : retainedEnd + 1;
+        constexpr std::string_view completeNeedle =
+            "Composition frame committed content=complete";
+        constexpr std::string_view placedNeedle =
+            "Composition placement committed content=complete";
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    const auto pending = ReadUtf8(logPath);
+                    return pending.find(completeNeedle, afterRetainedPaint) !=
+                               std::string::npos ||
+                        pending.find(placedNeedle, afterRetainedPaint) !=
+                               std::string::npos;
+                }), "Retained source paint was not followed by a complete composition "
+                    "commit for " + WideToUtf8(target.label));
+        inputToRetainedMilliseconds.push_back(
+            static_cast<std::uint64_t>(std::chrono::duration_cast<
+                std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - inputStarted).count()));
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     std::error_code signalError;
                     return fs::exists(signal, signalError);
                 }), "Worker did not enter its first snapshot request for " +
                         WideToUtf8(target.label) + "; log=" + ReadUtf8(logPath));
-        const auto retainedRecord = waitForPaint(
-            before, target, previous.id, "retained");
         const auto duringStartup = ReadUtf8(logPath);
         const std::string admittedNeedle =
             "Widget presentation paint target=" + WideToUtf8(target.id) +
@@ -520,9 +606,16 @@ void RunRetentionScenario(const Arguments& arguments) {
                     record.find("sizing=retained-until-snapshot") != std::string::npos,
                 "Transition diagnostics omitted retained content and extent authority for " +
                     WideToUtf8(target.label));
-        recordComposition(admittedAt, target.label);
+        recordComposition(
+            admittedEnd == std::string::npos ? log.size() : admittedEnd + 1,
+            target.label);
+        inputToAdmittedMilliseconds.push_back(
+            static_cast<std::uint64_t>(std::chrono::duration_cast<
+                std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - inputStarted).count()));
     };
 
+    const auto firstActivationStarted = std::chrono::steady_clock::now();
     const auto audioBefore = ReadUtf8(logPath).size();
     SendKey(window, VK_RETURN);
     waitForPaint(audioBefore, kTargets[0], kTargets[0].id, "admitted");
@@ -544,7 +637,13 @@ void RunRetentionScenario(const Arguments& arguments) {
                 audioAdmittedRecord.find("tray-selected-visible=true") !=
                     std::string::npos,
             "Shared production tray did not retain every identity at its stable capacity");
-    recordComposition(audioAdmittedAt, kTargets[0].label);
+    recordComposition(
+        audioAdmittedEnd == std::string::npos ? audioLog.size() : audioAdmittedEnd + 1,
+        kTargets[0].label);
+    firstAdmittedActivationMilliseconds =
+        static_cast<std::uint64_t>(std::chrono::duration_cast<
+            std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - firstActivationStarted).count());
 
     const auto addedCatalogBefore = ReadUtf8(logPath).size();
     installation->PublishCatalogProbe(true);
@@ -767,6 +866,25 @@ void RunRetentionScenario(const Arguments& arguments) {
               << " motion-commit-max="
               << maximumMotionCommit
               << " samples=" << drawTimings.size() << '\n';
+    Require(inputToRetainedMilliseconds.size() == kTargets.size() - 1 &&
+                inputToAdmittedMilliseconds.size() == kTargets.size() - 1,
+            "Production temporal evidence omitted a widget switch.");
+    std::cout << "Production host temporal timing ms first-admitted="
+              << firstAdmittedActivationMilliseconds
+              << " input-to-retained-complete-max="
+              << *std::max_element(inputToRetainedMilliseconds.begin(),
+                                   inputToRetainedMilliseconds.end())
+              << " input-to-admitted-complete-max="
+              << *std::max_element(inputToAdmittedMilliseconds.begin(),
+                                   inputToAdmittedMilliseconds.end())
+              << " switch-samples=" << inputToAdmittedMilliseconds.size() << '\n';
+    std::cout << "Production host provenance scenario=eight-widget-switch"
+              << " root-pid=" << host->Id()
+              << " root-start-filetime=" << ProcessStartFileTime(host->Process())
+              << " profile=" << WideToUtf8(installation->ProcessProfile())
+              << " commit=" << arguments.repositoryCommit
+              << " host-sha256=" << arguments.hostSha256
+              << " child-roles=" << ObservedChildRoles(host->Id()) << '\n';
     host.reset();
     installation.reset();
 }

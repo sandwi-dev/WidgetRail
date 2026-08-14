@@ -4553,3 +4553,24 @@ is named by that failure. The required canonical checkpoint is intentionally
 run exactly once only after this coherent implementation is committed cleanly;
 its retained exact-commit result is reported separately and is not preclaimed
 here.
+
+### Truthful bounded performance provenance (DLV-206)
+
+The private performance harness now records exact scenario/process identity
+instead of describing ephemeral measurement profiles as the ordinary live
+host. JSON and Markdown retain root PID/start, scenario/profile, commit,
+executable SHA-256, dirty state, observed child roles, and explicit available
+and unavailable metrics. The existing Hidden/Visible/Interactive measurement
+scope, sampling cadence, diagnostic-only comparisons, and cleanup boundary are
+unchanged.
+
+The separate eight-widget production-host fixture now emits its own
+PID/start/profile/commit/executable/child-role provenance. Its retained and
+admitted temporal checks begin composition lookup after the matching paint line
+ends, so an earlier commit cannot satisfy the evidence. Bounded pre-commit
+validation passes all 23 harness assertions, a Release native build, the
+eight-widget route with eight composition samples and seven switches, and one
+Hidden/Visible 21-sample observation. Exact clean-commit timing and resource
+values belong to the retained reports and completion record; this status does
+not convert unavailable private-working-set, GPU, presentation, or scheduler
+data into a claim.
