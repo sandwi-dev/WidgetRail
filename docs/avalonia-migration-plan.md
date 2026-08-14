@@ -31,8 +31,9 @@ The word *bridge* therefore names two different responsibilities:
 Avalonia controls never parse transport messages and never talk directly to a
 widget process. The managed facade translates the existing authenticated
 transport into typed descriptor, lifecycle, validated-snapshot, exact-action,
-artwork, and failure events. One generic semantic-tree adapter maps those
-events to standard Avalonia controls.
+artwork, and failure events. One generic semantic presentation compiler maps
+those events into a small controller-first Avalonia component vocabulary backed
+by standard controls.
 
 ```mermaid
 flowchart TB
@@ -40,7 +41,7 @@ flowchart TB
     Runtime["Existing worker runtime and process supervision"]
     Bridge["Existing WidgetBridge backend"]
     Session["Managed typed presentation-session facade"]
-    Adapter["Generic semantic-tree to Avalonia adapter"]
+    Adapter["Generic semantic presentation compiler"]
     UI["Avalonia shell, controls, styles, animation, XYFocus and UIA"]
     Native["Narrow native platform component: GameInput Guide, device lifecycle, targeting, DPI and placement"]
 
@@ -139,9 +140,26 @@ not acceptable.
 
 ## Generic presentation adapter
 
-The adapter consumes a validated current `ViewSnapshot` and creates standard
-Avalonia controls for the protocol's semantic node kinds. It is one renderer,
-not a page framework for individual widgets.
+The adapter consumes a validated current `ViewSnapshot` and creates a small
+internal controller-first component vocabulary backed by standard Avalonia
+controls: page header, section, card, action row, tile/list item, collection,
+media transport, slider row, status/loading/empty/error panel, and advanced
+slot surface. It is one renderer, not a page framework for individual widgets.
+The compiler may use only `ViewNodeKind`, typed node properties, collection
+keys, scroll axis, action-surface orientation, responsive visibility, and
+declared advanced preset/slots. It may not infer presentation from widget
+identity, strings, element IDs, providers, or a known tree shape.
+
+The shell has one stable outer geometry for the active monitor/work area and
+shell profile. `WidgetSurfaceHints` choose a responsive mode for the content
+viewport only; they never resize or move the overlay HWND, tray, guide, or
+shell chrome during widget switching. The tray is a fixed bottom band and
+content transitions occur above it.
+
+There is one scrolling owner per axis. The shell owns ordinary page scrolling;
+an explicit semantic Scroll/Grid owns its own scrolling or virtualization.
+The adapter never wraps an already scrolling semantic root in another
+ScrollViewer.
 
 It must preserve:
 
@@ -180,10 +198,14 @@ AVP-004 is a reuse-first migration proof, not eight reconstructed pages.
    Community widgets through their ordinary package/runtime/bridge paths.
    Differences belong in semantic snapshots and generic templates, never in
    handwritten widget pages.
-5. **Shell integration and polish:** retain the accepted AVP visual system,
-   compiled bindings, virtualization, transitions, XYFocus behavior, standard
-   UIA, stationary tray, Back, quick actions, reduced motion, responsive
-   containment, and the existing production Guide semantics.
+5. **Shell integration and polish:** use the clean AVP-001/AVP-002 visual and
+   interaction baseline with a fixed work-area-relative shell, stationary tray,
+   non-overlapping guide/content bands, compiled bindings, virtualization,
+   content-only transitions, standard UIA, reduced motion, responsive content
+   modes, and existing production Guide semantics. Controller navigation is a
+   first-class shell state machine: tray Left/Right selects in place, Up/A enters
+   content, B returns to tray, B on tray closes, the final downward content edge
+   returns to tray, and component zones own predictable slider/scroll behavior.
 6. **Cutover decision:** compare behavior, resource use, startup, lifecycle,
    accessibility, controller feel, and failure recovery before changing the
    production launcher. Do not remove the native presentation stack until the

@@ -9,15 +9,16 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `09f038f`, including accepted DLV-216, the
+- Production code: local main `df30bc5`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
-  the independently accepted AVP-004 source correction through `b998d62`,
-  integrated as `9688455`. No production renderer cutover is implied.
+  the independently accepted AVP-004 source correction through `16b33d9`,
+  integrated as `09f038f`. No production renderer cutover is implied.
 - Latest reviewed Avalonia implementation: source `16b33d9` on
   `codex/avalonia-prototype`, integrated through main `09f038f`. Its automated
-  source evidence is accepted; the exact copied runtime is visibly running as
-  PID 34756 with a live atomic manual-session input trace. Physical acceptance
-  remains open for the user's eight-page/controller verdict.
+  evidence remains useful, but the user's third physical verdict rejects the
+  presentation architecture. The rejected candidate and its owned process tree
+  exited normally; no overlay is currently visible. AVP-004-REDESIGN is the
+  current assignment.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
   kept closed during the isolated physical test. Rejected AVP PIDs 33332 and
@@ -82,7 +83,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Source correction `16b33d9` accepted/integrated as main `09f038f`; physical verdict pending on PID 34756; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Assigned AVP-004-REDESIGN from main `df30bc5`; fixed shell and controller-native presentation; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -525,7 +526,17 @@ is visibly running as PID 34756 with `--source-commit 16b33d9...` and live
 GameInput lease and foreground-exclusive path; connected/routed physical input
 remains deliberately false until the user exercises the controller.
 
-Next correction is visible-first and root-cause bounded:
+The user's third physical walkthrough rejects the result despite the accepted
+source evidence. The outer overlay and tray resize when the active widget's
+`WidgetSurfaceHints` are applied to the top-level window; the tray therefore is
+not stationary. The presentation still resembles a desktop application with
+controller support rather than a controller-native dashboard, and clipping and
+composition remain materially worse than the hand-authored AVP-001 shell. The
+candidate exited through its corrected normal close path and no AVP or bridge
+process remains. This verdict supersedes the patch-oriented correction lists
+below. Do not execute them as the current assignment.
+
+Superseded correction record:
 
 - Add one bounded manual-session trace output that atomically retains native
   controller observations and routed/rejected semantic inputs while the process
@@ -600,10 +611,113 @@ Correction assignment:
   trace evidence. The planner will repeat that walkthrough and check logs before
   acceptance. Automated semantic checks alone cannot accept this correction.
 
-The completed integration order remains SESSION, PLATFORM, then candidate. The
-standing `avalonia-prototype` task owns only the bounded physical-acceptance
-correction above from `1868e97`; AVP-005 and production cutover are not
-authorized.
+### Assigned — AVP-004-REDESIGN: fixed shell and controller-native presentation
+
+Owner: standing `avalonia-prototype` task on `codex/avalonia-prototype`.
+
+Baseline: source `16b33d9`; planner main `df30bc5`. The accepted SESSION and
+PLATFORM extraction boundaries remain unchanged. AVP-005 and production cutover
+are not authorized.
+
+Objective: retain the real catalog/runtime/session/WidgetBridge/domain/native
+GameInput integration while replacing the AVP-004 presentation composition with
+a coherent controller-first Avalonia shell and reusable component layer derived
+only from existing typed semantic properties. Use the clean AVP-001/AVP-002
+visual language and controller behavior as the quality baseline, without
+restoring fake pages, XInput, or per-widget views.
+
+Required architecture:
+
+- One stable outer overlay geometry per active monitor/work-area and shell
+  profile. A widget's `WidgetSurfaceHints` selects only the content viewport's
+  responsive mode; it must never resize, reposition, or remeasure the outer
+  HWND, stationary tray, controller guide, or shell chrome during widget
+  switching.
+- One fixed bottom tray band whose height and screen position remain invariant
+  across all eight widgets and every page transition. Selected first/last items
+  must scroll fully into view inside that fixed band without changing shell
+  dimensions. The page transition surface excludes the tray and guide.
+- One scrolling owner per axis. The shell owns ordinary page vertical scrolling;
+  a semantic Scroll/Grid owns scrolling or virtualization only when that typed
+  node explicitly declares it. Never wrap an already scrolling semantic root in
+  another ScrollViewer. Focus movement must reveal the target through the one
+  owning viewport.
+- Replace raw control-by-control styling with a small internal controller-first
+  component vocabulary: page header, section, card, action row, tile/list item,
+  collection, media transport, slider row, status/loading/empty/error panel, and
+  advanced slot surface. Compile these components only from `ViewNodeKind`,
+  typed node properties, collection keys, scroll axis, action-surface
+  orientation, responsive visibility, and declared advanced preset/slot. Never
+  branch on widget/package identity, text, element IDs, provider, or a known
+  tree shape. Do not add a hidden string-role protocol.
+- Use Avalonia ControlThemes/styles, intrinsic measurement, compiled bindings,
+  standard controls/UIA, and virtualization as the presentation owners. Text
+  wraps or trims only under an explicit reusable component policy. A child may
+  not stretch vertically merely because the page fills the viewport.
+- Treat controller navigation as a first-class shell state machine: tray Left/
+  Right changes selection while focus remains in the tray; Up/A enters content;
+  B returns to tray and B on tray closes; the final downward content boundary
+  returns to tray. Within content, use bounded component navigation zones and
+  Avalonia spatial selection, with explicit slider Left/Right adjustment,
+  Up/Down exit, scroll reveal, repeat, reconnect, focus-loss, hide/show, and
+  per-widget focus memory. Do not synthesize keyboard input or add another
+  GameInput/XInput owner.
+- Preserve exact semantic/action/focus/runtime authority, Community boundaries,
+  one HWND, one bridge transport, one focus tree, and the existing native Guide
+  owner. A generic component may improve presentation but may not invent an
+  action or infer domain meaning.
+
+Visible design requirements:
+
+- Start from the AVP-001/AVP-002 shell proportions, typography, spacing, focus
+  treatment, motion, and restrained console-like visual hierarchy. Do not copy
+  another console UI, but optimize for ten-foot readability and predictable
+  controller operation rather than desktop density.
+- Page, guide, and tray regions never overlap. Titles, primary status, focused
+  actions, slider values, and first-page controls remain readable without
+  accidental clipping at compact, 978x466, standard, and wide content modes.
+- Loading, empty, error, disabled, and provider-waiting states use the same
+  reusable centered/status-card language. YT Music/Spotify media controls retain
+  meaningful visible glyphs or labels. Launcher Experience uses only its generic
+  preset and six typed slots, with balanced detail/collection allocation.
+- Widget switching animates only the content surface. The outer frame, tray,
+  selected tray slot, controller guide, and work-area anchor remain stationary.
+
+Implementation sequence and evidence:
+
+1. Build the fixed shell/tray/controller-zone skeleton first using representative
+   existing semantic fixtures. Retain before/after full-window images at the
+   real production-shaped work area for Settings, Game Launcher, Audio Mixer,
+   Network Controls, YT Music, and Spotify. If these still show clipping,
+   unstable chrome, desktop-density composition, or large accidental voids,
+   correct the product before expanding tests.
+2. Replace nested scrolling and raw renderer composition with the generic
+   controller component compiler. Prove all current node kinds and advanced
+   slots still render without identity special cases.
+3. Restore the accepted native controller path and exercise the shared router
+   across tray/content/slider/scroll/reconnect/focus/hide/show. Keep atomic live
+   trace truth from `16b33d9`.
+4. Add only direct regressions for invariant outer/tray geometry across all
+   widget surface hints, single scroll ownership, intrinsic non-overlap,
+   selected tray-edge reveal, component navigation zones, and stable focus
+   memory. Do not build another exhaustive capture/navigation framework.
+5. Run one final focused AVP suite and one exact-commit measurement. Retain the
+   unchanged candidate <500-MiB gate, process-tree accounting, one-render/no-
+   artwork-leak evidence, exact ProductVersion/SHA, and bounded normal shutdown.
+   Do not run the product aggregate.
+
+Acceptance requires both automated evidence and a new planner/user physical
+walkthrough. The planner launches the exact copied runtime with live trace. The
+user must approve the stationary tray, visual composition, clipping, motion,
+Guide, D-pad/stick, A/B/Y, sliders, scrolling, and all eight first pages. A
+synthetic green result cannot accept AVP-004-REDESIGN.
+
+Out of scope: production cutover, AVP-005, GBSS deletion, per-widget Avalonia
+pages, a second transport/schema/input owner, widget-domain rewrites, credentials,
+publication, or changing the 500-MiB gate. Stop for any required public protocol
+extension rather than encoding a hidden role or tree-shape heuristic; the
+planner will serialize a generic SDK/protocol assignment if concrete evidence
+shows the current typed properties are insufficient.
 
 Objective:
 
