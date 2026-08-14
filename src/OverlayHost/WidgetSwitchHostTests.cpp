@@ -106,6 +106,10 @@ public:
         readyPath_ = root_ / L"host-ready.txt";
         startupSignalRoot_ = root_ / L"startup-signals";
         fs::create_directories(startupSignalRoot_);
+        blockedSnapshotTrigger_ = root_ / L"block-snapshot.trigger";
+        blockedSnapshotSignal_ = root_ / L"block-snapshot.started";
+        blockedSnapshotRelease_ = root_ / L"block-snapshot.release";
+        blockedSnapshotComplete_ = root_ / L"block-snapshot.completed";
 
         WriteUtf8(root_ / L"runtime" / L"switch-fixture.gbss",
             ".switch-surface { padding: 28px; gap: 18px; corner-radius: 18px; }\n"
@@ -123,9 +127,20 @@ public:
 
         const std::string worker = JsonEscape(fs::absolute(fixtureWorker).wstring());
         const auto widget = [&](const char* id, const char* packageId, const char* name,
-                                const char* instanceId, const char* icon) {
+                                const char* instanceId, const char* icon,
+                                const bool blockable = false) {
             const auto startupSignal = JsonEscape(
                 fs::absolute(startupSignalRoot_ / (std::string(id) + ".started")).wstring());
+            const std::string blockingArguments = blockable
+                ? ",\"--block-snapshot-trigger\",\"" +
+                    JsonEscape(fs::absolute(blockedSnapshotTrigger_).wstring()) +
+                    "\",\"--block-snapshot-signal\",\"" +
+                    JsonEscape(fs::absolute(blockedSnapshotSignal_).wstring()) +
+                    "\",\"--block-snapshot-release\",\"" +
+                    JsonEscape(fs::absolute(blockedSnapshotRelease_).wstring()) +
+                    "\",\"--block-snapshot-complete\",\"" +
+                    JsonEscape(fs::absolute(blockedSnapshotComplete_).wstring()) + "\""
+                : "";
             return std::string(
                 "    {\"id\":\"") + id + "\",\"packageId\":\"" + packageId +
                 "\",\"publisherId\":\"org.gbar.tests\",\"name\":\"" + name +
@@ -134,7 +149,8 @@ public:
                 "\",\"styleFile\":\"runtime/switch-fixture.gbss\","
                 "\"memoryLimitMb\":64,\"residencyPolicy\":{\"schemaVersion\":1,"
                 "\"mode\":\"suspend-when-hidden\"},\"workerArguments\":["
-                "\"--first-snapshot-signal\",\"" + startupSignal + "\"],"
+                "\"--first-snapshot-signal\",\"" + startupSignal + "\"" +
+                blockingArguments + "],"
                 "\"declaredCapabilities\":[],\"quickActions\":[]}";
         };
         catalog_ =
@@ -156,7 +172,7 @@ public:
             widget("spotify", "org.gbar.tests.spotify", "Spotify",
                    "spotify.default", "music") + ",\n" +
             widget("settings", "org.gbar.tests.settings", "Settings",
-                   "settings.default", "settings") +
+                   "settings.default", "settings", true) +
             "\n  ],\n  \"bundledWidgets\":[]\n}\n";
         catalogWithProbe_ =
             catalog_.substr(0, catalog_.find("\n  ],\n")) + ",\n" +
@@ -180,6 +196,29 @@ public:
     [[nodiscard]] fs::path StartupSignal(const std::wstring_view widgetId) const {
         return startupSignalRoot_ / (std::wstring(widgetId) + L".started");
     }
+    void BlockNextSnapshot() const {
+        std::error_code ignored;
+        fs::remove(blockedSnapshotSignal_, ignored);
+        fs::remove(blockedSnapshotRelease_, ignored);
+        fs::remove(blockedSnapshotComplete_, ignored);
+        WriteUtf8(blockedSnapshotTrigger_, "block");
+    }
+    void ReleaseBlockedSnapshot() const {
+        WriteUtf8(blockedSnapshotRelease_, "release");
+    }
+    [[nodiscard]] const fs::path& BlockedSnapshotSignal() const noexcept {
+        return blockedSnapshotSignal_;
+    }
+    [[nodiscard]] const fs::path& BlockedSnapshotComplete() const noexcept {
+        return blockedSnapshotComplete_;
+    }
+    [[nodiscard]] long long BlockedSnapshotSequence() const {
+        const auto signal = ReadUtf8(blockedSnapshotSignal_);
+        const auto separator = signal.rfind(':');
+        Require(separator != std::string::npos,
+                "Blocked snapshot signal omitted its exact render sequence.");
+        return std::stoll(signal.substr(separator + 1));
+    }
     void PublishCatalogProbe(const bool present) const {
         WriteUtf8(
             root_ / L"widget-catalog.json",
@@ -191,6 +230,10 @@ private:
     fs::path localAppData_;
     fs::path readyPath_;
     fs::path startupSignalRoot_;
+    fs::path blockedSnapshotTrigger_;
+    fs::path blockedSnapshotSignal_;
+    fs::path blockedSnapshotRelease_;
+    fs::path blockedSnapshotComplete_;
     std::wstring processProfile_;
     std::string catalog_;
     std::string catalogWithProbe_;
@@ -231,7 +274,9 @@ std::uint64_t ProcessStartFileTime(const HANDLE process) {
     return value.QuadPart;
 }
 
-std::string ObservedChildRoles(const DWORD rootProcessId) {
+std::string ObservedChildRoles(
+    const DWORD rootProcessId,
+    std::vector<DWORD>* observedProcessIds = nullptr) {
     struct Row final {
         DWORD processId{};
         DWORD parentProcessId{};
@@ -256,6 +301,7 @@ std::string ObservedChildRoles(const DWORD rootProcessId) {
         for (const auto& row : rows) {
             if (row.parentProcessId != parents[cursor]) continue;
             parents.push_back(row.processId);
+            if (observedProcessIds) observedProcessIds->push_back(row.processId);
             std::string role = "other-child";
             if (_wcsicmp(row.name.c_str(), L"WidgetBridge.exe") == 0)
                 role = "bridge";
@@ -268,6 +314,14 @@ std::string ObservedChildRoles(const DWORD rootProcessId) {
         }
     }
     return result.empty() ? "none-observed" : result;
+}
+
+bool ProcessIsRunning(const DWORD processId) {
+    const HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, processId);
+    if (!process) return false;
+    const bool running = WaitForSingleObject(process, 0) == WAIT_TIMEOUT;
+    CloseHandle(process);
+    return running;
 }
 
 void FenceWindow(HWND window) {
@@ -708,7 +762,150 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return log.size() > restartBefore &&
                     log.find("Settings reloaded", restartBefore) != std::string::npos;
             }), "Same-identity Settings refresh omitted its bounded completion record.");
-    waitForPaint(restartBefore, kTargets.back(), kTargets.back().id, "admitted");
+    const auto settingsLastGood = waitForPaint(
+        restartBefore, kTargets.back(), kTargets.back().id, "admitted");
+
+    installation->BlockNextSnapshot();
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                std::error_code ignored;
+                return fs::exists(installation->BlockedSnapshotSignal(), ignored);
+            }), "Settings worker did not enter the never-completing snapshot seam.");
+    const auto selectionRevokedSequence = installation->BlockedSnapshotSequence();
+    const auto blockedBefore = ReadUtf8(logPath).size();
+    const auto blockedNavigationStarted = std::chrono::steady_clock::now();
+    SendKey(window, VK_LEFT);
+    const auto spotifyWhileBlocked = waitForPaint(
+        blockedBefore, kTargets[kTargets.size() - 2],
+        kTargets[kTargets.size() - 2].id, "admitted");
+    const auto blockedNavigationMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - blockedNavigationStarted).count());
+    Require(spotifyWhileBlocked.find("semantic-focus=tray:spotify") !=
+                std::string::npos,
+            "Never-completing Settings snapshot disturbed ordinary tray focus.");
+
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return ReadUtf8(logPath).find(
+                    "Dropped stale widget session completion for settings",
+                    blockedBefore) != std::string::npos;
+            }), "Selection-away did not record exact stale Settings revocation.");
+
+    const auto workerCompletionStarted = std::chrono::steady_clock::now();
+    installation->ReleaseBlockedSnapshot();
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                std::error_code ignored;
+                return fs::exists(installation->BlockedSnapshotComplete(), ignored);
+            }), "Cancellation-ignoring Settings worker did not publish its late completion.");
+    const auto lateWorkerCompletionMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - workerCompletionStarted).count());
+
+    const auto reselectionBefore = ReadUtf8(logPath).size();
+    const auto blockedReselectionStarted = std::chrono::steady_clock::now();
+    SendKey(window, VK_RIGHT);
+    const auto settingsReselected = waitForPaint(
+        reselectionBefore, kTargets.back(), kTargets.back().id, "admitted");
+    const auto blockedReselectionMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - blockedReselectionStarted).count());
+    const auto lastGoodBody = ParseBounds(TextField(settingsLastGood, "body-bounds="));
+    const auto reselectedBody = ParseBounds(TextField(settingsReselected, "body-bounds="));
+    const auto lastGoodViewport = ParseBounds(
+        TextField(settingsLastGood, "viewport-bounds="));
+    const auto reselectedViewport = ParseBounds(
+        TextField(settingsReselected, "viewport-bounds="));
+    Require(TextField(settingsReselected, "sequence=") ==
+                TextField(settingsLastGood, "sequence=") &&
+                reselectedBody.width == lastGoodBody.width &&
+                reselectedBody.height == lastGoodBody.height &&
+                reselectedViewport.width == lastGoodViewport.width &&
+                reselectedViewport.height == lastGoodViewport.height,
+            "Late revoked result changed retained content or extent on reselection; before=" +
+                settingsLastGood + " after=" + settingsReselected);
+
+    installation->BlockNextSnapshot();
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                std::error_code ignored;
+                return fs::exists(installation->BlockedSnapshotSignal(), ignored);
+            }), "Settings worker did not enter the close-time nonresponsive snapshot seam.");
+    const auto closeRevokedSequence = installation->BlockedSnapshotSequence();
+    const auto closeWhileBlockedBoundary = ReadUtf8(logPath).size();
+    const auto closeStarted = std::chrono::steady_clock::now();
+    SendKey(window, VK_ESCAPE);
+    const auto blockedCloseDispatchMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - closeStarted).count());
+    Require(blockedCloseDispatchMilliseconds <= 50,
+            "Ordinary tray B dispatch exceeded 50 ms while a worker was nonresponsive; ms=" +
+                std::to_string(blockedCloseDispatchMilliseconds));
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return IsWindowVisible(window) == FALSE;
+            }), "Ordinary tray B did not close while a worker snapshot was nonresponsive.");
+    const auto blockedCloseMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - closeStarted).count());
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return ReadUtf8(logPath).find(
+                    "Dropped stale widget session completion for settings",
+                    closeWhileBlockedBoundary) != std::string::npos;
+            }), "Hide/close did not revoke the nonresponsive Settings request.");
+    installation->ReleaseBlockedSnapshot();
+
+    const auto lateBoundary = ReadUtf8(logPath).size();
+    Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
+            Win32Error("PostMessageW(reopen after late snapshot)"));
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return IsWindowVisible(window) != FALSE;
+            }), "Host did not reopen after cancellation-ignoring worker completion.");
+    const auto settingsAfterLate = waitForPaint(
+        lateBoundary, kTargets.back(), kTargets.back().id, "admitted");
+    const auto afterLateBody = ParseBounds(
+        TextField(settingsAfterLate, "body-bounds="));
+    const auto afterLateViewport = ParseBounds(
+        TextField(settingsAfterLate, "viewport-bounds="));
+    const std::string revokedAdmission =
+        "Widget presentation paint target=settings content=admitted "
+        "rendered=settings sequence=" + std::to_string(selectionRevokedSequence);
+    const std::string closeRevokedAdmission =
+        "Widget presentation paint target=settings content=admitted "
+        "rendered=settings sequence=" + std::to_string(closeRevokedSequence);
+    const auto finalSlowWorkerLog = ReadUtf8(logPath);
+    Require(finalSlowWorkerLog.find(revokedAdmission, blockedBefore) ==
+                std::string::npos &&
+                finalSlowWorkerLog.find(
+                    closeRevokedAdmission, closeWhileBlockedBoundary) ==
+                    std::string::npos &&
+                TextField(settingsAfterLate, "sequence=") !=
+                    std::to_string(selectionRevokedSequence) &&
+                TextField(settingsAfterLate, "sequence=") !=
+                    std::to_string(closeRevokedSequence) &&
+                afterLateBody.width == lastGoodBody.width &&
+                afterLateBody.height == lastGoodBody.height &&
+                afterLateViewport.width == lastGoodViewport.width &&
+                afterLateViewport.height == lastGoodViewport.height &&
+                settingsAfterLate.find("semantic-focus=tray:settings") !=
+                    std::string::npos,
+            "Late revoked Settings sequence was admitted or changed extent/focus authority; before=" +
+                settingsLastGood + " after=" + settingsAfterLate);
+
+    std::vector<std::uint64_t> hostFocusMilliseconds =
+        inputToRetainedMilliseconds;
+    hostFocusMilliseconds.push_back(blockedNavigationMilliseconds);
+    hostFocusMilliseconds.push_back(blockedReselectionMilliseconds);
+    std::sort(hostFocusMilliseconds.begin(), hostFocusMilliseconds.end());
+    const auto hostFocusP95 = hostFocusMilliseconds[
+        (hostFocusMilliseconds.size() * 95 + 99) / 100 - 1];
+    Require(hostFocusP95 <= 50,
+            "Host focus p95 exceeded 50 ms while worker completion was isolated; p95=" +
+                std::to_string(hostFocusP95));
+    std::cout << "Slow-worker response timing ms host-focus-p95="
+              << hostFocusP95
+              << " tray-navigation=" << blockedNavigationMilliseconds
+              << " tray-reselection=" << blockedReselectionMilliseconds
+              << " b-dispatch=" << blockedCloseDispatchMilliseconds
+              << " b-hide-complete=" << blockedCloseMilliseconds
+              << " worker-late-completion=" << lateWorkerCompletionMilliseconds
+              << " host-focus-samples=" << hostFocusMilliseconds.size() << '\n';
 
     RECT hostBounds{};
     Require(GetWindowRect(window, &hostBounds) != FALSE,
@@ -878,14 +1075,23 @@ void RunRetentionScenario(const Arguments& arguments) {
               << *std::max_element(inputToAdmittedMilliseconds.begin(),
                                    inputToAdmittedMilliseconds.end())
               << " switch-samples=" << inputToAdmittedMilliseconds.size() << '\n';
+    std::vector<DWORD> observedProcessIds;
+    const auto childRoles = ObservedChildRoles(host->Id(), &observedProcessIds);
+    const DWORD rootProcessId = host->Id();
+    observedProcessIds.push_back(rootProcessId);
     std::cout << "Production host provenance scenario=eight-widget-switch"
               << " root-pid=" << host->Id()
               << " root-start-filetime=" << ProcessStartFileTime(host->Process())
               << " profile=" << WideToUtf8(installation->ProcessProfile())
               << " commit=" << arguments.repositoryCommit
               << " host-sha256=" << arguments.hostSha256
-              << " child-roles=" << ObservedChildRoles(host->Id()) << '\n';
+              << " child-roles=" << childRoles << '\n';
     host.reset();
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return std::none_of(
+                    observedProcessIds.begin(), observedProcessIds.end(),
+                    ProcessIsRunning);
+            }), "Production host job cleanup left an observed bridge/worker process running.");
     installation.reset();
 }
 

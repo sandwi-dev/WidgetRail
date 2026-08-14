@@ -4684,3 +4684,30 @@ passes for immutable package 0.2.9 with archive SHA-256
 `ca334cc1059393ef93c4cf3d68a9b21b17339bbdd9a87118d2181c0faafd9aac`;
 the real user catalog remains read-only. Physical composition remains the final
 verdict for panel-to-host-chrome cohesion.
+### Slow and nonresponsive worker response isolation (DLV-231)
+
+The existing native widget-session coordinator now owns one cancellable token
+for its exact in-flight request. Selection-away, hide, invalidation/worker exit,
+and shutdown revoke that widget generation, remove its queued work, and cancel
+only the coordinator worker thread's synchronous bridge I/O. The one existing
+bridge pipe remains authoritative: responses with an older correlation ID are
+discarded, while a future/malformed ID still fails closed. Lifecycle
+completions must also match the exact current target, so a late Background
+acknowledgement cannot erase a rapid reselection. No second event loop,
+transport, input router, focus graph, cache, or presentation owner was added.
+
+Focused Release evidence passes 12 coordinator scenarios covering delayed
+success with last-good retention, a never-completing request, selection-away,
+hide, worker-exit invalidation, shutdown, cancellation-ignoring late success
+and failure, and stale generation rejection. Native bridge/catalog correlation
+passes, and the managed bridge lifecycle/concurrency fixture passes 89/89. The
+packaged eight-widget production-host route blocks two exact Settings render
+sequences, revokes one by tray selection and one by ordinary B close, and proves
+neither is admitted. It preserves exact sequence/extent/focus through
+reselection and admits only a later valid snapshot. Host-focus p95 is 28 ms
+across nine samples (22 ms selection-away, 28 ms reselection); B dispatch is
+2 ms. The intentionally late worker completes separately in 36 ms after fixture
+release. Visible hide completion is recorded separately at 2,024 ms and is not
+included in the established 50-ms host-focus target. The production route
+retains exact PID/start/profile/commit/executable/child-role provenance and
+job-owned zero-process teardown; no aggregate or capture route was run.

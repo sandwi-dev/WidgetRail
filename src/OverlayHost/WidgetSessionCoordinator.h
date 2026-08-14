@@ -181,6 +181,7 @@ private:
 
     [[nodiscard]] bool Queue(Request request);
     [[nodiscard]] bool HasPending(RequestKind kind, std::wstring_view widgetId) const noexcept;
+    void RevokeRequests(std::wstring_view widgetId) noexcept;
     [[nodiscard]] Request MakeRequest(
         RequestKind kind,
         std::wstring widgetId = {},
@@ -199,6 +200,7 @@ private:
     std::deque<Request> pending_;
     std::deque<Completion> completed_;
     std::optional<Request> inFlight_;
+    std::optional<std::stop_source> inFlightStop_;
     std::jthread worker_;
     std::uint64_t nextRequestId_{};
     bool shuttingDown_{};

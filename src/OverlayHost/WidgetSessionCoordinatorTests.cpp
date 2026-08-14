@@ -54,6 +54,8 @@ struct FakeBridge final {
     std::vector<WidgetDescriptor> catalog;
     std::unordered_map<std::wstring, WidgetSnapshot> snapshots;
     std::wstring stalledWidget;
+    std::wstring ignoreCancellationWidget;
+    std::wstring failingWidget;
     bool releaseStall{};
     bool startFails{};
     bool protocolMismatch{};
@@ -106,11 +108,18 @@ struct FakeBridge final {
         ++snapshotCalls;
         changed.notify_all();
         if (widgetId == stalledWidget) {
-            changed.wait(lock, token, [&] { return releaseStall; });
+            if (widgetId == ignoreCancellationWidget)
+                changed.wait(lock, [&] { return releaseStall; });
+            else
+                changed.wait(lock, token, [&] { return releaseStall; });
         }
-        if (token.stop_requested()) {
+        if (token.stop_requested() && widgetId != ignoreCancellationWidget) {
             return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
                 WidgetSessionFailureStage::Snapshot, L"snapshot cancelled");
+        }
+        if (widgetId == failingWidget) {
+            return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
+                WidgetSessionFailureStage::Snapshot, L"delayed snapshot failed");
         }
         const auto found = snapshots.find(std::wstring(widgetId));
         if (found == snapshots.end()) {
@@ -374,6 +383,174 @@ void CancellationStopsStalledRequest() {
     assert(std::chrono::steady_clock::now() - began < 1s);
 }
 
+void SelectionRevokesNeverCompletingRequest() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"slow", L"slow.one", L"runtime-1", L"view-1"),
+        Descriptor(L"fast", L"fast.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"slow"] = Snapshot(L"slow.one", 1);
+    bridge.snapshots[L"fast"] = Snapshot(L"fast.one", 1);
+    bridge.stalledWidget = L"slow";
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({
+        {L"slow", WidgetLifecycleState::Visible},
+    });
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.snapshotCalls == 1;
+        }));
+    }
+
+    coordinator.SetLifecycleTargets({
+        {L"fast", WidgetLifecycleState::Interactive},
+    });
+    const auto events = WaitEvents(coordinator, [](const auto& value) {
+        return std::any_of(value.begin(), value.end(), [](const auto& event) {
+            return event.widgetId == L"fast" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(std::any_of(events.begin(), events.end(), [](const auto& event) {
+        return event.widgetId == L"slow" &&
+               event.kind == WidgetSessionEventKind::StaleCompletionRejected;
+    }));
+    assert(coordinator.Snapshot(L"fast") &&
+           coordinator.Snapshot(L"fast")->sequence == 1);
+    assert(!coordinator.Snapshot(L"slow"));
+}
+
+void DelayedSuccessRetainsLastGoodSnapshot() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Interactive},
+    });
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2);
+    bridge.stalledWidget = L"alpha";
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.snapshotCalls == 2;
+        }));
+    }
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 1);
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseStall = true;
+    }
+    bridge.changed.notify_all();
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 2);
+}
+
+void HideAndWorkerExitRevokePendingSnapshots() {
+    for (const bool workerExited : {false, true}) {
+        FakeBridge bridge;
+        bridge.catalog = {
+            Descriptor(L"slow", L"slow.one", L"runtime-1", L"view-1"),
+        };
+        bridge.snapshots[L"slow"] = Snapshot(L"slow.one", 1);
+        bridge.stalledWidget = L"slow";
+        WidgetSessionCoordinator coordinator(bridge.Operations());
+        assert(coordinator.EstablishCatalog());
+        coordinator.SetLifecycleTargets({
+            {L"slow", WidgetLifecycleState::Visible},
+        });
+        {
+            std::unique_lock lock(bridge.mutex);
+            assert(bridge.changed.wait_for(lock, 1s, [&] {
+                return bridge.snapshotCalls == 1;
+            }));
+        }
+        if (workerExited)
+            coordinator.RemoveSnapshot(L"slow");
+        else
+            coordinator.SetLifecycleTargets({});
+        const auto events = WaitEvents(coordinator, [](const auto& value) {
+            return std::any_of(value.begin(), value.end(), [](const auto& event) {
+                return event.kind == WidgetSessionEventKind::StaleCompletionRejected;
+            });
+        });
+        assert(events.size() == 1);
+        assert(events.front().widgetId == L"slow");
+        assert(!coordinator.Snapshot(L"slow"));
+        assert(!coordinator.Lifecycle(L"slow"));
+    }
+}
+
+void CancellationIgnoringLateResultsAreStale() {
+    for (const bool lateFailure : {false, true}) {
+        FakeBridge bridge;
+        bridge.catalog = {
+            Descriptor(L"slow", L"slow.one", L"runtime-1", L"view-1"),
+            Descriptor(L"fast", L"fast.one", L"runtime-1", L"view-1"),
+        };
+        bridge.snapshots[L"slow"] = Snapshot(L"slow.one", 99);
+        bridge.snapshots[L"fast"] = Snapshot(L"fast.one", 7);
+        bridge.stalledWidget = L"slow";
+        bridge.ignoreCancellationWidget = L"slow";
+        if (lateFailure) bridge.failingWidget = L"slow";
+        WidgetSessionCoordinator coordinator(bridge.Operations());
+        assert(coordinator.EstablishCatalog());
+        coordinator.SetLifecycleTargets({
+            {L"slow", WidgetLifecycleState::Visible},
+        });
+        {
+            std::unique_lock lock(bridge.mutex);
+            assert(bridge.changed.wait_for(lock, 1s, [&] {
+                return bridge.snapshotCalls == 1;
+            }));
+        }
+        coordinator.SetLifecycleTargets({
+            {L"fast", WidgetLifecycleState::Interactive},
+        });
+        {
+            std::scoped_lock lock(bridge.mutex);
+            bridge.releaseStall = true;
+        }
+        bridge.changed.notify_all();
+        const auto events = WaitEvents(coordinator, [](const auto& value) {
+            return std::any_of(value.begin(), value.end(), [](const auto& event) {
+                return event.widgetId == L"fast" &&
+                       event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+            });
+        });
+        assert(std::count_if(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"slow" &&
+                   event.kind == WidgetSessionEventKind::StaleCompletionRejected;
+        }) == 1);
+        assert(std::none_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"slow" &&
+                   (event.kind == WidgetSessionEventKind::SnapshotAdmitted ||
+                    event.kind == WidgetSessionEventKind::Failed);
+        }));
+        assert(!coordinator.Snapshot(L"slow"));
+        assert(coordinator.Snapshot(L"fast") &&
+               coordinator.Snapshot(L"fast")->sequence == 7);
+    }
+}
+
 } // namespace
 
 int main() {
@@ -383,5 +560,9 @@ int main() {
     StalledSessionDoesNotBlockHostOrNeighborIntent();
     TypedStartFailureAndRetryPolicy();
     CancellationStopsStalledRequest();
-    std::cout << "WidgetSessionCoordinatorTests passed (6 scenarios)\n";
+    SelectionRevokesNeverCompletingRequest();
+    DelayedSuccessRetainsLastGoodSnapshot();
+    HideAndWorkerExitRevokePendingSnapshots();
+    CancellationIgnoringLateResultsAreStale();
+    std::cout << "WidgetSessionCoordinatorTests passed (12 scenarios)\n";
 }

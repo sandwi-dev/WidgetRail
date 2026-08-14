@@ -104,11 +104,15 @@ bool WidgetSessionCoordinator::RequestRestart(const std::wstring_view widgetId) 
 void WidgetSessionCoordinator::SetLifecycleTargets(
     const std::map<std::wstring, WidgetLifecycleState, std::less<>>& desired,
     const bool deferColdStart) {
-    for (const auto& [widgetId, state] : lifecycleStates_) {
-        if (desired.contains(widgetId)) continue;
-        lifecycleTargets_.insert_or_assign(widgetId, WidgetLifecycleState::Background);
-        (void)Queue(MakeRequest(
-            RequestKind::Lifecycle, widgetId, WidgetLifecycleState::Background));
+    std::vector<std::wstring> retired;
+    retired.reserve(lifecycleTargets_.size());
+    for (const auto& [widgetId, state] : lifecycleTargets_) {
+        if (state != WidgetLifecycleState::Background &&
+            !desired.contains(widgetId)) retired.push_back(widgetId);
+    }
+    for (const auto& widgetId : retired) {
+        RevokeRequests(widgetId);
+        lifecycleTargets_.erase(widgetId);
     }
     for (const auto& [widgetId, state] : desired) {
         if (!Contains(widgetId)) continue;
@@ -119,6 +123,12 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         (void)Queue(MakeRequest(
             Snapshot(widgetId) ? RequestKind::Lifecycle : RequestKind::Establish,
             widgetId, state));
+    }
+    for (const auto& widgetId : retired) {
+        if (!lifecycleStates_.contains(widgetId)) continue;
+        lifecycleTargets_.insert_or_assign(widgetId, WidgetLifecycleState::Background);
+        (void)Queue(MakeRequest(
+            RequestKind::Lifecycle, widgetId, WidgetLifecycleState::Background));
     }
 }
 
@@ -252,7 +262,7 @@ void WidgetSessionCoordinator::ClearFailure(const std::wstring_view widgetId) {
 
 void WidgetSessionCoordinator::RemoveSnapshot(const std::wstring_view widgetId) {
     snapshots_.erase(std::wstring(widgetId));
-    ++generations_[std::wstring(widgetId)];
+    RevokeRequests(widgetId);
 }
 
 void WidgetSessionCoordinator::ClearSnapshots() {
@@ -302,6 +312,7 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
         if (shuttingDown_) return;
         shuttingDown_ = true;
         pending_.clear();
+        if (inFlightStop_) inFlightStop_->request_stop();
     }
     worker_.request_stop();
     queueChanged_.notify_all();
@@ -344,6 +355,25 @@ bool WidgetSessionCoordinator::HasPending(
     }) || (inFlight_ && inFlight_->kind == kind && inFlight_->widgetId == widgetId);
 }
 
+void WidgetSessionCoordinator::RevokeRequests(
+    const std::wstring_view widgetId) noexcept {
+    const auto id = std::wstring(widgetId);
+    bool cancelInFlight = false;
+    {
+        std::scoped_lock lock(queueMutex_);
+        std::erase_if(pending_, [&](const Request& request) {
+            return request.widgetId == id;
+        });
+        if (inFlight_ && inFlight_->widgetId == id) {
+            cancelInFlight = true;
+            if (inFlightStop_) inFlightStop_->request_stop();
+        }
+    }
+    ++generations_[id];
+    if (cancelInFlight && worker_.joinable())
+        (void)CancelSynchronousIo(worker_.native_handle());
+}
+
 WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
     const RequestKind kind,
     std::wstring widgetId,
@@ -367,6 +397,7 @@ WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
 void WidgetSessionCoordinator::WorkerLoop(const std::stop_token stopToken) {
     while (!stopToken.stop_requested()) {
         Request request;
+        std::stop_token requestToken;
         {
             std::unique_lock lock(queueMutex_);
             queueChanged_.wait(lock, [&] {
@@ -376,13 +407,16 @@ void WidgetSessionCoordinator::WorkerLoop(const std::stop_token stopToken) {
             request = std::move(pending_.front());
             pending_.pop_front();
             inFlight_ = request;
+            inFlightStop_.emplace();
+            requestToken = inFlightStop_->get_token();
         }
-        auto completion = Execute(std::move(request), stopToken);
+        auto completion = Execute(std::move(request), requestToken);
         if (stopToken.stop_requested()) break;
         {
             std::scoped_lock lock(queueMutex_);
             if (shuttingDown_) break;
             inFlight_.reset();
+            inFlightStop_.reset();
             completed_.push_back(std::move(completion));
         }
         if (completionAvailable_) {
@@ -504,6 +538,12 @@ bool WidgetSessionCoordinator::CompletionIsCurrent(const Request& request) const
     if (request.widgetId.empty()) return true;
     const auto found = generations_.find(request.widgetId);
     if (found == generations_.end() || found->second != request.generation) return false;
+    if (request.kind == RequestKind::Establish ||
+        request.kind == RequestKind::Lifecycle) {
+        const auto target = lifecycleTargets_.find(request.widgetId);
+        if (target == lifecycleTargets_.end() || target->second != request.lifecycle)
+            return false;
+    }
     const auto* descriptor = FindDescriptor(request.widgetId);
     return descriptor && descriptor->instanceId == request.expectedInstanceId &&
            descriptor->runtimeGeneration == request.expectedRuntimeGeneration &&

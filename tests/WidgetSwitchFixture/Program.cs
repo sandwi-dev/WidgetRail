@@ -18,6 +18,10 @@ internal static class Program
             CultureInfo.InvariantCulture);
         var firstSnapshotSignal = OptionalValue(args, "--first-snapshot-signal");
         var refreshSignal = OptionalValue(args, "--refresh-signal");
+        var blockSnapshotTrigger = OptionalValue(args, "--block-snapshot-trigger");
+        var blockSnapshotSignal = OptionalValue(args, "--block-snapshot-signal");
+        var blockSnapshotRelease = OptionalValue(args, "--block-snapshot-release");
+        var blockSnapshotComplete = OptionalValue(args, "--block-snapshot-complete");
 
         using var shutdown = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
@@ -29,7 +33,14 @@ internal static class Program
         try
         {
             await new WidgetWorkerServer(
-                    new SwitchFixtureWidget(instanceId, firstSnapshotSignal, refreshSignal),
+                    new SwitchFixtureWidget(
+                        instanceId,
+                        firstSnapshotSignal,
+                        refreshSignal,
+                        blockSnapshotTrigger,
+                        blockSnapshotSignal,
+                        blockSnapshotRelease,
+                        blockSnapshotComplete),
                     instanceId,
                     pipeName,
                     maximumBytes,
@@ -68,13 +79,22 @@ internal static class Program
     private sealed class SwitchFixtureWidget(
         string instanceId,
         string? firstSnapshotSignal,
-        string? refreshSignal) : Widget
+        string? refreshSignal,
+        string? blockSnapshotTrigger,
+        string? blockSnapshotSignal,
+        string? blockSnapshotRelease,
+        string? blockSnapshotComplete) : Widget
     {
         private readonly SurfaceDefinition _surface = ResolveSurface(instanceId);
         private bool _firstSnapshotDelayed;
+        private int _blockMonitorStarted;
+        private int _renderCount;
+        private volatile bool _blockNextSnapshot;
 
         public override WidgetView Render()
         {
+            var renderOrdinal = Interlocked.Increment(ref _renderCount);
+            StartBlockMonitor();
             if (!_firstSnapshotDelayed)
             {
                 _firstSnapshotDelayed = true;
@@ -86,6 +106,22 @@ internal static class Program
                 {
                     Thread.Sleep(_surface.FirstSnapshotDelayMilliseconds);
                 }
+            }
+            if (_blockNextSnapshot)
+            {
+                _blockNextSnapshot = false;
+                if (blockSnapshotSignal is not null)
+                    File.WriteAllText(
+                        blockSnapshotSignal,
+                        $"{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}:" +
+                        renderOrdinal.ToString(CultureInfo.InvariantCulture));
+                if (blockSnapshotRelease is not null)
+                {
+                    while (!File.Exists(blockSnapshotRelease))
+                        Thread.Sleep(10);
+                }
+                if (blockSnapshotComplete is not null)
+                    File.WriteAllText(blockSnapshotComplete, "completed");
             }
             return new WidgetView(
                 UI.Stack(
@@ -112,6 +148,26 @@ internal static class Program
                 return ValueTask.CompletedTask;
             }
             return base.OnActionAsync(action, cancellationToken);
+        }
+
+        private void StartBlockMonitor()
+        {
+            if (blockSnapshotTrigger is null ||
+                Interlocked.Exchange(ref _blockMonitorStarted, 1) != 0)
+                return;
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    while (!File.Exists(blockSnapshotTrigger))
+                        await Task.Delay(10).ConfigureAwait(false);
+                    File.Delete(blockSnapshotTrigger);
+                    _blockNextSnapshot = true;
+                    Invalidate();
+                    while (_blockNextSnapshot)
+                        await Task.Delay(10).ConfigureAwait(false);
+                }
+            });
         }
 
         private static SurfaceDefinition ResolveSurface(string value)

@@ -1742,6 +1742,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched request ID.");
                 return std::nullopt;
@@ -1831,6 +1832,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched platform appearance request ID.");
                 return std::nullopt;
@@ -1898,6 +1900,7 @@ WidgetBridgeClient::GetLauncherExperience() {
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched Launcher Experience request ID.");
                 return std::nullopt;
@@ -1984,6 +1987,7 @@ WidgetBridgeClient::SelectLauncherExperience(
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched Launcher Experience selection request ID.");
                 return std::nullopt;
@@ -2055,6 +2059,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched lifecycle request ID.");
                 return std::nullopt;
@@ -2120,6 +2125,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched presentation request ID.");
                 return std::nullopt;
@@ -2193,6 +2199,7 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched restart request ID.");
                 return std::nullopt;
@@ -2251,6 +2258,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched request ID.");
                 return std::nullopt;
@@ -2311,6 +2319,7 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
                     return std::nullopt;
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId ||
                 response.GetNamedString(L"type") != L"acknowledged") return std::nullopt;
             return true;
@@ -2387,6 +2396,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) return std::nullopt;
             if (response.GetNamedString(L"type") == L"error") {
                 Fail(std::wstring(std::wstring_view(
@@ -2467,6 +2477,7 @@ std::optional<bool> WidgetBridgeClient::SendAction(
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId) {
                 Fail(L"WidgetBridge returned a mismatched action request ID.");
                 return std::nullopt;
@@ -2540,6 +2551,7 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
                 }
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId || type != L"acknowledged") {
                 if (type == L"error") Fail(SafeBridgeError(response));
                 else Fail(L"WidgetBridge returned an unexpected protected Wi-Fi response.");
@@ -2615,6 +2627,7 @@ std::optional<bool> WidgetBridgeClient::BeginLocalWidgetPackageInstall(
                 }
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId || type != L"acknowledged") {
                 Fail(type == L"error" ? SafeBridgeError(response)
                                       : L"WidgetBridge returned an unexpected local package response.");
@@ -2664,6 +2677,7 @@ std::optional<bool> WidgetBridgeClient::CancelLocalWidgetPackageInstall(
                         &localPackageInstallResults_, &launcherExperienceChanges_)) return std::nullopt;
                 continue;
             }
+            if (responseId > 0 && responseId < requestId) continue;
             if (responseId != requestId || type != L"acknowledged") {
                 if (type == L"error") Fail(SafeBridgeError(response));
                 return std::nullopt;
@@ -2700,7 +2714,8 @@ bool WidgetBridgeClient::WriteFrame(const std::string_view utf8) {
     const std::int32_t length = static_cast<std::int32_t>(utf8.size());
     if (!WriteExact(pipe_, &length, sizeof(length)) ||
         !WriteExact(pipe_, utf8.data(), static_cast<DWORD>(utf8.size()))) {
-        Fail(Win32Message(L"WriteFile(WidgetBridge)", GetLastError()));
+        const DWORD error = GetLastError();
+        Fail(Win32Message(L"WriteFile(WidgetBridge)", error));
         return false;
     }
     return true;
@@ -2709,7 +2724,8 @@ bool WidgetBridgeClient::WriteFrame(const std::string_view utf8) {
 std::optional<std::string> WidgetBridgeClient::ReadFrame() {
     std::int32_t length = 0;
     if (!ReadExact(pipe_, &length, sizeof(length))) {
-        Fail(Win32Message(L"ReadFile(WidgetBridge header)", GetLastError()));
+        const DWORD error = GetLastError();
+        Fail(Win32Message(L"ReadFile(WidgetBridge header)", error));
         return std::nullopt;
     }
     if (length <= 0 || static_cast<DWORD>(length) > kMaximumFrameBytes) {
@@ -2718,7 +2734,8 @@ std::optional<std::string> WidgetBridgeClient::ReadFrame() {
     }
     std::string body(static_cast<std::size_t>(length), '\0');
     if (!ReadExact(pipe_, body.data(), static_cast<DWORD>(length))) {
-        Fail(Win32Message(L"ReadFile(WidgetBridge body)", GetLastError()));
+        const DWORD error = GetLastError();
+        Fail(Win32Message(L"ReadFile(WidgetBridge body)", error));
         return std::nullopt;
     }
     return body;
