@@ -10,14 +10,15 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main contains provisional DLV-224 integration `c2b6456` over planner
-  commit `084cd66`, but DLV-224 is rejected pending the bounded legacy-parser
-  correction below and is not a launchable accepted baseline. The latest
-  accepted product integration remains `073e423`, containing accepted DLV-222
-  `e8af5be` and DLV-223 through `6b916e8`; accepted DLV-221 `8836e07` remains
-  the Taffy engine baseline. The user physically reviewed the rebuilt DLV-221
-  Release, found the integration substantially correct, and accepted Taffy as
-  the native declarative geometry engine.
+- Local main contains accepted DLV-224 through correction integration
+  `02750ba` over provisional product commit `c2b6456`. The correction preserves
+  omitted native snapshot versions as legacy v1 while rejecting present
+  malformed, fractional, or unsupported versions before conversion. Accepted
+  DLV-222 `e8af5be` and DLV-223 through `6b916e8` remain integrated beneath it;
+  accepted DLV-221 `8836e07` remains the Taffy engine baseline. The user
+  physically reviewed the rebuilt DLV-221 Release, found the integration
+  substantially correct, and accepted Taffy as the native declarative geometry
+  engine.
 - DLV-221 preserves the existing Widget SDK/protocol, package/catalog/runtime,
   authenticated WidgetBridge transport, lifecycle/trust/persistence/providers,
   widget domains, Community process boundaries, native renderer, GameInput,
@@ -39,13 +40,17 @@ Snapshots are evidence only. This file is the sole authority for current work.
   and detached/weak YT Music composition.
 - The coherent DLV-222/DLV-223 Release had Community YT Music 0.2.8 enabled and
   ran cleanly as planner-owned PID 27128. It exited normally through `WM_CLOSE`
-  when the planner began the DLV-224 rebuild. That rebuild compiled and packaged
-  the changed native/managed graph, then failed in `RealHostAccessibilityTests`
-  after 157 checks because the new native snapshot parser required a
-  `protocolVersion` field from an established legacy cursor fixture that
-  intentionally omits it. No provisional DLV-224 binary is accepted or running.
-  Restore the exact accepted visible Release only after the bounded correction
-  is reviewed and the coherent main build passes.
+  when the planner began the DLV-224 rebuild. Corrected main now compiles and
+  packages the complete changed native/managed graph and passes the previously
+  failing `RealHostAccessibilityTests` route with 286 checks. The later
+  `WidgetActionFailureHostTests` clean-environment fixture remains honestly red:
+  its temporary installation copies `OverlayHost.exe` and `runtime` but omits
+  the executable's required `OverlayPlatformInterop.dll`, so the child cannot
+  create its HWND unless an unrelated PATH happens to supply the DLL. The
+  platform worktree's exact packaged build passed, and this unrelated retained
+  harness defect does not invalidate DLV-224 product behavior. Repair it only
+  through the bounded platform assignment below; do not reinterpret an
+  unchanged rerun as product evidence.
 
 ## Avalonia disposition — failed and closed
 
@@ -143,8 +148,8 @@ only production presentation path.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Awaiting corrected DLV-224 integration; no executable widget assignment |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, clean at DLV-224 commit `01ff871`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-224 legacy-parser correction assigned before any later platform work |
+| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-225 assigned after integrating accepted main `02750ba` |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, clean through DLV-224 correction `912aea9`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-206 assigned; DLV-227 is next Ready |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -165,7 +170,7 @@ focus, accessibility/UIA, Audio Mixer 45/45, Network Controls 24/24, and the
 real eight-widget linked-host group with clean shutdown and bounded composition
 timing. Packaged physical review remains pending on the coherent Release.
 
-### Correction required — DLV-224: symmetric surface-axis sizing
+### Done — DLV-224: symmetric surface-axis sizing
 
 Baseline: accepted DLV-222 integrated into local main. Owner: serialized
 cross-component assignment led by the platform lane. No widgets-lane task may
@@ -216,38 +221,46 @@ Stop if intrinsic sizing requires widget-specific native knowledge, more than
 two layout passes, an unbounded retained tree, or a material change to tray,
 focus, scrolling, or accessibility authority.
 
-Correction evidence: implementation commit `01ff871` passed its focused and
-eight-worker boundary evidence, and its one exact Tier-3 checkpoint retained the
-known pre-product verifier-manifest failure. Independent integration produced
-main commit `c2b6456`, but the required coherent packaged main build then failed
-`RealHostAccessibilityTests` after 157 checks. `ParseSnapshot` unconditionally
-reads `protocolVersion`; the established cursor response omits that field and
-previously inherited `WidgetSnapshot.protocolVersion == 1`.
+Accepted as implementation correction `912aea9`, integrated into main as
+`02750ba`. Missing native `protocolVersion` retains the v1 default; a present
+value must be numeric, finite, integral, and within `[1,17]`. Direct native
+coverage includes omitted v1, present v17 independent axes, malformed,
+fractional, below-range, above-range, and retained last-good behavior.
+`RealHostAccessibilityTests` passes 286 checks and the platform worktree's clean
+packaged Release build passed. The one exact `01ff871` Tier-3 result remains
+unchanged and honestly red at the known pre-product verifier-manifest check.
+Independent main packaging reproduced the complete artifact graph and the 286-
+check parser route, then stopped at the unrelated DLV-227 fixture defect.
 
-Bounded correction:
-
-- Preserve legacy omission by defaulting a missing native `protocolVersion` to
-  v1 while retaining strict handling for a present malformed, non-integral, or
-  out-of-supported-range value. Do not weaken managed validation or axis-mode
-  version gating.
-- Add direct native parser coverage for an omitted legacy version, present v17
-  axis metadata, and malformed/fractional/out-of-range version values. Prove an
-  invalid response does not replace the retained presentation.
-- Run the directly failing `RealHostAccessibilityTests` first, then one final
-  affected Release build with packaging from the coherent correction commit.
-  Do not rerun the unchanged Tier-3 checkpoint or modify its manifest; retain
-  its exact `01ff871` result honestly.
-- Keep all prior DLV-224 ownership, pass bounds, identity neutrality, and
-  single-host invariants unchanged. No widget work begins until this correction
-  is accepted and integrated.
-
-### Ready after DLV-224 — DLV-206: truthful performance provenance
+### Assigned — DLV-206: truthful performance provenance
 
 Correct the rejected DLV-200 evidence without expanding measurement scope:
 retain root PID/start, exact commit/SHA, scenario/profile, child roles, and
 available/unavailable metrics; give the eight-widget run separate provenance;
 anchor composition lookup after paint; remove false ordinary-host-live wording.
 Run only affected bounded performance/temporal routes.
+
+### Ready after DLV-206 — DLV-227: self-contained production-host fixture
+
+Baseline: accepted corrected DLV-224 integrated into local main. Owner: platform
+lane. This is bounded test-infrastructure reliability work and must follow the
+assigned performance milestone; it may not preempt DLV-225 visible widget work.
+
+Objective: make `WidgetActionFailureHostTests` launch the same self-contained
+native installation it claims to exercise.
+
+Required implementation and acceptance:
+
+- Copy the exact required native runtime dependencies beside the temporary
+  `OverlayHost.exe`, including `OverlayPlatformInterop.dll`, from the admitted
+  installation. Do not modify PATH, load dependencies from the source worktree,
+  weaken HWND visibility, or broaden the fixture into installation tooling.
+- Fail before launch with a precise missing-dependency diagnostic and retain
+  normal job-owned teardown and temporary-directory cleanup.
+- Add one direct dependency-copy/omission regression, run
+  `WidgetActionFailureHostTests` from an environment whose PATH does not contain
+  the Release directory, then run only the affected packaged build segment.
+- Do not rerun the unchanged Tier-3 aggregate.
 
 ### Awaiting DLV-217 integration — DLV-218: remove retired domains
 
@@ -271,7 +284,7 @@ lifecycle, the generic renderer suite, and the dedicated real-snapshot/native-
 renderer scenario 79/79. Physical composition review remains queued for the
 coherent DLV-222 plus DLV-223 Release.
 
-### Ready after DLV-224 integration — DLV-225: content-sized Settings root
+### Assigned — DLV-225: content-sized Settings root
 
 Baseline: DLV-224 integrated into local main. Owner: widgets lane.
 
@@ -314,6 +327,34 @@ Preferred unless resizing is demonstrably beneficial and stable. Retain a
 concise contract table in public widget-authoring documentation and run focused
 surface/conformance checks only.
 
+### Ready after DLV-226 — DLV-228: Audio Mixer width consumption
+
+Use authored generic stretch/flex semantics so session rows, value tracks, and
+sliders consume the admitted content width again. Preserve labels, values,
+controller adjustment, focus, scrolling, and compact reflow. Do not add native
+Audio identity rules or a guessed widget width. Verify the first-page master and
+session controls at compact and preferred widths with the focused Audio and
+native renderer suites.
+
+### Ready after DLV-228 — DLV-229: Network first-page vertical admission
+
+Choose and document the Network root's symmetric surface policy and authored
+minimum/preferred height so the primary scan status/action is visible on the
+first page at its preferred envelope while compact/constrained heights remain
+scroll-reachable. Do not hide provider state, force Content sizing on dynamic
+lists, or add a native Network special case. Run focused Network, surface,
+focus-reveal, and renderer checks.
+
+### Ready after DLV-229 — DLV-230: YT Music panel cohesion
+
+Refine the single responsive Community YT Music semantic composition so its
+content envelope feels visually attached to fixed host chrome, uses available
+space intentionally, and preserves the accepted side-by-side/stacked reflow,
+all eight actions, explicit focus adjacency, lifecycle, and Community
+isolation. Do not change the fixed host offsets per widget or introduce another
+page tree. Run focused YT Music, real-snapshot/native-renderer, surface, and
+package lifecycle evidence; physical composition remains the final verdict.
+
 ## Serialized integration order
 
 1. DLV-221 is accepted and integrated as product commit `8836e07`.
@@ -323,15 +364,15 @@ surface/conformance checks only.
    27128 with YT Music 0.2.8 current. Exact-session startup diagnostics are
    clean; the named physical tray, Audio, Network, Settings, and YT Music verdict
    remains pending because the computer-control service omits the tool window.
-4. DLV-224 commit `01ff871` is rejected pending the bounded native legacy-parser
-   correction above. Its provisional main cherry-pick `c2b6456` must not be
-   launched. Pause widget work touching `WidgetSurfaceHints` until the
-   correction is accepted/integrated and the coherent main Release passes.
-5. DLV-225 adopts Content height in Settings only after corrected DLV-224.
-   DLV-226 audits later policies.
-6. DLV-217 integration remains a separate explicit user decision. DLV-218 may
-   begin only after DLV-217 is integrated. DLV-206 remains independent after the
-   UI/sizing cluster.
+4. DLV-224 is accepted through correction `912aea9` and integrated as main
+   `02750ba`. Its clean platform build passed; independent main packaging passed
+   the corrected 286-check parser route and retained the unrelated DLV-227
+   fixture failure honestly.
+5. DLV-225 now adopts Content height in Settings. DLV-226 audits later policies,
+   followed by the explicit Audio, Network, and YT Music visible corrections.
+6. DLV-206 may run independently on the platform lane now. DLV-217 integration
+   remains a separate explicit user decision, and DLV-218 may begin only after
+   DLV-217 is integrated.
 
 ## Manual and packaged verification queue
 
@@ -357,12 +398,14 @@ surface/conformance checks only.
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
 | Native uninstall reconciliation | Synthetic catalog removal emitted no managed revision/native event. | Deterministic disabled/nonresident removal event. |
+| `WidgetActionFailureHostTests` self-contained launch | Temporary fixture omits required `OverlayPlatformInterop.dll`; reproducible clean-environment startup cannot create an HWND. | DLV-227 copies and validates admitted native dependencies, then passes without a Release-directory PATH entry. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is unsupported by Data API. | Approved minimum-scope OAuth plan and authorized account. |
 
 ## Recent accepted milestones
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-224 | `912aea9`, integrated as `02750ba`: independent Preferred/Content/FillAvailable axes, bounded Taffy intrinsic sizing, legacy native v1 omission preserved, malformed versions fail closed, and 286/286 direct native parser/accessibility checks. |
 | DLV-222 | `e8af5be`, integrated by `073e423`: generic Taffy stretch correction, authored variable surfaces, bottom-anchored panel/guide/tray, stable full-capacity tray band, and green focused plus eight-widget linked-host evidence. |
 | DLV-223 | `6b916e8`: responsive YT Music 0.2.8 composition plus real managed-snapshot/GBSS-to-native-renderer proof at 760x440 and 480x340; 79/79 dedicated checks. |
 | DLV-221 | `8836e07`: pinned Taffy 0.12.2 static geometry engine, narrow Rust/C ABI, old custom solver removed, focused native/Rust/eight-widget/performance evidence accepted; canonical aggregate retained red at the pre-product manifest self-check. |
