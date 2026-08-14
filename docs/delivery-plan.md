@@ -10,12 +10,12 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main: `073e423`. Its latest product implementation milestones are
-  accepted DLV-222 `e8af5be` and DLV-223 through `6b916e8`; accepted DLV-221
-  `8836e07` remains the Taffy engine baseline. The user physically reviewed the
-  rebuilt DLV-221
-  Release, found the integration substantially correct, and accepted Taffy as
-  the native declarative geometry engine.
+- Local main: planner commit `0703b3b` over product integration `073e423`. Its
+  latest product implementation milestones are accepted DLV-222 `e8af5be` and
+  DLV-223 through `6b916e8`; accepted DLV-221 `8836e07` remains the Taffy engine
+  baseline. The user physically reviewed the rebuilt DLV-221 Release, found the
+  integration substantially correct, and accepted Taffy as the native
+  declarative geometry engine.
 - DLV-221 preserves the existing Widget SDK/protocol, package/catalog/runtime,
   authenticated WidgetBridge transport, lifecycle/trust/persistence/providers,
   widget domains, Community process boundaries, native renderer, GameInput,
@@ -35,6 +35,15 @@ Snapshots are evidence only. This file is the sole authority for current work.
   variable widget-to-tray separation, Settings root dead height, Audio Mixer
   rows/sliders not consuming width, insufficient Network first-page height,
   and detached/weak YT Music composition.
+- The coherent main Release was rebuilt with packaging after DLV-222/DLV-223;
+  Community YT Music 0.2.8 is the enabled current package, and the exact main
+  `OverlayHost.exe --show` remains visible as PID 27128. Its production-session
+  log shows clean process ownership, DirectComposition, GameInput, appearance,
+  launcher-profile, placement, and foreground admission with no typed startup
+  failure. The Windows computer-control service still omits this no-taskbar
+  tool window, so no fresh eight-widget visual pass is claimed for PID 27128;
+  all eight first pages remain physically pending rather than inheriting an
+  older session's smoke verdict.
 
 ## Avalonia disposition — failed and closed
 
@@ -133,7 +142,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Awaiting DLV-224 integration; no executable widget assignment |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, integrated cleanly with accepted main through merge `073e423`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-224 Assigned after planner baseline refresh |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, integrated cleanly with accepted main through merge `073e423`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-224 dispatched; refreshing to planner baseline `0703b3b` and implementing the serialized assignment |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -283,8 +292,10 @@ surface/conformance checks only.
 1. DLV-221 is accepted and integrated as product commit `8836e07`.
 2. DLV-222 `e8af5be` and DLV-223 through `6b916e8` are accepted and integrated
    coherently through merge `073e423`.
-3. Rebuild/package and visibly launch that coherent Release for the named
-   physical tray, Audio, Network, and YT Music verdict.
+3. The coherent Release was rebuilt, packaged, and visibly launched as PID
+   27128 with YT Music 0.2.8 current. Exact-session startup diagnostics are
+   clean; the named physical tray, Audio, Network, Settings, and YT Music verdict
+   remains pending because the computer-control service omits the tool window.
 4. DLV-224 is now the sole serialized shared protocol/native assignment. Pause any
    widget work touching `WidgetSurfaceHints` until it is accepted/integrated.
 5. DLV-225 adopts Content height in Settings. DLV-226 audits later policies.
