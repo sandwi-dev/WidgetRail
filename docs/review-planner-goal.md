@@ -432,11 +432,15 @@ Then repeat the loop.
 
 ## Branch and task model
 
-- Widgets implementation uses an isolated Codex worktree and
-  `codex/impl-widgets`.
+- Widgets implementation uses the isolated worktree
+  `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on
+  `codex/impl-widgets-taffy-ui`. The accepted but unintegrated DLV-217 history
+  remains preserved on `codex/impl-widgets-community-launcher`; never move or
+  rewrite that preserved branch while the UI queue proceeds.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on
-  `codex/impl-platform-switch` while visible work proceeds. The completed
+  `codex/impl-platform-taffy-ui` while visible work proceeds. Its prior DLV-220
+  history remains preserved on `codex/impl-platform-community`. The completed
   recovery branch `codex/impl-platform-recovery` remains preserved at
   `7e64b4d` with the non-integrable DLV-062 feasibility checkpoint in its
   ancestry; do not merge it into visible product work. The interrupted

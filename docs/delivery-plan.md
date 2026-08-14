@@ -10,10 +10,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local production main: `8836e07` (`[DLV-221] Integrate Taffy native layout
-  engine`). The user physically reviewed the rebuilt Release, found the
-  integration substantially correct, and accepted Taffy as the native
-  declarative geometry engine.
+- Local main: `8e2587c`. Its latest product implementation commit is `8836e07`
+  (`[DLV-221] Integrate Taffy native layout engine`); the commits after it are
+  reviewer-owned planning only. The user physically reviewed the rebuilt
+  Release, found the integration substantially correct, and accepted Taffy as
+  the native declarative geometry engine.
 - DLV-221 preserves the existing Widget SDK/protocol, package/catalog/runtime,
   authenticated WidgetBridge transport, lifecycle/trust/persistence/providers,
   widget domains, Community process boundaries, native renderer, GameInput,
@@ -130,8 +131,8 @@ only production presentation path.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | Preserve accepted DLV-217 branch `codex/impl-widgets-community-launcher`; start the UI queue from clean main `8836e07` in a separate planner-authorized widget worktree/branch | DLV-223 Assigned after task/worktree rebinding |
-| Platform | Implementation agent — platform lane | Planner-authorized clean platform worktree/branch from `8836e07`; do not reuse preserved dirty/interrupted platform worktrees | DLV-222 Assigned |
+| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, created clean from main `8e2587c`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-223 Active |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, created clean from main `8e2587c`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-222 Active |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -142,7 +143,8 @@ and must not be mixed with this UI correction cluster.
 
 ### Assigned — DLV-222: restore native surface anchoring and correct Taffy stretch
 
-Baseline: clean local main `8836e07`. Owner: native platform/layout lane.
+Baseline: clean local main `8e2587c` with product implementation baseline
+`8836e07`. Owner: native platform/layout lane.
 
 Visible objective: fix the detached panel/tray relationship, Audio Mixer dead
 row width, and Network's insufficient first-page height without widget-specific
@@ -271,8 +273,9 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ### Assigned — DLV-223: responsive YT Music controller composition
 
-Baseline: clean local main `8836e07`. Owner: widgets lane, limited to the YT
-Music Community package/presentation/styles and directly affected tests/docs.
+Baseline: clean local main `8e2587c` with product implementation baseline
+`8836e07`. Owner: widgets lane, limited to the YT Music Community
+package/presentation/styles and directly affected tests/docs.
 It may proceed independently of DLV-222 because it owns no native files.
 
 Visible objective: make YT Music read as one cohesive controller-native media
@@ -359,9 +362,10 @@ surface/conformance checks only.
 
 ## Serialized integration order
 
-1. DLV-221 is accepted and integrated in local main as `8836e07`.
-2. DLV-222 platform geometry/stretch and DLV-223 YT Music composition may run
-   concurrently from `8836e07`; their file ownership must not overlap.
+1. DLV-221 is accepted and integrated as product commit `8836e07`; current
+   planner-owned local main is `8e2587c`.
+2. DLV-222 platform geometry/stretch and DLV-223 YT Music composition run
+   concurrently from `8e2587c`; their file ownership must not overlap.
 3. Review and integrate accepted DLV-222 and DLV-223 independently. Rebuild one
    coherent Release after both are present for the named physical verdict.
 4. DLV-224 is the sole serialized shared protocol/native assignment. Pause any
