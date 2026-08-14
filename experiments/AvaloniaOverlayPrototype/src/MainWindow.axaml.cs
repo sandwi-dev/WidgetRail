@@ -38,6 +38,7 @@ public sealed partial class MainWindow : Window
     private string? platformWidgetId;
     private PixelRect? stableWorkArea;
     private double stableRenderScaling;
+    private GameBarAlternative.WidgetPresentationSession.WidgetPresentationAuthority? stableEnvelopeAuthority;
     private bool applyingShellPlacement;
 
     public MainWindow()
@@ -181,6 +182,7 @@ public sealed partial class MainWindow : Window
             platform.ControllerStateObserved += OnControllerStateObserved;
             if (TryGetPlatformHandle()?.Handle is { } handle && handle != 0)
                 platform.Attach(handle);
+            UpdateShellEnvelopeConstraints();
             ApplyStableShellPlacement();
             platform.SetWindowState(IsVisible, IsActive);
             inputTrace.Record("native-platform-ready", IsVisible, IsActive, detail:
@@ -248,7 +250,11 @@ public sealed partial class MainWindow : Window
 
     private void OnPlatformTick(object? sender, EventArgs args)
     {
-        try { platform?.Tick(IsVisible && IsActive); }
+        try
+        {
+            platform?.Tick(IsVisible && IsActive);
+            ApplyStableShellPlacement();
+        }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             inputTrace.Record("native-tick-failed", IsVisible, IsActive, FocusedSemanticId(),
@@ -415,28 +421,48 @@ public sealed partial class MainWindow : Window
         }
         platform.SetWindowState(IsVisible, false);
         platform.SetWindowState(IsVisible, IsActive);
-        ApplyStableShellPlacement();
+        ApplyStableShellPlacement(force: true);
     }
 
-    private void ApplyStableShellPlacement()
+    private void UpdateShellEnvelopeConstraints()
     {
-        if (applyingShellPlacement || platform is null || Screens.ScreenFromWindow(this) is not { } screen)
+        if (integratedShell is null || Screens.ScreenFromWindow(this) is not { } screen) return;
+        var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
+        integratedShell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
+            screen.WorkingArea,
+            scaling,
+            AccessibilityScale: 1,
+            EnvelopeInsets.PlatformPlacement));
+    }
+
+    private void ApplyStableShellPlacement(bool force = false)
+    {
+        if (applyingShellPlacement || platform is null || integratedShell is null ||
+            Screens.ScreenFromWindow(this) is not { } screen ||
+            integratedShell.EnvelopeAuthority is not { } authority)
             return;
         var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
-        if (stableWorkArea == screen.WorkingArea &&
+        if (!force && stableWorkArea == screen.WorkingArea &&
             Math.Abs(stableRenderScaling - scaling) < 0.001 &&
+            Equals(stableEnvelopeAuthority, authority) &&
             LastComputedPlacement is not null) return;
-        var geometry = ShellGeometryPolicy.Resolve(screen.WorkingArea, scaling);
+        integratedShell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
+            screen.WorkingArea,
+            scaling,
+            AccessibilityScale: 1,
+            EnvelopeInsets.PlatformPlacement));
+        var envelope = integratedShell.CurrentEnvelope;
         var placement = platform.ComputePlacement(
             screen.WorkingArea,
             (uint)Math.Round(96 * scaling),
-            geometry.WidthDip,
-            geometry.HeightDip);
+            envelope.Window.Width,
+            envelope.Window.Height);
         if (placement is not { } value) return;
         stableWorkArea = screen.WorkingArea;
         stableRenderScaling = scaling;
+        stableEnvelopeAuthority = authority;
         LastComputedPlacement = value;
-        if (!string.IsNullOrWhiteSpace(PrototypeArguments.Current.EvidencePath)) return;
+        LastEnvelopeResolution = envelope;
         applyingShellPlacement = true;
         try
         {
@@ -448,8 +474,19 @@ public sealed partial class MainWindow : Window
     }
 
     internal PixelRect? LastComputedPlacement { get; private set; }
-    internal static ShellGeometry ResolveStableShellGeometry(PixelRect workArea, double scaling) =>
-        ShellGeometryPolicy.Resolve(workArea, scaling);
+    internal WidgetEnvelopeResolution? LastEnvelopeResolution { get; private set; }
+    internal static WidgetEnvelopeResolution ResolveWidgetEnvelope(
+        WidgetSurfaceHints? hints,
+        PixelRect workArea,
+        double scaling,
+        double accessibilityScale = 1) =>
+        WidgetEnvelopeResolver.Resolve(
+            hints,
+            new WidgetEnvelopeConstraints(
+                workArea,
+                scaling,
+                accessibilityScale,
+                EnvelopeInsets.PlatformPlacement));
 
     private static string ResolveInstallationRoot(string? requested)
     {

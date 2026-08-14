@@ -49,15 +49,9 @@ internal static class EvidenceScenario
             var shell = window.IntegratedShell!;
             var firstCompleteFrameMilliseconds = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
 
-            // One compositor backing surface keeps logical responsive reflow distinct from native
-            // swap-chain allocation. Production launches still apply each admitted surface hint.
-            window.Width = 1440;
-            window.Height = 810;
-            shell.SetEvidenceViewport(new Size(1440, 810));
-            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-
             var widgetSamples = new List<WidgetEvidence>();
             var responsiveSamples = new List<ResponsiveEvidence>();
+            var envelopeSamples = new List<WidgetEnvelopeEvidence>();
             var offscreenCaptures = new List<OffscreenCaptureEvidence>();
             var captureRoot = Path.Combine(
                 Path.GetDirectoryName(Path.GetFullPath(arguments.EvidencePath))!,
@@ -76,20 +70,40 @@ internal static class EvidenceScenario
                 await WaitUntilAsync(() =>
                     shell.Coordinator.CurrentFrame?.Authority.WidgetId == widget.Id &&
                     Equals(shell.AdmittedAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
+                    Equals(shell.EnvelopeAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
+                    window.LastEnvelopeResolution is not null &&
+                    window.LastComputedPlacement is not null &&
                     !shell.Coordinator.ViewModel.IsBusy,
                     TimeSpan.FromSeconds(20),
                     $"Widget '{widget.Id}' did not admit a complete frame.");
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                if (!arguments.ReducedMotion)
+                {
+                    await Task.Delay(IntegratedShellView.ContentEnvelopeTransitionDuration +
+                        TimeSpan.FromMilliseconds(40));
+                    await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                    await WaitUntilAsync(() =>
+                        Equals(shell.EnvelopeAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
+                        !shell.Coordinator.ViewModel.IsBusy,
+                        TimeSpan.FromSeconds(5),
+                        $"Widget '{widget.Id}' envelope transition did not settle on current authority.");
+                }
+                memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
+                    $"widget:{widget.Id}:envelope-settled", process, window, shell));
                 memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                     $"widget:{widget.Id}:after-crossfade", process, window, shell));
+                var admittedContent = shell.CurrentEnvelope.AdmittedContent;
                 var admitted = await CaptureResponsiveFixtureAsync(
                     shell,
-                    new Size(1440, 810),
+                    admittedContent,
                     widget.Id,
                     TimeSpan.FromSeconds(5),
                     phase => memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
-                        $"widget:{widget.Id}:initial-1440:{phase}", process, window, shell)));
+                        $"widget:{widget.Id}:admitted-envelope:{phase}", process, window, shell)),
+                    applyFixture: false);
                 var frame = admitted.Frame;
+                var envelopeEvidence = CaptureEnvelopeEvidence(window, shell, frame);
+                envelopeSamples.Add(envelopeEvidence);
                 var nodes = Flatten(frame.Snapshot.Root).ToArray();
                 foreach (var kind in nodes.Select(node => node.Kind)) allNodeKinds.Add(kind);
                 var semanticControls = admitted.Controls;
@@ -115,73 +129,49 @@ internal static class EvidenceScenario
                         (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
                     frame.Snapshot.AdvancedPresentation?.Kind.ToString(),
                     frame.Snapshot.AdvancedPresentation?.Preset.ToString(),
+                    envelopeEvidence,
                     stopwatch.Elapsed.TotalMilliseconds,
                     shell.Coordinator.ViewModel.HasFailure,
                     shell.Coordinator.ViewModel.StatusText));
 
-                foreach (var fixture in new[]
-                         {
-                             new Size(420, 340),
-                             new Size(978, 466),
-                             new Size(1180, 680),
-                             new Size(1440, 810),
-                         })
-                {
-                    var fixtureCapture = await CaptureResponsiveFixtureAsync(
-                        shell,
-                        fixture,
-                        widget.Id,
-                        TimeSpan.FromSeconds(5),
-                        phase => memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
-                            $"widget:{widget.Id}:logical-size:{fixture.Width}x{fixture.Height}:{phase}",
-                            process,
-                            window,
-                            shell)));
-                    memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
-                        $"widget:{widget.Id}:logical-size:{fixture.Width}x{fixture.Height}", process, window, shell));
-                    var fixtureFrame = fixtureCapture.Frame;
-                    var controls = fixtureCapture.Controls;
-                    var geometry = fixtureCapture.Geometry;
-                    responsiveSamples.Add(new ResponsiveEvidence(
-                        widget.Id,
-                        fixtureFrame.Authority.SnapshotSequence,
-                        fixtureFrame.Authority.ActiveInputScopeId,
-                        fixture.Width,
-                        fixture.Height,
-                        window.RenderScaling,
-                        shell.Bounds.Width,
-                        shell.Bounds.Height,
-                        window.Bounds.Width,
-                        window.Bounds.Height,
-                        fixtureCapture.Compact,
-                        controls.Count,
-                        controls.Count(control => control.HonestlyScrollClipped),
-                        fixtureCapture.MissingExpectedIds,
-                        fixtureCapture.ProbedFocusableIds,
-                        fixtureCapture.UnreachableFocusableIds,
-                        controls.All(control => control.BoundsHaveArea &&
-                            (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
-                        geometry.PageHostWidthDip,
-                        geometry.SemanticRootWidthDip,
-                        geometry.PageWidthUtilization,
-                        geometry.SemanticWidthUtilization,
-                        geometry.MinimumReadableControlWidthDip,
-                        geometry.MinimumReadableControlHeightDip,
-                        geometry.ShellRegionsDoNotOverlap,
-                        geometry.EffectiveVisibilityPassed,
-                        geometry.MaximumHorizontalEmptyAreaRatio,
-                        geometry.Passed));
-                    if (fixture == new Size(978, 466))
-                    {
-                        offscreenCaptures.Add(await CaptureOffscreenAsync(
-                            shell,
-                            widget.Id,
-                            widget.Name,
-                            captureRoot,
-                            window.RenderScaling,
-                            offscreenCaptures.Count + 1));
-                    }
-                }
+                var controls = admitted.Controls;
+                var geometry = admitted.Geometry;
+                responsiveSamples.Add(new ResponsiveEvidence(
+                    widget.Id,
+                    frame.Authority.SnapshotSequence,
+                    frame.Authority.ActiveInputScopeId,
+                    envelopeEvidence.AdmittedContent.Width,
+                    envelopeEvidence.AdmittedContent.Height,
+                    window.RenderScaling,
+                    shell.Bounds.Width,
+                    shell.Bounds.Height,
+                    window.Bounds.Width,
+                    window.Bounds.Height,
+                    admitted.Compact,
+                    controls.Count,
+                    controls.Count(control => control.HonestlyScrollClipped),
+                    admitted.MissingExpectedIds,
+                    admitted.ProbedFocusableIds,
+                    admitted.UnreachableFocusableIds,
+                    controls.All(control => control.BoundsHaveArea &&
+                        (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
+                    geometry.PageHostWidthDip,
+                    geometry.SemanticRootWidthDip,
+                    geometry.PageWidthUtilization,
+                    geometry.SemanticWidthUtilization,
+                    geometry.MinimumReadableControlWidthDip,
+                    geometry.MinimumReadableControlHeightDip,
+                    geometry.ShellRegionsDoNotOverlap,
+                    geometry.EffectiveVisibilityPassed,
+                    geometry.MaximumHorizontalEmptyAreaRatio,
+                    geometry.Passed));
+                offscreenCaptures.Add(await CaptureOffscreenAsync(
+                    shell,
+                    widget.Id,
+                    widget.Name,
+                    captureRoot,
+                    window.RenderScaling,
+                    offscreenCaptures.Count + 1));
                 await WaitUntilAsync(
                     () => shell.PendingArtworkRequestCount == 0,
                     TimeSpan.FromSeconds(5),
@@ -190,11 +180,8 @@ internal static class EvidenceScenario
                     $"widget:{widget.Id}:artwork-settled", process, window, shell));
             }
             memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
-                "after-8-widget-4-size-traversal", process, window, shell));
+                "after-8-widget-authored-envelope-traversal", process, window, shell));
 
-            // Return only the logical viewport to the representative visible shell. The one backing
-            // surface remains owned and every live bridge/worker stays in the process-tree total.
-            shell.SetEvidenceViewport(new Size(1180, 680));
             await WaitUntilAsync(() =>
                 Equals(shell.AdmittedAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
                 !shell.Coordinator.ViewModel.IsBusy,
@@ -241,6 +228,17 @@ internal static class EvidenceScenario
                 transitions.All(sample => sample.TransparentShellRoot &&
                     sample.OpaqueBlackFallbackAbsent && sample.AvaloniaSurfaceCoveragePresent &&
                     sample.VisualChildCount > 0);
+            var distinctEnvelopeCount = envelopeSamples
+                .Select(sample => $"{sample.AdmittedContent.Width:F1}x{sample.AdmittedContent.Height:F1}")
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            var chromeBoundsInvariant = envelopeSamples.Count > 0 && envelopeSamples.All(sample =>
+                sample.AbsoluteTrayBounds == envelopeSamples[0].AbsoluteTrayBounds &&
+                sample.AbsoluteGuideBounds == envelopeSamples[0].AbsoluteGuideBounds);
+            var widgetEnvelopeEvidencePassed = envelopeSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
+                distinctEnvelopeCount >= 4 && chromeBoundsInvariant &&
+                envelopeSamples.All(sample => sample.AuthoredPairsAtomic && sample.WindowUnionContained &&
+                    sample.ContentChromeDoNotOverlap && !sample.UsesFullWorkAreaBackdrop);
             var responsivePassed = responsiveSamples.All(sample => sample.ReachableOrScrollClipped && sample.GeometryPassed);
             var allWidgetsPassed = widgetSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
                 widgetSamples.All(sample => !sample.HasFailure && sample.RequiredSemanticControlsPassed);
@@ -280,7 +278,7 @@ internal static class EvidenceScenario
                 0);
 
             var artifact = new MeasurementArtifact(
-                "AVP-004-INTEGRATION",
+                "AVP-004-REDESIGN",
                 arguments.SourceCommit ?? "unavailable",
                 startedAtUtc,
                 Environment.OSVersion.VersionString,
@@ -296,6 +294,10 @@ internal static class EvidenceScenario
                 installedWidgetCount,
                 widgetSamples,
                 allWidgetsPassed,
+                envelopeSamples,
+                distinctEnvelopeCount,
+                chromeBoundsInvariant,
+                widgetEnvelopeEvidencePassed,
                 nodeKindCoverage,
                 responsiveSamples,
                 responsivePassed,
@@ -328,7 +330,7 @@ internal static class EvidenceScenario
             var evidencePath = Path.GetFullPath(arguments.EvidencePath);
             Directory.CreateDirectory(Path.GetDirectoryName(evidencePath)!);
             await File.WriteAllTextAsync(evidencePath, JsonSerializer.Serialize(artifact, JsonOptions));
-            desktop.Shutdown(allWidgetsPassed && responsivePassed && transitionPassed &&
+            desktop.Shutdown(allWidgetsPassed && widgetEnvelopeEvidencePassed && responsivePassed && transitionPassed &&
                 nodeKindCoverage.RetainedFinalVerificationPassed &&
                 resourceOwnership.SupersededResourcesReleased && candidateVisibleMiB < 500 &&
                 shutdownEvidence.BoundedNormalShutdownPassed ? 0 : 1);
@@ -339,7 +341,7 @@ internal static class EvidenceScenario
             Directory.CreateDirectory(Path.GetDirectoryName(failurePath)!);
             await File.WriteAllTextAsync(failurePath, JsonSerializer.Serialize(new
             {
-                assignment = "AVP-004-INTEGRATION",
+                assignment = "AVP-004-REDESIGN",
                 sourceCommit = arguments.SourceCommit ?? "unavailable",
                 errorType = exception.GetType().Name,
                 error = exception.Message,
@@ -354,14 +356,16 @@ internal static class EvidenceScenario
         Size fixture,
         string expectedWidgetId,
         TimeSpan timeout,
-        Action<string>? recordProbeResidency = null)
+        Action<string>? recordProbeResidency = null,
+        bool applyFixture = true)
     {
         var deadline = DateTime.UtcNow + timeout;
         while (DateTime.UtcNow < deadline)
         {
-            await Dispatcher.UIThread.InvokeAsync(
-                () => shell.SetEvidenceViewport(fixture),
-                DispatcherPriority.Normal);
+            if (applyFixture)
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => shell.SetEvidenceViewport(fixture),
+                    DispatcherPriority.Normal);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             var seed = await Dispatcher.UIThread.InvokeAsync(() =>
             {
@@ -405,9 +409,10 @@ internal static class EvidenceScenario
                 continue;
             }
 
-            await Dispatcher.UIThread.InvokeAsync(
-                () => shell.SetEvidenceViewport(fixture),
-                DispatcherPriority.Normal);
+            if (applyFixture)
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => shell.SetEvidenceViewport(fixture),
+                    DispatcherPriority.Normal);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
             var capture = await Dispatcher.UIThread.InvokeAsync(() =>
@@ -679,7 +684,8 @@ internal static class EvidenceScenario
         var availableSemanticWidth = Math.Max(1, page.Width - shell.PageHostElement.Padding.Left -
             shell.PageHostElement.Padding.Right - shell.PageHostElement.BorderThickness.Left -
             shell.PageHostElement.BorderThickness.Right);
-        var pageWidthUtilization = page.Width / Math.Max(1, shell.Bounds.Width);
+        var pageWidthUtilization = page.Width /
+            Math.Max(1, shell.CurrentEnvelope.AdmittedContent.Width);
         var semanticWidthUtilization = semanticBounds.Width / availableSemanticWidth;
         var maximumHorizontalEmptyAreaRatio = 1 - Math.Min(1, semanticWidthUtilization);
         var onScreenControls = controls.Where(control => control.Contained).ToArray();
@@ -740,6 +746,68 @@ internal static class EvidenceScenario
     private static bool Overlaps(Rect left, Rect right) =>
         left.Left < right.Right && left.Right > right.Left &&
         left.Top < right.Bottom && left.Bottom > right.Top;
+
+    private static WidgetEnvelopeEvidence CaptureEnvelopeEvidence(
+        MainWindow window,
+        IntegratedShellView shell,
+        WidgetPresentationFrame frame)
+    {
+        if (!Equals(frame.Authority, shell.EnvelopeAuthority) ||
+            window.LastEnvelopeResolution is not { } envelope ||
+            window.LastComputedPlacement is not { } hwnd)
+            throw new InvalidOperationException(
+                $"Widget '{frame.Authority.WidgetId}' has no exact admitted envelope/window authority.");
+        shell.UpdateLayout();
+        var content = BoundsInShell(shell.PageHostElement, shell);
+        var guide = BoundsInShell(shell.ControllerGuideElement, shell);
+        var tray = BoundsInShell(shell.TrayElement, shell);
+        var shellBounds = new Rect(shell.Bounds.Size);
+        var pairAtomic = (frame.Snapshot.Surface?.PreferredWidth is null) ==
+                (frame.Snapshot.Surface?.PreferredHeight is null) &&
+            (frame.Snapshot.Surface?.MinimumWidth is null) ==
+                (frame.Snapshot.Surface?.MinimumHeight is null);
+        var contained = Contains(shellBounds, content) && Contains(shellBounds, guide) &&
+            Contains(shellBounds, tray) &&
+            Math.Abs(hwnd.Width - envelope.Window.Width * window.RenderScaling) <= 2 &&
+            Math.Abs(hwnd.Height - envelope.Window.Height * window.RenderScaling) <= 2;
+        var noOverlap = !Overlaps(content, guide) && !Overlaps(content, tray) && !Overlaps(guide, tray);
+        return new WidgetEnvelopeEvidence(
+            frame.Authority.WidgetId,
+            frame.Authority.SnapshotSequence,
+            frame.Snapshot.Surface?.Mode.ToString() ?? WidgetSurfaceMode.Adaptive.ToString(),
+            frame.Snapshot.Surface?.PreferredWidth,
+            frame.Snapshot.Surface?.PreferredHeight,
+            frame.Snapshot.Surface?.MinimumWidth,
+            frame.Snapshot.Surface?.MinimumHeight,
+            pairAtomic,
+            new LogicalSizeEvidence(envelope.AuthoredPreferredContent.Width, envelope.AuthoredPreferredContent.Height),
+            new LogicalSizeEvidence(envelope.AuthoredMinimumContent.Width, envelope.AuthoredMinimumContent.Height),
+            new LogicalSizeEvidence(envelope.AdmittedContent.Width, envelope.AdmittedContent.Height),
+            new LogicalBoundsEvidence(content.X, content.Y, content.Width, content.Height),
+            new PixelBoundsEvidence(hwnd.X, hwnd.Y, hwnd.Width, hwnd.Height),
+            ToAbsolutePixelBounds(guide, hwnd, window.RenderScaling),
+            ToAbsolutePixelBounds(tray, hwnd, window.RenderScaling),
+            envelope.PreferredPairAdmitted,
+            envelope.MinimumPairSatisfied,
+            envelope.WorkAreaClamped,
+            contained,
+            noOverlap,
+            envelope.UsesFullWorkAreaBackdrop);
+    }
+
+    private static PixelBoundsEvidence ToAbsolutePixelBounds(Rect local, PixelRect hwnd, double scaling)
+    {
+        var effectiveScaling = scaling > 0 ? scaling : 1;
+        return new PixelBoundsEvidence(
+            hwnd.X + (int)Math.Round(local.X * effectiveScaling, MidpointRounding.AwayFromZero),
+            hwnd.Y + (int)Math.Round(local.Y * effectiveScaling, MidpointRounding.AwayFromZero),
+            (int)Math.Round(local.Width * effectiveScaling, MidpointRounding.AwayFromZero),
+            (int)Math.Round(local.Height * effectiveScaling, MidpointRounding.AwayFromZero));
+    }
+
+    private static bool Contains(Rect outer, Rect inner) =>
+        inner.Left >= outer.Left - 0.5 && inner.Top >= outer.Top - 0.5 &&
+        inner.Right <= outer.Right + 0.5 && inner.Bottom <= outer.Bottom + 0.5;
 
     private static async Task<OffscreenCaptureEvidence> CaptureOffscreenAsync(
         IntegratedShellView shell,
@@ -901,6 +969,10 @@ internal static class EvidenceScenario
         int InstalledWidgetCount,
         IReadOnlyList<WidgetEvidence> Widgets,
         bool AllInstalledWidgetsPassed,
+        IReadOnlyList<WidgetEnvelopeEvidence> WidgetEnvelopes,
+        int MateriallyDistinctAdmittedEnvelopeCount,
+        bool AbsoluteChromeBoundsInvariant,
+        bool WidgetEnvelopeEvidencePassed,
         NodeKindCoverageEvidence NodeKindCoverage,
         IReadOnlyList<ResponsiveEvidence> ResponsiveFixtures,
         bool ResponsiveEvidencePassed,
@@ -973,21 +1045,51 @@ internal static class EvidenceScenario
         bool RequiredSemanticControlsPassed,
         string? AdvancedPresentationKind,
         string? AdvancedPresentationPreset,
+        WidgetEnvelopeEvidence Envelope,
         double SwitchToCompleteFrameMilliseconds,
         bool HasFailure,
         string Status);
+
+    private sealed record WidgetEnvelopeEvidence(
+        string WidgetId,
+        long SnapshotSequence,
+        string AuthoredMode,
+        double? AuthoredPreferredWidth,
+        double? AuthoredPreferredHeight,
+        double? AuthoredMinimumWidth,
+        double? AuthoredMinimumHeight,
+        bool AuthoredPairsAtomic,
+        LogicalSizeEvidence ResolvedAuthoredPreferred,
+        LogicalSizeEvidence ResolvedAuthoredMinimum,
+        LogicalSizeEvidence AdmittedContent,
+        LogicalBoundsEvidence AdmittedContentBounds,
+        PixelBoundsEvidence HwndBounds,
+        PixelBoundsEvidence AbsoluteGuideBounds,
+        PixelBoundsEvidence AbsoluteTrayBounds,
+        bool PreferredPairAdmitted,
+        bool MinimumPairSatisfied,
+        bool WorkAreaClamped,
+        bool WindowUnionContained,
+        bool ContentChromeDoNotOverlap,
+        bool UsesFullWorkAreaBackdrop);
+
+    private sealed record LogicalSizeEvidence(double Width, double Height);
+
+    private sealed record LogicalBoundsEvidence(double X, double Y, double Width, double Height);
+
+    private sealed record PixelBoundsEvidence(int X, int Y, int Width, int Height);
 
     private sealed record ResponsiveEvidence(
         string WidgetId,
         long SnapshotSequence,
         string ActiveInputScopeId,
-        double RequestedWidthDip,
-        double RequestedHeightDip,
+        double AdmittedContentWidthDip,
+        double AdmittedContentHeightDip,
         double ActualRenderScaling,
         double ActualShellWidthDip,
         double ActualShellHeightDip,
-        double BackingSurfaceWidthDip,
-        double BackingSurfaceHeightDip,
+        double ActualHwndWidthDip,
+        double ActualHwndHeightDip,
         bool CompactBranch,
         int VisibleRequiredSemanticControls,
         int HonestlyScrollClippedControls,

@@ -74,7 +74,7 @@ internal sealed class InputTraceRecorder
         var snapshot = entries.ToArray();
         var nativeRouted = snapshot.Any(entry => entry.EventName == "native-input-routed" && entry.Handled == true);
         var artifact = new InputTraceArtifact(
-            "AVP-004-INTEGRATION",
+            "AVP-004-REDESIGN",
             sourceCommit,
             Environment.ProcessId,
             snapshot,

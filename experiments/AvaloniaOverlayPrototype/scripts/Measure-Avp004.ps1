@@ -93,17 +93,32 @@ if (-not (Test-Path -LiteralPath $measurementPath)) {
     throw 'Candidate exited without retaining AVP-004 measurement evidence.'
 }
 $measurement = Get-Content -Raw -LiteralPath $measurementPath | ConvertFrom-Json
-if ($measurement.assignment -ne 'AVP-004-INTEGRATION') { throw 'Retained assignment is not AVP-004-INTEGRATION.' }
+if ($measurement.assignment -ne 'AVP-004-REDESIGN') { throw 'Retained assignment is not AVP-004-REDESIGN.' }
 if ($measurement.sourceCommit -ne $sourceCommit) { throw 'Measurement source commit is stale.' }
 if ($measurement.executableProductVersion -notmatch [Regex]::Escape($sourceCommit)) {
     throw 'Executable ProductVersion does not carry the exact source commit.'
 }
 if (-not $measurement.allInstalledWidgetsPassed) { throw 'One or more installed widgets failed the generic adapter lifecycle.' }
+if (-not $measurement.widgetEnvelopeEvidencePassed -or
+    $measurement.materiallyDistinctAdmittedEnvelopeCount -lt 4 -or
+    -not $measurement.absoluteChromeBoundsInvariant) {
+    throw 'Widget-owned envelopes or stationary absolute tray/guide evidence failed.'
+}
+if ($measurement.widgetEnvelopes.Count -ne $measurement.installedWidgetCount -or
+    ($measurement.widgetEnvelopes | Where-Object {
+        -not $_.authoredPairsAtomic -or -not $_.windowUnionContained -or
+        -not $_.contentChromeDoNotOverlap -or $_.usesFullWorkAreaBackdrop
+    }).Count -ne 0) {
+    throw 'Per-widget surface hint, HWND union, or no-backdrop evidence failed.'
+}
 if (-not $measurement.responsiveEvidencePassed) { throw 'Responsive containment/ScrollViewer evidence failed.' }
 if (($measurement.responsiveFixtures | Where-Object { -not $_.geometryPassed }).Count -ne 0) {
     throw 'One or more responsive fixtures failed useful-width/readability/non-overlap geometry.'
 }
 if (-not $measurement.transitionSurfaceDiagnosticsPassed) { throw 'Transition start/mid/end surface evidence failed.' }
+if ($measurement.offscreenCaptures.Count -ne $measurement.installedWidgetCount) {
+    throw 'One authored-envelope offscreen capture was not retained per installed widget.'
+}
 if (-not $measurement.nodeKindCoverage.retainedFinalVerificationPassed) { throw 'Combined ordinary lifecycle and focused generic node-kind verification failed.' }
 if (-not $measurement.resourceOwnership.supersededResourcesReleased) { throw 'Superseded render or artwork resources remained owned at the visible sample.' }
 if (-not $measurement.candidatePrivateMemoryUnder500MiB) { throw 'Visible Avalonia candidate exceeded 500 MiB.' }

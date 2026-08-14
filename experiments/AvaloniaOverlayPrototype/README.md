@@ -40,10 +40,15 @@ adds a second reader or foreground-steal loop. A bounded JSON trace records
 native lease/connection changes and semantic routing decisions. The old
 AVP-002 Vortice dependency is retired.
 
-The shell has one stable work-area-relative outer geometry. Widget surface hints
-select only the content responsive mode and cannot resize or reposition the
-HWND, tray, or guide. Its scrolling tray, controller guide, status, and modal
-remain invariant layers outside the content-only native
+Each admitted current view keeps its authored semantic structure and validated
+preferred/minimum logical envelope. The host resolves that atomic pair against
+the active work area, render scale, accessibility scale, and platform safe
+insets, then sizes one HWND to only the union of content and stationary chrome.
+There is no monitor-sized backdrop or replacement compact/standard/wide window
+preset table. The content grows upward and outward around one bottom-center
+screen anchor; the scrolling tray and controller guide keep identical absolute
+screen bounds while the content envelope and HWND change. Status and modal
+remain host-owned layers outside the content-only native
 `TransitioningContentControl`/`CrossFade`. A first-class tray/content/modal state
 machine uses Avalonia FocusManager/XYFocus and typed component zones for tray
 cycling, explicit content entry/exit, sliders, collection navigation, and
@@ -70,14 +75,14 @@ max-width declarations cannot collapse the page into a literal 100-DIP or capped
 desktop column. Rows wrap, ordinary grids recompute standard
 Avalonia `UniformGrid` columns from their real arranged width, action surfaces
 and virtualized lists stretch, and no fixed 760-DIP column assumption remains.
-Content, controller guide, and compact stationary tray occupy separate grid
+Content, controller guide, and stationary tray occupy separate fixed-contract grid
 rows. The reusable semantic theme supplies consistent surface, typography,
 tile, button, slider, list, focus, selection, artwork, and status treatment
 without a GBSS renderer or widget-identity branch.
 The tray sizes labels to their ordinary text, scrolls horizontally when eight
 items do not fit, and re-reveals the exact selected item after selection and
-post-layout profile/viewport changes instead of clipping it. Compact chrome
-leaves more vertical space to the admitted page.
+post-layout envelope changes instead of clipping it. Chrome metrics do not vary
+with widget responsive mode.
 Buttons, action surfaces, sections, collections, status, loading, text entry,
 sliders, page headers, list selection, and focus receive reusable
 controller-first themes derived only from typed semantic kinds. Raw widget
@@ -94,14 +99,15 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (29 tests):
+MSTest.Sdk 4.3.2 suite (30 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
 ```
 
 The focused suite covers every node kind and compiled component kind/zone,
-stable shell/tray/guide geometry across conflicting snapshot hints,
+atomic surface-hint admission, work-area/DPI/accessibility clamping, four
+materially distinct envelopes, invariant absolute tray/guide geometry,
 content-only transition ownership, latest-frame exact action authority,
 explicit worker-to-UI publication, 10,000-item bounded realization, stable
 collection/UIA identity, compact/standard/wide layouts at actual Avalonia
@@ -132,10 +138,11 @@ Pre/post-probe ownership checkpoints retain candidate, managed, available Skia,
 render-target, and native/unattributed residency. The evidence viewport then
 reapplies the existing host-owned semantic root allocation invariant so probing
 cannot reintroduce an authored root max-width into the retained geometry row.
-The direct tray regression uses all eight representative long/short labels and
-asserts that the selected first and final items remain fully inside the scroll
-viewport after layout settles at 420, 978, 1180, and 1440 widths; label content
-is not truncated, and guide plus tray chrome remains bounded. Direct renderer
+The direct tray regression switches all eight representative long/short labels
+through materially different authored envelopes and requires identical anchored
+tray/guide bounds. The selected first and final items remain fully inside the
+scroll viewport after layout settles at 420, 978, 1180, and 1440 admitted
+content widths; label content is not truncated and chrome metrics stay fixed. Direct renderer
 coverage also requires an empty typed Text node with an accessibility label to
 produce readable nonzero-area display text. Mixed fixed/direct-Scroll roots keep
 the typed Scroll identity and inherited compact/expanded visibility while their
@@ -151,15 +158,18 @@ powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Measu
 
 It rebuilds the retained product package without tests, publishes a copied
 candidate, cycles every currently installed catalog widget through the ordinary
-bridge/runtime/domain path and same adapter, exercises 420x340, 978x466,
-standard, and wide logical Avalonia viewports over one backing surface, records
-UIA/containment/scroll clipping and transition phases, then separately samples
+bridge/runtime/domain path and same adapter, admits that current view's authored
+preferred/minimum envelope against the real work area/DPI, records UIA/
+containment/scroll clipping and transition phases, then separately samples
 the candidate and complete bridge/worker process tree visible and hidden.
 Every responsive record also retains page/root width utilization, minimum
 readable dimensions, shell-region overlap, effective visibility, and maximum
-unintended horizontal empty-area ratio. Final evidence includes the exact owned
+unintended horizontal empty-area ratio. Geometry is sampled only after the
+content-envelope transition reaches its admitted authority/size; chrome pixel
+bounds use the native center-rounding convention. Final evidence includes the exact owned
 process-tree normal-shutdown verdict and native visible-lease trace. The same
-ordinary traversal renders one 978x466 offscreen PNG per installed widget with
+ordinary traversal renders one honestly labeled offscreen PNG at the admitted
+authored envelope per installed widget with
 logical/pixel size, render scale, and SHA-256 provenance; no taskbar or
 targetability mode is used.
 The input artifact records only actual native lease/controller observations.
@@ -210,14 +220,15 @@ rather than retained at opacity zero; avoidable semantic and page-body clipping
 is not used;
 and compiled bindings remain enabled. No `BitmapCache` or Skia GPU-cache increase
 was added because both can increase memory and require supporting measurement.
-Phase isolation associated the private-byte jump with CrossFade overlapping
+Phase isolation associated the earlier private-byte jump with CrossFade overlapping
 top-level resize and with whole-tree compact/expanded reprojection—not the
 managed heap, decoded artwork, pending artwork, tracked trees, or an observable
-Skia cache. Native DPI/work-area placement is independent of frame admission,
-while responsive visibility switches only protocol-declared nodes in place with
-`IsVisible`. Snapshot surface hints never become native placement input. The
-exact responsive matrix records each real logical viewport and its fixed backing
-surface dimensions.
+Skia cache. Responsive visibility switches only protocol-declared nodes in place
+with `IsVisible`. A frame's validated surface hints are atomically admitted with
+its semantic authority and resolved by the host into the content/HWND union;
+they never reposition the invariant absolute chrome anchor. Exact evidence
+retains every authored pair, admitted content bounds, actual HWND bounds, and
+absolute tray/guide bounds.
 
 The generic Avalonia boundary keeps ordinary roots and small semantic
 collections at intrinsic height inside the host scroll viewport, while the

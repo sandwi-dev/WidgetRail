@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -6,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using GameBarAlternative.AvaloniaPrototype.Integration;
@@ -35,6 +37,7 @@ public enum ShellNavigationRegion
 
 public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 {
+    internal static readonly TimeSpan ContentEnvelopeTransitionDuration = TimeSpan.FromMilliseconds(160);
     private readonly WidgetIntegrationCoordinator coordinator;
     private readonly SemanticTreeRenderer renderer;
     private readonly PageTransitionPresenter transitionPresenter = new();
@@ -66,7 +69,15 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private bool suppressFocusMemory;
     private int trayRevealGeneration;
     private string? admittedWidgetId;
-    private ShellProfile shellProfile = ShellProfile.Standard;
+    private WidgetEnvelopeConstraints envelopeConstraints = new(
+        new PixelRect(
+            0,
+            0,
+            (int)(ProtocolConstants.MaximumSurfaceWidth + 48),
+            (int)(ProtocolConstants.MaximumSurfaceHeight + WidgetEnvelopeResolver.ChromeHeightDip + 56)),
+        1);
+    private WidgetEnvelopeResolution currentEnvelope;
+    private WidgetPresentationAuthority? envelopeAuthority;
     private ContentResponsiveMode contentMode = ContentResponsiveMode.Standard;
     private ShellNavigationRegion navigationRegion = ShellNavigationRegion.Tray;
 
@@ -97,10 +108,26 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             BorderThickness = new Thickness(1),
             ClipToBounds = true,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
             Child = transitionPresenter,
         };
         pageHost.Classes.Add("shell-page-host");
+        if (!reducedMotion)
+        {
+            pageHost.Transitions = new Transitions
+            {
+                new DoubleTransition
+                {
+                    Property = Layoutable.WidthProperty,
+                    Duration = ContentEnvelopeTransitionDuration,
+                },
+                new DoubleTransition
+                {
+                    Property = Layoutable.HeightProperty,
+                    Duration = ContentEnvelopeTransitionDuration,
+                },
+            };
+        }
         AutomationProperties.SetAutomationId(pageHost, "avp.integrated.content");
         AutomationProperties.SetName(pageHost, "Current widget content");
 
@@ -121,7 +148,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         };
         trayLayer = new Border
         {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Stretch,
             Padding = new Thickness(6),
             CornerRadius = new CornerRadius(18),
@@ -138,9 +165,9 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         statusLayer = new Border
         {
             IsHitTestVisible = false,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(12),
             Padding = new Thickness(14, 6),
             CornerRadius = new CornerRadius(10),
             Background = Brush.Parse("#F02B3D55"),
@@ -158,7 +185,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         controllerGuideLayer = new Border
         {
             IsHitTestVisible = false,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0),
             Padding = new Thickness(12, 3),
@@ -197,28 +224,28 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
         shellGrid = new Grid
         {
-            Margin = new Thickness(24),
-            RowDefinitions = new RowDefinitions("*,Auto,32,76"),
+            RowDefinitions = new RowDefinitions("Auto,8,32,4,76"),
         };
         Grid.SetRow(pageHost, 0);
         shellGrid.Children.Add(pageHost);
-        Grid.SetRow(statusLayer, 1);
+        Grid.SetRow(statusLayer, 0);
         shellGrid.Children.Add(statusLayer);
         Grid.SetRow(controllerGuideLayer, 2);
         shellGrid.Children.Add(controllerGuideLayer);
-        Grid.SetRow(trayLayer, 3);
+        Grid.SetRow(trayLayer, 4);
         trayLayer.Margin = new Thickness(0);
         shellGrid.Children.Add(trayLayer);
         shellGrid.Children.Add(modalLayer);
-        Grid.SetRowSpan(modalLayer, 4);
+        Grid.SetRowSpan(modalLayer, 5);
         Content = shellGrid;
 
         DataContext = coordinator.ViewModel;
         coordinator.ViewModel.PropertyChanged += OnViewModelChanged;
         coordinator.FramePublished += OnFramePublished;
         AddHandler(GotFocusEvent, OnDescendantGotFocus, RoutingStrategies.Bubble);
-        SizeChanged += OnSizeChanged;
-        ApplyShellProfile(shellProfile);
+        ApplyFixedChromeMetrics();
+        ApplyEnvelopeLayout(WidgetEnvelopeResolver.ResolveAdmittedContent(
+            new Size(ProtocolConstants.MinimumSurfaceWidth, ProtocolConstants.MinimumSurfaceHeight)), null);
     }
 
     public WidgetIntegrationCoordinator Coordinator => coordinator;
@@ -240,7 +267,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     public int TrackedRenderCount => renderer.TrackedRenderCount;
     public bool IsCompact => contentMode == ContentResponsiveMode.Compact;
     public ContentResponsiveMode ContentMode => contentMode;
-    public ShellProfile ShellProfile => shellProfile;
+    public WidgetEnvelopeResolution CurrentEnvelope => currentEnvelope;
+    public WidgetPresentationAuthority? EnvelopeAuthority => envelopeAuthority;
     public ShellNavigationRegion NavigationRegion => navigationRegion;
     public IReadOnlyList<IntegratedTransitionSample> TransitionSamples => transitionSamples.ToArray();
     public string? AdmittedWidgetId => admittedWidgetId;
@@ -254,16 +282,19 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
     internal void SetEvidenceViewport(Size viewport)
     {
-        Width = viewport.Width;
-        Height = viewport.Height;
-        HorizontalAlignment = HorizontalAlignment.Left;
-        VerticalAlignment = VerticalAlignment.Top;
-        ApplyShellProfile(ResolveShellProfile(viewport));
-        if (ActiveSemanticRoot is { } semanticRoot)
-            SemanticTreeRenderer.PrepareSemanticRootForHost(semanticRoot);
-        UpdateLayout();
-        RevealSelectedTrayItem();
-        ScheduleSelectedTrayReveal();
+        ApplyEnvelopeToAdmitted(WidgetEnvelopeResolver.ResolveAdmittedContent(
+            viewport,
+            renderedFrame?.Snapshot.Surface));
+    }
+
+    internal void SetHostEnvelopeConstraints(WidgetEnvelopeConstraints constraints)
+    {
+        envelopeConstraints = constraints;
+        if (renderedFrame is null || admittedPresentation is null) return;
+        ApplyEnvelopeToAdmitted(WidgetEnvelopeResolver.Resolve(
+            renderedFrame.Snapshot.Surface,
+            constraints,
+            admittedPresentation.Page.DesiredSize));
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -480,7 +511,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             ControllerComponentCompiler.Apply(button,
                 new ControllerComponent(ControllerComponentKind.Tile,
                     ControllerNavigationZone.Component, "ControllerTrayButtonTheme"));
-            ApplyTrayButtonSizing(button, shellProfile);
+            ApplyTrayButtonSizing(button);
             button.Classes.Add("tray-button");
             AutomationProperties.SetAutomationId(button, $"tray.{Encode(widget.Id)}");
             AutomationProperties.SetName(button, $"Open {widget.Name}");
@@ -544,8 +575,11 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             rememberedBeforeReplacement is not null)
             restoreContentFocus = true;
         suppressFocusMemory = restoreContentFocus;
-        contentMode = ResolveContentMode(frame);
-        var candidate = RenderPage(frame);
+        var candidateEnvelope = WidgetEnvelopeResolver.Resolve(
+            frame.Snapshot.Surface,
+            envelopeConstraints);
+        contentMode = candidateEnvelope.ResponsiveMode;
+        var candidate = RenderPage(frame, candidateEnvelope);
         var sameWidget = string.Equals(
             admittedPresentation?.Frame.Authority.WidgetId, frame.Authority.WidgetId, StringComparison.Ordinal);
         if (sameWidget)
@@ -591,8 +625,11 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             }
             if (replacement is not null)
             {
-                contentMode = ResolveContentMode(replacement);
-                var latestCandidate = RenderPage(replacement);
+                var latestEnvelope = WidgetEnvelopeResolver.Resolve(
+                    replacement.Snapshot.Surface,
+                    envelopeConstraints);
+                contentMode = latestEnvelope.ResponsiveMode;
+                var latestCandidate = RenderPage(replacement, latestEnvelope);
                 transitionPresenter.ReplaceWithoutTransition(latestCandidate.Page);
                 renderer.Release(candidate.SemanticRoot);
                 candidate = latestCandidate;
@@ -612,6 +649,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         admittedPresentation = candidate;
         renderedFrame = frame;
         admittedWidgetId = frame.Authority.WidgetId;
+        ApplyEnvelopeLayout(candidate.Envelope, frame.Authority);
         if (superseded is not null && !ReferenceEquals(superseded.SemanticRoot, candidate.SemanticRoot))
             renderer.Release(superseded.SemanticRoot);
         if (restoreContentFocus)
@@ -656,36 +694,67 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         ScheduleSelectedTrayReveal();
     }
 
-    private void OnSizeChanged(object? sender, SizeChangedEventArgs args)
+    private void ApplyEnvelopeToAdmitted(WidgetEnvelopeResolution envelope)
     {
-        ApplyShellProfile(ResolveShellProfile(args.NewSize));
-        if (renderedFrame is null || admittedPresentation is null || activeAdmission is not null) return;
+        if (renderedFrame is null || admittedPresentation is null) return;
         var previousMode = contentMode;
-        contentMode = ResolveContentMode(renderedFrame, args.NewSize);
-        if (previousMode == contentMode) return;
         var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control;
         var focusedInPage = focused is not null && ActivePage is not null && IsWithin(focused, ActivePage);
         if (focusedInPage) RememberFocus(focused, previousMode == ContentResponsiveMode.Compact);
-        renderer.SetCompact(admittedPresentation.SemanticRoot, IsCompact);
+        contentMode = envelope.ResponsiveMode;
+        if (previousMode != contentMode)
+            renderer.SetCompact(admittedPresentation.SemanticRoot, IsCompact);
+        admittedPresentation = admittedPresentation with { Envelope = envelope };
+        ApplyEnvelopeLayout(envelope, renderedFrame.Authority);
+        SemanticTreeRenderer.PrepareSemanticRootForHost(admittedPresentation.SemanticRoot);
         admittedPresentation.Page.UpdateLayout();
-        if (focusedInPage && !IsFocusable(focused!)) RestoreResponsiveFocus(IsCompact);
+        if (focusedInPage && previousMode != contentMode && !IsFocusable(focused!))
+            RestoreResponsiveFocus(IsCompact);
     }
 
-    private void ApplyShellProfile(ShellProfile profile)
+    private void ApplyEnvelopeLayout(
+        WidgetEnvelopeResolution envelope,
+        WidgetPresentationAuthority? authority)
     {
-        shellProfile = profile;
-        var compact = profile == ShellProfile.Compact;
-        shellGrid.Margin = compact ? new Thickness(10) : new Thickness(20);
-        pageHost.CornerRadius = compact ? new CornerRadius(14) : new CornerRadius(20);
-        trayPanel.Spacing = compact ? 6 : 10;
-        trayPanel.Margin = compact ? new Thickness(7, 0) : new Thickness(12, 0);
-        trayLayer.Padding = compact ? new Thickness(4) : new Thickness(6);
-        controllerGuideLayer.Padding = compact ? new Thickness(8, 2) : new Thickness(12, 3);
-        controllerGuideText.FontSize = compact ? 10.5 : 12;
-        shellGrid.RowDefinitions[2].Height = new GridLength(compact ? 26 : 32);
-        shellGrid.RowDefinitions[3].Height = new GridLength(compact ? 62 : 76);
-        foreach (var button in trayButtons.Values) ApplyTrayButtonSizing(button, profile);
+        currentEnvelope = envelope;
+        envelopeAuthority = authority;
+        contentMode = envelope.ResponsiveMode;
+        Width = envelope.Window.Width;
+        Height = envelope.Window.Height;
+        MinWidth = 0;
+        MinHeight = 0;
+        HorizontalAlignment = HorizontalAlignment.Left;
+        VerticalAlignment = VerticalAlignment.Top;
+        shellGrid.Width = envelope.Window.Width;
+        shellGrid.Height = envelope.Window.Height;
+        shellGrid.RowDefinitions[0].Height = new GridLength(envelope.AdmittedContent.Height);
+        shellGrid.RowDefinitions[1].Height = new GridLength(WidgetEnvelopeResolver.ContentGuideGapDip);
+        shellGrid.RowDefinitions[2].Height = new GridLength(WidgetEnvelopeResolver.GuideHeightDip);
+        shellGrid.RowDefinitions[3].Height = new GridLength(WidgetEnvelopeResolver.GuideTrayGapDip);
+        shellGrid.RowDefinitions[4].Height = new GridLength(WidgetEnvelopeResolver.TrayHeightDip);
+        pageHost.Width = envelope.ContentBounds.Width;
+        pageHost.Height = envelope.ContentBounds.Height;
+        controllerGuideLayer.Width = envelope.GuideBounds.Width;
+        controllerGuideLayer.Height = envelope.GuideBounds.Height;
+        controllerGuideLayer.Margin = new Thickness(envelope.GuideBounds.X, 0, 0, 0);
+        trayLayer.Width = envelope.TrayBounds.Width;
+        trayLayer.Height = envelope.TrayBounds.Height;
+        trayLayer.Margin = new Thickness(envelope.TrayBounds.X, 0, 0, 0);
+        statusLayer.Width = Math.Max(1, envelope.ContentBounds.Width - 24);
+        UpdateLayout();
         ScheduleSelectedTrayReveal();
+    }
+
+    private void ApplyFixedChromeMetrics()
+    {
+        shellGrid.Margin = default;
+        pageHost.CornerRadius = new CornerRadius(20);
+        trayPanel.Spacing = 10;
+        trayPanel.Margin = new Thickness(12, 0);
+        trayLayer.Padding = new Thickness(6);
+        controllerGuideLayer.Padding = new Thickness(12, 3);
+        controllerGuideText.FontSize = 12;
+        foreach (var button in trayButtons.Values) ApplyTrayButtonSizing(button);
     }
 
     private void ScheduleSelectedTrayReveal()
@@ -709,14 +778,13 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         SelectedTrayButton()?.BringIntoView();
     }
 
-    private static void ApplyTrayButtonSizing(Button button, ShellProfile profile)
+    private static void ApplyTrayButtonSizing(Button button)
     {
-        var compact = profile == ShellProfile.Compact;
-        button.MinWidth = compact ? 104 : 118;
-        button.MaxWidth = compact ? 168 : 190;
-        button.Height = compact ? 48 : 56;
-        button.Padding = compact ? new Thickness(10, 6) : new Thickness(13, 8);
-        button.FontSize = compact ? 12 : 13;
+        button.MinWidth = 118;
+        button.MaxWidth = 190;
+        button.Height = 56;
+        button.Padding = new Thickness(13, 8);
+        button.FontSize = 13;
     }
 
     private void OnDescendantGotFocus(object? sender, FocusChangedEventArgs args)
@@ -877,9 +945,13 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         _ => "◆",
     };
 
-    private RenderedPage RenderPage(WidgetPresentationFrame frame)
+    private RenderedPage RenderPage(
+        WidgetPresentationFrame frame,
+        WidgetEnvelopeResolution envelope)
     {
-        var semanticRoot = renderer.Render(frame, IsCompact);
+        var semanticRoot = renderer.Render(
+            frame,
+            envelope.ResponsiveMode == ContentResponsiveMode.Compact);
         var ownsVerticalScroll = renderer.OwnsVerticalScroll(semanticRoot);
         Control body = ownsVerticalScroll
             ? semanticRoot
@@ -941,26 +1013,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         ControllerComponentCompiler.Apply(page,
             new ControllerComponent(ControllerComponentKind.Page,
                 ControllerNavigationZone.Page));
-        return new RenderedPage(frame, page, semanticRoot);
+        return new RenderedPage(frame, page, semanticRoot, envelope);
     }
-
-    private ContentResponsiveMode ResolveContentMode(WidgetPresentationFrame frame, Size? shellSize = null)
-    {
-        var size = shellSize ?? Bounds.Size;
-        var margin = shellProfile == ShellProfile.Compact ? 10 : 20;
-        var chrome = shellGrid.RowDefinitions[2].Height.Value + shellGrid.RowDefinitions[3].Height.Value;
-        var viewport = new Size(
-            Math.Max(0, size.Width - margin * 2),
-            Math.Max(0, size.Height - margin * 2 - chrome));
-        return ShellGeometryPolicy.ResolveContentMode(frame.Snapshot.Surface, viewport);
-    }
-
-    private static ShellProfile ResolveShellProfile(Size size) =>
-        size.Width < 1050 || size.Height < 620
-            ? ShellProfile.Compact
-            : size.Width >= 1500 && size.Height >= 820
-                ? ShellProfile.Wide
-                : ShellProfile.Standard;
 
     private bool IsManagedFocus(Control focused) =>
         trayButtons.Values.Contains(focused) ||
@@ -982,7 +1036,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private sealed record RenderedPage(
         WidgetPresentationFrame Frame,
         Control Page,
-        Control SemanticRoot);
+        Control SemanticRoot,
+        WidgetEnvelopeResolution Envelope);
 
     private static IEnumerable<ViewNode> Flatten(ViewNode node)
     {

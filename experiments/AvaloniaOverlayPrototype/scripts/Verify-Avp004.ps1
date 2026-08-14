@@ -66,7 +66,7 @@ Confirm-InvalidCompiledBindingFails
 Invoke-BoundedDotnet -Label 'AVP-004 focused Release tests' -Arguments @(
     'test', '--project', $testProject,
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '29')
+    '--output', 'Detailed', '--minimum-expected-tests', '30')
 
 $worktreeState = (& git -C $repositoryRoot status --porcelain)
 if ($worktreeState.Count -ne 0) {
@@ -75,7 +75,7 @@ if ($worktreeState.Count -ne 0) {
 $sourceCommit = (& git -C $repositoryRoot rev-parse HEAD).Trim()
 New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
 [ordered]@{
-    assignment = 'AVP-004-INTEGRATION'
+    assignment = 'AVP-004-REDESIGN'
     sourceCommit = $sourceCommit
     focusedSuitePassed = $true
     genericMappingTest = 'Generic_renderer_maps_every_current_node_kind_to_standard_Avalonia_controls_and_UIA'

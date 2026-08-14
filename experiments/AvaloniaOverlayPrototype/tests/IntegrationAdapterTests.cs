@@ -310,7 +310,8 @@ public sealed class IntegrationAdapterTests
                     },
                 ],
             };
-            var fake = new FakePresentationSession(Frame("responsive-focus.widget", 1, root));
+            var fake = new FakePresentationSession(Frame("responsive-focus.widget", 1, root,
+                surface: Surface(978, 466, 420, 340)));
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
             var window = new Window { Width = 978, Height = 466, Content = shell };
@@ -418,8 +419,69 @@ public sealed class IntegrationAdapterTests
     }
 
     [TestMethod]
+    public void Widget_envelope_resolver_admits_atomic_pairs_and_clamps_against_work_area_dpi_and_accessibility()
+    {
+        var workArea = new PixelRect(120, 60, 1920, 1080);
+        var authored = new[]
+        {
+            Surface(520, 520, 320, 360),
+            Surface(760, 440, 480, 340),
+            Surface(980, 700, 420, 340),
+            Surface(1600, 1200, 360, 300),
+        };
+        var resolved = authored.Select(surface => WidgetEnvelopeResolver.Resolve(
+            surface,
+            new WidgetEnvelopeConstraints(workArea, 1, 1, EnvelopeInsets.PlatformPlacement)))
+            .ToArray();
+
+        Assert.AreEqual(4, resolved
+            .Select(item => ($"{item.AdmittedContent.Width:F1}", $"{item.AdmittedContent.Height:F1}"))
+            .Distinct()
+            .Count(), "Authored widgets must retain materially distinct admitted content envelopes.");
+        Assert.IsTrue(resolved.Take(3).All(item => item.PreferredPairAdmitted));
+        Assert.IsTrue(resolved.All(item => item.MinimumPairSatisfied));
+        foreach (var envelope in resolved)
+        {
+            Assert.IsTrue(Contains(new Rect(envelope.Window), envelope.ContentBounds));
+            Assert.IsTrue(Contains(new Rect(envelope.Window), envelope.GuideBounds));
+            Assert.IsTrue(Contains(new Rect(envelope.Window), envelope.TrayBounds));
+            Assert.IsFalse(Overlaps(envelope.ContentBounds, envelope.GuideBounds));
+            Assert.IsFalse(Overlaps(envelope.ContentBounds, envelope.TrayBounds));
+            Assert.IsFalse(Overlaps(envelope.GuideBounds, envelope.TrayBounds));
+            Assert.IsFalse(envelope.UsesFullWorkAreaBackdrop);
+        }
+
+        var constrained = WidgetEnvelopeResolver.Resolve(
+            Surface(1600, 1200, 640, 480),
+            new WidgetEnvelopeConstraints(new PixelRect(40, 20, 1280, 720), 1.25, 1.5,
+                EnvelopeInsets.PlatformPlacement));
+        Assert.IsTrue(constrained.WorkAreaClamped);
+        Assert.IsLessThanOrEqualTo(constrained.LogicalWorkArea.Width -
+            EnvelopeInsets.PlatformPlacement.Left - EnvelopeInsets.PlatformPlacement.Right,
+            constrained.Window.Width);
+        Assert.IsLessThanOrEqualTo(constrained.LogicalWorkArea.Height -
+            EnvelopeInsets.PlatformPlacement.Top - EnvelopeInsets.PlatformPlacement.Bottom,
+            constrained.Window.Height);
+        Assert.AreEqual((1600d * 1.25) / (1200d * 1.5),
+            constrained.AdmittedContent.Width / constrained.AdmittedContent.Height, 0.01,
+            "Work-area clamping must preserve the accessibility-scaled authored aspect instead of selecting a preset.");
+
+        var scaledWorkArea = new PixelRect(1920, 40, 2560, 1600);
+        var scaledConstraints = new WidgetEnvelopeConstraints(
+            scaledWorkArea, 1.25, 1, EnvelopeInsets.PlatformPlacement);
+        var scaledCompact = WidgetEnvelopeResolver.Resolve(Surface(520, 520, 320, 360), scaledConstraints);
+        var scaledWide = WidgetEnvelopeResolver.Resolve(Surface(980, 700, 420, 340), scaledConstraints);
+        Assert.AreEqual(
+            AnchoredPixelBounds(scaledCompact.GuideBounds, scaledCompact.Window, scaledWorkArea, 1.25),
+            AnchoredPixelBounds(scaledWide.GuideBounds, scaledWide.Window, scaledWorkArea, 1.25));
+        Assert.AreEqual(
+            AnchoredPixelBounds(scaledCompact.TrayBounds, scaledCompact.Window, scaledWorkArea, 1.25),
+            AnchoredPixelBounds(scaledWide.TrayBounds, scaledWide.Window, scaledWorkArea, 1.25));
+    }
+
+    [TestMethod]
     [Timeout(10_000)]
-    public async Task Surface_hints_change_only_content_mode_while_shell_tray_guide_and_transition_owner_stay_invariant()
+    public async Task Surface_hints_atomically_resize_the_content_union_while_absolute_chrome_stays_anchored()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -429,6 +491,8 @@ public sealed class IntegrationAdapterTests
                     Mode = WidgetSurfaceMode.Compact,
                     PreferredWidth = 420,
                     PreferredHeight = 340,
+                    MinimumWidth = 320,
+                    MinimumHeight = 240,
                 });
             var wide = Frame("wide.widget", 1, ButtonTree("wide"),
                 surface: new WidgetSurfaceHints
@@ -436,19 +500,29 @@ public sealed class IntegrationAdapterTests
                     Mode = WidgetSurfaceMode.Wide,
                     PreferredWidth = 1440,
                     PreferredHeight = 810,
+                    MinimumWidth = 640,
+                    MinimumHeight = 400,
                 });
             var fake = new FakePresentationSession(compact, wide);
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
-            var window = new Window { Width = 978, Height = 466, Content = shell };
+            var workArea = new PixelRect(100, 50, 1920, 1080);
+            shell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
+                workArea, 1, 1, EnvelopeInsets.PlatformPlacement));
+            var window = new Window { Width = 1600, Height = 1000, Content = shell };
             window.Show();
             await shell.InitializeAsync();
             await WaitForAsync(() => shell.AdmittedWidgetId == compact.Authority.WidgetId);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-            var shellBounds = shell.Bounds;
-            var trayBounds = BoundsInShell(shell.TrayElement, shell);
-            var guideBounds = BoundsInShell(shell.ControllerGuideElement, shell);
+            var compactEnvelope = shell.CurrentEnvelope;
+            Assert.AreEqual(compact.Authority, shell.EnvelopeAuthority);
+            Assert.AreEqual(new Size(420, 340), compactEnvelope.AdmittedContent);
+            Assert.AreEqual(new Size(920, 460), compactEnvelope.Window);
+            Assert.AreEqual(compactEnvelope.GuideBounds, BoundsInShell(shell.ControllerGuideElement, shell));
+            Assert.AreEqual(compactEnvelope.TrayBounds, BoundsInShell(shell.TrayElement, shell));
+            var trayBounds = AnchoredBounds(compactEnvelope.TrayBounds, compactEnvelope.Window, workArea);
+            var guideBounds = AnchoredBounds(compactEnvelope.GuideBounds, compactEnvelope.Window, workArea);
             var trayParent = shell.TrayElement.GetVisualParent();
             var guideParent = shell.ControllerGuideElement.GetVisualParent();
             Assert.AreEqual(ContentResponsiveMode.Compact, shell.ContentMode);
@@ -458,9 +532,17 @@ public sealed class IntegrationAdapterTests
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
             Assert.AreEqual(ContentResponsiveMode.Wide, shell.ContentMode);
-            Assert.AreEqual(shellBounds, shell.Bounds);
-            Assert.AreEqual(trayBounds, BoundsInShell(shell.TrayElement, shell));
-            Assert.AreEqual(guideBounds, BoundsInShell(shell.ControllerGuideElement, shell));
+            var wideEnvelope = shell.CurrentEnvelope;
+            Assert.AreEqual(wide.Authority, shell.EnvelopeAuthority);
+            Assert.AreEqual(new Size(1440, 810), wideEnvelope.AdmittedContent);
+            Assert.AreEqual(new Size(1440, 930), wideEnvelope.Window);
+            Assert.AreEqual(wideEnvelope.GuideBounds, BoundsInShell(shell.ControllerGuideElement, shell));
+            Assert.AreEqual(wideEnvelope.TrayBounds, BoundsInShell(shell.TrayElement, shell));
+            Assert.AreEqual(trayBounds, AnchoredBounds(wideEnvelope.TrayBounds, wideEnvelope.Window, workArea));
+            Assert.AreEqual(guideBounds, AnchoredBounds(wideEnvelope.GuideBounds, wideEnvelope.Window, workArea));
+            Assert.IsTrue(wideEnvelope.Window.Width < wideEnvelope.LogicalWorkArea.Width ||
+                          wideEnvelope.Window.Height < wideEnvelope.LogicalWorkArea.Height);
+            Assert.IsFalse(wideEnvelope.UsesFullWorkAreaBackdrop);
             Assert.AreSame(trayParent, shell.TrayElement.GetVisualParent());
             Assert.AreSame(guideParent, shell.ControllerGuideElement.GetVisualParent());
             Assert.IsFalse(shell.TrayElement.GetVisualAncestors().Any(item => item is TransitioningContentControl));
@@ -524,15 +606,18 @@ public sealed class IntegrationAdapterTests
                     ],
                 }).ToArray(),
             };
-            var ordinary = Frame("intrinsic.widget", 1, ordinaryRoot);
+            var ordinary = Frame("intrinsic.widget", 1, ordinaryRoot,
+                surface: Surface(880, 520, 520, 360));
             var advanced = Frame(
                 "advanced.widget",
                 1,
                 advancedRoot,
                 advanced: new WidgetAdvancedPresentationView(
                     WidgetAdvancedPresentationKind.LauncherExperience,
-                    WidgetAdvancedPresentationPreset.CoverWall));
-            var smallScroll = Frame("small-scroll.widget", 1, smallScrollRoot);
+                    WidgetAdvancedPresentationPreset.CoverWall),
+                surface: Surface(980, 700, 420, 340));
+            var smallScroll = Frame("small-scroll.widget", 1, smallScrollRoot,
+                surface: Surface(560, 700, 320, 420));
             var fake = new FakePresentationSession(ordinary, advanced, smallScroll);
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
@@ -597,15 +682,52 @@ public sealed class IntegrationAdapterTests
                 "Settings", "Game Launcher", "Audio Mixer", "Network Controls",
                 "Spotify", "Media Sessions", "YouTube Music", "Community Hub",
             };
+            var surfaces = new[]
+            {
+                Surface(880, 520, 520, 360),
+                Surface(980, 700, 420, 340),
+                Surface(520, 520, 320, 360),
+                Surface(560, 700, 320, 420),
+                Surface(980, 560, 480, 360),
+                Surface(580, 400, 360, 280),
+                Surface(760, 440, 480, 340),
+                Surface(820, 620, 420, 340),
+            };
             var frames = names.Select((name, index) =>
-                Frame($"tray.widget.{index}", 1, ButtonTree("open"), displayName: name)).ToArray();
+                Frame($"tray.widget.{index}", 1, ButtonTree("open"), displayName: name,
+                    surface: surfaces[index])).ToArray();
             var fake = new FakePresentationSession(frames);
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
-            var window = new Window { Width = 978, Height = 466, Content = shell };
+            var workArea = new PixelRect(100, 50, 1920, 1080);
+            shell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
+                workArea, 1, 1, EnvelopeInsets.PlatformPlacement));
+            var window = new Window { Width = 1600, Height = 1000, Content = shell };
             window.Show();
             await shell.InitializeAsync();
             await WaitForAsync(() => shell.AdmittedWidgetId == frames[0].Authority.WidgetId);
+
+            Rect? fixedTray = null;
+            Rect? fixedGuide = null;
+            var admittedSizes = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < frames.Length; index++)
+            {
+                await coordinator.SelectWidgetAsync(frames[index].Authority.WidgetId);
+                await WaitForAsync(() => shell.EnvelopeAuthority == frames[index].Authority);
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                var envelope = shell.CurrentEnvelope;
+                var absoluteTray = AnchoredBounds(envelope.TrayBounds, envelope.Window, workArea);
+                var absoluteGuide = AnchoredBounds(envelope.GuideBounds, envelope.Window, workArea);
+                fixedTray ??= absoluteTray;
+                fixedGuide ??= absoluteGuide;
+                Assert.AreEqual(fixedTray.Value, absoluteTray,
+                    $"Tray moved while switching to {frames[index].Authority.WidgetId}.");
+                Assert.AreEqual(fixedGuide.Value, absoluteGuide,
+                    $"Controller guide moved while switching to {frames[index].Authority.WidgetId}.");
+                admittedSizes.Add($"{envelope.AdmittedContent.Width:F1}x{envelope.AdmittedContent.Height:F1}");
+            }
+            Assert.IsGreaterThanOrEqualTo(4, admittedSizes.Count,
+                "The installed fixtures must retain at least four materially distinct content envelopes.");
 
             var fixtures = new[]
             {
@@ -648,8 +770,9 @@ public sealed class IntegrationAdapterTests
             var guide = BoundsInShell(shell.ControllerGuideElement, shell);
             var tray = BoundsInShell(shell.TrayElement, shell);
             Assert.IsFalse(Overlaps(guide, tray));
-            Assert.IsLessThanOrEqualTo(104, guide.Height + tray.Height,
-                "The controller guide and tray must leave the majority of the work area to content.");
+            Assert.AreEqual(WidgetEnvelopeResolver.GuideHeightDip + WidgetEnvelopeResolver.TrayHeightDip,
+                guide.Height + tray.Height, 0.1,
+                "The fixed guide and tray metrics must remain independent from the admitted content envelope.");
             window.Close();
         });
     }
@@ -894,7 +1017,8 @@ public sealed class IntegrationAdapterTests
                     },
                 ],
             };
-            var frame = Frame("hoisted.widget", 1, root);
+            var frame = Frame("hoisted.widget", 1, root,
+                surface: Surface(978, 466, 420, 340));
             var fake = new FakePresentationSession(frame);
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
@@ -911,8 +1035,10 @@ public sealed class IntegrationAdapterTests
                 $"probed: {string.Join(',', capture.ProbedFocusableIds)}");
             Assert.IsEmpty(capture.MissingExpectedIds,
                 "Controls contained in the coherent seed capture must survive later virtualization probes.");
-            Assert.IsTrue(capture.ProbedFocusableIds.Any(id => id is
-                "hoisted-details" or "hoisted-wifi" or "hoisted-bluetooth"));
+            foreach (var id in new[] { "hoisted-details", "hoisted-wifi", "hoisted-bluetooth" })
+                Assert.IsTrue(capture.Controls.Any(control => control.NodeId == id && control.Contained) ||
+                    capture.ProbedFocusableIds.Contains(id),
+                    $"{id} must be seed-contained or proven reachable through the one scroll owner.");
             var page = shell.ActivePage!;
             var outer = page.GetVisualDescendants().OfType<ListBox>().Single();
             Assert.HasCount(1, page.GetVisualDescendants().OfType<ListBox>());
@@ -998,7 +1124,8 @@ public sealed class IntegrationAdapterTests
                 ["layout-row"] = Style(childStyle),
                 ["primary-action"] = Style(compactInteractiveStyle),
             };
-            var fake = new FakePresentationSession(Frame("styled-responsive.widget", 10, root, styles));
+            var fake = new FakePresentationSession(Frame("styled-responsive.widget", 10, root, styles,
+                surface: Surface(978, 466, 420, 340)));
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
             var window = new Window { Width = 978, Height = 466, Content = shell };
@@ -1374,8 +1501,10 @@ public sealed class IntegrationAdapterTests
             Assert.IsFalse(window.ShowInTaskbar);
             CollectionAssert.Contains(window.TransparencyLevelHint.ToArray(), WindowTransparencyLevel.Transparent);
             Assert.AreEqual(0, ((ISolidColorBrush)window.Background!).Color.A);
-            Assert.AreEqual(420, window.MinWidth);
-            Assert.AreEqual(340, window.MinHeight);
+            Assert.AreEqual(0, window.MinWidth,
+                "A fixed window minimum must not override the resolved content-plus-chrome union.");
+            Assert.AreEqual(0, window.MinHeight,
+                "A fixed window minimum must not override work-area containment.");
             await window.ShutdownAsync();
         });
     }
@@ -1444,6 +1573,20 @@ public sealed class IntegrationAdapterTests
             },
             renderStyles ?? new Dictionary<string, BridgeNodeRenderStyles>());
     }
+
+    private static WidgetSurfaceHints Surface(
+        double preferredWidth,
+        double preferredHeight,
+        double minimumWidth,
+        double minimumHeight,
+        WidgetSurfaceMode mode = WidgetSurfaceMode.Adaptive) => new()
+    {
+        Mode = mode,
+        PreferredWidth = preferredWidth,
+        PreferredHeight = preferredHeight,
+        MinimumWidth = minimumWidth,
+        MinimumHeight = minimumHeight,
+    };
 
     private static BridgeComputedStyleValue Length(double number, string unit) => new()
     {
@@ -1610,6 +1753,36 @@ public sealed class IntegrationAdapterTests
     private static bool Overlaps(Rect left, Rect right) =>
         left.Left < right.Right && left.Right > right.Left &&
         left.Top < right.Bottom && left.Bottom > right.Top;
+
+    private static bool Contains(Rect outer, Rect inner) =>
+        inner.Left >= outer.Left - 0.1 && inner.Top >= outer.Top - 0.1 &&
+        inner.Right <= outer.Right + 0.1 && inner.Bottom <= outer.Bottom + 0.1;
+
+    private static Rect AnchoredBounds(Rect local, Size window, PixelRect workArea)
+    {
+        var windowX = workArea.X + ((workArea.Width - window.Width) / 2);
+        var windowY = workArea.Bottom - EnvelopeInsets.PlatformPlacement.Bottom - window.Height;
+        return new Rect(windowX + local.X, windowY + local.Y, local.Width, local.Height);
+    }
+
+    private static PixelRect AnchoredPixelBounds(
+        Rect local,
+        Size window,
+        PixelRect workArea,
+        double scaling)
+    {
+        var windowWidth = (int)Math.Round(window.Width * scaling, MidpointRounding.AwayFromZero);
+        var windowHeight = (int)Math.Round(window.Height * scaling, MidpointRounding.AwayFromZero);
+        var windowX = workArea.X + ((workArea.Width - windowWidth) / 2);
+        var windowY = workArea.Bottom - (int)Math.Round(
+            EnvelopeInsets.PlatformPlacement.Bottom * scaling,
+            MidpointRounding.AwayFromZero) - windowHeight;
+        return new PixelRect(
+            windowX + (int)Math.Round(local.X * scaling, MidpointRounding.AwayFromZero),
+            windowY + (int)Math.Round(local.Y * scaling, MidpointRounding.AwayFromZero),
+            (int)Math.Round(local.Width * scaling, MidpointRounding.AwayFromZero),
+            (int)Math.Round(local.Height * scaling, MidpointRounding.AwayFromZero));
+    }
 
     private static IEnumerable<ViewNode> CollectionItems(int count, string prefix = "item") =>
         Enumerable.Range(0, count).Select(index => new ViewNode
