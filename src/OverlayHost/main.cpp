@@ -370,7 +370,10 @@ public:
                           ? gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Success(
                                 std::move(*value))
                           : gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Failure(
-                                gba::WidgetSessionFailureStage::Snapshot,
+                                bridge_.lastRuntimeFailureCategory(widgetId) ==
+                                        gba::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                                    ? gba::WidgetSessionFailureStage::Start
+                                    : gba::WidgetSessionFailureStage::Snapshot,
                                 bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,

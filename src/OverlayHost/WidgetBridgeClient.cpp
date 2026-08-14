@@ -1203,7 +1203,8 @@ bool HandleAsyncEvent(
     std::wstring& status,
     WidgetArtworkResultQueue* artworkResults = nullptr,
     LocalWidgetPackageInstallResultQueue* localPackageInstallResults = nullptr,
-    PlatformAppearanceRevisionTracker* launcherExperienceChanges = nullptr) {
+    PlatformAppearanceRevisionTracker* launcherExperienceChanges = nullptr,
+    std::optional<WidgetBridgeRuntimeFailure>* runtimeFailure = nullptr) {
     if (!event.HasKey(L"type") ||
         event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
         !event.HasKey(L"payload") ||
@@ -1413,10 +1414,19 @@ bool HandleAsyncEvent(
             status = L"WidgetBridge worker failure has an invalid payload.";
             return false;
         }
+        const auto reason = OptionalString(payload, L"reason");
         const auto diagnostic = OptionalString(payload, L"diagnosticCode");
         if (!diagnostic.empty() && !IsIdentifier(diagnostic)) {
             status = L"WidgetBridge worker failure has an invalid diagnostic code.";
             return false;
+        }
+        if (runtimeFailure) {
+            *runtimeFailure = WidgetBridgeRuntimeFailure{
+                widgetId,
+                reason == L"connectionFailed"
+                    ? WidgetBridgeRuntimeFailureCategory::WorkerStart
+                    : WidgetBridgeRuntimeFailureCategory::Other,
+            };
         }
         status = diagnostic.empty()
             ? L"Widget '" + widgetId + L"' worker failed; retry to start a fresh worker."
@@ -2116,6 +2126,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
     const std::wstring_view widgetId,
     const std::wstring_view state) {
     std::scoped_lock lock(requestMutex_);
+    lastRuntimeFailure_.reset();
     const bool validState = state == L"visible" || state == L"interactive";
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
@@ -2150,7 +2161,8 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
                         appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                        &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                        &localPackageInstallResults_, &launcherExperienceChanges_,
+                        &lastRuntimeFailure_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -2182,6 +2194,7 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                     snapshot.root,
                     responsePayload.GetNamedObject(L"renderStyles"));
             }
+            lastRuntimeFailure_.reset();
             lastError_.clear();
             return snapshot;
         }
@@ -2767,6 +2780,15 @@ std::wstring WidgetBridgeClient::lastError() const {
     return lastError_;
 }
 
+std::optional<WidgetBridgeRuntimeFailureCategory>
+WidgetBridgeClient::lastRuntimeFailureCategory(
+    const std::wstring_view widgetId) const noexcept {
+    std::scoped_lock lock(requestMutex_);
+    if (!lastRuntimeFailure_ || lastRuntimeFailure_->widgetId != widgetId)
+        return std::nullopt;
+    return lastRuntimeFailure_->category;
+}
+
 bool WidgetBridgeClient::PumpEvents() {
     std::unique_lock lock(requestMutex_, std::try_to_lock);
     if (!lock.owns_lock()) return false;
@@ -2998,6 +3020,37 @@ std::optional<WidgetActionFailure> ParseWidgetActionFailureEvent(
         return std::move(queued.front());
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget action-failure JSON: " +
+                std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetBridgeRuntimeFailure> ParseWidgetRuntimeFailureEvent(
+    const std::string_view eventUtf8,
+    std::wstring& error) {
+    try {
+        const auto event = JsonObject::Parse(winrt::to_hstring(eventUtf8));
+        WidgetInvalidationQueue invalidations;
+        WidgetActionFailureQueue actionFailures;
+        WidgetHostEffectQueue effects;
+        PlatformAppearanceRevisionTracker appearance;
+        WidgetCatalogRevisionTracker catalog;
+        std::optional<WidgetBridgeRuntimeFailure> failure;
+        std::wstring status;
+        if (!HandleAsyncEvent(
+                event, invalidations, actionFailures, effects, appearance, catalog,
+                status, nullptr, nullptr, nullptr, &failure)) {
+            error = std::move(status);
+            return std::nullopt;
+        }
+        if (!failure) {
+            error = L"JSON is not a widget runtime-failure event.";
+            return std::nullopt;
+        }
+        error.clear();
+        return failure;
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid widget runtime-failure JSON: " +
                 std::wstring(exception.message());
         return std::nullopt;
     }

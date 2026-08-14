@@ -536,6 +536,31 @@ int main() {
         L"controllerActionFailed");
 
     error.clear();
+    const auto workerStartFailure =
+        gba::testing::ParseWidgetRuntimeFailureEvent(R"json({
+        "protocolVersion":1,
+        "type":"widget-failed",
+        "requestId":0,
+        "payload":{"widgetId":"music","reason":"connectionFailed","exitCode":65,"diagnosticCode":"exit_65","restartsUsed":0,"canRestart":true}
+    })json", error);
+    assert(workerStartFailure && error.empty());
+    assert(workerStartFailure->widgetId == L"music");
+    assert(workerStartFailure->category ==
+        gba::WidgetBridgeRuntimeFailureCategory::WorkerStart);
+
+    error.clear();
+    const auto runtimeFailure =
+        gba::testing::ParseWidgetRuntimeFailureEvent(R"json({
+        "protocolVersion":1,
+        "type":"widget-failed",
+        "requestId":0,
+        "payload":{"widgetId":"music","reason":"processExited","exitCode":1,"restartsUsed":2,"canRestart":false}
+    })json", error);
+    assert(runtimeFailure && error.empty());
+    assert(runtimeFailure->category ==
+        gba::WidgetBridgeRuntimeFailureCategory::Other);
+
+    error.clear();
     assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"providerFailure","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":false}

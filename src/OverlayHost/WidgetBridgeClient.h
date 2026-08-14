@@ -128,6 +128,17 @@ private:
     std::vector<WidgetActionFailure> queued_;
 };
 
+enum class WidgetBridgeRuntimeFailureCategory {
+    Other,
+    WorkerStart,
+};
+
+struct WidgetBridgeRuntimeFailure final {
+    std::wstring widgetId;
+    WidgetBridgeRuntimeFailureCategory category{
+        WidgetBridgeRuntimeFailureCategory::Other};
+};
+
 enum class WidgetHostEffectKind {
     CloseOverlayAfterAppLaunch,
 };
@@ -494,6 +505,8 @@ public:
     [[nodiscard]] std::optional<bool> CancelLocalWidgetPackageInstall(
         std::wstring_view operationId);
     [[nodiscard]] std::wstring lastError() const;
+    [[nodiscard]] std::optional<WidgetBridgeRuntimeFailureCategory>
+        lastRuntimeFailureCategory(std::wstring_view widgetId) const noexcept;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
     [[nodiscard]] std::vector<std::wstring> TakeInvalidatedWidgetIds() noexcept;
@@ -520,6 +533,7 @@ private:
     bool transportTainted_{};
     std::wstring pipeName_;
     std::wstring lastError_;
+    std::optional<WidgetBridgeRuntimeFailure> lastRuntimeFailure_;
     long long nextRequestId_{};
     WidgetInvalidationQueue invalidations_;
     WidgetActionFailureQueue actionFailures_;
@@ -559,6 +573,9 @@ struct BridgeFrameReadResult final {
     std::string_view eventUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetActionFailure> ParseWidgetActionFailureEvent(
+    std::string_view eventUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetBridgeRuntimeFailure> ParseWidgetRuntimeFailureEvent(
     std::string_view eventUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetArtworkResult> ParseWidgetArtworkResultEvent(

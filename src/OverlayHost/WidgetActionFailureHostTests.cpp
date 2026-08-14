@@ -572,13 +572,22 @@ void Run(const Arguments& arguments) {
                     return currentRoot && FindByAutomationId(
                         automation.Get(), currentRoot.Get(), kTrayAutomationId);
                 }), "The fixture did not appear in the production dashboard.");
-        PostKey(window, VK_RETURN);
         const fs::path logPath = installation.LocalAppData() /
             L"GameBarAlternative" / L"overlay.log";
-        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    return ReadLog(logPath).find("YT Music failed: Widget worker") !=
-                        std::string::npos;
-                }), "The primary worker-start failure was not retained by the host.");
+        const auto activationLogBoundary = ReadLog(logPath).size();
+        PostKey(window, VK_RETURN);
+        if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return ReadLog(logPath).find(
+                    "YT Music failed: Widget worker", activationLogBoundary) !=
+                    std::string::npos;
+            })) {
+            const auto log = ReadLog(logPath);
+            const auto suffixStart = std::min(activationLogBoundary, log.size());
+            const auto suffixLength = std::min<std::size_t>(
+                8192, log.size() - suffixStart);
+            Fail("The primary worker-start failure was not retained by the host. "
+                 "Activation log suffix: " + log.substr(suffixStart, suffixLength));
+        }
         const auto startupLog = ReadLog(logPath);
         Require(startupLog.find("hidden suspended widget has no cached snapshot") ==
                     std::string::npos,
@@ -609,10 +618,26 @@ void Run(const Arguments& arguments) {
 
         const ULONGLONG firstFailureAt = GetTickCount64();
         PostKey(window, VK_RETURN);
-        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    return HasExpectedStatus(
-                        automation.Get(), window, kOpenStatusAutomationId);
-                }), "The production host did not paint/project the exact polite status.");
+        if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return HasExpectedStatus(
+                    automation.Get(), window, kOpenStatusAutomationId);
+            })) {
+            auto currentRoot = RootForWindow(automation.Get(), window);
+            auto status = currentRoot
+                ? FindByAutomationId(
+                    automation.Get(), currentRoot.Get(), kOpenStatusAutomationId)
+                : ComPtr<IUIAutomationElement>{};
+            const auto statusName = StringProperty(status.Get(), UIA_NamePropertyId);
+            const auto log = ReadLog(logPath);
+            const auto suffixStart = std::min(activationLogBoundary, log.size());
+            const auto suffixLength = std::min<std::size_t>(
+                8192, log.size() - suffixStart);
+            Fail("The production host did not paint/project the exact polite status. "
+                 "Projected status: " +
+                 (statusName ? WideToUtf8(*statusName) : std::string{"<absent>"}) +
+                 ". Activation log suffix: " +
+                 log.substr(suffixStart, suffixLength));
+        }
         Require(WaitUntil(3000, [&] { return eventHandler->Count() >= 1; }),
                 "The production UI Automation provider did not raise LiveRegionChanged.");
         Require(WaitUntil(3000, [&] {

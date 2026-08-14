@@ -82,7 +82,6 @@ bool WidgetSessionCoordinator::RequestSnapshot(
     if (!descriptor) return false;
     if (explicitRetry) {
         ++generations_[std::wstring(widgetId)];
-        ClearFailure(widgetId);
     }
     return Queue(MakeRequest(RequestKind::Snapshot, std::wstring(widgetId)));
 }
@@ -92,7 +91,6 @@ bool WidgetSessionCoordinator::RequestRestart(const std::wstring_view widgetId) 
     const auto id = std::wstring(widgetId);
     ++generations_[id];
     snapshots_.erase(id);
-    failures_.erase(id);
     lifecycleStates_.erase(id);
     lifecycleTargets_.erase(id);
     awaitingRestartSnapshot_.insert(id);
@@ -117,6 +115,8 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
     for (const auto& [widgetId, state] : desired) {
         if (!Contains(widgetId)) continue;
         lifecycleTargets_.insert_or_assign(widgetId, state);
+        if (failures_.contains(widgetId) &&
+            !awaitingRestartSnapshot_.contains(widgetId)) continue;
         const auto current = lifecycleStates_.find(widgetId);
         if (current != lifecycleStates_.end() && current->second == state) continue;
         if (deferColdStart && current == lifecycleStates_.end() && !Snapshot(widgetId)) continue;
@@ -142,17 +142,22 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
     events.reserve(completions.size());
     for (auto& completion : completions) {
         auto& request = completion.request;
-        if (!CompletionIsCurrent(request)) {
+        const bool primaryStartFailure =
+            !request.widgetId.empty() &&
+            completion.failure.stage == WidgetSessionFailureStage::Start &&
+            CompletionRuntimeIsCurrent(request);
+        if (!CompletionIsCurrent(request) && !primaryStartFailure) {
             events.push_back({
                 WidgetSessionEventKind::StaleCompletionRejected,
                 request.widgetId});
             continue;
         }
         if (completion.failure.stage != WidgetSessionFailureStage::None) {
-            if (request.kind == RequestKind::Restart)
+            if (!request.widgetId.empty()) {
                 awaitingRestartSnapshot_.erase(request.widgetId);
-            if (!request.widgetId.empty())
+                if (primaryStartFailure) RevokeRequests(request.widgetId);
                 failures_.insert_or_assign(request.widgetId, completion.failure);
+            }
             events.push_back({
                 WidgetSessionEventKind::Failed,
                 request.widgetId,
@@ -534,20 +539,27 @@ std::optional<WidgetSessionCatalogChange> WidgetSessionCoordinator::ApplyCatalog
     return change;
 }
 
-bool WidgetSessionCoordinator::CompletionIsCurrent(const Request& request) const noexcept {
+bool WidgetSessionCoordinator::CompletionRuntimeIsCurrent(
+    const Request& request) const noexcept {
     if (request.widgetId.empty()) return true;
     const auto found = generations_.find(request.widgetId);
     if (found == generations_.end() || found->second != request.generation) return false;
+    const auto* descriptor = FindDescriptor(request.widgetId);
+    return descriptor && descriptor->instanceId == request.expectedInstanceId &&
+           descriptor->runtimeGeneration == request.expectedRuntimeGeneration &&
+           descriptor->presentationGeneration == request.expectedPresentationGeneration;
+}
+
+bool WidgetSessionCoordinator::CompletionIsCurrent(const Request& request) const noexcept {
+    if (!CompletionRuntimeIsCurrent(request)) return false;
+    if (request.widgetId.empty()) return true;
     if (request.kind == RequestKind::Establish ||
         request.kind == RequestKind::Lifecycle) {
         const auto target = lifecycleTargets_.find(request.widgetId);
         if (target == lifecycleTargets_.end() || target->second != request.lifecycle)
             return false;
     }
-    const auto* descriptor = FindDescriptor(request.widgetId);
-    return descriptor && descriptor->instanceId == request.expectedInstanceId &&
-           descriptor->runtimeGeneration == request.expectedRuntimeGeneration &&
-           descriptor->presentationGeneration == request.expectedPresentationGeneration;
+    return true;
 }
 
 void WidgetSessionCoordinator::FailCompletion(

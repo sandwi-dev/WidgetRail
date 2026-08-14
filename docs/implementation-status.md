@@ -4764,3 +4764,32 @@ visible hide completes in 1,241 ms, and close-side replacement completes in
 and 749 ms input-to-complete maximum.
 Exact PID/start/profile/commit/executable/child-role provenance is emitted by
 the fixture. No aggregate or capture route was run.
+
+### Primary worker-start failure precedence and retry (DLV-235)
+
+The native bridge adapter now carries the existing typed asynchronous
+`connectionFailed` worker category across the private establishment seam. The
+session coordinator classifies that category as `Start` while retaining the
+separately sanitized bridge message only for presentation; no diagnostic text,
+widget identity, or service name participates in control flow, and the public
+bridge protocol is unchanged.
+
+A same-runtime Start failure remains authoritative when an automatic lifecycle
+target advances from Visible to Interactive. The coordinator revokes queued or
+in-flight work at a new generation boundary and suppresses further automatic
+lifecycle establishment while the failure is current. Explicit Retry owns one
+fresh restart generation, but the primary failure remains visible until that
+generation admits a valid snapshot. Only admission clears the failure; stale
+or secondary snapshot/lifecycle results cannot replace it. Existing
+coordinator, bridge, lifecycle, failure, input, focus, presentation, and
+process owners remain sole authority.
+
+Focused Release evidence passes 13 coordinator scenarios, including a
+deterministic blocked-start retarget/revocation/retry case, plus the native
+bridge/catalog parser with direct `connectionFailed` versus `processExited`
+category coverage. The PATH-isolated `WidgetActionFailureHostTestsOnly` route
+retains the actionable YT Music worker-start failure without the secondary
+hidden-cache diagnostic, recovers through one A-button Retry and one worker,
+restores exact play/pause UIA focus, status/live-region/action evidence, keeps
+feedback bounded across hide/reopen, and leaves no worker after normal close.
+No aggregate, capture, widget-domain, or unrelated full-build route was run.

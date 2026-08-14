@@ -58,6 +58,9 @@ struct FakeBridge final {
     std::wstring failingWidget;
     bool releaseStall{};
     bool startFails{};
+    bool stallStart{};
+    bool releaseStart{};
+    int startFailuresRemaining{};
     bool protocolMismatch{};
     int ensureCalls{};
     int catalogCalls{};
@@ -68,9 +71,13 @@ struct FakeBridge final {
     WidgetSessionOperations Operations() {
         return {
             [this](std::stop_token) {
-                std::scoped_lock lock(mutex);
+                std::unique_lock lock(mutex);
                 ++ensureCalls;
-                return startFails
+                changed.notify_all();
+                if (stallStart) changed.wait(lock, [&] { return releaseStart; });
+                const bool fail = startFails || startFailuresRemaining > 0;
+                if (startFailuresRemaining > 0) --startFailuresRemaining;
+                return fail
                     ? WidgetSessionOperationResult<bool>::Failure(
                         WidgetSessionFailureStage::Start, L"bridge unavailable")
                     : WidgetSessionOperationResult<bool>::Success(true);
@@ -362,6 +369,116 @@ void TypedStartFailureAndRetryPolicy() {
     assert(!coordinator.NextCatalogRetryDelay(true, true, true));
 }
 
+void PrimaryStartFailureSurvivesLifecycleRetargetAndRetry() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+
+    bridge.stallStart = true;
+    bridge.startFailuresRemaining = 1;
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.ensureCalls == 2;
+        }));
+    }
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Interactive},
+    });
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseStart = true;
+    }
+    bridge.changed.notify_all();
+
+    const auto failed = WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::Failed;
+        });
+    });
+    assert(std::any_of(failed.begin(), failed.end(), [](const auto& event) {
+        return event.widgetId == L"alpha" &&
+               event.kind == WidgetSessionEventKind::Failed &&
+               event.failure.stage == WidgetSessionFailureStage::Start;
+    }));
+    assert(coordinator.Failure(L"alpha") &&
+           coordinator.Failure(L"alpha")->stage == WidgetSessionFailureStage::Start);
+    assert(!coordinator.Snapshot(L"alpha"));
+
+    int automaticEnsureCalls{};
+    {
+        std::scoped_lock lock(bridge.mutex);
+        automaticEnsureCalls = bridge.ensureCalls;
+        bridge.releaseStart = false;
+    }
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Interactive},
+    });
+    bool automaticStart{};
+    {
+        std::unique_lock lock(bridge.mutex);
+        automaticStart = bridge.changed.wait_for(lock, 100ms, [&] {
+            return bridge.ensureCalls != automaticEnsureCalls;
+        });
+        bridge.releaseStart = true;
+    }
+    bridge.changed.notify_all();
+    assert(!automaticStart);
+    assert(coordinator.Failure(L"alpha") &&
+           coordinator.Failure(L"alpha")->stage == WidgetSessionFailureStage::Start);
+
+    int snapshotsBeforeRetry{};
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 7);
+        snapshotsBeforeRetry = bridge.snapshotCalls;
+    }
+    assert(coordinator.RequestRestart(L"alpha"));
+    assert(coordinator.Failure(L"alpha") &&
+           coordinator.Failure(L"alpha")->stage == WidgetSessionFailureStage::Start);
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::Restarted;
+        });
+    });
+    assert(coordinator.Failure(L"alpha") &&
+           coordinator.Failure(L"alpha")->stage == WidgetSessionFailureStage::Start);
+    {
+        std::scoped_lock lock(bridge.mutex);
+        assert(bridge.restartCalls == 1);
+    }
+
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Interactive},
+    });
+    const auto admitted = WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(std::any_of(admitted.begin(), admitted.end(), [](const auto& event) {
+        return event.widgetId == L"alpha" &&
+               event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+               event.completedRestart;
+    }));
+    {
+        std::scoped_lock lock(bridge.mutex);
+        assert(bridge.snapshotCalls == snapshotsBeforeRetry + 1);
+    }
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 7);
+    assert(!coordinator.Failure(L"alpha"));
+}
+
 void CancellationStopsStalledRequest() {
     FakeBridge bridge;
     bridge.catalog = {
@@ -559,10 +676,11 @@ int main() {
     LifecycleDrainAndBoundedCorrelation();
     StalledSessionDoesNotBlockHostOrNeighborIntent();
     TypedStartFailureAndRetryPolicy();
+    PrimaryStartFailureSurvivesLifecycleRetargetAndRetry();
     CancellationStopsStalledRequest();
     SelectionRevokesNeverCompletingRequest();
     DelayedSuccessRetainsLastGoodSnapshot();
     HideAndWorkerExitRevokePendingSnapshots();
     CancellationIgnoringLateResultsAreStale();
-    std::cout << "WidgetSessionCoordinatorTests passed (12 scenarios)\n";
+    std::cout << "WidgetSessionCoordinatorTests passed (13 scenarios)\n";
 }

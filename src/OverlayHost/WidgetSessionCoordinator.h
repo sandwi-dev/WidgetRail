@@ -190,6 +190,7 @@ private:
     [[nodiscard]] Completion Execute(Request request, std::stop_token stopToken);
     [[nodiscard]] std::optional<WidgetSessionCatalogChange> ApplyCatalog(
         std::vector<WidgetDescriptor> descriptors);
+    [[nodiscard]] bool CompletionRuntimeIsCurrent(const Request& request) const noexcept;
     [[nodiscard]] bool CompletionIsCurrent(const Request& request) const noexcept;
     void FailCompletion(Completion& completion, WidgetSessionOperationResult<bool> result);
 
