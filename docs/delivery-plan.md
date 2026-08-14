@@ -10,7 +10,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main: `8e2587c`. Its latest product implementation commit is `8836e07`
+- Local main: `aa1091c`. Its latest product implementation commit is `8836e07`
   (`[DLV-221] Integrate Taffy native layout engine`); the commits after it are
   reviewer-owned planning only. The user physically reviewed the rebuilt
   Release, found the integration substantially correct, and accepted Taffy as
@@ -131,7 +131,7 @@ only production presentation path.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, created clean from main `8e2587c`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-223 Active |
+| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, created clean from main `8e2587c`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-223 bounded evidence correction Active |
 | Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, created clean from main `8e2587c`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-222 Active |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
@@ -271,7 +271,7 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Widgets lane
 
-### Assigned — DLV-223: responsive YT Music controller composition
+### Assigned correction — DLV-223: responsive YT Music controller composition
 
 Baseline: clean local main `8e2587c` with product implementation baseline
 `8836e07`. Owner: widgets lane, limited to the YT Music Community
@@ -316,6 +316,28 @@ Acceptance:
 
 Out of scope: host placement, Taffy/native edits, public schema changes,
 controller routing redesign, companion/auth changes, another page, or Avalonia.
+
+Independent review disposition: commit `b4e87da` is rejected on one bounded
+evidence gap; its package/presentation architecture, one-tree composition,
+focus/action preservation, package isolation, 60/60 YT Music suite, and
+isolated 0.2.8 lifecycle evidence are otherwise accepted. The reported 4,777
+native renderer checks contain no YT Music fixture, so they do not prove the
+assignment's required compact/standard rendered bounds and reachability for
+the changed authored tree.
+
+Correction baseline: `b4e87da`. Add the smallest identity-neutral renderer
+scenario that feeds the real current YT Music semantic snapshot and compiled
+GBSS through the production native renderer at the authored 480x340 compact
+and 760x440 preferred budgets. Assert that every authored control remains
+within the admitted visible or scroll-reachable region, that the preferred
+layout keeps artwork beside one details/control column, that compact layout
+wraps artwork above the same full-width column, and that focus identities and
+explicit adjacency remain unchanged. Test-only native harness wiring is in
+scope; production native behavior, widget-specific renderer branches, capture
+work, and another package lifecycle run are not. Run only that renderer
+scenario plus any compilation needed for it, commit one further `[DLV-223]`
+correction, and stop for review. Preserve the honest unrelated reviewer-history
+documentation red without rerunning it.
 
 ### Ready after DLV-224 integration — DLV-225: content-sized Settings root
 
