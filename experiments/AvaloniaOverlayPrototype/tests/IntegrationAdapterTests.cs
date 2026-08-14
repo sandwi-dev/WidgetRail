@@ -515,6 +515,72 @@ public sealed class IntegrationAdapterTests
     }
 
     [TestMethod]
+    public void Visible_session_anchor_ignores_mixed_DPI_overlap_resizes_until_explicit_supported_reselection()
+    {
+        var left = new ScreenAnchorDescriptor(
+            "left-125",
+            "Left display",
+            new PixelRect(0, 0, 2560, 1440),
+            new PixelRect(0, 0, 2560, 1400),
+            1.25,
+            true);
+        var right = new ScreenAnchorDescriptor(
+            "right-240",
+            "Right display",
+            new PixelRect(2560, -600, 3840, 2160),
+            new PixelRect(2560, -600, 3840, 2100),
+            2.4,
+            false);
+        var anchor = new VisibleSessionScreenAnchor();
+        var initial = anchor.Initialize(left);
+        var surfaces = new[]
+        {
+            Surface(420, 340, 320, 240, WidgetSurfaceMode.Compact),
+            Surface(880, 520, 520, 360, WidgetSurfaceMode.Standard),
+            Surface(1440, 810, 420, 340, WidgetSurfaceMode.Wide),
+            Surface(880, 520, 520, 360, WidgetSurfaceMode.Standard),
+            Surface(420, 340, 320, 240, WidgetSurfaceMode.Compact),
+        };
+
+        foreach (var surface in surfaces)
+        {
+            var retained = anchor.RetainForPlacement(right);
+            var envelope = WidgetEnvelopeResolver.Resolve(surface, retained.ToEnvelopeConstraints());
+            Assert.AreEqual(initial.Identity, retained.Identity,
+                "An overlap-based screen report caused by the overlay's own resize must not replace the anchor.");
+            Assert.AreEqual(1.25, retained.RenderScaling, 0.001);
+            Assert.AreEqual(left.WorkArea, retained.WorkArea);
+            Assert.AreEqual(
+                left.WorkArea.Width / left.RenderScaling,
+                envelope.LogicalWorkArea.Width,
+                0.01);
+            Assert.AreEqual(
+                left.WorkArea.Height / left.RenderScaling,
+                envelope.LogicalWorkArea.Height,
+                0.01);
+        }
+
+        var leftWithExplicitDpi = left with { RenderScaling = 1.5 };
+        var dpiChanged = anchor.ReconcileExplicitChange(
+            [leftWithExplicitDpi, right],
+            right.Identity,
+            ScreenAnchorChangeReason.DpiChanged);
+        Assert.AreEqual(left.Identity, dpiChanged.Identity,
+            "A supported DPI event must update the retained screen before considering the window intersection.");
+        Assert.AreEqual(1.5, dpiChanged.RenderScaling, 0.001);
+        Assert.AreEqual(ScreenAnchorChangeReason.DpiChanged, dpiChanged.ChangeReason);
+
+        var reselected = anchor.ReconcileExplicitChange(
+            [right],
+            right.Identity,
+            ScreenAnchorChangeReason.DisplayTopologyChanged);
+        Assert.AreEqual(right.Identity, reselected.Identity);
+        Assert.AreEqual(2.4, reselected.RenderScaling, 0.001);
+        Assert.AreEqual(ScreenAnchorChangeReason.AnchoredScreenDisappeared, reselected.ChangeReason);
+        Assert.AreEqual(2L, reselected.Revision);
+    }
+
+    [TestMethod]
     [Timeout(10_000)]
     public async Task Surface_hints_atomically_resize_the_content_union_while_absolute_chrome_stays_anchored()
     {

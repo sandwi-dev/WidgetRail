@@ -106,7 +106,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (32 tests):
+MSTest.Sdk 4.3.2 suite (33 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -129,6 +129,13 @@ mode-identity restoration with one render tree. Geometry coverage asserts useful
 page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
+The live host also retains one documented Avalonia screen identity, work area,
+and render scale for the full visible session: routine envelope resizing,
+position callbacks, and the platform timer cannot select a different monitor by
+intersection. Only `Screens.Changed`, `TopLevel.ScalingChanged`, or disappearance
+of the retained screen can reconcile that anchor. A deterministic mixed-DPI
+overlap regression drives compact/medium/wide envelopes in both directions and
+proves both the stable path and one explicit supported reselection.
 The trace regressions use a deterministic publication clock to prove a rapid
 32-entry repeat-like burst produces one latest-state publication after the
 bounded 225 ms live window, with explicit flush retaining every sequence once
@@ -181,6 +188,7 @@ preferred/minimum envelope against the real work area/DPI, records UIA/
 containment/scroll clipping and transition phases, then separately samples
 the candidate and complete bridge/worker process tree visible and hidden.
 Every responsive record also retains its named logical work-area fixture,
+declared and actual render scale, and admitted versus actual HWND geometry,
 page/root width utilization, minimum
 readable dimensions, shell-region overlap, effective visibility, and maximum
 unintended horizontal empty-area ratio. Geometry is sampled only after the
@@ -190,6 +198,10 @@ absolute tray rectangle and one invariant absolute guide rectangle across the
 ordinary eight-widget traversal, including retained compact-to-wide and
 wide-to-compact switches; chrome pixel bounds use the native
 center-rounding convention. Final evidence includes the exact owned
+screen identity/bounds, anchored work area, render scaling, anchor revision,
+anchor-change reason, and placement reason for every live and fixture placement.
+The ordinary traversal must retain one live anchor throughout; fixtures are
+isolated and restoring them reapplies that retained live anchor.
 process-tree normal-shutdown verdict and native visible-lease trace. The same
 ordinary traversal renders one honestly labeled offscreen PNG at the admitted
 authored envelope per installed widget with

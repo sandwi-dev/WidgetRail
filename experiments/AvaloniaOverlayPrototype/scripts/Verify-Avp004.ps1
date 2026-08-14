@@ -66,7 +66,7 @@ Confirm-InvalidCompiledBindingFails
 Invoke-BoundedDotnet -Label 'AVP-004 focused Release tests' -Arguments @(
     'test', '--project', $testProject,
     '--configuration', 'Release', '--no-build', '--no-ansi', '--progress', 'off',
-    '--output', 'Detailed', '--minimum-expected-tests', '32')
+    '--output', 'Detailed', '--minimum-expected-tests', '33')
 
 $worktreeState = (& git -C $repositoryRoot status --porcelain)
 if ($worktreeState.Count -ne 0) {
@@ -81,6 +81,7 @@ New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
     genericMappingTest = 'Generic_renderer_maps_every_current_node_kind_to_standard_Avalonia_controls_and_UIA'
     deniedReplacementRecoveryTest = 'Input_trace_denied_atomic_replace_retains_last_good_and_recovers_every_sequence_once'
     burstCoalescingTest = 'Input_trace_repeat_burst_coalesces_to_one_periodic_publication_and_flush_retains_every_sequence'
+    mixedDpiScreenAnchorTest = 'Visible_session_anchor_ignores_mixed_DPI_overlap_resizes_until_explicit_supported_reselection'
     currentNodeKinds = @(
         'Stack', 'Row', 'Scroll', 'Text', 'Button', 'Progress', 'Slider',
         'Spacer', 'Image', 'Icon', 'LoadingIndicator', 'ActionSurface', 'Grid', 'TextEntry')

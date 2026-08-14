@@ -2,7 +2,7 @@
 
 `scripts/Verify-Avp004.ps1` performs the bounded Release build, proves the
 separate invalid compiled-binding fixture still fails with `AVLN2000`, and runs
-only the 30-test focused Avalonia integration suite. Its ignored exact-commit
+only the 33-test focused Avalonia integration suite. Its ignored exact-commit
 proof binds the all-current-node-kind generic mapping assertion to measurement.
 
 Focused evidence also keeps invalidation refresh under the retained session as
@@ -21,6 +21,10 @@ admission, proportional work-area/DPI/accessibility clamping, at least four
 materially distinct content/HWND unions, and identical absolute tray/guide
 bounds through all eight switches; only content is inside the native transition presenter, and
 every semantic kind receives a closed typed component kind/navigation zone.
+The retained-screen regression drives compact/medium/wide envelope changes in
+both directions across overlapping 125- and 240-percent monitor descriptors;
+routine resize intersection cannot replace the visible-session anchor, while a
+documented DPI event and anchored-screen disappearance can reconcile it.
 The shared-shell polish regression uses all eight representative tray labels and
 requires the selected first and final items to be fully scrolled into view after
 layout settles at 420, 978, 1180, and 1440 widths, with untruncated label content
@@ -75,7 +79,8 @@ instance/snapshot/input-scope identity, authored preferred/minimum hints,
 admitted content and HWND bounds, absolute chrome bounds, semantic node kinds,
 standard UIA and bounded realization counts, authored-envelope containment or honest
 ScrollViewer clipping, native CrossFade start/mid/end surface diagnostics, the
-active monitor render scale, native GameInput/legacy-policy state, startup and
+retained screen identity/bounds, anchored work area, render scale, anchor
+revision/change reason, native GameInput/legacy-policy state, startup and
 switch timing, useful-width/readability/non-overlap geometry, and visible/hidden
 candidate plus complete process-tree CPU/private memory.
 The ordinary traversal also writes one authored-envelope offscreen renderer PNG per widget under
@@ -86,6 +91,10 @@ Ordinary lifecycle node kinds remain separate from the focused generic mapping
 proof; the retained final assertion combines both without overstating ordinary emission.
 Effective-visibility and geometry rows remain hard assertions: a red row rejects
 the retained exact run even when offscreen captures show visual improvement.
+Each responsive fixture additionally retains declared and actual render scaling
+plus expected and actual HWND geometry; a mismatch rejects the row. Fixture
+placement never mutates the retained live anchor, and fixture restoration
+reapplies that anchor before ordinary traversal continues.
 
 The exact traversal admits each current view's validated preferred/minimum pair
 as one authority transaction, resolves it against the real monitor work area and

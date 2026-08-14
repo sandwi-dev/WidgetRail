@@ -56,10 +56,10 @@ internal static class EvidenceScenario
                 TimeSpan.FromSeconds(20),
                 "The real widget catalog did not publish an initial frame.");
             var shell = window.IntegratedShell!;
-            var evidenceScreen = window.Screens.ScreenFromWindow(window) ??
-                throw new InvalidOperationException("The evidence window has no active screen.");
-            var evidenceRenderScaling = window.RenderScaling > 0 ? window.RenderScaling : 1;
-            var evidenceWorkingArea = evidenceScreen.WorkingArea;
+            var evidenceAnchor = window.VisibleSessionAnchor ??
+                throw new InvalidOperationException("The evidence window has no retained visible-session screen anchor.");
+            var evidenceRenderScaling = evidenceAnchor.RenderScaling;
+            var evidenceWorkingArea = evidenceAnchor.WorkArea;
             var firstCompleteFrameMilliseconds = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
 
             var widgetSamples = new List<WidgetEvidence>();
@@ -166,6 +166,15 @@ internal static class EvidenceScenario
                         applyFixture: false);
                     var controls = responsive.Controls;
                     var geometry = responsive.Geometry;
+                    var expectedWindow = shell.CurrentEnvelope.Window;
+                    var actualRenderScaling = window.RenderScaling > 0 ? window.RenderScaling : 1;
+                    var fixtureConstraintMatched = window.LastPlacementAnchor is
+                        { EvidenceFixture: true } placementAnchor &&
+                        placementAnchor.EffectiveWorkArea == constraints.WorkArea &&
+                        Math.Abs(placementAnchor.EffectiveRenderScaling - constraints.RenderScaling) < 0.001 &&
+                        Math.Abs(actualRenderScaling - constraints.RenderScaling) < 0.001 &&
+                        Math.Abs(window.Bounds.Width - expectedWindow.Width) <= 0.75 &&
+                        Math.Abs(window.Bounds.Height - expectedWindow.Height) <= 0.75;
                     responsiveSamples.Add(new ResponsiveEvidence(
                         widget.Id,
                         fixture.Name,
@@ -175,11 +184,15 @@ internal static class EvidenceScenario
                         responsive.Frame.Authority.ActiveInputScopeId,
                         shell.CurrentEnvelope.AdmittedContent.Width,
                         shell.CurrentEnvelope.AdmittedContent.Height,
-                        evidenceRenderScaling,
+                        constraints.RenderScaling,
+                        actualRenderScaling,
                         shell.Bounds.Width,
                         shell.Bounds.Height,
+                        expectedWindow.Width,
+                        expectedWindow.Height,
                         window.Bounds.Width,
                         window.Bounds.Height,
+                        fixtureConstraintMatched,
                         responsive.Compact,
                         controls.Count,
                         controls.Count(control => control.HonestlyScrollClipped),
@@ -197,7 +210,7 @@ internal static class EvidenceScenario
                         geometry.ShellRegionsDoNotOverlap,
                         geometry.EffectiveVisibilityPassed,
                         geometry.MaximumHorizontalEmptyAreaRatio,
-                        geometry.Passed));
+                        geometry.Passed && fixtureConstraintMatched));
                 }
                 await Dispatcher.UIThread.InvokeAsync(
                     () => window.SetEvidenceEnvelopeConstraints(null),
@@ -208,7 +221,7 @@ internal static class EvidenceScenario
                     widget.Id,
                     widget.Name,
                     captureRoot,
-                    window.RenderScaling,
+                    evidenceRenderScaling,
                     offscreenCaptures.Count + 1));
                 await WaitUntilAsync(
                     () => shell.PendingArtworkRequestCount == 0,
@@ -326,7 +339,8 @@ internal static class EvidenceScenario
                         .Order(StringComparer.Ordinal)
                         .SequenceEqual(ResponsiveWorkAreas.Select(fixture => fixture.Name)
                             .Order(StringComparer.Ordinal))) &&
-                responsiveSamples.All(sample => sample.ReachableOrScrollClipped && sample.GeometryPassed);
+                responsiveSamples.All(sample => sample.ReachableOrScrollClipped &&
+                    sample.FixtureConstraintMatched && sample.GeometryPassed);
             var responsivePassed = responsiveMatrixPassed;
             var allWidgetsPassed = widgetSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
                 widgetSamples.All(sample => !sample.HasFailure && sample.RequiredSemanticControlsPassed);
@@ -391,6 +405,7 @@ internal static class EvidenceScenario
                 distinctEnvelopeCount,
                 chromeBoundsInvariant,
                 widgetEnvelopeEvidencePassed,
+                window.PlacementAnchorHistory,
                 nodeKindCoverage,
                 responsiveSamples,
                 responsiveMatrixExpectedCount,
@@ -915,7 +930,8 @@ internal static class EvidenceScenario
     {
         if (!Equals(frame.Authority, shell.EnvelopeAuthority) ||
             window.LastEnvelopeResolution is not { } envelope ||
-            window.LastComputedPlacement is not { } hwnd)
+            window.LastComputedPlacement is not { } hwnd ||
+            window.LastPlacementAnchor is not { EvidenceFixture: false } placementAnchor)
             throw new InvalidOperationException(
                 $"Widget '{frame.Authority.WidgetId}' has no exact admitted envelope/window authority.");
         shell.UpdateLayout();
@@ -929,8 +945,8 @@ internal static class EvidenceScenario
                 (frame.Snapshot.Surface?.MinimumHeight is null);
         var contained = Contains(shellBounds, content) && Contains(shellBounds, guide) &&
             Contains(shellBounds, tray) &&
-            Math.Abs(hwnd.Width - envelope.Window.Width * window.RenderScaling) <= 2 &&
-            Math.Abs(hwnd.Height - envelope.Window.Height * window.RenderScaling) <= 2;
+            Math.Abs(hwnd.Width - envelope.Window.Width * placementAnchor.EffectiveRenderScaling) <= 2 &&
+            Math.Abs(hwnd.Height - envelope.Window.Height * placementAnchor.EffectiveRenderScaling) <= 2;
         var noOverlap = !Overlaps(content, guide) && !Overlaps(content, tray) && !Overlaps(guide, tray);
         return new WidgetEnvelopeEvidence(
             frame.Authority.WidgetId,
@@ -946,8 +962,22 @@ internal static class EvidenceScenario
             new LogicalSizeEvidence(envelope.AdmittedContent.Width, envelope.AdmittedContent.Height),
             new LogicalBoundsEvidence(content.X, content.Y, content.Width, content.Height),
             new PixelBoundsEvidence(hwnd.X, hwnd.Y, hwnd.Width, hwnd.Height),
-            ToAbsolutePixelBounds(guide, hwnd, window.RenderScaling),
-            ToAbsolutePixelBounds(tray, hwnd, window.RenderScaling),
+            ToAbsolutePixelBounds(guide, hwnd, placementAnchor.EffectiveRenderScaling),
+            ToAbsolutePixelBounds(tray, hwnd, placementAnchor.EffectiveRenderScaling),
+            placementAnchor.ScreenIdentity,
+            new PixelBoundsEvidence(
+                placementAnchor.ScreenBounds.X,
+                placementAnchor.ScreenBounds.Y,
+                placementAnchor.ScreenBounds.Width,
+                placementAnchor.ScreenBounds.Height),
+            new PixelBoundsEvidence(
+                placementAnchor.AnchoredWorkArea.X,
+                placementAnchor.AnchoredWorkArea.Y,
+                placementAnchor.AnchoredWorkArea.Width,
+                placementAnchor.AnchoredWorkArea.Height),
+            placementAnchor.AnchorRenderScaling,
+            placementAnchor.AnchorRevision,
+            placementAnchor.AnchorChangeReason,
             envelope.PreferredPairAdmitted,
             envelope.MinimumPairSatisfied,
             envelope.WorkAreaClamped,
@@ -1134,6 +1164,7 @@ internal static class EvidenceScenario
         int MateriallyDistinctAdmittedEnvelopeCount,
         bool AbsoluteChromeBoundsInvariant,
         bool WidgetEnvelopeEvidencePassed,
+        IReadOnlyList<ScreenAnchorPlacementEvidence> PlacementAnchors,
         NodeKindCoverageEvidence NodeKindCoverage,
         IReadOnlyList<ResponsiveEvidence> ResponsiveFixtures,
         int ResponsiveMatrixExpectedCount,
@@ -1238,6 +1269,12 @@ internal static class EvidenceScenario
         PixelBoundsEvidence HwndBounds,
         PixelBoundsEvidence AbsoluteGuideBounds,
         PixelBoundsEvidence AbsoluteTrayBounds,
+        string ScreenIdentity,
+        PixelBoundsEvidence ScreenBounds,
+        PixelBoundsEvidence ScreenWorkArea,
+        double ScreenRenderScaling,
+        long ScreenAnchorRevision,
+        ScreenAnchorChangeReason ScreenAnchorChangeReason,
         bool PreferredPairAdmitted,
         bool MinimumPairSatisfied,
         bool WorkAreaClamped,
@@ -1260,11 +1297,15 @@ internal static class EvidenceScenario
         string ActiveInputScopeId,
         double AdmittedContentWidthDip,
         double AdmittedContentHeightDip,
+        double DeclaredRenderScaling,
         double ActualRenderScaling,
         double ActualShellWidthDip,
         double ActualShellHeightDip,
+        double ExpectedHwndWidthDip,
+        double ExpectedHwndHeightDip,
         double ActualHwndWidthDip,
         double ActualHwndHeightDip,
+        bool FixtureConstraintMatched,
         bool CompactBranch,
         int VisibleRequiredSemanticControls,
         int HonestlyScrollClippedControls,

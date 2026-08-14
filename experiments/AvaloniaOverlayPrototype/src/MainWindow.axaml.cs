@@ -22,6 +22,9 @@ namespace GameBarAlternative.AvaloniaPrototype;
 public sealed partial class MainWindow : Window
 {
     private readonly PrototypeLifecycle lifecycle = new();
+    private readonly VisibleSessionScreenAnchor visibleSessionScreenAnchor = new();
+    private readonly List<ScreenAnchorPlacementEvidence> placementAnchorHistory = [];
+    private Screens? subscribedScreens;
     private readonly DispatcherTimer platformTimer;
     private readonly InputTraceRecorder inputTrace = new(
         PrototypeArguments.Current.InputTracePath,
@@ -66,13 +69,22 @@ public sealed partial class MainWindow : Window
             inputTrace.Record("window-deactivated", IsVisible, false, FocusedSemanticId());
             SetInputActive(false);
         };
+        ScalingChanged += OnScalingChanged;
         Closing += OnClosing;
-        Closed += (_, _) => lifecycle.Hide();
+        Closed += (_, _) =>
+        {
+            if (subscribedScreens is not null)
+            {
+                subscribedScreens.Changed -= OnScreensChanged;
+                subscribedScreens = null;
+            }
+            lifecycle.Hide();
+        };
         PropertyChanged += (_, args) =>
         {
             if (args.Property == IsVisibleProperty) _ = ApplyVisibilityAsync(IsVisible);
         };
-        PositionChanged += (_, _) => ApplyStableShellPlacement();
+        PositionChanged += (_, _) => ApplyStableShellPlacement(placementReason: "position-changed");
     }
 
     public IntegratedShellView? IntegratedShell => integratedShell;
@@ -82,6 +94,9 @@ public sealed partial class MainWindow : Window
     public PrototypeLifecycle Lifecycle => lifecycle;
     internal CandidateShutdownEvidence? LastShutdownEvidence { get; private set; }
     internal InputTraceFlushResult? LastInputTraceFlushResult { get; private set; }
+    internal ScreenAnchorSnapshot? VisibleSessionAnchor => visibleSessionScreenAnchor.Current;
+    internal ScreenAnchorPlacementEvidence? LastPlacementAnchor { get; private set; }
+    internal IReadOnlyList<ScreenAnchorPlacementEvidence> PlacementAnchorHistory => placementAnchorHistory;
 
     internal SkiaResourceCacheSnapshot CaptureSkiaResourceCache()
     {
@@ -190,8 +205,11 @@ public sealed partial class MainWindow : Window
             platform.ControllerStateObserved += OnControllerStateObserved;
             if (TryGetPlatformHandle()?.Handle is { } handle && handle != 0)
                 platform.Attach(handle);
+            EnsureVisibleSessionScreenAnchor();
+            subscribedScreens = Screens;
+            subscribedScreens.Changed += OnScreensChanged;
             UpdateShellEnvelopeConstraints();
-            ApplyStableShellPlacement();
+            ApplyStableShellPlacement(force: true, placementReason: "initial-visible-session");
             platform.SetWindowState(IsVisible, IsActive);
             inputTrace.Record("native-platform-ready", IsVisible, IsActive, detail:
                 $"gameInput={platform.HasGameInput};legacyGuide={platform.RequiresLegacyGuidePolling}");
@@ -261,7 +279,7 @@ public sealed partial class MainWindow : Window
         try
         {
             platform?.Tick(IsVisible && IsActive);
-            ApplyStableShellPlacement();
+            ApplyStableShellPlacement(placementReason: "platform-timer");
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -419,9 +437,53 @@ public sealed partial class MainWindow : Window
             desktop.Shutdown(LastShutdownEvidence?.BoundedNormalShutdownPassed == true ? 0 : 1);
     }
 
+    private bool EnsureVisibleSessionScreenAnchor()
+    {
+        if (visibleSessionScreenAnchor.Current is not null) return true;
+        var selected = Screens.ScreenFromWindow(this) ?? Screens.Primary ?? Screens.All.FirstOrDefault();
+        if (selected is null) return false;
+        var anchor = visibleSessionScreenAnchor.Initialize(ScreenAnchorDescriptor.FromScreen(selected));
+        inputTrace.Record("screen-anchor-initialized", IsVisible, IsActive, detail: FormatAnchor(anchor));
+        return true;
+    }
+
+    private void OnScreensChanged(object? sender, EventArgs args) =>
+        ReconcileExplicitScreenAnchorChange(ScreenAnchorChangeReason.DisplayTopologyChanged);
+
+    private void OnScalingChanged(object? sender, EventArgs args) =>
+        ReconcileExplicitScreenAnchorChange(ScreenAnchorChangeReason.DpiChanged);
+
+    private void ReconcileExplicitScreenAnchorChange(ScreenAnchorChangeReason reason)
+    {
+        if (!integrationStarted || closing || evidenceEnvelopeConstraints is not null ||
+            !EnsureVisibleSessionScreenAnchor()) return;
+        var before = visibleSessionScreenAnchor.Current!;
+        var available = Screens.All.Select(ScreenAnchorDescriptor.FromScreen).ToArray();
+        var preferred = Screens.ScreenFromWindow(this);
+        var after = visibleSessionScreenAnchor.ReconcileExplicitChange(
+            available,
+            preferred is null ? null : ScreenAnchorDescriptor.FromScreen(preferred).Identity,
+            reason);
+        if (after.Revision == before.Revision) return;
+
+        inputTrace.Record("screen-anchor-changed", IsVisible, IsActive, detail:
+            $"reason={after.ChangeReason};old={FormatAnchor(before)};new={FormatAnchor(after)}");
+        stableWorkArea = null;
+        stableRenderScaling = 0;
+        stableEnvelopeAuthority = null;
+        UpdateShellEnvelopeConstraints();
+        ApplyStableShellPlacement(force: true, placementReason: $"anchor-change:{after.ChangeReason}");
+    }
+
+    private static string FormatAnchor(ScreenAnchorSnapshot anchor) =>
+        $"identity={anchor.Identity};bounds={anchor.Bounds.X},{anchor.Bounds.Y}," +
+        $"{anchor.Bounds.Width},{anchor.Bounds.Height};workArea={anchor.WorkArea.X}," +
+        $"{anchor.WorkArea.Y},{anchor.WorkArea.Width},{anchor.WorkArea.Height};" +
+        $"scaling={anchor.RenderScaling:F3};revision={anchor.Revision}";
+
     private void OnIntegratedFrameAdmitted(object? sender, GameBarAlternative.WidgetPresentationSession.WidgetPresentationFrame frame)
     {
-        if (platform is null || Screens.ScreenFromWindow(this) is not { } screen) return;
+        if (platform is null) return;
         if (!string.Equals(platformWidgetId, frame.Authority.WidgetId, StringComparison.Ordinal))
         {
             platformWidgetId = frame.Authority.WidgetId;
@@ -433,43 +495,45 @@ public sealed partial class MainWindow : Window
 
     private void OnEnvelopeTransitionStarting(object? sender, WidgetEnvelopeTransitionRequest request)
     {
-        if (platform is null || Screens.ScreenFromWindow(this) is not { } screen) return;
+        if (platform is null || !EnsureVisibleSessionScreenAnchor()) return;
         ApplyWindowPlacement(
             request.Envelope,
             request.Authority,
-            ResolveEnvelopeConstraints(screen),
-            force: true);
+            ResolveEnvelopeConstraints(),
+            force: true,
+            placementReason: "widget-envelope-transition");
     }
 
     private void UpdateShellEnvelopeConstraints()
     {
-        if (integratedShell is null || Screens.ScreenFromWindow(this) is not { } screen) return;
-        integratedShell.SetHostEnvelopeConstraints(ResolveEnvelopeConstraints(screen));
+        if (integratedShell is null || !EnsureVisibleSessionScreenAnchor()) return;
+        integratedShell.SetHostEnvelopeConstraints(ResolveEnvelopeConstraints());
     }
 
-    private void ApplyStableShellPlacement(bool force = false)
+    private void ApplyStableShellPlacement(bool force = false, string placementReason = "routine-revalidation")
     {
         if (applyingShellPlacement || platform is null || integratedShell is null ||
-            Screens.ScreenFromWindow(this) is not { } screen ||
+            !EnsureVisibleSessionScreenAnchor() ||
             integratedShell.EnvelopeAuthority is not { } authority)
             return;
-        var constraints = ResolveEnvelopeConstraints(screen);
+        var constraints = ResolveEnvelopeConstraints();
         if (!force && stableWorkArea == constraints.WorkArea &&
             Math.Abs(stableRenderScaling - constraints.RenderScaling) < 0.001 &&
             Equals(stableEnvelopeAuthority, authority) &&
             LastComputedPlacement is not null) return;
         var envelope = integratedShell.ResolveEnvelope(constraints);
         integratedShell.SetHostEnvelopeConstraints(constraints);
-        ApplyWindowPlacement(envelope, authority, constraints, force);
+        ApplyWindowPlacement(envelope, authority, constraints, force, placementReason);
     }
 
     private void ApplyWindowPlacement(
         WidgetEnvelopeResolution envelope,
         GameBarAlternative.WidgetPresentationSession.WidgetPresentationAuthority authority,
         WidgetEnvelopeConstraints constraints,
-        bool force)
+        bool force,
+        string placementReason)
     {
-        if (platform is null) return;
+        if (platform is null || visibleSessionScreenAnchor.Current is not { } screenAnchor) return;
         if (!force && stableWorkArea == constraints.WorkArea &&
             Math.Abs(stableRenderScaling - constraints.RenderScaling) < 0.001 &&
             Equals(stableEnvelopeAuthority, authority) &&
@@ -489,32 +553,46 @@ public sealed partial class MainWindow : Window
             platform.ApplyPlacement(value);
             LastComputedPlacement = value;
             LastEnvelopeResolution = envelope;
+            LastPlacementAnchor = new ScreenAnchorPlacementEvidence(
+                authority.WidgetId,
+                authority.SnapshotSequence,
+                screenAnchor.Identity,
+                screenAnchor.DisplayName,
+                screenAnchor.Bounds,
+                screenAnchor.WorkArea,
+                screenAnchor.RenderScaling,
+                screenAnchor.Revision,
+                screenAnchor.ChangeReason,
+                constraints.WorkArea,
+                constraints.RenderScaling,
+                evidenceEnvelopeConstraints is not null,
+                placementReason);
+            placementAnchorHistory.Add(LastPlacementAnchor);
         }
         finally { applyingShellPlacement = false; }
     }
 
-    private WidgetEnvelopeConstraints ResolveEnvelopeConstraints(Screen screen)
+    private WidgetEnvelopeConstraints ResolveEnvelopeConstraints()
     {
         if (evidenceEnvelopeConstraints is { } evidence) return evidence;
-        var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
-        return new WidgetEnvelopeConstraints(
-            screen.WorkingArea,
-            scaling,
-            AccessibilityScale: 1,
-            EnvelopeInsets.PlatformPlacement);
+        return visibleSessionScreenAnchor.RetainForPlacement().ToEnvelopeConstraints();
     }
 
     internal void SetEvidenceEnvelopeConstraints(WidgetEnvelopeConstraints? constraints)
     {
         evidenceEnvelopeConstraints = constraints;
-        if (platform is null || integratedShell is null ||
-            Screens.ScreenFromWindow(this) is not { } screen ||
+        if (platform is null || integratedShell is null || !EnsureVisibleSessionScreenAnchor() ||
             integratedShell.EnvelopeAuthority is not { } authority)
             return;
-        var effective = ResolveEnvelopeConstraints(screen);
+        var effective = ResolveEnvelopeConstraints();
         var envelope = integratedShell.ResolveEnvelope(effective);
         integratedShell.SetHostEnvelopeConstraints(effective);
-        ApplyWindowPlacement(envelope, authority, effective, force: true);
+        ApplyWindowPlacement(
+            envelope,
+            authority,
+            effective,
+            force: true,
+            placementReason: constraints is null ? "evidence-fixture-restored" : "evidence-fixture");
     }
 
     private IntegratedAbsoluteChromeBounds? CaptureAbsoluteChromeBounds()
@@ -522,9 +600,11 @@ public sealed partial class MainWindow : Window
         if (integratedShell is null || LastComputedPlacement is not { } windowBounds) return null;
         var guide = BoundsInShell(integratedShell.ControllerGuideElement, integratedShell);
         var tray = BoundsInShell(integratedShell.TrayElement, integratedShell);
+        var scaling = LastPlacementAnchor?.EffectiveRenderScaling ??
+            visibleSessionScreenAnchor.Current?.RenderScaling ?? 1;
         return new IntegratedAbsoluteChromeBounds(
-            ToAbsolutePixelBounds(guide, windowBounds, RenderScaling),
-            ToAbsolutePixelBounds(tray, windowBounds, RenderScaling));
+            ToAbsolutePixelBounds(guide, windowBounds, scaling),
+            ToAbsolutePixelBounds(tray, windowBounds, scaling));
     }
 
     private static Rect BoundsInShell(Control control, IntegratedShellView shell)
@@ -607,3 +687,18 @@ internal sealed record CandidateShutdownEvidence(
     bool ShellShutdownCompletedNormally,
     ProcessTreeShutdownEvidence ProcessTree,
     double TotalDurationMilliseconds);
+
+internal sealed record ScreenAnchorPlacementEvidence(
+    string WidgetId,
+    long SnapshotSequence,
+    string ScreenIdentity,
+    string? ScreenDisplayName,
+    PixelRect ScreenBounds,
+    PixelRect AnchoredWorkArea,
+    double AnchorRenderScaling,
+    long AnchorRevision,
+    ScreenAnchorChangeReason AnchorChangeReason,
+    PixelRect EffectiveWorkArea,
+    double EffectiveRenderScaling,
+    bool EvidenceFixture,
+    string PlacementReason);

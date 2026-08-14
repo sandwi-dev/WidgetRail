@@ -61,6 +61,10 @@ if ($focusedProof.burstCoalescingTest -ne
     'Input_trace_repeat_burst_coalesces_to_one_periodic_publication_and_flush_retains_every_sequence') {
     throw 'Bounded input-trace burst coalescing proof is missing from the exact focused suite.'
 }
+if ($focusedProof.mixedDpiScreenAnchorTest -ne
+    'Visible_session_anchor_ignores_mixed_DPI_overlap_resizes_until_explicit_supported_reselection') {
+    throw 'Retained visible-session mixed-DPI screen-anchor proof is missing from the exact focused suite.'
+}
 
 $resolvedArtifact = [System.IO.Path]::GetFullPath($artifactRoot)
 $resolvedRuntime = [System.IO.Path]::GetFullPath($runtimeRoot)
@@ -122,6 +126,23 @@ if ($measurement.widgetEnvelopes.Count -ne $measurement.installedWidgetCount -or
     }).Count -ne 0) {
     throw 'Per-widget surface hint, HWND union, or no-backdrop evidence failed.'
 }
+$livePlacementAnchors = @($measurement.placementAnchors | Where-Object { -not $_.evidenceFixture })
+if ($livePlacementAnchors.Count -eq 0) {
+    throw 'No live retained screen-anchor placement evidence was recorded.'
+}
+$liveAnchorKeys = @($livePlacementAnchors | ForEach-Object {
+    '{0}|{1},{2},{3},{4}|{5},{6},{7},{8}|{9:F3}' -f
+        $_.screenIdentity,
+        $_.screenBounds.x, $_.screenBounds.y, $_.screenBounds.width, $_.screenBounds.height,
+        $_.anchoredWorkArea.x, $_.anchoredWorkArea.y, $_.anchoredWorkArea.width, $_.anchoredWorkArea.height,
+        $_.anchorRenderScaling
+} | Select-Object -Unique)
+if ($liveAnchorKeys.Count -ne 1) {
+    throw 'The ordinary visible session changed screen identity, work area, or render scaling without an explicit supported display event.'
+}
+if (@($measurement.widgetEnvelopes | Select-Object -ExpandProperty screenIdentity -Unique).Count -ne 1) {
+    throw 'Installed-widget envelope evidence did not retain one visible-session screen identity.'
+}
 if (-not $measurement.responsiveEvidencePassed -or -not $measurement.responsiveMatrixPassed -or
     $measurement.responsiveMatrixExpectedCount -ne ($measurement.installedWidgetCount * 4) -or
     $measurement.responsiveFixtures.Count -ne $measurement.responsiveMatrixExpectedCount) {
@@ -140,6 +161,14 @@ foreach ($widgetGroup in ($measurement.responsiveFixtures | Group-Object widgetI
 }
 if (($measurement.responsiveFixtures | Where-Object { -not $_.geometryPassed }).Count -ne 0) {
     throw 'One or more responsive fixtures failed useful-width/readability/non-overlap geometry.'
+}
+if (($measurement.responsiveFixtures | Where-Object {
+    -not $_.fixtureConstraintMatched -or
+    [Math]::Abs($_.actualRenderScaling - $_.declaredRenderScaling) -gt 0.001 -or
+    [Math]::Abs($_.actualShellWidthDip - $_.expectedHwndWidthDip) -gt 0.75 -or
+    [Math]::Abs($_.actualShellHeightDip - $_.expectedHwndHeightDip) -gt 0.75
+}).Count -ne 0) {
+    throw 'A responsive fixture did not use its declared render scale or admitted HWND geometry.'
 }
 if (-not $measurement.transitionSurfaceDiagnosticsPassed -or
     -not $measurement.transitionAbsoluteChromeBoundsInvariant -or
