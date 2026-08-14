@@ -4574,3 +4574,20 @@ Hidden/Visible 21-sample observation. Exact clean-commit timing and resource
 values belong to the retained reports and completion record; this status does
 not convert unavailable private-working-set, GPU, presentation, or scheduler
 data into a claim.
+
+### Self-contained action-failure production-host fixture (DLV-227)
+
+`WidgetActionFailureHostTests` now validates every admitted non-system native
+dependency before launch and copies `OverlayPlatformInterop.dll` beside the
+temporary `OverlayHost.exe`. A direct regression proves the copy is present and
+byte-sized identically and that omission fails before launch with the precise
+dependency diagnostic. The temporary installation retains job-owned teardown
+and directory cleanup.
+
+The packaged runner removes the Release installation from PATH, and the native
+fixture independently rejects a contaminated PATH. A unique private test
+process profile prevents delegation to an already-running ordinary owner while
+retaining the exact visible-HWND/UIA/action-failure checks. The focused Release
+packaged segment passes with an accepted ordinary host still running; no source
+worktree fallback, PATH addition, HWND weakening, aggregate run, or product
+runtime change is involved.

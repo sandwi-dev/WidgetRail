@@ -5,6 +5,7 @@
 #include <wrl.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -43,6 +44,9 @@ constexpr char kSecretSentinel[] = "DLV014_SECRET_SENTINEL";
 constexpr DWORD kPollMilliseconds = 25;
 constexpr DWORD kStartupTimeoutMilliseconds = 15000;
 constexpr DWORD kOperationTimeoutMilliseconds = 10000;
+constexpr std::array<std::wstring_view, 1> kNativeRuntimeDependencies{{
+    L"OverlayPlatformInterop.dll",
+}};
 
 class Handle final {
 public:
@@ -159,6 +163,99 @@ void WriteUtf8(const fs::path& path, const std::string_view contents) {
     Require(static_cast<bool>(output), "Could not write " + path.string());
 }
 
+void ValidateNativeRuntimeDependencies(const fs::path& source) {
+    for (const auto dependency : kNativeRuntimeDependencies) {
+        Require(fs::is_regular_file(source / dependency),
+                "--installation is missing required native dependency '" +
+                    WideToUtf8(dependency) + "'");
+    }
+}
+
+void CopyNativeRuntimeDependencies(
+    const fs::path& source, const fs::path& destination) {
+    ValidateNativeRuntimeDependencies(source);
+    for (const auto dependency : kNativeRuntimeDependencies)
+        fs::copy_file(source / dependency, destination / dependency);
+}
+
+class TemporaryDirectory final {
+public:
+    explicit TemporaryDirectory(const std::wstring_view prefix) {
+        wchar_t temporaryRoot[MAX_PATH + 1]{};
+        const DWORD length = GetTempPathW(MAX_PATH, temporaryRoot);
+        Require(length > 0 && length <= MAX_PATH, Win32Error("GetTempPathW"));
+        GUID guid{};
+        Require(SUCCEEDED(CoCreateGuid(&guid)), "CoCreateGuid failed");
+        wchar_t guidText[64]{};
+        Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
+        path_ = fs::path(temporaryRoot) /
+            (std::wstring(prefix) + std::wstring(guidText));
+        fs::create_directories(path_);
+    }
+    ~TemporaryDirectory() {
+        std::error_code ignored;
+        fs::remove_all(path_, ignored);
+    }
+    [[nodiscard]] const fs::path& Path() const noexcept { return path_; }
+
+private:
+    fs::path path_;
+};
+
+void RunNativeDependencyRegression(const fs::path& installation) {
+    TemporaryDirectory copied(L"gba-action-failure-dependency-copy-");
+    CopyNativeRuntimeDependencies(installation, copied.Path());
+    for (const auto dependency : kNativeRuntimeDependencies) {
+        Require(fs::is_regular_file(copied.Path() / dependency),
+                "Native dependency copy regression omitted " +
+                    WideToUtf8(dependency));
+        Require(fs::file_size(copied.Path() / dependency) ==
+                    fs::file_size(installation / dependency),
+                "Native dependency copy regression changed " +
+                    WideToUtf8(dependency));
+    }
+
+    TemporaryDirectory omitted(L"gba-action-failure-dependency-omission-");
+    bool rejected{};
+    try {
+        CopyNativeRuntimeDependencies(omitted.Path(), copied.Path());
+    } catch (const std::exception& error) {
+        rejected = std::string_view(error.what()) ==
+            "--installation is missing required native dependency "
+            "'OverlayPlatformInterop.dll'";
+    }
+    Require(rejected,
+            "Missing native dependency did not fail before host launch with the "
+            "precise OverlayPlatformInterop.dll diagnostic");
+}
+
+bool PathContainsDirectory(const fs::path& directory) {
+    const DWORD required = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    if (required == 0) return false;
+    std::wstring value(required, L'\0');
+    Require(GetEnvironmentVariableW(L"PATH", value.data(), required) > 0,
+            Win32Error("GetEnvironmentVariableW(PATH)"));
+    value.resize(wcslen(value.c_str()));
+    const auto expected = fs::absolute(directory).lexically_normal().wstring();
+    std::size_t cursor{};
+    while (cursor <= value.size()) {
+        const auto end = value.find(L';', cursor);
+        std::wstring entry = value.substr(
+            cursor, end == std::wstring::npos ? std::wstring::npos : end - cursor);
+        if (entry.size() >= 2 && entry.front() == L'"' && entry.back() == L'"')
+            entry = entry.substr(1, entry.size() - 2);
+        if (!entry.empty()) {
+            std::error_code ignored;
+            const auto normalized = fs::absolute(entry, ignored).lexically_normal().wstring();
+            if (!ignored && _wcsicmp(normalized.c_str(), expected.c_str()) == 0)
+                return true;
+        }
+        if (end == std::wstring::npos) break;
+        cursor = end + 1;
+    }
+    return false;
+}
+
 class TemporaryInstallation final {
 public:
     TemporaryInstallation(const fs::path& source, const fs::path& fixtureWorker) {
@@ -170,6 +267,7 @@ public:
                 "--installation does not contain runtime");
         Require(fs::is_regular_file(fixtureWorker),
                 "--fixture-worker does not name a file");
+        ValidateNativeRuntimeDependencies(source);
 
         wchar_t temporaryRoot[MAX_PATH + 1]{};
         const DWORD temporaryRootLength = GetTempPathW(MAX_PATH, temporaryRoot);
@@ -181,8 +279,15 @@ public:
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
             (L"gba-action-failure-host-" + std::wstring(guidText));
+        processProfile_ = L"action-failure-host-";
+        for (const wchar_t character : std::wstring_view(guidText)) {
+            if (std::iswalnum(character))
+                processProfile_.push_back(
+                    static_cast<wchar_t>(std::towlower(character)));
+        }
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
+        CopyNativeRuntimeDependencies(source, root_);
         fs::copy(source / L"runtime", root_ / L"runtime",
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
@@ -227,10 +332,14 @@ public:
     TemporaryInstallation& operator=(const TemporaryInstallation&) = delete;
     [[nodiscard]] const fs::path& Root() const noexcept { return root_; }
     [[nodiscard]] const fs::path& LocalAppData() const noexcept { return localAppData_; }
+    [[nodiscard]] const std::wstring& ProcessProfile() const noexcept {
+        return processProfile_;
+    }
 
 private:
     fs::path root_;
     fs::path localAppData_;
+    std::wstring processProfile_;
 };
 
 std::vector<wchar_t> ChildEnvironment(const fs::path& localAppData) {
@@ -260,9 +369,11 @@ std::vector<wchar_t> ChildEnvironment(const fs::path& localAppData) {
 
 class HostProcess final {
 public:
-    HostProcess(const fs::path& installation, const fs::path& localAppData) {
+    HostProcess(const fs::path& installation, const fs::path& localAppData,
+                const std::wstring_view processProfile) {
         const fs::path executable = installation / L"OverlayHost.exe";
-        std::wstring command = QuoteArgument(executable.wstring()) + L" --show";
+        std::wstring command = QuoteArgument(executable.wstring()) +
+            L" --show --process-profile " + std::wstring(processProfile);
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
         mutableCommand.push_back(L'\0');
         auto environment = ChildEnvironment(localAppData);
@@ -519,8 +630,12 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
 }
 
 void Run(const Arguments& arguments) {
+    Require(!PathContainsDirectory(arguments.installation),
+            "Fixture PATH must not contain the admitted installation directory");
+    RunNativeDependencyRegression(arguments.installation);
     TemporaryInstallation installation(arguments.installation, arguments.fixtureWorker);
-    HostProcess host(installation.Root(), installation.LocalAppData());
+    HostProcess host(
+        installation.Root(), installation.LocalAppData(), installation.ProcessProfile());
 
     HWND window{};
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {

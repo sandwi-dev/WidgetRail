@@ -27,7 +27,8 @@ param(
     [switch]$TrayAccessibilityHostTestsOnly,
     [switch]$TrayRefreshHostTestsOnly,
     [switch]$LauncherExperienceLifecycleTestsOnly,
-    [switch]$PlatformInteropTestsOnly
+    [switch]$PlatformInteropTestsOnly,
+    [switch]$WidgetActionFailureHostTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -791,6 +792,69 @@ function Invoke-WidgetSwitchHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-WidgetActionFailureHostTestProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FixtureWorker
+    )
+
+    $resolvedInstallation = [IO.Path]::GetFullPath($outputDirectory).TrimEnd(
+        [IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $sanitizedEntries = @($env:PATH.Split([IO.Path]::PathSeparator) | Where-Object {
+        if ([string]::IsNullOrWhiteSpace($_)) { return $false }
+        try {
+            $candidate = [IO.Path]::GetFullPath(
+                [Environment]::ExpandEnvironmentVariables($_.Trim('"'))).TrimEnd(
+                    [IO.Path]::DirectorySeparatorChar,
+                    [IO.Path]::AltDirectorySeparatorChar)
+            return -not $candidate.Equals(
+                $resolvedInstallation, [StringComparison]::OrdinalIgnoreCase)
+        }
+        catch {
+            return $true
+        }
+    })
+    $savedPath = $env:PATH
+    try {
+        $env:PATH = [string]::Join([IO.Path]::PathSeparator, $sanitizedEntries)
+        & (Join-Path $outputDirectory 'WidgetActionFailureHostTests.exe') `
+            --installation $outputDirectory `
+            --fixture-worker $FixtureWorker
+        if ($LASTEXITCODE -ne 0) {
+            throw "WidgetActionFailureHostTests failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        $env:PATH = $savedPath
+    }
+}
+
+function Invoke-WidgetActionFailureHostTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'WidgetActionFailureHostTests.cpp'),
+        "/Fo:$actionFailureHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\WidgetActionFailureHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "WidgetActionFailureHostTests build failed with exit code $LASTEXITCODE."
+    }
+    & dotnet publish `
+        (Join-Path $projectDirectory '..\..\tests\AdvancedActionFailureFixture\AdvancedActionFailureFixture.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $actionFailureFixtureOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Advanced action-failure fixture publish failed with exit code $LASTEXITCODE."
+    }
+    $fixture = Join-Path $actionFailureFixtureOutput 'AdvancedActionFailureFixture.exe'
+    if (-not (Test-Path -LiteralPath $fixture)) {
+        throw 'Advanced action-failure fixture publish omitted AdvancedActionFailureFixture.exe.'
+    }
+    Invoke-WidgetActionFailureHostTestProcess -FixtureWorker $fixture
 }
 
 function Invoke-TrayRefreshHostTests {
@@ -1635,6 +1699,14 @@ if ($WidgetSwitchTestsOnly) {
     return
 }
 
+if ($WidgetActionFailureHostTestsOnly) {
+    if ($SkipTests -or $SkipPackaging) {
+        throw 'WidgetActionFailureHostTestsOnly requires tests and packaging.'
+    }
+    Invoke-WidgetActionFailureHostTests
+    return
+}
+
 if ($ColdDashboardTestsOnly) {
     if ($SkipTests) {
         throw 'ColdDashboardTestsOnly cannot be combined with SkipTests.'
@@ -2140,12 +2212,7 @@ if (-not $SkipTests) {
         if (-not (Test-Path -LiteralPath $actionFailureFixture)) {
             throw "Advanced action-failure fixture publish omitted AdvancedActionFailureFixture.exe."
         }
-        & (Join-Path $outputDirectory 'WidgetActionFailureHostTests.exe') `
-            --installation $outputDirectory `
-            --fixture-worker $actionFailureFixture
-        if ($LASTEXITCODE -ne 0) {
-            throw "WidgetActionFailureHostTests failed with exit code $LASTEXITCODE."
-        }
+        Invoke-WidgetActionFailureHostTestProcess -FixtureWorker $actionFailureFixture
     }
 
     $coldDashboardHostTestArguments = $common + @(
