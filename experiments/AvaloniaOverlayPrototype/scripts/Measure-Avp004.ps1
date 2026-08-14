@@ -98,6 +98,9 @@ if ($measurement.sourceCommit -ne $sourceCommit) { throw 'Measurement source com
 if ($measurement.executableProductVersion -notmatch [Regex]::Escape($sourceCommit)) {
     throw 'Executable ProductVersion does not carry the exact source commit.'
 }
+if ($measurement.executableSha256 -ne (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash) {
+    throw 'Executable SHA-256 does not match the exact retained candidate.'
+}
 if (-not $measurement.allInstalledWidgetsPassed) { throw 'One or more installed widgets failed the generic adapter lifecycle.' }
 if (-not $measurement.widgetEnvelopeEvidencePassed -or
     $measurement.materiallyDistinctAdmittedEnvelopeCount -lt 4 -or
@@ -111,11 +114,30 @@ if ($measurement.widgetEnvelopes.Count -ne $measurement.installedWidgetCount -or
     }).Count -ne 0) {
     throw 'Per-widget surface hint, HWND union, or no-backdrop evidence failed.'
 }
-if (-not $measurement.responsiveEvidencePassed) { throw 'Responsive containment/ScrollViewer evidence failed.' }
+if (-not $measurement.responsiveEvidencePassed -or -not $measurement.responsiveMatrixPassed -or
+    $measurement.responsiveMatrixExpectedCount -ne ($measurement.installedWidgetCount * 4) -or
+    $measurement.responsiveFixtures.Count -ne $measurement.responsiveMatrixExpectedCount) {
+    throw 'The required installed-widget by four-work-area responsive matrix is incomplete.'
+}
+$expectedLogicalWidths = @(420, 978, 1180, 1440)
+foreach ($widgetGroup in ($measurement.responsiveFixtures | Group-Object widgetId)) {
+    if ($widgetGroup.Count -ne 4) { throw "Widget '$($widgetGroup.Name)' does not have four responsive rows." }
+    foreach ($expectedWidth in $expectedLogicalWidths) {
+        if (@($widgetGroup.Group | Where-Object {
+            [Math]::Abs($_.logicalWorkAreaWidthDip - $expectedWidth) -lt 0.01
+        }).Count -ne 1) {
+            throw "Widget '$($widgetGroup.Name)' is missing responsive width $expectedWidth."
+        }
+    }
+}
 if (($measurement.responsiveFixtures | Where-Object { -not $_.geometryPassed }).Count -ne 0) {
     throw 'One or more responsive fixtures failed useful-width/readability/non-overlap geometry.'
 }
-if (-not $measurement.transitionSurfaceDiagnosticsPassed) { throw 'Transition start/mid/end surface evidence failed.' }
+if (-not $measurement.transitionSurfaceDiagnosticsPassed -or
+    -not $measurement.transitionAbsoluteChromeBoundsInvariant -or
+    -not $measurement.bidirectionalEnvelopeTransitionChromePassed) {
+    throw 'Transition start/mid/end surface or fixed absolute chrome evidence failed.'
+}
 if ($measurement.offscreenCaptures.Count -ne $measurement.installedWidgetCount) {
     throw 'One authored-envelope offscreen capture was not retained per installed widget.'
 }

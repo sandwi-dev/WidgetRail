@@ -13,6 +13,7 @@ using System.Text.Json;
 using GameBarAlternative.AvaloniaPrototype.Diagnostics;
 using GameBarAlternative.AvaloniaPrototype.Integration;
 using GameBarAlternative.AvaloniaPrototype.Lifecycle;
+using GameBarAlternative.AvaloniaPrototype.Navigation;
 using GameBarAlternative.AvaloniaPrototype.Presentation;
 using GameBarAlternative.AvaloniaPrototype.Platform;
 using GameBarAlternative.AvaloniaPrototype.Views;
@@ -361,19 +362,41 @@ public sealed class IntegrationAdapterTests
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            var fake = new FakePresentationSession(Frame("responsive.widget", 9, GeometryTree()));
+            var fake = new FakePresentationSession(Frame(
+                "responsive.widget",
+                9,
+                GeometryTree(),
+                surface: Surface(980, 700, 320, 240, WidgetSurfaceMode.Wide)));
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
-            await using var shell = new IntegratedShellView(coordinator, reducedMotion: true);
-            var window = new Window { Width = 1440, Height = 810, Content = shell };
+            await using var shell = new IntegratedShellView(coordinator, reducedMotion: false);
+            var window = new Window { Width = 1600, Height = 1000, Content = shell };
             window.Show();
             await shell.InitializeAsync();
             await WaitForAsync(() => shell.AdmittedWidgetId == "responsive.widget");
 
-            foreach (var size in new[] { new Avalonia.Size(420, 340), new Avalonia.Size(978, 466), new Avalonia.Size(1440, 810) })
+            foreach (var size in new[]
+                     {
+                         new Avalonia.Size(420, 340),
+                         new Avalonia.Size(978, 466),
+                         new Avalonia.Size(1180, 680),
+                         new Avalonia.Size(1440, 810),
+                     })
             foreach (var scale in new[] { 1d, 1.25d, 1.5d })
             {
                 window.SetRenderScaling(scale);
-                shell.SetEvidenceViewport(size);
+                var workArea = new PixelRect(
+                    0,
+                    0,
+                    (int)Math.Round(size.Width * scale, MidpointRounding.AwayFromZero),
+                    (int)Math.Round(size.Height * scale, MidpointRounding.AwayFromZero));
+                shell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
+                    workArea,
+                    scale,
+                    AccessibilityScale: 1,
+                    EnvelopeInsets.PlatformPlacement));
+                await WaitForAsync(() =>
+                    Math.Abs(shell.PageHostElement.Bounds.Width - shell.CurrentEnvelope.ContentBounds.Width) <= 0.5 &&
+                    Math.Abs(shell.PageHostElement.Bounds.Height - shell.CurrentEnvelope.ContentBounds.Height) <= 0.5);
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 using var rendered = window.CaptureRenderedFrame();
@@ -384,7 +407,7 @@ public sealed class IntegrationAdapterTests
                 var tray = BoundsInShell(shell.TrayElement, shell);
                 var semantic = shell.ActiveSemanticRoot!;
                 var semanticBounds = BoundsInShell(semantic, shell);
-                Assert.IsGreaterThanOrEqualTo(size.Width * 0.88, page.Width,
+                Assert.IsGreaterThanOrEqualTo(shell.CurrentEnvelope.AdmittedContent.Width * 0.98, page.Width,
                     $"The page host must receive useful width at {size} / {scale}x.");
                 Assert.IsFalse(Overlaps(page, guide), $"Content and controller guide overlap at {size} / {scale}x.");
                 Assert.IsFalse(Overlaps(page, tray), $"Content and tray overlap at {size} / {scale}x.");
@@ -462,9 +485,21 @@ public sealed class IntegrationAdapterTests
         Assert.IsLessThanOrEqualTo(constrained.LogicalWorkArea.Height -
             EnvelopeInsets.PlatformPlacement.Top - EnvelopeInsets.PlatformPlacement.Bottom,
             constrained.Window.Height);
-        Assert.AreEqual((1600d * 1.25) / (1200d * 1.5),
-            constrained.AdmittedContent.Width / constrained.AdmittedContent.Height, 0.01,
-            "Work-area clamping must preserve the accessibility-scaled authored aspect instead of selecting a preset.");
+        Assert.AreEqual(976, constrained.AdmittedContent.Width, 0.01);
+        Assert.AreEqual(400, constrained.AdmittedContent.Height, 0.01);
+
+        var compactFallback = WidgetEnvelopeResolver.Resolve(
+            Surface(560, 700, 320, 420, WidgetSurfaceMode.Compact),
+            new WidgetEnvelopeConstraints(
+                new PixelRect(0, 0, 420, 340),
+                1,
+                1,
+                EnvelopeInsets.PlatformPlacement));
+        Assert.AreEqual(372, compactFallback.AdmittedContent.Width, 0.01,
+            "The physical height fallback must not unnecessarily collapse usable content width.");
+        Assert.AreEqual(164, compactFallback.AdmittedContent.Height, 0.01);
+        Assert.IsFalse(compactFallback.MinimumPairSatisfied,
+            "The protocol minimum may be missed only because this physical work area cannot contain it plus fixed chrome.");
 
         var scaledWorkArea = new PixelRect(1920, 40, 2560, 1600);
         var scaledConstraints = new WidgetEnvelopeConstraints(
@@ -1290,14 +1325,23 @@ public sealed class IntegrationAdapterTests
         {
             var frames = new[]
             {
-                Frame("alpha.widget", 1, ButtonTree("alpha")),
-                Frame("beta.widget", 1, ButtonTree("beta")),
-                Frame("gamma.widget", 1, ButtonTree("gamma")),
+                Frame("alpha.widget", 1, ButtonTree("alpha"),
+                    surface: Surface(420, 340, 320, 240, WidgetSurfaceMode.Compact)),
+                Frame("beta.widget", 1, ButtonTree("beta"),
+                    surface: Surface(980, 700, 420, 340, WidgetSurfaceMode.Wide)),
+                Frame("gamma.widget", 1, ButtonTree("gamma"),
+                    surface: Surface(520, 520, 320, 360, WidgetSurfaceMode.Compact)),
             };
             var fake = new FakePresentationSession(frames);
             var coordinator = new WidgetIntegrationCoordinator(fake, new ImmediateScheduler());
             await using var shell = new IntegratedShellView(coordinator, reducedMotion: false);
-            var window = new Window { Width = 978, Height = 466, Content = shell };
+            var workArea = new PixelRect(100, 50, 1920, 1080);
+            shell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
+                workArea, 1, 1, EnvelopeInsets.PlatformPlacement));
+            shell.AbsoluteChromeBoundsProvider = () => new IntegratedAbsoluteChromeBounds(
+                AnchoredPixelBounds(shell.CurrentEnvelope.GuideBounds, shell.CurrentEnvelope.Window, workArea, 1),
+                AnchoredPixelBounds(shell.CurrentEnvelope.TrayBounds, shell.CurrentEnvelope.Window, workArea, 1));
+            var window = new Window { Width = 1600, Height = 1000, Content = shell };
             window.Show();
             await shell.InitializeAsync();
             await WaitForAsync(() => shell.AdmittedWidgetId == "alpha.widget");
@@ -1325,6 +1369,29 @@ public sealed class IntegrationAdapterTests
                 shell.TransitionSamples.Where(sample => sample.WidgetId == "beta.widget")
                     .TakeLast(3).Select(sample => sample.Phase).ToArray());
             Assert.IsTrue(shell.TransitionSamples.All(sample => sample.OpaqueBlackFallbackAbsent));
+
+            await coordinator.SelectWidgetAsync("gamma.widget");
+            await WaitForAsync(() => shell.AdmittedWidgetId == "gamma.widget");
+            foreach (var widgetId in new[] { "beta.widget", "gamma.widget" })
+            {
+                var samples = shell.TransitionSamples.Where(sample => sample.WidgetId == widgetId)
+                    .TakeLast(3).ToArray();
+                CollectionAssert.AreEqual(
+                    Enum.GetValues<GameBarAlternative.AvaloniaPrototype.Navigation.TransitionPhase>(),
+                    samples.Select(sample => sample.Phase).ToArray());
+                Assert.IsTrue(samples.All(sample => sample.AbsoluteGuideBounds is not null &&
+                    sample.AbsoluteTrayBounds is not null));
+                Assert.AreEqual(1, samples.Select(sample => sample.AbsoluteGuideBounds).Distinct().Count(),
+                    $"Guide drifted during the {widgetId} envelope transition.");
+                Assert.AreEqual(1, samples.Select(sample => sample.AbsoluteTrayBounds).Distinct().Count(),
+                    $"Tray drifted during the {widgetId} envelope transition.");
+            }
+            var betaCompletion = shell.TransitionSamples.Last(sample =>
+                sample.WidgetId == "beta.widget" && sample.Phase == TransitionPhase.Completion);
+            var gammaCompletion = shell.TransitionSamples.Last(sample =>
+                sample.WidgetId == "gamma.widget" && sample.Phase == TransitionPhase.Completion);
+            Assert.AreEqual(betaCompletion.AbsoluteGuideBounds, gammaCompletion.AbsoluteGuideBounds);
+            Assert.AreEqual(betaCompletion.AbsoluteTrayBounds, gammaCompletion.AbsoluteTrayBounds);
             window.Close();
         });
     }

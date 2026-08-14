@@ -7,6 +7,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.Skia;
+using Avalonia.VisualTree;
 using GameBarAlternative.AvaloniaPrototype.Input;
 using GameBarAlternative.AvaloniaPrototype.Diagnostics;
 using GameBarAlternative.AvaloniaPrototype.Integration;
@@ -39,6 +40,7 @@ public sealed partial class MainWindow : Window
     private PixelRect? stableWorkArea;
     private double stableRenderScaling;
     private GameBarAlternative.WidgetPresentationSession.WidgetPresentationAuthority? stableEnvelopeAuthority;
+    private WidgetEnvelopeConstraints? evidenceEnvelopeConstraints;
     private bool applyingShellPlacement;
 
     public MainWindow()
@@ -122,6 +124,8 @@ public sealed partial class MainWindow : Window
         if (integratedShell is not null)
         {
             integratedShell.FrameAdmitted -= OnIntegratedFrameAdmitted;
+            integratedShell.EnvelopeTransitionStarting -= OnEnvelopeTransitionStarting;
+            integratedShell.AbsoluteChromeBoundsProvider = null;
             shellShutdown = integratedShell.DisposeAsync().AsTask();
             if (await Task.WhenAny(shellShutdown, Task.Delay(TimeSpan.FromSeconds(3))) == shellShutdown)
                 await shellShutdown;
@@ -173,6 +177,8 @@ public sealed partial class MainWindow : Window
             var coordinator = new WidgetIntegrationCoordinator(bridgeHost.Session, new AvaloniaUiScheduler());
             integratedShell = new IntegratedShellView(coordinator, PrototypeArguments.Current.ReducedMotion);
             integratedShell.FrameAdmitted += OnIntegratedFrameAdmitted;
+            integratedShell.EnvelopeTransitionStarting += OnEnvelopeTransitionStarting;
+            integratedShell.AbsoluteChromeBoundsProvider = CaptureAbsoluteChromeBounds;
             Content = integratedShell;
 
             var nativePath = Path.Combine(installation, "OverlayPlatformInterop.dll");
@@ -421,18 +427,22 @@ public sealed partial class MainWindow : Window
         }
         platform.SetWindowState(IsVisible, false);
         platform.SetWindowState(IsVisible, IsActive);
-        ApplyStableShellPlacement(force: true);
+    }
+
+    private void OnEnvelopeTransitionStarting(object? sender, WidgetEnvelopeTransitionRequest request)
+    {
+        if (platform is null || Screens.ScreenFromWindow(this) is not { } screen) return;
+        ApplyWindowPlacement(
+            request.Envelope,
+            request.Authority,
+            ResolveEnvelopeConstraints(screen),
+            force: true);
     }
 
     private void UpdateShellEnvelopeConstraints()
     {
         if (integratedShell is null || Screens.ScreenFromWindow(this) is not { } screen) return;
-        var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
-        integratedShell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
-            screen.WorkingArea,
-            scaling,
-            AccessibilityScale: 1,
-            EnvelopeInsets.PlatformPlacement));
+        integratedShell.SetHostEnvelopeConstraints(ResolveEnvelopeConstraints(screen));
     }
 
     private void ApplyStableShellPlacement(bool force = false)
@@ -441,36 +451,94 @@ public sealed partial class MainWindow : Window
             Screens.ScreenFromWindow(this) is not { } screen ||
             integratedShell.EnvelopeAuthority is not { } authority)
             return;
-        var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
-        if (!force && stableWorkArea == screen.WorkingArea &&
-            Math.Abs(stableRenderScaling - scaling) < 0.001 &&
+        var constraints = ResolveEnvelopeConstraints(screen);
+        if (!force && stableWorkArea == constraints.WorkArea &&
+            Math.Abs(stableRenderScaling - constraints.RenderScaling) < 0.001 &&
             Equals(stableEnvelopeAuthority, authority) &&
             LastComputedPlacement is not null) return;
-        integratedShell.SetHostEnvelopeConstraints(new WidgetEnvelopeConstraints(
-            screen.WorkingArea,
-            scaling,
-            AccessibilityScale: 1,
-            EnvelopeInsets.PlatformPlacement));
-        var envelope = integratedShell.CurrentEnvelope;
+        var envelope = integratedShell.ResolveEnvelope(constraints);
+        integratedShell.SetHostEnvelopeConstraints(constraints);
+        ApplyWindowPlacement(envelope, authority, constraints, force);
+    }
+
+    private void ApplyWindowPlacement(
+        WidgetEnvelopeResolution envelope,
+        GameBarAlternative.WidgetPresentationSession.WidgetPresentationAuthority authority,
+        WidgetEnvelopeConstraints constraints,
+        bool force)
+    {
+        if (platform is null) return;
+        if (!force && stableWorkArea == constraints.WorkArea &&
+            Math.Abs(stableRenderScaling - constraints.RenderScaling) < 0.001 &&
+            Equals(stableEnvelopeAuthority, authority) &&
+            LastComputedPlacement is not null) return;
         var placement = platform.ComputePlacement(
-            screen.WorkingArea,
-            (uint)Math.Round(96 * scaling),
+            constraints.WorkArea,
+            (uint)Math.Round(96 * constraints.RenderScaling),
             envelope.Window.Width,
             envelope.Window.Height);
         if (placement is not { } value) return;
-        stableWorkArea = screen.WorkingArea;
-        stableRenderScaling = scaling;
+        stableWorkArea = constraints.WorkArea;
+        stableRenderScaling = constraints.RenderScaling;
         stableEnvelopeAuthority = authority;
-        LastComputedPlacement = value;
-        LastEnvelopeResolution = envelope;
         applyingShellPlacement = true;
         try
         {
-            Position = value.Position;
-            Width = value.Width / scaling;
-            Height = value.Height / scaling;
+            platform.ApplyPlacement(value);
+            LastComputedPlacement = value;
+            LastEnvelopeResolution = envelope;
         }
         finally { applyingShellPlacement = false; }
+    }
+
+    private WidgetEnvelopeConstraints ResolveEnvelopeConstraints(Screen screen)
+    {
+        if (evidenceEnvelopeConstraints is { } evidence) return evidence;
+        var scaling = RenderScaling <= 0 ? 1 : RenderScaling;
+        return new WidgetEnvelopeConstraints(
+            screen.WorkingArea,
+            scaling,
+            AccessibilityScale: 1,
+            EnvelopeInsets.PlatformPlacement);
+    }
+
+    internal void SetEvidenceEnvelopeConstraints(WidgetEnvelopeConstraints? constraints)
+    {
+        evidenceEnvelopeConstraints = constraints;
+        if (platform is null || integratedShell is null ||
+            Screens.ScreenFromWindow(this) is not { } screen ||
+            integratedShell.EnvelopeAuthority is not { } authority)
+            return;
+        var effective = ResolveEnvelopeConstraints(screen);
+        var envelope = integratedShell.ResolveEnvelope(effective);
+        integratedShell.SetHostEnvelopeConstraints(effective);
+        ApplyWindowPlacement(envelope, authority, effective, force: true);
+    }
+
+    private IntegratedAbsoluteChromeBounds? CaptureAbsoluteChromeBounds()
+    {
+        if (integratedShell is null || LastComputedPlacement is not { } windowBounds) return null;
+        var guide = BoundsInShell(integratedShell.ControllerGuideElement, integratedShell);
+        var tray = BoundsInShell(integratedShell.TrayElement, integratedShell);
+        return new IntegratedAbsoluteChromeBounds(
+            ToAbsolutePixelBounds(guide, windowBounds, RenderScaling),
+            ToAbsolutePixelBounds(tray, windowBounds, RenderScaling));
+    }
+
+    private static Rect BoundsInShell(Control control, IntegratedShellView shell)
+    {
+        var origin = control.TranslatePoint(default, shell) ?? default;
+        return new Rect(origin, control.Bounds.Size);
+    }
+
+    private static PixelRect ToAbsolutePixelBounds(Rect local, PixelRect window, double scaling)
+    {
+        var scale = scaling > 0 ? scaling : 1;
+        return new PixelRect(
+            window.X + (int)Math.Round(local.X * scale, MidpointRounding.AwayFromZero),
+            window.Y + (int)Math.Round(local.Y * scale, MidpointRounding.AwayFromZero),
+            (int)Math.Round(local.Width * scale, MidpointRounding.AwayFromZero),
+            (int)Math.Round(local.Height * scale, MidpointRounding.AwayFromZero));
     }
 
     internal PixelRect? LastComputedPlacement { get; private set; }

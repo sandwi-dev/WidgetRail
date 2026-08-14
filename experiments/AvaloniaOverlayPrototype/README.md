@@ -44,10 +44,17 @@ Each admitted current view keeps its authored semantic structure and validated
 preferred/minimum logical envelope. The host resolves that atomic pair against
 the active work area, render scale, accessibility scale, and platform safe
 insets, then sizes one HWND to only the union of content and stationary chrome.
+When a physical work area cannot contain an authored minimum plus fixed chrome,
+the resolver clamps only the unavailable axis; it does not unnecessarily shrink
+the other usable axis, and the generic scroll owner preserves content reachability.
 There is no monitor-sized backdrop or replacement compact/standard/wide window
 preset table. The content grows upward and outward around one bottom-center
 screen anchor; the scrolling tray and controller guide keep identical absolute
-screen bounds while the content envelope and HWND change. Status and modal
+screen bounds while the content envelope and HWND change. The admitted shell
+layout is resolved in one UI turn and the sole platform client applies x/y/
+width/height with one native `SetWindowPos`, rather than exposing four separate
+top-level property mutations. Start/mid/completion transition diagnostics retain
+the absolute tray and guide pixel rectangles. Status and modal
 remain host-owned layers outside the content-only native
 `TransitioningContentControl`/`CrossFade`. A first-class tray/content/modal state
 machine uses Avalonia FocusManager/XYFocus and typed component zones for tray
@@ -110,8 +117,9 @@ atomic surface-hint admission, work-area/DPI/accessibility clamping, four
 materially distinct envelopes, invariant absolute tray/guide geometry,
 content-only transition ownership, latest-frame exact action authority,
 explicit worker-to-UI publication, 10,000-item bounded realization, stable
-collection/UIA identity, compact/standard/wide layouts at actual Avalonia
-100/125/150-percent render scales, lifecycle switch/hide/show, exact controller
+collection/UIA identity, all eight installed widgets through compact 420, 978,
+1180, and 1440 logical work-area admission (32 responsive rows), plus focused
+100/125/150-percent Avalonia render-scale coverage, lifecycle switch/hide/show, exact controller
 authority, stationary dynamic tray, content entry/Back focus restoration,
 start/mid/end transition surface diagnostics, same/new-widget supersession,
 artwork cancellation/disposal, slider quantization, ABI layout, and the absence
@@ -121,7 +129,10 @@ mode-identity restoration with one render tree. Geometry coverage asserts useful
 page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
-Each responsive row captures its admitted authority, semantic root, expected
+Each of the 32 responsive rows derives its content constraint through the same
+work-area/DPI/accessibility envelope admission used by the live host; authored
+preferred/minimum hints remain authoritative and no global shell preset is
+introduced. Each row captures its admitted authority, semantic root, expected
 IDs, controls, and geometry atomically on the Avalonia UI thread after the
 viewport receives a real Avalonia render turn; a direct race test publishes a
 replacement during resize and requires the replacement frame, root, and controls
@@ -162,11 +173,16 @@ bridge/runtime/domain path and same adapter, admits that current view's authored
 preferred/minimum envelope against the real work area/DPI, records UIA/
 containment/scroll clipping and transition phases, then separately samples
 the candidate and complete bridge/worker process tree visible and hidden.
-Every responsive record also retains page/root width utilization, minimum
+Every responsive record also retains its named logical work-area fixture,
+page/root width utilization, minimum
 readable dimensions, shell-region overlap, effective visibility, and maximum
 unintended horizontal empty-area ratio. Geometry is sampled only after the
-content-envelope transition reaches its admitted authority/size; chrome pixel
-bounds use the native center-rounding convention. Final evidence includes the exact owned
+content-envelope transition reaches its admitted authority/size. Transition
+start/mid/completion rows retain chrome pixel bounds and require one invariant
+absolute tray rectangle and one invariant absolute guide rectangle across the
+ordinary eight-widget traversal, including retained compact-to-wide and
+wide-to-compact switches; chrome pixel bounds use the native
+center-rounding convention. Final evidence includes the exact owned
 process-tree normal-shutdown verdict and native visible-lease trace. The same
 ordinary traversal renders one honestly labeled offscreen PNG at the admitted
 authored envelope per installed widget with

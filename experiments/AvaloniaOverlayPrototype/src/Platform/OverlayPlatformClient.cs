@@ -35,6 +35,7 @@ public interface IOverlayPlatformClient : IDisposable
     void SetWindowState(bool visible, bool focused);
     void Tick(bool foregroundConfirmed);
     PixelRect? ComputePlacement(PixelRect workArea, uint dpi, double desiredWidthDip, double desiredHeightDip);
+    void ApplyPlacement(PixelRect placement);
 }
 
 internal sealed class OverlayPlatformClient : IOverlayPlatformClient
@@ -73,6 +74,7 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
     private readonly SetOwnedWindows setOwnedWindows;
     private readonly NativeComputePlacement computePlacement;
     private nint handle;
+    private nint attachedWindow;
     private bool attached;
     private bool wasConnected;
     private OverlayControllerObservation? lastObservation;
@@ -132,6 +134,7 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
         ObjectDisposedException.ThrowIf(disposed, this);
         if (windowHandle == 0) throw new ArgumentOutOfRangeException(nameof(windowHandle));
         ThrowIfFailed(setOwnedWindows(handle, (nuint)windowHandle, 0), "set owned window");
+        attachedWindow = windowHandle;
         attached = true;
     }
 
@@ -220,6 +223,28 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
         };
         ThrowIfFailed(computePlacement(ref input, ref output, out var hasPlacement), "compute placement");
         return hasPlacement == 0 ? null : new PixelRect(output.X, output.Y, output.Width, output.Height);
+    }
+
+    public void ApplyPlacement(PixelRect placement)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!attached || attachedWindow == 0)
+            throw new InvalidOperationException("The sole overlay HWND is not attached.");
+        if (placement.Width <= 0 || placement.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(placement));
+        const uint noZOrder = 0x0004;
+        const uint noActivate = 0x0010;
+        const uint noOwnerZOrder = 0x0200;
+        if (SetWindowPos(
+                attachedWindow,
+                0,
+                placement.X,
+                placement.Y,
+                placement.Width,
+                placement.Height,
+                noZOrder | noActivate | noOwnerZOrder) == 0)
+            throw new InvalidOperationException(
+                $"Atomic overlay placement failed with Win32 error {Marshal.GetLastWin32Error()}.");
     }
 
     public void Dispose()
@@ -391,4 +416,14 @@ internal sealed class OverlayPlatformClient : IOverlayPlatformClient
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint ReadController(nint handle, uint foreground, ulong now, ref ControllerFrame frame);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint SetOwnedWindows(nint handle, nuint overlay, nuint backdrop);
     [UnmanagedFunctionPointer(CallingConvention.StdCall)] private delegate uint NativeComputePlacement(ref PlacementInput input, ref Placement output, out uint hasPlacement);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowPos(
+        nint window,
+        nint insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 }

@@ -26,7 +26,20 @@ public sealed record IntegratedTransitionSample(
     bool TransparentShellRoot,
     bool OpaqueBlackFallbackAbsent,
     bool AvaloniaSurfaceCoveragePresent,
-    int VisualChildCount);
+    int VisualChildCount,
+    ContentResponsiveMode ResponsiveMode,
+    double AdmittedContentWidthDip,
+    double AdmittedContentHeightDip,
+    PixelRect? AbsoluteGuideBounds,
+    PixelRect? AbsoluteTrayBounds);
+
+public readonly record struct IntegratedAbsoluteChromeBounds(
+    PixelRect Guide,
+    PixelRect Tray);
+
+public sealed record WidgetEnvelopeTransitionRequest(
+    WidgetPresentationAuthority Authority,
+    WidgetEnvelopeResolution Envelope);
 
 public enum ShellNavigationRegion
 {
@@ -250,6 +263,8 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
     public WidgetIntegrationCoordinator Coordinator => coordinator;
     public event EventHandler<WidgetPresentationFrame>? FrameAdmitted;
+    public event EventHandler<WidgetEnvelopeTransitionRequest>? EnvelopeTransitionStarting;
+    internal Func<IntegratedAbsoluteChromeBounds?>? AbsoluteChromeBoundsProvider { get; set; }
     public PageTransitionPresenter TransitionPresenter => transitionPresenter;
     public Control? ActivePage => transitionPresenter.AdmittedPage;
     internal Control? ActiveSemanticRoot => admittedPresentation?.SemanticRoot;
@@ -291,11 +306,14 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     {
         envelopeConstraints = constraints;
         if (renderedFrame is null || admittedPresentation is null) return;
-        ApplyEnvelopeToAdmitted(WidgetEnvelopeResolver.Resolve(
-            renderedFrame.Snapshot.Surface,
-            constraints,
-            admittedPresentation.Page.DesiredSize));
+        ApplyEnvelopeToAdmitted(ResolveEnvelope(constraints));
     }
+
+    internal WidgetEnvelopeResolution ResolveEnvelope(WidgetEnvelopeConstraints constraints) =>
+        WidgetEnvelopeResolver.Resolve(
+            renderedFrame?.Snapshot.Surface,
+            constraints,
+            admittedPresentation?.Page.DesiredSize);
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -580,6 +598,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             envelopeConstraints);
         contentMode = candidateEnvelope.ResponsiveMode;
         var candidate = RenderPage(frame, candidateEnvelope);
+        BeginEnvelopeTransition(frame.Authority, candidateEnvelope);
         var sameWidget = string.Equals(
             admittedPresentation?.Frame.Authority.WidgetId, frame.Authority.WidgetId, StringComparison.Ordinal);
         if (sameWidget)
@@ -608,6 +627,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
                 !transitionPresenter.IsExactlyAdmitted(candidate.Page))
             {
                 renderer.Release(candidate.SemanticRoot);
+                RestoreAdmittedEnvelope();
                 suppressFocusMemory = false;
                 return;
             }
@@ -630,6 +650,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
                     envelopeConstraints);
                 contentMode = latestEnvelope.ResponsiveMode;
                 var latestCandidate = RenderPage(replacement, latestEnvelope);
+                BeginEnvelopeTransition(replacement.Authority, latestEnvelope);
                 transitionPresenter.ReplaceWithoutTransition(latestCandidate.Page);
                 renderer.Release(candidate.SemanticRoot);
                 candidate = latestCandidate;
@@ -641,6 +662,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             !Equals(coordinator.CurrentFrame?.Authority, frame.Authority))
         {
             renderer.Release(candidate.SemanticRoot);
+            RestoreAdmittedEnvelope();
             suppressFocusMemory = false;
             return;
         }
@@ -649,7 +671,6 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         admittedPresentation = candidate;
         renderedFrame = frame;
         admittedWidgetId = frame.Authority.WidgetId;
-        ApplyEnvelopeLayout(candidate.Envelope, frame.Authority);
         if (superseded is not null && !ReferenceEquals(superseded.SemanticRoot, candidate.SemanticRoot))
             renderer.Release(superseded.SemanticRoot);
         if (restoreContentFocus)
@@ -677,6 +698,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
     private void RecordTransition(WidgetPresentationFrame frame, TransitionPhase phase)
     {
         var background = pageHost.Background as ISolidColorBrush;
+        var absoluteChrome = AbsoluteChromeBoundsProvider?.Invoke();
         transitionSamples.Add(new IntegratedTransitionSample(
             frame.Authority.WidgetId,
             frame.Authority.SnapshotSequence,
@@ -684,7 +706,27 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
             Background is null || Background is ISolidColorBrush { Color.A: 0 },
             background is null || background.Color is not { A: 255, R: 0, G: 0, B: 0 },
             transitionPresenter.Bounds.Width > 0 && transitionPresenter.Bounds.Height > 0,
-            transitionPresenter.GetVisualDescendants().Count()));
+            transitionPresenter.GetVisualDescendants().Count(),
+            currentEnvelope.ResponsiveMode,
+            currentEnvelope.AdmittedContent.Width,
+            currentEnvelope.AdmittedContent.Height,
+            absoluteChrome?.Guide,
+            absoluteChrome?.Tray));
+    }
+
+    private void BeginEnvelopeTransition(
+        WidgetPresentationAuthority authority,
+        WidgetEnvelopeResolution envelope)
+    {
+        ApplyEnvelopeLayout(envelope, authority);
+        UpdateLayout();
+        EnvelopeTransitionStarting?.Invoke(this, new WidgetEnvelopeTransitionRequest(authority, envelope));
+    }
+
+    private void RestoreAdmittedEnvelope()
+    {
+        if (admittedPresentation is null || renderedFrame is null) return;
+        BeginEnvelopeTransition(renderedFrame.Authority, admittedPresentation.Envelope);
     }
 
     private void UpdateTraySelection()
@@ -705,6 +747,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         if (previousMode != contentMode)
             renderer.SetCompact(admittedPresentation.SemanticRoot, IsCompact);
         admittedPresentation = admittedPresentation with { Envelope = envelope };
+        admittedPresentation.BodyHost.Padding = PageBodyPadding(envelope.ResponsiveMode);
         ApplyEnvelopeLayout(envelope, renderedFrame.Authority);
         SemanticTreeRenderer.PrepareSemanticRootForHost(admittedPresentation.SemanticRoot);
         admittedPresentation.Page.UpdateLayout();
@@ -995,7 +1038,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
 
         var bodyHost = new Border
         {
-            Padding = new Thickness(10, 12),
+            Padding = PageBodyPadding(envelope.ResponsiveMode),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
             Child = body,
@@ -1013,8 +1056,13 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         ControllerComponentCompiler.Apply(page,
             new ControllerComponent(ControllerComponentKind.Page,
                 ControllerNavigationZone.Page));
-        return new RenderedPage(frame, page, semanticRoot, envelope);
+        return new RenderedPage(frame, page, semanticRoot, bodyHost, envelope);
     }
+
+    private static Thickness PageBodyPadding(ContentResponsiveMode mode) =>
+        mode == ContentResponsiveMode.Compact
+            ? new Thickness(8, 10)
+            : new Thickness(10, 12);
 
     private bool IsManagedFocus(Control focused) =>
         trayButtons.Values.Contains(focused) ||
@@ -1037,6 +1085,7 @@ public sealed class IntegratedShellView : UserControl, IAsyncDisposable
         WidgetPresentationFrame Frame,
         Control Page,
         Control SemanticRoot,
+        Border BodyHost,
         WidgetEnvelopeResolution Envelope);
 
     private static IEnumerable<ViewNode> Flatten(ViewNode node)

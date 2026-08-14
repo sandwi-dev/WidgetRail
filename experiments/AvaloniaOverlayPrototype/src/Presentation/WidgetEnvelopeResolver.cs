@@ -92,12 +92,9 @@ public static class WidgetEnvelopeResolver
         var widthScale = 1 + Math.Max(0, accessibilityScale - 1) * 0.5;
         var scaledPreferred = new Size(preferred.Width * widthScale, preferred.Height * accessibilityScale);
         var scaledMinimum = new Size(minimum.Width * widthScale, minimum.Height * accessibilityScale);
-        var proportionalClamp = Math.Min(1, Math.Min(
-            maximumContent.Width / scaledPreferred.Width,
-            maximumContent.Height / scaledPreferred.Height));
         var admitted = new Size(
-            Math.Max(1, scaledPreferred.Width * proportionalClamp),
-            Math.Max(1, scaledPreferred.Height * proportionalClamp));
+            Math.Max(1, Math.Min(scaledPreferred.Width, maximumContent.Width)),
+            Math.Max(1, Math.Min(scaledPreferred.Height, maximumContent.Height)));
         var minimumSatisfied = admitted.Width + 0.01 >= scaledMinimum.Width &&
             admitted.Height + 0.01 >= scaledMinimum.Height;
         var chromeWidth = Math.Min(TrayWidthDip, maximumWindow.Width);
@@ -120,7 +117,8 @@ public static class WidgetEnvelopeResolver
             guideBounds.Bottom + GuideTrayGapDip,
             chromeWidth,
             TrayHeightDip);
-        var clamped = proportionalClamp < 0.9999;
+        var clamped = admitted.Width + 0.01 < scaledPreferred.Width ||
+            admitted.Height + 0.01 < scaledPreferred.Height;
         var usesFullBackdrop = window.Width + 0.5 >= workArea.Width &&
             window.Height + 0.5 >= workArea.Height;
         return new WidgetEnvelopeResolution(

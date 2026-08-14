@@ -14,6 +14,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GameBarAlternative.AvaloniaPrototype.Integration;
+using GameBarAlternative.AvaloniaPrototype.Presentation;
 using GameBarAlternative.AvaloniaPrototype.Views;
 using GameBarAlternative.WidgetPresentationSession;
 using GameBarAlternative.WidgetProtocol;
@@ -22,6 +23,14 @@ namespace GameBarAlternative.AvaloniaPrototype.Diagnostics;
 
 internal static class EvidenceScenario
 {
+    private static readonly LogicalWorkAreaFixture[] ResponsiveWorkAreas =
+    [
+        new("compact", 420, 340),
+        new("978", 978, 466),
+        new("1180", 1180, 680),
+        new("1440", 1440, 810),
+    ];
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -47,6 +56,10 @@ internal static class EvidenceScenario
                 TimeSpan.FromSeconds(20),
                 "The real widget catalog did not publish an initial frame.");
             var shell = window.IntegratedShell!;
+            var evidenceScreen = window.Screens.ScreenFromWindow(window) ??
+                throw new InvalidOperationException("The evidence window has no active screen.");
+            var evidenceRenderScaling = window.RenderScaling > 0 ? window.RenderScaling : 1;
+            var evidenceWorkingArea = evidenceScreen.WorkingArea;
             var firstCompleteFrameMilliseconds = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
 
             var widgetSamples = new List<WidgetEvidence>();
@@ -134,37 +147,62 @@ internal static class EvidenceScenario
                     shell.Coordinator.ViewModel.HasFailure,
                     shell.Coordinator.ViewModel.StatusText));
 
-                var controls = admitted.Controls;
-                var geometry = admitted.Geometry;
-                responsiveSamples.Add(new ResponsiveEvidence(
-                    widget.Id,
-                    frame.Authority.SnapshotSequence,
-                    frame.Authority.ActiveInputScopeId,
-                    envelopeEvidence.AdmittedContent.Width,
-                    envelopeEvidence.AdmittedContent.Height,
-                    window.RenderScaling,
-                    shell.Bounds.Width,
-                    shell.Bounds.Height,
-                    window.Bounds.Width,
-                    window.Bounds.Height,
-                    admitted.Compact,
-                    controls.Count,
-                    controls.Count(control => control.HonestlyScrollClipped),
-                    admitted.MissingExpectedIds,
-                    admitted.ProbedFocusableIds,
-                    admitted.UnreachableFocusableIds,
-                    controls.All(control => control.BoundsHaveArea &&
-                        (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
-                    geometry.PageHostWidthDip,
-                    geometry.SemanticRootWidthDip,
-                    geometry.PageWidthUtilization,
-                    geometry.SemanticWidthUtilization,
-                    geometry.MinimumReadableControlWidthDip,
-                    geometry.MinimumReadableControlHeightDip,
-                    geometry.ShellRegionsDoNotOverlap,
-                    geometry.EffectiveVisibilityPassed,
-                    geometry.MaximumHorizontalEmptyAreaRatio,
-                    geometry.Passed));
+                foreach (var fixture in ResponsiveWorkAreas)
+                {
+                    var constraints = new WidgetEnvelopeConstraints(
+                        CreateFixtureWorkArea(evidenceWorkingArea, fixture, evidenceRenderScaling),
+                        evidenceRenderScaling,
+                        AccessibilityScale: 1,
+                        EnvelopeInsets.PlatformPlacement);
+                    await Dispatcher.UIThread.InvokeAsync(
+                        () => window.SetEvidenceEnvelopeConstraints(constraints),
+                        DispatcherPriority.Normal);
+                    await WaitForEnvelopeLayoutAsync(shell, widget.Id, TimeSpan.FromSeconds(2));
+                    var responsive = await CaptureResponsiveFixtureAsync(
+                        shell,
+                        shell.CurrentEnvelope.AdmittedContent,
+                        widget.Id,
+                        TimeSpan.FromSeconds(5),
+                        applyFixture: false);
+                    var controls = responsive.Controls;
+                    var geometry = responsive.Geometry;
+                    responsiveSamples.Add(new ResponsiveEvidence(
+                        widget.Id,
+                        fixture.Name,
+                        fixture.WidthDip,
+                        fixture.HeightDip,
+                        responsive.Frame.Authority.SnapshotSequence,
+                        responsive.Frame.Authority.ActiveInputScopeId,
+                        shell.CurrentEnvelope.AdmittedContent.Width,
+                        shell.CurrentEnvelope.AdmittedContent.Height,
+                        evidenceRenderScaling,
+                        shell.Bounds.Width,
+                        shell.Bounds.Height,
+                        window.Bounds.Width,
+                        window.Bounds.Height,
+                        responsive.Compact,
+                        controls.Count,
+                        controls.Count(control => control.HonestlyScrollClipped),
+                        responsive.MissingExpectedIds,
+                        responsive.ProbedFocusableIds,
+                        responsive.UnreachableFocusableIds,
+                        controls.All(control => control.BoundsHaveArea &&
+                            (control.Contained || control.HonestlyScrollClipped) && control.StandardUiaIdentity),
+                        geometry.PageHostWidthDip,
+                        geometry.SemanticRootWidthDip,
+                        geometry.PageWidthUtilization,
+                        geometry.SemanticWidthUtilization,
+                        geometry.MinimumReadableControlWidthDip,
+                        geometry.MinimumReadableControlHeightDip,
+                        geometry.ShellRegionsDoNotOverlap,
+                        geometry.EffectiveVisibilityPassed,
+                        geometry.MaximumHorizontalEmptyAreaRatio,
+                        geometry.Passed));
+                }
+                await Dispatcher.UIThread.InvokeAsync(
+                    () => window.SetEvidenceEnvelopeConstraints(null),
+                    DispatcherPriority.Normal);
+                await WaitForEnvelopeLayoutAsync(shell, widget.Id, TimeSpan.FromSeconds(2));
                 offscreenCaptures.Add(await CaptureOffscreenAsync(
                     shell,
                     widget.Id,
@@ -178,6 +216,32 @@ internal static class EvidenceScenario
                     $"Widget '{widget.Id}' artwork did not settle.");
                 memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                     $"widget:{widget.Id}:artwork-settled", process, window, shell));
+            }
+            var compactTransitionWidgetId = envelopeSamples.First(sample =>
+                string.Equals(sample.AuthoredMode, WidgetSurfaceMode.Compact.ToString(),
+                    StringComparison.Ordinal)).WidgetId;
+            var wideTransitionWidgetId = envelopeSamples.First(sample =>
+                string.Equals(sample.AuthoredMode, WidgetSurfaceMode.Wide.ToString(),
+                    StringComparison.Ordinal)).WidgetId;
+            foreach (var transitionWidgetId in new[]
+                     {
+                         compactTransitionWidgetId,
+                         wideTransitionWidgetId,
+                         compactTransitionWidgetId,
+                     })
+            {
+                await shell.Coordinator.SelectWidgetAsync(transitionWidgetId);
+                await WaitUntilAsync(() =>
+                    shell.Coordinator.CurrentFrame?.Authority.WidgetId == transitionWidgetId &&
+                    Equals(shell.AdmittedAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
+                    Equals(shell.EnvelopeAuthority, shell.Coordinator.CurrentFrame?.Authority) &&
+                    !shell.Coordinator.ViewModel.IsBusy,
+                    TimeSpan.FromSeconds(20),
+                    $"Directional envelope transition to '{transitionWidgetId}' did not settle.");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+                if (!arguments.ReducedMotion)
+                    await Task.Delay(IntegratedShellView.ContentEnvelopeTransitionDuration +
+                        TimeSpan.FromMilliseconds(40));
             }
             memoryOwnershipCheckpoints.Add(CaptureMemoryOwnership(
                 "after-8-widget-authored-envelope-traversal", process, window, shell));
@@ -220,11 +284,26 @@ internal static class EvidenceScenario
             await using var executableStream = File.OpenRead(executable);
             var executableHash = Convert.ToHexString(await SHA256.HashDataAsync(executableStream));
             var transitions = shell.TransitionSamples;
-            var transitionPassed = shell.Coordinator.ViewModel.Widgets.All(widget =>
-                transitions.Where(sample => sample.WidgetId == widget.Id)
-                    .GroupBy(sample => sample.SnapshotSequence)
-                    .Any(group => group.Select(sample => sample.Phase)
-                        .SequenceEqual(Enum.GetValues<Navigation.TransitionPhase>()))) &&
+            var transitionChromePassed = transitions.Count > 0 &&
+                transitions.All(sample => sample.AbsoluteGuideBounds is not null &&
+                    sample.AbsoluteTrayBounds is not null) &&
+                transitions.Select(sample => sample.AbsoluteGuideBounds).Distinct().Count() == 1 &&
+                transitions.Select(sample => sample.AbsoluteTrayBounds).Distinct().Count() == 1;
+            var completedTransitions = CompletedTransitions(transitions);
+            var completedTransitionModes = completedTransitions
+                .Select(group => group[0].ResponsiveMode)
+                .ToArray();
+            var bidirectionalEnvelopeTransitionChromePassed = transitionChromePassed &&
+                completedTransitionModes.Zip(completedTransitionModes.Skip(1))
+                    .Any(pair => pair.First == ContentResponsiveMode.Compact &&
+                        pair.Second == ContentResponsiveMode.Wide) &&
+                completedTransitionModes.Zip(completedTransitionModes.Skip(1))
+                    .Any(pair => pair.First == ContentResponsiveMode.Wide &&
+                        pair.Second == ContentResponsiveMode.Compact);
+            var transitionPassed = bidirectionalEnvelopeTransitionChromePassed &&
+                shell.Coordinator.ViewModel.Widgets.All(widget =>
+                    completedTransitions.Any(group =>
+                        string.Equals(group[0].WidgetId, widget.Id, StringComparison.Ordinal))) &&
                 transitions.All(sample => sample.TransparentShellRoot &&
                     sample.OpaqueBlackFallbackAbsent && sample.AvaloniaSurfaceCoveragePresent &&
                     sample.VisualChildCount > 0);
@@ -239,7 +318,16 @@ internal static class EvidenceScenario
                 distinctEnvelopeCount >= 4 && chromeBoundsInvariant &&
                 envelopeSamples.All(sample => sample.AuthoredPairsAtomic && sample.WindowUnionContained &&
                     sample.ContentChromeDoNotOverlap && !sample.UsesFullWorkAreaBackdrop);
-            var responsivePassed = responsiveSamples.All(sample => sample.ReachableOrScrollClipped && sample.GeometryPassed);
+            var responsiveMatrixExpectedCount = shell.Coordinator.ViewModel.Widgets.Count * ResponsiveWorkAreas.Length;
+            var responsiveMatrixPassed = responsiveSamples.Count == responsiveMatrixExpectedCount &&
+                shell.Coordinator.ViewModel.Widgets.All(widget =>
+                    responsiveSamples.Where(sample => sample.WidgetId == widget.Id)
+                        .Select(sample => sample.FixtureName)
+                        .Order(StringComparer.Ordinal)
+                        .SequenceEqual(ResponsiveWorkAreas.Select(fixture => fixture.Name)
+                            .Order(StringComparer.Ordinal))) &&
+                responsiveSamples.All(sample => sample.ReachableOrScrollClipped && sample.GeometryPassed);
+            var responsivePassed = responsiveMatrixPassed;
             var allWidgetsPassed = widgetSamples.Count == shell.Coordinator.ViewModel.Widgets.Count &&
                 widgetSamples.All(sample => !sample.HasFailure && sample.RequiredSemanticControlsPassed);
             var focusedMappingProofPassed = !string.IsNullOrWhiteSpace(arguments.SourceCommit) &&
@@ -300,9 +388,13 @@ internal static class EvidenceScenario
                 widgetEnvelopeEvidencePassed,
                 nodeKindCoverage,
                 responsiveSamples,
+                responsiveMatrixExpectedCount,
+                responsiveMatrixPassed,
                 responsivePassed,
                 offscreenCaptures,
                 transitions,
+                transitionChromePassed,
+                bidirectionalEnvelopeTransitionChromePassed,
                 transitionPassed,
                 pageTransition,
                 visibleIdle,
@@ -349,6 +441,65 @@ internal static class EvidenceScenario
             await window.ShutdownAsync();
             desktop.Shutdown(1);
         }
+    }
+
+    private static PixelRect CreateFixtureWorkArea(
+        PixelRect actualWorkArea,
+        LogicalWorkAreaFixture fixture,
+        double renderScaling)
+    {
+        var width = (int)Math.Round(
+            fixture.WidthDip * renderScaling,
+            MidpointRounding.AwayFromZero);
+        var height = (int)Math.Round(
+            fixture.HeightDip * renderScaling,
+            MidpointRounding.AwayFromZero);
+        return new PixelRect(
+            actualWorkArea.X + ((actualWorkArea.Width - width) / 2),
+            actualWorkArea.Bottom - height,
+            width,
+            height);
+    }
+
+    private static IReadOnlyList<IntegratedTransitionSample[]> CompletedTransitions(
+        IReadOnlyList<IntegratedTransitionSample> samples)
+    {
+        var phases = Enum.GetValues<Navigation.TransitionPhase>();
+        var completed = new List<IntegratedTransitionSample[]>();
+        for (var index = 0; index <= samples.Count - phases.Length;)
+        {
+            var candidate = samples.Skip(index).Take(phases.Length).ToArray();
+            if (candidate.Select(sample => sample.Phase).SequenceEqual(phases) &&
+                candidate.All(sample => string.Equals(
+                    sample.WidgetId, candidate[0].WidgetId, StringComparison.Ordinal) &&
+                    sample.SnapshotSequence == candidate[0].SnapshotSequence))
+            {
+                completed.Add(candidate);
+                index += phases.Length;
+            }
+            else
+            {
+                index++;
+            }
+        }
+        return completed;
+    }
+
+    private static async Task WaitForEnvelopeLayoutAsync(
+        IntegratedShellView shell,
+        string expectedWidgetId,
+        TimeSpan timeout)
+    {
+        var settlement = IntegratedShellView.ContentEnvelopeTransitionDuration +
+            TimeSpan.FromMilliseconds(80);
+        if (settlement > timeout)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+        await Task.Delay(settlement);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+        if (!string.Equals(shell.AdmittedWidgetId, expectedWidgetId, StringComparison.Ordinal) ||
+            !Equals(shell.AdmittedAuthority, shell.Coordinator.CurrentFrame?.Authority))
+            throw new InvalidOperationException(
+                $"Widget '{expectedWidgetId}' lost admitted authority while its envelope settled.");
     }
 
     internal static async Task<ResponsiveFixtureCapture> CaptureResponsiveFixtureAsync(
@@ -975,9 +1126,13 @@ internal static class EvidenceScenario
         bool WidgetEnvelopeEvidencePassed,
         NodeKindCoverageEvidence NodeKindCoverage,
         IReadOnlyList<ResponsiveEvidence> ResponsiveFixtures,
+        int ResponsiveMatrixExpectedCount,
+        bool ResponsiveMatrixPassed,
         bool ResponsiveEvidencePassed,
         IReadOnlyList<OffscreenCaptureEvidence> OffscreenCaptures,
         IReadOnlyList<IntegratedTransitionSample> TransitionSurfaceSamples,
+        bool TransitionAbsoluteChromeBoundsInvariant,
+        bool BidirectionalEnvelopeTransitionChromePassed,
         bool TransitionSurfaceDiagnosticsPassed,
         string PageTransition,
         ResourceSample VisibleIdleSample,
@@ -1081,6 +1236,9 @@ internal static class EvidenceScenario
 
     private sealed record ResponsiveEvidence(
         string WidgetId,
+        string FixtureName,
+        double LogicalWorkAreaWidthDip,
+        double LogicalWorkAreaHeightDip,
         long SnapshotSequence,
         string ActiveInputScopeId,
         double AdmittedContentWidthDip,
@@ -1107,6 +1265,8 @@ internal static class EvidenceScenario
         bool EffectiveVisibilityPassed,
         double MaximumHorizontalEmptyAreaRatio,
         bool GeometryPassed);
+
+    private sealed record LogicalWorkAreaFixture(string Name, double WidthDip, double HeightDip);
 
     internal sealed record ResponsiveFixtureCapture(
         WidgetPresentationFrame Frame,
