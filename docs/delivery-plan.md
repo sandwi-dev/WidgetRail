@@ -137,10 +137,32 @@ Baseline: accepted DLV-235 cumulative platform correction. Visible objective: on
 credential-free Community worker may crash repeatedly without closing the
 overlay, disturbing other widgets, or leaving an unauthorized stale
 presentation; a normal reactivation or generic Hold-Y restart recovers through
-the existing lifecycle owner. Preserve process/job cleanup, retry bounds,
-last-good semantics, tray focus, and safe diagnostics. Use differently named
-generic fixtures, run only affected lifecycle/process/controller routes, and do
-not add service-specific behavior or rerun Tier 3.
+the existing lifecycle owner.
+
+Reviewed evidence: the abandoned packaged crash oracle could not cross the
+AppContainer's admitted content boundary and must not be redesigned or rerun.
+Static review found the product gap: an unsolicited post-admission worker exit
+records failure but leaves its admitted snapshot treated as current, so stale
+semantic/input authority can survive even though explicit restart correctly
+clears it.
+
+Required correction: through the existing session/lifecycle owner, atomically
+classify an unsolicited exited worker's admitted presentation as retained last-
+good pixels but failure-current and inert. Revoke action authority and active
+focus/hit-test/UIA interaction for that presentation without substituting
+another widget's pixels. Normal Retry/reactivation or generic Hold-Y must start
+exactly one fresh generation; only valid admission restores current interactive
+authority. Preserve the unaffected widgets, tray focus, bounded retry,
+sanitized diagnostics, job/process cleanup, and existing failure precedence.
+
+Verification: use only the affected deterministic coordinator, state,
+lifecycle, restart, controller, and cleanup cases plus one compile. Do not add
+or rerun a packaged/AppContainer crash oracle. Review the actual worker-exit,
+job teardown, admission, and stale-authority paths directly and report the
+remaining OS-level scenario as untested residual risk. The inherited retired-
+gesture revocation race is not a DLV-232 blocker when unchanged. Do not add
+service-specific behavior, another lifecycle/input authority, a test-only
+production escape hatch, public protocol work, Tier 3, or unrelated refactoring.
 
 ### Ready after DLV-232 integration — DLV-238: commit admitted destination geometry
 
