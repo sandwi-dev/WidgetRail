@@ -159,7 +159,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted DLV-206/DLV-227 are preserved through `86a2a23`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-231 assigned after accepted DLV-227 integration `856bbbb` |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, rejected DLV-231 source is preserved as `2a379ac` above accepted DLV-206/DLV-227; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-233 in progress; DLV-234 is the next bounded correction before DLV-232 |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -298,7 +298,7 @@ job teardown, and temporary cleanup checks. The focused packaged route passed
 with the ordinary planner-owned host present; no source fallback, weakened
 window check, product runtime change, or Tier-3 rerun occurred.
 
-### Assigned — DLV-231: slow-worker dashboard responsiveness
+### Rejected pending DLV-234 — DLV-231: slow-worker dashboard responsiveness
 
 Baseline: accepted DLV-227 integrated into local main `856bbbb`. Owner:
 platform lane. This is the next visible/release-risk milestone after two bounded
@@ -345,12 +345,25 @@ Stop if the correction needs another transport, another focus/input owner,
 widget-specific native behavior, an unbounded wait/cache, or a material public
 protocol decision.
 
-### Ready correction after DLV-231 — DLV-233: self-contained Audio scroll host fixture
+Implementation source commit `2a379ac` reproduces the serialized slow-worker
+starvation, adds request-generation revocation, and reports green focused
+coordinator/bridge/production-host evidence. Independent review rejects the
+commit as currently integrable because its recovery reuses a byte-stream pipe
+after `CancelSynchronousIo` interrupts `ReadExact`. Cancellation may occur after
+part of a four-byte frame header or response body has already been consumed;
+discarding later responses whose request ID is older cannot restore frame
+alignment, and the retained fixture blocks before any response bytes are
+written. DLV-234 owns the bounded framing-recovery correction after the already
+started independent DLV-233 fixture milestone. Preserve `2a379ac` and do not
+integrate it or dependent commits until that correction is accepted.
 
-Baseline: accepted DLV-231 on the platform lane. Owner: platform test
-infrastructure only. This correction was exposed by the independent main
-Release build after DLV-228; it does not reopen or reject the accepted Audio
-product/style correction.
+### Assigned — DLV-233: self-contained Audio scroll host fixture
+
+Baseline: committed DLV-231 source `2a379ac` on the platform lane; this
+assignment is independent of the rejected framing recovery and may finish at
+its current clean boundary. Owner: platform test infrastructure only. This
+correction was exposed by the independent main Release build after DLV-228; it
+does not reopen or reject the accepted Audio product/style correction.
 
 Objective: make `AudioMixerScrollHostTests` launch the same self-contained
 temporary native installation it claims to exercise. Its current
@@ -378,9 +391,58 @@ Required implementation and acceptance:
 Stop for a product/runtime change, a source-worktree/PATH fallback, weakened
 window/input/scroll assertions, or a broader installation-framework decision.
 
-### Ready after DLV-233 — DLV-232: generic worker crash isolation and recovery
+### Ready correction after DLV-233 — DLV-234: recover frame alignment after request cancellation
 
-Baseline: accepted DLV-231 on the platform lane. Visible objective: one
+Baseline: committed DLV-233 above rejected DLV-231 `2a379ac`. Owner: platform
+session/bridge transport only. Dependencies: finish and commit the already
+started DLV-233; do not begin DLV-232 first. This correction must remain on the
+single existing WidgetBridge connection/process owner and the existing session
+coordinator worker.
+
+Objective: preserve DLV-231's responsive request revocation without ever
+reusing a pipe whose frame boundary became indeterminate after cancellation.
+
+Required implementation:
+
+- Treat cancellation of a synchronous frame header or body read as a tainted
+  connection even when `ERROR_OPERATION_ABORTED` follows partial progress.
+  Before the next request, close and re-establish the one existing bridge
+  transport through its current lifecycle owner, or use another bounded design
+  that proves the original stream is at an exact frame boundary. Merely
+  ignoring older correlation IDs is insufficient.
+- Bound and observe the old bridge process/pipe teardown and replacement. Do
+  not leave an orphan bridge, overlap two authoritative transports, reset
+  unrelated package/provider state, or add another request loop, cache, input
+  owner, focus graph, or public protocol message.
+- Preserve DLV-231 generation/lifecycle-target revocation, last-good
+  presentation, async event handling, later valid selection, normal close, and
+  exact stale-success/failure rejection. Remove stale-ID skipping that is no
+  longer necessary or prove why any retained use is finite and frame-safe.
+
+Acceptance:
+
+- Add one deterministic transport regression that cancels after a valid frame
+  header and a nonzero body prefix have been consumed, then proves the next
+  ordinary request succeeds on a correctly framed sole transport. The test must
+  fail against `2a379ac`; blocking before response publication is not enough.
+- Cover cancellation before any bytes, during header/body, cancellation-
+  ignoring late completion, malformed/future correlation failure, retained
+  last-good content, later valid snapshot admission, and bounded old/new bridge
+  process cleanup with no remaining PID after normal host close.
+- Rerun the 12 coordinator scenarios, directly affected native bridge
+  correlation/catalog tests, 89-case managed bridge lifecycle/concurrency
+  fixture, and the bounded eight-widget production-host route once from the
+  coherent correction. Retain host-focus timing separately from worker/reconnect
+  latency. No Tier-3 aggregate, capture work, provider change, or hardware route.
+
+Concurrency and stop conditions: no widgets-lane files overlap. Stop for a
+second concurrent transport/process authority, a public protocol change, loss
+of authenticated session/catalog semantics, unbounded reconnect/retry, or a
+material lifecycle redesign.
+
+### Ready after DLV-234 — DLV-232: generic worker crash isolation and recovery
+
+Baseline: accepted DLV-234 cumulative platform correction. Visible objective: one
 credential-free Community worker may crash repeatedly without closing the
 overlay, disturbing other widgets, or leaving an unauthorized stale
 presentation; a normal reactivation or generic Hold-Y restart recovers through
