@@ -229,10 +229,12 @@ The accepted integrated baseline for this work is local main `acc062d`. It
 retains the production catalog/runtime/bridge/domain and Community boundaries
 while integrating the independently accepted AVP-004 widget-envelope source
 through `5ffd435`. Automated/source gates are green, and the exact copied
-candidate is launched for the still-required physical controller/display
-verdict. AVP-005 and production cutover remain unauthorized. Production lanes
-may proceed independently because their package-owned domain implementations
-are retained by this architecture.
+candidate reached physical controller/display evaluation but crashed because
+live diagnostic JSON replacement propagated an `IOException` through the UI
+input dispatcher. Only crash-proof trace persistence is reopened; the accepted
+widget-envelope architecture remains unchanged. AVP-005 and production cutover
+remain unauthorized. Production lanes may proceed independently because their
+package-owned domain implementations are retained by this architecture.
 
 ## Acceptance gates
 

@@ -28,7 +28,9 @@ implementation work.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
   currently closed during isolated Avalonia work. The isolated Avalonia
-  candidate from integrated main `acc062d` is running visibly as PID `10236`.
+  candidate from integrated main `acc062d` crashed during the physical session;
+  no candidate or owned WidgetBridge process remains running. AVP-004-REDESIGN
+  is reopened only for the exact trace-persistence crash below.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -807,6 +809,25 @@ approves independent widget sizing, stationary chrome throughout transitions,
 all eight first pages, clipping, motion, Guide, D-pad/stick, A/B/Y, sliders,
 scrolling, focus restoration, and normal close. Do not authorize AVP-005 or
 production cutover before that verdict.
+
+The physical session rejects that launched candidate for a deterministic crash
+even though the user reports the independent widget sizing is better. Windows
+.NET Runtime event 1026 at 2026-08-14 02:50:51 local records an unhandled
+`System.IO.IOException` with message `Unable to remove the file to be replaced.`
+The exact stack is `InputTraceRecorder.PersistSnapshotLocked()` line 94 through
+the Avalonia UI-dispatch controller-input callback in `MainWindow` line 315.
+WER classifies the failure as CLR20r3 with `System.IO.IOException`. The retained
+manual trace is valid through sequence 186 and proves a connected native visible
+lease plus routed controller input immediately before exit; it contains no
+normal-close record. Therefore rendering, envelopes, and controller routing are
+not reopened, but live trace persistence is: diagnostic serialization/file
+replacement may not run synchronously on the UI input path or terminate the
+candidate when Windows temporarily denies replacement. Correct it with one
+background single-writer/coalesced publisher, last-good atomic JSON, pending
+latest-state retry, bounded explicit flush, and a deterministic locked-target
+recovery regression. Rerun only the focused AVP suite and one exact changed-tip
+measurement, then independently review and visibly relaunch. Physical
+acceptance, AVP-005, and production cutover remain blocked.
 
 Redesign commit `0d4b75b` is rejected pending one bounded correction. Its
 generic compiler, fixed outer shell, controller state model, 28/28 focused
