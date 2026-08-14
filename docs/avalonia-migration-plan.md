@@ -150,11 +150,22 @@ keys, scroll axis, action-surface orientation, responsive visibility, and
 declared advanced preset/slots. It may not infer presentation from widget
 identity, strings, element IDs, providers, or a known tree shape.
 
-The shell has one stable outer geometry for the active monitor/work area and
-shell profile. `WidgetSurfaceHints` choose a responsive mode for the content
-viewport only; they never resize or move the overlay HWND, tray, guide, or
-shell chrome during widget switching. The tray is a fixed bottom band and
-content transitions occur above it.
+The current view owns a declarative content-surface envelope through its
+validated `WidgetSurfaceHints`: preferred width/height, minimum width/height,
+and responsive mode. The host admits that envelope against the actual monitor
+work area and accessibility constraints; it does not replace it with global
+compact/standard/wide top-level presets. Widgets still reflow safely when the
+preferred envelope cannot be admitted.
+
+Host chrome is geometrically independent from the content envelope. The tray
+and controller guide keep invariant screen-space anchors and dimensions while
+content grows or shrinks upward and outward around the bottom-center anchor.
+With one HWND, the host sizes and positions the top level to the union of the
+admitted content and chrome so the window does not become a work-area-sized
+desktop surface. Widget switching animates only the content envelope; it may
+resize/reposition the HWND only as needed to keep the chrome at the same screen
+coordinates. The host retains work-area containment, placement, transitions,
+accessibility enforcement, and controller routing.
 
 There is one scrolling owner per axis. The shell owns ordinary page scrolling;
 an explicit semantic Scroll/Grid owns its own scrolling or virtualization.
@@ -199,13 +210,15 @@ AVP-004 is a reuse-first migration proof, not eight reconstructed pages.
    Differences belong in semantic snapshots and generic templates, never in
    handwritten widget pages.
 5. **Shell integration and polish:** use the clean AVP-001/AVP-002 visual and
-   interaction baseline with a fixed work-area-relative shell, stationary tray,
-   non-overlapping guide/content bands, compiled bindings, virtualization,
-   content-only transitions, standard UIA, reduced motion, responsive content
-   modes, and existing production Guide semantics. Controller navigation is a
-   first-class shell state machine: tray Left/Right selects in place, Up/A enters
-   content, B returns to tray, B on tray closes, the final downward content edge
-   returns to tray, and component zones own predictable slider/scroll behavior.
+   interaction baseline with widget-owned content envelopes, stationary
+   screen-space tray/guide anchors, non-overlapping chrome/content regions,
+   compiled bindings, virtualization, content-envelope transitions, standard
+   UIA, reduced motion, responsive content modes, and existing production Guide
+   semantics. The one HWND wraps the admitted content-plus-chrome union rather
+   than a work-area-sized backdrop. Controller navigation is a first-class
+   shell state machine: tray Left/Right selects in place, Up/A enters content,
+   B returns to tray, B on tray closes, the final downward content edge returns
+   to tray, and component zones own predictable slider/scroll behavior.
 6. **Cutover decision:** compare behavior, resource use, startup, lifecycle,
    accessibility, controller feel, and failure recovery before changing the
    production launcher. Do not remove the native presentation stack until the

@@ -9,25 +9,24 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `289f7d6`, including accepted DLV-216, the
+- Production code: local main `1be1f86`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
   the independently accepted AVP-004 source correction through `16b33d9`,
   integrated as `09f038f`, plus the accepted isolated AVP-004-REDESIGN source
   `0d4b75b` and correction `9db36b5`, integrated as `e67e0e8` then `289f7d6`.
   No production renderer cutover is implied.
-- Latest reviewed Avalonia implementation: source `9db36b5` on
+- Latest reviewed Avalonia implementation baseline: source `9db36b5` on
   `codex/avalonia-prototype`, integrated through main `289f7d6`. Its focused
   29/29 suite, all eight widgets, 32/32 responsive fixtures, 24/24 transition
   phases, 489.02-MiB candidate gate, and bounded normal shutdown are accepted.
-  The exact copied runtime is visibly launched as PID 25804 for the mandatory
-  physical display/controller verdict; AVP-005 and production cutover remain
-  unauthorized.
+  The source evidence remains valid, but the user's physical verdict rejects
+  its global monitor-relative shell footprint and homogeneous composition.
+  AVP-004-REDESIGN is reopened for widget-owned content envelopes and fixed
+  screen-space chrome; AVP-005 and production cutover remain unauthorized.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
-  kept closed during the isolated physical test. Rejected AVP PIDs 33332 and
-  27020 were stopped after the candidate's normal close path failed. The only
-  currently visible overlay is the isolated accepted redesign candidate PID
-  25804.
+  currently closed during isolated Avalonia work. No Avalonia candidate or
+  owned WidgetBridge process is currently running.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -77,6 +76,14 @@ implementation work.
   Community process boundaries.
 - AVP-004 renders the current semantic contract through one generic Avalonia
   adapter. It must not create domain-specific Avalonia pages.
+- Each admitted view owns its content structure and preferred/minimum logical
+  surface envelope through the existing semantic tree and `WidgetSurfaceHints`.
+  The host may clamp only for the actual monitor work area, accessibility, and
+  safety; it must not replace those hints with arbitrary global shell presets.
+- The tray and controller guide are host chrome with invariant screen-space
+  anchors and dimensions. Content grows or shrinks upward and outward around
+  that fixed bottom-center anchor. One HWND is sized to the union of content
+  and chrome; the overlay must not become a monitor-sized desktop surface.
 - The production native Microsoft GameInput/Guide owner is authoritative.
   AVP-004 must not add a second C# GameInput owner, another presentation HWND,
   another focus tree, or another bridge transport.
@@ -87,7 +94,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004-REDESIGN accepted through `9db36b5`, integrated as `e67e0e8` then `289f7d6`, and visibly launched for the required physical verdict; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004-REDESIGN reopened from clean `9db36b5` for widget-owned content envelopes and fixed screen-space chrome; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -615,32 +622,51 @@ Correction assignment:
   trace evidence. The planner will repeat that walkthrough and check logs before
   acceptance. Automated semantic checks alone cannot accept this correction.
 
-### Assigned — AVP-004-REDESIGN: fixed shell and controller-native presentation
+### Reopened — AVP-004-REDESIGN: widget-owned surfaces and fixed chrome
 
 Owner: standing `avalonia-prototype` task on `codex/avalonia-prototype`.
 
-Baseline: source `16b33d9`; planner main `df30bc5`. The accepted SESSION and
-PLATFORM extraction boundaries remain unchanged. AVP-005 and production cutover
-are not authorized.
+Baseline: clean source `9db36b5`; planner main `1be1f86`. The accepted SESSION
+and PLATFORM extraction boundaries remain unchanged. Source `9db36b5` remains
+the accepted generic renderer/controller baseline, but its physical shell
+footprint is rejected. AVP-005 and production cutover are not authorized.
 
 Objective: retain the real catalog/runtime/session/WidgetBridge/domain/native
-GameInput integration while replacing the AVP-004 presentation composition with
-a coherent controller-first Avalonia shell and reusable component layer derived
-only from existing typed semantic properties. Use the clean AVP-001/AVP-002
-visual language and controller behavior as the quality baseline, without
-restoring fake pages, XInput, or per-widget views.
+GameInput integration and one generic Avalonia adapter, while restoring the
+existing widget-authored surface contract. Each current view owns its content
+structure, preferred/minimum logical dimensions, aspect, responsive behavior,
+scrolling, and focus relationships through the existing semantic tree and
+`WidgetSurfaceHints`. The host owns trusted placement, work-area containment,
+transitions, accessibility enforcement, controller routing, and stationary
+chrome. Use the clean AVP-001/AVP-002 visual language and controller behavior
+as the quality baseline without restoring fake pages, XInput, per-widget
+Avalonia code, or separate windows.
 
 Required architecture:
 
-- One stable outer overlay geometry per active monitor/work-area and shell
-  profile. A widget's `WidgetSurfaceHints` selects only the content viewport's
-  responsive mode; it must never resize, reposition, or remeasure the outer
-  HWND, stationary tray, controller guide, or shell chrome during widget
-  switching.
-- One fixed bottom tray band whose height and screen position remain invariant
-  across all eight widgets and every page transition. Selected first/last items
-  must scroll fully into view inside that fixed band without changing shell
-  dimensions. The page transition surface excludes the tray and guide.
+- Replace the monitor-relative `ShellGeometryPolicy` presets with a generic
+  envelope resolver that consumes the admitted view's validated preferred and
+  minimum width/height. Do not introduce replacement compact/standard/wide
+  top-level sizes, widget identities, text/ID checks, or known-tree-shape
+  rules. The only outer constraints are the actual monitor work area, DPI,
+  accessibility scaling, safe insets, and the contract's validated minima.
+- Keep one fixed bottom-center tray and controller guide whose dimensions and
+  absolute screen coordinates remain invariant across all eight widgets,
+  pages, and transitions. With one HWND, size and place the top level to the
+  union of the admitted content envelope and chrome: content grows/shrinks
+  upward and outward around the fixed anchor, and any HWND repositioning exists
+  solely to preserve that anchor. The overlay must not use a full-monitor or
+  work-area-sized backdrop merely to make the anchor easy.
+- Treat `WidgetSurfaceHints` as content geometry authority rather than a
+  responsive-mode suggestion. Admit the preferred pair atomically when safe;
+  clamp proportionally when it exceeds available work area; never go below the
+  valid minimum pair unless accessibility/work-area conflict requires the
+  documented graceful reflow/scroll fallback. Recompute responsive visibility
+  from the actual admitted content viewport.
+- Selected first/last tray items must scroll fully into view inside the fixed
+  tray without moving or resizing that tray. The content transition surface
+  excludes both tray and guide. Switching widgets animates the content envelope
+  and content only; chrome remains visually and geometrically stationary.
 - One scrolling owner per axis. The shell owns ordinary page vertical scrolling;
   a semantic Scroll/Grid owns scrolling or virtualization only when that typed
   node explicitly declares it. Never wrap an already scrolling semantic root in
@@ -676,7 +702,10 @@ Visible design requirements:
 - Start from the AVP-001/AVP-002 shell proportions, typography, spacing, focus
   treatment, motion, and restrained console-like visual hierarchy. Do not copy
   another console UI, but optimize for ten-foot readability and predictable
-  controller operation rather than desktop density.
+  controller operation rather than desktop density. Do not homogenize all
+  semantic trees into the same card composition: the shared renderer must
+  preserve each view's authored rows, grids, sections, collections, advanced
+  slots, and responsive branches.
 - Page, guide, and tray regions never overlap. Titles, primary status, focused
   actions, slider values, and first-page controls remain readable without
   accidental clipping at compact, 978x466, standard, and wide content modes.
@@ -684,16 +713,24 @@ Visible design requirements:
   reusable centered/status-card language. YT Music/Spotify media controls retain
   meaningful visible glyphs or labels. Launcher Experience uses only its generic
   preset and six typed slots, with balanced detail/collection allocation.
-- Widget switching animates only the content surface. The outer frame, tray,
-  selected tray slot, controller guide, and work-area anchor remain stationary.
+- Audio Mixer must be able to present its compact vertical envelope, media
+  widgets their medium horizontal envelopes, Game Launcher its large landscape
+  envelope, and a full-application widget nearly the available work area, all
+  through the same identity-neutral contract and renderer.
+- Widget switching animates only the content panel and its envelope. The tray,
+  selected tray slot, controller guide, and bottom-center screen anchor remain
+  stationary. The top-level window rectangle may change only to wrap the new
+  content-plus-chrome union while preserving those absolute chrome coordinates.
 
 Implementation sequence and evidence:
 
-1. Build the fixed shell/tray/controller-zone skeleton first using representative
-   existing semantic fixtures. Retain before/after full-window images at the
-   real production-shaped work area for Settings, Game Launcher, Audio Mixer,
-   Network Controls, YT Music, and Spotify. If these still show clipping,
-   unstable chrome, desktop-density composition, or large accidental voids,
+1. Replace the global top-level geometry policy with the widget-envelope plus
+   fixed-screen-anchor resolver first. Use the real surface hints for all eight
+   installed widgets and the existing full-application reference. Retain
+   before/after full-window images at the real work area for Settings, Game
+   Launcher, Audio Mixer, Network Controls, YT Music, Spotify, and the largest
+   envelope. If the tray/guide moves by a pixel, the content uses a monitor-
+   sized backdrop, or different hints resolve to the same arbitrary preset,
    correct the product before expanding tests.
 2. Replace nested scrolling and raw renderer composition with the generic
    controller component compiler. Prove all current node kinds and advanced
@@ -701,27 +738,38 @@ Implementation sequence and evidence:
 3. Restore the accepted native controller path and exercise the shared router
    across tray/content/slider/scroll/reconnect/focus/hide/show. Keep atomic live
    trace truth from `16b33d9`.
-4. Add only direct regressions for invariant outer/tray geometry across all
-   widget surface hints, single scroll ownership, intrinsic non-overlap,
-   selected tray-edge reveal, component navigation zones, and stable focus
-   memory. Do not build another exhaustive capture/navigation framework.
+4. Add only direct regressions for atomic preferred/minimum hint admission,
+   work-area/DPI/accessibility clamping, distinct resolved envelopes, invariant
+   screen-space tray/guide bounds through every widget switch, HWND union
+   containment, no full-work-area backdrop, single scroll ownership, authored
+   layout preservation, selected tray-edge reveal, component navigation zones,
+   and stable focus memory. Do not build another exhaustive capture/navigation
+   framework.
 5. Run one final focused AVP suite and one exact-commit measurement. Retain the
    unchanged candidate <500-MiB gate, process-tree accounting, one-render/no-
    artwork-leak evidence, exact ProductVersion/SHA, and bounded normal shutdown.
    Do not run the product aggregate.
 
 Acceptance requires both automated evidence and a new planner/user physical
-walkthrough. The planner launches the exact copied runtime with live trace. The
-user must approve the stationary tray, visual composition, clipping, motion,
-Guide, D-pad/stick, A/B/Y, sliders, scrolling, and all eight first pages. A
-synthetic green result cannot accept AVP-004-REDESIGN.
+walkthrough. The exact evidence must report, for every installed widget, its
+authored preferred/minimum hints, admitted content bounds, HWND bounds, and
+absolute tray/guide bounds. It must prove at least four materially distinct
+content envelopes while all chrome bounds remain identical, and prove the HWND
+never expands to the full work area unless the active full-application envelope
+actually requires it. The planner launches the exact copied runtime with live
+trace. The user must approve independent widget sizing, stationary chrome,
+visual composition, clipping, motion, Guide, D-pad/stick, A/B/Y, sliders,
+scrolling, and all eight first pages. Synthetic green evidence cannot accept
+AVP-004-REDESIGN.
 
 Out of scope: production cutover, AVP-005, GBSS deletion, per-widget Avalonia
-pages, a second transport/schema/input owner, widget-domain rewrites, credentials,
-publication, or changing the 500-MiB gate. Stop for any required public protocol
-extension rather than encoding a hidden role or tree-shape heuristic; the
-planner will serialize a generic SDK/protocol assignment if concrete evidence
-shows the current typed properties are insufficient.
+pages, a second transport/schema/input owner/HWND/focus tree, widget-domain
+rewrites, credentials, publication, or changing the 500-MiB gate. The existing
+`WidgetSurfaceHints` preferred/minimum pair is expected to be sufficient. Stop
+before edits outside the prototype if concrete evidence shows a missing generic
+surface semantic; do not encode a hidden role, identity check, or tree-shape
+heuristic. The planner will serialize a public SDK/protocol assignment only for
+an exact demonstrated gap.
 
 Redesign commit `0d4b75b` is rejected pending one bounded correction. Its
 generic compiler, fixed outer shell, controller state model, 28/28 focused
@@ -759,10 +807,10 @@ responsive fixtures, 24/24 transition phases, one tracked render, zero pending
 artwork, 489.02 MiB candidate private memory, and a 181.17-ms normal no-force
 shutdown with zero remaining processes.
 
-The exact copied runtime is launched visibly as PID 25804 from source
+The exact copied runtime was launched visibly as PID 25804 from source
 `9db36b5cba2be9edf6715a2f0752786860c0a064`, with executable SHA-256
 `1CC13B91D6232504F2B6A3D0A22BBCD6ADE0E040BACDC7CD66F9721D4B90F6EC` and
-manual trace `artifacts/avp004/manual-redesign-input-trace.json`. At launch the
+manual trace `artifacts/avp004/manual-redesign-input-trace.json`. That launch
 trace proves the native visible lease but no connected or routed physical
 controller input; it must not be represented as controller acceptance. Keep
 AVP-004-REDESIGN open until the user approves the stationary tray, all eight
@@ -779,6 +827,16 @@ It does not prove A, Y tap/hold, analog-stick semantics, sliders, scrolling,
 focus restoration, normal process close, or visual quality, and the user has
 not yet approved the eight-page physical presentation. Keep the overall
 physical gate open.
+
+The latest physical display verdict explicitly rejects the global shell policy
+even though clipping improved. `ShellGeometryPolicy` expands ordinary widgets
+to a large monitor-relative 84-by-78-percent surface, so Audio Mixer can occupy
+nearly the whole screen and every widget loses its authored proportions. The
+user requires the existing preferred/minimum surface hints to own each content
+envelope, with tray and guide fixed at the same absolute screen coordinates.
+This is a product-direction correction, not another preset-size tweak. The
+previous fixed-outer-geometry rule is superseded, the candidate is closed, and
+AVP-004-REDESIGN is reopened under the assignment above.
 
 Objective:
 
