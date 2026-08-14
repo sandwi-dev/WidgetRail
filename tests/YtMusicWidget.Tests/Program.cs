@@ -45,6 +45,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("An unauthorized poll clears the credential and returns to pairing", UnauthorizedPollRequiresPairing),
     ("Connect exposes loading then renders now playing", ConnectStateFlow),
     ("Connected UI exposes native artwork layout primitives", ConnectedArtworkLayout),
+    ("Connected media stays one responsive controller composition", ResponsiveConnectedComposition),
     ("Missing artwork uses a semantic native glyph", MissingArtworkUsesGlyph),
     ("Connected card exposes bounded host quick actions", ConnectedQuickActions),
     ("Dashboard-reserved buttons are rejected as quick actions", ReservedQuickActionIsRejected),
@@ -1345,6 +1346,49 @@ static async Task ConnectedArtworkLayout()
     Assert.True(artwork.StyleClasses.Contains("artwork-image"), "Artwork class is missing.");
 }
 
+static async Task ResponsiveConnectedComposition()
+{
+    var widget = new YtMusicWidget(new FakeClient
+    {
+        Snapshot = PlayingSnapshot("Responsive Controller Song") with
+        {
+            Artist = "A deliberately descriptive artist",
+            Album = "A deliberately descriptive album",
+        },
+    });
+    await widget.OnActionAsync(new WidgetActionEvent("connect", "connect"));
+    var snapshot = widget.Render().CreateSnapshot("ytmusic.responsive", 1);
+
+    Assert.Equal(ViewNodeKind.Scroll, snapshot.Root.Kind);
+    var layout = Find(snapshot.Root, "media-layout");
+    Assert.True(layout.Children.Select(child => child.Id).SequenceEqual(
+            ["artwork-frame", "media-details"]),
+        "The responsive player must retain one artwork/details composition.");
+
+    var details = Find(snapshot.Root, "media-details");
+    Assert.True(details.Children.Select(child => child.Id).SequenceEqual(
+            ["track-details", "progress-row", "primary-actions", "secondary-actions"]),
+        "Metadata, progress, and both control rows must share the right-hand details column.");
+    Assert.Equal(1, Nodes(snapshot.Root).Count(node => node.Id == "primary-actions"));
+    Assert.Equal(1, Nodes(snapshot.Root).Count(node => node.Id == "secondary-actions"));
+
+    Assert.Equal("play-pause", snapshot.InitialFocusId);
+    Assert.Equal("play-pause", Find(snapshot.Root, "previous").Focus!.Right);
+    Assert.Equal("shuffle", Find(snapshot.Root, "previous").Focus!.Down);
+    Assert.Equal("previous", Find(snapshot.Root, "play-pause").Focus!.Left);
+    Assert.Equal("next", Find(snapshot.Root, "play-pause").Focus!.Right);
+    Assert.Equal("like", Find(snapshot.Root, "play-pause").Focus!.Down);
+    Assert.Equal("refresh", Find(snapshot.Root, "next").Focus!.Right);
+    Assert.Equal("repeat", Find(snapshot.Root, "refresh").Focus!.Down);
+    AssertWindowShortcut(snapshot.Root, ControllerButton.LeftBumper, "previous");
+    AssertWindowShortcut(snapshot.Root, ControllerButton.X, "toggle-playback");
+    AssertWindowShortcut(snapshot.Root, ControllerButton.RightBumper, "next");
+    AssertWindowShortcut(snapshot.Root, ControllerButton.Y, "refresh");
+
+    var validation = ViewSnapshotValidator.Validate(snapshot);
+    Assert.Equal(0, validation.Count);
+}
+
 static async Task MissingArtworkUsesGlyph()
 {
     var fake = new FakeClient { Snapshot = PlayingSnapshot("No Cover") with { ArtworkUrl = "" } };
@@ -2090,6 +2134,17 @@ static Task PackageAssetsAreValid()
         string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
     var mediaLayout = compiled.Theme!.Resolve(new GbssElement("row", "media-layout"));
     Assert.Equal("wrap", mediaLayout.Get("flex-wrap")?.Text);
+    Assert.Equal("center", mediaLayout.Get("justify")?.Text);
+    var mediaDetails = compiled.Theme.Resolve(new GbssElement("stack", "media-details"));
+    Assert.Equal("320px", mediaDetails.Get("min-width")?.Text);
+    Assert.Equal("320px", mediaDetails.Get("flex-basis")?.Text);
+    Assert.Equal(1D, mediaDetails.Get("flex-grow")?.Number);
+    foreach (var id in new[] { "progress-row", "primary-actions", "secondary-actions" })
+    {
+        var row = compiled.Theme.Resolve(new GbssElement("row", id));
+        Assert.Equal("100%", row.Get("width")?.Text);
+        Assert.Equal("0px", row.Get("min-width")?.Text);
+    }
     return Task.CompletedTask;
 }
 
@@ -2121,6 +2176,15 @@ static ViewNode? FindOrNull(ViewNode node, string id)
         if (found is not null) return found;
     }
     return null;
+}
+
+static IEnumerable<ViewNode> Nodes(ViewNode node)
+{
+    yield return node;
+    foreach (var child in node.Children)
+    {
+        foreach (var descendant in Nodes(child)) yield return descendant;
+    }
 }
 
 static void AssertQuickAction(ViewSnapshot snapshot, ControllerButton button, string actionId, string label)

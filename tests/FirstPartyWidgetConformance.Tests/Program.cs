@@ -3809,7 +3809,9 @@ file sealed class Deployment : IDisposable
             CopyWorkerHostDeployment(AppContext.BaseDirectory, workerDirectory);
             var workerHost = Path.Combine(workerDirectory, "WidgetWorkerHost.exe");
 
-            var packageSpecs = fullApplicationReferenceOnly
+            var packageSpecs = ytMusicOnly
+                ? new List<PackageSpec>()
+                : fullApplicationReferenceOnly
                 ? new List<PackageSpec>
                 {
                     new PackageSpec(

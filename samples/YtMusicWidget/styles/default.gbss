@@ -67,6 +67,7 @@
   gap: 10px 16px;
   flex-wrap: wrap;
   align: center;
+  justify: center;
 }
 
 .artwork-frame,
@@ -89,13 +90,16 @@
 }
 
 #media-details {
-  min-width: 200px;
+  min-width: 320px;
+  flex-basis: 320px;
   flex-grow: 1;
   gap: 10px;
   padding: 5px 0;
 }
 
 #track-details {
+  width: 100%;
+  min-width: 0px;
   gap: 3px;
 }
 
@@ -103,7 +107,7 @@
   color: var(--text);
   font-size: 23px;
   font-weight: 600;
-  max-lines: 1;
+  max-lines: 2;
   text-overflow: ellipsis;
 }
 
@@ -117,6 +121,8 @@
 }
 
 #progress-row {
+  width: 100%;
+  min-width: 0px;
   gap: 10px;
   align: center;
 }
@@ -139,6 +145,8 @@
 }
 
 #primary-actions {
+  width: 100%;
+  min-width: 0px;
   height: 56px;
   gap: 12px;
   align: center;
@@ -146,6 +154,8 @@
 }
 
 #secondary-actions {
+  width: 100%;
+  min-width: 0px;
   height: 40px;
   gap: 10px;
   align: center;

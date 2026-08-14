@@ -4462,3 +4462,22 @@ Search/collection/help semantics, stable visible focus identities, and a clean
 post-route projection/composition log. The legacy combined host route remains
 red before this scenario at its existing compact `experiences.open` expectation;
 it is not claimed as DLV-210 passing evidence and was not weakened or removed.
+
+### Responsive YT Music controller composition (DLV-223)
+
+YT Music 0.2.8 keeps one semantic media tree and moves progress plus both
+controller rows into the same metadata column as title, artist, and album. At
+the 760-DIP preferred width that column sits to the right of the 128-DIP
+artwork. At the 480-DIP compact budget, the generic wrapping Row moves the
+artwork above a full-width details column inside the existing vertical Scroll.
+Action IDs, explicit focus edges, LB/RB/X/Y shortcuts, quick-action authority,
+selected/busy states, and artwork fallback are unchanged. No native renderer,
+surface-axis protocol, lifecycle, companion, or authentication owner changed.
+
+Focused Release evidence passes YT Music 60/60, the isolated Community
+validate/pack/install/consent/AppContainer/update/rollback/remove route, and
+4,777 existing generic native renderer checks covering wrapped controller
+targets, focus reveal, and bounded geometry. The isolated package evidence is
+retained at `artifacts/acceptance/ytmusic-community-addon.json`; the real user
+catalog remained read-only. A coherent Release containing both DLV-222 and
+DLV-223 still needs the user's physical composition and tray-spacing verdict.
