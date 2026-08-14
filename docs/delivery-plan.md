@@ -55,6 +55,16 @@ Snapshots are evidence only. This file is the sole authority for current work.
   content repaint, and content-envelope motion also redraw the otherwise
   unchanged tray. DLV-236 owns a retained tray composition visual so widget-
   only work cannot clear or repaint persistent tray pixels.
+- The user also reproduced a distinct selection/admission defect: while tray
+  navigation changes the selected and active widget identity correctly, some
+  cold or delayed widgets remain on the previous inert presentation until A
+  changes the lifecycle target from Visible to Interactive. Existing logs show
+  the retained pixels, the later A transition, and eventual admission but no
+  explicit worker, bridge, protocol, lifecycle, or queue failure. Automatic
+  admission also succeeds in other sessions, so the current evidence does not
+  identify a safe correction. DLV-237 adds a bounded correlated lifecycle trace
+  and reproduces the failure; root-cause correction is deliberately deferred
+  until the planner reviews that evidence.
 - The coherent DLV-222/DLV-223 Release had Community YT Music 0.2.8 enabled and
   ran cleanly as planner-owned PID 27128. It exited normally through `WM_CLOSE`
   when the planner began the DLV-224 rebuild. Corrected main now compiles and
@@ -193,7 +203,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-225/226/228/229/230 are preserved through `7323468`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Idle at a clean boundary; no later sound widgets milestone until the user's physical verdict |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-232 is Assigned; DLV-236 retained tray composition is Ready only after DLV-232 acceptance and integration |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration`, accepted cumulative DLV-231/233/234/235 is integrated through `5440e7b`; original pre-recovery branch remains preserved at `bdf6d88` and prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-232 is Assigned; DLV-237 correlated selection/admission tracing is next Ready; DLV-236 retained tray composition follows the DLV-237 evidence review |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -567,11 +577,97 @@ last-good semantics, tray focus, and safe diagnostics. Use differently named
 generic fixtures, run only affected lifecycle/process/controller routes, and do
 not add service-specific behavior or rerun Tier 3.
 
-### Ready after DLV-232 integration — DLV-236: retain the icon tray independently
+### Ready after DLV-232 integration — DLV-237: correlate deferred widget admission
 
 Baseline: accepted DLV-232 integrated into local main. Owner: platform native
-composition/rendering only. Do not interrupt DLV-232 or start from its
-unreviewed branch tip.
+selection/lifecycle/session observability only. Do not interrupt DLV-232 or
+start from its unreviewed branch tip.
+
+Visible objective: produce sufficient trustworthy evidence to identify why a
+tray-selected widget can remain on the previous inert presentation until the
+user presses A. This is an observability milestone, not authorization to guess
+at or implement a behavioral fix. Preserve the current selected/active widget,
+Visible versus Interactive lifecycle, snapshot admission, stale-result, and
+last-good presentation semantics.
+
+Current reproduced evidence:
+
+- Tray navigation updates `selected` and `active` to the new widget while the
+  previously rendered widget remains retained and semantically inert.
+- A later A input changes the selected widget's lifecycle target from Visible
+  to Interactive and is shortly followed by valid snapshot admission.
+- The exact intervals contain no explicit worker-start, bridge transport,
+  protocol, lifecycle, or queue-full error. Rapid cycling also produces
+  expected stale-completion rejection, and later sessions sometimes admit the
+  same widgets automatically.
+- The leading investigation boundary is the deferred cold-start handoff between
+  `ApplyStateTransition` and the posted snapshot-refresh handler, but this is a
+  hypothesis rather than an accepted root cause.
+
+Required instrumentation:
+
+- Assign one bounded correlation/transition ID to each tray selection and
+  record selected widget, active widget, `deferColdStart`, and whether a current
+  snapshot is present.
+- Record whether the snapshot-refresh message was posted, whether and when it
+  was dequeued, and the elapsed queue delay.
+- Record the existing lifecycle owner's decision with desired target and one
+  typed action such as `Establish queued`, `deduplicated`, `replaced`, or
+  `skipped`, plus a bounded typed reason such as `deferred`, `already-current`,
+  `failure-current`, or `queue-full`.
+- Correlate the existing worker/session request ID, widget, generation,
+  lifecycle target, request kind, and queued/started/completed timestamps.
+- Record the completion disposition as admitted, failed, stale generation,
+  wrong lifecycle, or cancelled. Record A only when it causes the meaningful
+  Visible-to-Interactive lifecycle transition for the correlated selection.
+- Keep a bounded in-memory transition trace and emit only state changes or a
+  threshold breach such as admission exceeding 250 ms. Do not log every
+  controller repeat, paint, ordinary provider update, or snapshot body; do not
+  serialize presentation trees; do not perform synchronous file I/O on the UI
+  thread; and do not rewrite a complete trace file per input event.
+- Reuse the existing diagnostic/log owner and sanitize/bound every field,
+  retained transition, timestamp, and message. Do not add another lifecycle
+  owner, worker queue, input router, transport, trace process, or public protocol
+  concept.
+
+Acceptance:
+
+- Deterministic focused cases correlate selection through posted/dequeued
+  refresh, lifecycle decision, worker queue/start/completion, and final
+  admission while preserving exact generation and lifecycle authority.
+- Direct cases distinguish refresh not dequeued, establishment skipped or
+  deduplicated, request queue delay, replacement/cancellation, slow completion,
+  stale/wrong-lifecycle rejection, and admission without presentation refresh.
+  Test seams may observe existing decisions but must not synthesize a second
+  production scheduler or worker owner.
+- One direct A case emits only the meaningful Visible-to-Interactive transition
+  and proves ordinary controller repeats do not generate trace/file churn.
+- The bounded buffer drops or coalesces old detail deterministically, retains
+  the current transition and terminal disposition, and cannot materially affect
+  input-to-selection or hidden/idle behavior.
+- Run only affected selection, lifecycle, session-coordinator, delayed/cold
+  widget, and diagnostic tests plus the native Release build. Then visibly
+  launch the accepted Release and reproduce ordinary tray cycling long enough
+  to retain one automatic-admission case and, if it occurs, one A-required
+  case. No Tier-3 aggregate, provider change, capture-harness work, or speculative
+  behavioral correction.
+- The planner independently reviews the correlated evidence and only then
+  authors a separate bounded correction assignment for the proven failing
+  branch. Absence of a reproduced A-required interval is an honest evidence
+  result, not permission to claim the product defect fixed.
+
+Stop for a public protocol/schema change, unbounded or per-frame logging,
+snapshot-content retention, UI-thread file/serialization work, another
+selection/lifecycle/session authority, or an implementation choice that changes
+the user-visible admission behavior before the cause is established.
+
+### Ready after DLV-237 evidence review — DLV-236: retain the icon tray independently
+
+Baseline: accepted DLV-237 integrated into local main. Owner: platform native
+composition/rendering only. Do not interrupt DLV-232 or DLV-237, and do not
+start from an unreviewed branch tip. DLV-236 remains independent of the later
+root-cause correction, but follows the DLV-237 evidence review so only one
+selection-path milestone is in flight at a time.
 
 Visible objective: cycling through widgets may repaint the two tray tiles whose
 selection state changes, but the persistent tray background and unchanged
@@ -831,6 +927,10 @@ Release rather than manufacture speculative style changes.
 
 ## Manual and packaged verification queue
 
+- Reproduce the intermittent tray-selection admission defect after accepted
+  DLV-237 is launched. Correlate one automatic-admission transition and, if it
+  recurs, one transition that remains on inert pixels until A; only that retained
+  evidence authorizes root-cause assignment selection.
 - User verdict on each freshly launched accepted native Release remains
   authoritative for panel/tray cohesion, controller feel, motion, Audio slider
   sizing, Network first-page visibility, Settings dead space, and YT Music
