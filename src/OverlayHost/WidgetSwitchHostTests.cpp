@@ -324,6 +324,25 @@ bool ProcessIsRunning(const DWORD processId) {
     return running;
 }
 
+std::vector<DWORD> DirectChildProcessIds(
+    const DWORD parentProcessId,
+    const wchar_t* executableName) {
+    std::vector<DWORD> result;
+    const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    Require(snapshot != INVALID_HANDLE_VALUE,
+            Win32Error("CreateToolhelp32Snapshot(direct children)"));
+    PROCESSENTRY32W entry{sizeof(entry)};
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (entry.th32ParentProcessID == parentProcessId &&
+                _wcsicmp(entry.szExeFile, executableName) == 0)
+                result.push_back(entry.th32ProcessID);
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return result;
+}
+
 void FenceWindow(HWND window) {
     DWORD_PTR ignored{};
     Require(SendMessageTimeoutW(
@@ -409,6 +428,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         L" --development-widget-instance audio-mixer.default";
     auto host = std::make_unique<HostProcess>(
         installation->Root(), installation->LocalAppData(), hostArguments);
+    std::vector<DWORD> recoveryProcessIds;
     const auto logPath = installation->LocalAppData() /
         L"GameBarAlternative" / L"overlay.log";
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
@@ -765,6 +785,16 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto settingsLastGood = waitForPaint(
         restartBefore, kTargets.back(), kTargets.back().id, "admitted");
 
+    std::vector<DWORD> beforeRecoveryProcessIds;
+    (void)ObservedChildRoles(host->Id(), &beforeRecoveryProcessIds);
+    recoveryProcessIds.insert(
+        recoveryProcessIds.end(), beforeRecoveryProcessIds.begin(),
+        beforeRecoveryProcessIds.end());
+    const auto bridgeBeforeSelection =
+        DirectChildProcessIds(host->Id(), L"WidgetBridge.exe");
+    Require(bridgeBeforeSelection.size() == 1,
+            "Slow-worker scenario did not begin with one authoritative bridge process");
+
     installation->BlockNextSnapshot();
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 std::error_code ignored;
@@ -783,6 +813,21 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(spotifyWhileBlocked.find("semantic-focus=tray:spotify") !=
                 std::string::npos,
             "Never-completing Settings snapshot disturbed ordinary tray focus.");
+    DWORD bridgeAfterSelection{};
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current =
+                    DirectChildProcessIds(host->Id(), L"WidgetBridge.exe");
+                if (current.size() != 1 ||
+                    current.front() == bridgeBeforeSelection.front() ||
+                    ProcessIsRunning(bridgeBeforeSelection.front())) return false;
+                bridgeAfterSelection = current.front();
+                return true;
+            }),
+            "Selection-away did not replace the tainted sole bridge after bounded old-process teardown");
+    const auto bridgeSelectionReconnectMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - blockedNavigationStarted).count());
+    recoveryProcessIds.push_back(bridgeAfterSelection);
 
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return ReadUtf8(logPath).find(
@@ -790,15 +835,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                     blockedBefore) != std::string::npos;
             }), "Selection-away did not record exact stale Settings revocation.");
 
-    const auto workerCompletionStarted = std::chrono::steady_clock::now();
     installation->ReleaseBlockedSnapshot();
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                std::error_code ignored;
-                return fs::exists(installation->BlockedSnapshotComplete(), ignored);
-            }), "Cancellation-ignoring Settings worker did not publish its late completion.");
-    const auto lateWorkerCompletionMilliseconds = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - workerCompletionStarted).count());
 
     const auto reselectionBefore = ReadUtf8(logPath).size();
     const auto blockedReselectionStarted = std::chrono::steady_clock::now();
@@ -822,6 +859,24 @@ void RunRetentionScenario(const Arguments& arguments) {
                 reselectedViewport.height == lastGoodViewport.height,
             "Late revoked result changed retained content or extent on reselection; before=" +
                 settingsLastGood + " after=" + settingsReselected);
+
+    const auto rearmBefore = ReadUtf8(logPath).size();
+    {
+        std::error_code ignored;
+        fs::remove(restartSignal, ignored);
+    }
+    PostKey(window, VK_F5);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                std::error_code ignored;
+                return fs::exists(restartSignal, ignored);
+            }), "Replacement bridge did not restart Settings before the close-time seam.");
+    (void)waitForPaint(rearmBefore, kTargets.back(), kTargets.back().id, "retained");
+    (void)waitForPaint(rearmBefore, kTargets.back(), kTargets.back().id, "admitted");
+
+    const auto bridgeBeforeClose =
+        DirectChildProcessIds(host->Id(), L"WidgetBridge.exe");
+    Require(bridgeBeforeClose.size() == 1,
+            "Close-time cancellation did not begin with one authoritative bridge process");
 
     installation->BlockNextSnapshot();
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
@@ -859,6 +914,22 @@ void RunRetentionScenario(const Arguments& arguments) {
             }), "Host did not reopen after cancellation-ignoring worker completion.");
     const auto settingsAfterLate = waitForPaint(
         lateBoundary, kTargets.back(), kTargets.back().id, "admitted");
+    DWORD bridgeAfterClose{};
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto current =
+                    DirectChildProcessIds(host->Id(), L"WidgetBridge.exe");
+                if (current.size() != 1 ||
+                    current.front() == bridgeBeforeClose.front() ||
+                    ProcessIsRunning(bridgeBeforeClose.front())) return false;
+                bridgeAfterClose = current.front();
+                return true;
+            }),
+            "Reopen did not replace the close-cancelled tainted bridge after bounded teardown");
+    const auto bridgeCloseReconnectMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - closeStarted).count());
+    recoveryProcessIds.push_back(bridgeBeforeClose.front());
+    recoveryProcessIds.push_back(bridgeAfterClose);
     const auto afterLateBody = ParseBounds(
         TextField(settingsAfterLate, "body-bounds="));
     const auto afterLateViewport = ParseBounds(
@@ -904,7 +975,8 @@ void RunRetentionScenario(const Arguments& arguments) {
               << " tray-reselection=" << blockedReselectionMilliseconds
               << " b-dispatch=" << blockedCloseDispatchMilliseconds
               << " b-hide-complete=" << blockedCloseMilliseconds
-              << " worker-late-completion=" << lateWorkerCompletionMilliseconds
+              << " bridge-selection-reconnect=" << bridgeSelectionReconnectMilliseconds
+              << " bridge-close-reconnect=" << bridgeCloseReconnectMilliseconds
               << " host-focus-samples=" << hostFocusMilliseconds.size() << '\n';
 
     RECT hostBounds{};
@@ -1075,7 +1147,7 @@ void RunRetentionScenario(const Arguments& arguments) {
               << *std::max_element(inputToAdmittedMilliseconds.begin(),
                                    inputToAdmittedMilliseconds.end())
               << " switch-samples=" << inputToAdmittedMilliseconds.size() << '\n';
-    std::vector<DWORD> observedProcessIds;
+    std::vector<DWORD> observedProcessIds = std::move(recoveryProcessIds);
     const auto childRoles = ObservedChildRoles(host->Id(), &observedProcessIds);
     const DWORD rootProcessId = host->Id();
     observedProcessIds.push_back(rootProcessId);

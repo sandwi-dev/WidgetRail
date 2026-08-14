@@ -1,10 +1,16 @@
 #include "WidgetBridgeClient.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
+#include <chrono>
+#include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <thread>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -47,9 +53,85 @@ constexpr std::string_view ValidAppearance = R"json({
     }
 })json";
 
+void WriteBytes(const HANDLE pipe, const void* bytes, const DWORD length) {
+    DWORD written{};
+    Require(WriteFile(pipe, bytes, length, &written, nullptr) != FALSE &&
+                written == length,
+            "Could not write deterministic bridge frame bytes");
+}
+
+void VerifyCancelledFrameRead(const std::size_t publishedBytes) {
+    constexpr std::string_view body =
+        R"json({"protocolVersion":1,"type":"snapshot","requestId":1,"payload":{}})json";
+    const std::int32_t length = static_cast<std::int32_t>(body.size());
+    std::vector<std::byte> frame(sizeof(length) + body.size());
+    std::memcpy(frame.data(), &length, sizeof(length));
+    std::memcpy(frame.data() + sizeof(length), body.data(), body.size());
+    Require(publishedBytes < frame.size(), "Cancelled frame case must remain incomplete");
+
+    HANDLE reader{};
+    HANDLE writer{};
+    Require(CreatePipe(&reader, &writer, nullptr, 0) != FALSE,
+            "Could not create deterministic bridge frame pipe");
+    if (publishedBytes > 0)
+        WriteBytes(writer, frame.data(), static_cast<DWORD>(publishedBytes));
+
+    std::atomic_bool started{};
+    std::optional<gba::testing::BridgeFrameReadResult> result;
+    std::jthread readThread([&] {
+        started = true;
+        result = gba::testing::ReadBridgeFrame(reader);
+    });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    bool readPending{};
+    do {
+        BOOL pending{};
+        if (started &&
+            GetThreadIOPendingFlag(readThread.native_handle(), &pending) && pending) {
+            readPending = true;
+            break;
+        }
+        Sleep(1);
+    } while (std::chrono::steady_clock::now() < deadline);
+    Sleep(20);
+    const bool cancelled = CancelSynchronousIo(readThread.native_handle()) != FALSE;
+    CloseHandle(writer);
+    readThread.join();
+    CloseHandle(reader);
+    Require(readPending,
+            "Bridge frame reader did not enter its next blocking read after the prefix");
+    Require(cancelled, "Could not cancel deterministic bridge frame read");
+    Require(result && !result->frame && result->transportTainted &&
+                result->error == ERROR_OPERATION_ABORTED,
+            "Cancelled incomplete frame did not taint the bridge transport");
+}
+
+void VerifyFrameSafeCancellationRecovery() {
+    VerifyCancelledFrameRead(0);
+    VerifyCancelledFrameRead(2);
+    VerifyCancelledFrameRead(sizeof(std::int32_t) + 7);
+
+    constexpr std::string_view body =
+        R"json({"protocolVersion":1,"type":"snapshot","requestId":2,"payload":{}})json";
+    const std::int32_t length = static_cast<std::int32_t>(body.size());
+    HANDLE reader{};
+    HANDLE writer{};
+    Require(CreatePipe(&reader, &writer, nullptr, 0) != FALSE,
+            "Could not create replacement bridge frame pipe");
+    WriteBytes(writer, &length, sizeof(length));
+    WriteBytes(writer, body.data(), static_cast<DWORD>(body.size()));
+    const auto recovered = gba::testing::ReadBridgeFrame(reader);
+    CloseHandle(writer);
+    CloseHandle(reader);
+    Require(recovered.frame && *recovered.frame == body &&
+                !recovered.transportTainted && recovered.error == ERROR_SUCCESS,
+            "Next ordinary request did not succeed on a correctly framed replacement transport");
+}
+
 } // namespace
 
 int main() {
+    VerifyFrameSafeCancellationRecovery();
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)
         secret[index] = static_cast<wchar_t>(L'!' + index);

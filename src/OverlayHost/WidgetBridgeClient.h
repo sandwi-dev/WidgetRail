@@ -508,6 +508,7 @@ private:
         const std::wstring& installationDirectory,
         const std::wstring& installedCatalogRoot);
     [[nodiscard]] bool Connect();
+    void CloseTransport() noexcept;
     [[nodiscard]] bool WriteFrame(std::string_view utf8);
     [[nodiscard]] bool WriteProtectedWifiSecret(std::span<const wchar_t> secret);
     [[nodiscard]] std::optional<std::string> ReadFrame();
@@ -516,6 +517,7 @@ private:
     HANDLE pipe_{INVALID_HANDLE_VALUE};
     HANDLE process_{};
     DWORD processId_{};
+    bool transportTainted_{};
     std::wstring pipeName_;
     std::wstring lastError_;
     long long nextRequestId_{};
@@ -534,6 +536,13 @@ private:
 
 #ifdef GBA_WIDGET_BRIDGE_CLIENT_TESTING
 namespace gba::testing {
+struct BridgeFrameReadResult final {
+    std::optional<std::string> frame;
+    bool transportTainted{};
+    DWORD error{};
+};
+
+[[nodiscard]] BridgeFrameReadResult ReadBridgeFrame(HANDLE pipe);
 [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
     std::string_view payloadUtf8,
     std::wstring& error);

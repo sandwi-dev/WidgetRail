@@ -4732,3 +4732,35 @@ assertion, `The primary worker-start failure was not retained by the host.` That
 separate worker/session behavior is not weakened, rerun, or changed by this
 test-infrastructure correction. No Audio product code, aggregate, capture, or
 source-worktree fallback was used.
+
+### Frame-safe slow-worker bridge recovery (DLV-234)
+
+The sole native `WidgetBridgeClient` transport now treats every incomplete
+frame header or body read, invalid frame length, and incomplete frame write as
+tainting the byte stream. The next request closes that pipe, performs bounded
+teardown of the one owned bridge process, and establishes one replacement
+through the existing lifecycle owner before sending another frame. Correlation
+mismatches fail closed; the former stale-request-ID skipping path was removed
+because it could not recover alignment after a partial synchronous read. No
+second transport, protocol, session, input, focus, or presentation owner was
+added.
+
+Direct native regression coverage cancels a synchronous read with no published
+bytes, after two header bytes, and after a complete header plus seven body
+bytes. Each case proves the read was pending, cancellation returns
+`ERROR_OPERATION_ABORTED`, and the transport is tainted; a complete ordinary
+frame then succeeds on a separate replacement pipe. Focused Release evidence
+also passes all 12 coordinator scenarios, native bridge/catalog correlation,
+and the managed bridge lifecycle/concurrency fixture at 89/89.
+
+The packaged eight-widget production-host route proves selection-away and
+ordinary B close each revoke the blocked result, tear down the old bridge, and
+resume through exactly one different bridge process, with zero retained
+processes after job-owned cleanup. Host-focus p95 is 33 ms across nine samples;
+tray navigation is 33 ms and B dispatch is 1 ms. Worker/bridge completion is
+reported separately: selection-side replacement completes in 1,033 ms,
+visible hide completes in 1,241 ms, and close-side replacement completes in
+1,306 ms. Seven admitted transitions retain a 17 ms input-to-retained maximum
+and 749 ms input-to-complete maximum.
+Exact PID/start/profile/commit/executable/child-role provenance is emitted by
+the fixture. No aggregate or capture route was run.
