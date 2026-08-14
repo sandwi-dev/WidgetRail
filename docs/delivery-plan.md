@@ -9,21 +9,25 @@ implementation work.
 
 ## Current accepted baselines
 
-- Production code: local main `df30bc5`, including accepted DLV-216, the
+- Production code: local main `289f7d6`, including accepted DLV-216, the
   behavior-preserving AVP-004 SESSION then PLATFORM extraction boundaries, and
   the independently accepted AVP-004 source correction through `16b33d9`,
-  integrated as `09f038f`. No production renderer cutover is implied.
-- Latest reviewed Avalonia implementation: source `16b33d9` on
-  `codex/avalonia-prototype`, integrated through main `09f038f`. Its automated
-  evidence remains useful, but the user's third physical verdict rejects the
-  presentation architecture. The rejected candidate and its owned process tree
-  exited normally; no overlay is currently visible. AVP-004-REDESIGN is the
-  current assignment.
+  integrated as `09f038f`, plus the accepted isolated AVP-004-REDESIGN source
+  `0d4b75b` and correction `9db36b5`, integrated as `e67e0e8` then `289f7d6`.
+  No production renderer cutover is implied.
+- Latest reviewed Avalonia implementation: source `9db36b5` on
+  `codex/avalonia-prototype`, integrated through main `289f7d6`. Its focused
+  29/29 suite, all eight widgets, 32/32 responsive fixtures, 24/24 transition
+  phases, 489.02-MiB candidate gate, and bounded normal shutdown are accepted.
+  The exact copied runtime is visibly launched as PID 25804 for the mandatory
+  physical display/controller verdict; AVP-005 and production cutover remain
+  unauthorized.
 - Latest packaged production Release:
   `src/OverlayHost/out/Release/OverlayHost.exe`, rebuilt from accepted main and
   kept closed during the isolated physical test. Rejected AVP PIDs 33332 and
-  27020 were stopped after the candidate's normal close path failed; no overlay
-  is currently visible.
+  27020 were stopped after the candidate's normal close path failed. The only
+  currently visible overlay is the isolated accepted redesign candidate PID
+  25804.
 - Last production post-launch evidence: every one of the eight tray identities
   admitted through the ordinary bridge, complete composition frames were
   committed, Guide reopened the overlay, and the recent log scan contained no error, failure,
@@ -83,7 +87,7 @@ implementation work.
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `codex/impl-widgets-community` | DLV-217 accepted through `d57fd06`; integration awaits explicit approval for the known reviewer-doc-only red aggregate step |
 | Platform | Implementation agent — platform lane | `codex/impl-platform-community` | Idle at accepted `fcd301a` |
-| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | Assigned AVP-004-REDESIGN from main `df30bc5`; fixed shell and controller-native presentation; AVP-005 not authorized |
+| Avalonia lead | Implementation agent — Avalonia prototype lane | `codex/avalonia-prototype` | AVP-004-REDESIGN accepted through `9db36b5`, integrated as `e67e0e8` then `289f7d6`, and visibly launched for the required physical verdict; AVP-005 not authorized |
 | AVP session | AVP-004 — managed session extraction | `codex/avp004-session` | Accepted `7de4269`, integrated as `7ec8253` |
 | AVP platform | AVP-004 — native platform extraction | `codex/avp004-platform` | Accepted `849e970`, integrated as `b5c4c6c` |
 
@@ -740,10 +744,31 @@ the architecture:
   and prove compact/expanded visibility without a Network or known-tree-shape
   branch.
 
-Run the changed-tip focused suite and one exact measurement. Require every
-installed/responsive row green at the new exact SHA before independent review.
-Do not integrate or launch `0d4b75b`; physical display/controller acceptance
-remains mandatory after the correction is accepted.
+The bounded correction had to rerun the changed-tip focused suite and one exact
+measurement, with every installed/responsive row green at the new exact SHA
+before independent review. Physical display/controller acceptance remained
+mandatory after source acceptance.
+
+Correction `9db36b5` is independently accepted and integrated after `0d4b75b`
+as main `e67e0e8` then `289f7d6`. The correction generically renders a typed
+empty Text node from its accessibility label, re-reveals the selected tray item
+after every relevant viewport/profile layout, and retains hoisted Scroll
+identity, UIA, and responsive visibility while preserving one vertical owner.
+Exact evidence is green for 29/29 focused tests, all eight widgets, 32/32
+responsive fixtures, 24/24 transition phases, one tracked render, zero pending
+artwork, 489.02 MiB candidate private memory, and a 181.17-ms normal no-force
+shutdown with zero remaining processes.
+
+The exact copied runtime is launched visibly as PID 25804 from source
+`9db36b5cba2be9edf6715a2f0752786860c0a064`, with executable SHA-256
+`1CC13B91D6232504F2B6A3D0A22BBCD6ADE0E040BACDC7CD66F9721D4B90F6EC` and
+manual trace `artifacts/avp004/manual-redesign-input-trace.json`. At launch the
+trace proves the native visible lease but no connected or routed physical
+controller input; it must not be represented as controller acceptance. Keep
+AVP-004-REDESIGN open until the user approves the stationary tray, all eight
+first pages, clipping, motion, Guide, D-pad/stick, A/B/Y, sliders, scrolling,
+and normal close. Do not authorize AVP-005 or production cutover before that
+verdict.
 
 Objective:
 
