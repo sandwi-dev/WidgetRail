@@ -770,6 +770,16 @@ first pages, clipping, motion, Guide, D-pad/stick, A/B/Y, sliders, scrolling,
 and normal close. Do not authorize AVP-005 or production cutover before that
 verdict.
 
+The later live trace now retains partial physical-controller evidence from the
+same exact candidate: a connected GameInput visible lease, routed Right/Up/
+Down/Left presses and repeats, routed B, hidden-state rejection after B closed
+the overlay, and a native Guide toggle that reopened it. This closes the basic
+physical D-pad, repeat, B-hide, hidden-rejection, and Guide-reopen evidence gap.
+It does not prove A, Y tap/hold, analog-stick semantics, sliders, scrolling,
+focus restoration, normal process close, or visual quality, and the user has
+not yet approved the eight-page physical presentation. Keep the overall
+physical gate open.
+
 Objective:
 
 - Replace AVP fake remote state and representative domain pages with direct use
