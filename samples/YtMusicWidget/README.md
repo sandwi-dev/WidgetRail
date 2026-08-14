@@ -182,7 +182,7 @@ The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
 `gbar pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.8.gbarwidget
+artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.9.gbarwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -197,7 +197,7 @@ commands used by any addon publisher:
 ```powershell
 $gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
 & $gbar install `
-  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.8.gbarwidget
+  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.9.gbarwidget
 & $gbar enable org.gbar.samples.ytmusic
 & $gbar list
 ```
@@ -265,11 +265,13 @@ YTMDesktop2 pairing, physical controller playtest, shell pixels, or production
 Credential Manager purge.
 
 The rich media surface prefers 760 x 440 logical DIPs, but its compact budget
-is 480 x 340. One responsive media tree keeps artwork left of a cohesive
-metadata, progress, primary-control, and secondary-control column when width
-permits. At the compact budget that same wrapping row places artwork above a
-full-width details column; the vertical viewport keeps every controller target
-reachable. Surface hints remain hints:
+is 480 x 340. One responsive media tree places artwork and the complete
+metadata/progress/controller column inside one full-width raised media panel,
+so the body uses the admitted envelope without becoming a detached centered
+island. At preferred width artwork remains left of the details column. At the
+compact budget the same wrapping row places artwork above a full-width details
+column; the vertical viewport keeps every controller target reachable. Surface
+hints remain hints:
 the host owns the final work-area/DPI scale and may choose a smaller safe size.
 
 The test executable has no test-framework or other NuGet dependencies. Its

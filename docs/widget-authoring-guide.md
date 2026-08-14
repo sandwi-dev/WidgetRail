@@ -705,7 +705,7 @@ first-page contracts are intentionally stable unless a row notes otherwise:
 | Game Launcher | Preferred / Preferred | 980x700 | 420x340 | Its large cursor collection, hero rail, and details routes share one stable envelope. |
 | Now Playing | Preferred / Preferred | 580x400 | 360x330 | Media-session availability and metadata change independently of host placement. |
 | Spotify | Preferred / Preferred | 980x560 | 620x400 | Playback, queue, devices, and cursor collections are provider-driven. |
-| YT Music | Preferred / Preferred | 760x440 | 480x340 | One responsive tree reflows at compact width while playback state remains live. |
+| YT Music | Preferred / Preferred | 760x440 | 480x340 | One full-width raised media panel reflows at compact width while playback state remains live. |
 
 These values are authored content envelopes, not HWND dimensions. Do not copy a
 row merely to imitate another widget: choose Content only when direct evidence

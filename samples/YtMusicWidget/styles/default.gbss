@@ -7,8 +7,11 @@
 }
 
 .ytmusic-widget {
-  gap: 12px;
-  padding: 18px 20px 16px;
+  width: 100%;
+  min-width: 0px;
+  min-height: 100%;
+  gap: 8px;
+  padding: 14px 16px 10px;
   background: var(--media-surface);
   color: var(--text);
 }
@@ -63,11 +66,18 @@
 }
 
 #media-layout {
+  width: 100%;
   min-height: 128px;
+  flex-grow: 1;
   gap: 10px 16px;
+  padding: 12px;
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 12px;
   flex-wrap: wrap;
   align: center;
-  justify: center;
+  justify: start;
 }
 
 .artwork-frame,
@@ -94,7 +104,7 @@
   flex-basis: 320px;
   flex-grow: 1;
   gap: 10px;
-  padding: 5px 0;
+  padding: 0;
 }
 
 #track-details {

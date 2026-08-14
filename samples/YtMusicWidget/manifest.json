@@ -3,7 +3,7 @@
   "id": "org.gbar.samples.ytmusic",
   "publisher": "org.gbar.samples",
   "name": "YT Music",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

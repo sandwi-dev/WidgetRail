@@ -2142,7 +2142,11 @@ static Task PackageAssetsAreValid()
         string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
     var mediaLayout = compiled.Theme!.Resolve(new GbssElement("row", "media-layout"));
     Assert.Equal("wrap", mediaLayout.Get("flex-wrap")?.Text);
-    Assert.Equal("center", mediaLayout.Get("justify")?.Text);
+    Assert.Equal("start", mediaLayout.Get("justify")?.Text);
+    Assert.Equal("100%", mediaLayout.Get("width")?.Text);
+    Assert.Equal(1D, mediaLayout.Get("flex-grow")?.Number);
+    Assert.Equal("12px", mediaLayout.Get("padding")?.Text);
+    Assert.Equal("1px", mediaLayout.Get("border-width")?.Text);
     var mediaDetails = compiled.Theme.Resolve(new GbssElement("stack", "media-details"));
     Assert.Equal("320px", mediaDetails.Get("min-width")?.Text);
     Assert.Equal("320px", mediaDetails.Get("flex-basis")?.Text);

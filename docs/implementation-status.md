@@ -4664,3 +4664,23 @@ the 700-DIP authored panel's 644-DIP content viewport shows the complete
 `Ready to scan` title/help and primary Scan action at zero body-scroll offset,
 while the 320x420 minimum envelope's constrained 364-DIP content viewport
 focus-reveals both radio and Scan controls.
+
+### YT Music unified media panel (DLV-230)
+
+YT Music 0.2.9 keeps the accepted single responsive tree and makes its media
+layout one full-width raised panel inside the admitted Preferred/Preferred
+surface. The root and panel consume the available inner width; artwork remains
+beside the unified metadata, progress, and controller column at 760x440, while
+the same tree wraps artwork above a full-width details column at 480x340. All
+eight actions, explicit focus adjacency, scroll reveal, companion lifecycle,
+authentication, and Community isolation remain unchanged. No native identity
+rule, host offset, second page tree, or provider behavior was added.
+
+Focused Release evidence passes YT Music 60/60 and a real managed snapshot plus
+compiled production GBSS through the production native parser and Taffy
+renderer for 82 checks at the preferred and compact budgets. The isolated
+validate/pack/install/consent/AppContainer/update/rollback/remove lifecycle
+passes for immutable package 0.2.9 with archive SHA-256
+`ca334cc1059393ef93c4cf3d68a9b21b17339bbdd9a87118d2181c0faafd9aac`;
+the real user catalog remains read-only. Physical composition remains the final
+verdict for panel-to-host-chrome cohesion.

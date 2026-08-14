@@ -159,8 +159,17 @@ void Run(const std::filesystem::path& fixturePath) {
     DeclarativeRenderer preferredRenderer{nullptr, nullptr, nullptr};
     const auto preferred = RenderAt(
         preferredRenderer, snapshot, L"play-pause", 760.0F, 440.0F);
+    const auto& preferredRoot = preferred.elementRects.at(L"ytmusic-root");
+    const auto& preferredLayout = preferred.elementRects.at(L"media-layout");
     const auto& preferredArtwork = preferred.elementRects.at(L"artwork-frame");
     const auto& preferredDetails = preferred.elementRects.at(L"media-details");
+    Near(preferredRoot.width, 760.0F,
+         "preferred YT Music root consumes the admitted envelope");
+    Near(preferredLayout.width, preferredRoot.width - 32.0F,
+         "preferred cohesive media panel consumes the root inner width");
+    Check(Find(snapshot.root, L"media-layout").baseStyle.contains(L"background") &&
+              Find(snapshot.root, L"media-layout").baseStyle.contains(L"border-width"),
+          "production GBSS gives the unified media panel one bounded surface");
     Check(preferredArtwork.x + preferredArtwork.width <= preferredDetails.x + 0.01F,
           "preferred YT Music surface keeps artwork beside details");
     Check(preferredArtwork.y < preferredDetails.y + preferredDetails.height &&
@@ -175,10 +184,10 @@ void Run(const std::filesystem::path& fixturePath) {
     const auto& compactDetails = compact.elementRects.at(L"media-details");
     Check(compactArtwork.y + compactArtwork.height <= compactDetails.y + 0.01F,
           "compact YT Music surface reflows artwork above details");
-    Near(compactDetails.x, compactLayout.x,
-         "compact details begin at the full-width layout edge");
-    Near(compactDetails.width, compactLayout.width,
-         "compact details consume the full available layout width");
+    Near(compactDetails.x, compactLayout.x + 12.0F,
+         "compact details begin at the unified panel inner edge");
+    Near(compactDetails.width, compactLayout.width - 24.0F,
+         "compact details consume the full unified-panel inner width");
 
     CheckControlsReachable(snapshot, 760.0F, 440.0F);
     CheckControlsReachable(snapshot, 480.0F, 340.0F);
