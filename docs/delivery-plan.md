@@ -10,8 +10,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main contains accepted DLV-206 integration `5cbd4cf` over corrected
-  DLV-224 integration `02750ba` and provisional product commit `c2b6456`.
+- Local main contains accepted DLV-227 integration `856bbbb` over accepted
+  DLV-206 integration `5cbd4cf`, corrected DLV-224 integration `02750ba`, and
+  provisional product commit `c2b6456`.
   DLV-206 corrects performance/temporal evidence provenance without expanding
   its measurement scope. The DLV-224 correction preserves
   omitted native snapshot versions as legacy v1 while rejecting present
@@ -151,7 +152,7 @@ only production presentation path.
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
 | Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-225 assigned after integrating accepted main `02750ba` |
-| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted DLV-206 is preserved as `da74ded`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-227 assigned after accepted DLV-206 integration `5cbd4cf` |
+| Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, accepted DLV-206/DLV-227 are preserved through `86a2a23`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-231 assigned after accepted DLV-227 integration `856bbbb` |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -257,7 +258,7 @@ widgets with seven switches. Unavailable GPU/presentation, private-working-set,
 scheduler, DWM/game, and long-run metrics remain stated as unavailable rather
 than converted into claims.
 
-### Assigned — DLV-227: self-contained production-host fixture
+### Done — DLV-227: self-contained production-host fixture
 
 Baseline: accepted corrected DLV-224 integrated into local main. Owner: platform
 lane. This is bounded test-infrastructure reliability work and must follow the
@@ -278,6 +279,83 @@ Required implementation and acceptance:
   `WidgetActionFailureHostTests` from an environment whose PATH does not contain
   the Release directory, then run only the affected packaged build segment.
 - Do not rerun the unchanged Tier-3 aggregate.
+
+Accepted as implementation commit `86a2a23` and integrated into main as
+`856bbbb`. The fixture validates and copies the admitted
+`OverlayPlatformInterop.dll` beside its temporary `OverlayHost.exe`, rejects an
+omitted dependency before launch with the exact diagnostic, removes the Release
+installation from the focused test PATH, and independently rejects PATH
+contamination. Its unique process profile prevents delegation to an ordinary
+resident host while preserving the strict visible-HWND, UIA, failure-routing,
+job teardown, and temporary cleanup checks. The focused packaged route passed
+with the ordinary planner-owned host present; no source fallback, weakened
+window check, product runtime change, or Tier-3 rerun occurred.
+
+### Assigned — DLV-231: slow-worker dashboard responsiveness
+
+Baseline: accepted DLV-227 integrated into local main `856bbbb`. Owner:
+platform lane. This is the next visible/release-risk milestone after two bounded
+evidence-infrastructure corrections and closes the active EQ-020 responsiveness
+risk without changing widget-domain behavior.
+
+Visible objective: a slow or nonresponsive widget snapshot must never freeze
+the tray, controller focus, close/back behavior, or a later valid widget
+selection, and a late result must never replace the current presentation.
+
+Required implementation:
+
+- Use the existing production host/session/bridge/input owners and the existing
+  delayed-worker fixture seam. Do not add another UI thread, event loop, input
+  router, focus graph, transport, or presentation cache.
+- Exercise one delayed first snapshot and one snapshot request that remains
+  nonresponsive until the host cancels or abandons it. While each request is
+  pending, retain last-good content and prove tray navigation, widget reselection,
+  and B close remain responsive through ordinary product routing.
+- Bind every pending request and result to the exact session/view generation.
+  Selection change, hide, worker exit, and normal close must cancel or revoke
+  the pending authority; a cancellation-ignoring late result must be rejected
+  without focus, extent, scroll, or presentation drift.
+- Change production coordination only if the retained evidence reproduces UI
+  starvation or stale admission. Keep the fix behind a focused session/bridge
+  owner and provide an OverlayApp before/after responsibility map if `main.cpp`
+  changes materially.
+
+Acceptance:
+
+- A production-host route records exact input-to-tray-focus/paint timing while
+  the worker is delayed/nonresponsive and keeps controller input within the
+  existing 50-ms p95 host-focus target; worker completion latency is reported
+  separately and may not be substituted for input latency.
+- Deterministic cases cover delayed success, never-completing request,
+  selection-away, hide/close, worker exit, cancellation-ignoring late success
+  and late failure, retained last-good content, no stale publication, and normal
+  zero-process teardown.
+- Tier 1 affected session/bridge/controller/focus/native Release suites and one
+  bounded production-host group. No package aggregate, capture work, provider
+  change, or credential/hardware route.
+
+Stop if the correction needs another transport, another focus/input owner,
+widget-specific native behavior, an unbounded wait/cache, or a material public
+protocol decision.
+
+### Ready after DLV-231 — DLV-232: generic worker crash isolation and recovery
+
+Baseline: accepted DLV-231 on the platform lane. Visible objective: one
+credential-free Community worker may crash repeatedly without closing the
+overlay, disturbing other widgets, or leaving an unauthorized stale
+presentation; a normal reactivation or generic Hold-Y restart recovers through
+the existing lifecycle owner. Preserve process/job cleanup, retry bounds,
+last-good semantics, tray focus, and safe diagnostics. Use differently named
+generic fixtures, run only affected lifecycle/process/controller routes, and do
+not add service-specific behavior or rerun Tier 3.
+
+Only one independent platform Ready milestone is currently sound. DLV-218 is
+dependency-blocked on the user's separate DLV-217 integration decision; the
+five current physical UI defects are owned by the widgets queue; mixed-monitor,
+audio/Bluetooth, legacy-controller, and assistive-technology gates require
+hardware or user evidence. Refill the platform queue after DLV-225/DLV-226
+integration exposes the next shared-host need rather than manufacturing
+internal filler.
 
 ### Awaiting DLV-217 integration — DLV-218: remove retired domains
 
@@ -387,10 +465,13 @@ package lifecycle evidence; physical composition remains the final verdict.
    fixture failure honestly.
 5. DLV-225 now adopts Content height in Settings. DLV-226 audits later policies,
    followed by the explicit Audio, Network, and YT Music visible corrections.
-6. DLV-206 is accepted and integrated as main `5cbd4cf`; DLV-227 now repairs
-   the isolated temporary-installation fixture. DLV-217 integration remains a
-   separate explicit user decision, and DLV-218 may begin only after DLV-217 is
-   integrated.
+6. DLV-206 and DLV-227 are accepted and integrated through main `856bbbb`.
+   The native DLV-206 Release was rebuilt from main and visibly launched as PID
+   45452 with SHA-256 `bc7046...f6ea8`; DLV-227 changes only fixture/build/docs
+   surfaces, so that running product binary remains the coherent accepted
+   runtime. DLV-231 now owns slow-worker visible responsiveness. DLV-217
+   integration remains a separate explicit user decision, and DLV-218 may begin
+   only after DLV-217 is integrated.
 
 ## Manual and packaged verification queue
 
@@ -416,13 +497,13 @@ package lifecycle evidence; physical composition remains the final verdict.
 | Audio default-device selection | No documented supported Windows setter established. | Primary Microsoft API plus reversible provider/hardware plan. |
 | Direct computer-control discovery | No-taskbar overlay is omitted from tool discovery. | Tool gains tool-window discovery or user accepts taskbar/Alt-Tab presence. |
 | Native uninstall reconciliation | Synthetic catalog removal emitted no managed revision/native event. | Deterministic disabled/nonresident removal event. |
-| `WidgetActionFailureHostTests` self-contained launch | Temporary fixture omits required `OverlayPlatformInterop.dll`; reproducible clean-environment startup cannot create an HWND. | DLV-227 copies and validates admitted native dependencies, then passes without a Release-directory PATH entry. |
 | YouTube authenticated library | Google OAuth/account; Watch Later is unsupported by Data API. | Approved minimum-scope OAuth plan and authorized account. |
 
 ## Recent accepted milestones
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-227 | `86a2a23`, integrated as `856bbbb`: self-contained native dependency copy/validation, precise pre-launch omission failure, PATH-isolated focused execution, and unchanged strict HWND/UIA/job-cleanup behavior. |
 | DLV-206 | `da74ded`, integrated as `5cbd4cf`: truthful per-scenario process/commit/SHA/metric provenance, separate eight-widget identity, and post-paint composition ordering with bounded focused evidence. |
 | DLV-224 | `912aea9`, integrated as `02750ba`: independent Preferred/Content/FillAvailable axes, bounded Taffy intrinsic sizing, legacy native v1 omission preserved, malformed versions fail closed, and 286/286 direct native parser/accessibility checks. |
 | DLV-222 | `e8af5be`, integrated by `073e423`: generic Taffy stretch correction, authored variable surfaces, bottom-anchored panel/guide/tray, stable full-capacity tray band, and green focused plus eight-widget linked-host evidence. |
@@ -432,7 +513,6 @@ package lifecycle evidence; physical composition remains the final verdict.
 | DLV-216 | Autonomous Spotify Community package accepted and integrated. |
 | DLV-220 | Correct retired gesture revocation evidence. |
 | DLV-210 | Contained generic Hero Rail while retaining launch/action/focus authority. |
-| DLV-215 | Generic consented full-trust Community application runtime. |
 
 Do not mark the continuing delivery goal complete because these milestones
 closed. Continue until the user pauses/replaces it or all useful lanes reach a
