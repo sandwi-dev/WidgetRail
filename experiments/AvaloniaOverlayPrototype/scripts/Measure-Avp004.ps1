@@ -53,6 +53,10 @@ $focusedProof = Get-Content -Raw -LiteralPath $focusedProofPath | ConvertFrom-Js
 if (-not $focusedProof.focusedSuitePassed -or $focusedProof.sourceCommit -ne $sourceCommit) {
     throw 'Focused generic mapping proof is missing or stale for the exact measurement commit.'
 }
+if ($focusedProof.deniedReplacementRecoveryTest -ne
+    'Input_trace_denied_atomic_replace_retains_last_good_and_recovers_every_sequence_once') {
+    throw 'Denied input-trace replacement recovery proof is missing from the exact focused suite.'
+}
 
 $resolvedArtifact = [System.IO.Path]::GetFullPath($artifactRoot)
 $resolvedRuntime = [System.IO.Path]::GetFullPath($runtimeRoot)
@@ -150,6 +154,10 @@ if (-not $measurement.shutdownEvidence.boundedNormalShutdownPassed -or
     $measurement.shutdownEvidence.processTree.remainingProcessIds.Count -ne 0 -or
     $measurement.shutdownEvidence.totalDurationMilliseconds -ge 8000) {
     throw 'Candidate, WidgetBridge, or an owned worker did not complete bounded normal process-tree shutdown.'
+}
+if (-not $measurement.inputTracePersistence.succeeded -or
+    $measurement.inputTracePersistence.persistedSequence -lt $measurement.inputTracePersistence.requestedSequence) {
+    throw "Final input trace publication failed: $($measurement.inputTracePersistence.failure)"
 }
 if (-not (Test-Path -LiteralPath $inputTracePath)) { throw 'Native input trace evidence was not retained.' }
 $inputTrace = Get-Content -Raw -LiteralPath $inputTracePath | ConvertFrom-Json

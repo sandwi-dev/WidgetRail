@@ -364,6 +364,11 @@ internal static class EvidenceScenario
                 false,
                 new Integration.ProcessTreeShutdownEvidence([], [], false, false, 0),
                 0);
+            var inputTraceFlush = window.LastInputTraceFlushResult ?? new InputTraceFlushResult(
+                false,
+                0,
+                0,
+                "Shutdown did not retain an input-trace flush result.");
 
             var artifact = new MeasurementArtifact(
                 "AVP-004-REDESIGN",
@@ -408,6 +413,11 @@ internal static class EvidenceScenario
                 totalVisibleMiB < 500,
                 hiddenAfterUse.NormalizedCpuPercent < 0.5,
                 shutdownEvidence,
+                new InputTracePersistenceEvidence(
+                    inputTraceFlush.Succeeded,
+                    inputTraceFlush.RequestedSequence,
+                    inputTraceFlush.PersistedSequence,
+                    inputTraceFlush.Failure),
                 "OverlayPlatformInterop ABI v1 (production GameInput Guide/controller/placement owner; no Avalonia-owned XInput reader)",
                 "WidgetPresentationSession over the existing authenticated WidgetBridge transport",
                 new[]
@@ -425,7 +435,7 @@ internal static class EvidenceScenario
             desktop.Shutdown(allWidgetsPassed && widgetEnvelopeEvidencePassed && responsivePassed && transitionPassed &&
                 nodeKindCoverage.RetainedFinalVerificationPassed &&
                 resourceOwnership.SupersededResourcesReleased && candidateVisibleMiB < 500 &&
-                shutdownEvidence.BoundedNormalShutdownPassed ? 0 : 1);
+                shutdownEvidence.BoundedNormalShutdownPassed && inputTraceFlush.Succeeded ? 0 : 1);
         }
         catch (Exception exception)
         {
@@ -1146,9 +1156,16 @@ internal static class EvidenceScenario
         bool ProcessTreePrivateMemoryUnder500MiB,
         bool HiddenRenderingEffectivelyIdle,
         CandidateShutdownEvidence ShutdownEvidence,
+        InputTracePersistenceEvidence InputTracePersistence,
         string ControllerDependency,
         string SessionDependency,
         IReadOnlyList<string> UnavailableOrManualEvidence);
+
+    private sealed record InputTracePersistenceEvidence(
+        bool Succeeded,
+        long RequestedSequence,
+        long PersistedSequence,
+        string? Failure);
 
     private sealed record NodeKindCoverageEvidence(
         IReadOnlyList<ViewNodeKind> OrdinaryLifecycleObservedKinds,

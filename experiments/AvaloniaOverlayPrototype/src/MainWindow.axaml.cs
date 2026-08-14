@@ -81,6 +81,7 @@ public sealed partial class MainWindow : Window
     public bool NativeLegacyGuidePollingRequired => platform?.RequiresLegacyGuidePolling == true;
     public PrototypeLifecycle Lifecycle => lifecycle;
     internal CandidateShutdownEvidence? LastShutdownEvidence { get; private set; }
+    internal InputTraceFlushResult? LastInputTraceFlushResult { get; private set; }
 
     internal SkiaResourceCacheSnapshot CaptureSkiaResourceCache()
     {
@@ -160,7 +161,8 @@ public sealed partial class MainWindow : Window
             $"normal={LastShutdownEvidence.BoundedNormalShutdownPassed};" +
             $"forced={processTree.ForcedTerminationUsed};remaining={processTree.RemainingProcessIds.Count};" +
             $"milliseconds={shutdownClock.Elapsed.TotalMilliseconds:F0}");
-        await inputTrace.FlushAsync(PrototypeArguments.Current.SourceCommit ?? "working-tree-candidate");
+        LastInputTraceFlushResult = await inputTrace.FlushAsync(
+            PrototypeArguments.Current.SourceCommit ?? "working-tree-candidate");
         shutdownComplete = true;
         Close();
     }

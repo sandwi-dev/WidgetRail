@@ -59,9 +59,13 @@ fresh exact-commit Windows lifecycle. It packages the existing native platform,
 bridge, catalog, workers and domain payloads beside the framework-dependent
 Avalonia executable, then writes `artifacts/avp004/measurement.json` and the
 bounded native `input-trace.json`. A planner manual session supplies its own
-`--input-trace` path; every record is atomically published during the run rather
-than waiting for normal shutdown, and the raw neutral-priming marker remains
-distinguished from later actionable connected frames.
+`--input-trace` path; every record updates bounded in-memory sequence truth and
+signals one coalescing background publisher rather than serializing on the
+UI/input path. Unique-temp atomic replacement retains the last-good JSON during
+access denial, and a later record or bounded final flush retries the pending
+latest snapshot. Exact measurement retains and asserts the final flush result
+instead of inferring persistence from file existence. The raw neutral-priming
+marker remains distinguished from later actionable connected frames.
 
 The JSON binds the source commit to executable ProductVersion and SHA-256. It
 records every installed descriptor and exact runtime/presentation/session/
@@ -115,4 +119,7 @@ suite completion does not manufacture handled controller categories; an absent
 physical connection remains explicitly absent.
 The direct Y regression routes a focused semantic control through the real
 MainWindow/shared shell path and requires false and true handling results to
-remain atomically distinguishable in the live trace.
+remain atomically distinguishable in the live trace. A Windows lock regression
+denies `FileShare.Delete`, proves interactive records do not throw and the
+last-good artifact remains valid, then releases the lock and requires every
+sequence exactly once in order with no publication temp residue.

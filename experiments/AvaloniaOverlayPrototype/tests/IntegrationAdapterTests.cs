@@ -1228,6 +1228,8 @@ public sealed class IntegrationAdapterTests
             var trace = new InputTraceRecorder(path, "manual-tip");
             trace.Record("native-controller-state", true, false,
                 detail: "connected=False;primed=False;readPath=GameInputVisibleLease;foregroundExclusive=False");
+            var liveFlush = await trace.FlushAsync("manual-tip");
+            Assert.IsTrue(liveFlush.Succeeded, liveFlush.Failure);
 
             using (var liveDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
             {
@@ -1235,12 +1237,13 @@ public sealed class IntegrationAdapterTests
                 Assert.HasCount(1, liveDocument.RootElement.GetProperty("Entries").EnumerateArray().ToArray(),
                     "A manual-session trace must be readable before normal shutdown.");
             }
-            Assert.IsFalse(File.Exists(path + ".tmp"), "Atomic publication must not leave a live partial artifact.");
+            Assert.IsEmpty(TraceTemporaryFiles(path), "Atomic publication must not leave a live partial artifact.");
             Assert.IsTrue(OverlayPlatformClient.IsControllerFrameRoutable(connected: true),
                 "The actionable frame after the native neutral-prime frame must remain routable when primed=0.");
             Assert.IsFalse(OverlayPlatformClient.IsControllerFrameRoutable(connected: false));
 
-            await trace.FlushAsync("exact-commit");
+            var exactFlush = await trace.FlushAsync("exact-commit");
+            Assert.IsTrue(exactFlush.Succeeded, exactFlush.Failure);
             using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
             var root = document.RootElement;
             Assert.IsTrue(root.GetProperty("NativeVisibleLeaseObserved").GetBoolean());
@@ -1281,6 +1284,8 @@ public sealed class IntegrationAdapterTests
                     ControllerEventPhase.Released, focused, shell);
                 trace.Record("native-input-routed", true, true, "action",
                     "button=Y;phase=Released", unhandled);
+                var unhandledFlush = await trace.FlushAsync("y-route-tip");
+                Assert.IsTrue(unhandledFlush.Succeeded, unhandledFlush.Failure);
 
                 using (var unhandledDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path)))
                 {
@@ -1297,6 +1302,8 @@ public sealed class IntegrationAdapterTests
                     ControllerEventPhase.Released, focused, shell);
                 trace.Record("native-input-routed", true, true, "action",
                     "button=Y;phase=Released", handled);
+                var handledFlush = await trace.FlushAsync("y-route-tip");
+                Assert.IsTrue(handledFlush.Succeeded, handledFlush.Failure);
 
                 using var handledDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path));
                 var retained = handledDocument.RootElement.GetProperty("Entries")
@@ -1306,7 +1313,7 @@ public sealed class IntegrationAdapterTests
                 Assert.IsTrue(retained[1].GetProperty("Handled").GetBoolean());
                 Assert.IsTrue(handledDocument.RootElement
                     .GetProperty("NativeRoutedSemanticInputObserved").GetBoolean());
-                Assert.IsFalse(File.Exists(path + ".tmp"));
+                Assert.IsEmpty(TraceTemporaryFiles(path));
                 shellWindow.Close();
                 await routeWindow.ShutdownAsync();
             });
@@ -1314,6 +1321,75 @@ public sealed class IntegrationAdapterTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task Input_trace_denied_atomic_replace_retains_last_good_and_recovers_every_sequence_once()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"avp004-input-denied-{Guid.NewGuid():N}.json");
+        try
+        {
+            var trace = new InputTraceRecorder(path, "denied-replacement-tip");
+            trace.Record("native-controller-state", true, true, "tray-alpha",
+                "connected=True;primed=True;readPath=GameInputVisibleLease;foregroundExclusive=True");
+            var baselineFlush = await trace.FlushAsync("denied-replacement-tip");
+            Assert.IsTrue(baselineFlush.Succeeded, baselineFlush.Failure);
+            Assert.AreEqual(1L, baselineFlush.PersistedSequence);
+
+            InputTraceFlushResult deniedFlush;
+            using (var deniedReplacement = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    trace.Record("native-input-routed", true, true, "tray-alpha",
+                        "navigation=Down;phase=Pressed", true);
+                    trace.Record("native-input-routed", true, true, "content-beta",
+                        "button=Y;phase=Released", false);
+                });
+
+                deniedFlush = await trace.FlushAsync("denied-replacement-tip");
+                Assert.IsFalse(deniedFlush.Succeeded,
+                    "A denied atomic replacement must be reported without escaping through Record or the UI dispatcher.");
+                Assert.AreEqual(3L, deniedFlush.RequestedSequence);
+                Assert.AreEqual(1L, deniedFlush.PersistedSequence,
+                    "A denied replacement must retain the last-good publication boundary.");
+                Assert.IsNotNull(deniedFlush.Failure);
+
+                using var lastGoodDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+                var lastGoodEntries = lastGoodDocument.RootElement.GetProperty("Entries")
+                    .EnumerateArray().ToArray();
+                Assert.HasCount(1, lastGoodEntries,
+                    "Replacement denial must leave the prior artifact as valid JSON.");
+                Assert.AreEqual(1L, lastGoodEntries[0].GetProperty("Sequence").GetInt64());
+            }
+
+            var recoveredFlush = await trace.FlushAsync("denied-replacement-tip");
+            Assert.IsTrue(recoveredFlush.Succeeded, recoveredFlush.Failure);
+            Assert.AreEqual(3L, recoveredFlush.RequestedSequence);
+            Assert.AreEqual(3L, recoveredFlush.PersistedSequence);
+
+            using var recoveredDocument = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            var recoveredEntries = recoveredDocument.RootElement.GetProperty("Entries")
+                .EnumerateArray().ToArray();
+            Assert.HasCount(3, recoveredEntries);
+            CollectionAssert.AreEqual(
+                new long[] { 1, 2, 3 },
+                recoveredEntries.Select(entry => entry.GetProperty("Sequence").GetInt64()).ToArray(),
+                "Every bounded in-memory entry must be published exactly once and in order after retry.");
+            Assert.IsTrue(recoveredEntries[1].GetProperty("Handled").GetBoolean());
+            Assert.IsFalse(recoveredEntries[2].GetProperty("Handled").GetBoolean());
+            Assert.IsEmpty(TraceTemporaryFiles(path), "Recovery must not leave unique publication temp files.");
+        }
+        finally
+        {
+            File.Delete(path);
+            foreach (var temporaryPath in TraceTemporaryFiles(path)) File.Delete(temporaryPath);
         }
     }
 
@@ -1850,6 +1926,13 @@ public sealed class IntegrationAdapterTests
             (int)Math.Round(local.Width * scaling, MidpointRounding.AwayFromZero),
             (int)Math.Round(local.Height * scaling, MidpointRounding.AwayFromZero));
     }
+
+    private static string[] TraceTemporaryFiles(string tracePath) => Directory
+        .EnumerateFiles(
+            Path.GetDirectoryName(tracePath)!,
+            $"{Path.GetFileName(tracePath)}.*.tmp",
+            SearchOption.TopDirectoryOnly)
+        .ToArray();
 
     private static IEnumerable<ViewNode> CollectionItems(int count, string prefix = "item") =>
         Enumerable.Range(0, count).Select(index => new ViewNode

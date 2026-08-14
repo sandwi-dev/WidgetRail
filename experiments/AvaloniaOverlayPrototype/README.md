@@ -106,7 +106,7 @@ map and retained manual-composition decision.
 ## Focused verification
 
 From the repository root, run the one bounded final Release/compiled-binding/
-MSTest.Sdk 4.3.2 suite (30 tests):
+MSTest.Sdk 4.3.2 suite (31 tests):
 
 ```powershell
 powershell -NoProfile -File .\experiments\AvaloniaOverlayPrototype\scripts\Verify-Avp004.ps1 -TimeoutSeconds 240
@@ -129,6 +129,10 @@ mode-identity restoration with one render tree. Geometry coverage asserts useful
 page/root width, readable controls, effective visibility, bounded unintended
 horizontal empty area, and non-overlapping content/guide/tray regions at the
 supported sizes/scales; a direct guard test rejects a second prototype owner.
+The trace regressions also hold the live target without `FileShare.Delete`,
+require denied replacement to preserve valid last-good JSON without throwing on
+the UI path, then require a bounded retry to publish every sequence exactly once
+in order with no unique-temp residue.
 Each of the 32 responsive rows derives its content constraint through the same
 work-area/DPI/accessibility envelope admission used by the live host; authored
 preferred/minimum hints remain authoritative and no global shell preset is
@@ -192,9 +196,15 @@ The input artifact records only actual native lease/controller observations.
 It does not stamp focused-suite success into synthetic handled categories, and
 it does not convert a visible lease into a physical-controller or routed-input
 claim. Named focused regressions remain test evidence, not native trace events.
-When `--input-trace` is supplied, every bounded state/routing record replaces
-the JSON artifact atomically while the candidate is still running; an abnormal
-manual-session close therefore retains the latest complete prefix. The native
+When `--input-trace` is supplied, each bounded state/routing record updates
+in-memory sequence truth and signals one coalescing background publisher; the
+UI/input path never serializes or replaces the JSON file. The publisher uses a
+unique temporary file and atomic replacement, retaining the last-good complete
+prefix when replacement is denied. A later record or explicit bounded flush
+retries the pending latest state. Expected file-access failures remain visible
+in the final flush verdict without escaping through interactive input or normal
+window shutdown, and exact measurement requires the final requested sequence
+to be persisted. The native
 ABI `primed` value is recorded as the one neutral-baseline frame it represents;
 later connected frames with `primed=false` remain actionable through the same
 semantic router. Y press/release/hold handling retains the exact shared-route
