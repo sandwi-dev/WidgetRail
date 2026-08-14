@@ -47,6 +47,15 @@ tab names the visible section, while connected/paired/radio-On state comes only
 from the provider snapshot. Completing these semantics under scan/device churn
 is tracked as [GBA-034](known-issues.md).
 
+The root explicitly uses Preferred width and Preferred height with a 560x700
+preferred envelope and 320x420 minimum. This is deliberate rather than a
+Content-sized list: scan, connection, and Bluetooth inventories are dynamic and
+must not resize the host as provider rows change. At the preferred envelope the
+initial Wi-Fi page exposes both **Scan for networks** and the complete **Ready
+to scan** state without moving its nested scroll. Constrained height retains the
+same semantic tree and uses focus-follow scrolling to reveal the radio, scan,
+and result controls.
+
 The bundled surface never prompts inside the widget process or stores a
 password. The trusted host creates an attempt-unique per-user WPA2/WPA3
 Personal profile without overwrite and tags it with random per-profile custom

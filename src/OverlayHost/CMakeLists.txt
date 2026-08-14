@@ -518,6 +518,21 @@ if(GBA_BUILD_TESTS)
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
     gba_link_taffy(AudioMixerWidthRendererTests)
 
+    # Real managed Network NotScanned first-page coverage for authored vertical
+    # admission and constrained focus reveal.
+    add_executable(NetworkFirstPageRendererTests
+        NetworkFirstPageRendererTests.cpp WidgetBridgeClient.cpp
+        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
+    target_compile_features(NetworkFirstPageRendererTests PRIVATE cxx_std_20)
+    target_compile_options(NetworkFirstPageRendererTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(NetworkFirstPageRendererTests PRIVATE
+        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(NetworkFirstPageRendererTests PRIVATE
+        windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
+    gba_link_taffy(NetworkFirstPageRendererTests)
+
     add_executable(LauncherExperienceTests
         LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
         LauncherExperienceProjection.cpp

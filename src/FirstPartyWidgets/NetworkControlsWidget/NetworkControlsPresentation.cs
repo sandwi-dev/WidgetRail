@@ -8,6 +8,8 @@ internal static class NetworkControlsPresentation
     private static readonly WidgetSurfaceHints CompactSurface = new()
     {
         Mode = WidgetSurfaceMode.Compact,
+        WidthMode = WidgetSurfaceAxisMode.Preferred,
+        HeightMode = WidgetSurfaceAxisMode.Preferred,
         PreferredWidth = 560,
         PreferredHeight = 700,
         MinimumWidth = 320,

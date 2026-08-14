@@ -4648,3 +4648,19 @@ GBSS/bridge/Taffy scenario passes 41 checks at 320- and 520-DIP widths: root,
 cards, headings, session list, and control rows consume their exact admitted
 inner widths; master, microphone, and session sliders take the exact remainder;
 and the focused session remains scroll-revealed.
+
+### Network first-page vertical admission (DLV-229)
+
+Network Controls now declares its symmetric Preferred/Preferred policy
+explicitly while retaining the measured 560x700 preferred and 320x420 minimum
+envelopes. The provider-driven Wi-Fi/Bluetooth body remains one bounded nested
+Scroll, so scans and device churn cannot resize the host. No state is hidden,
+no list uses Content sizing, and no Network identity rule was added to native
+placement.
+
+Focused Release evidence passes Network Controls 24/24. A real NotScanned
+managed snapshot plus production GBSS/bridge/Taffy scenario passes 12 checks:
+the 700-DIP authored panel's 644-DIP content viewport shows the complete
+`Ready to scan` title/help and primary Scan action at zero body-scroll offset,
+while the 320x420 minimum envelope's constrained 364-DIP content viewport
+focus-reveals both radio and Scan controls.

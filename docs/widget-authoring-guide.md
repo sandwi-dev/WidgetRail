@@ -700,7 +700,7 @@ first-page contracts are intentionally stable unless a row notes otherwise:
 | --- | --- | ---: | ---: | --- |
 | Settings | Preferred / Content on root; Preferred / Preferred on nested pages | 880x520 | 520x360 | The bounded root category grid is intrinsic; changing nested inventories and diagnostics remain stable. |
 | Audio Mixer | Preferred / Preferred | 520x520 | 320x360 | Provider-driven session rows keep a stable surface; cards and slider rows stretch to the admitted width while each slider owns the flexible remainder. |
-| Network Controls | Preferred / Preferred | 560x700 | 320x420 | Scan and connection state plus discovered networks are dynamic and scrollable. |
+| Network Controls | Preferred / Preferred | 560x700 | 320x420 | The first Scan action/status fit at preferred height; dynamic scan/Bluetooth rows stay stable and scroll-reveal at constrained height. |
 | Games & Apps | Preferred / Preferred | 820x600 library; 820x280 bounded state page | 420x300 library; 420x250 state page | Library/catalog content is paged and dynamic; bounded status pages keep explicit stable extents. |
 | Game Launcher | Preferred / Preferred | 980x700 | 420x340 | Its large cursor collection, hero rail, and details routes share one stable envelope. |
 | Now Playing | Preferred / Preferred | 580x400 | 360x330 | Media-session availability and metadata change independently of host placement. |

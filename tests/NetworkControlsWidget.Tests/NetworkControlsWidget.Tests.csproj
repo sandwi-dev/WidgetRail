@@ -7,6 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\WidgetBridge\BridgeRenderStyles.cs" Link="fixture\BridgeRenderStyles.cs" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\NetworkControlsWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />

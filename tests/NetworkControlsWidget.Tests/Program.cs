@@ -1,10 +1,18 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using GameBarAlternative.FirstPartyWidgets.NetworkControls;
+using GameBarAlternative.WidgetBridge;
 using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 using GameBarAlternative.WidgetStyling;
+
+if (args is ["--export-renderer-fixture", var rendererFixturePath])
+{
+    await ExportRendererFixture(rendererFixturePath);
+    return 0;
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -55,6 +63,41 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
+static async Task ExportRendererFixture(string outputPath)
+{
+    var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    var widget = Create(fake);
+    await ActivateVisible(widget);
+    await WaitUntil(() => widget.ViewState == NetworkControlsViewState.NotScanned);
+    var snapshot = Snapshot(widget, 1);
+    Assert.Valid(snapshot);
+    var project = ProjectDirectory();
+    var package = GbssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.gbss"),
+        Path.Combine(project, "styles"));
+    var compiled = GbssThemeCompiler.Compile(package);
+    Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+    var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
+    using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+    var options = new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    var payload = JsonSerializer.Serialize(new
+    {
+        snapshot = snapshotDocument.RootElement.Clone(),
+        renderStyles,
+    }, options);
+    var directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+    if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+    await File.WriteAllTextAsync(outputPath, payload);
+    await Background(widget);
+    Console.WriteLine($"Exported Network renderer fixture to {outputPath}.");
+}
+
 static async Task VisibleReadDoesNotScan()
 {
     var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
@@ -72,6 +115,15 @@ static async Task VisibleReadDoesNotScan()
     Assert.Equal(1, fake.StatusSubscriptionCount);
     Assert.Equal(1, fake.WifiSubscriptionCount);
     Assert.Equal("network.wifi.scan", Snapshot(widget, 1).InitialFocusId);
+    var firstPage = Snapshot(widget, 2);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, firstPage.Surface?.WidthMode);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, firstPage.Surface?.HeightMode);
+    Assert.Equal(560D, firstPage.Surface?.PreferredWidth);
+    Assert.Equal(700D, firstPage.Surface?.PreferredHeight);
+    Assert.Equal(320D, firstPage.Surface?.MinimumWidth);
+    Assert.Equal(420D, firstPage.Surface?.MinimumHeight);
+    Assert.Equal("Ready to scan", Text(firstPage.Root, "network.wifi.state.title").Text);
+    Assert.Equal("Scan for networks", Button(firstPage.Root, "network.wifi.scan").Text);
 
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
     await Task.Delay(125);
