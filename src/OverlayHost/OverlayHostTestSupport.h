@@ -53,6 +53,14 @@ bool WaitUntil(const DWORD timeoutMilliseconds, Predicate&& predicate) {
 [[nodiscard]] std::string JsonEscape(std::wstring_view value);
 void WriteUtf8(const std::filesystem::path& path, std::string_view contents);
 [[nodiscard]] std::string ReadUtf8(const std::filesystem::path& path);
+void ValidateNativeRuntimeDependencies(const std::filesystem::path& source);
+void CopyNativeRuntimeDependencies(
+    const std::filesystem::path& source,
+    const std::filesystem::path& destination);
+void VerifyNativeRuntimeDependencyPolicy(
+    const std::filesystem::path& installation);
+[[nodiscard]] bool PathContainsDirectory(
+    const std::filesystem::path& directory);
 [[nodiscard]] std::vector<wchar_t> ChildEnvironment(
     const std::filesystem::path& localAppData);
 

@@ -77,6 +77,7 @@ public:
                 "--installation does not contain runtime");
         Require(fs::is_regular_file(fixtureWorker),
                 "--fixture-worker does not name a file");
+        ValidateNativeRuntimeDependencies(source);
         const auto productionStyle = fixtureWorker.parent_path() / L"styles" / L"default.gbss";
         Require(fs::is_regular_file(productionStyle),
                 "Audio Mixer fixture output omitted production default.gbss");
@@ -98,6 +99,7 @@ public:
         }
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
+        CopyNativeRuntimeDependencies(source, root_);
         fs::copy(source / L"runtime", root_ / L"runtime",
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         fs::copy_file(
@@ -734,6 +736,9 @@ void RunScenario(
     const Arguments& arguments,
     IUIAutomation* automation,
     Evidence& evidence) {
+    Require(!PathContainsDirectory(arguments.installation),
+            "Fixture PATH must not contain the admitted installation directory");
+    VerifyNativeRuntimeDependencyPolicy(arguments.installation);
     TemporaryInstallation installation(
         arguments.installation, arguments.fixtureWorker, 1.0F, 1.0F);
     const auto quoted = [](const fs::path& path) {

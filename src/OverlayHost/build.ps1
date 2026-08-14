@@ -28,7 +28,8 @@ param(
     [switch]$TrayRefreshHostTestsOnly,
     [switch]$LauncherExperienceLifecycleTestsOnly,
     [switch]$PlatformInteropTestsOnly,
-    [switch]$WidgetActionFailureHostTestsOnly
+    [switch]$WidgetActionFailureHostTestsOnly,
+    [switch]$AudioMixerScrollHostTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -794,9 +795,11 @@ function Invoke-WidgetSwitchHostTests {
     }
 }
 
-function Invoke-WidgetActionFailureHostTestProcess {
+function Invoke-PathIsolatedHostTestProcess {
     param(
-        [Parameter(Mandatory = $true)][string]$FixtureWorker
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$FailureName
     )
 
     $resolvedInstallation = [IO.Path]::GetFullPath($outputDirectory).TrimEnd(
@@ -818,11 +821,9 @@ function Invoke-WidgetActionFailureHostTestProcess {
     $savedPath = $env:PATH
     try {
         $env:PATH = [string]::Join([IO.Path]::PathSeparator, $sanitizedEntries)
-        & (Join-Path $outputDirectory 'WidgetActionFailureHostTests.exe') `
-            --installation $outputDirectory `
-            --fixture-worker $FixtureWorker
+        & $Executable @Arguments
         if ($LASTEXITCODE -ne 0) {
-            throw "WidgetActionFailureHostTests failed with exit code $LASTEXITCODE."
+            throw "$FailureName failed with exit code $LASTEXITCODE."
         }
     }
     finally {
@@ -830,9 +831,24 @@ function Invoke-WidgetActionFailureHostTestProcess {
     }
 }
 
+function Invoke-WidgetActionFailureHostTestProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FixtureWorker
+    )
+
+    Invoke-PathIsolatedHostTestProcess `
+        -Executable (Join-Path $outputDirectory 'WidgetActionFailureHostTests.exe') `
+        -Arguments @(
+            '--installation', $outputDirectory,
+            '--fixture-worker', $FixtureWorker
+        ) `
+        -FailureName 'WidgetActionFailureHostTests'
+}
+
 function Invoke-WidgetActionFailureHostTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'WidgetActionFailureHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
         "/Fo:$actionFailureHostTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetActionFailureHostTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -855,6 +871,45 @@ function Invoke-WidgetActionFailureHostTests {
         throw 'Advanced action-failure fixture publish omitted AdvancedActionFailureFixture.exe.'
     }
     Invoke-WidgetActionFailureHostTestProcess -FixtureWorker $fixture
+}
+
+function Invoke-AudioMixerScrollHostTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'AudioMixerScrollHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
+        "/Fo:$audioMixerScrollHostTestObjectDirectory\",
+        "/Fe:$outputDirectory\AudioMixerScrollHostTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'user32.lib', 'gdi32.lib', 'windowscodecs.lib', 'ole32.lib',
+        'oleaut32.lib', 'uiautomationcore.lib'
+    )
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "AudioMixerScrollHostTests build failed with exit code $LASTEXITCODE."
+    }
+    if ($SkipPackaging) {
+        return
+    }
+
+    & dotnet publish `
+        (Join-Path $projectDirectory '..\..\tests\AudioMixerScrollFixture\AudioMixerScrollFixture.csproj') `
+        --configuration $Configuration --no-self-contained --nologo `
+        --output $audioMixerScrollFixtureOutput
+    if ($LASTEXITCODE -ne 0) {
+        throw "Audio Mixer scroll fixture publish failed with exit code $LASTEXITCODE."
+    }
+    $fixture = Join-Path $audioMixerScrollFixtureOutput 'AudioMixerScrollFixture.exe'
+    if (-not (Test-Path -LiteralPath $fixture)) {
+        throw 'Audio Mixer scroll fixture publish omitted AudioMixerScrollFixture.exe.'
+    }
+    Invoke-PathIsolatedHostTestProcess `
+        -Executable (Join-Path $outputDirectory 'AudioMixerScrollHostTests.exe') `
+        -Arguments @(
+            '--installation', $outputDirectory,
+            '--fixture-worker', $fixture
+        ) `
+        -FailureName 'AudioMixerScrollHostTests'
 }
 
 function Invoke-TrayRefreshHostTests {
@@ -1707,6 +1762,14 @@ if ($WidgetActionFailureHostTestsOnly) {
     return
 }
 
+if ($AudioMixerScrollHostTestsOnly) {
+    if ($SkipTests -or $SkipPackaging) {
+        throw 'AudioMixerScrollHostTestsOnly requires tests and packaging.'
+    }
+    Invoke-AudioMixerScrollHostTests
+    return
+}
+
 if ($ColdDashboardTestsOnly) {
     if ($SkipTests) {
         throw 'ColdDashboardTestsOnly cannot be combined with SkipTests.'
@@ -2190,6 +2253,7 @@ if (-not $SkipTests) {
 
     $actionFailureHostTestArguments = $common + @(
         (Join-Path $projectDirectory 'WidgetActionFailureHostTests.cpp'),
+        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
         "/Fo:$actionFailureHostTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetActionFailureHostTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -2278,39 +2342,7 @@ if (-not $SkipTests) {
         }
     }
 
-    $audioMixerScrollHostTestArguments = $common + @(
-        (Join-Path $projectDirectory 'AudioMixerScrollHostTests.cpp'),
-        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
-        "/Fo:$audioMixerScrollHostTestObjectDirectory\",
-        "/Fe:$outputDirectory\AudioMixerScrollHostTests.exe",
-        '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @(
-        'user32.lib', 'gdi32.lib', 'windowscodecs.lib', 'ole32.lib',
-        'oleaut32.lib', 'uiautomationcore.lib'
-    )
-    & $cl $audioMixerScrollHostTestArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "AudioMixerScrollHostTests build failed with exit code $LASTEXITCODE."
-    }
-    if (-not $SkipPackaging) {
-        & dotnet publish `
-            (Join-Path $projectDirectory '..\..\tests\AudioMixerScrollFixture\AudioMixerScrollFixture.csproj') `
-            --configuration $Configuration --no-self-contained --nologo `
-            --output $audioMixerScrollFixtureOutput
-        if ($LASTEXITCODE -ne 0) {
-            throw "Audio Mixer scroll fixture publish failed with exit code $LASTEXITCODE."
-        }
-        $audioMixerScrollFixture = Join-Path $audioMixerScrollFixtureOutput 'AudioMixerScrollFixture.exe'
-        if (-not (Test-Path -LiteralPath $audioMixerScrollFixture)) {
-            throw "Audio Mixer scroll fixture publish omitted AudioMixerScrollFixture.exe."
-        }
-        & (Join-Path $outputDirectory 'AudioMixerScrollHostTests.exe') `
-            --installation $outputDirectory `
-            --fixture-worker $audioMixerScrollFixture
-        if ($LASTEXITCODE -ne 0) {
-            throw "AudioMixerScrollHostTests failed with exit code $LASTEXITCODE."
-        }
-    }
+    Invoke-AudioMixerScrollHostTests
 
     $trayLayoutTestArguments = $common + @(
         (Join-Path $projectDirectory 'TrayLayoutTests.cpp'),

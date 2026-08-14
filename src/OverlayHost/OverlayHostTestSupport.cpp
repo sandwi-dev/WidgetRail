@@ -1,6 +1,9 @@
 #include "OverlayHostTestSupport.h"
 
+#include <objbase.h>
+
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cwchar>
 #include <fstream>
@@ -101,6 +104,116 @@ std::string ReadUtf8(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) return {};
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+namespace {
+
+constexpr std::array<std::wstring_view, 1> kNativeRuntimeDependencies{{
+    L"OverlayPlatformInterop.dll",
+}};
+
+class TemporaryDirectory final {
+public:
+    explicit TemporaryDirectory(const std::wstring_view prefix) {
+        wchar_t temporaryRoot[MAX_PATH + 1]{};
+        const DWORD length = GetTempPathW(MAX_PATH, temporaryRoot);
+        Require(length > 0 && length <= MAX_PATH, Win32Error("GetTempPathW"));
+        GUID guid{};
+        Require(SUCCEEDED(CoCreateGuid(&guid)), "CoCreateGuid failed");
+        wchar_t guidText[64]{};
+        Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
+        path_ = std::filesystem::path(temporaryRoot) /
+            (std::wstring(prefix) + std::wstring(guidText));
+        std::filesystem::create_directories(path_);
+    }
+
+    ~TemporaryDirectory() {
+        std::error_code ignored;
+        std::filesystem::remove_all(path_, ignored);
+    }
+
+    [[nodiscard]] const std::filesystem::path& Path() const noexcept {
+        return path_;
+    }
+
+private:
+    std::filesystem::path path_;
+};
+
+} // namespace
+
+void ValidateNativeRuntimeDependencies(const std::filesystem::path& source) {
+    for (const auto dependency : kNativeRuntimeDependencies) {
+        Require(std::filesystem::is_regular_file(source / dependency),
+                "--installation is missing required native dependency '" +
+                    WideToUtf8(dependency) + "'");
+    }
+}
+
+void CopyNativeRuntimeDependencies(
+    const std::filesystem::path& source,
+    const std::filesystem::path& destination) {
+    ValidateNativeRuntimeDependencies(source);
+    for (const auto dependency : kNativeRuntimeDependencies)
+        std::filesystem::copy_file(source / dependency, destination / dependency);
+}
+
+void VerifyNativeRuntimeDependencyPolicy(
+    const std::filesystem::path& installation) {
+    TemporaryDirectory copied(L"gba-native-dependency-copy-");
+    CopyNativeRuntimeDependencies(installation, copied.Path());
+    for (const auto dependency : kNativeRuntimeDependencies) {
+        Require(std::filesystem::is_regular_file(copied.Path() / dependency),
+                "Native dependency copy regression omitted " +
+                    WideToUtf8(dependency));
+        Require(std::filesystem::file_size(copied.Path() / dependency) ==
+                    std::filesystem::file_size(installation / dependency),
+                "Native dependency copy regression changed " +
+                    WideToUtf8(dependency));
+    }
+
+    TemporaryDirectory omitted(L"gba-native-dependency-omission-");
+    bool rejected{};
+    try {
+        CopyNativeRuntimeDependencies(omitted.Path(), copied.Path());
+    } catch (const std::exception& error) {
+        rejected = std::string_view(error.what()) ==
+            "--installation is missing required native dependency "
+            "'OverlayPlatformInterop.dll'";
+    }
+    Require(rejected,
+            "Missing native dependency did not fail before host launch with the "
+            "precise OverlayPlatformInterop.dll diagnostic");
+}
+
+bool PathContainsDirectory(const std::filesystem::path& directory) {
+    const DWORD required = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    if (required == 0) return false;
+    std::wstring value(required, L'\0');
+    Require(GetEnvironmentVariableW(L"PATH", value.data(), required) > 0,
+            Win32Error("GetEnvironmentVariableW(PATH)"));
+    value.resize(wcslen(value.c_str()));
+    const auto expected =
+        std::filesystem::absolute(directory).lexically_normal().wstring();
+    std::size_t cursor{};
+    while (cursor <= value.size()) {
+        const auto end = value.find(L';', cursor);
+        std::wstring entry = value.substr(
+            cursor,
+            end == std::wstring::npos ? std::wstring::npos : end - cursor);
+        if (entry.size() >= 2 && entry.front() == L'"' && entry.back() == L'"')
+            entry = entry.substr(1, entry.size() - 2);
+        if (!entry.empty()) {
+            std::error_code ignored;
+            const auto normalized =
+                std::filesystem::absolute(entry, ignored).lexically_normal().wstring();
+            if (!ignored && _wcsicmp(normalized.c_str(), expected.c_str()) == 0)
+                return true;
+        }
+        if (end == std::wstring::npos) break;
+        cursor = end + 1;
+    }
+    return false;
 }
 
 std::vector<wchar_t> ChildEnvironment(

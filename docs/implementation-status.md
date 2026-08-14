@@ -4711,3 +4711,24 @@ release. Visible hide completion is recorded separately at 2,024 ms and is not
 included in the established 50-ms host-focus target. The production route
 retains exact PID/start/profile/commit/executable/child-role provenance and
 job-owned zero-process teardown; no aggregate or capture route was run.
+
+### Self-contained Audio Mixer scroll host fixture (DLV-233)
+
+Native production-host fixtures now share one admitted runtime-dependency policy
+from `OverlayHostTestSupport`: `OverlayPlatformInterop.dll` is validated before
+launch, copied beside the temporary `OverlayHost.exe`, checked for identical
+size, and an omitted dependency produces the exact pre-launch diagnostic. The
+Audio Mixer temporary installation no longer depends on the source Release
+directory or PATH. Its existing fixture worker, authenticated readiness nonce,
+visible HWND, UIA, live reverse-edge scroll/focus assertions, evidence commit,
+job-owned teardown, and temporary-directory cleanup are unchanged.
+
+The focused Release `AudioMixerScrollHostTestsOnly` packaged route passes while
+the admitted Release installation is removed from PATH, including the shared
+copy/omission regression and complete Audio host scenario. A precautionary
+focused `WidgetActionFailureHostTestsOnly` run compiled against the same shared
+policy and passed its dependency setup before retaining a later red functional
+assertion, `The primary worker-start failure was not retained by the host.` That
+separate worker/session behavior is not weakened, rerun, or changed by this
+test-infrastructure correction. No Audio product code, aggregate, capture, or
+source-worktree fallback was used.
