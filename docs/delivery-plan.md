@@ -10,9 +10,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Local main: `aa1091c`. Its latest product implementation commit is `8836e07`
-  (`[DLV-221] Integrate Taffy native layout engine`); the commits after it are
-  reviewer-owned planning only. The user physically reviewed the rebuilt
+- Local main: `6b916e8`. Its latest product implementation milestone is
+  accepted DLV-223 through `6b916e8`; accepted DLV-221 `8836e07` remains the
+  Taffy engine baseline. The user physically reviewed the rebuilt DLV-221
   Release, found the integration substantially correct, and accepted Taffy as
   the native declarative geometry engine.
 - DLV-221 preserves the existing Widget SDK/protocol, package/catalog/runtime,
@@ -131,7 +131,7 @@ only production presentation path.
 
 | Lane | Task | Branch/worktree | Current state |
 | --- | --- | --- | --- |
-| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, created clean from main `8e2587c`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | DLV-223 bounded evidence correction Active |
+| Widgets | Implementation agent — widgets lane | `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui`, accepted DLV-223 remains preserved through `29ec257`; accepted DLV-217 remains preserved on `codex/impl-widgets-community-launcher` | Awaiting DLV-224 integration; no executable widget assignment |
 | Platform | Implementation agent — platform lane | `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-taffy-ui`, created clean from main `8e2587c`; prior DLV-220 history remains preserved on `codex/impl-platform-community` | DLV-222 Active |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
@@ -271,73 +271,17 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Widgets lane
 
-### Assigned correction — DLV-223: responsive YT Music controller composition
+### Done — DLV-223: responsive YT Music controller composition
 
-Baseline: clean local main `8e2587c` with product implementation baseline
-`8836e07`. Owner: widgets lane, limited to the YT Music Community
-package/presentation/styles and directly affected tests/docs.
-It may proceed independently of DLV-222 because it owns no native files.
-
-Visible objective: make YT Music read as one cohesive controller-native media
-panel rather than artwork and controls floating at the left of a large detached
-surface.
-
-Required implementation:
-
-- Keep one semantic tree, existing public controls/actions, Community package
-  boundary, lifecycle, optimistic reconciliation, and explicit focus links.
-- At wide/standard width, compose artwork on the left and one right-hand column
-  containing title/artist/album, progress, primary transport actions, and
-  secondary actions. Align control rows within the metadata column.
-- At constrained compact width, reflow to a vertical composition with readable
-  metadata, full-width progress, centered reachable controls, and no duplicate
-  page/tree.
-- Use only typed semantic Row/Stack/Scroll and GBSS responsive behavior. No
-  widget-specific native renderer/layout rule and no fixed monitor-resolution
-  check.
-- Keep touch targets, focus order, LB/RB/X/Y shortcuts, A/B behavior, labels,
-  selected/busy states, artwork fallback, and scroll reveal truthful.
-- Do not change surface-axis protocol fields in this milestone. YT Music may opt
-  into Content height only after DLV-224 is integrated and separately reviewed.
-
-Acceptance:
-
-- Focused YT Music tests cover wide and constrained composition, stable semantic
-  identities, focus adjacency, shortcuts, empty/loading/error states, and
-  deterministic fakes.
-- Existing Community package isolation/install/update/remove evidence remains
-  green.
-- Native generic renderer fixtures show all authored controls within bounds at
-  representative compact/standard widths without identity-specific code.
-- Tier 1 only: YT Music package/tests, affected conformance/package checks, and
-  the smallest renderer scenario. No aggregate.
-- After DLV-222 and DLV-223 are both accepted/integrated, rebuild/package one
-  coherent Release for the user's YT Music and tray-spacing verdict.
-
-Out of scope: host placement, Taffy/native edits, public schema changes,
-controller routing redesign, companion/auth changes, another page, or Avalonia.
-
-Independent review disposition: commit `b4e87da` is rejected on one bounded
-evidence gap; its package/presentation architecture, one-tree composition,
-focus/action preservation, package isolation, 60/60 YT Music suite, and
-isolated 0.2.8 lifecycle evidence are otherwise accepted. The reported 4,777
-native renderer checks contain no YT Music fixture, so they do not prove the
-assignment's required compact/standard rendered bounds and reachability for
-the changed authored tree.
-
-Correction baseline: `b4e87da`. Add the smallest identity-neutral renderer
-scenario that feeds the real current YT Music semantic snapshot and compiled
-GBSS through the production native renderer at the authored 480x340 compact
-and 760x440 preferred budgets. Assert that every authored control remains
-within the admitted visible or scroll-reachable region, that the preferred
-layout keeps artwork beside one details/control column, that compact layout
-wraps artwork above the same full-width column, and that focus identities and
-explicit adjacency remain unchanged. Test-only native harness wiring is in
-scope; production native behavior, widget-specific renderer branches, capture
-work, and another package lifecycle run are not. Run only that renderer
-scenario plus any compilation needed for it, commit one further `[DLV-223]`
-correction, and stop for review. Preserve the honest unrelated reviewer-history
-documentation red without rerunning it.
+Accepted and integrated through main `6b916e8` (`d423da0` product/package and
+`6b916e8` exact renderer-evidence correction). YT Music 0.2.8 now keeps one
+responsive semantic tree with artwork beside a unified details/control column
+at 760x440 and above that same full-width column at 480x340. Existing actions,
+focus links, shortcuts, lifecycle, authentication, and Community isolation are
+unchanged. Focused evidence is green for YT Music 60/60, the isolated package
+lifecycle, the generic renderer suite, and the dedicated real-snapshot/native-
+renderer scenario 79/79. Physical composition review remains queued for the
+coherent DLV-222 plus DLV-223 Release.
 
 ### Ready after DLV-224 integration — DLV-225: content-sized Settings root
 
@@ -427,6 +371,7 @@ surface/conformance checks only.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-223 | `6b916e8`: responsive YT Music 0.2.8 composition plus real managed-snapshot/GBSS-to-native-renderer proof at 760x440 and 480x340; 79/79 dedicated checks. |
 | DLV-221 | `8836e07`: pinned Taffy 0.12.2 static geometry engine, narrow Rust/C ABI, old custom solver removed, focused native/Rust/eight-widget/performance evidence accepted; canonical aggregate retained red at the pre-product manifest self-check. |
 | DLV-217 | Autonomous Game Launcher accepted through `d57fd06`; integration awaits explicit approval for the known documentation-only red aggregate step. |
 | DLV-216 | Autonomous Spotify Community package accepted and integrated. |
