@@ -93,7 +93,11 @@ request waits are bounded. Unexpected exits, malformed traffic, transport
 failures, and timeouts raise `Failed`; a later request lazily restarts the
 worker until `MaximumRestartAttempts` is exhausted.
 
-Runtime protocol 3 adds a capability-negotiated `presentation-update` response.
+Runtime protocol 2 remains the compatible envelope for existing installed
+applications and now accepts optional capability-negotiated
+`presentation-update` fields and responses.
+Legacy `{}` render requests and peers that ignore the optional fields continue
+to exchange complete checkpoints.
 The SDK still renders a complete immutable view and automatically derives the
 bounded atomic batch. The host runtime serializes render requests, requires an
 exact widget instance, presentation generation, and base sequence, materializes

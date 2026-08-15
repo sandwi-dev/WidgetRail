@@ -13,6 +13,7 @@ internal static class WidgetPresentationUpdateTests
         KeyedStructureAndSubtreeReplacement();
         FallbacksAreDeterministic();
         MalformedAndOversizedFailClosed();
+        IntermediateStructureBoundsFailClosed();
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
@@ -212,6 +213,83 @@ internal static class WidgetPresentationUpdateTests
             "Structural transitions must never be dropped by coalescing.");
         Equal(4, ProtocolConstants.MaximumPendingPresentationUpdates);
         Equal(512 * 1024, ProtocolConstants.MaximumPendingPresentationUpdateBytes);
+    }
+
+    private static void IntermediateStructureBoundsFailClosed()
+    {
+        var parent = new ViewNode
+        {
+            Id = "parent",
+            Kind = ViewNodeKind.Stack,
+            Children = [],
+        };
+        var current = SnapshotWithChildren(30, parent);
+
+        ViewNode deep = Text("deep.30", "tail");
+        for (var depth = 29; depth >= 0; depth--)
+        {
+            deep = new ViewNode
+            {
+                Id = $"deep.{depth}",
+                Kind = ViewNodeKind.Stack,
+                Children = [deep],
+            };
+        }
+        AssertIntermediateFailure("too_deep", current, deep);
+
+        var wide = new ViewNode
+        {
+            Id = "wide.root",
+            Kind = ViewNodeKind.Stack,
+            Children = Enumerable.Range(0, ProtocolConstants.MaximumNodeCount - 1)
+                .Select(index => Text($"wide.{index}", "row"))
+                .ToArray(),
+        };
+        AssertIntermediateFailure("too_many_nodes", current, wide);
+    }
+
+    private static void AssertIntermediateFailure(
+        string expectedCode,
+        ViewSnapshot current,
+        ViewNode transientSubtree)
+    {
+        var batch = new PresentationUpdateBatch
+        {
+            WidgetInstanceId = current.WidgetInstanceId,
+            PresentationGeneration = Generation,
+            BaseSequence = current.Sequence,
+            Sequence = current.Sequence + 1,
+            Operations =
+            [
+                new PresentationUpdateOperation
+                {
+                    Kind = PresentationUpdateOperationKind.InsertChild,
+                    ParentId = "parent",
+                    Index = 0,
+                    Subtree = transientSubtree,
+                },
+                new PresentationUpdateOperation
+                {
+                    Kind = PresentationUpdateOperationKind.RemoveChild,
+                    ParentId = "parent",
+                    ChildId = transientSubtree.Id,
+                },
+            ],
+        };
+
+        try
+        {
+            _ = PresentationUpdateMaterializer.Apply(current, batch, Generation);
+        }
+        catch (ProtocolValidationException exception)
+        {
+            True(exception.Errors.Any(error => error.Code == expectedCode),
+                $"Expected intermediate failure '{expectedCode}', received " +
+                string.Join(',', exception.Errors.Select(error => error.Code)));
+            return;
+        }
+        throw new InvalidOperationException(
+            $"An intermediate '{expectedCode}' violation reached the later removal operation.");
     }
 
     private static void DifferIsTrustTierNeutral()

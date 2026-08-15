@@ -8,7 +8,7 @@ namespace GameBarAlternative.WidgetRuntime;
 
 internal static class WidgetRuntimeProtocol
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 2;
     public const int DefaultMaximumMessageBytes = 1_048_576;
     public const int AbsoluteMaximumMessageBytes = 4_194_304;
 }

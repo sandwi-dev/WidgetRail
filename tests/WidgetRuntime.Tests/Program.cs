@@ -68,6 +68,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Cancellation-ignoring retired gesture grants are revoked", WidgetProcessOwnershipScenarios.CancellationIgnoringGestureGrantIsRevoked),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
     ("Negotiated presentation updates materialize against the exact runtime base", NegotiatedPresentationUpdates),
+    ("Frozen runtime-v2 applications retain checkpoint compatibility", WidgetRuntimeProtocolCompatibilityScenarios.FrozenV2ApplicationCheckpointCompatibility),
     ("Worker handshake requires the exact random session nonce", SessionNonceMismatchIsRejected),
     ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
     ("Process residency leases follow exact worker sessions", ProcessLeaseFollowsSession),
@@ -133,6 +134,15 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Malformed worker snapshots are rejected by host", MalformedSnapshotIsRejected),
     ("Worker destruction is bounded when widget cleanup hangs", DestroyIsBounded),
 };
+
+var testPrefixIndex = Array.IndexOf(args, "--test-prefix");
+if (testPrefixIndex >= 0)
+{
+    if (testPrefixIndex + 1 >= args.Length)
+        throw new ArgumentException("Missing --test-prefix value.");
+    var prefix = args[testPrefixIndex + 1];
+    tests = tests.Where(test => test.Name.StartsWith(prefix, StringComparison.Ordinal)).ToArray();
+}
 
 var failures = new List<string>();
 foreach (var test in tests)

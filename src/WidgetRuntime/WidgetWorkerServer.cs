@@ -501,7 +501,7 @@ internal sealed class WidgetWorkerServer
                 "Hosts may request only Background, Visible, or Interactive.");
     }
 
-    private static PresentationUpdateCapabilities ValidateRenderRequest(
+    internal static PresentationUpdateCapabilities ValidateRenderRequest(
         RenderPayload render)
     {
         var capabilities = render.UpdateCapabilities;

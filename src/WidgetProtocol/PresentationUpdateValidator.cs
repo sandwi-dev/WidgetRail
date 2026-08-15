@@ -188,8 +188,14 @@ public static class PresentationUpdateMaterializer
             throw Error("$.baseSequence", "base_mismatch", "Update base does not match the current presentation.");
 
         var candidate = current;
+        DemandStructuralBounds(candidate.Root);
         foreach (var operation in batch.Operations)
+        {
             candidate = ApplyOperation(candidate, operation);
+            // ApplyOperation searches only the previously bounded candidate.
+            // Bound the result iteratively before any later recursive search.
+            DemandStructuralBounds(candidate.Root);
+        }
         candidate = candidate with
         {
             ProtocolVersion = Math.Max(candidate.ProtocolVersion,
@@ -199,6 +205,38 @@ public static class PresentationUpdateMaterializer
         var candidateErrors = ViewSnapshotValidator.Validate(candidate);
         if (candidateErrors.Count != 0) throw new ProtocolValidationException(candidateErrors);
         return candidate;
+    }
+
+    private static void DemandStructuralBounds(ViewNode root)
+    {
+        var pending = new Stack<(ViewNode Node, int Depth)>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        pending.Push((root, 1));
+        var count = 0;
+        while (pending.Count != 0)
+        {
+            var (node, depth) = pending.Pop();
+            count++;
+            if (count > ProtocolConstants.MaximumNodeCount)
+                throw Error("$.operations", "too_many_nodes",
+                    "An intermediate presentation exceeds the node limit.");
+            if (depth > ProtocolConstants.MaximumTreeDepth)
+                throw Error("$.operations", "too_deep",
+                    "An intermediate presentation exceeds the depth limit.");
+            if (!ids.Add(node.Id))
+                throw Error("$.operations", "duplicate_id",
+                    "An intermediate presentation contains a duplicate node ID.");
+            if (node.Children is null)
+                throw Error("$.operations", "required",
+                    "An intermediate presentation has null children.");
+            for (var index = node.Children.Count - 1; index >= 0; index--)
+            {
+                var child = node.Children[index] ?? throw Error(
+                    "$.operations", "required",
+                    "An intermediate presentation contains a null child.");
+                pending.Push((child, depth + 1));
+            }
+        }
     }
 
     internal static bool IsValidValue(PresentationPropertyChange change)

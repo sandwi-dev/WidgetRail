@@ -5267,12 +5267,17 @@ batches, or deterministic complete-checkpoint fallback. Property metadata names
 paint, measure/layout, accessibility, interaction/authority, resource, and
 surface-placement impact without exposing renderer-specific damage policy.
 
-Runtime protocol 3 serializes render publication through the existing widget
-owner, and the Bridge reuses its existing exact-generation retained snapshot.
+The compatible runtime-v2 envelope serializes render publication through the
+existing widget owner, and the Bridge reuses its existing exact-generation
+retained snapshot. Existing installed full-trust applications can continue to
+send v2 hello/checkpoint traffic; `{}` render requests remain complete
+checkpoints, while optional render fields negotiate atomic updates only between
+current peers.
 Both materialize and validate the complete candidate before advancing sequence
 or publishing it. Generation/instance/base mismatch, absent capability, forced
 checkpoint, unstable identity, malformed JSON/operations, operation or byte
-limits, and a cheaper checkpoint all fall back or fail closed as appropriate.
+limits, an intermediate tree that exceeds the final depth/node limits, and a
+cheaper checkpoint all fall back or fail closed as appropriate.
 The contract bounds one batch to 256 operations and 256 KiB and records a
 four-batch/512-KiB pending budget for the later native consumer. Existing native
 requests advertise no capability and therefore continue receiving complete
@@ -5280,7 +5285,9 @@ checkpoints; DLV-240 does not activate native update traffic or create a second
 snapshot cache, lifecycle owner, or push publisher.
 
 Focused Release evidence from isolated artifact graphs passes WidgetSdk 94/94,
-WidgetRuntime 76/76, WidgetSdk compatibility 12/12, and the two directly
+the frozen-runtime-v2 handshake/checkpoint and current-peer negotiated-update
+Runtime cases 1/1 each, retained pre-correction WidgetRuntime 76/76, WidgetSdk
+compatibility 12/12, and the two directly
 affected WidgetBridge groups (typed closed request classification and the real
 snapshot/quick-action/negotiated-update route) 1/1 each. All four changed
 managed graphs compile with zero warnings and errors. The broader isolated
@@ -5289,7 +5296,11 @@ unrelated full-trust fixtures could not discover the repository from the OS
 temporary output, while the fourth failure was the now-corrected negotiated
 request classification and passes directly at the final tip. The ordinary
 repository-output rerun could not start because inherited `bin`/`obj` ACLs deny
-MSBuild writes. Documentation validation remains red only on 13 links in
+MSBuild writes. One correction full-Runtime attempt stalled at its bound after
+six green direct ownership cases and is not counted as suite evidence. The
+restricted runner separately denied the exact local pipe/process fixtures;
+both directly affected cases pass outside that restriction.
+Documentation validation remains red only on 13 links in
 reviewer-owned archived delivery-plan snapshots; those excluded records were
 not edited. No Tier 3, native activation/build, package, capture, launch, push,
 or later update-consumer work ran.
