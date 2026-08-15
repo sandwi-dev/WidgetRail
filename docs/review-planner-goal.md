@@ -476,17 +476,18 @@ Then repeat the loop.
 ## Branch and task model
 
 - Widgets implementation uses the isolated worktree
-  `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on
-  `codex/impl-widgets-snapshot-update` from accepted production baseline
-  `7cc5839` and executes DLV-240. Candidate `c7f9dfa` is rejected on one bounded
-  runtime-v2 compatibility blocker and its correction is active on the same
-  clean branch; do not integrate it before independent acceptance. DLV-217 is
+  `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative`. DLV-240 cumulative
+  candidates `c7f9dfa` and `11b0ca6` are accepted and integrated on planner main
+  as `485a935` and `cb45a31`. Preserve the clean
+  `codex/impl-widgets-snapshot-update` branch, receive exact current main, create
+  a clean DLV-218 branch without rewriting preserved history, and execute only
+  DLV-218. DLV-217 is
   integrated on planner main through
   `1453a4c`; its original branch remains preserved on
   `codex/impl-widgets-community-launcher`. Do not move or rewrite that branch
-  while the UI queue proceeds. After DLV-240 integration, give the widgets lane
-  current main before DLV-218. DLV-246 is integrated on planner main as
-  `0e75203`; its coherent Release is running visibly as PID 74420 after a
+  while the UI queue proceeds. DLV-246 is integrated on planner main as
+  `0e75203`; DLV-240 follows as `485a935` and `cb45a31`. The coherent Release is
+  running visibly as PID 105736 after a
   successful bounded second-invocation activation smoke.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
@@ -495,8 +496,9 @@ Then repeat the loop.
   Preserve completed `codex/impl-platform-fixed-chrome` and
   `codex/impl-platform-snapshot-cache`; DLV-246 candidate `4210be7` on
   `codex/impl-platform-process-owner` is accepted and integrated as `0e75203`.
-  Preserve that clean branch and keep the platform lane idle until DLV-240 is
-  integrated, then rebase or merge current main before DLV-241. The original
+  Preserve that clean branch, receive exact current main `cb45a31`, create a
+  clean DLV-241 branch without rewriting preserved history, and execute only
+  DLV-241. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
