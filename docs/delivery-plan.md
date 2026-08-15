@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Tray visibility/stationarity in `9c1585a` is physically accepted, but destination widget sizing is physically rejected: YT Music remains at Network Controls' presented extent after admission. The lane is correcting committed-destination authority before resuming deferred tests. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Physical acceptance pending for unintegrated correction `7420d7a`, visibly launched as PID 80924. It retains the accepted fixed-tray work and adds durable committed-destination geometry authority for differently sized widget admission. Tests remain deferred; DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -644,6 +644,17 @@ transition from the current presented sample only when that destination changes,
 and treat later same-destination refreshes as repaint-only. Preserve the accepted
 fixed-chrome behavior. Pause test finalization, make one production correction
 and Release build for physical review, then finish tests only after acceptance.
+
+Production correction `7420d7ada2fac7c5266a19579a94109039751f6d` is
+source-reviewed, built, and launched unintegrated as PID 80924. The presentation
+transaction now records the identity and extent of the last successful
+composition admission. A newly admitted widget is compared with that durable
+destination; its current presented extent is used only as the motion source.
+Same-geometry repaint transfers identity without moving the HWND, while later
+same-destination refreshes remain repaint-only. The exact Release executable
+SHA-256 is `66E85D066437E87793192C61297CBF5A89005731A11C4DA1A9775F3DE6D405A6`.
+No tests were changed or run. Physical Network Controls to YT Music sizing is
+required before deferred test completion or integration.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
