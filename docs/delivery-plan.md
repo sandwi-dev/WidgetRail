@@ -29,8 +29,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Refreshed unaccepted DLV-242 candidate `3f44807` is visibly running as exact
-  PID 80464 from the isolated platform worktree; `OverlayHost.exe` SHA-256 is
+- Refreshed DLV-242 candidate `3f44807` was physically rejected for content
+  flicker and small text movement during Settings focus navigation and live
+  Media Sessions updates. Its exact launched executable SHA-256 was
   `23257C80A86854053553660717D3E6A9C99C8EC024429DF8CEF9BF9C47E7B49F`.
   Accepted production main remains `a77182d`. Exact accepted-main PID 19844
   exposed no enumerable top-level HWND, so the attempted normal `WM_CLOSE`
@@ -172,7 +173,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-247 is accepted and integrated as `a77182d`. Resume DLV-242 only by bringing accepted main into preserved source correction `3bd8c80` on `codex/impl-platform-native-impact` at a clean boundary, then build and launch the coherent candidate for the still-required user verdict before authoring its regression tests. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 correction is Assigned atop rejected candidate merge `3f44807`. Eliminate unchanged retained-snapshot raster work, bound host focus/scroll damage, and preserve stable text geometry when the new intrinsic content fits its committed allocation. Build and launch once for user review; do not write tests before acceptance. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -567,9 +568,52 @@ same seven native DLV-242 files, and those files are unchanged from the
 previously reviewed correction. Its one serialized full packaged Release build
 passed. Both retired runtime directories and all retired Spotify Bridge files
 are absent; current Bridge, Settings, WidgetWorkerHost, bundled widget runtimes,
-and exact managed-output provenance are present. Candidate PID 80464 is visibly
-running for the user verdict. No DLV-242 tests or integration are authorized
-until that verdict.
+and exact managed-output provenance are present. Candidate PID 80464 was visibly
+launched and then rejected by the user. No DLV-242 tests or integration are
+authorized until a corrected visible candidate is accepted.
+
+The rejection is a real pre-existing invalidation defect that DLV-242 makes more
+visible, not an HWND or widget-envelope movement. Exact-session evidence keeps
+content, tray, chrome, desired extent, and presented extent stable while:
+
+- every Settings focus move at unchanged snapshot sequence 4 issues another
+  widget presentation paint because controller focus paths call whole-window
+  `InvalidateRect`;
+- live Media Sessions produces 98 `refresh-retained` paints and 95 admitted
+  paints over roughly twenty seconds, so nearly every provider publication
+  redraws old inert pixels before drawing the admitted update; and
+- current diagnostics do not expose the selected no-raster, paint-only, local-
+  layout, or full-fallback decision, preventing direct confirmation of the
+  admitted damage path.
+
+Required bounded correction:
+
+- When refresh-pending authority retains the exact committed instance,
+  sequence, viewport, appearance, focus, scroll, and pressed state, update the
+  lifecycle/input/accessibility authority without scheduling another content
+  raster frame. Do not freeze or reuse pixels after any visual-state change.
+- Replace whole-content invalidation for ordinary widget focus movement with a
+  single host-owned damage request covering the union of old and new focus
+  visuals. If focus-follow changes a scroll offset, include every newly exposed
+  or vacated scroll region. Preserve a conservative full fallback for unknown
+  geometry, animation, surface, device, or accessibility appearance changes.
+- For changed text, measure against its committed allocation. Reuse layout and
+  paint only the bounded node when the new content cannot change wrapping,
+  clipping, baseline, overflow, or adjacent geometry; otherwise use the existing
+  safe local-layout boundary or complete fallback. Do not special-case widget
+  identity, provider, field ID, or playback content.
+- Extend the existing presentation paint diagnostic with the chosen work class
+  and effective damage rectangle. Do not add per-controller-repeat logging or a
+  second trace file.
+- Preserve one HWND set, composition owner, renderer, layout cache, snapshot
+  materializer, focus tree, controller owner, and transport. Do not hide flicker
+  with sleeps, opacity transitions, blanket motion suppression, or widget-
+  authored workarounds.
+
+Verification remains physical-first: source review, one serialized full packaged
+Release build, exact artifact/provenance inspection, and visible launch for the
+user. Do not author or modify regression tests until the user accepts the
+corrected behavior. Never run the product aggregate merely for this correction.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 
