@@ -509,10 +509,14 @@ Then repeat the loop.
   `1ab2e0d`. The correction registered the existing
   `WidgetPresentationSession.Tests` project; its one exact aggregate passed
   verifier self-tests and then stopped at the inherited silent managed restore
-  failure without rerun. Receive exact current main, create a clean DLV-242
-  branch without rewriting preserved history, and execute physical-first
-  DLV-242 only: production code plus one Release build, then stop for planner
-  launch and the user verdict before tests. The original
+  failure without rerun. DLV-242 production candidate `55bea0c`, refreshed onto
+  accepted main as `d7ffcaa`, is source-rejected before launch: its effect
+  classifier can reuse stale geometry for values that alter intrinsic measure,
+  its fixed-size local boundary does not prove descendant paint containment,
+  and authority/accessibility-only updates fall through to a full content
+  render. The platform lane owns one bounded production-only correction and one
+  Release build, then stops for planner source review, launch, and the user
+  verdict before tests. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.

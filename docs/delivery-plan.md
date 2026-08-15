@@ -158,7 +158,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. Assigned physical-first DLV-242 from exact current main: production code plus one Release build only, then stop for planner launch and user verdict before tests. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. DLV-242 production candidate `55bea0c`, refreshed onto current main as `d7ffcaa`, is source-rejected before physical launch; one bounded production-only correction is Assigned, followed by one Release build and planner review. No tests precede the user verdict. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -440,6 +440,23 @@ Measure full-checkpoint versus incremental CPU, allocation, layout, paint area,
 latency, and fallback frequency for Audio slider, Now Playing progress, Network
 status/list changes, launcher/library lists, and media metadata. Build and launch
 the complete candidate for user cycling/scrolling/controller review.
+
+Production candidate `55bea0c`, refreshed without conflict onto accepted main as
+`d7ffcaa`, is rejected at source review and has not been launched or integrated.
+Its impact classifier incorrectly treats image/artwork changes and button
+selected/disabled/busy state as non-layout even though those values alter native
+intrinsic measurement. Its local-layout boundary infers paint containment from
+fixed width/height and zero margin without requiring clipping, so overflowed
+descendants can leave stale pixels outside the submitted update rectangle. It
+also converts authority-only and accessibility-only admissions into a full
+content render instead of publishing their non-raster state without layout or
+paint. The same-lane correction must make classification conservative against
+the actual native measure path, use only genuinely paint-contained local
+boundaries or full fallback, and provide a typed no-raster route that cannot
+mask concurrent host visual dirtiness. The duplicated local recomputation must
+be removed or justified. Preserve the physical-first order: corrected
+production commit, one Release build, planner source review and user verdict,
+then focused tests only after acceptance.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 
