@@ -446,8 +446,9 @@ Then repeat the loop.
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
   `4d0a69e`; revised DLV-244 proceeds on `codex/impl-platform-fixed-chrome`
-  created directly from accepted planner main `1e9c00d`. The original
-  pre-recovery branch remains preserved at `bdf6d88`; do not rewrite it. Its
+  created directly from current accepted planner main; its product/architecture
+  decision baseline is `1e9c00d`. The original pre-recovery branch remains
+  preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
   The completed
   recovery branch `codex/impl-platform-recovery` remains preserved at
