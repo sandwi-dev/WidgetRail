@@ -8,6 +8,7 @@ using GameBarAlternative.WidgetSdk;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
+    ("Automatic presentation updates are atomic bounded and fallback-safe", WidgetPresentationUpdateTests.Run),
     ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
     ("Protocol v11 scroll pagination is bounded and versioned", ScrollPaginationRoundTrip),
     ("Baseline widgets remain protocol v1 compatible", BaselineProtocolCompatibility),

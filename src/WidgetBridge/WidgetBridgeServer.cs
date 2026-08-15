@@ -334,11 +334,17 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             break;
         case BridgeMessageTypes.GetSnapshot:
         {
-            var snapshotRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);
-            using var snapshotPublication = await _registry.GetSnapshotAsync(
-                    snapshotRequest.WidgetId, _sessionCancellation, cancellationToken)
+            var snapshotRequest = BridgeJson.FromElement<BridgePresentationRequest>(request.Payload);
+            var capabilities = snapshotRequest.Capabilities ??
+                PresentationUpdateCapabilities.None;
+            using var snapshotPublication = await _registry.GetPresentationAsync(
+                    snapshotRequest.WidgetId,
+                    capabilities,
+                    snapshotRequest.BaseSequence,
+                    _sessionCancellation,
+                    cancellationToken)
                 .ConfigureAwait(false);
-            await ReplySnapshotAsync(
+            await ReplyPresentationAsync(
                 request.RequestId,
                 snapshotRequest.WidgetId,
                 snapshotPublication.Value,
@@ -745,6 +751,43 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             {
                 widgetId,
                 snapshot = document.RootElement.Clone(),
+                renderStyles,
+            }),
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task ReplyPresentationAsync(
+        long requestId,
+        string widgetId,
+        BridgeClientPresentation presentation,
+        CancellationToken cancellationToken)
+    {
+        if (presentation.Update is null)
+        {
+            await ReplySnapshotAsync(
+                requestId,
+                widgetId,
+                new BridgeClientSnapshot(presentation.Configured, presentation.Snapshot),
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var theme = _appearance is null
+            ? presentation.Configured.CompiledTheme
+            : _appearance.ResolveWidgetTheme(
+                presentation.Configured.Id,
+                presentation.Configured.StylePackage);
+        var renderStyles = BridgeRenderStyleResolver.Resolve(presentation.Snapshot, theme);
+        var updateBytes = PresentationUpdateJson.Serialize(presentation.Update);
+        using var document = JsonDocument.Parse(updateBytes);
+        await SendAsync(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.PresentationUpdate,
+            RequestId = requestId,
+            Payload = BridgeJson.ToElement(new
+            {
+                widgetId,
+                update = document.RootElement.Clone(),
                 renderStyles,
             }),
         }, cancellationToken).ConfigureAwait(false);

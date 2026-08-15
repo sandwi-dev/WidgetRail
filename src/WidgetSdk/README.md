@@ -13,6 +13,15 @@ neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
 See [Declarative UI](../../docs/declarative-ui.md) and
 [Display and resolution](../../docs/display-and-resolution.md).
 
+Keep returning complete immutable `WidgetView` values on every render. When a
+protocol-v18 host explicitly negotiates atomic presentation updates, the SDK
+automatically compares stable element IDs and chooses a bounded typed update or
+a complete checkpoint; widget code does not construct patches, track base
+sequences, or branch by sandbox/full-trust runtime. Identical views become a
+validated no-op batch, while missing/stale bases, unstable identity, structural
+ambiguity, and size limits fall back to a checkpoint. Hosts that do not opt in
+continue receiving the same full snapshots.
+
 Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` for bounded
 controller-first text. The native host owns keyboard/controller editing, clear,
 backspace, commit/cancel, focus restoration, high-contrast colors, and the UIA

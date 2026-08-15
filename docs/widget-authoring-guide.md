@@ -86,7 +86,7 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `17` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI snapshot. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `18` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
@@ -98,6 +98,16 @@ semantic slots v16; and independent surface-axis sizing v17.
 Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
+
+Protocol v18 adds an optional, capability-negotiated atomic presentation-update
+transport. Widget authors still return complete immutable `WidgetView` values;
+they never construct or sequence update operations. The SDK compares stable
+element IDs and automatically emits typed property changes, keyed child
+insert/remove/move operations, or subtree replacement. An absent capability,
+missing or stale base, unstable identity, invalid/oversized batch, or cheaper
+complete representation falls back deterministically to a full checkpoint.
+The receiver validates the whole candidate before publication, so no partial
+tree becomes visible.
 
 Runtime, bridge, and capability-broker transports also have internal protocol
 versions. Widget code does not set or negotiate them; use

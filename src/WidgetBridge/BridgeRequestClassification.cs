@@ -93,7 +93,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.SelectLauncherExperience => LauncherExperienceSelection(
                     request.Payload),
                 BridgeMessageTypes.GetSnapshot => Widget(
-                    BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
+                    BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
                 BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
                 BridgeMessageTypes.RestartWidget => Widget(

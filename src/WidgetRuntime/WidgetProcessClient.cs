@@ -24,7 +24,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     private readonly TimeProvider _timeProvider;
     private readonly WidgetProcessClientTestHooks? _testHooks;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+    private readonly SemaphoreSlim _presentationGate = new(1, 1);
     private WidgetProcessSession? _session;
+    private ViewSnapshot? _materializedSnapshot;
     private WidgetLifecycleState _hostLifecycle = WidgetLifecycleState.Background;
     private int _starts;
     private int _restartAttempts;
@@ -71,33 +73,91 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     internal uint? AppliedJobActiveProcessLimit =>
         Volatile.Read(ref _session)?.WindowsJob?.ActiveProcessLimit;
 
-    public async Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
+        (await GetPresentationAsync(
+            PresentationUpdateCapabilities.None,
+            presentationGeneration: null,
+            baseSequence: 0,
+            requireCheckpoint: true,
+            cancellationToken).ConfigureAwait(false)).Snapshot;
+
+    internal async Task<WidgetRuntimePresentation> GetPresentationAsync(
+        PresentationUpdateCapabilities capabilities,
+        string? presentationGeneration,
+        long baseSequence,
+        bool requireCheckpoint,
+        CancellationToken cancellationToken = default)
     {
-        var request = await RequestWithSessionAsync(
-            MessageTypes.Render, new { }, cancellationToken).ConfigureAwait(false);
-        var response = request.Response;
-        if (response.Type != MessageTypes.Snapshot)
-            throw new WidgetProtocolViolationException($"Expected snapshot, received '{response.Type}'.");
-        var bytes = Encoding.UTF8.GetBytes(response.Payload.GetRawText());
+        ArgumentNullException.ThrowIfNull(capabilities);
+        await _presentationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var snapshot = SnapshotJson.Deserialize(bytes);
-            if (!string.Equals(snapshot.WidgetInstanceId, _options.WidgetInstanceId, StringComparison.Ordinal))
-                throw new WidgetProtocolViolationException("Snapshot belongs to a different widget instance.");
-            return snapshot;
-        }
-        catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
-        {
-            if (TryBeginCurrentPublication(
-                    request.Session, "snapshot-invalid", out var publication))
+            var cached = _materializedSnapshot;
+            var canUpdate = !requireCheckpoint && capabilities.SupportsAtomicUpdates &&
+                cached is not null && cached.Sequence == baseSequence &&
+                IsPresentationGeneration(presentationGeneration);
+            var request = await RequestWithSessionAsync(
+                MessageTypes.Render,
+                new RenderPayload
+                {
+                    UpdateCapabilities = canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                    BaseSequence = canUpdate ? baseSequence : 0,
+                    PresentationGeneration = canUpdate ? presentationGeneration : null,
+                    RequireCheckpoint = !canUpdate,
+                },
+                cancellationToken).ConfigureAwait(false);
+            var response = request.Response;
+            try
             {
-                using (publication)
-                    ReportFailure(WidgetFailureReason.ProtocolViolation, exception);
+                if (response.Type == MessageTypes.Snapshot)
+                {
+                    var snapshot = SnapshotJson.Deserialize(
+                        Encoding.UTF8.GetBytes(response.Payload.GetRawText()));
+                    DemandWidgetInstance(snapshot.WidgetInstanceId);
+                    _materializedSnapshot = snapshot;
+                    return new(snapshot, null);
+                }
+                if (response.Type == MessageTypes.PresentationUpdate && canUpdate)
+                {
+                    var update = PresentationUpdateJson.Deserialize(
+                        Encoding.UTF8.GetBytes(response.Payload.GetRawText()));
+                    var snapshot = PresentationUpdateMaterializer.Apply(
+                        cached!, update, presentationGeneration!);
+                    DemandWidgetInstance(snapshot.WidgetInstanceId);
+                    _materializedSnapshot = snapshot;
+                    return new(snapshot, update);
+                }
+                throw new WidgetProtocolViolationException(
+                    $"Expected snapshot or negotiated update, received '{response.Type}'.");
             }
-            request.Session.Terminate();
-            throw new WidgetProtocolViolationException("Worker returned an invalid snapshot.", exception);
+            catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
+            {
+                if (TryBeginCurrentPublication(
+                        request.Session, "snapshot-invalid", out var publication))
+                {
+                    using (publication)
+                        ReportFailure(WidgetFailureReason.ProtocolViolation, exception);
+                }
+                request.Session.Terminate();
+                throw new WidgetProtocolViolationException(
+                    "Worker returned an invalid presentation.", exception);
+            }
+        }
+        finally
+        {
+            _presentationGate.Release();
+        }
+
+        void DemandWidgetInstance(string widgetInstanceId)
+        {
+            if (!string.Equals(widgetInstanceId, _options.WidgetInstanceId, StringComparison.Ordinal))
+                throw new WidgetProtocolViolationException(
+                    "Presentation belongs to a different widget instance.");
         }
     }
+
+    private static bool IsPresentationGeneration(string? value) =>
+        value is { Length: 32 or 64 } && value.All(char.IsAsciiHexDigit);
 
     /// <summary>
     /// Transitions the worker to a host-owned stable lifecycle state.

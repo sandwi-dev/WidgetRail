@@ -693,6 +693,16 @@ static Task RequestClassificationIsClosed()
     Assert.Equal("widget-a", widget.WidgetId);
     Assert.True(widget.IsKnown, "Known widget request was not classified as known.");
 
+    var update = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.GetSnapshot,
+        RequestId = 13,
+        Payload = BridgeJson.ToElement(new BridgePresentationRequest(
+            "widget-a", PresentationUpdateCapabilities.Current, 7)),
+    });
+    Assert.Equal(BridgeRequestKind.GetSnapshot, update.Kind);
+    Assert.Equal("widget-a", update.WidgetId);
+
     var artwork = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
         Type = BridgeMessageTypes.ResolveArtwork,
@@ -2683,6 +2693,8 @@ static async Task SnapshotAndQuickAction()
     var snapshotJson = snapshotResponse.Payload.GetProperty("snapshot").GetRawText();
     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(snapshotJson));
     Assert.Equal("test.instance", snapshot.WidgetInstanceId);
+    Assert.True(snapshot.ProtocolVersion < ProtocolConstants.AtomicPresentationUpdateVersion,
+        "A legacy Bridge request unexpectedly activated protocol-18 update traffic.");
     var renderStyles = snapshotResponse.Payload.GetProperty("renderStyles");
     Assert.Equal(5, renderStyles.EnumerateObject().Count());
     var buttonStyles = renderStyles.GetProperty("button");
@@ -2801,12 +2813,52 @@ static async Task SnapshotAndQuickAction()
         "Expected absolute Slider target to cross the bridge.");
     var sliderInvalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
     Assert.Equal(4L, sliderInvalidation.Payload.GetProperty("revision").GetInt64());
+    var negotiatedRequest = new BridgePresentationRequest(
+        "test-widget",
+        PresentationUpdateCapabilities.Current,
+        snapshot.Sequence);
+    _ = BridgeJson.FromElement<BridgePresentationRequest>(
+        BridgeJson.ToElement(negotiatedRequest));
     var updatedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        negotiatedRequest);
+    Assert.True(updatedResponse.Type == BridgeMessageTypes.PresentationUpdate,
+        $"Expected presentation-update, received '{updatedResponse.Type}': " +
+        updatedResponse.Payload.GetRawText());
+    var update = PresentationUpdateJson.Deserialize(
+        System.Text.Encoding.UTF8.GetBytes(
+            updatedResponse.Payload.GetProperty("update").GetRawText()));
+    Assert.Equal(snapshot.Sequence, update.BaseSequence);
+    Assert.True(update.Sequence > update.BaseSequence,
+        "The bridge did not forward a newer atomic presentation sequence.");
+    Assert.True(update.Operations.Count > 0,
+        "The changed worker view produced an empty bridge update.");
+    Assert.Equal(5,
+        updatedResponse.Payload.GetProperty("renderStyles").EnumerateObject().Count());
+
+    var checkpointResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, checkpointResponse.Type);
     var updated = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
-        updatedResponse.Payload.GetProperty("snapshot").GetRawText()));
+        checkpointResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.True(updated.ProtocolVersion < ProtocolConstants.AtomicPresentationUpdateVersion,
+        "Legacy checkpoint fallback unexpectedly required atomic-update support.");
     Assert.Equal(0.6D, FindNode(updated.Root, "volume").Value);
     Assert.Equal("physical,automation,physical", FindNode(updated.Root, "busy-button").Text);
+
+    var malformedCapabilities = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget",
+            PresentationUpdateCapabilities.Current with
+            {
+                MaximumOperationsPerBatch =
+                    ProtocolConstants.MaximumPresentationUpdateOperations + 1,
+            },
+            updated.Sequence));
+    Assert.Equal(BridgeMessageTypes.Error, malformedCapabilities.Type);
+    Assert.Equal("request_failed",
+        malformedCapabilities.Payload.GetProperty("code").GetString());
 }
 
 static async Task ManagedPresentationSessionPreservesSandboxedAuthority()

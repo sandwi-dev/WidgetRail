@@ -313,9 +313,30 @@ internal sealed class WidgetWorkerServer
                 .ConfigureAwait(false);
             break;
         case MessageTypes.Render:
-            var snapshot = _widget.RenderSnapshot(
-                _widgetInstanceId, Interlocked.Increment(ref _sequence));
-            var snapshotBytes = SnapshotJson.Serialize(snapshot);
+            var render = RuntimeJson.FromElement<RenderPayload>(request.Payload);
+            var capabilities = ValidateRenderRequest(render);
+            var publication = _widget.RenderPublication(
+                _widgetInstanceId,
+                capabilities.SupportsAtomicUpdates
+                    ? render.PresentationGeneration!
+                    : new string('0', 32),
+                Interlocked.Increment(ref _sequence),
+                render.BaseSequence,
+                capabilities,
+                render.RequireCheckpoint);
+            if (publication.Update is { } update)
+            {
+                var updateBytes = PresentationUpdateJson.Serialize(update);
+                using var document = JsonDocument.Parse(updateBytes);
+                await SendAsync(new RuntimeEnvelope
+                {
+                    Type = MessageTypes.PresentationUpdate,
+                    RequestId = request.RequestId,
+                    Payload = document.RootElement.Clone(),
+                }, cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            var snapshotBytes = SnapshotJson.Serialize(publication.Snapshot);
             using (var document = JsonDocument.Parse(snapshotBytes))
             {
                 await SendAsync(new RuntimeEnvelope
@@ -478,6 +499,35 @@ internal sealed class WidgetWorkerServer
             WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive))
             throw new WidgetProtocolViolationException(
                 "Hosts may request only Background, Visible, or Interactive.");
+    }
+
+    private static PresentationUpdateCapabilities ValidateRenderRequest(
+        RenderPayload render)
+    {
+        var capabilities = render.UpdateCapabilities;
+        capabilities ??= PresentationUpdateCapabilities.None;
+        var none = capabilities.MaximumProtocolVersion == 0 &&
+            capabilities.MaximumOperationsPerBatch == 0 &&
+            capabilities.MaximumBatchBytes == 0;
+        var bounded = capabilities.MaximumProtocolVersion ==
+                ProtocolConstants.AtomicPresentationUpdateVersion &&
+            capabilities.MaximumOperationsPerBatch is > 0 and
+                <= ProtocolConstants.MaximumPresentationUpdateOperations &&
+            capabilities.MaximumBatchBytes is > 0 and
+                <= ProtocolConstants.MaximumPresentationUpdateBytes;
+        if (!none && !bounded)
+            throw new WidgetProtocolViolationException(
+                "Presentation update capabilities are malformed or unsupported.");
+        if (bounded && (render.RequireCheckpoint || render.BaseSequence <= 0 ||
+                render.PresentationGeneration is not { Length: 32 or 64 } ||
+                !render.PresentationGeneration.All(char.IsAsciiHexDigit)))
+            throw new WidgetProtocolViolationException(
+                "Presentation update admission is incomplete or malformed.");
+        if (none && (!render.RequireCheckpoint || render.BaseSequence != 0 ||
+                render.PresentationGeneration is not null))
+            throw new WidgetProtocolViolationException(
+                "Checkpoint render admission is malformed.");
+        return capabilities;
     }
 
     private static string ValidateIdentifier(string value)

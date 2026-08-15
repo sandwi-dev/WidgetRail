@@ -632,6 +632,27 @@ public abstract partial class Widget
         return snapshot;
     }
 
+    internal WidgetPresentationPublication RenderPublication(
+        string widgetInstanceId,
+        string presentationGeneration,
+        long sequence,
+        long expectedBaseSequence,
+        PresentationUpdateCapabilities capabilities,
+        bool requireCheckpoint)
+    {
+        var previous = Volatile.Read(ref _latestSnapshot);
+        var snapshot = Render().CreateSnapshot(widgetInstanceId, sequence);
+        var publication = WidgetPresentationDiff.Create(
+            previous,
+            snapshot,
+            presentationGeneration,
+            expectedBaseSequence,
+            capabilities,
+            requireCheckpoint);
+        Volatile.Write(ref _latestSnapshot, publication.Snapshot);
+        return publication;
+    }
+
     public virtual ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);

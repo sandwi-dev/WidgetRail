@@ -1,13 +1,14 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GameBarAlternative.WidgetProtocol;
 using GameBarAlternative.WidgetSdk;
 
 namespace GameBarAlternative.WidgetRuntime;
 
 internal static class WidgetRuntimeProtocol
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public const int DefaultMaximumMessageBytes = 1_048_576;
     public const int AbsoluteMaximumMessageBytes = 4_194_304;
 }
@@ -19,6 +20,7 @@ internal static class MessageTypes
     public const string Render = "render";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
+    public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
@@ -41,6 +43,16 @@ internal sealed record RuntimeEnvelope
 
 internal sealed record HelloPayload(string WidgetInstanceId, string SessionNonce);
 internal sealed record WidgetLifecyclePayload(WidgetLifecycleState State);
+internal sealed record RenderPayload
+{
+    public PresentationUpdateCapabilities? UpdateCapabilities { get; init; }
+    public long BaseSequence { get; init; }
+    public string? PresentationGeneration { get; init; }
+    public bool RequireCheckpoint { get; init; } = true;
+}
+internal sealed record WidgetRuntimePresentation(
+    GameBarAlternative.WidgetProtocol.ViewSnapshot Snapshot,
+    GameBarAlternative.WidgetProtocol.PresentationUpdateBatch? Update);
 internal sealed record InvalidationPayload(long Revision);
 internal sealed record ActionAdmissionPayload(WidgetOperationAdmission Admission);
 internal sealed record ControllerActionFailurePayload(

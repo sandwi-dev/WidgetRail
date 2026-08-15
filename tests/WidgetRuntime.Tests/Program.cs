@@ -67,6 +67,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Retired sessions cannot grant gesture authority into replacements", WidgetProcessOwnershipScenarios.StaleGestureCannotGrantReplacementAuthority),
     ("Cancellation-ignoring retired gesture grants are revoked", WidgetProcessOwnershipScenarios.CancellationIgnoringGestureGrantIsRevoked),
     ("Worker launch is lazy and snapshot is validated", LazyLaunchAndSnapshot),
+    ("Negotiated presentation updates materialize against the exact runtime base", NegotiatedPresentationUpdates),
     ("Worker handshake requires the exact random session nonce", SessionNonceMismatchIsRejected),
     ("Process admission failures stay pre-launch and are not worker failures", ProcessAdmissionFailsBeforeLaunch),
     ("Process residency leases follow exact worker sessions", ProcessLeaseFollowsSession),
@@ -1720,6 +1721,56 @@ static async Task ActivityTransport()
     Assert.Equal("active", Find((await client.GetSnapshotAsync()).Root, "activity").Text);
     await client.SetActiveAsync(false);
     Assert.Equal("inactive", Find((await client.GetSnapshotAsync()).Root, "activity").Text);
+}
+
+static async Task NegotiatedPresentationUpdates()
+{
+    await using var client = CreateClient();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    var generation = new string('A', 32);
+
+    var initial = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.Current,
+        generation,
+        baseSequence: 0,
+        requireCheckpoint: false);
+    Assert.True(initial.Update is null,
+        "A missing runtime base must negotiate a complete checkpoint.");
+    Assert.Equal("none", Find(initial.Snapshot.Root, "scoped-action").Text);
+
+    var invalidated = new TaskCompletionSource<long>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.Invalidated += (_, revision) => invalidated.TrySetResult(revision);
+    await client.SendActionAsync(new WidgetActionEvent("nested", "nested-command"));
+    _ = await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    var changed = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.Current,
+        generation,
+        initial.Snapshot.Sequence,
+        requireCheckpoint: false);
+    Assert.True(changed.Update is not null,
+        "An exact negotiated base did not receive an atomic update batch.");
+    Assert.Equal(initial.Snapshot.Sequence, changed.Update!.BaseSequence);
+    Assert.Equal(changed.Snapshot.Sequence, changed.Update.Sequence);
+    Assert.Equal(generation, changed.Update.PresentationGeneration);
+    Assert.Equal("nested", Find(changed.Snapshot.Root, "scoped-action").Text);
+
+    var wrongBase = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.Current,
+        generation,
+        baseSequence: initial.Snapshot.Sequence,
+        requireCheckpoint: false);
+    Assert.True(wrongBase.Update is null,
+        "A stale negotiated base must fall back to a complete checkpoint.");
+
+    var legacy = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None,
+        generation,
+        changed.Snapshot.Sequence,
+        requireCheckpoint: false);
+    Assert.True(legacy.Update is null,
+        "A consumer without update capability received update traffic.");
 }
 
 static Task LegacyActionAdmissionCompatibility()

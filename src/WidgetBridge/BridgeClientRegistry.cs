@@ -9,6 +9,11 @@ internal sealed record BridgeClientSnapshot(
     ConfiguredWidget Configured,
     ViewSnapshot Snapshot);
 
+internal sealed record BridgeClientPresentation(
+    ConfiguredWidget Configured,
+    ViewSnapshot Snapshot,
+    PresentationUpdateBatch? Update);
+
 internal sealed record BridgeClientWorkerStatus(
     string Id,
     string Name,
@@ -46,6 +51,19 @@ internal sealed class BridgeClientPublication<TValue>(
     private Action? _release = release;
     internal TValue Value { get; } = value;
     public void Dispose() => Interlocked.Exchange(ref _release, null)?.Invoke();
+
+    internal BridgeClientPublication<TNext> Map<TNext>(Func<TValue, TNext> map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        var release = Interlocked.Exchange(ref _release, null) ??
+            throw new ObjectDisposedException(nameof(BridgeClientPublication<TValue>));
+        try { return new(map(Value), release); }
+        catch
+        {
+            release();
+            throw;
+        }
+    }
 }
 
 internal interface IBridgeWidgetClient : IAsyncDisposable
@@ -56,6 +74,13 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     bool IsRunning { get; }
     int Starts { get; }
     Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken);
+    async Task<WidgetRuntimePresentation> GetPresentationAsync(
+        PresentationUpdateCapabilities capabilities,
+        string presentationGeneration,
+        long baseSequence,
+        bool requireCheckpoint,
+        CancellationToken cancellationToken) =>
+        new(await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
     Task SetLifecycleStateAsync(WidgetLifecycleState state, CancellationToken cancellationToken);
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
@@ -92,6 +117,15 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
     public int Starts => client.Starts;
     public Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken) =>
         client.GetSnapshotAsync(cancellationToken);
+    public Task<WidgetRuntimePresentation> GetPresentationAsync(
+        PresentationUpdateCapabilities capabilities,
+        string presentationGeneration,
+        long baseSequence,
+        bool requireCheckpoint,
+        CancellationToken cancellationToken) =>
+        client.GetPresentationAsync(
+            capabilities, presentationGeneration, baseSequence,
+            requireCheckpoint, cancellationToken);
     public Task SetLifecycleStateAsync(
         WidgetLifecycleState state,
         CancellationToken cancellationToken) =>
@@ -224,6 +258,24 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken)
     {
+        var publication = await GetPresentationAsync(
+            widgetId,
+            PresentationUpdateCapabilities.None,
+            baseSequence: 0,
+            sessionCancellation,
+            cancellationToken).ConfigureAwait(false);
+        return publication.Map(value =>
+            new BridgeClientSnapshot(value.Configured, value.Snapshot));
+    }
+
+    internal async Task<BridgeClientPublication<BridgeClientPresentation>> GetPresentationAsync(
+        string widgetId,
+        PresentationUpdateCapabilities capabilities,
+        long baseSequence,
+        CancellationToken sessionCancellation,
+        CancellationToken cancellationToken)
+    {
+        ValidateUpdateRequest(capabilities, baseSequence);
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -235,30 +287,67 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode is WidgetResidencyMode.SuspendWhenHidden or
                     WidgetResidencyMode.UnloadAfterIdle;
-            ViewSnapshot snapshot;
+            WidgetRuntimePresentation presentation;
             if (hiddenAndRestricted)
             {
-                snapshot = registration.CachedSnapshot ??
+                var snapshot = registration.CachedSnapshot ??
                     throw new BridgeProtocolException(
                         "A hidden suspended widget has no cached snapshot. Make it Visible before rendering.");
+                presentation = new(snapshot, null);
             }
             else
             {
                 registration.CancelIdleUnload();
-                snapshot = await registration.Client.GetSnapshotAsync(cancellationToken)
+                var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
+                var canUpdate = capabilities.SupportsAtomicUpdates &&
+                    registration.CachedSnapshot?.Sequence == baseSequence;
+                presentation = await registration.Client.GetPresentationAsync(
+                        canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                        generation,
+                        canUpdate ? baseSequence : 0,
+                        requireCheckpoint: !canUpdate,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
-                registration.CachedSnapshot = snapshot;
+                registration.CachedSnapshot = presentation.Snapshot;
                 ScheduleIdleUnload(registration, sessionCancellation);
             }
             return AdmitPublication(
                 registration,
-                new BridgeClientSnapshot(registration.Configured, snapshot));
+                new BridgeClientPresentation(
+                    registration.Configured,
+                    presentation.Snapshot,
+                    presentation.Update));
         }
         finally
         {
             registration.OperationGate.Release();
         }
+    }
+
+    private static void ValidateUpdateRequest(
+        PresentationUpdateCapabilities capabilities,
+        long baseSequence)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+        var none = capabilities.MaximumProtocolVersion == 0 &&
+            capabilities.MaximumOperationsPerBatch == 0 &&
+            capabilities.MaximumBatchBytes == 0;
+        var bounded = capabilities.MaximumProtocolVersion ==
+                ProtocolConstants.AtomicPresentationUpdateVersion &&
+            capabilities.MaximumOperationsPerBatch is > 0 and
+                <= ProtocolConstants.MaximumPresentationUpdateOperations &&
+            capabilities.MaximumBatchBytes is > 0 and
+                <= ProtocolConstants.MaximumPresentationUpdateBytes;
+        if (!none && !bounded)
+            throw new BridgeProtocolException(
+                "Presentation update capabilities are malformed or unsupported.");
+        if (bounded && baseSequence <= 0)
+            throw new BridgeProtocolException(
+                "Presentation updates require a positive current base sequence.");
+        if (none && baseSequence != 0)
+            throw new BridgeProtocolException(
+                "Checkpoint requests cannot claim a presentation base sequence.");
     }
 
     internal async Task<BridgeClientPublication<WidgetLifecycleState>> SetLifecycleAsync(

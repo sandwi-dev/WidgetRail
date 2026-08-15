@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
+using GameBarAlternative.WidgetProtocol;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -32,6 +33,7 @@ internal static class BridgeMessageTypes
     public const string RestartWidget = "restart-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
+    public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
     public const string QuickAction = "quick-action";
     public const string ControllerInput = "controller-input";
@@ -58,6 +60,10 @@ internal sealed record BridgeEnvelope
 
 internal sealed record BridgeHello(string ClientName);
 internal sealed record WidgetIdRequest(string WidgetId);
+internal sealed record BridgePresentationRequest(
+    string WidgetId,
+    PresentationUpdateCapabilities? Capabilities = null,
+    long BaseSequence = 0);
 internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandle);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,

@@ -41,6 +41,7 @@ be `hello` with `{ "clientName": "OverlayHost" }`; the bridge responds with
 | `list-widgets` | `{}` | `widgets` with public descriptors, semantic icons, and quick actions |
 | `get-platform-appearance` | `{}` | `platform-appearance` with revision, selected theme, bounded settings, and typed shell styles |
 | `get-snapshot` | `{ "widgetId": "clock" }` | `snapshot` with `widgetId`, validated protocol snapshot, and computed `renderStyles` |
+| `get-snapshot` (protocol-18 opt-in) | `{ "widgetId": "clock", "capabilities": { ... }, "baseSequence": 7 }` | atomic `presentation-update` when the exact retained base is current and the validated update is cheaper; otherwise a complete `snapshot` checkpoint |
 | `set-widget-lifecycle` | `{ "widgetId": "clock", "state": "visible" }` | `acknowledged` |
 | `action` | `{ "widgetId": "clock", "action": WidgetActionEvent }` | `acknowledged` |
 | `quick-action` | `{ "widgetId": "clock", "quickActionId": "refresh", ... }` | `acknowledged` |
@@ -54,6 +55,15 @@ and snapshot sequence identify one action in the bridge's latest validated
 cached snapshot. The catalog `quick-action` request remains only as a bounded
 tooling/compatibility path for host-owned catalog metadata; native code must not
 know widget action IDs.
+
+Presentation updates are pull-based and explicitly negotiated per request.
+The bridge retains only its existing last validated snapshot for the exact
+runtime/presentation generation, forwards a worker-produced update only after
+materializing and validating it against that base, and otherwise returns a
+complete checkpoint. Legacy/native callers omit `capabilities`, so this contract
+does not activate incremental native traffic by itself. Update batches are
+bounded by protocol version, operation count, serialized bytes, tree depth and
+node count; malformed, stale, mismatched, and oversized batches fail closed.
 
 `controller-input` is the normal native integration path. Its input contains
 `button`, `phase`, `context`, optional `focusedElementId`, `sequence`,

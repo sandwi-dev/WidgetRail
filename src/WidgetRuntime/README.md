@@ -93,6 +93,14 @@ request waits are bounded. Unexpected exits, malformed traffic, transport
 failures, and timeouts raise `Failed`; a later request lazily restarts the
 worker until `MaximumRestartAttempts` is exhausted.
 
+Runtime protocol 3 adds a capability-negotiated `presentation-update` response.
+The SDK still renders a complete immutable view and automatically derives the
+bounded atomic batch. The host runtime serializes render requests, requires an
+exact widget instance, presentation generation, and base sequence, materializes
+the complete candidate against its one retained checkpoint, validates it, and
+only then advances the checkpoint. Missing capability/base, forced refresh,
+unsafe identity, or an invalid/oversized update returns a complete snapshot.
+
 `SendControllerInputAsync` carries raw semantic controller input to the worker.
 The SDK resolves dashboard inputs against the latest snapshot's `QuickActions`
 and open-widget inputs first against the focused node, then against the
