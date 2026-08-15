@@ -44,6 +44,7 @@ struct WidgetAdmissionTransitionTrace final {
     std::uint64_t startedAt{};
     std::wstring selectedWidget;
     std::wstring activeWidget;
+    std::wstring trackedWidget;
     bool deferColdStart{};
     bool currentSnapshotPresent{};
     bool terminal{};
@@ -110,6 +111,9 @@ private:
         const WidgetAdmissionTraceRecord& record);
     [[nodiscard]] WidgetAdmissionTransitionTrace* FindLocked(
         std::uint64_t transitionId) noexcept;
+    [[nodiscard]] static bool MatchesTrackedWidget(
+        const WidgetAdmissionTransitionTrace& transition,
+        std::wstring_view widgetId);
     void AppendLocked(
         WidgetAdmissionTransitionTrace& transition,
         WidgetAdmissionTraceRecord record);

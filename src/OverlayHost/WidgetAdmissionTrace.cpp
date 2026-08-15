@@ -117,6 +117,8 @@ std::uint64_t WidgetAdmissionTrace::BeginSelection(
     transition.startedAt = timestamp;
     transition.selectedWidget = Sanitize(selectedWidget);
     transition.activeWidget = Sanitize(activeWidget);
+    transition.trackedWidget = transition.activeWidget.empty()
+        ? transition.selectedWidget : transition.activeWidget;
     transition.deferColdStart = deferColdStart;
     transition.currentSnapshotPresent = currentSnapshotPresent;
     transitions_.push_back(std::move(transition));
@@ -124,8 +126,7 @@ std::uint64_t WidgetAdmissionTrace::BeginSelection(
     AppendLocked(current, {
         WidgetAdmissionTraceStage::Selection,
         timestamp,
-        current.activeWidget.empty()
-            ? current.selectedWidget : current.activeWidget,
+        current.trackedWidget,
     });
     return current.id;
 }
@@ -137,6 +138,7 @@ void WidgetAdmissionTrace::RecordRefreshPosted(
     const std::uint64_t timestamp) {
     std::scoped_lock lock(mutex_);
     if (auto* transition = FindLocked(transitionId)) {
+        if (!MatchesTrackedWidget(*transition, widgetId)) return;
         if (posted) transition->refreshPostedAt = timestamp;
         AppendLocked(*transition, {
             WidgetAdmissionTraceStage::RefreshPosted,
@@ -155,6 +157,7 @@ void WidgetAdmissionTrace::RecordRefreshDequeued(
     const std::uint64_t timestamp) {
     std::scoped_lock lock(mutex_);
     if (auto* transition = FindLocked(transitionId)) {
+        if (!MatchesTrackedWidget(*transition, widgetId)) return;
         AppendLocked(*transition, {
             WidgetAdmissionTraceStage::RefreshDequeued,
             timestamp,
@@ -172,6 +175,7 @@ void WidgetAdmissionTrace::RecordSession(const WidgetSessionTraceEvent& event) {
     std::scoped_lock lock(mutex_);
     auto* transition = FindLocked(event.correlationId);
     if (!transition) return;
+    if (!MatchesTrackedWidget(*transition, event.widgetId)) return;
     WidgetAdmissionTraceRecord record;
     record.stage = WidgetAdmissionTraceStage::Session;
     record.timestamp = event.completedAt != 0
@@ -196,6 +200,7 @@ void WidgetAdmissionTrace::RecordAdmissionPresentation(
     const std::uint64_t timestamp) {
     std::scoped_lock lock(mutex_);
     if (auto* transition = FindLocked(transitionId)) {
+        if (!MatchesTrackedWidget(*transition, widgetId)) return;
         AppendLocked(*transition, {
             WidgetAdmissionTraceStage::AdmissionPresentation,
             timestamp,
@@ -218,6 +223,7 @@ void WidgetAdmissionTrace::RecordMeaningfulInteractive(
         after != WidgetLifecycleState::Interactive) return;
     std::scoped_lock lock(mutex_);
     if (auto* transition = FindLocked(transitionId)) {
+        if (!MatchesTrackedWidget(*transition, widgetId)) return;
         WidgetAdmissionTraceRecord record;
         record.stage = WidgetAdmissionTraceStage::MeaningfulInteractive;
         record.timestamp = timestamp;
@@ -241,8 +247,7 @@ void WidgetAdmissionTrace::ObserveSlow(const std::uint64_t timestamp) {
         AppendLocked(transition, {
             WidgetAdmissionTraceStage::SlowThreshold,
             timestamp,
-            transition.activeWidget.empty()
-                ? transition.selectedWidget : transition.activeWidget,
+            transition.trackedWidget,
             true,
             timestamp - transition.startedAt,
         });
@@ -279,6 +284,7 @@ std::wstring WidgetAdmissionTrace::Format(
         L"Admission trace transition=" + std::to_wstring(transition.id) +
         L" selected=" + transition.selectedWidget +
         L" active=" + transition.activeWidget +
+        L" target=" + transition.trackedWidget +
         L" widget=" + record.widgetId;
     switch (record.stage) {
     case WidgetAdmissionTraceStage::Selection:
@@ -341,6 +347,13 @@ WidgetAdmissionTransitionTrace* WidgetAdmissionTrace::FindLocked(
             return transition.id == transitionId;
         });
     return found == transitions_.end() ? nullptr : &*found;
+}
+
+bool WidgetAdmissionTrace::MatchesTrackedWidget(
+    const WidgetAdmissionTransitionTrace& transition,
+    const std::wstring_view widgetId) {
+    return !transition.trackedWidget.empty() &&
+        transition.trackedWidget == Sanitize(widgetId);
 }
 
 void WidgetAdmissionTrace::AppendLocked(

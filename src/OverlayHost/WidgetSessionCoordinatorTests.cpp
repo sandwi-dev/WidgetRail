@@ -839,6 +839,99 @@ void CoordinatorEmitsCorrelatedLifecycleAndRequestStages() {
            gba::WidgetSessionCompletionDisposition::Admitted);
 }
 
+void SelectedTraceRejectsPinnedAndSupersededAdmissions() {
+    WidgetAdmissionTrace trace;
+    const auto selected = trace.BeginSelection(
+        L"selected", L"selected", true, false, 1000);
+    trace.RecordSession({
+        selected,
+        gba::WidgetSessionTraceStage::RequestCompleted,
+        gba::WidgetSessionTraceAction::None,
+        gba::WidgetSessionTraceReason::None,
+        gba::WidgetSessionCompletionDisposition::Failed,
+        1, 1, gba::WidgetSessionRequestKind::Establish,
+        WidgetLifecycleState::Visible, L"pinned", 1001, 1002, 1003,
+    });
+    trace.RecordAdmissionPresentation(selected, L"pinned", false, 1004);
+    trace.ObserveSlow(1250);
+    auto transitions = trace.Snapshot();
+    assert(transitions.size() == 1);
+    assert(transitions.front().trackedWidget == L"selected");
+    assert(!transitions.front().terminal && transitions.front().slowEmitted);
+    assert(std::none_of(
+        transitions.front().records.begin(), transitions.front().records.end(),
+        [](const auto& record) { return record.widgetId == L"pinned"; }));
+
+    trace.RecordAdmissionPresentation(selected, L"selected", true, 1260);
+    const auto current = trace.BeginSelection(
+        L"replacement", L"replacement", true, false, 2000);
+    trace.RecordSession({
+        selected,
+        gba::WidgetSessionTraceStage::RequestCompleted,
+        gba::WidgetSessionTraceAction::None,
+        gba::WidgetSessionTraceReason::NewerTarget,
+        gba::WidgetSessionCompletionDisposition::Cancelled,
+        2, 2, gba::WidgetSessionRequestKind::Snapshot,
+        WidgetLifecycleState::Visible, L"selected", 2001, 2002, 2003,
+    });
+    trace.RecordAdmissionPresentation(current, L"selected", false, 2004);
+    trace.ObserveSlow(2250);
+    transitions = trace.Snapshot();
+    const auto currentTrace = std::find_if(
+        transitions.begin(), transitions.end(),
+        [&](const auto& transition) { return transition.id == current; });
+    assert(currentTrace != transitions.end());
+    assert(!currentTrace->terminal && currentTrace->slowEmitted);
+    trace.RecordAdmissionPresentation(current, L"replacement", true, 2260);
+    transitions = trace.Snapshot();
+    const auto admitted = std::find_if(
+        transitions.begin(), transitions.end(),
+        [&](const auto& transition) { return transition.id == current; });
+    assert(admitted != transitions.end() && admitted->terminal);
+}
+
+void SelectedLifecycleCorrelationExcludesPinnedTarget() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"selected", L"selected.one", L"runtime-1", L"view-1"),
+        Descriptor(L"pinned", L"pinned.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"selected"] = Snapshot(L"selected.one", 1);
+    bridge.snapshots[L"pinned"] = Snapshot(L"pinned.one", 2);
+    std::mutex traceMutex;
+    std::vector<gba::WidgetSessionTraceEvent> trace;
+    WidgetSessionCoordinator coordinator(
+        bridge.Operations(), {},
+        [&](const gba::WidgetSessionTraceEvent& event) {
+            std::scoped_lock lock(traceMutex);
+            trace.push_back(event);
+        });
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets(
+        {{L"selected", WidgetLifecycleState::Visible},
+         {L"pinned", WidgetLifecycleState::Visible}},
+        false, 92, L"selected");
+    const auto events = WaitEvents(coordinator, [](const auto& values) {
+        return std::count_if(values.begin(), values.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        }) == 2;
+    });
+    const auto selected = std::find_if(events.begin(), events.end(), [](const auto& event) {
+        return event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+            event.widgetId == L"selected";
+    });
+    const auto pinned = std::find_if(events.begin(), events.end(), [](const auto& event) {
+        return event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+            event.widgetId == L"pinned";
+    });
+    assert(selected != events.end() && selected->correlationId == 92);
+    assert(pinned != events.end() && pinned->correlationId == 0);
+    std::scoped_lock lock(traceMutex);
+    assert(std::none_of(trace.begin(), trace.end(), [](const auto& event) {
+        return event.correlationId == 92 && event.widgetId == L"pinned";
+    }));
+}
+
 } // namespace
 
 int main() {
@@ -855,5 +948,7 @@ int main() {
     CancellationIgnoringLateResultsAreStale();
     CorrelatedAdmissionTraceIsBoundedAndSanitized();
     CoordinatorEmitsCorrelatedLifecycleAndRequestStages();
-    std::cout << "WidgetSessionCoordinatorTests passed (15 scenarios)\n";
+    SelectedTraceRejectsPinnedAndSupersededAdmissions();
+    SelectedLifecycleCorrelationExcludesPinnedTarget();
+    std::cout << "WidgetSessionCoordinatorTests passed (17 scenarios)\n";
 }

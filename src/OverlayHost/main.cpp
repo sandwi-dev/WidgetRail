@@ -1294,7 +1294,9 @@ private:
                         RefreshCurrentBridgeSnapshot(correlationId);
                         return;
                     }
-                    SyncWidgetActivity(false, correlationId);
+                    SyncWidgetActivity(
+                        false, correlationId,
+                        correlationId != 0 ? widgetId : std::wstring_view{});
                     if (SnapshotFor(widgetId) && pendingContentRevealWidget_ == widgetId) {
                         pendingContentRevealWidget_.clear();
                         // The last-good content was already fully visible.
@@ -1894,7 +1896,9 @@ private:
                    admissionTraceWidget_ == traceWidget) {
             correlationId = admissionTraceCorrelationId_;
         }
-        SyncWidgetActivity(deferColdWidgetStart, correlationId);
+        SyncWidgetActivity(
+            deferColdWidgetStart, correlationId,
+            correlationId != 0 ? traceWidget : std::wstring_view{});
         const auto nextDesiredLifecycle = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
@@ -2488,7 +2492,8 @@ private:
 
     void SyncWidgetActivity(
         const bool deferColdWidgetStart = false,
-        const std::uint64_t correlationId = 0) {
+        const std::uint64_t correlationId = 0,
+        const std::wstring_view correlationWidgetId = {}) {
         std::map<std::wstring, gba::WidgetLifecycleState, std::less<>> desiredStates;
         const auto overlayDesired = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
@@ -2514,7 +2519,8 @@ private:
         }
 
         sessions_.SetLifecycleTargets(
-            desiredStates, deferColdWidgetStart, correlationId);
+            desiredStates, deferColdWidgetStart, correlationId,
+            correlationWidgetId);
     }
 
     void ProcessWidgetSessionEvents() {

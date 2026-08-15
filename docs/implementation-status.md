@@ -4986,3 +4986,20 @@ the observer wired to the ordinary production selection/session seams. No
 physical reproduction, behavior correction, Tier 3, capture, provider/package,
 or public-protocol work was performed; the intermittent selection defect remains
 for evidence collected from a future affected session.
+
+#### Correlation-integrity correction
+
+The selection correlation is now bound to the exact selected or active widget
+instead of every desired lifecycle target. Pinned or background lifecycle work
+therefore carries no selected-transition correlation. The private trace rejects
+an event whose sanitized widget identity does not match its tracked target
+before it can record a lifecycle result, terminal admission state, or a
+meaningful-interactive transition. The deterministic `WidgetSessionCoordinatorTests`
+route now has 17 scenarios: selected-plus-pinned activity proves the pinned
+request cannot use correlation 92, and a rapid supersession/cancellation case
+proves only the tracked destination terminalizes while the current transition
+still emits its one truthful slow marker. The focused Release route also passes
+`OverlayStateTests`, `WidgetLifecycleTests`, and `WidgetActionFeedbackTests`
+(305 checks). A native Release compile succeeds. This remains observability
+only: no lifecycle behavior, protocol, rendering, focus, or input authority
+changed.

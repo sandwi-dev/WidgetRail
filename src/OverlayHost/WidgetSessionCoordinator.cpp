@@ -117,7 +117,8 @@ bool WidgetSessionCoordinator::RequestRestart(
 void WidgetSessionCoordinator::SetLifecycleTargets(
     const std::map<std::wstring, WidgetLifecycleState, std::less<>>& desired,
     const bool deferColdStart,
-    const std::uint64_t correlationId) {
+    const std::uint64_t correlationId,
+    const std::wstring_view correlationWidgetId) {
     std::vector<std::wstring> retired;
     retired.reserve(lifecycleTargets_.size());
     for (const auto& [widgetId, state] : lifecycleTargets_) {
@@ -129,9 +130,12 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         lifecycleTargets_.erase(widgetId);
     }
     for (const auto& [widgetId, state] : desired) {
+        const std::uint64_t widgetCorrelationId = correlationId != 0 &&
+            (correlationWidgetId.empty() || widgetId == correlationWidgetId)
+            ? correlationId : 0;
         if (!Contains(widgetId)) {
             EmitLifecycleDecision(
-                correlationId, widgetId, state, RequestKind::Establish,
+                widgetCorrelationId, widgetId, state, RequestKind::Establish,
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::MissingDescriptor);
             continue;
@@ -140,7 +144,7 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         if (failures_.contains(widgetId) &&
             !awaitingRestartSnapshot_.contains(widgetId)) {
             EmitLifecycleDecision(
-                correlationId, widgetId, state, RequestKind::Establish,
+                widgetCorrelationId, widgetId, state, RequestKind::Establish,
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::FailureCurrent);
             continue;
@@ -148,7 +152,7 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         const auto current = lifecycleStates_.find(widgetId);
         if (current != lifecycleStates_.end() && current->second == state) {
             EmitLifecycleDecision(
-                correlationId, widgetId, state, RequestKind::Lifecycle,
+                widgetCorrelationId, widgetId, state, RequestKind::Lifecycle,
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::AlreadyCurrent);
             continue;
@@ -157,19 +161,20 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
             ? RequestKind::Lifecycle : RequestKind::Establish;
         if (deferColdStart && current == lifecycleStates_.end() && !Snapshot(widgetId)) {
             EmitLifecycleDecision(
-                correlationId, widgetId, state, requestKind,
+                widgetCorrelationId, widgetId, state, requestKind,
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::Deferred);
             continue;
         }
-        auto request = MakeRequest(requestKind, widgetId, state, correlationId);
+        auto request = MakeRequest(
+            requestKind, widgetId, state, widgetCorrelationId);
         const auto queued = Queue(request);
         request.id = queued.requestId;
         request.generation = queued.generation;
         request.queuedAt = queued.queuedAt;
         request.startedAt = queued.startedAt;
         EmitLifecycleDecision(
-            correlationId, widgetId, state, requestKind,
+            widgetCorrelationId, widgetId, state, requestKind,
             queued.action, queued.reason, &request);
     }
     for (const auto& widgetId : retired) {

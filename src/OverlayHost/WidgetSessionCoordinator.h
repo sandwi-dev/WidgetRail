@@ -214,7 +214,8 @@ public:
     void SetLifecycleTargets(
         const std::map<std::wstring, WidgetLifecycleState, std::less<>>& desired,
         bool deferColdStart = false,
-        std::uint64_t correlationId = 0);
+        std::uint64_t correlationId = 0,
+        std::wstring_view correlationWidgetId = {});
 
     /// Applies completed operations on the caller/UI thread. No callback runs
     /// while coordinator state is mutating.
