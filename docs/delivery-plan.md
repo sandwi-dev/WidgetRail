@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Idle clean at physically rejected production-only candidate `c92ef11`. Resume only with the bounded content-envelope/motion correction below, create/build an exact code-only candidate, and stop for physical user acceptance. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Active on the bounded cumulative correction atop physically rejected `c92ef11`: normalize the visible content envelope, prevent same-destination transition restarts, and fix physical tray occlusion/offset/unit handling. Production code and one Release build only; tests wait for the user's verdict. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -548,6 +548,28 @@ resampling the partially animated surface as a new source. This produces the
 reported few-pixel up/down motion after controller input has stopped and
 prolongs the interval in which content can cross the guide.
 
+Subsequent physical review also shows the tray itself partly below the screen
+or completely absent even while that same diagnostic continues reporting the
+unchanged in-bounds chrome HWND and tray rectangles. The diagnostic is not
+evidence of presented pixels. Source review identifies three independent
+production paths that must be corrected together:
+
+- Content placement raises the backdrop and content top-level windows without
+  deterministically restoring the existing chrome window to the intended top
+  of the overlay pair on every placement. A stable chrome rectangle can
+  therefore be partly or completely occluded.
+- Generic DirectComposition frame commits can write guide/tray visual offsets
+  as part of content or repaint work. Chrome-client offsets must be latched and
+  mutable only through one typed chrome-presentation operation; a guide/tray
+  surface replacement must preserve those offsets rather than reset them.
+- `IDCompositionSurface::BeginDraw` returns an update offset in physical
+  surface pixels. The current renderer applies that raw value inside a
+  DPI-scaled DIP transform, so a nonzero allocator offset is scaled again and
+  can translate the tray raster outside its otherwise correct visual/HWND
+  bounds. Convert that offset into the active drawing coordinate space, or use
+  an explicit pixel-unit drawing path, consistently for content, guide, and
+  tray.
+
 Bounded production-only correction atop `c92ef11`:
 
 - Give content the same normalized local treatment already applied to guide
@@ -570,12 +592,19 @@ Bounded production-only correction atop `c92ef11`:
   roles/ownership/Z-order/backdrop, and sole session/renderer/GameInput/focus/
   accessibility authorities. Do not change tray layout, public surface hints,
   widget identities, providers, or snapshot policy.
+- Preserve the existing three HWND roles, but make each placement publish one
+  deterministic overlay Z-order of backdrop, content, then chrome. Content
+  motion/provider/lifecycle refreshes may not leave chrome beneath another
+  overlay HWND. Make chrome visual offsets a separate latched authority that
+  generic frame replacement cannot overwrite, and normalize every BeginDraw
+  update offset to the renderer's active pixel/DIP unit contract before
+  painting.
 - Continue physical-first ordering: production code only, direct source
   review, exact code-only commit, and one native Release build. Do not add,
   modify, or run tests. The planner will launch the unintegrated candidate for
-  the user to verify fixed panel-to-guide spacing, stationary tray, no guide
-  overlap, and no post-input content jitter. Tests follow only after physical
-  acceptance.
+  the user to verify a fully visible stationary tray, fixed panel-to-guide
+  spacing, no guide overlap, no tray occlusion/disappearance, and no post-input
+  content jitter. Tests follow only after physical acceptance.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
